@@ -653,11 +653,65 @@ describe('archetype filter', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('SET_ARCHETYPE_FILTER is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), {
+      type: 'SET_ARCHETYPE_FILTER', archetype: 'todo',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_ARCHETYPE_FILTER is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: 'todo' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
   it('archetypeFilter persists through phase transitions', () => {
     const withFilter = { ...readyState(), archetypeFilter: 'todo' as const };
     const { state: editing } = reduce(withFilter, { type: 'BEGIN_EDIT', lid: 'e1' });
     expect(editing.archetypeFilter).toBe('todo');
     const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
     expect(back.archetypeFilter).toBe('todo');
+  });
+});
+
+// ── Clear filters ────────────────────────
+
+describe('clear filters', () => {
+  it('CLEAR_FILTERS resets both searchQuery and archetypeFilter', () => {
+    const base = { ...readyState(), searchQuery: 'hello', archetypeFilter: 'todo' as const };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is a no-op when already clear', () => {
+    const { state } = reduce(readyState(), { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+  });
+
+  it('CLEAR_FILTERS is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), { type: 'CLEAR_FILTERS' });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', searchQuery: 'x' };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state).toBe(base);
+    expect(state.searchQuery).toBe('x');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting', searchQuery: 'x' };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
   });
 });

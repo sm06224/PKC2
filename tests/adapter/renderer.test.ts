@@ -634,25 +634,36 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-region="result-count"]')).toBeNull();
   });
 
-  it('shows clear button when search query is non-empty', () => {
+  it('shows clear-filters button when search query is non-empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null,
     };
     render(state, root);
 
-    const clearBtn = root.querySelector('[data-pkc-action="clear-search"]');
+    const clearBtn = root.querySelector('[data-pkc-action="clear-filters"]');
     expect(clearBtn).not.toBeNull();
     expect(clearBtn!.textContent).toBe('×');
   });
 
-  it('does not show clear button when search query is empty', () => {
+  it('shows clear-filters button when archetype filter is set', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo',
+    };
+    render(state, root);
+
+    const clearBtn = root.querySelector('[data-pkc-action="clear-filters"]');
+    expect(clearBtn).not.toBeNull();
+  });
+
+  it('does not show clear-filters button when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
     };
     render(state, root);
 
-    expect(root.querySelector('[data-pkc-action="clear-search"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="clear-filters"]')).toBeNull();
   });
 });

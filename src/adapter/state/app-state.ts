@@ -334,6 +334,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, archetypeFilter: action.archetype };
       return { state: next, events: [] };
     }
+    case 'CLEAR_FILTERS': {
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null };
+      return { state: next, events: [] };
+    }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
       return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };

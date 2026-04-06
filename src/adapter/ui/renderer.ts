@@ -152,9 +152,9 @@ function renderSidebar(state: AppState): HTMLElement {
     searchInput.className = 'pkc-search-input';
     searchRow.appendChild(searchInput);
 
-    if (state.searchQuery !== '') {
+    if (state.searchQuery !== '' || state.archetypeFilter !== null) {
       const clearBtn = createElement('button', 'pkc-btn-clear');
-      clearBtn.setAttribute('data-pkc-action', 'clear-search');
+      clearBtn.setAttribute('data-pkc-action', 'clear-filters');
       clearBtn.textContent = '×';
       searchRow.appendChild(clearBtn);
     }

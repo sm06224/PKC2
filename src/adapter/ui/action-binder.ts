@@ -75,8 +75,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SET_ARCHETYPE_FILTER', archetype });
         break;
       }
-      case 'clear-search':
-        dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: '' });
+      case 'clear-filters':
+        dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
     }
   }
