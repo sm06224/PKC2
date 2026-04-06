@@ -1,15 +1,15 @@
-import type { ArchetypeId, Record } from '../model/record';
+import type { ArchetypeId, Entry } from '../model/record';
 
 /**
- * Archetype interface: defines how a Record's body is parsed,
+ * Archetype interface: defines how an Entry's body is parsed,
  * serialized, and displayed for a given archetype.
  */
 export interface Archetype<TView = unknown> {
   id: ArchetypeId;
   parseBody(body: string): TView;
   serializeBody(view: TView): string;
-  deriveTitle(record: Record): string;
-  getStatus?(record: Record): string | null;
+  deriveTitle(entry: Entry): string;
+  getStatus?(entry: Entry): string | null;
 }
 
 const archetypeRegistry = new Map<ArchetypeId, Archetype>();

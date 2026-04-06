@@ -1,99 +1,228 @@
 import type { Container } from '../../core/model/container';
+import type { Dispatchable } from '../../core/action';
+import type { DomainEvent } from '../../core/action/domain-event';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
- * Each phase defines which Actions are permitted.
+ * Each phase defines which Dispatchable actions are permitted.
  */
 export type AppPhase =
-  | 'initializing'     // rehydrate in progress
-  | 'ready'            // normal operation
-  | 'editing'          // Record editing in progress
-  | 'exporting'        // export in progress
-  | 'error';           // error state
+  | 'initializing'
+  | 'ready'
+  | 'editing'
+  | 'exporting'
+  | 'error';
 
+/**
+ * AppState: runtime-only UI state.
+ *
+ * `container` is a reference to the persistent domain model,
+ * but selection/phase/error are purely runtime concerns.
+ */
 export interface AppState {
   phase: AppPhase;
   container: Container | null;
   selectedLid: string | null;
+  editingLid: string | null;
   error: string | null;
 }
 
-export type Action =
-  | { type: 'INIT_COMPLETE'; container: Container }
-  | { type: 'INIT_ERROR'; error: string }
-  | { type: 'SELECT_RECORD'; lid: string }
-  | { type: 'DESELECT_RECORD' }
-  | { type: 'BEGIN_EDIT'; lid: string }
-  | { type: 'COMMIT_EDIT' }
-  | { type: 'CANCEL_EDIT' }
-  | { type: 'BEGIN_EXPORT' }
-  | { type: 'FINISH_EXPORT' }
-  | { type: 'ERROR'; error: string };
+/**
+ * ReduceResult: state transition + emitted domain events.
+ * Events are side-effects of a successful transition.
+ */
+export interface ReduceResult {
+  state: AppState;
+  events: DomainEvent[];
+}
 
 export function createInitialState(): AppState {
   return {
     phase: 'initializing',
     container: null,
     selectedLid: null,
+    editingLid: null,
     error: null,
   };
 }
 
-export function reduce(state: AppState, action: Action): AppState {
+/**
+ * Pure reducer: (state, action) → (state', events[]).
+ *
+ * Phase-first switch ensures operation-order safety.
+ * Unhandled actions in a phase return the same state with no events,
+ * plus a console.warn in development.
+ */
+export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   switch (state.phase) {
     case 'initializing':
-      switch (action.type) {
-        case 'INIT_COMPLETE':
-          return { ...state, phase: 'ready', container: action.container };
-        case 'INIT_ERROR':
-          return { ...state, phase: 'error', error: action.error };
-        default:
-          return state;
-      }
-
+      return reduceInitializing(state, action);
     case 'ready':
-      switch (action.type) {
-        case 'SELECT_RECORD':
-          return { ...state, selectedLid: action.lid };
-        case 'DESELECT_RECORD':
-          return { ...state, selectedLid: null };
-        case 'BEGIN_EDIT':
-          return { ...state, phase: 'editing', selectedLid: action.lid };
-        case 'BEGIN_EXPORT':
-          return { ...state, phase: 'exporting' };
-        case 'ERROR':
-          return { ...state, phase: 'error', error: action.error };
-        default:
-          return state;
-      }
-
+      return reduceReady(state, action);
     case 'editing':
-      switch (action.type) {
-        case 'COMMIT_EDIT':
-          return { ...state, phase: 'ready' };
-        case 'CANCEL_EDIT':
-          return { ...state, phase: 'ready' };
-        default:
-          console.warn(`Action ${action.type} blocked in phase ${state.phase}`);
-          return state;
-      }
-
+      return reduceEditing(state, action);
     case 'exporting':
-      switch (action.type) {
-        case 'FINISH_EXPORT':
-          return { ...state, phase: 'ready' };
-        case 'ERROR':
-          return { ...state, phase: 'error', error: action.error };
-        default:
-          return state;
-      }
-
+      return reduceExporting(state, action);
     case 'error':
-      switch (action.type) {
-        case 'INIT_COMPLETE':
-          return { ...state, phase: 'ready', container: action.container, error: null };
-        default:
-          return state;
-      }
+      return reduceError(state, action);
   }
+}
+
+function blocked(state: AppState, action: Dispatchable): ReduceResult {
+  console.warn(`[PKC2] Action "${action.type}" blocked in phase "${state.phase}"`);
+  return { state, events: [] };
+}
+
+function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult {
+  switch (action.type) {
+    case 'SYS_INIT_COMPLETE': {
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: action.container,
+        error: null,
+      };
+      const cid = action.container?.meta?.container_id ?? 'unknown';
+      return { state: next, events: [{ type: 'CONTAINER_LOADED', container_id: cid }] };
+    }
+    case 'SYS_INIT_ERROR': {
+      const next: AppState = { ...state, phase: 'error', error: action.error };
+      return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };
+    }
+    default:
+      return blocked(state, action);
+  }
+}
+
+function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
+  switch (action.type) {
+    case 'SELECT_ENTRY': {
+      const next: AppState = { ...state, selectedLid: action.lid };
+      return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
+    }
+    case 'DESELECT_ENTRY': {
+      const next: AppState = { ...state, selectedLid: null };
+      return { state: next, events: [{ type: 'ENTRY_DESELECTED' }] };
+    }
+    case 'BEGIN_EDIT': {
+      const next: AppState = {
+        ...state,
+        phase: 'editing',
+        selectedLid: action.lid,
+        editingLid: action.lid,
+      };
+      return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
+    }
+    case 'CREATE_ENTRY': {
+      // Entry creation: generate LID, add to container.
+      // For now, the reducer records the intent; actual mutation
+      // will be handled by the dispatcher layer.
+      const lid = generateLid();
+      const next: AppState = { ...state, selectedLid: lid };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_CREATED', lid, archetype: action.archetype }],
+      };
+    }
+    case 'DELETE_ENTRY': {
+      const next: AppState = {
+        ...state,
+        selectedLid: state.selectedLid === action.lid ? null : state.selectedLid,
+      };
+      return { state: next, events: [{ type: 'ENTRY_DELETED', lid: action.lid }] };
+    }
+    case 'BEGIN_EXPORT': {
+      const next: AppState = { ...state, phase: 'exporting' };
+      return { state: next, events: [] };
+    }
+    case 'CREATE_RELATION': {
+      const id = generateLid();
+      return {
+        state,
+        events: [{
+          type: 'RELATION_CREATED',
+          id,
+          from: action.from,
+          to: action.to,
+          kind: action.kind,
+        }],
+      };
+    }
+    case 'DELETE_RELATION': {
+      return {
+        state,
+        events: [{ type: 'RELATION_DELETED', id: action.id }],
+      };
+    }
+    case 'SYS_ERROR': {
+      const next: AppState = { ...state, phase: 'error', error: action.error };
+      return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };
+    }
+    default:
+      return blocked(state, action);
+  }
+}
+
+function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
+  switch (action.type) {
+    case 'COMMIT_EDIT': {
+      const next: AppState = { ...state, phase: 'ready', editingLid: null };
+      return {
+        state: next,
+        events: [
+          { type: 'EDIT_COMMITTED', lid: action.lid },
+          { type: 'ENTRY_UPDATED', lid: action.lid },
+        ],
+      };
+    }
+    case 'CANCEL_EDIT': {
+      const next: AppState = { ...state, phase: 'ready', editingLid: null };
+      return { state: next, events: [{ type: 'EDIT_CANCELLED' }] };
+    }
+    default:
+      return blocked(state, action);
+  }
+}
+
+function reduceExporting(state: AppState, action: Dispatchable): ReduceResult {
+  switch (action.type) {
+    case 'SYS_FINISH_EXPORT': {
+      const next: AppState = { ...state, phase: 'ready' };
+      return { state: next, events: [{ type: 'EXPORT_COMPLETED' }] };
+    }
+    case 'SYS_ERROR': {
+      const next: AppState = { ...state, phase: 'error', error: action.error };
+      return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };
+    }
+    default:
+      return blocked(state, action);
+  }
+}
+
+function reduceError(state: AppState, action: Dispatchable): ReduceResult {
+  switch (action.type) {
+    case 'SYS_INIT_COMPLETE': {
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: action.container,
+        error: null,
+      };
+      const cid = action.container?.meta?.container_id ?? 'unknown';
+      return { state: next, events: [{ type: 'CONTAINER_LOADED', container_id: cid }] };
+    }
+    default:
+      return blocked(state, action);
+  }
+}
+
+// ---- Utility ----
+
+let lidCounter = 0;
+
+function generateLid(): string {
+  lidCounter += 1;
+  const ts = Date.now().toString(36);
+  const seq = lidCounter.toString(36).padStart(4, '0');
+  return `${ts}-${seq}`;
 }

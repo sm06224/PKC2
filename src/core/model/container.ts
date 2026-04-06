@@ -1,8 +1,8 @@
-import type { Record } from './record';
+import type { Entry } from './record';
 import type { Relation } from './relation';
 
 /**
- * Container metadata.
+ * Container metadata. Persistent.
  */
 export interface ContainerMeta {
   container_id: string;
@@ -13,22 +13,23 @@ export interface ContainerMeta {
 }
 
 /**
- * Revision: tracks a change to a Record.
+ * Revision: tracks a historical snapshot of an Entry. Persistent.
  */
 export interface Revision {
   id: string;
-  record_lid: string;
+  entry_lid: string;
   snapshot: string;
   created_at: string;
 }
 
 /**
- * Container: the top-level data structure holding all Records,
- * Relations, Revisions, and Assets.
+ * Container: the top-level persistent aggregate.
+ * Holds all Entries, Relations, Revisions, and Assets.
+ * This is what gets serialized to pkc-data.
  */
 export interface Container {
   meta: ContainerMeta;
-  records: Record[];
+  entries: Entry[];
   relations: Relation[];
   revisions: Revision[];
   assets: { [key: string]: string };

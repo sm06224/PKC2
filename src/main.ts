@@ -1,28 +1,20 @@
 import './styles/base.css';
 import { SLOT } from './runtime/contract';
-import { createInitialState, reduce } from './adapter/state/app-state';
-import type { Action, AppState } from './adapter/state/app-state';
+import { createDispatcher } from './adapter/state/dispatcher';
 
 /**
  * PKC2 minimal bootstrap.
- * Mounts the app shell and initializes the state machine.
+ * Creates the Dispatcher and wires up state → render.
  */
 function boot(): void {
-  let state: AppState = createInitialState();
+  const dispatcher = createDispatcher();
 
-  function dispatch(action: Action): void {
-    const prev = state;
-    state = reduce(state, action);
-    if (prev !== state) {
-      render(state);
-    }
-  }
-
-  function render(s: AppState): void {
+  // Render on state change
+  dispatcher.onState((state) => {
     const root = document.getElementById(SLOT.ROOT);
     if (!root) return;
 
-    switch (s.phase) {
+    switch (state.phase) {
       case 'initializing':
         root.textContent = 'PKC2 initializing…';
         break;
@@ -30,28 +22,29 @@ function boot(): void {
         root.textContent = 'PKC2 ready.';
         break;
       case 'error':
-        root.textContent = `PKC2 error: ${s.error ?? 'unknown'}`;
+        root.textContent = `PKC2 error: ${state.error ?? 'unknown'}`;
         break;
       default:
         break;
     }
-  }
+  });
 
   // Initial render
-  render(state);
+  const root = document.getElementById(SLOT.ROOT);
+  if (root) root.textContent = 'PKC2 initializing…';
 
-  // Simulate rehydrate: read pkc-data, parse, transition to ready
+  // Rehydrate: read pkc-data, parse, transition to ready
   try {
     const dataEl = document.getElementById(SLOT.DATA);
     const raw = dataEl?.textContent?.trim();
     if (raw) {
       const data = JSON.parse(raw);
-      dispatch({ type: 'INIT_COMPLETE', container: data.container ?? null });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: data.container ?? null });
     } else {
-      dispatch({ type: 'INIT_COMPLETE', container: null as never });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: null as never });
     }
   } catch (e) {
-    dispatch({ type: 'INIT_ERROR', error: String(e) });
+    dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });
   }
 }
 
