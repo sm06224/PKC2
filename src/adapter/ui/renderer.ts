@@ -14,6 +14,8 @@ import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import type { RelationKind } from '../../core/model/relation';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -25,6 +27,14 @@ const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
   { key: 'created_at', label: 'Created' },
   { key: 'updated_at', label: 'Updated' },
   { key: 'title', label: 'Title' },
+] as const;
+
+/** Relation kind options with display labels. */
+const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = [
+  { kind: 'structural', label: 'Structural' },
+  { kind: 'categorical', label: 'Categorical' },
+  { kind: 'semantic', label: 'Semantic' },
+  { kind: 'temporal', label: 'Temporal' },
 ] as const;
 
 /**
@@ -376,6 +386,33 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     }
   }
 
+  // Relation sections
+  if (container) {
+    const directed = getRelationsForEntry(container.relations, entry.lid);
+    const resolved = resolveRelations(directed, container.entries);
+    const outbound = resolved.filter((r) => r.direction === 'outbound');
+    const inbound = resolved.filter((r) => r.direction === 'inbound');
+
+    if (outbound.length > 0 || inbound.length > 0) {
+      const relSection = createElement('div', 'pkc-relations');
+      relSection.setAttribute('data-pkc-region', 'relations');
+
+      if (outbound.length > 0) {
+        relSection.appendChild(renderRelationGroup('Outbound', outbound));
+      }
+      if (inbound.length > 0) {
+        relSection.appendChild(renderRelationGroup('Inbound', inbound));
+      }
+
+      view.appendChild(relSection);
+    }
+
+    // Relation creation form (only in ready phase)
+    if (canEdit && container.entries.length > 1) {
+      view.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+    }
+  }
+
   if (canEdit) {
     const actions = createElement('div', 'pkc-view-actions');
 
@@ -395,6 +432,88 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   }
 
   return view;
+}
+
+function renderRelationGroup(
+  label: string,
+  relations: { relation: { id: string; kind: string }; direction: string; peer: Entry }[],
+): HTMLElement {
+  const group = createElement('div', 'pkc-relation-group');
+  group.setAttribute('data-pkc-relation-direction', label.toLowerCase());
+
+  const heading = createElement('div', 'pkc-relation-heading');
+  heading.textContent = `${label} (${relations.length})`;
+  group.appendChild(heading);
+
+  const list = createElement('ul', 'pkc-relation-list');
+  for (const r of relations) {
+    const item = createElement('li', 'pkc-relation-item');
+    item.setAttribute('data-pkc-relation-id', r.relation.id);
+
+    const link = createElement('span', 'pkc-relation-peer');
+    link.setAttribute('data-pkc-action', 'select-entry');
+    link.setAttribute('data-pkc-lid', r.peer.lid);
+    link.textContent = r.peer.title || '(untitled)';
+    item.appendChild(link);
+
+    const kindBadge = createElement('span', 'pkc-relation-kind');
+    kindBadge.textContent = r.relation.kind;
+    item.appendChild(kindBadge);
+
+    list.appendChild(item);
+  }
+  group.appendChild(list);
+  return group;
+}
+
+function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): HTMLElement {
+  const form = createElement('div', 'pkc-relation-create');
+  form.setAttribute('data-pkc-region', 'relation-create');
+  form.setAttribute('data-pkc-from', fromLid);
+
+  const heading = createElement('div', 'pkc-relation-create-heading');
+  heading.textContent = 'Add Relation';
+  form.appendChild(heading);
+
+  const row = createElement('div', 'pkc-relation-create-row');
+
+  // Target entry select
+  const targetSelect = document.createElement('select');
+  targetSelect.setAttribute('data-pkc-field', 'relation-target');
+  targetSelect.className = 'pkc-relation-select';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = '-- Target --';
+  targetSelect.appendChild(defaultOpt);
+  for (const e of entries) {
+    if (e.lid === fromLid) continue;
+    const opt = document.createElement('option');
+    opt.value = e.lid;
+    opt.textContent = e.title || `(${e.lid})`;
+    targetSelect.appendChild(opt);
+  }
+  row.appendChild(targetSelect);
+
+  // Kind select
+  const kindSelect = document.createElement('select');
+  kindSelect.setAttribute('data-pkc-field', 'relation-kind');
+  kindSelect.className = 'pkc-relation-select';
+  for (const opt of RELATION_KIND_OPTIONS) {
+    const el = document.createElement('option');
+    el.value = opt.kind;
+    el.textContent = opt.label;
+    kindSelect.appendChild(el);
+  }
+  row.appendChild(kindSelect);
+
+  // Create button
+  const btn = createElement('button', 'pkc-btn');
+  btn.setAttribute('data-pkc-action', 'create-relation');
+  btn.textContent = 'Add';
+  row.appendChild(btn);
+
+  form.appendChild(row);
+  return form;
 }
 
 function renderEditor(entry: Entry): HTMLElement {

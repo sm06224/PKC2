@@ -740,4 +740,134 @@ describe('Renderer', () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1');
   });
+
+  // ── Relation UI ──────────────────
+
+  it('shows relation sections when entry has relations', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).not.toBeNull();
+
+    // Outbound group for e1
+    const outbound = relRegion!.querySelector('[data-pkc-relation-direction="outbound"]');
+    expect(outbound).not.toBeNull();
+  });
+
+  it('shows relation kind badge', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const kindBadge = root.querySelector('.pkc-relation-kind');
+    expect(kindBadge).not.toBeNull();
+    expect(kindBadge!.textContent).toBe('structural');
+  });
+
+  it('shows inbound relations for target entry', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const inbound = root.querySelector('[data-pkc-relation-direction="inbound"]');
+    expect(inbound).not.toBeNull();
+    const peer = inbound!.querySelector('[data-pkc-action="select-entry"]');
+    expect(peer).not.toBeNull();
+    expect(peer!.getAttribute('data-pkc-lid')).toBe('e1');
+  });
+
+  it('relation peer link has select-entry action for navigation', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const peer = root.querySelector('.pkc-relation-peer');
+    expect(peer).not.toBeNull();
+    expect(peer!.getAttribute('data-pkc-action')).toBe('select-entry');
+    expect(peer!.getAttribute('data-pkc-lid')).toBe('e2');
+    expect(peer!.textContent).toBe('Entry Two');
+  });
+
+  it('does not show relation section when no relations exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).toBeNull();
+  });
+
+  it('shows relation creation form in ready phase', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const createForm = root.querySelector('[data-pkc-region="relation-create"]');
+    expect(createForm).not.toBeNull();
+    expect(createForm!.getAttribute('data-pkc-from')).toBe('e1');
+
+    // Target select excludes current entry
+    const targetSelect = createForm!.querySelector('[data-pkc-field="relation-target"]');
+    expect(targetSelect).not.toBeNull();
+    const options = targetSelect!.querySelectorAll('option');
+    // 1 default + 1 other entry (e2)
+    expect(options).toHaveLength(2);
+
+    // Kind select
+    const kindSelect = createForm!.querySelector('[data-pkc-field="relation-kind"]');
+    expect(kindSelect).not.toBeNull();
+
+    // Create button
+    const createBtn = createForm!.querySelector('[data-pkc-action="create-relation"]');
+    expect(createBtn).not.toBeNull();
+  });
+
+  it('does not show relation create form in editing phase', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const createForm = root.querySelector('[data-pkc-region="relation-create"]');
+    expect(createForm).toBeNull();
+  });
 });

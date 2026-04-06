@@ -790,4 +790,33 @@ describe('sort', () => {
     expect(back.sortKey).toBe('title');
     expect(back.sortDirection).toBe('asc');
   });
+
+  // ── CREATE_RELATION phase blocks ──
+
+  it('CREATE_RELATION is blocked during initializing', () => {
+    const base: AppState = { ...readyState(), phase: 'initializing' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CREATE_RELATION is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', selectedLid: 'e1' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state.container!.relations).toHaveLength(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it('CREATE_RELATION is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
 });

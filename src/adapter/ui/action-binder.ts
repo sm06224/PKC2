@@ -1,4 +1,5 @@
 import type { ArchetypeId } from '../../core/model/record';
+import type { RelationKind } from '../../core/model/relation';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 
@@ -79,6 +80,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
+      case 'create-relation': {
+        const form = target.closest<HTMLElement>('[data-pkc-region="relation-create"]');
+        if (!form) break;
+        const from = form.getAttribute('data-pkc-from');
+        const targetEl = form.querySelector<HTMLSelectElement>('[data-pkc-field="relation-target"]');
+        const kindEl = form.querySelector<HTMLSelectElement>('[data-pkc-field="relation-kind"]');
+        const to = targetEl?.value;
+        const kind = kindEl?.value as RelationKind | undefined;
+        if (from && to && kind) {
+          dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind });
+        }
+        break;
+      }
     }
   }
 

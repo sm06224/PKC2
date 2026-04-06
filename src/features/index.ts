@@ -13,3 +13,6 @@ export {
 
 export { sortEntries } from './search/sort';
 export type { SortKey, SortDirection } from './search/sort';
+
+export { getRelationsForEntry, resolveRelations } from './relation/selector';
+export type { Direction, DirectedRelation, ResolvedRelation } from './relation/selector';

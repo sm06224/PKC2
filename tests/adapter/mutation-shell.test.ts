@@ -184,4 +184,37 @@ describe('Mutation → Shell integration', () => {
     expect(types).toContain('ENTRY_UPDATED');
     expect(types).toContain('ENTRY_DELETED');
   });
+
+  it('CREATE_RELATION shows relation in detail view', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+
+    // Relation section should appear
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).not.toBeNull();
+
+    // Outbound section with peer title
+    const peer = relRegion!.querySelector('[data-pkc-action="select-entry"]');
+    expect(peer).not.toBeNull();
+    expect(peer!.textContent).toBe('Second');
+  });
+
+  it('relation peer click navigates to target entry', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural' });
+
+    // Click the peer link (dispatches SELECT_ENTRY via action-binder)
+    const peer = root.querySelector('.pkc-relation-peer') as HTMLElement;
+    expect(peer).not.toBeNull();
+    peer.click();
+
+    // Should now have e2 selected
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+    const viewTitle = root.querySelector('.pkc-view-title');
+    expect(viewTitle?.textContent).toBe('Second');
+  });
 });
