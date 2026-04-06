@@ -10,7 +10,7 @@ import type { Container } from '../model/container';
  * All type literals are string constants (minify-safe).
  */
 export type SystemCommand =
-  | { type: 'SYS_INIT_COMPLETE'; container: Container }
+  | { type: 'SYS_INIT_COMPLETE'; container: Container; embedded?: boolean }
   | { type: 'SYS_INIT_ERROR'; error: string }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }

@@ -19,6 +19,7 @@ import type { Entry } from '../../core/model/record';
 export function render(state: AppState, root: HTMLElement): void {
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
+  root.setAttribute('data-pkc-embedded', String(state.embedded));
 
   switch (state.phase) {
     case 'initializing':

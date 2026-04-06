@@ -34,6 +34,8 @@ export interface AppState {
   selectedLid: string | null;
   editingLid: string | null;
   error: string | null;
+  /** True when running inside an iframe. Set once at init. */
+  embedded: boolean;
 }
 
 /**
@@ -52,6 +54,7 @@ export function createInitialState(): AppState {
     selectedLid: null,
     editingLid: null,
     error: null,
+    embedded: false,
   };
 }
 
@@ -93,6 +96,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         ...state,
         phase: 'ready',
         container: action.container,
+        embedded: action.embedded ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -250,6 +254,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         phase: 'ready',
         container: action.container,
+        embedded: action.embedded ?? state.embedded,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';

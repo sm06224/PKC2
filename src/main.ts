@@ -9,6 +9,8 @@ import { mountPersistence, loadFromStore } from './adapter/platform/persistence'
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
+import { handleExportRequest } from './adapter/transport/export-handler';
+import { detectEmbedContext } from './adapter/platform/embed-detect';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -72,8 +74,22 @@ async function boot(): Promise<void> {
       bridgeMounted = true;
       const handle = mountMessageBridge({
         containerId: state.container.meta.container_id,
-        onMessage: (envelope, origin) => {
+        onMessage: (envelope, origin, sourceWindow) => {
           console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
+
+          if (envelope.type === 'export:request') {
+            const currentState = dispatcher.getState();
+            if (currentState.container) {
+              handleExportRequest(
+                envelope,
+                currentState.container,
+                handle.sender,
+                sourceWindow,
+                currentState.embedded,
+              );
+            }
+            return;
+          }
         },
         onReject: (_, reason) => {
           console.warn(`[PKC2] Message rejected: ${reason}`);
@@ -86,19 +102,25 @@ async function boot(): Promise<void> {
   });
   let bridgeMounted = false;
 
-  // 10. Load data: IDB first, then pkc-data, then empty
+  // 10. Embed detection
+  const embedCtx = detectEmbedContext();
+  if (embedCtx.embedded) {
+    console.log(`[PKC2] Running embedded (parent origin: ${embedCtx.parentOrigin ?? 'unknown'})`);
+  }
+
+  // 11. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 
     if (source === 'idb' && idbContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: idbContainer });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: idbContainer, embedded: embedCtx.embedded });
       return;
     }
 
     // Fallback: read pkc-data
     const htmlContainer = readPkcData();
     if (htmlContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: htmlContainer });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: htmlContainer, embedded: embedCtx.embedded });
       return;
     }
 
@@ -106,6 +128,7 @@ async function boot(): Promise<void> {
     dispatcher.dispatch({
       type: 'SYS_INIT_COMPLETE',
       container: createEmptyContainer(),
+      embedded: embedCtx.embedded,
     });
   } catch (e) {
     dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });

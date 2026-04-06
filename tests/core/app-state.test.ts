@@ -266,4 +266,45 @@ describe('AppState reducer', () => {
     expect(state.error).toBeNull();
     expect(events[0]!.type).toBe('CONTAINER_LOADED');
   });
+
+  // ── embedded flag ───────────────────────
+  it('createInitialState has embedded=false', () => {
+    const state = createInitialState();
+    expect(state.embedded).toBe(false);
+  });
+
+  it('SYS_INIT_COMPLETE sets embedded=true when provided', () => {
+    const { state } = reduce(createInitialState(), {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer, embedded: true,
+    });
+    expect(state.embedded).toBe(true);
+  });
+
+  it('SYS_INIT_COMPLETE defaults embedded to false when omitted', () => {
+    const { state } = reduce(createInitialState(), {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer,
+    });
+    expect(state.embedded).toBe(false);
+  });
+
+  it('embedded flag persists through phase transitions', () => {
+    const { state: ready } = reduce(createInitialState(), {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer, embedded: true,
+    });
+    expect(ready.embedded).toBe(true);
+
+    const { state: editing } = reduce(ready, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.embedded).toBe(true);
+
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.embedded).toBe(true);
+  });
+
+  it('SYS_INIT_COMPLETE in error preserves embedded flag', () => {
+    const base: AppState = { ...createInitialState(), phase: 'error', error: 'fail', embedded: true };
+    const { state } = reduce(base, {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer,
+    });
+    expect(state.embedded).toBe(true);
+  });
 });

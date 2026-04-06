@@ -40,8 +40,9 @@ export interface BridgeOptions {
   /**
    * Callback for validated, non-ping messages.
    * The bridge handles ping/pong internally.
+   * sourceWindow is the window that sent the message (for response targeting).
    */
-  onMessage?: (envelope: MessageEnvelope, origin: string) => void;
+  onMessage?: (envelope: MessageEnvelope, origin: string, sourceWindow: Window) => void;
 
   /**
    * Callback for rejected messages (logging/debugging).
@@ -130,8 +131,8 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
 
     // pong is informational — pass to callback but don't auto-handle
     // All other types → delegate to callback
-    if (onMessage) {
-      onMessage(envelope, event.origin);
+    if (onMessage && event.source) {
+      onMessage(envelope, event.origin, event.source as Window);
     }
   }
 
