@@ -3,6 +3,8 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@adapter/ui/renderer';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { todoPresenter } from '@adapter/ui/todo-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 
@@ -582,10 +584,10 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const todoBtn = root.querySelector('[data-pkc-archetype="todo"]');
+    const todoBtn = root.querySelector('[data-pkc-action="set-archetype-filter"][data-pkc-archetype="todo"]');
     expect(todoBtn!.getAttribute('data-pkc-active')).toBe('true');
 
-    const allBtn = root.querySelector('[data-pkc-archetype=""]');
+    const allBtn = root.querySelector('[data-pkc-action="set-archetype-filter"][data-pkc-archetype=""]');
     expect(allBtn!.hasAttribute('data-pkc-active')).toBe(false);
   });
 
@@ -1143,5 +1145,48 @@ describe('Renderer', () => {
 
     const view = root.querySelector('[data-pkc-mode="view"]');
     expect(view!.getAttribute('data-pkc-archetype')).toBe('todo');
+  });
+
+  it('todo entry uses todo presenter when registered', () => {
+    registerPresenter('todo', todoPresenter);
+
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Buy groceries', body: '{"status":"open","description":"milk and eggs"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // Should render todo-specific view, not <pre>
+    const todoView = root.querySelector('.pkc-todo-view');
+    expect(todoView).not.toBeNull();
+
+    const status = root.querySelector('.pkc-todo-status');
+    expect(status).not.toBeNull();
+    expect(status!.getAttribute('data-pkc-todo-status')).toBe('open');
+
+    const desc = root.querySelector('.pkc-todo-description');
+    expect(desc!.textContent).toBe('milk and eggs');
+  });
+
+  it('header has both Note and Todo create buttons', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const noteBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+    expect(noteBtn).not.toBeNull();
+    expect(noteBtn!.textContent).toBe('+ Note');
+
+    const todoBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
+    expect(todoBtn).not.toBeNull();
+    expect(todoBtn!.textContent).toBe('+ Todo');
   });
 });

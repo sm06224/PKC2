@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { todoPresenter } from '@adapter/ui/todo-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -275,5 +277,45 @@ describe('Mutation → Shell integration', () => {
     expect(rels[0]!.kind).toBe('categorical');
     expect(rels[0]!.from).toBe('e1');
     expect(rels[0]!.to).toBe('e2');
+  });
+
+  it('todo entry lifecycle: create → view → edit → save', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('todo', todoPresenter);
+
+    // Create todo entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('todo');
+
+    // View should show todo presenter output
+    const todoView = root.querySelector('.pkc-todo-view');
+    expect(todoView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('todo');
+
+    // Fill in todo fields
+    const statusSelect = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
+    expect(statusSelect).not.toBeNull();
+    statusSelect!.value = 'done';
+
+    const descArea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
+    expect(descArea).not.toBeNull();
+    descArea!.value = 'Completed task';
+
+    // Save — action-binder should serialize todo body
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.status).toBe('done');
+    expect(parsed.description).toBe('Completed task');
   });
 });

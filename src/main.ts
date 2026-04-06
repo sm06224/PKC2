@@ -16,6 +16,8 @@ import { canHandleMessage } from './adapter/transport/capability';
 import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
 import { VERSION } from './runtime/release-meta';
+import { registerPresenter } from './adapter/ui/detail-presenter';
+import { todoPresenter } from './adapter/ui/todo-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -34,6 +36,9 @@ async function boot(): Promise<void> {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
     return;
   }
+
+  // 0. Register archetype presenters
+  registerPresenter('todo', todoPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();

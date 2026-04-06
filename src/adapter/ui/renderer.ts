@@ -133,8 +133,15 @@ function renderHeader(state: AppState): HTMLElement {
   if (state.phase === 'ready') {
     const createBtn = createElement('button', 'pkc-btn');
     createBtn.setAttribute('data-pkc-action', 'create-entry');
-    createBtn.textContent = '+ New';
+    createBtn.setAttribute('data-pkc-archetype', 'text');
+    createBtn.textContent = '+ Note';
     header.appendChild(createBtn);
+
+    const createTodoBtn = createElement('button', 'pkc-btn');
+    createTodoBtn.setAttribute('data-pkc-action', 'create-entry');
+    createTodoBtn.setAttribute('data-pkc-archetype', 'todo');
+    createTodoBtn.textContent = '+ Todo';
+    header.appendChild(createTodoBtn);
 
     const exportBtn = createElement('button', 'pkc-btn');
     exportBtn.setAttribute('data-pkc-action', 'begin-export');

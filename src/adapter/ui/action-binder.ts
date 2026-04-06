@@ -39,9 +39,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'cancel-edit':
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
         break;
-      case 'create-entry':
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+      case 'create-entry': {
+        const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        const title = arch === 'todo' ? 'New Todo' : 'New Entry';
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
         break;
+      }
       case 'delete-entry':
         if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
         break;
@@ -191,10 +194,21 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   if (!lid) return;
 
   const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
-  const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
-
   const title = titleEl?.value ?? '';
-  const body = bodyEl?.value ?? '';
 
+  // Todo archetype: assemble body from status + description fields
+  const todoStatusEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
+  if (todoStatusEl) {
+    const status = todoStatusEl.value === 'done' ? 'done' : 'open';
+    const descEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
+    const description = descEl?.value ?? '';
+    const body = JSON.stringify({ status, description });
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
+    return;
+  }
+
+  // Default: read body field directly
+  const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+  const body = bodyEl?.value ?? '';
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
 }
