@@ -27,6 +27,7 @@ repository 内の requirements ドキュメント��`docs/requirements/00_最
 | 17 | `17_domain_action_contract.md` | domain/state/action/command/event/messageの境界確定 |
 | 18 | `18_ui_shell.md` | 最小UI Shell: renderer/action-binder/event-log/DOM契約 |
 | 19 | `19_container_mutation.md` | Container mutation: 不変更新・物理削除・事前snapshot |
+| 20 | `20_idb_persistence.md` | IDB永続化: ContainerStore/Persistence/起動復元フロー |
 
 ## 前提文書
 
