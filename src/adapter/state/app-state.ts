@@ -147,8 +147,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'DELETE_ENTRY': {
       if (!state.container) return blocked(state, action);
+      const ts = now();
       const entriesBefore = state.container.entries;
-      const container = removeEntry(state.container, action.lid);
+      // Snapshot the entry before deletion (preserves last state for restore)
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      const container = removeEntry(snapshotted, action.lid);
       const selectedLid = nextSelectedAfterRemove(
         entriesBefore, action.lid, state.selectedLid,
       );

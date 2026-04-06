@@ -272,4 +272,50 @@ describe('Renderer', () => {
     expect(dismissBtn).not.toBeNull();
     expect(dismissBtn!.getAttribute('data-pkc-offer-id')).toBe('o1');
   });
+
+  it('shows revision badge on entries with revisions', () => {
+    const containerWithRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        { id: 'rev-1', entry_lid: 'e1', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'rev-2', entry_lid: 'e1', snapshot: '{}', created_at: '2026-01-02T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRevisions,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+    };
+    render(state, root);
+
+    const badge = root.querySelector('[data-pkc-revision-count="2"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain('2 rev');
+  });
+
+  it('does not show revision badge on entries without revisions', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
+  });
+
+  it('shows revision info in detail view for entry with revisions', () => {
+    const containerWithRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        { id: 'rev-1', entry_lid: 'e1', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRevisions,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [],
+    };
+    render(state, root);
+
+    const revInfo = root.querySelector('[data-pkc-region="revision-info"]');
+    expect(revInfo).not.toBeNull();
+    expect(revInfo!.textContent).toContain('1 revision');
+  });
 });

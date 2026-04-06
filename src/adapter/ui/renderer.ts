@@ -1,7 +1,9 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import { CAPABILITIES } from '../../runtime/release-meta';
+import { getRevisionCount, getLatestRevision } from '../../core/operations/container-ops';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -153,6 +155,17 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   badge.textContent = entry.archetype;
   li.appendChild(badge);
 
+  // Revision count indicator
+  if (state.container) {
+    const revCount = getRevisionCount(state.container, entry.lid);
+    if (revCount > 0) {
+      const revBadge = createElement('span', 'pkc-revision-badge');
+      revBadge.setAttribute('data-pkc-revision-count', String(revCount));
+      revBadge.textContent = `${revCount} rev`;
+      li.appendChild(revBadge);
+    }
+  }
+
   return li;
 }
 
@@ -174,13 +187,13 @@ function renderDetail(state: AppState): HTMLElement {
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
     detail.appendChild(renderEditor(selected));
   } else {
-    detail.appendChild(renderView(selected, state.phase === 'ready'));
+    detail.appendChild(renderView(selected, state.phase === 'ready', state.container));
   }
 
   return detail;
 }
 
-function renderView(entry: Entry, canEdit: boolean): HTMLElement {
+function renderView(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
 
@@ -191,6 +204,24 @@ function renderView(entry: Entry, canEdit: boolean): HTMLElement {
   const body = createElement('pre', 'pkc-view-body');
   body.textContent = entry.body || '(empty)';
   view.appendChild(body);
+
+  // Revision info
+  if (container) {
+    const revCount = getRevisionCount(container, entry.lid);
+    if (revCount > 0) {
+      const latest = getLatestRevision(container, entry.lid);
+      const revInfo = createElement('div', 'pkc-revision-info');
+      revInfo.setAttribute('data-pkc-region', 'revision-info');
+      revInfo.setAttribute('data-pkc-revision-count', String(revCount));
+      const label = createElement('span', 'pkc-revision-label');
+      label.textContent = `${revCount} revision${revCount > 1 ? 's' : ''}`;
+      if (latest) {
+        label.textContent += ` (latest: ${latest.created_at})`;
+      }
+      revInfo.appendChild(label);
+      view.appendChild(revInfo);
+    }
+  }
 
   if (canEdit) {
     const actions = createElement('div', 'pkc-view-actions');

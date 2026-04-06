@@ -148,6 +148,19 @@ describe('AppState reducer', () => {
     expect(state.selectedLid).toBe('e1');
   });
 
+  it('DELETE_ENTRY creates a pre-delete revision snapshot', () => {
+    const { state } = reduce(readyState(), { type: 'DELETE_ENTRY', lid: 'e1' });
+    // Entry is removed
+    expect(state.container!.entries.find((e) => e.lid === 'e1')).toBeUndefined();
+    // But a revision preserves it
+    expect(state.container!.revisions).toHaveLength(1);
+    const rev = state.container!.revisions[0]!;
+    expect(rev.entry_lid).toBe('e1');
+    const snap = JSON.parse(rev.snapshot);
+    expect(snap.lid).toBe('e1');
+    expect(snap.title).toBe('Entry One');
+  });
+
   // ── ready: other actions ─────────────────
   it('BEGIN_EDIT in ready → editing phase + editingLid set', () => {
     const { state, events } = reduce(readyState(), {
