@@ -1092,4 +1092,56 @@ describe('Renderer', () => {
     const indicator = root.querySelector('[data-pkc-region="tag-filter-indicator"]');
     expect(indicator).toBeNull();
   });
+
+  // ── Archetype Dispatch ──────────────────
+
+  it('detail view has data-pkc-archetype attribute', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view).not.toBeNull();
+    expect(view!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('editor has data-pkc-archetype attribute', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor).not.toBeNull();
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('detail view uses presenter for body rendering', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // Default text presenter renders body as <pre>
+    const body = root.querySelector('.pkc-view-body');
+    expect(body).not.toBeNull();
+    expect(body!.tagName).toBe('PRE');
+    expect(body!.textContent).toBe('Body of entry one');
+  });
+
+  it('todo archetype entry gets same data-pkc-archetype value', () => {
+    // e2 is archetype: 'todo'
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view!.getAttribute('data-pkc-archetype')).toBe('todo');
+  });
 });

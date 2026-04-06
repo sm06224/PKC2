@@ -18,6 +18,7 @@ import { getRelationsForEntry, resolveRelations } from '../../features/relation/
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import type { RelationKind } from '../../core/model/relation';
+import { getPresenter } from './detail-presenter';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -357,14 +358,15 @@ function renderDetail(state: AppState): HTMLElement {
 function renderView(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
+  view.setAttribute('data-pkc-archetype', entry.archetype);
 
   const title = createElement('h2', 'pkc-view-title');
   title.textContent = entry.title || '(untitled)';
   view.appendChild(title);
 
-  const body = createElement('pre', 'pkc-view-body');
-  body.textContent = entry.body || '(empty)';
-  view.appendChild(body);
+  // Archetype-dispatched body rendering
+  const presenter = getPresenter(entry.archetype);
+  view.appendChild(presenter.renderBody(entry));
 
   // Tags section
   if (container) {
@@ -609,6 +611,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
 function renderEditor(entry: Entry): HTMLElement {
   const editor = createElement('div', 'pkc-editor');
   editor.setAttribute('data-pkc-mode', 'edit');
+  editor.setAttribute('data-pkc-archetype', entry.archetype);
 
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
@@ -617,12 +620,9 @@ function renderEditor(entry: Entry): HTMLElement {
   titleInput.className = 'pkc-editor-title';
   editor.appendChild(titleInput);
 
-  const bodyArea = document.createElement('textarea');
-  bodyArea.value = entry.body;
-  bodyArea.setAttribute('data-pkc-field', 'body');
-  bodyArea.className = 'pkc-editor-body';
-  bodyArea.rows = 10;
-  editor.appendChild(bodyArea);
+  // Archetype-dispatched editor body
+  const presenter = getPresenter(entry.archetype);
+  editor.appendChild(presenter.renderEditorBody(entry));
 
   const actions = createElement('div', 'pkc-editor-actions');
 
