@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleExportRequest } from '@adapter/transport/export-handler';
+import { exportRequestHandler } from '@adapter/transport/export-handler';
 import type { ExportResultPayload } from '@adapter/transport/export-handler';
+import type { HandlerContext } from '@adapter/transport/message-handler';
 import type { MessageEnvelope } from '@core/model/message';
 import type { Container } from '@core/model/container';
 import type { MessageSender } from '@adapter/transport/message-bridge';
+import type { Dispatcher } from '@adapter/state/dispatcher';
 import { SLOT } from '@runtime/contract';
 
 const mockContainer: Container = {
@@ -34,7 +36,6 @@ function makeExportRequest(sourceId = 'parent-app'): MessageEnvelope {
 }
 
 function setupDom(): void {
-  // Set up minimal DOM elements that buildExportHtml reads from
   const root = document.createElement('div');
   root.id = SLOT.ROOT;
   document.body.appendChild(root);
@@ -63,7 +64,6 @@ function setupDom(): void {
   });
   document.body.appendChild(meta);
 
-  // html data attributes
   document.documentElement.setAttribute('data-pkc-app', 'pkc2');
   document.documentElement.setAttribute('data-pkc-version', '2.0.0');
   document.documentElement.setAttribute('data-pkc-schema', '1');
@@ -79,41 +79,58 @@ function cleanupDom(): void {
   document.querySelector(`#${SLOT.THEME}`)?.remove();
 }
 
-describe('handleExportRequest', () => {
-  let mockSender: MessageSender;
-  let mockWindow: Window;
+function makeContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
+  return {
+    envelope: makeExportRequest(),
+    sourceWindow: {} as Window,
+    origin: 'http://localhost',
+    container: mockContainer,
+    embedded: true,
+    dispatcher: { dispatch: vi.fn(), getState: vi.fn(), onState: vi.fn(), onEvent: vi.fn() } as unknown as Dispatcher,
+    sender: { send: vi.fn() } as unknown as MessageSender,
+    ...overrides,
+  };
+}
 
+describe('exportRequestHandler', () => {
   beforeEach(() => {
     setupDom();
-    mockSender = {
-      send: vi.fn(),
-    };
-    mockWindow = {} as Window;
     return () => { cleanupDom(); };
   });
 
   it('returns false and warns when not embedded', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const envelope = makeExportRequest();
+    const ctx = makeContext({ embedded: false });
 
-    const result = handleExportRequest(envelope, mockContainer, mockSender, mockWindow, false);
+    const result = exportRequestHandler(ctx);
 
     expect(result).toBe(false);
-    expect(mockSender.send).not.toHaveBeenCalled();
+    expect(ctx.sender.send).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith('[PKC2] export:request ignored: not embedded');
     warnSpy.mockRestore();
   });
 
-  it('sends export:result when embedded', () => {
-    const envelope = makeExportRequest();
+  it('returns false when container is null', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = makeContext({ container: null });
 
-    const result = handleExportRequest(envelope, mockContainer, mockSender, mockWindow, true);
+    const result = exportRequestHandler(ctx);
+
+    expect(result).toBe(false);
+    expect(ctx.sender.send).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('sends export:result when embedded with container', () => {
+    const ctx = makeContext();
+
+    const result = exportRequestHandler(ctx);
 
     expect(result).toBe(true);
-    expect(mockSender.send).toHaveBeenCalledTimes(1);
+    expect(ctx.sender.send).toHaveBeenCalledTimes(1);
 
-    const [target, type, payload, targetId] = (mockSender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(target).toBe(mockWindow);
+    const [target, type, payload, targetId] = (ctx.sender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(target).toBe(ctx.sourceWindow);
     expect(type).toBe('export:result');
     expect(targetId).toBe('parent-app');
 
@@ -126,23 +143,24 @@ describe('handleExportRequest', () => {
   });
 
   it('uses filename from payload when provided', () => {
-    const envelope: MessageEnvelope = {
-      ...makeExportRequest(),
-      payload: { filename: 'custom-export' },
-    };
+    const ctx = makeContext({
+      envelope: { ...makeExportRequest(), payload: { filename: 'custom-export' } },
+    });
 
-    handleExportRequest(envelope, mockContainer, mockSender, mockWindow, true);
+    exportRequestHandler(ctx);
 
-    const [, , payload] = (mockSender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const [, , payload] = (ctx.sender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect((payload as ExportResultPayload).filename).toBe('custom-export.html');
   });
 
   it('targets response to the source_id of the request', () => {
-    const envelope = makeExportRequest('requester-42');
+    const ctx = makeContext({
+      envelope: makeExportRequest('requester-42'),
+    });
 
-    handleExportRequest(envelope, mockContainer, mockSender, mockWindow, true);
+    exportRequestHandler(ctx);
 
-    const [, , , targetId] = (mockSender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const [, , , targetId] = (ctx.sender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(targetId).toBe('requester-42');
   });
 });

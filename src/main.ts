@@ -9,7 +9,8 @@ import { mountPersistence, loadFromStore } from './adapter/platform/persistence'
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
-import { handleExportRequest } from './adapter/transport/export-handler';
+import { createHandlerRegistry } from './adapter/transport/message-handler';
+import { exportRequestHandler } from './adapter/transport/export-handler';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
@@ -67,8 +68,11 @@ async function boot(): Promise<void> {
   // 8. Import handler: file input wiring
   mountImportHandler(root, dispatcher);
 
-  // 9. Message bridge: PKC-Message transport
-  // Mount after init — containerId comes from state
+  // 9. Message handler registry + bridge
+  const registry = createHandlerRegistry();
+  registry.register('export:request', exportRequestHandler);
+
+  // Mount bridge after init — containerId comes from state
   dispatcher.onState((state) => {
     if (state.phase === 'ready' && state.container && !bridgeMounted) {
       bridgeMounted = true;
@@ -77,25 +81,21 @@ async function boot(): Promise<void> {
         onMessage: (envelope, origin, sourceWindow) => {
           console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
 
-          if (envelope.type === 'export:request') {
-            const currentState = dispatcher.getState();
-            if (currentState.container) {
-              handleExportRequest(
-                envelope,
-                currentState.container,
-                handle.sender,
-                sourceWindow,
-                currentState.embedded,
-              );
-            }
-            return;
-          }
+          const currentState = dispatcher.getState();
+          registry.route({
+            envelope,
+            sourceWindow,
+            origin,
+            container: currentState.container,
+            embedded: currentState.embedded,
+            dispatcher,
+            sender: handle.sender,
+          });
         },
         onReject: (_, reason) => {
           console.warn(`[PKC2] Message rejected: ${reason}`);
         },
       });
-      // Store for future cleanup if needed
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
       void handle; // bridge stays alive for the page lifetime
     }

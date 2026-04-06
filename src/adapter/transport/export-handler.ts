@@ -11,6 +11,7 @@
  * - Does NOT trigger Blob download (that's for standalone export)
  * - Does NOT transition AppPhase to 'exporting' (no UI blocking)
  * - Returns the HTML string in the payload for the parent to handle
+ * - Conforms to the MessageHandler signature for registry integration
  *
  * This module does NOT:
  * - Implement correlation_id (future concern)
@@ -18,9 +19,7 @@
  * - Handle rate limiting or payload size limits
  */
 
-import type { MessageEnvelope } from '../../core/model/message';
-import type { Container } from '../../core/model/container';
-import type { MessageSender } from './message-bridge';
+import type { HandlerContext, MessageHandler } from './message-handler';
 import { buildExportHtml, generateExportFilename } from '../platform/exporter';
 
 export interface ExportRequestPayload {
@@ -38,30 +37,23 @@ export interface ExportResultPayload {
 }
 
 /**
- * Handle an incoming export:request message.
- *
- * @param envelope - The validated MessageEnvelope with type 'export:request'
- * @param container - Current container state to export
- * @param sender - MessageSender for sending the response
- * @param sourceWindow - The window that sent the request (for response targeting)
- * @param embedded - Whether this instance is embedded
- * @returns true if handled, false if rejected
+ * MessageHandler for export:request.
+ * Registered via createHandlerRegistry().register('export:request', exportRequestHandler).
  */
-export function handleExportRequest(
-  envelope: MessageEnvelope,
-  container: Container,
-  sender: MessageSender,
-  sourceWindow: Window,
-  embedded: boolean,
-): boolean {
-  if (!embedded) {
+export const exportRequestHandler: MessageHandler = (ctx: HandlerContext): boolean => {
+  if (!ctx.embedded) {
     console.warn('[PKC2] export:request ignored: not embedded');
     return false;
   }
 
-  const payload = (envelope.payload ?? {}) as Partial<ExportRequestPayload>;
-  const html = buildExportHtml(container);
-  const filename = generateExportFilename(container, payload.filename);
+  if (!ctx.container) {
+    console.warn('[PKC2] export:request ignored: no container loaded');
+    return false;
+  }
+
+  const payload = (ctx.envelope.payload ?? {}) as Partial<ExportRequestPayload>;
+  const html = buildExportHtml(ctx.container);
+  const filename = generateExportFilename(ctx.container, payload.filename);
 
   const resultPayload: ExportResultPayload = {
     html,
@@ -69,12 +61,12 @@ export function handleExportRequest(
     size: html.length,
   };
 
-  sender.send(
-    sourceWindow,
+  ctx.sender.send(
+    ctx.sourceWindow,
     'export:result',
     resultPayload,
-    envelope.source_id,
+    ctx.envelope.source_id,
   );
 
   return true;
-}
+};
