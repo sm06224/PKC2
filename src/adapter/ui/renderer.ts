@@ -12,10 +12,19 @@ import {
 } from '../../core/operations/container-ops';
 import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
+import { sortEntries } from '../../features/search/sort';
+import type { SortKey, SortDirection } from '../../features/search/sort';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
   null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
+] as const;
+
+/** Sort key options with display labels. Single source of truth. */
+const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
+  { key: 'created_at', label: 'Created' },
+  { key: 'updated_at', label: 'Updated' },
+  { key: 'title', label: 'Title' },
 ] as const;
 
 /**
@@ -163,9 +172,14 @@ function renderSidebar(state: AppState): HTMLElement {
 
     // Archetype filter bar
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+
+    // Sort controls
+    sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
   }
 
-  const entries = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  // Pipeline: filter → sort
+  const filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
   if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null)) {
@@ -515,6 +529,39 @@ function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
   }
 
   return bar;
+}
+
+function renderSortControls(currentKey: SortKey, currentDirection: SortDirection): HTMLElement {
+  const row = createElement('div', 'pkc-sort-controls');
+  row.setAttribute('data-pkc-region', 'sort-controls');
+  row.setAttribute('data-pkc-sort-key', currentKey);
+  row.setAttribute('data-pkc-sort-direction', currentDirection);
+
+  const keySelect = document.createElement('select');
+  keySelect.setAttribute('data-pkc-field', 'sort-key');
+  keySelect.className = 'pkc-sort-select';
+  for (const opt of SORT_KEY_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = opt.key;
+    option.textContent = opt.label;
+    if (opt.key === currentKey) option.selected = true;
+    keySelect.appendChild(option);
+  }
+  row.appendChild(keySelect);
+
+  const dirSelect = document.createElement('select');
+  dirSelect.setAttribute('data-pkc-field', 'sort-direction');
+  dirSelect.className = 'pkc-sort-select';
+  for (const [value, label] of [['asc', '↑ Asc'], ['desc', '↓ Desc']] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    if (value === currentDirection) option.selected = true;
+    dirSelect.appendChild(option);
+  }
+  row.appendChild(dirSelect);
+
+  return row;
 }
 
 // ---- Helpers ----

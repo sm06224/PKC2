@@ -714,4 +714,80 @@ describe('clear filters', () => {
     expect(state).toBe(base);
     expect(events).toHaveLength(0);
   });
+
+  it('CLEAR_FILTERS does not reset sort state', () => {
+    const base = {
+      ...readyState(),
+      searchQuery: 'hello', archetypeFilter: 'todo' as const,
+      sortKey: 'title' as const, sortDirection: 'asc' as const,
+    };
+    const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
+  });
+});
+
+// ── Sort ────────────────────────
+
+describe('sort', () => {
+  it('createInitialState has default sort (created_at desc)', () => {
+    const state = createInitialState();
+    expect(state.sortKey).toBe('created_at');
+    expect(state.sortDirection).toBe('desc');
+  });
+
+  it('SET_SORT updates sort key and direction in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT can change direction only', () => {
+    const { state } = reduce(readyState(), {
+      type: 'SET_SORT', key: 'created_at', direction: 'asc',
+    });
+    expect(state.sortKey).toBe('created_at');
+    expect(state.sortDirection).toBe('asc');
+  });
+
+  it('SET_SORT is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state, events } = reduce(base, {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('sort state persists through phase transitions', () => {
+    const withSort = { ...readyState(), sortKey: 'title' as const, sortDirection: 'asc' as const };
+    const { state: editing } = reduce(withSort, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.sortKey).toBe('title');
+    expect(editing.sortDirection).toBe('asc');
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.sortKey).toBe('title');
+    expect(back.sortDirection).toBe('asc');
+  });
 });

@@ -10,3 +10,6 @@ export {
   filterByArchetype,
   applyFilters,
 } from './search/filter';
+
+export { sortEntries } from './search/sort';
+export type { SortKey, SortDirection } from './search/sort';

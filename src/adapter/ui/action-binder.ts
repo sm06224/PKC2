@@ -1,4 +1,5 @@
 import type { ArchetypeId } from '../../core/model/record';
+import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 
 /**
@@ -120,14 +121,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  function handleChange(e: Event): void {
+    const target = e.target as HTMLElement;
+    const field = target.getAttribute('data-pkc-field');
+
+    if (field === 'sort-key' || field === 'sort-direction') {
+      const state = dispatcher.getState();
+      const keyEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="sort-key"]');
+      const dirEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="sort-direction"]');
+      const key = (keyEl?.value ?? state.sortKey) as SortKey;
+      const direction = (dirEl?.value ?? state.sortDirection) as SortDirection;
+      dispatcher.dispatch({ type: 'SET_SORT', key, direction });
+    }
+  }
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
+  root.addEventListener('change', handleChange);
   document.addEventListener('keydown', handleKeydown);
 
   // Return cleanup function
   return () => {
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
+    root.removeEventListener('change', handleChange);
     document.removeEventListener('keydown', handleKeydown);
   };
 }

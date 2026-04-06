@@ -4,6 +4,7 @@ import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
+import type { SortKey, SortDirection } from '../../features/search/sort';
 import {
   addEntry,
   updateEntry,
@@ -49,6 +50,10 @@ export interface AppState {
   searchQuery: string;
   /** Current archetype filter (runtime-only, feature layer). null = show all. */
   archetypeFilter: ArchetypeId | null;
+  /** Current sort key (runtime-only, feature layer). */
+  sortKey: SortKey;
+  /** Current sort direction (runtime-only, feature layer). */
+  sortDirection: SortDirection;
 }
 
 /**
@@ -72,6 +77,8 @@ export function createInitialState(): AppState {
     importPreview: null,
     searchQuery: '',
     archetypeFilter: null,
+    sortKey: 'created_at',
+    sortDirection: 'desc',
   };
 }
 
@@ -336,6 +343,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'CLEAR_FILTERS': {
       const next: AppState = { ...state, searchQuery: '', archetypeFilter: null };
+      return { state: next, events: [] };
+    }
+    case 'SET_SORT': {
+      const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
       return { state: next, events: [] };
     }
     case 'SYS_ERROR': {
