@@ -102,12 +102,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  function handleInput(e: Event): void {
+    const target = e.target as HTMLElement;
+    if (target.getAttribute('data-pkc-field') === 'search') {
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
+    }
+  }
+
   root.addEventListener('click', handleClick);
+  root.addEventListener('input', handleInput);
   document.addEventListener('keydown', handleKeydown);
 
   // Return cleanup function
   return () => {
     root.removeEventListener('click', handleClick);
+    root.removeEventListener('input', handleInput);
     document.removeEventListener('keydown', handleKeydown);
   };
 }

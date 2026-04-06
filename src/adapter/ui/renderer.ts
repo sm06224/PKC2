@@ -10,6 +10,7 @@ import {
   getRestoreCandidates,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
+import { filterEntries } from '../../features/search/filter';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -131,11 +132,31 @@ function renderSidebar(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
-  const entries = state.container?.entries ?? [];
+  const allEntries = state.container?.entries ?? [];
+
+  // Search input (always shown when entries exist)
+  if (allEntries.length > 0) {
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search entries…';
+    searchInput.value = state.searchQuery;
+    searchInput.setAttribute('data-pkc-field', 'search');
+    searchInput.className = 'pkc-search-input';
+    sidebar.appendChild(searchInput);
+  }
+
+  const entries = filterEntries(allEntries, state.searchQuery);
+
+  if (allEntries.length === 0) {
+    const empty = createElement('div', 'pkc-empty');
+    empty.textContent = 'No entries';
+    sidebar.appendChild(empty);
+    return sidebar;
+  }
 
   if (entries.length === 0) {
     const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No entries';
+    empty.textContent = 'No matching entries';
     sidebar.appendChild(empty);
     return sidebar;
   }

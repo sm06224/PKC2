@@ -587,3 +587,40 @@ describe('restore', () => {
     expect(state).toEqual(readyState());
   });
 });
+
+// ── Search query ────────────────────────
+
+describe('search query', () => {
+  it('createInitialState has empty searchQuery', () => {
+    expect(createInitialState().searchQuery).toBe('');
+  });
+
+  it('SET_SEARCH_QUERY updates searchQuery in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_SEARCH_QUERY', query: 'hello',
+    });
+    expect(state.searchQuery).toBe('hello');
+    expect(events).toHaveLength(0); // no events emitted
+  });
+
+  it('SET_SEARCH_QUERY can clear query', () => {
+    const base = { ...readyState(), searchQuery: 'old' };
+    const { state } = reduce(base, { type: 'SET_SEARCH_QUERY', query: '' });
+    expect(state.searchQuery).toBe('');
+  });
+
+  it('SET_SEARCH_QUERY is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state, events } = reduce(base, { type: 'SET_SEARCH_QUERY', query: 'x' });
+    expect(state).toBe(base); // unchanged
+    expect(events).toHaveLength(0);
+  });
+
+  it('searchQuery persists through phase transitions', () => {
+    const withQuery = { ...readyState(), searchQuery: 'test' };
+    const { state: editing } = reduce(withQuery, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.searchQuery).toBe('test');
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.searchQuery).toBe('test');
+  });
+});

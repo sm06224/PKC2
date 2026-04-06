@@ -44,6 +44,8 @@ export interface AppState {
   pendingOffers: PendingOffer[];
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
+  /** Current search/filter query (runtime-only, feature layer). */
+  searchQuery: string;
 }
 
 /**
@@ -65,6 +67,7 @@ export function createInitialState(): AppState {
     embedded: false,
     pendingOffers: [],
     importPreview: null,
+    searchQuery: '',
   };
 }
 
@@ -318,6 +321,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: next,
         events: [{ type: 'IMPORT_CANCELLED' }],
       };
+    }
+    case 'SET_SEARCH_QUERY': {
+      const next: AppState = { ...state, searchQuery: action.query };
+      return { state: next, events: [] };
     }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
