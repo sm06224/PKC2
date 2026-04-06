@@ -16,3 +16,6 @@ export type { SortKey, SortDirection } from './search/sort';
 
 export { getRelationsForEntry, resolveRelations } from './relation/selector';
 export type { Direction, DirectedRelation, ResolvedRelation } from './relation/selector';
+
+export { getTagsForEntry, getAvailableTagTargets } from './relation/tag-selector';
+export type { Tag } from './relation/tag-selector';

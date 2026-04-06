@@ -15,6 +15,7 @@ import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import type { RelationKind } from '../../core/model/relation';
 
 /** Archetype options for the filter bar. Single source of truth. */
@@ -340,6 +341,69 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   const body = createElement('pre', 'pkc-view-body');
   body.textContent = entry.body || '(empty)';
   view.appendChild(body);
+
+  // Tags section
+  if (container) {
+    const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
+    const tagSection = createElement('div', 'pkc-tags');
+    tagSection.setAttribute('data-pkc-region', 'tags');
+
+    const tagHeading = createElement('span', 'pkc-tags-label');
+    tagHeading.textContent = 'Tags:';
+    tagSection.appendChild(tagHeading);
+
+    for (const tag of tags) {
+      const chip = createElement('span', 'pkc-tag-chip');
+      chip.setAttribute('data-pkc-tag-relation-id', tag.relationId);
+
+      const chipLabel = createElement('span', 'pkc-tag-label');
+      chipLabel.textContent = tag.peer.title || '(untitled)';
+      chip.appendChild(chipLabel);
+
+      if (canEdit) {
+        const removeBtn = createElement('button', 'pkc-tag-remove');
+        removeBtn.setAttribute('data-pkc-action', 'remove-tag');
+        removeBtn.setAttribute('data-pkc-relation-id', tag.relationId);
+        removeBtn.textContent = '\u00d7';
+        chip.appendChild(removeBtn);
+      }
+
+      tagSection.appendChild(chip);
+    }
+
+    if (canEdit) {
+      const available = getAvailableTagTargets(container.relations, container.entries, entry.lid);
+      if (available.length > 0) {
+        const addForm = createElement('span', 'pkc-tag-add');
+        addForm.setAttribute('data-pkc-region', 'tag-add');
+        addForm.setAttribute('data-pkc-from', entry.lid);
+
+        const select = document.createElement('select');
+        select.setAttribute('data-pkc-field', 'tag-target');
+        select.className = 'pkc-tag-select';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '+ Tag';
+        select.appendChild(defaultOpt);
+        for (const e of available) {
+          const opt = document.createElement('option');
+          opt.value = e.lid;
+          opt.textContent = e.title || `(${e.lid})`;
+          select.appendChild(opt);
+        }
+        addForm.appendChild(select);
+
+        const addBtn = createElement('button', 'pkc-btn-small');
+        addBtn.setAttribute('data-pkc-action', 'add-tag');
+        addBtn.textContent = 'Add';
+        addForm.appendChild(addBtn);
+
+        tagSection.appendChild(addForm);
+      }
+    }
+
+    view.appendChild(tagSection);
+  }
 
   // History section
   if (container) {

@@ -217,4 +217,63 @@ describe('Mutation → Shell integration', () => {
     const viewTitle = root.querySelector('.pkc-view-title');
     expect(viewTitle?.textContent).toBe('Second');
   });
+
+  it('categorical relation shows as tag chip', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'categorical' });
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1);
+    const label = chips[0]!.querySelector('.pkc-tag-label');
+    expect(label!.textContent).toBe('Second');
+  });
+
+  it('remove-tag click deletes categorical relation', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'categorical' });
+
+    // Verify tag exists
+    expect(dispatcher.getState().container!.relations).toHaveLength(1);
+
+    // Click remove button
+    const removeBtn = root.querySelector('[data-pkc-action="remove-tag"]') as HTMLElement;
+    expect(removeBtn).not.toBeNull();
+    removeBtn.click();
+
+    // Relation should be gone
+    expect(dispatcher.getState().container!.relations).toHaveLength(0);
+    const chips = root.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(0);
+  });
+
+  it('add-tag creates categorical relation via UI', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    // Find the tag add form and select a target
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).not.toBeNull();
+
+    const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+    select!.value = 'e2';
+
+    // Click add button
+    const addBtn = addForm!.querySelector('[data-pkc-action="add-tag"]') as HTMLElement;
+    addBtn.click();
+
+    // Should have created a categorical relation
+    const rels = dispatcher.getState().container!.relations;
+    expect(rels).toHaveLength(1);
+    expect(rels[0]!.kind).toBe('categorical');
+    expect(rels[0]!.from).toBe('e1');
+    expect(rels[0]!.to).toBe('e2');
+  });
 });

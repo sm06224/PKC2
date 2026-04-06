@@ -870,4 +870,115 @@ describe('Renderer', () => {
     const createForm = root.querySelector('[data-pkc-region="relation-create"]');
     expect(createForm).toBeNull();
   });
+
+  // ── Tags UI ──────────────────
+
+  it('shows tag chips for categorical relations', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1);
+
+    const label = chips[0]!.querySelector('.pkc-tag-label');
+    expect(label!.textContent).toBe('Entry Two');
+  });
+
+  it('shows remove button on tag chips in ready phase', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const removeBtn = root.querySelector('[data-pkc-action="remove-tag"]');
+    expect(removeBtn).not.toBeNull();
+    expect(removeBtn!.getAttribute('data-pkc-relation-id')).toBe('r1');
+  });
+
+  it('does not show non-categorical relations as tags', () => {
+    const containerMixed: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerMixed,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const chips = root.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1); // only categorical
+  });
+
+  it('shows tag add form with available targets', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).not.toBeNull();
+    expect(addForm!.getAttribute('data-pkc-from')).toBe('e1');
+
+    const select = addForm!.querySelector('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+
+    const addBtn = addForm!.querySelector('[data-pkc-action="add-tag"]');
+    expect(addBtn).not.toBeNull();
+  });
+
+  it('tag add form excludes already-tagged entries', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // e2 is already tagged, so no available targets (only 2 entries total)
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).toBeNull(); // no form when all tagged
+  });
+
+  it('tags section always shows even with no tags', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+    // No chips
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(0);
+  });
 });

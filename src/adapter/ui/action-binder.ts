@@ -93,6 +93,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'add-tag': {
+        const addForm = target.closest<HTMLElement>('[data-pkc-region="tag-add"]');
+        if (!addForm) break;
+        const from = addForm.getAttribute('data-pkc-from');
+        const tagTargetEl = addForm.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+        const to = tagTargetEl?.value;
+        if (from && to) {
+          dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind: 'categorical' });
+        }
+        break;
+      }
+      case 'remove-tag': {
+        const relId = target.getAttribute('data-pkc-relation-id');
+        if (relId) {
+          dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
+        }
+        break;
+      }
     }
   }
 
