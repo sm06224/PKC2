@@ -16,6 +16,7 @@ import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
+import { filterByTag } from '../../features/relation/tag-filter';
 import type { RelationKind } from '../../core/model/relation';
 
 /** Archetype options for the filter bar. Single source of truth. */
@@ -188,12 +189,35 @@ function renderSidebar(state: AppState): HTMLElement {
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
   }
 
-  // Pipeline: filter → sort
-  const filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  // Active tag filter indicator
+  if (state.tagFilter && state.container) {
+    const tagEntry = state.container.entries.find((e) => e.lid === state.tagFilter);
+    if (tagEntry) {
+      const indicator = createElement('div', 'pkc-tag-filter-indicator');
+      indicator.setAttribute('data-pkc-region', 'tag-filter-indicator');
+
+      const label = createElement('span', 'pkc-tag-filter-label');
+      label.textContent = `Tag: ${tagEntry.title || '(untitled)'}`;
+      indicator.appendChild(label);
+
+      const clearBtn = createElement('button', 'pkc-btn-small');
+      clearBtn.setAttribute('data-pkc-action', 'clear-tag-filter');
+      clearBtn.textContent = '\u00d7';
+      indicator.appendChild(clearBtn);
+
+      sidebar.appendChild(indicator);
+    }
+  }
+
+  // Pipeline: query → archetype → tag → sort
+  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  if (state.tagFilter && state.container) {
+    filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  }
   const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -357,6 +381,8 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
       chip.setAttribute('data-pkc-tag-relation-id', tag.relationId);
 
       const chipLabel = createElement('span', 'pkc-tag-label');
+      chipLabel.setAttribute('data-pkc-action', 'filter-by-tag');
+      chipLabel.setAttribute('data-pkc-lid', tag.peer.lid);
       chipLabel.textContent = tag.peer.title || '(untitled)';
       chip.appendChild(chipLabel);
 

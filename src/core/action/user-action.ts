@@ -30,6 +30,7 @@ export type UserAction =
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
   | { type: 'CLEAR_FILTERS' }
+  | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' };
 
 /** Extract the type literal from a UserAction. */

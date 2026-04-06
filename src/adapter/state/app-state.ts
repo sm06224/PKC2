@@ -50,6 +50,8 @@ export interface AppState {
   searchQuery: string;
   /** Current archetype filter (runtime-only, feature layer). null = show all. */
   archetypeFilter: ArchetypeId | null;
+  /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
+  tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
   sortKey: SortKey;
   /** Current sort direction (runtime-only, feature layer). */
@@ -77,6 +79,7 @@ export function createInitialState(): AppState {
     importPreview: null,
     searchQuery: '',
     archetypeFilter: null,
+    tagFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',
   };
@@ -341,8 +344,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, archetypeFilter: action.archetype };
       return { state: next, events: [] };
     }
+    case 'SET_TAG_FILTER': {
+      const next: AppState = { ...state, tagFilter: action.tagLid };
+      return { state: next, events: [] };
+    }
     case 'CLEAR_FILTERS': {
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null };
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null, tagFilter: null };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {

@@ -111,6 +111,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'filter-by-tag':
+        if (lid) dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: lid });
+        break;
+      case 'clear-tag-filter':
+        dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: null });
+        break;
     }
   }
 
