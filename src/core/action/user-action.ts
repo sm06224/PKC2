@@ -21,7 +21,13 @@ export type UserAction =
   | { type: 'DELETE_ENTRY'; lid: string }
   | { type: 'BEGIN_EXPORT' }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
-  | { type: 'DELETE_RELATION'; id: string };
+  | { type: 'DELETE_RELATION'; id: string }
+  | { type: 'ACCEPT_OFFER'; offer_id: string }
+  | { type: 'DISMISS_OFFER'; offer_id: string }
+  | { type: 'CONFIRM_IMPORT' }
+  | { type: 'CANCEL_IMPORT' }
+  | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
+  | { type: 'SET_SEARCH_QUERY'; query: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

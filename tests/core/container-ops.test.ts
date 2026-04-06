@@ -7,6 +7,13 @@ import {
   addRelation,
   removeRelation,
   snapshotEntry,
+  getEntryRevisions,
+  getLatestRevision,
+  getRevisionCount,
+  parseRevisionSnapshot,
+  getRestoreCandidates,
+  restoreEntry,
+  restoreDeletedEntry,
 } from '@core/operations/container-ops';
 import type { Container } from '@core/model/container';
 
@@ -200,5 +207,185 @@ describe('snapshotEntry', () => {
     const c = containerWith3Entries();
     snapshotEntry(c, 'e1', 'rev-1', T);
     expect(c.revisions).toHaveLength(0);
+  });
+});
+
+describe('getEntryRevisions', () => {
+  it('returns revisions for a specific entry sorted by time', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', '2026-01-01T00:00:00Z');
+    c = snapshotEntry(c, 'e1', 'rev-2', '2026-01-02T00:00:00Z');
+    c = snapshotEntry(c, 'e2', 'rev-3', '2026-01-03T00:00:00Z');
+
+    const revs = getEntryRevisions(c, 'e1');
+    expect(revs).toHaveLength(2);
+    expect(revs[0]!.id).toBe('rev-1');
+    expect(revs[1]!.id).toBe('rev-2');
+  });
+
+  it('returns empty array for entry with no revisions', () => {
+    const c = containerWith3Entries();
+    expect(getEntryRevisions(c, 'e1')).toEqual([]);
+  });
+});
+
+describe('getLatestRevision', () => {
+  it('returns the most recent revision', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', '2026-01-01T00:00:00Z');
+    c = snapshotEntry(c, 'e1', 'rev-2', '2026-01-02T00:00:00Z');
+
+    const latest = getLatestRevision(c, 'e1');
+    expect(latest).not.toBeNull();
+    expect(latest!.id).toBe('rev-2');
+  });
+
+  it('returns null for entry with no revisions', () => {
+    expect(getLatestRevision(containerWith3Entries(), 'e1')).toBeNull();
+  });
+});
+
+describe('getRevisionCount', () => {
+  it('counts revisions for a specific entry', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = snapshotEntry(c, 'e1', 'rev-2', T);
+    c = snapshotEntry(c, 'e2', 'rev-3', T);
+
+    expect(getRevisionCount(c, 'e1')).toBe(2);
+    expect(getRevisionCount(c, 'e2')).toBe(1);
+    expect(getRevisionCount(c, 'e3')).toBe(0);
+  });
+});
+
+describe('parseRevisionSnapshot', () => {
+  it('parses a valid snapshot back to Entry', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+
+    const entry = parseRevisionSnapshot(c.revisions[0]!);
+    expect(entry).not.toBeNull();
+    expect(entry!.lid).toBe('e1');
+    expect(entry!.title).toBe('First');
+  });
+
+  it('returns null for malformed snapshot', () => {
+    const rev = { id: 'r1', entry_lid: 'e1', snapshot: 'not-json', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+
+  it('returns null for snapshot missing required fields', () => {
+    const rev = { id: 'r1', entry_lid: 'e1', snapshot: '{"foo":"bar"}', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+});
+
+describe('getRestoreCandidates', () => {
+  it('returns latest revision for deleted entries', () => {
+    let c = containerWith3Entries();
+    // Snapshot e1 twice, then remove it
+    c = snapshotEntry(c, 'e1', 'rev-1', '2026-01-01T00:00:00Z');
+    c = snapshotEntry(c, 'e1', 'rev-2', '2026-01-02T00:00:00Z');
+    c = removeEntry(c, 'e1');
+
+    const candidates = getRestoreCandidates(c);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.entry_lid).toBe('e1');
+    expect(candidates[0]!.id).toBe('rev-2'); // latest
+  });
+
+  it('excludes entries that still exist', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    // e1 still exists, so no restore candidates
+    expect(getRestoreCandidates(c)).toEqual([]);
+  });
+
+  it('returns empty when no revisions exist', () => {
+    expect(getRestoreCandidates(containerWith3Entries())).toEqual([]);
+  });
+
+  it('handles multiple deleted entries', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', '2026-01-01T00:00:00Z');
+    c = snapshotEntry(c, 'e2', 'rev-2', '2026-01-02T00:00:00Z');
+    c = removeEntry(c, 'e1');
+    c = removeEntry(c, 'e2');
+
+    const candidates = getRestoreCandidates(c);
+    expect(candidates).toHaveLength(2);
+    // Sorted by created_at descending
+    expect(candidates[0]!.entry_lid).toBe('e2');
+    expect(candidates[1]!.entry_lid).toBe('e1');
+  });
+});
+
+describe('restoreEntry', () => {
+  it('snapshots current state and restores from revision', () => {
+    let c = containerWith3Entries();
+    // Edit e1 to create a revision (addEntry sets body='')
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = updateEntry(c, 'e1', 'Updated Title', 'Updated Body', T);
+
+    // Now restore from rev-1 (which has old content: title='First', body='')
+    const restored = restoreEntry(c, 'e1', 'rev-1', 'snap-1', '2026-02-01T00:00:00Z');
+
+    // Entry should have original content
+    const entry = restored.entries.find((e) => e.lid === 'e1');
+    expect(entry!.title).toBe('First');
+    expect(entry!.body).toBe(''); // addEntry creates with empty body
+    expect(entry!.updated_at).toBe('2026-02-01T00:00:00Z');
+
+    // Should have 2 revisions: original + pre-restore snapshot
+    expect(restored.revisions).toHaveLength(2);
+  });
+
+  it('returns same container if revision not found', () => {
+    const c = containerWith3Entries();
+    expect(restoreEntry(c, 'e1', 'nonexistent', 'snap-1', T)).toBe(c);
+  });
+
+  it('returns same container if entry not found', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    expect(restoreEntry(c, 'nonexistent', 'rev-1', 'snap-1', T)).toBe(c);
+  });
+
+  it('does not mutate original', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = updateEntry(c, 'e1', 'Changed', 'Changed Body', T);
+    const before = c.entries.find((e) => e.lid === 'e1')!.title;
+    restoreEntry(c, 'e1', 'rev-1', 'snap-1', T);
+    expect(c.entries.find((e) => e.lid === 'e1')!.title).toBe(before);
+  });
+});
+
+describe('restoreDeletedEntry', () => {
+  it('re-creates a deleted entry from revision', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = removeEntry(c, 'e1');
+    expect(c.entries).toHaveLength(2);
+
+    const restored = restoreDeletedEntry(c, 'rev-1', '2026-02-01T00:00:00Z');
+    expect(restored.entries).toHaveLength(3);
+
+    const entry = restored.entries.find((e) => e.lid === 'e1');
+    expect(entry).toBeDefined();
+    expect(entry!.title).toBe('First');
+    expect(entry!.body).toBe(''); // addEntry creates with empty body
+  });
+
+  it('returns same container if revision not found', () => {
+    const c = containerWith3Entries();
+    expect(restoreDeletedEntry(c, 'nonexistent', T)).toBe(c);
+  });
+
+  it('returns same container if entry still exists', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    // e1 still exists
+    expect(restoreDeletedEntry(c, 'rev-1', T)).toBe(c);
   });
 });

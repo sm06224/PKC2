@@ -9,6 +9,13 @@ import { mountPersistence, loadFromStore } from './adapter/platform/persistence'
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
+import { createHandlerRegistry } from './adapter/transport/message-handler';
+import { exportRequestHandler } from './adapter/transport/export-handler';
+import { recordOfferHandler } from './adapter/transport/record-offer-handler';
+import { canHandleMessage } from './adapter/transport/capability';
+import { buildPongProfile } from './adapter/transport/profile';
+import { detectEmbedContext } from './adapter/platform/embed-detect';
+import { VERSION } from './runtime/release-meta';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -65,40 +72,84 @@ async function boot(): Promise<void> {
   // 8. Import handler: file input wiring
   mountImportHandler(root, dispatcher);
 
-  // 9. Message bridge: PKC-Message transport
-  // Mount after init — containerId comes from state
+  // 9. Message handler registry + bridge
+  const registry = createHandlerRegistry();
+  registry.register('export:request', exportRequestHandler);
+  registry.register('record:offer', recordOfferHandler);
+
+  // Mount bridge after init — containerId comes from state
+  let bridgeHandle: ReturnType<typeof mountMessageBridge> | null = null;
+  let bridgeMounted = false;
+
   dispatcher.onState((state) => {
     if (state.phase === 'ready' && state.container && !bridgeMounted) {
       bridgeMounted = true;
-      const handle = mountMessageBridge({
+      bridgeHandle = mountMessageBridge({
         containerId: state.container.meta.container_id,
-        onMessage: (envelope, origin) => {
+        onMessage: (envelope, origin, sourceWindow) => {
           console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
+
+          const currentState = dispatcher.getState();
+
+          // Capability guard: reject messages this PKC cannot handle in current mode
+          if (!canHandleMessage(envelope.type, currentState.embedded)) {
+            console.warn(`[PKC2] Message "${envelope.type}" not supported (embedded=${currentState.embedded})`);
+            return;
+          }
+
+          registry.route({
+            envelope,
+            sourceWindow,
+            origin,
+            container: currentState.container,
+            embedded: currentState.embedded,
+            dispatcher,
+            sender: bridgeHandle!.sender,
+          });
         },
         onReject: (_, reason) => {
           console.warn(`[PKC2] Message rejected: ${reason}`);
         },
+        pongProfile: () => buildPongProfile({
+          version: VERSION,
+          embedded: dispatcher.getState().embedded,
+        }),
       });
-      // Store for future cleanup if needed
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
-      void handle; // bridge stays alive for the page lifetime
     }
   });
-  let bridgeMounted = false;
 
-  // 10. Load data: IDB first, then pkc-data, then empty
+  // 9b. Send record:reject when an offer is dismissed (if bridge is up)
+  dispatcher.onEvent((event) => {
+    if (event.type === 'OFFER_DISMISSED' && event.reply_to_id && bridgeHandle) {
+      bridgeHandle.sender.send(
+        window.parent,
+        'record:reject',
+        { offer_id: event.offer_id, reason: 'dismissed' },
+        event.reply_to_id,
+      );
+    }
+  });
+
+  // 10. Embed detection
+  const embedCtx = detectEmbedContext();
+  if (embedCtx.embedded) {
+    console.log(`[PKC2] Running embedded (parent origin: ${embedCtx.parentOrigin ?? 'unknown'})`);
+  }
+
+  // 11. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 
     if (source === 'idb' && idbContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: idbContainer });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: idbContainer, embedded: embedCtx.embedded });
       return;
     }
 
     // Fallback: read pkc-data
     const htmlContainer = readPkcData();
     if (htmlContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: htmlContainer });
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: htmlContainer, embedded: embedCtx.embedded });
       return;
     }
 
@@ -106,6 +157,7 @@ async function boot(): Promise<void> {
     dispatcher.dispatch({
       type: 'SYS_INIT_COMPLETE',
       container: createEmptyContainer(),
+      embedded: embedCtx.embedded,
     });
   } catch (e) {
     dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });
@@ -165,12 +217,20 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
     const result = await importFromFile(file);
 
     if (result.ok) {
+      // Show preview for user confirmation instead of immediate replace
       dispatcher.dispatch({
-        type: 'SYS_IMPORT_COMPLETE',
-        container: result.container,
-        source: result.source,
+        type: 'SYS_IMPORT_PREVIEW',
+        preview: {
+          title: result.container.meta.title,
+          container_id: result.container.meta.container_id,
+          entry_count: result.container.entries.length,
+          revision_count: result.container.revisions.length,
+          schema_version: result.container.meta.schema_version,
+          source: result.source,
+          container: result.container,
+        },
       });
-      console.log(`[PKC2] Imported: ${result.source} (${result.container.entries.length} entries)`);
+      console.log(`[PKC2] Import preview: ${result.source} (${result.container.entries.length} entries)`);
     } else {
       const msg = formatImportErrors(result.errors);
       console.warn(`[PKC2] Import failed:\n${msg}`);

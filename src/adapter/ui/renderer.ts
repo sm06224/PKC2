@@ -1,5 +1,16 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
+import type { PendingOffer } from '../transport/record-offer-handler';
+import type { ImportPreviewRef } from '../../core/action/system-command';
+import { CAPABILITIES } from '../../runtime/release-meta';
+import {
+  getRevisionCount,
+  getLatestRevision,
+  getRestoreCandidates,
+  parseRevisionSnapshot,
+} from '../../core/operations/container-ops';
+import { filterEntries } from '../../features/search/filter';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -19,6 +30,8 @@ import type { Entry } from '../../core/model/record';
 export function render(state: AppState, root: HTMLElement): void {
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
+  root.setAttribute('data-pkc-embedded', String(state.embedded));
+  root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
 
   switch (state.phase) {
     case 'initializing':
@@ -52,6 +65,16 @@ function renderShell(state: AppState): HTMLElement {
 
   // Header
   shell.appendChild(renderHeader(state));
+
+  // Import confirmation panel
+  if (state.importPreview) {
+    shell.appendChild(renderImportConfirmation(state.importPreview));
+  }
+
+  // Pending offers bar
+  if (state.pendingOffers.length > 0) {
+    shell.appendChild(renderPendingOffers(state.pendingOffers));
+  }
 
   // Main area: sidebar + detail
   const main = createElement('div', 'pkc-main');
@@ -109,11 +132,31 @@ function renderSidebar(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
-  const entries = state.container?.entries ?? [];
+  const allEntries = state.container?.entries ?? [];
+
+  // Search input (always shown when entries exist)
+  if (allEntries.length > 0) {
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search entries…';
+    searchInput.value = state.searchQuery;
+    searchInput.setAttribute('data-pkc-field', 'search');
+    searchInput.className = 'pkc-search-input';
+    sidebar.appendChild(searchInput);
+  }
+
+  const entries = filterEntries(allEntries, state.searchQuery);
+
+  if (allEntries.length === 0) {
+    const empty = createElement('div', 'pkc-empty');
+    empty.textContent = 'No entries';
+    sidebar.appendChild(empty);
+    return sidebar;
+  }
 
   if (entries.length === 0) {
     const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No entries';
+    empty.textContent = 'No matching entries';
     sidebar.appendChild(empty);
     return sidebar;
   }
@@ -123,6 +166,55 @@ function renderSidebar(state: AppState): HTMLElement {
     list.appendChild(renderEntryItem(entry, state));
   }
   sidebar.appendChild(list);
+
+  // Restore candidates (deleted entries with revisions)
+  if (state.container && state.phase === 'ready') {
+    const candidates = getRestoreCandidates(state.container);
+    if (candidates.length > 0) {
+      const section = createElement('div', 'pkc-restore-candidates');
+      section.setAttribute('data-pkc-region', 'restore-candidates');
+
+      const heading = createElement('div', 'pkc-restore-heading');
+      heading.textContent = `Deleted (${candidates.length} restorable)`;
+      section.appendChild(heading);
+
+      for (const rev of candidates) {
+        const parsed = parseRevisionSnapshot(rev);
+        const item = createElement('div', 'pkc-restore-item');
+        item.setAttribute('data-pkc-revision-id', rev.id);
+        item.setAttribute('data-pkc-entry-lid', rev.entry_lid);
+
+        const info = createElement('div', 'pkc-restore-info');
+
+        const title = createElement('span', 'pkc-restore-title');
+        title.textContent = parsed?.title ?? '(untitled)';
+        info.appendChild(title);
+
+        if (parsed) {
+          const archetype = createElement('span', 'pkc-archetype-badge');
+          archetype.textContent = parsed.archetype;
+          info.appendChild(archetype);
+        }
+
+        const deletedAt = createElement('span', 'pkc-restore-timestamp');
+        deletedAt.textContent = `deleted ${formatTimestamp(rev.created_at)}`;
+        info.appendChild(deletedAt);
+
+        item.appendChild(info);
+
+        const btn = createElement('button', 'pkc-btn');
+        btn.setAttribute('data-pkc-action', 'restore-entry');
+        btn.setAttribute('data-pkc-lid', rev.entry_lid);
+        btn.setAttribute('data-pkc-revision-id', rev.id);
+        btn.textContent = 'Restore deleted entry';
+        item.appendChild(btn);
+
+        section.appendChild(item);
+      }
+
+      sidebar.appendChild(section);
+    }
+  }
 
   return sidebar;
 }
@@ -143,6 +235,20 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   const badge = createElement('span', 'pkc-archetype-badge');
   badge.textContent = entry.archetype;
   li.appendChild(badge);
+
+  // History indicator
+  if (state.container) {
+    const revCount = getRevisionCount(state.container, entry.lid);
+    if (revCount > 0) {
+      li.setAttribute('data-pkc-has-history', 'true');
+      const revBadge = createElement('span', 'pkc-revision-badge');
+      revBadge.setAttribute('data-pkc-revision-count', String(revCount));
+      revBadge.textContent = revCount === 1
+        ? '1 version'
+        : `${revCount} versions`;
+      li.appendChild(revBadge);
+    }
+  }
 
   return li;
 }
@@ -165,13 +271,13 @@ function renderDetail(state: AppState): HTMLElement {
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
     detail.appendChild(renderEditor(selected));
   } else {
-    detail.appendChild(renderView(selected, state.phase === 'ready'));
+    detail.appendChild(renderView(selected, state.phase === 'ready', state.container));
   }
 
   return detail;
 }
 
-function renderView(entry: Entry, canEdit: boolean): HTMLElement {
+function renderView(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
 
@@ -182,6 +288,51 @@ function renderView(entry: Entry, canEdit: boolean): HTMLElement {
   const body = createElement('pre', 'pkc-view-body');
   body.textContent = entry.body || '(empty)';
   view.appendChild(body);
+
+  // History section
+  if (container) {
+    const revCount = getRevisionCount(container, entry.lid);
+    if (revCount > 0) {
+      const latest = getLatestRevision(container, entry.lid);
+      const revInfo = createElement('div', 'pkc-revision-info');
+      revInfo.setAttribute('data-pkc-region', 'revision-info');
+      revInfo.setAttribute('data-pkc-revision-count', String(revCount));
+
+      const heading = createElement('div', 'pkc-revision-heading');
+      heading.textContent = `History: ${revCount} previous version${revCount > 1 ? 's' : ''}`;
+      revInfo.appendChild(heading);
+
+      if (latest) {
+        const latestInfo = createElement('div', 'pkc-revision-latest');
+        latestInfo.setAttribute('data-pkc-region', 'revision-latest');
+        const latestLabel = createElement('span', 'pkc-revision-latest-label');
+        latestLabel.textContent = `Last saved: ${formatTimestamp(latest.created_at)}`;
+        latestInfo.appendChild(latestLabel);
+
+        // Show what the previous version contained
+        const parsed = parseRevisionSnapshot(latest);
+        if (parsed) {
+          const preview = createElement('span', 'pkc-revision-preview');
+          preview.setAttribute('data-pkc-region', 'revision-preview');
+          preview.textContent = `"${truncate(parsed.title, 40)}"`;
+          latestInfo.appendChild(preview);
+        }
+
+        revInfo.appendChild(latestInfo);
+      }
+
+      if (canEdit && latest) {
+        const restoreBtn = createElement('button', 'pkc-btn');
+        restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
+        restoreBtn.setAttribute('data-pkc-lid', entry.lid);
+        restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
+        restoreBtn.textContent = 'Revert to previous version';
+        revInfo.appendChild(restoreBtn);
+      }
+
+      view.appendChild(revInfo);
+    }
+  }
 
   if (canEdit) {
     const actions = createElement('div', 'pkc-view-actions');
@@ -239,6 +390,87 @@ function renderEditor(entry: Entry): HTMLElement {
   return editor;
 }
 
+function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
+  const panel = createElement('div', 'pkc-import-confirm');
+  panel.setAttribute('data-pkc-region', 'import-confirm');
+
+  const warning = createElement('div', 'pkc-import-warning');
+  warning.textContent = 'This will fully replace your current data. This is not a merge.';
+  panel.appendChild(warning);
+
+  const summary = createElement('div', 'pkc-import-summary');
+  summary.setAttribute('data-pkc-region', 'import-summary');
+
+  const items: [string, string][] = [
+    ['Source', preview.source],
+    ['Title', preview.title],
+    ['Entries', String(preview.entry_count)],
+    ['Revisions', String(preview.revision_count)],
+    ['Schema', `v${preview.schema_version}`],
+  ];
+
+  for (const [label, value] of items) {
+    const row = createElement('div', 'pkc-import-row');
+    const labelEl = createElement('span', 'pkc-import-label');
+    labelEl.textContent = `${label}:`;
+    row.appendChild(labelEl);
+    const valueEl = createElement('span', 'pkc-import-value');
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    summary.appendChild(row);
+  }
+  panel.appendChild(summary);
+
+  const actions = createElement('div', 'pkc-import-actions');
+
+  const confirmBtn = createElement('button', 'pkc-btn-danger');
+  confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
+  confirmBtn.textContent = 'Replace & Import';
+  actions.appendChild(confirmBtn);
+
+  const cancelBtn = createElement('button', 'pkc-btn');
+  cancelBtn.setAttribute('data-pkc-action', 'cancel-import');
+  cancelBtn.textContent = 'Cancel';
+  actions.appendChild(cancelBtn);
+
+  panel.appendChild(actions);
+  return panel;
+}
+
+function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
+  const bar = createElement('div', 'pkc-pending-offers');
+  bar.setAttribute('data-pkc-region', 'pending-offers');
+
+  const label = createElement('span', 'pkc-pending-label');
+  label.textContent = `${offers.length} pending offer${offers.length > 1 ? 's' : ''}`;
+  bar.appendChild(label);
+
+  for (const offer of offers) {
+    const item = createElement('div', 'pkc-pending-item');
+    item.setAttribute('data-pkc-offer-id', offer.offer_id);
+
+    const title = createElement('span', 'pkc-pending-title');
+    title.textContent = offer.title || '(untitled)';
+    item.appendChild(title);
+
+    const acceptBtn = createElement('button', 'pkc-btn');
+    acceptBtn.setAttribute('data-pkc-action', 'accept-offer');
+    acceptBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    acceptBtn.textContent = 'Accept';
+    item.appendChild(acceptBtn);
+
+    const dismissBtn = createElement('button', 'pkc-btn');
+    dismissBtn.setAttribute('data-pkc-action', 'dismiss-offer');
+    dismissBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    dismissBtn.textContent = 'Dismiss';
+    item.appendChild(dismissBtn);
+
+    bar.appendChild(item);
+  }
+
+  return bar;
+}
+
 // ---- Helpers ----
 
 function createElement(tag: string, className: string): HTMLElement {
@@ -250,4 +482,28 @@ function createElement(tag: string, className: string): HTMLElement {
 function findSelectedEntry(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
   return state.container.entries.find((e) => e.lid === state.selectedLid) ?? null;
+}
+
+/**
+ * Format an ISO timestamp for display.
+ * Shows date and time in a compact human-readable form.
+ */
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const date = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    const time = d.toISOString().slice(11, 16); // HH:MM
+    return `${date} ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Truncate a string with ellipsis if it exceeds maxLen.
+ */
+function truncate(s: string, maxLen: number): string {
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen - 1) + '…';
 }

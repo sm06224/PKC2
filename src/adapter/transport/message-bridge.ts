@@ -23,6 +23,7 @@
  */
 
 import type { MessageEnvelope, MessageType } from '../../core/model/message';
+import type { PongProfile } from './profile';
 import { validateEnvelope, isPkcMessage, formatRejectReasons } from './envelope';
 
 // ── Types ────────────────────────
@@ -40,13 +41,21 @@ export interface BridgeOptions {
   /**
    * Callback for validated, non-ping messages.
    * The bridge handles ping/pong internally.
+   * sourceWindow is the window that sent the message (for response targeting).
    */
-  onMessage?: (envelope: MessageEnvelope, origin: string) => void;
+  onMessage?: (envelope: MessageEnvelope, origin: string, sourceWindow: Window) => void;
 
   /**
    * Callback for rejected messages (logging/debugging).
    */
   onReject?: (data: unknown, reason: string) => void;
+
+  /**
+   * Optional profile provider for pong payload.
+   * Called on each ping to build the current profile snapshot.
+   * If omitted, pong payload is null (backward compatible).
+   */
+  pongProfile?: () => PongProfile;
 }
 
 export interface MessageSender {
@@ -86,6 +95,7 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     allowedOrigins = [],
     onMessage,
     onReject,
+    pongProfile,
   } = options;
 
   const acceptAllOrigins = allowedOrigins.length === 0 || allowedOrigins.includes('*');
@@ -119,10 +129,10 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
 
     // 5. Auto-handle ping/pong
     if (envelope.type === 'ping') {
-      // Respond with pong to the source window.
-      // Use '*' as targetOrigin — origin was already validated above.
+      // Respond with pong carrying profile payload (if provider exists).
       if (event.source && typeof (event.source as Window).postMessage === 'function') {
-        const pong = buildEnvelope(containerId, 'pong', null, envelope.source_id);
+        const payload = pongProfile ? pongProfile() : null;
+        const pong = buildEnvelope(containerId, 'pong', payload, envelope.source_id);
         (event.source as Window).postMessage(pong, '*');
       }
       return;
@@ -130,8 +140,8 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
 
     // pong is informational — pass to callback but don't auto-handle
     // All other types → delegate to callback
-    if (onMessage) {
-      onMessage(envelope, event.origin);
+    if (onMessage && event.source) {
+      onMessage(envelope, event.origin, event.source as Window);
     }
   }
 

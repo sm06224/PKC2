@@ -65,6 +65,12 @@ export interface ReleaseMeta {
 export const APP_ID = 'pkc2' as const;
 
 /**
+ * Source-side version (semver).
+ * Builder may override in pkc-meta; this is the source default.
+ */
+export const VERSION = '2.0.0' as const;
+
+/**
  * Data schema version. Increment when Container shape changes
  * in a way that requires migration. Independent of semver.
  */
@@ -78,4 +84,5 @@ export const CAPABILITIES: readonly string[] = [
   'core',
   'idb',
   'export',
+  'record-offer',
 ] as const;

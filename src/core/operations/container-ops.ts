@@ -1,4 +1,4 @@
-import type { Container } from '../model/container';
+import type { Container, Revision } from '../model/container';
 import type { Entry, ArchetypeId } from '../model/record';
 import type { Relation, RelationKind } from '../model/relation';
 
@@ -144,12 +144,30 @@ export function removeRelation(container: Container, id: string): Container {
   return { ...container, relations };
 }
 
-// ── Revision helpers ─────────────────────────
+// ── Revision operations ─────────────────────────
 
 /**
- * Create a pre-update revision snapshot of an entry.
+ * Revision policy:
+ *
+ * What gets snapshotted:
+ * - COMMIT_EDIT: pre-update snapshot (preserves old title/body)
+ * - DELETE_ENTRY: pre-delete snapshot (preserves deleted entry for restore)
+ *
+ * What does NOT get snapshotted:
+ * - CREATE_ENTRY: nothing exists before creation
+ * - ACCEPT_OFFER: creation, not mutation
+ * - SYS_IMPORT_COMPLETE: replaces container wholesale; imported revisions preserved
+ * - Runtime-only state (pendingOffers, phase, selection): never persisted
+ *
+ * Delete handling:
+ * - Physical removal (no tombstone). The pre-delete snapshot in revisions
+ *   preserves the entry's last state for potential future restore.
+ */
+
+/**
+ * Create a pre-mutation revision snapshot of an entry.
  * The snapshot is the JSON-serialized entry before mutation.
- * This is the minimal foundation for future undo/history.
+ * Call BEFORE the mutation (update or delete).
  */
 export function snapshotEntry(
   container: Container,
@@ -172,4 +190,156 @@ export function snapshotEntry(
       },
     ],
   };
+}
+
+// ── Revision queries ─────────────────────────
+
+/**
+ * Get all revisions for a specific entry, ordered by created_at ascending.
+ */
+export function getEntryRevisions(
+  container: Container,
+  lid: string,
+): Revision[] {
+  return container.revisions
+    .filter((r) => r.entry_lid === lid)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/**
+ * Get the latest (most recent) revision for an entry, or null.
+ */
+export function getLatestRevision(
+  container: Container,
+  lid: string,
+): Revision | null {
+  const revs = getEntryRevisions(container, lid);
+  return revs.length > 0 ? revs[revs.length - 1]! : null;
+}
+
+/**
+ * Get the revision count for an entry.
+ */
+export function getRevisionCount(
+  container: Container,
+  lid: string,
+): number {
+  return container.revisions.filter((r) => r.entry_lid === lid).length;
+}
+
+/**
+ * Parse a revision's snapshot back into an Entry.
+ * Returns null if the snapshot is malformed.
+ */
+export function parseRevisionSnapshot(revision: Revision): Entry | null {
+  try {
+    const parsed = JSON.parse(revision.snapshot);
+    if (
+      typeof parsed === 'object' && parsed !== null &&
+      typeof parsed.lid === 'string' &&
+      typeof parsed.title === 'string' &&
+      typeof parsed.body === 'string'
+    ) {
+      return parsed as Entry;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get restore candidates: entries that have been deleted but have revisions.
+ * Returns the latest revision for each deleted entry_lid.
+ * An entry_lid is considered "deleted" if it has revisions but no
+ * corresponding entry in Container.entries.
+ */
+export function getRestoreCandidates(container: Container): Revision[] {
+  const activeLids = new Set(container.entries.map((e) => e.lid));
+
+  // Group revisions by entry_lid, keep only deleted ones
+  const latestByLid = new Map<string, Revision>();
+  for (const rev of container.revisions) {
+    if (activeLids.has(rev.entry_lid)) continue;
+    const existing = latestByLid.get(rev.entry_lid);
+    if (!existing || rev.created_at > existing.created_at) {
+      latestByLid.set(rev.entry_lid, rev);
+    }
+  }
+
+  return Array.from(latestByLid.values())
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+// ── Restore operations ─────────────────────────
+
+/**
+ * Restore policy:
+ *
+ * Restore is a "forward mutation", not a rewind:
+ * - The revision's snapshot content becomes the new entry state
+ * - The current state (if entry exists) is snapshotted first as a new revision
+ * - The entry's updated_at advances to now (not the revision's timestamp)
+ * - For deleted entries: re-created with the original lid
+ *
+ * What is NOT restored:
+ * - Runtime-only state (pendingOffers, importPreview, phase, selection)
+ * - Relations (restore is entry-level only)
+ *
+ * This preserves full history: old state → snapshot → restored content.
+ * No revision is ever deleted or overwritten.
+ */
+
+/**
+ * Restore an existing entry from a revision snapshot.
+ * Snapshots the current state first, then overwrites with revision content.
+ * Returns unchanged container if entry or revision not found or snapshot malformed.
+ */
+export function restoreEntry(
+  container: Container,
+  lid: string,
+  revisionId: string,
+  snapshotRevId: string,
+  now: string,
+): Container {
+  const revision = container.revisions.find((r) => r.id === revisionId);
+  if (!revision) return container;
+
+  const restored = parseRevisionSnapshot(revision);
+  if (!restored) return container;
+
+  const existing = container.entries.find((e) => e.lid === lid);
+  if (!existing) return container;
+
+  // Snapshot current state before restoring
+  const snapshotted = snapshotEntry(container, lid, snapshotRevId, now);
+
+  // Overwrite entry with restored content (advance updated_at)
+  return updateEntry(snapshotted, lid, restored.title, restored.body, now);
+}
+
+/**
+ * Restore a deleted entry from a revision snapshot.
+ * Re-creates the entry with its original lid, then applies revision content.
+ * Returns unchanged container if revision not found or snapshot malformed.
+ */
+export function restoreDeletedEntry(
+  container: Container,
+  revisionId: string,
+  now: string,
+): Container {
+  const revision = container.revisions.find((r) => r.id === revisionId);
+  if (!revision) return container;
+
+  const restored = parseRevisionSnapshot(revision);
+  if (!restored) return container;
+
+  // Verify the entry is actually deleted
+  if (container.entries.some((e) => e.lid === restored.lid)) {
+    return container; // entry still exists, not a deleted-entry restore
+  }
+
+  // Re-create with original lid and apply content
+  const withEntry = addEntry(container, restored.lid, restored.archetype, restored.title, now);
+  return updateEntry(withEntry, restored.lid, restored.title, restored.body, now);
 }

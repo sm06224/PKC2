@@ -45,6 +45,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'begin-export':
         dispatcher.dispatch({ type: 'BEGIN_EXPORT' });
         break;
+      case 'accept-offer': {
+        const offerId = target.getAttribute('data-pkc-offer-id');
+        if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+        break;
+      }
+      case 'dismiss-offer': {
+        const offerId = target.getAttribute('data-pkc-offer-id');
+        if (offerId) dispatcher.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
+        break;
+      }
+      case 'restore-entry': {
+        const revisionId = target.getAttribute('data-pkc-revision-id');
+        if (lid && revisionId) {
+          dispatcher.dispatch({ type: 'RESTORE_ENTRY', lid, revision_id: revisionId });
+        }
+        break;
+      }
+      case 'confirm-import':
+        dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        break;
+      case 'cancel-import':
+        dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+        break;
     }
   }
 
@@ -59,9 +82,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Escape: cancel edit or deselect
+    // Escape: cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
-      if (state.phase === 'editing') {
+      if (state.importPreview) {
+        dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+      } else if (state.phase === 'editing') {
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
       } else if (state.selectedLid) {
         dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
@@ -77,12 +102,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  function handleInput(e: Event): void {
+    const target = e.target as HTMLElement;
+    if (target.getAttribute('data-pkc-field') === 'search') {
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
+    }
+  }
+
   root.addEventListener('click', handleClick);
+  root.addEventListener('input', handleInput);
   document.addEventListener('keydown', handleKeydown);
 
   // Return cleanup function
   return () => {
     root.removeEventListener('click', handleClick);
+    root.removeEventListener('input', handleInput);
     document.removeEventListener('keydown', handleKeydown);
   };
 }

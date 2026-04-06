@@ -140,6 +140,11 @@ export function importFromHtml(html: string, source?: string): ImportResult {
   const shapeErrors = validateContainerShape(container);
   if (shapeErrors.length > 0) return fail(shapeErrors);
 
+  // 7. Normalize optional arrays (backward compatibility with older exports)
+  if (!Array.isArray(container.revisions)) {
+    container = { ...container, revisions: [] };
+  }
+
   return {
     ok: true,
     container,
@@ -210,6 +215,11 @@ function validateContainerShape(c: unknown): ImportError[] {
   // relations
   if (!Array.isArray(obj.relations)) {
     errors.push({ code: 'INVALID_CONTAINER', message: 'Container.relations is missing or not an array' });
+  }
+
+  // revisions (optional but must be array if present)
+  if (obj.revisions !== undefined && !Array.isArray(obj.revisions)) {
+    errors.push({ code: 'INVALID_CONTAINER', message: 'Container.revisions is not an array' });
   }
 
   return errors;

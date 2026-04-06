@@ -1,6 +1,8 @@
 import type { Container } from '../../core/model/container';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
+import type { ImportPreviewRef } from '../../core/action/system-command';
+import type { PendingOffer } from '../transport/record-offer-handler';
 import {
   addEntry,
   updateEntry,
@@ -9,6 +11,8 @@ import {
   addRelation,
   removeRelation,
   snapshotEntry,
+  restoreEntry,
+  restoreDeletedEntry,
 } from '../../core/operations/container-ops';
 
 /**
@@ -34,6 +38,14 @@ export interface AppState {
   selectedLid: string | null;
   editingLid: string | null;
   error: string | null;
+  /** True when running inside an iframe. Set once at init. */
+  embedded: boolean;
+  /** Pending record offers (runtime-only, not persisted). */
+  pendingOffers: PendingOffer[];
+  /** Import preview awaiting user confirmation (runtime-only). */
+  importPreview: ImportPreviewRef | null;
+  /** Current search/filter query (runtime-only, feature layer). */
+  searchQuery: string;
 }
 
 /**
@@ -52,6 +64,10 @@ export function createInitialState(): AppState {
     selectedLid: null,
     editingLid: null,
     error: null,
+    embedded: false,
+    pendingOffers: [],
+    importPreview: null,
+    searchQuery: '',
   };
 }
 
@@ -93,6 +109,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         ...state,
         phase: 'ready',
         container: action.container,
+        embedded: action.embedded ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -139,8 +156,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'DELETE_ENTRY': {
       if (!state.container) return blocked(state, action);
+      const ts = now();
       const entriesBefore = state.container.entries;
-      const container = removeEntry(state.container, action.lid);
+      // Snapshot the entry before deletion (preserves last state for restore)
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      const container = removeEntry(snapshotted, action.lid);
       const selectedLid = nextSelectedAfterRemove(
         entriesBefore, action.lid, state.selectedLid,
       );
@@ -190,6 +211,120 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: next,
         events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
       };
+    }
+    case 'SYS_RECORD_OFFERED': {
+      const offer = action.offer as PendingOffer;
+      const next: AppState = {
+        ...state,
+        pendingOffers: [...state.pendingOffers, offer],
+      };
+      return {
+        state: next,
+        events: [{ type: 'RECORD_OFFERED', offer_id: offer.offer_id, title: offer.title }],
+      };
+    }
+    case 'ACCEPT_OFFER': {
+      if (!state.container) return blocked(state, action);
+      const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
+      if (!offer) return blocked(state, action);
+      const lid = generateLid();
+      const ts = now();
+      const container = addEntry(
+        state.container, lid, offer.archetype, offer.title, ts,
+      );
+      // Set body on the newly added entry
+      const updatedContainer = updateEntry(container, lid, offer.title, offer.body, ts);
+      const next: AppState = {
+        ...state,
+        container: updatedContainer,
+        pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
+        selectedLid: lid,
+      };
+      return {
+        state: next,
+        events: [
+          { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
+          { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
+        ],
+      };
+    }
+    case 'DISMISS_OFFER': {
+      const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
+      if (!offer) return { state, events: [] };
+      const next: AppState = {
+        ...state,
+        pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
+      };
+      return {
+        state: next,
+        events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id, reply_to_id: offer.reply_to_id }],
+      };
+    }
+    case 'RESTORE_ENTRY': {
+      if (!state.container) return blocked(state, action);
+      const ts = now();
+      const entryExists = state.container.entries.some((e) => e.lid === action.lid);
+
+      let container: typeof state.container;
+      if (entryExists) {
+        // Restore existing entry: snapshot current, then overwrite
+        const snapshotRevId = generateLid();
+        container = restoreEntry(
+          state.container, action.lid, action.revision_id, snapshotRevId, ts,
+        );
+      } else {
+        // Restore deleted entry: re-create from revision
+        container = restoreDeletedEntry(state.container, action.revision_id, ts);
+      }
+
+      if (container === state.container) return blocked(state, action);
+
+      const next: AppState = { ...state, container, selectedLid: action.lid };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_RESTORED', lid: action.lid, revision_id: action.revision_id }],
+      };
+    }
+    case 'SYS_IMPORT_PREVIEW': {
+      const next: AppState = { ...state, importPreview: action.preview };
+      return {
+        state: next,
+        events: [{
+          type: 'IMPORT_PREVIEWED',
+          source: action.preview.source,
+          entry_count: action.preview.entry_count,
+        }],
+      };
+    }
+    case 'CONFIRM_IMPORT': {
+      if (!state.importPreview) return blocked(state, action);
+      const imported = state.importPreview.container;
+      const source = state.importPreview.source;
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: imported,
+        selectedLid: null,
+        editingLid: null,
+        error: null,
+        importPreview: null,
+      };
+      const cid = imported?.meta?.container_id ?? 'unknown';
+      return {
+        state: next,
+        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source }],
+      };
+    }
+    case 'CANCEL_IMPORT': {
+      const next: AppState = { ...state, importPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'IMPORT_CANCELLED' }],
+      };
+    }
+    case 'SET_SEARCH_QUERY': {
+      const next: AppState = { ...state, searchQuery: action.query };
+      return { state: next, events: [] };
     }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
@@ -250,6 +385,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         phase: 'ready',
         container: action.container,
+        embedded: action.embedded ?? state.embedded,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
