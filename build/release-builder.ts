@@ -1,24 +1,52 @@
 /**
  * release-builder: Stage 2 of the PKC2 build pipeline.
+ *
  * Takes Vite's bundle output (dist/bundle.js, dist/bundle.css)
  * and inlines them into shell.html to produce dist/pkc2.html.
+ *
+ * Generates pkc-meta with:
+ * - app identity, semver, schema version
+ * - release kind (dev/stage/product via PKC_KIND env)
+ * - 14-digit timestamp version
+ * - build provenance (git commit)
+ * - code integrity (SHA-256 of bundle.js)
+ * - capability list
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { execSync } from 'child_process';
+import { createHash } from 'crypto';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
 const SHELL = resolve(ROOT, 'build', 'shell.html');
 
+// Source-side constants (mirrored from src/runtime/release-meta.ts)
+const APP_ID = 'pkc2';
+const SCHEMA_VERSION = 1;
+const CAPABILITIES = ['core', 'idb'];
+
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-function buildTimestamp(): string {
+function buildTimestamp14(): string {
   const now = new Date();
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
     + `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function computeSha256(content: string): string {
+  const hash = createHash('sha256').update(content, 'utf8').digest('hex');
+  return `sha256:${hash}`;
+}
+
+function getGitCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
 }
 
 function main(): void {
@@ -36,33 +64,36 @@ function main(): void {
   const js = readFileSync(jsPath, 'utf8');
   const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
 
+  // Build metadata
   const kind = process.env.PKC_KIND ?? 'dev';
-  const build_at = buildTimestamp();
+  const timestamp = buildTimestamp14();
+  const build_at = new Date().toISOString();
+  const source_commit = getGitCommit();
+  const code_integrity = computeSha256(js);
 
-  let commit = 'unknown';
-  try {
-    commit = execSync('git rev-parse --short HEAD').toString().trim();
-  } catch {
-    // not in a git repo or git not available
-  }
-
-  const meta = JSON.stringify({
+  const meta = {
+    app: APP_ID,
     version: pkg.version,
-    schema: 1,
-    build_at,
+    schema: SCHEMA_VERSION,
     kind,
-    code_integrity: '',  // TODO: SHA-256 hash of JS
-    source_commit: commit,
-  }, null, 2);
+    timestamp,
+    build_at,
+    source_commit,
+    code_integrity,
+    capabilities: CAPABILITIES,
+  };
+
+  const metaJson = JSON.stringify(meta, null, 2);
 
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
+  html = html.replace('{{APP}}', APP_ID);
   html = html.replace('{{VERSION}}', pkg.version);
-  html = html.replace('{{SCHEMA}}', '1');
-  html = html.replace('{{BUILD_AT}}', build_at);
+  html = html.replace('{{SCHEMA}}', String(SCHEMA_VERSION));
+  html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
   html = html.replace('{{STYLES}}', css);
-  html = html.replace('{{META}}', meta);
+  html = html.replace('{{META}}', metaJson);
   html = html.replace('{{CORE}}', js);
 
   if (!existsSync(DIST)) {
@@ -71,7 +102,12 @@ function main(): void {
 
   const outPath = resolve(DIST, 'pkc2.html');
   writeFileSync(outPath, html, 'utf8');
+
   console.log(`✓ ${outPath} (${(html.length / 1024).toFixed(1)} KB)`);
+  console.log(`  version: ${pkg.version}-${kind}+${timestamp}`);
+  console.log(`  schema:  ${SCHEMA_VERSION}`);
+  console.log(`  commit:  ${source_commit}`);
+  console.log(`  integrity: ${code_integrity.slice(0, 20)}...`);
 }
 
 main();
