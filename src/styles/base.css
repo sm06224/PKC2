@@ -1,0 +1,19 @@
+/* PKC2 base styles — minimal shell */
+:root {
+  --c-bg: #ffffff;
+  --c-fg: #1a1a1a;
+  --c-accent: #2563eb;
+  --c-border: #e5e7eb;
+  --c-hover: #f3f4f6;
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+}
+
+#pkc-root {
+  font-family: var(--font-sans);
+  color: var(--c-fg);
+  background: var(--c-bg);
+  min-height: 100vh;
+  margin: 0;
+  padding: 1rem;
+}
