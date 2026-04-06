@@ -7,7 +7,48 @@
 </head>
 <body>
   <div id="pkc-root"></div>
-  <script id="pkc-data" type="application/json">{}</script>
+
+  <script id="pkc-data" type="application/json">{
+    "container": {
+      "meta": {
+        "container_id": "dev-sample-001",
+        "title": "PKC2 Dev Sample",
+        "created_at": "2026-04-06T00:00:00Z",
+        "updated_at": "2026-04-06T00:00:00Z",
+        "schema_version": 1
+      },
+      "entries": [
+        {
+          "lid": "entry-001",
+          "title": "Welcome to PKC2",
+          "body": "This is a sample entry.\nPKC2 is the next-generation Portable Knowledge Container.",
+          "archetype": "text",
+          "created_at": "2026-04-06T00:00:00Z",
+          "updated_at": "2026-04-06T00:00:00Z"
+        },
+        {
+          "lid": "entry-002",
+          "title": "Architecture Notes",
+          "body": "5-layer architecture:\n- core\n- adapter\n- features\n- runtime\n- builder",
+          "archetype": "text",
+          "created_at": "2026-04-06T00:01:00Z",
+          "updated_at": "2026-04-06T00:01:00Z"
+        },
+        {
+          "lid": "entry-003",
+          "title": "TODO: Implement IDB persistence",
+          "body": "Implement IndexedDB persistence as a DomainEvent listener.\nPhase 1 scope.",
+          "archetype": "todo",
+          "created_at": "2026-04-06T00:02:00Z",
+          "updated_at": "2026-04-06T00:02:00Z"
+        }
+      ],
+      "relations": [],
+      "revisions": [],
+      "assets": {}
+    }
+  }</script>
+
   <script id="pkc-meta" type="application/json">{}</script>
   <script type="module" src="/src/main.ts"></script>
 </body>

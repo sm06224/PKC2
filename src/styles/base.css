@@ -3,17 +3,259 @@
   --c-bg: #ffffff;
   --c-fg: #1a1a1a;
   --c-accent: #2563eb;
+  --c-accent-fg: #ffffff;
   --c-border: #e5e7eb;
   --c-hover: #f3f4f6;
+  --c-danger: #dc2626;
+  --c-muted: #6b7280;
+  --c-surface: #f9fafb;
   --font-sans: system-ui, -apple-system, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --radius: 4px;
 }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 #pkc-root {
   font-family: var(--font-sans);
   color: var(--c-fg);
   background: var(--c-bg);
   min-height: 100vh;
-  margin: 0;
+}
+
+/* ── Phase indicators on root ── */
+[data-pkc-phase="initializing"] .pkc-loading,
+[data-pkc-phase="error"] .pkc-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-size: 1.2rem;
+  color: var(--c-muted);
+}
+
+[data-pkc-phase="error"] .pkc-error {
+  color: var(--c-danger);
+}
+
+/* ── Shell layout ── */
+.pkc-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.pkc-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.pkc-header-title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.pkc-phase-badge {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius);
+  background: var(--c-border);
+  color: var(--c-muted);
+}
+
+[data-pkc-phase-value="editing"] {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+}
+
+[data-pkc-phase-value="exporting"] {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.pkc-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Sidebar ── */
+.pkc-sidebar {
+  width: 240px;
+  border-right: 1px solid var(--c-border);
+  overflow-y: auto;
+  background: var(--c-surface);
+}
+
+.pkc-entry-list {
+  list-style: none;
+}
+
+.pkc-entry-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-entry-item:hover {
+  background: var(--c-hover);
+}
+
+[data-pkc-selected="true"] {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+}
+
+.pkc-entry-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkc-archetype-badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: var(--radius);
+  background: var(--c-border);
+  color: var(--c-muted);
+}
+
+[data-pkc-selected="true"] .pkc-archetype-badge {
+  background: rgba(255,255,255,0.3);
+  color: var(--c-accent-fg);
+}
+
+/* ── Detail ── */
+.pkc-detail {
+  flex: 1;
   padding: 1rem;
+  overflow-y: auto;
+}
+
+.pkc-empty {
+  color: var(--c-muted);
+  padding: 2rem;
+  text-align: center;
+}
+
+.pkc-view-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.pkc-view-body {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pkc-view-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Editor ── */
+.pkc-editor-title {
+  display: block;
+  width: 100%;
+  font-size: 1.25rem;
+  font-family: var(--font-sans);
+  padding: 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.pkc-editor-body {
+  display: block;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  padding: 0.75rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  margin-bottom: 0.75rem;
+  resize: vertical;
+}
+
+.pkc-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Buttons ── */
+.pkc-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  cursor: pointer;
+}
+
+.pkc-btn:hover {
+  background: var(--c-hover);
+}
+
+.pkc-btn-danger {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-danger);
+  cursor: pointer;
+}
+
+.pkc-btn-danger:hover {
+  background: var(--c-danger);
+  color: #fff;
+}
+
+/* ── Event Log ── */
+.pkc-event-log {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 360px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius) 0 0 0;
+  font-size: 0.75rem;
+  z-index: 100;
+}
+
+.pkc-event-log summary {
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  background: var(--c-border);
+}
+
+.pkc-event-list {
+  padding: 0.25rem 0.5rem;
+  list-style: none;
+}
+
+.pkc-event-item {
+  padding: 0.15rem 0;
+  font-family: var(--font-mono);
+  color: var(--c-muted);
+  border-bottom: 1px solid var(--c-border);
 }

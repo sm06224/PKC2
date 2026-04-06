@@ -25,6 +25,7 @@ repository 内の requirements ドキュメント��`docs/requirements/00_最
 | 15 | `15_基盤方針追補_type_dispatch_adapter.md` | discriminated union、Archetype dispatch、dependency governance |
 | 16 | `16_基盤方針追補_versioning_UX_Issues.md` | semver+kind+timestamp、状態機械、操作契約、修正版Issue一覧 |
 | 17 | `17_domain_action_contract.md` | domain/state/action/command/event/messageの境界確定 |
+| 18 | `18_ui_shell.md` | 最小UI Shell: renderer/action-binder/event-log/DOM契約 |
 
 ## 前提文書
 

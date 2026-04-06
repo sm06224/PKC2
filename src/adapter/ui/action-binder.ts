@@ -1,0 +1,97 @@
+import type { Dispatcher } from '../state/dispatcher';
+
+/**
+ * ActionBinder: wires DOM events → UserAction dispatch.
+ *
+ * Design:
+ * - Event delegation: single click listener on root, reads data-pkc-action.
+ * - Keyboard shortcuts: single keydown listener on document.
+ * - Never reads AppState from DOM. Gets state from dispatcher.getState().
+ * - All action identifiers are in data-pkc-action attributes (minify-safe).
+ *
+ * The binder does NOT:
+ * - Render DOM (Renderer does that)
+ * - Decide action validity (Reducer does that)
+ * - Handle DomainEvents (EventLog does that)
+ */
+
+export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
+  function handleClick(e: Event): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
+    if (!target) return;
+
+    const action = target.getAttribute('data-pkc-action');
+    const lid = target.getAttribute('data-pkc-lid') ?? undefined;
+
+    switch (action) {
+      case 'select-entry':
+        if (lid) dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        break;
+      case 'begin-edit':
+        if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+        break;
+      case 'commit-edit':
+        dispatchCommitEdit(root, lid, dispatcher);
+        break;
+      case 'cancel-edit':
+        dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        break;
+      case 'create-entry':
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+        break;
+      case 'delete-entry':
+        if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
+        break;
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent): void {
+    const state = dispatcher.getState();
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl+S / Cmd+S: save in editing mode
+    if (mod && e.key === 's' && state.phase === 'editing' && state.editingLid) {
+      e.preventDefault();
+      dispatchCommitEdit(root, state.editingLid, dispatcher);
+      return;
+    }
+
+    // Escape: cancel edit or deselect
+    if (e.key === 'Escape') {
+      if (state.phase === 'editing') {
+        dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+      } else if (state.selectedLid) {
+        dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+      }
+      return;
+    }
+
+    // Ctrl+N / Cmd+N: new entry in ready mode
+    if (mod && e.key === 'n' && state.phase === 'ready') {
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+      return;
+    }
+  }
+
+  root.addEventListener('click', handleClick);
+  document.addEventListener('keydown', handleKeydown);
+
+  // Return cleanup function
+  return () => {
+    root.removeEventListener('click', handleClick);
+    document.removeEventListener('keydown', handleKeydown);
+  };
+}
+
+function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatcher: Dispatcher): void {
+  if (!lid) return;
+
+  const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+  const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+
+  const title = titleEl?.value ?? '';
+  const body = bodyEl?.value ?? '';
+
+  dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
+}
