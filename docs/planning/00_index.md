@@ -30,6 +30,7 @@ repository 内の requirements ドキュメント��`docs/requirements/00_最
 | 20 | `20_idb_persistence.md` | IDB永続化: ContainerStore/Persistence/起動復元フロー |
 | 21 | `21_release_metadata.md` | Release Metadata: ReleaseMeta型/code_integrity/triple version |
 | 22 | `22_html_export.md` | HTML Export: 単一HTML成果物契約の完結/pkc-data埋め込み/export導線 |
+| 23 | `23_import.md` | Import: export/import往復の完結/検証/Container置換 |
 
 ## 前提文書
 

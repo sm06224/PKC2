@@ -89,6 +89,11 @@ function renderHeader(state: AppState): HTMLElement {
     exportBtn.setAttribute('data-pkc-action', 'begin-export');
     exportBtn.textContent = 'Export';
     header.appendChild(exportBtn);
+
+    const importBtn = createElement('button', 'pkc-btn');
+    importBtn.setAttribute('data-pkc-action', 'begin-import');
+    importBtn.textContent = 'Import';
+    header.appendChild(importBtn);
   }
 
   if (state.phase === 'exporting') {

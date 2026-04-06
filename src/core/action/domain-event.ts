@@ -23,6 +23,7 @@ export type DomainEvent =
   | { type: 'RELATION_CREATED'; id: string; from: string; to: string; kind: RelationKind }
   | { type: 'RELATION_DELETED'; id: string }
   | { type: 'CONTAINER_LOADED'; container_id: string }
+  | { type: 'CONTAINER_IMPORTED'; container_id: string; source: string }
   | { type: 'EXPORT_COMPLETED' }
   | { type: 'ERROR_OCCURRED'; error: string };
 

@@ -7,6 +7,8 @@ import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
+import { importFromFile, formatImportErrors } from './adapter/platform/importer';
+import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
 /**
@@ -59,7 +61,10 @@ async function boot(): Promise<void> {
     }
   });
 
-  // 8. Load data: IDB first, then pkc-data, then empty
+  // 8. Import handler: file input wiring
+  mountImportHandler(root, dispatcher);
+
+  // 9. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 
@@ -108,6 +113,48 @@ function createEmptyContainer(): Container {
     revisions: [],
     assets: {},
   };
+}
+
+/**
+ * Mount import handler: creates hidden file input and wires
+ * begin-import click → file picker → import → dispatch.
+ */
+function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.html';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-input');
+  document.body.appendChild(fileInput);
+
+  // Listen for begin-import clicks via event delegation on root
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="begin-import"]');
+    if (!target) return;
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  // Handle file selection
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+
+    const result = await importFromFile(file);
+
+    if (result.ok) {
+      dispatcher.dispatch({
+        type: 'SYS_IMPORT_COMPLETE',
+        container: result.container,
+        source: result.source,
+      });
+      console.log(`[PKC2] Imported: ${result.source} (${result.container.entries.length} entries)`);
+    } else {
+      const msg = formatImportErrors(result.errors);
+      console.warn(`[PKC2] Import failed:\n${msg}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Import failed: ${msg}` });
+    }
+  });
 }
 
 boot();

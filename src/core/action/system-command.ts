@@ -13,6 +13,7 @@ export type SystemCommand =
   | { type: 'SYS_INIT_COMPLETE'; container: Container }
   | { type: 'SYS_INIT_ERROR'; error: string }
   | { type: 'SYS_FINISH_EXPORT' }
+  | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_ERROR'; error: string };
 
 /** Extract the type literal from a SystemCommand. */

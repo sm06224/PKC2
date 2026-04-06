@@ -176,6 +176,21 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         events: [{ type: 'RELATION_DELETED', id: action.id }],
       };
     }
+    case 'SYS_IMPORT_COMPLETE': {
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: action.container,
+        selectedLid: null,
+        editingLid: null,
+        error: null,
+      };
+      const cid = action.container?.meta?.container_id ?? 'unknown';
+      return {
+        state: next,
+        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
+      };
+    }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
       return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };
@@ -239,6 +254,21 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
       return { state: next, events: [{ type: 'CONTAINER_LOADED', container_id: cid }] };
+    }
+    case 'SYS_IMPORT_COMPLETE': {
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: action.container,
+        selectedLid: null,
+        editingLid: null,
+        error: null,
+      };
+      const cid = action.container?.meta?.container_id ?? 'unknown';
+      return {
+        state: next,
+        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
+      };
     }
     default:
       return blocked(state, action);
