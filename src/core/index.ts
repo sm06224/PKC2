@@ -7,6 +7,9 @@ export * from './model/message';
 // Archetype
 export * from './archetype/archetype';
 
+// Operations
+export * from './operations/container-ops';
+
 // Action contract
 export * from './action/user-action';
 export * from './action/system-command';

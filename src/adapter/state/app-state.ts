@@ -1,6 +1,15 @@
 import type { Container } from '../../core/model/container';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
+import {
+  addEntry,
+  updateEntry,
+  removeEntry,
+  nextSelectedAfterRemove,
+  addRelation,
+  removeRelation,
+  snapshotEntry,
+} from '../../core/operations/container-ops';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -73,6 +82,10 @@ function blocked(state: AppState, action: Dispatchable): ReduceResult {
   return { state, events: [] };
 }
 
+function now(): string {
+  return new Date().toISOString();
+}
+
 function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SYS_INIT_COMPLETE': {
@@ -114,21 +127,24 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
     case 'CREATE_ENTRY': {
-      // Entry creation: generate LID, add to container.
-      // For now, the reducer records the intent; actual mutation
-      // will be handled by the dispatcher layer.
+      if (!state.container) return blocked(state, action);
       const lid = generateLid();
-      const next: AppState = { ...state, selectedLid: lid };
+      const ts = now();
+      const container = addEntry(state.container, lid, action.archetype, action.title, ts);
+      const next: AppState = { ...state, container, selectedLid: lid };
       return {
         state: next,
         events: [{ type: 'ENTRY_CREATED', lid, archetype: action.archetype }],
       };
     }
     case 'DELETE_ENTRY': {
-      const next: AppState = {
-        ...state,
-        selectedLid: state.selectedLid === action.lid ? null : state.selectedLid,
-      };
+      if (!state.container) return blocked(state, action);
+      const entriesBefore = state.container.entries;
+      const container = removeEntry(state.container, action.lid);
+      const selectedLid = nextSelectedAfterRemove(
+        entriesBefore, action.lid, state.selectedLid,
+      );
+      const next: AppState = { ...state, container, selectedLid };
       return { state: next, events: [{ type: 'ENTRY_DELETED', lid: action.lid }] };
     }
     case 'BEGIN_EXPORT': {
@@ -136,21 +152,27 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'CREATE_RELATION': {
+      if (!state.container) return blocked(state, action);
       const id = generateLid();
+      const ts = now();
+      const container = addRelation(
+        state.container, id, action.from, action.to, action.kind, ts,
+      );
+      const next: AppState = { ...state, container };
       return {
-        state,
+        state: next,
         events: [{
-          type: 'RELATION_CREATED',
-          id,
-          from: action.from,
-          to: action.to,
-          kind: action.kind,
+          type: 'RELATION_CREATED', id,
+          from: action.from, to: action.to, kind: action.kind,
         }],
       };
     }
     case 'DELETE_RELATION': {
+      if (!state.container) return blocked(state, action);
+      const container = removeRelation(state.container, action.id);
+      const next: AppState = { ...state, container };
       return {
-        state,
+        state: next,
         events: [{ type: 'RELATION_DELETED', id: action.id }],
       };
     }
@@ -166,7 +188,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
 function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'COMMIT_EDIT': {
-      const next: AppState = { ...state, phase: 'ready', editingLid: null };
+      if (!state.container) return blocked(state, action);
+      const ts = now();
+      // Snapshot the entry before update (minimal revision)
+      const revId = generateLid();
+      let container = snapshotEntry(state.container, action.lid, revId, ts);
+      // Apply the update
+      container = updateEntry(container, action.lid, action.title, action.body, ts);
+      const next: AppState = { ...state, phase: 'ready', editingLid: null, container };
       return {
         state: next,
         events: [
@@ -220,7 +249,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
 
 let lidCounter = 0;
 
-function generateLid(): string {
+export function generateLid(): string {
   lidCounter += 1;
   const ts = Date.now().toString(36);
   const seq = lidCounter.toString(36).padStart(4, '0');
