@@ -55,6 +55,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (offerId) dispatcher.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
         break;
       }
+      case 'restore-entry': {
+        const revisionId = target.getAttribute('data-pkc-revision-id');
+        if (lid && revisionId) {
+          dispatcher.dispatch({ type: 'RESTORE_ENTRY', lid, revision_id: revisionId });
+        }
+        break;
+      }
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
         break;

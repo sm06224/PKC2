@@ -11,6 +11,8 @@ import {
   addRelation,
   removeRelation,
   snapshotEntry,
+  restoreEntry,
+  restoreDeletedEntry,
 } from '../../core/operations/container-ops';
 
 /**
@@ -253,6 +255,31 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id, reply_to_id: offer.reply_to_id }],
+      };
+    }
+    case 'RESTORE_ENTRY': {
+      if (!state.container) return blocked(state, action);
+      const ts = now();
+      const entryExists = state.container.entries.some((e) => e.lid === action.lid);
+
+      let container: typeof state.container;
+      if (entryExists) {
+        // Restore existing entry: snapshot current, then overwrite
+        const snapshotRevId = generateLid();
+        container = restoreEntry(
+          state.container, action.lid, action.revision_id, snapshotRevId, ts,
+        );
+      } else {
+        // Restore deleted entry: re-create from revision
+        container = restoreDeletedEntry(state.container, action.revision_id, ts);
+      }
+
+      if (container === state.container) return blocked(state, action);
+
+      const next: AppState = { ...state, container, selectedLid: action.lid };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_RESTORED', lid: action.lid, revision_id: action.revision_id }],
       };
     }
     case 'SYS_IMPORT_PREVIEW': {

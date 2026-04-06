@@ -25,7 +25,8 @@ export type UserAction =
   | { type: 'ACCEPT_OFFER'; offer_id: string }
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
-  | { type: 'CANCEL_IMPORT' };
+  | { type: 'CANCEL_IMPORT' }
+  | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

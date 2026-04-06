@@ -4,7 +4,12 @@ import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef } from '../../core/action/system-command';
 import { CAPABILITIES } from '../../runtime/release-meta';
-import { getRevisionCount, getLatestRevision } from '../../core/operations/container-ops';
+import {
+  getRevisionCount,
+  getLatestRevision,
+  getRestoreCandidates,
+  parseRevisionSnapshot,
+} from '../../core/operations/container-ops';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -141,6 +146,40 @@ function renderSidebar(state: AppState): HTMLElement {
   }
   sidebar.appendChild(list);
 
+  // Restore candidates (deleted entries with revisions)
+  if (state.container && state.phase === 'ready') {
+    const candidates = getRestoreCandidates(state.container);
+    if (candidates.length > 0) {
+      const section = createElement('div', 'pkc-restore-candidates');
+      section.setAttribute('data-pkc-region', 'restore-candidates');
+
+      const heading = createElement('div', 'pkc-restore-heading');
+      heading.textContent = `${candidates.length} deleted`;
+      section.appendChild(heading);
+
+      for (const rev of candidates) {
+        const parsed = parseRevisionSnapshot(rev);
+        const item = createElement('div', 'pkc-restore-item');
+        item.setAttribute('data-pkc-revision-id', rev.id);
+
+        const title = createElement('span', 'pkc-restore-title');
+        title.textContent = parsed?.title ?? '(untitled)';
+        item.appendChild(title);
+
+        const btn = createElement('button', 'pkc-btn');
+        btn.setAttribute('data-pkc-action', 'restore-entry');
+        btn.setAttribute('data-pkc-lid', rev.entry_lid);
+        btn.setAttribute('data-pkc-revision-id', rev.id);
+        btn.textContent = 'Restore';
+        item.appendChild(btn);
+
+        section.appendChild(item);
+      }
+
+      sidebar.appendChild(section);
+    }
+  }
+
   return sidebar;
 }
 
@@ -211,7 +250,7 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   body.textContent = entry.body || '(empty)';
   view.appendChild(body);
 
-  // Revision info
+  // Revision info + restore
   if (container) {
     const revCount = getRevisionCount(container, entry.lid);
     if (revCount > 0) {
@@ -225,6 +264,16 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
         label.textContent += ` (latest: ${latest.created_at})`;
       }
       revInfo.appendChild(label);
+
+      if (canEdit && latest) {
+        const restoreBtn = createElement('button', 'pkc-btn');
+        restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
+        restoreBtn.setAttribute('data-pkc-lid', entry.lid);
+        restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
+        restoreBtn.textContent = 'Restore latest';
+        revInfo.appendChild(restoreBtn);
+      }
+
       view.appendChild(revInfo);
     }
   }

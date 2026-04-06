@@ -270,3 +270,76 @@ export function getRestoreCandidates(container: Container): Revision[] {
   return Array.from(latestByLid.values())
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
+
+// ── Restore operations ─────────────────────────
+
+/**
+ * Restore policy:
+ *
+ * Restore is a "forward mutation", not a rewind:
+ * - The revision's snapshot content becomes the new entry state
+ * - The current state (if entry exists) is snapshotted first as a new revision
+ * - The entry's updated_at advances to now (not the revision's timestamp)
+ * - For deleted entries: re-created with the original lid
+ *
+ * What is NOT restored:
+ * - Runtime-only state (pendingOffers, importPreview, phase, selection)
+ * - Relations (restore is entry-level only)
+ *
+ * This preserves full history: old state → snapshot → restored content.
+ * No revision is ever deleted or overwritten.
+ */
+
+/**
+ * Restore an existing entry from a revision snapshot.
+ * Snapshots the current state first, then overwrites with revision content.
+ * Returns unchanged container if entry or revision not found or snapshot malformed.
+ */
+export function restoreEntry(
+  container: Container,
+  lid: string,
+  revisionId: string,
+  snapshotRevId: string,
+  now: string,
+): Container {
+  const revision = container.revisions.find((r) => r.id === revisionId);
+  if (!revision) return container;
+
+  const restored = parseRevisionSnapshot(revision);
+  if (!restored) return container;
+
+  const existing = container.entries.find((e) => e.lid === lid);
+  if (!existing) return container;
+
+  // Snapshot current state before restoring
+  const snapshotted = snapshotEntry(container, lid, snapshotRevId, now);
+
+  // Overwrite entry with restored content (advance updated_at)
+  return updateEntry(snapshotted, lid, restored.title, restored.body, now);
+}
+
+/**
+ * Restore a deleted entry from a revision snapshot.
+ * Re-creates the entry with its original lid, then applies revision content.
+ * Returns unchanged container if revision not found or snapshot malformed.
+ */
+export function restoreDeletedEntry(
+  container: Container,
+  revisionId: string,
+  now: string,
+): Container {
+  const revision = container.revisions.find((r) => r.id === revisionId);
+  if (!revision) return container;
+
+  const restored = parseRevisionSnapshot(revision);
+  if (!restored) return container;
+
+  // Verify the entry is actually deleted
+  if (container.entries.some((e) => e.lid === restored.lid)) {
+    return container; // entry still exists, not a deleted-entry restore
+  }
+
+  // Re-create with original lid and apply content
+  const withEntry = addEntry(container, restored.lid, restored.archetype, restored.title, now);
+  return updateEntry(withEntry, restored.lid, restored.title, restored.body, now);
+}

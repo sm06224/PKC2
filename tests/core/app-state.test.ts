@@ -521,3 +521,69 @@ describe('import confirmation', () => {
     expect(events).toEqual([{ type: 'IMPORT_CANCELLED' }]);
   });
 });
+
+// ── Restore ────────────────────────
+
+describe('restore', () => {
+  it('RESTORE_ENTRY restores existing entry from revision', () => {
+    // Create a revision by editing
+    const { state: editing } = reduce(readyState(), { type: 'BEGIN_EDIT', lid: 'e1' });
+    const { state: edited } = reduce(editing, {
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'Changed', body: 'New body',
+    });
+
+    // Verify revision exists
+    expect(edited.container!.revisions).toHaveLength(1);
+    const revId = edited.container!.revisions[0]!.id;
+
+    // Restore from the revision
+    const { state, events } = reduce(edited, {
+      type: 'RESTORE_ENTRY', lid: 'e1', revision_id: revId,
+    });
+
+    const entry = state.container!.entries.find((e) => e.lid === 'e1');
+    expect(entry!.title).toBe('Entry One'); // original title
+    expect(entry!.body).toBe('Body one'); // original body
+    expect(state.selectedLid).toBe('e1');
+    expect(events).toEqual([{ type: 'ENTRY_RESTORED', lid: 'e1', revision_id: revId }]);
+
+    // Should have 2 revisions: pre-edit + pre-restore
+    expect(state.container!.revisions).toHaveLength(2);
+  });
+
+  it('RESTORE_ENTRY restores deleted entry', () => {
+    // Delete e1 (creates pre-delete revision)
+    const { state: deleted } = reduce(readyState(), { type: 'DELETE_ENTRY', lid: 'e1' });
+    expect(deleted.container!.entries).toHaveLength(2);
+    expect(deleted.container!.revisions).toHaveLength(1);
+    const revId = deleted.container!.revisions[0]!.id;
+
+    // Restore from the revision
+    const { state, events } = reduce(deleted, {
+      type: 'RESTORE_ENTRY', lid: 'e1', revision_id: revId,
+    });
+
+    expect(state.container!.entries).toHaveLength(3);
+    const entry = state.container!.entries.find((e) => e.lid === 'e1');
+    expect(entry).toBeDefined();
+    expect(entry!.title).toBe('Entry One');
+    expect(state.selectedLid).toBe('e1');
+    expect(events).toEqual([{ type: 'ENTRY_RESTORED', lid: 'e1', revision_id: revId }]);
+  });
+
+  it('RESTORE_ENTRY is blocked when no container', () => {
+    const init = createInitialState();
+    const ready: AppState = { ...init, phase: 'ready' };
+    const { state } = reduce(ready, {
+      type: 'RESTORE_ENTRY', lid: 'e1', revision_id: 'nonexistent',
+    });
+    expect(state).toBe(ready);
+  });
+
+  it('RESTORE_ENTRY is blocked for invalid revision', () => {
+    const { state } = reduce(readyState(), {
+      type: 'RESTORE_ENTRY', lid: 'e1', revision_id: 'nonexistent',
+    });
+    expect(state).toEqual(readyState());
+  });
+});

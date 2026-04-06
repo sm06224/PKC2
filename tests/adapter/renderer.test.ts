@@ -366,4 +366,57 @@ describe('Renderer', () => {
     expect(revInfo).not.toBeNull();
     expect(revInfo!.textContent).toContain('1 revision');
   });
+
+  it('shows restore button in revision info for selected entry', () => {
+    const containerWithRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        {
+          id: 'rev-1', entry_lid: 'e1',
+          snapshot: JSON.stringify({ lid: 'e1', title: 'Old', body: 'old body', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }),
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRevisions,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+
+    const restoreBtn = root.querySelector('[data-pkc-action="restore-entry"]');
+    expect(restoreBtn).not.toBeNull();
+    expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('e1');
+    expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-1');
+    expect(restoreBtn!.textContent).toContain('Restore');
+  });
+
+  it('shows restore candidates for deleted entries', () => {
+    const containerWithDeletedRevisions: Container = {
+      ...mockContainer,
+      // e1 is in entries, but 'deleted-lid' is not — it's a deleted entry
+      revisions: [
+        {
+          id: 'rev-del', entry_lid: 'deleted-lid',
+          snapshot: JSON.stringify({ lid: 'deleted-lid', title: 'Deleted Entry', body: 'gone', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }),
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithDeletedRevisions,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+
+    const section = root.querySelector('[data-pkc-region="restore-candidates"]');
+    expect(section).not.toBeNull();
+    expect(section!.textContent).toContain('1 deleted');
+    expect(section!.textContent).toContain('Deleted Entry');
+
+    const restoreBtn = section!.querySelector('[data-pkc-action="restore-entry"]');
+    expect(restoreBtn).not.toBeNull();
+    expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('deleted-lid');
+    expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-del');
+  });
 });
