@@ -2,6 +2,7 @@ import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
+import type { ImportPreviewRef } from '../../core/action/system-command';
 import { CAPABILITIES } from '../../runtime/release-meta';
 import { getRevisionCount, getLatestRevision } from '../../core/operations/container-ops';
 
@@ -58,6 +59,11 @@ function renderShell(state: AppState): HTMLElement {
 
   // Header
   shell.appendChild(renderHeader(state));
+
+  // Import confirmation panel
+  if (state.importPreview) {
+    shell.appendChild(renderImportConfirmation(state.importPreview));
+  }
 
   // Pending offers bar
   if (state.pendingOffers.length > 0) {
@@ -277,6 +283,53 @@ function renderEditor(entry: Entry): HTMLElement {
 
   editor.appendChild(actions);
   return editor;
+}
+
+function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
+  const panel = createElement('div', 'pkc-import-confirm');
+  panel.setAttribute('data-pkc-region', 'import-confirm');
+
+  const warning = createElement('div', 'pkc-import-warning');
+  warning.textContent = 'This will fully replace your current data. This is not a merge.';
+  panel.appendChild(warning);
+
+  const summary = createElement('div', 'pkc-import-summary');
+  summary.setAttribute('data-pkc-region', 'import-summary');
+
+  const items: [string, string][] = [
+    ['Source', preview.source],
+    ['Title', preview.title],
+    ['Entries', String(preview.entry_count)],
+    ['Revisions', String(preview.revision_count)],
+    ['Schema', `v${preview.schema_version}`],
+  ];
+
+  for (const [label, value] of items) {
+    const row = createElement('div', 'pkc-import-row');
+    const labelEl = createElement('span', 'pkc-import-label');
+    labelEl.textContent = `${label}:`;
+    row.appendChild(labelEl);
+    const valueEl = createElement('span', 'pkc-import-value');
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    summary.appendChild(row);
+  }
+  panel.appendChild(summary);
+
+  const actions = createElement('div', 'pkc-import-actions');
+
+  const confirmBtn = createElement('button', 'pkc-btn-danger');
+  confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
+  confirmBtn.textContent = 'Replace & Import';
+  actions.appendChild(confirmBtn);
+
+  const cancelBtn = createElement('button', 'pkc-btn');
+  cancelBtn.setAttribute('data-pkc-action', 'cancel-import');
+  cancelBtn.textContent = 'Cancel';
+  actions.appendChild(cancelBtn);
+
+  panel.appendChild(actions);
+  return panel;
 }
 
 function renderPendingOffers(offers: PendingOffer[]): HTMLElement {

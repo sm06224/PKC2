@@ -1,6 +1,7 @@
 import type { Container } from '../../core/model/container';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
+import type { ImportPreviewRef } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import {
   addEntry,
@@ -39,6 +40,8 @@ export interface AppState {
   embedded: boolean;
   /** Pending record offers (runtime-only, not persisted). */
   pendingOffers: PendingOffer[];
+  /** Import preview awaiting user confirmation (runtime-only). */
+  importPreview: ImportPreviewRef | null;
 }
 
 /**
@@ -59,6 +62,7 @@ export function createInitialState(): AppState {
     error: null,
     embedded: false,
     pendingOffers: [],
+    importPreview: null,
   };
 }
 
@@ -249,6 +253,43 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id, reply_to_id: offer.reply_to_id }],
+      };
+    }
+    case 'SYS_IMPORT_PREVIEW': {
+      const next: AppState = { ...state, importPreview: action.preview };
+      return {
+        state: next,
+        events: [{
+          type: 'IMPORT_PREVIEWED',
+          source: action.preview.source,
+          entry_count: action.preview.entry_count,
+        }],
+      };
+    }
+    case 'CONFIRM_IMPORT': {
+      if (!state.importPreview) return blocked(state, action);
+      const imported = state.importPreview.container;
+      const source = state.importPreview.source;
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: imported,
+        selectedLid: null,
+        editingLid: null,
+        error: null,
+        importPreview: null,
+      };
+      const cid = imported?.meta?.container_id ?? 'unknown';
+      return {
+        state: next,
+        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source }],
+      };
+    }
+    case 'CANCEL_IMPORT': {
+      const next: AppState = { ...state, importPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'IMPORT_CANCELLED' }],
       };
     }
     case 'SYS_ERROR': {

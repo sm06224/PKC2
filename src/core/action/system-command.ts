@@ -15,6 +15,27 @@ export interface PendingOfferRef {
 }
 
 /**
+ * ImportPreviewRef: summary of an import candidate for confirmation.
+ * Structural type to avoid importing adapter types into core.
+ */
+export interface ImportPreviewRef {
+  /** Title of the container to be imported. */
+  title: string;
+  /** Container ID of the import source. */
+  container_id: string;
+  /** Number of entries in the import. */
+  entry_count: number;
+  /** Number of revisions in the import. */
+  revision_count: number;
+  /** Schema version of the import. */
+  schema_version: number;
+  /** Source filename or description. */
+  source: string;
+  /** The validated Container, ready for replacement on confirm. */
+  container: Container;
+}
+
+/**
  * SystemCommand: commands issued by the runtime or infrastructure,
  * not directly by the user.
  *
@@ -28,6 +49,7 @@ export type SystemCommand =
   | { type: 'SYS_INIT_ERROR'; error: string }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
+  | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }
   | { type: 'SYS_RECORD_OFFERED'; offer: PendingOfferRef }
   | { type: 'SYS_ERROR'; error: string };
 

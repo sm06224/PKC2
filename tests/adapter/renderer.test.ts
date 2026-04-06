@@ -50,7 +50,7 @@ describe('Renderer', () => {
   it('renders initializing phase', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('initializing');
@@ -60,7 +60,7 @@ describe('Renderer', () => {
   it('renders error phase with message', () => {
     const state: AppState = {
       phase: 'error', container: null,
-      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('error');
@@ -70,7 +70,7 @@ describe('Renderer', () => {
   it('renders ready phase with entry list', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('ready');
@@ -90,7 +90,7 @@ describe('Renderer', () => {
   it('marks selected entry with data-pkc-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 
@@ -102,7 +102,7 @@ describe('Renderer', () => {
   it('renders detail view for selected entry', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 
@@ -121,7 +121,7 @@ describe('Renderer', () => {
   it('renders editor in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 
@@ -142,14 +142,14 @@ describe('Renderer', () => {
   it('shows create button only in ready phase', () => {
     const readyState: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(readyState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).not.toBeNull();
 
     const editingState: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(editingState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
@@ -162,7 +162,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.textContent).toContain('Create an entry to begin');
@@ -171,7 +171,7 @@ describe('Renderer', () => {
   it('shows export button in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     const exportBtn = root.querySelector('[data-pkc-action="begin-export"]');
@@ -182,7 +182,7 @@ describe('Renderer', () => {
   it('shows exporting badge in exporting phase', () => {
     const state: AppState = {
       phase: 'exporting', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
@@ -192,7 +192,7 @@ describe('Renderer', () => {
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 
@@ -209,7 +209,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=false for standalone', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('false');
@@ -218,7 +218,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=true for embedded', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
@@ -227,7 +227,7 @@ describe('Renderer', () => {
   it('sets data-pkc-capabilities with current capabilities', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     const caps = root.getAttribute('data-pkc-capabilities');
@@ -240,7 +240,7 @@ describe('Renderer', () => {
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="pending-offers"]')).toBeNull();
@@ -255,7 +255,7 @@ describe('Renderer', () => {
           archetype: 'text', source_container_id: null,
           reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
         },
-      ],
+      ], importPreview: null,
     };
     render(state, root);
 
@@ -283,7 +283,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 
@@ -295,10 +295,58 @@ describe('Renderer', () => {
   it('does not show revision badge on entries without revisions', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
+  });
+
+  it('renders import confirmation panel when importPreview is set', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: {
+        title: 'Imported PKC',
+        container_id: 'import-123',
+        entry_count: 5,
+        revision_count: 2,
+        schema_version: 1,
+        source: 'backup.html',
+        container: mockContainer,
+      },
+    };
+    render(state, root);
+
+    const panel = root.querySelector('[data-pkc-region="import-confirm"]');
+    expect(panel).not.toBeNull();
+
+    // Warning text
+    const warning = panel!.querySelector('.pkc-import-warning');
+    expect(warning?.textContent).toContain('fully replace');
+    expect(warning?.textContent).toContain('not a merge');
+
+    // Summary
+    const summary = panel!.querySelector('[data-pkc-region="import-summary"]');
+    expect(summary).not.toBeNull();
+    expect(summary!.textContent).toContain('backup.html');
+    expect(summary!.textContent).toContain('Imported PKC');
+    expect(summary!.textContent).toContain('5');
+
+    // Confirm and cancel buttons
+    const confirmBtn = panel!.querySelector('[data-pkc-action="confirm-import"]');
+    expect(confirmBtn).not.toBeNull();
+    expect(confirmBtn!.textContent).toContain('Replace');
+
+    const cancelBtn = panel!.querySelector('[data-pkc-action="cancel-import"]');
+    expect(cancelBtn).not.toBeNull();
+  });
+
+  it('does not render import panel when importPreview is null', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="import-confirm"]')).toBeNull();
   });
 
   it('shows revision info in detail view for entry with revisions', () => {
@@ -310,7 +358,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
     };
     render(state, root);
 

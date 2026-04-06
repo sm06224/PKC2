@@ -444,3 +444,80 @@ describe('AppState reducer', () => {
     expect(back.pendingOffers).toHaveLength(1);
   });
 });
+
+// ── Import confirmation ────────────────────────
+
+describe('import confirmation', () => {
+  const importContainer: Container = {
+    meta: {
+      container_id: 'imported-id',
+      title: 'Imported',
+      created_at: '2026-02-01T00:00:00Z',
+      updated_at: '2026-02-01T00:00:00Z',
+      schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'i1', title: 'Imported Entry', body: 'content',
+        archetype: 'text', created_at: '2026-02-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  const preview = {
+    title: 'Imported',
+    container_id: 'imported-id',
+    entry_count: 1,
+    revision_count: 0,
+    schema_version: 1,
+    source: 'test.html',
+    container: importContainer,
+  };
+
+  it('SYS_IMPORT_PREVIEW sets importPreview on state', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SYS_IMPORT_PREVIEW', preview,
+    });
+    expect(state.importPreview).toBe(preview);
+    expect(state.phase).toBe('ready');
+    expect(events).toEqual([{ type: 'IMPORT_PREVIEWED', source: 'test.html', entry_count: 1 }]);
+  });
+
+  it('CONFIRM_IMPORT replaces container and clears preview', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_IMPORT_PREVIEW', preview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CONFIRM_IMPORT' });
+    expect(state.container).toBe(importContainer);
+    expect(state.importPreview).toBeNull();
+    expect(state.selectedLid).toBeNull();
+    expect(state.phase).toBe('ready');
+    expect(events).toEqual([{ type: 'CONTAINER_IMPORTED', container_id: 'imported-id', source: 'test.html' }]);
+  });
+
+  it('CANCEL_IMPORT clears preview and keeps current container', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_IMPORT_PREVIEW', preview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CANCEL_IMPORT' });
+    expect(state.importPreview).toBeNull();
+    expect(state.container).toBe(mockContainer); // unchanged
+    expect(events).toEqual([{ type: 'IMPORT_CANCELLED' }]);
+  });
+
+  it('CONFIRM_IMPORT without preview is blocked', () => {
+    const { state } = reduce(readyState(), { type: 'CONFIRM_IMPORT' });
+    expect(state).toEqual(readyState()); // unchanged
+  });
+
+  it('CANCEL_IMPORT without preview is a no-op (clears null to null)', () => {
+    const { state, events } = reduce(readyState(), { type: 'CANCEL_IMPORT' });
+    expect(state.importPreview).toBeNull();
+    expect(events).toEqual([{ type: 'IMPORT_CANCELLED' }]);
+  });
+});

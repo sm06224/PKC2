@@ -23,7 +23,9 @@ export type UserAction =
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
   | { type: 'DELETE_RELATION'; id: string }
   | { type: 'ACCEPT_OFFER'; offer_id: string }
-  | { type: 'DISMISS_OFFER'; offer_id: string };
+  | { type: 'DISMISS_OFFER'; offer_id: string }
+  | { type: 'CONFIRM_IMPORT' }
+  | { type: 'CANCEL_IMPORT' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

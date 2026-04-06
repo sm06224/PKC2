@@ -211,12 +211,20 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
     const result = await importFromFile(file);
 
     if (result.ok) {
+      // Show preview for user confirmation instead of immediate replace
       dispatcher.dispatch({
-        type: 'SYS_IMPORT_COMPLETE',
-        container: result.container,
-        source: result.source,
+        type: 'SYS_IMPORT_PREVIEW',
+        preview: {
+          title: result.container.meta.title,
+          container_id: result.container.meta.container_id,
+          entry_count: result.container.entries.length,
+          revision_count: result.container.revisions.length,
+          schema_version: result.container.meta.schema_version,
+          source: result.source,
+          container: result.container,
+        },
       });
-      console.log(`[PKC2] Imported: ${result.source} (${result.container.entries.length} entries)`);
+      console.log(`[PKC2] Import preview: ${result.source} (${result.container.entries.length} entries)`);
     } else {
       const msg = formatImportErrors(result.errors);
       console.warn(`[PKC2] Import failed:\n${msg}`);

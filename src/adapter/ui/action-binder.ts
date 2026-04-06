@@ -55,6 +55,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (offerId) dispatcher.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
         break;
       }
+      case 'confirm-import':
+        dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        break;
+      case 'cancel-import':
+        dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+        break;
     }
   }
 
@@ -69,9 +75,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Escape: cancel edit or deselect
+    // Escape: cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
-      if (state.phase === 'editing') {
+      if (state.importPreview) {
+        dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+      } else if (state.phase === 'editing') {
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
       } else if (state.selectedLid) {
         dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
