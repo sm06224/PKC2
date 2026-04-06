@@ -24,7 +24,7 @@ const SHELL = resolve(ROOT, 'build', 'shell.html');
 // Source-side constants (mirrored from src/runtime/release-meta.ts)
 const APP_ID = 'pkc2';
 const SCHEMA_VERSION = 1;
-const CAPABILITIES = ['core', 'idb'];
+const CAPABILITIES = ['core', 'idb', 'export'];
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');

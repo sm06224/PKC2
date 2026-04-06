@@ -168,6 +168,27 @@ describe('Renderer', () => {
     expect(root.textContent).toContain('Create an entry to begin');
   });
 
+  it('shows export button in ready phase', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null,
+    };
+    render(state, root);
+    const exportBtn = root.querySelector('[data-pkc-action="begin-export"]');
+    expect(exportBtn).not.toBeNull();
+    expect(exportBtn!.textContent).toBe('Export');
+  });
+
+  it('shows exporting badge in exporting phase', () => {
+    const state: AppState = {
+      phase: 'exporting', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
+    expect(root.textContent).toContain('Exporting');
+  });
+
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

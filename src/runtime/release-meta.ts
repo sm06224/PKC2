@@ -77,4 +77,5 @@ export const SCHEMA_VERSION = 1;
 export const CAPABILITIES: readonly string[] = [
   'core',
   'idb',
+  'export',
 ] as const;

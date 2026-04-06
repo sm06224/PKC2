@@ -6,6 +6,7 @@ import { bindActions } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { exportContainerAsHtml } from './adapter/platform/exporter';
 import type { Container } from './core/model/container';
 
 /**
@@ -45,7 +46,20 @@ async function boot(): Promise<void> {
   const store = createIDBStore();
   mountPersistence(dispatcher, { store });
 
-  // 7. Load data: IDB first, then pkc-data, then empty
+  // 7. Export handler: when phase becomes 'exporting', run export
+  dispatcher.onState((state) => {
+    if (state.phase === 'exporting' && state.container) {
+      const result = exportContainerAsHtml(state.container);
+      if (result.success) {
+        console.log(`[PKC2] Exported: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+        dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+      } else {
+        dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+      }
+    }
+  });
+
+  // 8. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 

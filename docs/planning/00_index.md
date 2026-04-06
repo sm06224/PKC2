@@ -28,6 +28,8 @@ repository 内の requirements ドキュメント��`docs/requirements/00_最
 | 18 | `18_ui_shell.md` | 最小UI Shell: renderer/action-binder/event-log/DOM契約 |
 | 19 | `19_container_mutation.md` | Container mutation: 不変更新・物理削除・事前snapshot |
 | 20 | `20_idb_persistence.md` | IDB永続化: ContainerStore/Persistence/起動復元フロー |
+| 21 | `21_release_metadata.md` | Release Metadata: ReleaseMeta型/code_integrity/triple version |
+| 22 | `22_html_export.md` | HTML Export: 単一HTML成果物契約の完結/pkc-data埋め込み/export導線 |
 
 ## 前提文書
 
