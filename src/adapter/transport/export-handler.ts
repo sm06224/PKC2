@@ -41,10 +41,8 @@ export interface ExportResultPayload {
  * Registered via createHandlerRegistry().register('export:request', exportRequestHandler).
  */
 export const exportRequestHandler: MessageHandler = (ctx: HandlerContext): boolean => {
-  if (!ctx.embedded) {
-    console.warn('[PKC2] export:request ignored: not embedded');
-    return false;
-  }
+  // Note: embedded check is now enforced by the capability guard (capability.ts)
+  // before messages reach handlers. No need to duplicate here.
 
   if (!ctx.container) {
     console.warn('[PKC2] export:request ignored: no container loaded');

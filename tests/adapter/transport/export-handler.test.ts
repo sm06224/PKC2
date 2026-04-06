@@ -98,16 +98,15 @@ describe('exportRequestHandler', () => {
     return () => { cleanupDom(); };
   });
 
-  it('returns false and warns when not embedded', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('processes export even when embedded=false (capability guard is external)', () => {
+    // The embedded check is now handled by the capability guard (capability.ts)
+    // before messages reach handlers. The handler itself processes any valid context.
     const ctx = makeContext({ embedded: false });
 
     const result = exportRequestHandler(ctx);
 
-    expect(result).toBe(false);
-    expect(ctx.sender.send).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith('[PKC2] export:request ignored: not embedded');
-    warnSpy.mockRestore();
+    expect(result).toBe(true);
+    expect(ctx.sender.send).toHaveBeenCalledTimes(1);
   });
 
   it('returns false when container is null', () => {

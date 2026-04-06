@@ -1,6 +1,7 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import type { PendingOffer } from '../transport/record-offer-handler';
+import { CAPABILITIES } from '../../runtime/release-meta';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -21,6 +22,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
+  root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
 
   switch (state.phase) {
     case 'initializing':

@@ -78,4 +78,5 @@ export const CAPABILITIES: readonly string[] = [
   'core',
   'idb',
   'export',
+  'record-offer',
 ] as const;

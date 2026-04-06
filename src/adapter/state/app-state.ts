@@ -244,7 +244,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
       return {
         state: next,
-        events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id }],
+        events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id, reply_to_id: offer.reply_to_id }],
       };
     }
     case 'SYS_ERROR': {

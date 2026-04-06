@@ -12,6 +12,7 @@ import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
 import { recordOfferHandler } from './adapter/transport/record-offer-handler';
+import { canHandleMessage } from './adapter/transport/capability';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
@@ -75,15 +76,25 @@ async function boot(): Promise<void> {
   registry.register('record:offer', recordOfferHandler);
 
   // Mount bridge after init — containerId comes from state
+  let bridgeHandle: ReturnType<typeof mountMessageBridge> | null = null;
+  let bridgeMounted = false;
+
   dispatcher.onState((state) => {
     if (state.phase === 'ready' && state.container && !bridgeMounted) {
       bridgeMounted = true;
-      const handle = mountMessageBridge({
+      bridgeHandle = mountMessageBridge({
         containerId: state.container.meta.container_id,
         onMessage: (envelope, origin, sourceWindow) => {
           console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
 
           const currentState = dispatcher.getState();
+
+          // Capability guard: reject messages this PKC cannot handle in current mode
+          if (!canHandleMessage(envelope.type, currentState.embedded)) {
+            console.warn(`[PKC2] Message "${envelope.type}" not supported (embedded=${currentState.embedded})`);
+            return;
+          }
+
           registry.route({
             envelope,
             sourceWindow,
@@ -91,7 +102,7 @@ async function boot(): Promise<void> {
             container: currentState.container,
             embedded: currentState.embedded,
             dispatcher,
-            sender: handle.sender,
+            sender: bridgeHandle!.sender,
           });
         },
         onReject: (_, reason) => {
@@ -99,10 +110,20 @@ async function boot(): Promise<void> {
         },
       });
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
-      void handle; // bridge stays alive for the page lifetime
     }
   });
-  let bridgeMounted = false;
+
+  // 9b. Send record:reject when an offer is dismissed (if bridge is up)
+  dispatcher.onEvent((event) => {
+    if (event.type === 'OFFER_DISMISSED' && event.reply_to_id && bridgeHandle) {
+      bridgeHandle.sender.send(
+        window.parent,
+        'record:reject',
+        { offer_id: event.offer_id, reason: 'dismissed' },
+        event.reply_to_id,
+      );
+    }
+  });
 
   // 10. Embed detection
   const embedCtx = detectEmbedContext();

@@ -224,6 +224,19 @@ describe('Renderer', () => {
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
   });
 
+  it('sets data-pkc-capabilities with current capabilities', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [],
+    };
+    render(state, root);
+    const caps = root.getAttribute('data-pkc-capabilities');
+    expect(caps).toBeTruthy();
+    expect(caps).toContain('core');
+    expect(caps).toContain('export');
+    expect(caps).toContain('record-offer');
+  });
+
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
