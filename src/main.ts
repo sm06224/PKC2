@@ -8,6 +8,7 @@ import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
+import { mountMessageBridge } from './adapter/transport/message-bridge';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -64,7 +65,28 @@ async function boot(): Promise<void> {
   // 8. Import handler: file input wiring
   mountImportHandler(root, dispatcher);
 
-  // 9. Load data: IDB first, then pkc-data, then empty
+  // 9. Message bridge: PKC-Message transport
+  // Mount after init — containerId comes from state
+  dispatcher.onState((state) => {
+    if (state.phase === 'ready' && state.container && !bridgeMounted) {
+      bridgeMounted = true;
+      const handle = mountMessageBridge({
+        containerId: state.container.meta.container_id,
+        onMessage: (envelope, origin) => {
+          console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
+        },
+        onReject: (_, reason) => {
+          console.warn(`[PKC2] Message rejected: ${reason}`);
+        },
+      });
+      // Store for future cleanup if needed
+      console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
+      void handle; // bridge stays alive for the page lifetime
+    }
+  });
+  let bridgeMounted = false;
+
+  // 10. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 
