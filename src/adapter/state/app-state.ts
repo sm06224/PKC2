@@ -1,4 +1,5 @@
 import type { Container } from '../../core/model/container';
+import type { ArchetypeId } from '../../core/model/record';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef } from '../../core/action/system-command';
@@ -46,6 +47,8 @@ export interface AppState {
   importPreview: ImportPreviewRef | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
+  /** Current archetype filter (runtime-only, feature layer). null = show all. */
+  archetypeFilter: ArchetypeId | null;
 }
 
 /**
@@ -68,6 +71,7 @@ export function createInitialState(): AppState {
     pendingOffers: [],
     importPreview: null,
     searchQuery: '',
+    archetypeFilter: null,
   };
 }
 
@@ -324,6 +328,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_SEARCH_QUERY': {
       const next: AppState = { ...state, searchQuery: action.query };
+      return { state: next, events: [] };
+    }
+    case 'SET_ARCHETYPE_FILTER': {
+      const next: AppState = { ...state, archetypeFilter: action.archetype };
       return { state: next, events: [] };
     }
     case 'SYS_ERROR': {

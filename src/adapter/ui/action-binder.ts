@@ -1,3 +1,4 @@
+import type { ArchetypeId } from '../../core/model/record';
 import type { Dispatcher } from '../state/dispatcher';
 
 /**
@@ -67,6 +68,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'cancel-import':
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+        break;
+      case 'set-archetype-filter': {
+        const raw = target.getAttribute('data-pkc-archetype');
+        const archetype: ArchetypeId | null = raw ? raw as ArchetypeId : null;
+        dispatcher.dispatch({ type: 'SET_ARCHETYPE_FILTER', archetype });
+        break;
+      }
+      case 'clear-search':
+        dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: '' });
         break;
     }
   }

@@ -624,3 +624,40 @@ describe('search query', () => {
     expect(back.searchQuery).toBe('test');
   });
 });
+
+// ── Archetype filter ────────────────────────
+
+describe('archetype filter', () => {
+  it('createInitialState has null archetypeFilter', () => {
+    expect(createInitialState().archetypeFilter).toBeNull();
+  });
+
+  it('SET_ARCHETYPE_FILTER sets archetype in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_ARCHETYPE_FILTER', archetype: 'todo',
+    });
+    expect(state.archetypeFilter).toBe('todo');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_ARCHETYPE_FILTER can clear to null', () => {
+    const base = { ...readyState(), archetypeFilter: 'text' as const };
+    const { state } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: null });
+    expect(state.archetypeFilter).toBeNull();
+  });
+
+  it('SET_ARCHETYPE_FILTER is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state, events } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: 'todo' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('archetypeFilter persists through phase transitions', () => {
+    const withFilter = { ...readyState(), archetypeFilter: 'todo' as const };
+    const { state: editing } = reduce(withFilter, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.archetypeFilter).toBe('todo');
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.archetypeFilter).toBe('todo');
+  });
+});

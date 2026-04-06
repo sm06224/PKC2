@@ -4,4 +4,9 @@
 // Features export pure functions/types consumed by adapter (renderer, binder).
 // Feature state lives in AppState as runtime-only fields.
 
-export { filterEntries, entryMatchesQuery } from './search/filter';
+export {
+  filterEntries,
+  entryMatchesQuery,
+  filterByArchetype,
+  applyFilters,
+} from './search/filter';

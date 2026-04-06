@@ -27,7 +27,8 @@ export type UserAction =
   | { type: 'CONFIRM_IMPORT' }
   | { type: 'CANCEL_IMPORT' }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
-  | { type: 'SET_SEARCH_QUERY'; query: string };
+  | { type: 'SET_SEARCH_QUERY'; query: string }
+  | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

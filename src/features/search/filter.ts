@@ -25,7 +25,7 @@
  * - Implement advanced search features
  */
 
-import type { Entry } from '../../core/model/record';
+import type { Entry, ArchetypeId } from '../../core/model/record';
 
 /**
  * Filter entries by a search query.
@@ -55,4 +55,26 @@ export function entryMatchesQuery(entry: Entry, query: string): boolean {
     entry.title.toLowerCase().includes(trimmed) ||
     entry.body.toLowerCase().includes(trimmed)
   );
+}
+
+/**
+ * Filter entries by archetype.
+ * Returns all entries if archetype is null (no filter).
+ */
+export function filterByArchetype(entries: Entry[], archetype: ArchetypeId | null): Entry[] {
+  if (archetype === null) return entries;
+  return entries.filter((entry) => entry.archetype === archetype);
+}
+
+/**
+ * Apply combined filters: text query AND archetype filter.
+ * Both filters are optional (empty query = no text filter, null archetype = no type filter).
+ */
+export function applyFilters(
+  entries: Entry[],
+  query: string,
+  archetype: ArchetypeId | null,
+): Entry[] {
+  const byText = filterEntries(entries, query);
+  return filterByArchetype(byText, archetype);
 }

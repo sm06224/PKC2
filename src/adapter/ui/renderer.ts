@@ -10,7 +10,13 @@ import {
   getRestoreCandidates,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
-import { filterEntries } from '../../features/search/filter';
+import type { ArchetypeId } from '../../core/model/record';
+import { applyFilters } from '../../features/search/filter';
+
+/** Archetype options for the filter bar. Single source of truth. */
+const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
+  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
+] as const;
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -136,16 +142,38 @@ function renderSidebar(state: AppState): HTMLElement {
 
   // Search input (always shown when entries exist)
   if (allEntries.length > 0) {
+    const searchRow = createElement('div', 'pkc-search-row');
+
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.placeholder = 'Search entries…';
     searchInput.value = state.searchQuery;
     searchInput.setAttribute('data-pkc-field', 'search');
     searchInput.className = 'pkc-search-input';
-    sidebar.appendChild(searchInput);
+    searchRow.appendChild(searchInput);
+
+    if (state.searchQuery !== '') {
+      const clearBtn = createElement('button', 'pkc-btn-clear');
+      clearBtn.setAttribute('data-pkc-action', 'clear-search');
+      clearBtn.textContent = '×';
+      searchRow.appendChild(clearBtn);
+    }
+
+    sidebar.appendChild(searchRow);
+
+    // Archetype filter bar
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
   }
 
-  const entries = filterEntries(allEntries, state.searchQuery);
+  const entries = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+
+  // Result count (shown when any filter is active)
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null)) {
+    const count = createElement('div', 'pkc-result-count');
+    count.setAttribute('data-pkc-region', 'result-count');
+    count.textContent = `${entries.length} / ${allEntries.length} entries`;
+    sidebar.appendChild(count);
+  }
 
   if (allEntries.length === 0) {
     const empty = createElement('div', 'pkc-empty');
@@ -466,6 +494,24 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
     item.appendChild(dismissBtn);
 
     bar.appendChild(item);
+  }
+
+  return bar;
+}
+
+function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
+  const bar = createElement('div', 'pkc-archetype-filter');
+  bar.setAttribute('data-pkc-region', 'archetype-filter');
+
+  for (const opt of ARCHETYPE_FILTER_OPTIONS) {
+    const btn = createElement('button', 'pkc-filter-btn');
+    btn.setAttribute('data-pkc-action', 'set-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', opt ?? '');
+    btn.textContent = opt ?? 'All';
+    if (opt === current) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    bar.appendChild(btn);
   }
 
   return bar;
