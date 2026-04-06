@@ -154,23 +154,38 @@ function renderSidebar(state: AppState): HTMLElement {
       section.setAttribute('data-pkc-region', 'restore-candidates');
 
       const heading = createElement('div', 'pkc-restore-heading');
-      heading.textContent = `${candidates.length} deleted`;
+      heading.textContent = `Deleted (${candidates.length} restorable)`;
       section.appendChild(heading);
 
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
         const item = createElement('div', 'pkc-restore-item');
         item.setAttribute('data-pkc-revision-id', rev.id);
+        item.setAttribute('data-pkc-entry-lid', rev.entry_lid);
+
+        const info = createElement('div', 'pkc-restore-info');
 
         const title = createElement('span', 'pkc-restore-title');
         title.textContent = parsed?.title ?? '(untitled)';
-        item.appendChild(title);
+        info.appendChild(title);
+
+        if (parsed) {
+          const archetype = createElement('span', 'pkc-archetype-badge');
+          archetype.textContent = parsed.archetype;
+          info.appendChild(archetype);
+        }
+
+        const deletedAt = createElement('span', 'pkc-restore-timestamp');
+        deletedAt.textContent = `deleted ${formatTimestamp(rev.created_at)}`;
+        info.appendChild(deletedAt);
+
+        item.appendChild(info);
 
         const btn = createElement('button', 'pkc-btn');
         btn.setAttribute('data-pkc-action', 'restore-entry');
         btn.setAttribute('data-pkc-lid', rev.entry_lid);
         btn.setAttribute('data-pkc-revision-id', rev.id);
-        btn.textContent = 'Restore';
+        btn.textContent = 'Restore deleted entry';
         item.appendChild(btn);
 
         section.appendChild(item);
@@ -200,13 +215,16 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   badge.textContent = entry.archetype;
   li.appendChild(badge);
 
-  // Revision count indicator
+  // History indicator
   if (state.container) {
     const revCount = getRevisionCount(state.container, entry.lid);
     if (revCount > 0) {
+      li.setAttribute('data-pkc-has-history', 'true');
       const revBadge = createElement('span', 'pkc-revision-badge');
       revBadge.setAttribute('data-pkc-revision-count', String(revCount));
-      revBadge.textContent = `${revCount} rev`;
+      revBadge.textContent = revCount === 1
+        ? '1 version'
+        : `${revCount} versions`;
       li.appendChild(revBadge);
     }
   }
@@ -250,7 +268,7 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   body.textContent = entry.body || '(empty)';
   view.appendChild(body);
 
-  // Revision info + restore
+  // History section
   if (container) {
     const revCount = getRevisionCount(container, entry.lid);
     if (revCount > 0) {
@@ -258,19 +276,36 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
       const revInfo = createElement('div', 'pkc-revision-info');
       revInfo.setAttribute('data-pkc-region', 'revision-info');
       revInfo.setAttribute('data-pkc-revision-count', String(revCount));
-      const label = createElement('span', 'pkc-revision-label');
-      label.textContent = `${revCount} revision${revCount > 1 ? 's' : ''}`;
+
+      const heading = createElement('div', 'pkc-revision-heading');
+      heading.textContent = `History: ${revCount} previous version${revCount > 1 ? 's' : ''}`;
+      revInfo.appendChild(heading);
+
       if (latest) {
-        label.textContent += ` (latest: ${latest.created_at})`;
+        const latestInfo = createElement('div', 'pkc-revision-latest');
+        latestInfo.setAttribute('data-pkc-region', 'revision-latest');
+        const latestLabel = createElement('span', 'pkc-revision-latest-label');
+        latestLabel.textContent = `Last saved: ${formatTimestamp(latest.created_at)}`;
+        latestInfo.appendChild(latestLabel);
+
+        // Show what the previous version contained
+        const parsed = parseRevisionSnapshot(latest);
+        if (parsed) {
+          const preview = createElement('span', 'pkc-revision-preview');
+          preview.setAttribute('data-pkc-region', 'revision-preview');
+          preview.textContent = `"${truncate(parsed.title, 40)}"`;
+          latestInfo.appendChild(preview);
+        }
+
+        revInfo.appendChild(latestInfo);
       }
-      revInfo.appendChild(label);
 
       if (canEdit && latest) {
         const restoreBtn = createElement('button', 'pkc-btn');
         restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
         restoreBtn.setAttribute('data-pkc-lid', entry.lid);
         restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
-        restoreBtn.textContent = 'Restore latest';
+        restoreBtn.textContent = 'Revert to previous version';
         revInfo.appendChild(restoreBtn);
       }
 
@@ -426,4 +461,28 @@ function createElement(tag: string, className: string): HTMLElement {
 function findSelectedEntry(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
   return state.container.entries.find((e) => e.lid === state.selectedLid) ?? null;
+}
+
+/**
+ * Format an ISO timestamp for display.
+ * Shows date and time in a compact human-readable form.
+ */
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const date = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    const time = d.toISOString().slice(11, 16); // HH:MM
+    return `${date} ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Truncate a string with ellipsis if it exceeds maxLen.
+ */
+function truncate(s: string, maxLen: number): string {
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen - 1) + '…';
 }

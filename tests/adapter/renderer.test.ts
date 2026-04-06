@@ -289,7 +289,7 @@ describe('Renderer', () => {
 
     const badge = root.querySelector('[data-pkc-revision-count="2"]');
     expect(badge).not.toBeNull();
-    expect(badge!.textContent).toContain('2 rev');
+    expect(badge!.textContent).toContain('2 versions');
   });
 
   it('does not show revision badge on entries without revisions', () => {
@@ -364,7 +364,7 @@ describe('Renderer', () => {
 
     const revInfo = root.querySelector('[data-pkc-region="revision-info"]');
     expect(revInfo).not.toBeNull();
-    expect(revInfo!.textContent).toContain('1 revision');
+    expect(revInfo!.textContent).toContain('1 previous version');
   });
 
   it('shows restore button in revision info for selected entry', () => {
@@ -388,7 +388,7 @@ describe('Renderer', () => {
     expect(restoreBtn).not.toBeNull();
     expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('e1');
     expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-1');
-    expect(restoreBtn!.textContent).toContain('Restore');
+    expect(restoreBtn!.textContent).toContain('Revert to previous version');
   });
 
   it('shows restore candidates for deleted entries', () => {
@@ -411,12 +411,88 @@ describe('Renderer', () => {
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
     expect(section).not.toBeNull();
-    expect(section!.textContent).toContain('1 deleted');
+    expect(section!.textContent).toContain('1 restorable');
     expect(section!.textContent).toContain('Deleted Entry');
+    expect(section!.textContent).toContain('text'); // archetype badge
 
     const restoreBtn = section!.querySelector('[data-pkc-action="restore-entry"]');
     expect(restoreBtn).not.toBeNull();
     expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('deleted-lid');
     expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-del');
+    expect(restoreBtn!.textContent).toContain('Restore deleted entry');
+  });
+
+  it('shows data-pkc-has-history on entries with revisions', () => {
+    const containerWithRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        { id: 'rev-1', entry_lid: 'e1', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRevisions,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+
+    const e1Item = root.querySelector('[data-pkc-lid="e1"]');
+    expect(e1Item!.getAttribute('data-pkc-has-history')).toBe('true');
+
+    const e2Item = root.querySelector('[data-pkc-lid="e2"]');
+    expect(e2Item!.hasAttribute('data-pkc-has-history')).toBe(false);
+  });
+
+  it('shows formatted timestamp and revision preview in detail view', () => {
+    const containerWithRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        {
+          id: 'rev-1', entry_lid: 'e1',
+          snapshot: JSON.stringify({
+            lid: 'e1', title: 'Old Title', body: 'old body',
+            archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          }),
+          created_at: '2026-03-15T14:30:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRevisions,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+
+    const latestRegion = root.querySelector('[data-pkc-region="revision-latest"]');
+    expect(latestRegion).not.toBeNull();
+    expect(latestRegion!.textContent).toContain('2026-03-15 14:30');
+
+    const preview = root.querySelector('[data-pkc-region="revision-preview"]');
+    expect(preview).not.toBeNull();
+    expect(preview!.textContent).toContain('Old Title');
+  });
+
+  it('shows deletion timestamp on restore candidates', () => {
+    const containerWithDeletedRevisions: Container = {
+      ...mockContainer,
+      revisions: [
+        {
+          id: 'rev-del', entry_lid: 'deleted-lid',
+          snapshot: JSON.stringify({
+            lid: 'deleted-lid', title: 'Gone', body: '',
+            archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          }),
+          created_at: '2026-04-01T09:15:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithDeletedRevisions,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null,
+    };
+    render(state, root);
+
+    const section = root.querySelector('[data-pkc-region="restore-candidates"]');
+    expect(section!.textContent).toContain('2026-04-01 09:15');
+    expect(section!.textContent).toContain('todo'); // archetype
   });
 });
