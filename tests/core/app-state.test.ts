@@ -307,4 +307,112 @@ describe('AppState reducer', () => {
     });
     expect(state.embedded).toBe(true);
   });
+
+  // ── pending offers ──────────────────────
+  it('createInitialState has empty pendingOffers', () => {
+    expect(createInitialState().pendingOffers).toEqual([]);
+  });
+
+  it('SYS_RECORD_OFFERED adds to pendingOffers', () => {
+    const offer = {
+      offer_id: 'o1', title: 'Offered', body: 'Hello',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: 'sender', received_at: '2026-01-01T00:00:00Z',
+    };
+    const { state, events } = reduce(readyState(), {
+      type: 'SYS_RECORD_OFFERED', offer,
+    });
+    expect(state.pendingOffers).toHaveLength(1);
+    expect(state.pendingOffers[0]!.offer_id).toBe('o1');
+    expect(events).toEqual([{ type: 'RECORD_OFFERED', offer_id: 'o1', title: 'Offered' }]);
+  });
+
+  it('SYS_RECORD_OFFERED accumulates multiple offers', () => {
+    const offer1 = {
+      offer_id: 'o1', title: 'A', body: 'a',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
+    };
+    const offer2 = {
+      offer_id: 'o2', title: 'B', body: 'b',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-01-01T00:00:01Z',
+    };
+    const { state: s1 } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer: offer1 });
+    const { state: s2 } = reduce(s1, { type: 'SYS_RECORD_OFFERED', offer: offer2 });
+    expect(s2.pendingOffers).toHaveLength(2);
+  });
+
+  it('ACCEPT_OFFER adds entry and removes from pending', () => {
+    const offer = {
+      offer_id: 'o1', title: 'Offered Record', body: 'Offered body',
+      archetype: 'text', source_container_id: 'remote',
+      reply_to_id: 'sender', received_at: '2026-01-01T00:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), {
+      type: 'SYS_RECORD_OFFERED', offer,
+    });
+    expect(withOffer.pendingOffers).toHaveLength(1);
+
+    const { state, events } = reduce(withOffer, {
+      type: 'ACCEPT_OFFER', offer_id: 'o1',
+    });
+    expect(state.pendingOffers).toHaveLength(0);
+    expect(state.container!.entries).toHaveLength(4); // 3 original + 1 accepted
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.title).toBe('Offered Record');
+    expect(newEntry.body).toBe('Offered body');
+    expect(state.selectedLid).toBe(newEntry.lid);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'OFFER_ACCEPTED', offer_id: 'o1' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'ENTRY_CREATED' }));
+  });
+
+  it('ACCEPT_OFFER for unknown offer_id is blocked', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'ACCEPT_OFFER', offer_id: 'nonexistent',
+    });
+    expect(state.container!.entries).toHaveLength(3); // unchanged
+    expect(events).toHaveLength(0);
+  });
+
+  it('DISMISS_OFFER removes from pending without mutation', () => {
+    const offer = {
+      offer_id: 'o1', title: 'X', body: 'Y',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), {
+      type: 'SYS_RECORD_OFFERED', offer,
+    });
+
+    const { state, events } = reduce(withOffer, {
+      type: 'DISMISS_OFFER', offer_id: 'o1',
+    });
+    expect(state.pendingOffers).toHaveLength(0);
+    expect(state.container!.entries).toHaveLength(3); // unchanged
+    expect(events).toEqual([{ type: 'OFFER_DISMISSED', offer_id: 'o1' }]);
+  });
+
+  it('DISMISS_OFFER for unknown offer_id is silent no-op', () => {
+    const { events } = reduce(readyState(), {
+      type: 'DISMISS_OFFER', offer_id: 'nonexistent',
+    });
+    expect(events).toHaveLength(0);
+  });
+
+  it('pending offers persist through phase transitions', () => {
+    const offer = {
+      offer_id: 'o1', title: 'X', body: 'Y',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), {
+      type: 'SYS_RECORD_OFFERED', offer,
+    });
+    // Go to editing and back
+    const { state: editing } = reduce(withOffer, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.pendingOffers).toHaveLength(1);
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.pendingOffers).toHaveLength(1);
+  });
 });

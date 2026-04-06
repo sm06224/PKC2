@@ -25,6 +25,9 @@ export type DomainEvent =
   | { type: 'CONTAINER_LOADED'; container_id: string }
   | { type: 'CONTAINER_IMPORTED'; container_id: string; source: string }
   | { type: 'EXPORT_COMPLETED' }
+  | { type: 'RECORD_OFFERED'; offer_id: string; title: string }
+  | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string }
+  | { type: 'OFFER_DISMISSED'; offer_id: string }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

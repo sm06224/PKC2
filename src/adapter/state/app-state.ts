@@ -1,6 +1,7 @@
 import type { Container } from '../../core/model/container';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
+import type { PendingOffer } from '../transport/record-offer-handler';
 import {
   addEntry,
   updateEntry,
@@ -36,6 +37,8 @@ export interface AppState {
   error: string | null;
   /** True when running inside an iframe. Set once at init. */
   embedded: boolean;
+  /** Pending record offers (runtime-only, not persisted). */
+  pendingOffers: PendingOffer[];
 }
 
 /**
@@ -55,6 +58,7 @@ export function createInitialState(): AppState {
     editingLid: null,
     error: null,
     embedded: false,
+    pendingOffers: [],
   };
 }
 
@@ -193,6 +197,54 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
+      };
+    }
+    case 'SYS_RECORD_OFFERED': {
+      const offer = action.offer as PendingOffer;
+      const next: AppState = {
+        ...state,
+        pendingOffers: [...state.pendingOffers, offer],
+      };
+      return {
+        state: next,
+        events: [{ type: 'RECORD_OFFERED', offer_id: offer.offer_id, title: offer.title }],
+      };
+    }
+    case 'ACCEPT_OFFER': {
+      if (!state.container) return blocked(state, action);
+      const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
+      if (!offer) return blocked(state, action);
+      const lid = generateLid();
+      const ts = now();
+      const container = addEntry(
+        state.container, lid, offer.archetype, offer.title, ts,
+      );
+      // Set body on the newly added entry
+      const updatedContainer = updateEntry(container, lid, offer.title, offer.body, ts);
+      const next: AppState = {
+        ...state,
+        container: updatedContainer,
+        pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
+        selectedLid: lid,
+      };
+      return {
+        state: next,
+        events: [
+          { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
+          { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
+        ],
+      };
+    }
+    case 'DISMISS_OFFER': {
+      const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
+      if (!offer) return { state, events: [] };
+      const next: AppState = {
+        ...state,
+        pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
+      };
+      return {
+        state: next,
+        events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id }],
       };
     }
     case 'SYS_ERROR': {

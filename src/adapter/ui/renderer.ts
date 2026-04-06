@@ -1,5 +1,6 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
+import type { PendingOffer } from '../transport/record-offer-handler';
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -53,6 +54,11 @@ function renderShell(state: AppState): HTMLElement {
 
   // Header
   shell.appendChild(renderHeader(state));
+
+  // Pending offers bar
+  if (state.pendingOffers.length > 0) {
+    shell.appendChild(renderPendingOffers(state.pendingOffers));
+  }
 
   // Main area: sidebar + detail
   const main = createElement('div', 'pkc-main');
@@ -238,6 +244,40 @@ function renderEditor(entry: Entry): HTMLElement {
 
   editor.appendChild(actions);
   return editor;
+}
+
+function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
+  const bar = createElement('div', 'pkc-pending-offers');
+  bar.setAttribute('data-pkc-region', 'pending-offers');
+
+  const label = createElement('span', 'pkc-pending-label');
+  label.textContent = `${offers.length} pending offer${offers.length > 1 ? 's' : ''}`;
+  bar.appendChild(label);
+
+  for (const offer of offers) {
+    const item = createElement('div', 'pkc-pending-item');
+    item.setAttribute('data-pkc-offer-id', offer.offer_id);
+
+    const title = createElement('span', 'pkc-pending-title');
+    title.textContent = offer.title || '(untitled)';
+    item.appendChild(title);
+
+    const acceptBtn = createElement('button', 'pkc-btn');
+    acceptBtn.setAttribute('data-pkc-action', 'accept-offer');
+    acceptBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    acceptBtn.textContent = 'Accept';
+    item.appendChild(acceptBtn);
+
+    const dismissBtn = createElement('button', 'pkc-btn');
+    dismissBtn.setAttribute('data-pkc-action', 'dismiss-offer');
+    dismissBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    dismissBtn.textContent = 'Dismiss';
+    item.appendChild(dismissBtn);
+
+    bar.appendChild(item);
+  }
+
+  return bar;
 }
 
 // ---- Helpers ----

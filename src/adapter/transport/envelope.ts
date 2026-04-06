@@ -46,6 +46,7 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set<MessageType>([
   'pong',
   'record:offer',
   'record:accept',
+  'record:reject',
   'export:request',
   'export:result',
   'navigate',

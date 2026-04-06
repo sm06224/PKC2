@@ -11,6 +11,7 @@ import { importFromFile, formatImportErrors } from './adapter/platform/importer'
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
+import { recordOfferHandler } from './adapter/transport/record-offer-handler';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
@@ -71,6 +72,7 @@ async function boot(): Promise<void> {
   // 9. Message handler registry + bridge
   const registry = createHandlerRegistry();
   registry.register('export:request', exportRequestHandler);
+  registry.register('record:offer', recordOfferHandler);
 
   // Mount bridge after init — containerId comes from state
   dispatcher.onState((state) => {

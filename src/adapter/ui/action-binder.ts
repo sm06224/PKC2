@@ -45,6 +45,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'begin-export':
         dispatcher.dispatch({ type: 'BEGIN_EXPORT' });
         break;
+      case 'accept-offer': {
+        const offerId = target.getAttribute('data-pkc-offer-id');
+        if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+        break;
+      }
+      case 'dismiss-offer': {
+        const offerId = target.getAttribute('data-pkc-offer-id');
+        if (offerId) dispatcher.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
+        break;
+      }
     }
   }
 
