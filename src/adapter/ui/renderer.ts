@@ -78,12 +78,28 @@ function renderHeader(state: AppState): HTMLElement {
   phase.textContent = state.phase;
   header.appendChild(phase);
 
-  // Action: create entry
+  // Actions: create entry, export
   if (state.phase === 'ready') {
     const createBtn = createElement('button', 'pkc-btn');
     createBtn.setAttribute('data-pkc-action', 'create-entry');
     createBtn.textContent = '+ New';
     header.appendChild(createBtn);
+
+    const exportBtn = createElement('button', 'pkc-btn');
+    exportBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportBtn.textContent = 'Export';
+    header.appendChild(exportBtn);
+
+    const importBtn = createElement('button', 'pkc-btn');
+    importBtn.setAttribute('data-pkc-action', 'begin-import');
+    importBtn.textContent = 'Import';
+    header.appendChild(importBtn);
+  }
+
+  if (state.phase === 'exporting') {
+    const badge = createElement('span', 'pkc-export-badge');
+    badge.textContent = 'Exporting…';
+    header.appendChild(badge);
   }
 
   return header;

@@ -58,5 +58,6 @@ function formatEvent(event: DomainEvent): string {
   if ('id' in event) parts.push(`id=${event.id}`);
   if ('error' in event) parts.push(`error=${event.error}`);
   if ('container_id' in event) parts.push(`cid=${event.container_id}`);
+  if ('source' in event) parts.push(`source=${event.source}`);
   return parts.join(' ');
 }

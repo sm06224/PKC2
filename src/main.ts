@@ -6,6 +6,10 @@ import { bindActions } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { exportContainerAsHtml } from './adapter/platform/exporter';
+import { importFromFile, formatImportErrors } from './adapter/platform/importer';
+import { mountMessageBridge } from './adapter/transport/message-bridge';
+import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
 /**
@@ -45,7 +49,44 @@ async function boot(): Promise<void> {
   const store = createIDBStore();
   mountPersistence(dispatcher, { store });
 
-  // 7. Load data: IDB first, then pkc-data, then empty
+  // 7. Export handler: when phase becomes 'exporting', run export
+  dispatcher.onState((state) => {
+    if (state.phase === 'exporting' && state.container) {
+      const result = exportContainerAsHtml(state.container);
+      if (result.success) {
+        console.log(`[PKC2] Exported: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+        dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+      } else {
+        dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+      }
+    }
+  });
+
+  // 8. Import handler: file input wiring
+  mountImportHandler(root, dispatcher);
+
+  // 9. Message bridge: PKC-Message transport
+  // Mount after init — containerId comes from state
+  dispatcher.onState((state) => {
+    if (state.phase === 'ready' && state.container && !bridgeMounted) {
+      bridgeMounted = true;
+      const handle = mountMessageBridge({
+        containerId: state.container.meta.container_id,
+        onMessage: (envelope, origin) => {
+          console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
+        },
+        onReject: (_, reason) => {
+          console.warn(`[PKC2] Message rejected: ${reason}`);
+        },
+      });
+      // Store for future cleanup if needed
+      console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
+      void handle; // bridge stays alive for the page lifetime
+    }
+  });
+  let bridgeMounted = false;
+
+  // 10. Load data: IDB first, then pkc-data, then empty
   try {
     const { source, container: idbContainer } = await loadFromStore(store);
 
@@ -94,6 +135,48 @@ function createEmptyContainer(): Container {
     revisions: [],
     assets: {},
   };
+}
+
+/**
+ * Mount import handler: creates hidden file input and wires
+ * begin-import click → file picker → import → dispatch.
+ */
+function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.html';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-input');
+  document.body.appendChild(fileInput);
+
+  // Listen for begin-import clicks via event delegation on root
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="begin-import"]');
+    if (!target) return;
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  // Handle file selection
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+
+    const result = await importFromFile(file);
+
+    if (result.ok) {
+      dispatcher.dispatch({
+        type: 'SYS_IMPORT_COMPLETE',
+        container: result.container,
+        source: result.source,
+      });
+      console.log(`[PKC2] Imported: ${result.source} (${result.container.entries.length} entries)`);
+    } else {
+      const msg = formatImportErrors(result.errors);
+      console.warn(`[PKC2] Import failed:\n${msg}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Import failed: ${msg}` });
+    }
+  });
 }
 
 boot();

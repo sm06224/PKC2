@@ -42,6 +42,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'delete-entry':
         if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
         break;
+      case 'begin-export':
+        dispatcher.dispatch({ type: 'BEGIN_EXPORT' });
+        break;
     }
   }
 

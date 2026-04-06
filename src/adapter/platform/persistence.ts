@@ -27,6 +27,7 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'RELATION_CREATED',
   'RELATION_DELETED',
   'CONTAINER_LOADED',
+  'CONTAINER_IMPORTED',
 ]);
 
 const DEBOUNCE_MS = 300;
