@@ -54,7 +54,7 @@
 | `09_ディレクトリ構成.md` | 初期構成案（12_責務分離で超越） |
 | `10_着手順と残課題.md` | 着手順・判断保留事項 |
 
-### Issue 実装記録（#1〜#10 完了、#11〜#23 はコード＋HANDOVER.mdに記録）
+### Issue 実装記録（#1〜#10 完了、#11〜#24 はコード＋HANDOVER.mdに記録）
 | ファイル | Issue | 内容 |
 |---------|-------|------|
 | `17_domain_action_contract.md` | #2-3 | domain/state/action/command/event/message境界 |
@@ -66,7 +66,7 @@
 | `23_import.md` | #9 | Import |
 | `24_message_transport.md` | #10 | PKC-Message Transport |
 
-Issue #11〜#23 は個別設計文書なし（基盤方針の延長として実装）。
+Issue #11〜#24 は個別設計文書なし（基盤方針の延長として実装）。
 到達点は `HANDOVER.md` に集約。feature 層パターンは `12_基盤方針追補_責務分離.md` に反映済み。
 
 ## 前提文書
