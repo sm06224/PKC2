@@ -13,7 +13,9 @@ import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
 import { recordOfferHandler } from './adapter/transport/record-offer-handler';
 import { canHandleMessage } from './adapter/transport/capability';
+import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
+import { VERSION } from './runtime/release-meta';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -108,6 +110,10 @@ async function boot(): Promise<void> {
         onReject: (_, reason) => {
           console.warn(`[PKC2] Message rejected: ${reason}`);
         },
+        pongProfile: () => buildPongProfile({
+          version: VERSION,
+          embedded: dispatcher.getState().embedded,
+        }),
       });
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
     }

@@ -100,6 +100,42 @@ describe('mountMessageBridge', () => {
     postMessageSpy.mockRestore();
   });
 
+  it('includes profile in pong payload when pongProfile provided', () => {
+    const profile = {
+      app_id: 'pkc2',
+      version: '2.0.0',
+      schema_version: 1,
+      embedded: true,
+      capabilities: ['core', 'export'],
+    };
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      pongProfile: () => profile,
+    });
+
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+    window.dispatchEvent(createMessageEvent(validPing()));
+
+    const sentData = postMessageSpy.mock.calls[0]![0];
+    expect(sentData.type).toBe('pong');
+    expect(sentData.payload).toEqual(profile);
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('sends null payload in pong when no pongProfile provided', () => {
+    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+    window.dispatchEvent(createMessageEvent(validPing()));
+
+    const sentData = postMessageSpy.mock.calls[0]![0];
+    expect(sentData.type).toBe('pong');
+    expect(sentData.payload).toBeNull();
+
+    postMessageSpy.mockRestore();
+  });
+
   it('does not call onMessage for ping (handled internally)', () => {
     const onMessage = vi.fn();
     handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
