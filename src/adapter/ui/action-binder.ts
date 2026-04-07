@@ -45,7 +45,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
-        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment' };
+        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Entry';
         dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
         break;
@@ -138,6 +138,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           status: todo.status === 'done' ? 'open' : 'done',
         });
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        break;
+      }
+      case 'move-to-folder': {
+        const moveSection = target.closest<HTMLElement>('[data-pkc-region="move-to-folder"]');
+        if (!moveSection) break;
+        const entryLid = moveSection.getAttribute('data-pkc-lid');
+        if (!entryLid) break;
+        const targetEl = moveSection.querySelector<HTMLSelectElement>('[data-pkc-field="move-target"]');
+        const folderLid = targetEl?.value ?? '';
+        const state = dispatcher.getState();
+        if (!state.container) break;
+        // Remove existing structural parent relation
+        for (const r of state.container.relations) {
+          if (r.kind === 'structural' && r.to === entryLid) {
+            dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+            break;
+          }
+        }
+        // Create new structural relation if a folder is selected
+        if (folderLid) {
+          dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: entryLid, kind: 'structural' });
+        }
         break;
       }
       case 'filter-by-tag':

@@ -21,6 +21,7 @@ import { registerPresenter } from './adapter/ui/detail-presenter';
 import { todoPresenter } from './adapter/ui/todo-presenter';
 import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
+import { folderPresenter } from './adapter/ui/folder-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -44,6 +45,7 @@ async function boot(): Promise<void> {
   registerPresenter('todo', todoPresenter);
   registerPresenter('form', formPresenter);
   registerPresenter('attachment', attachmentPresenter);
+  registerPresenter('folder', folderPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();

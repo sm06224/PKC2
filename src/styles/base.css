@@ -939,6 +939,77 @@
   cursor: pointer;
 }
 
+/* ── Folder presenter ── */
+.pkc-folder-view {
+  margin-bottom: 0.75rem;
+}
+
+.pkc-folder-empty {
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: var(--c-surface);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Breadcrumb ── */
+.pkc-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  margin-bottom: 0.5rem;
+}
+
+.pkc-breadcrumb-sep {
+  color: var(--c-border);
+}
+
+.pkc-breadcrumb-item {
+  color: var(--c-accent);
+  cursor: pointer;
+}
+
+.pkc-breadcrumb-item:hover {
+  text-decoration: underline;
+}
+
+/* ── Move to Folder ── */
+.pkc-move-to-folder {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--c-border);
+  font-size: 0.8rem;
+}
+
+.pkc-move-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-muted);
+}
+
+.pkc-move-select {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  font-family: var(--font-sans);
+  max-width: 200px;
+}
+
+/* ── Sidebar tree folder indicator ── */
+[data-pkc-folder="true"] .pkc-entry-title::before {
+  content: '📁 ';
+  font-size: 0.8rem;
+}
+
 /* ── Attachment presenter ── */
 .pkc-attachment-view {
   margin-bottom: 0.75rem;

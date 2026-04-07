@@ -17,6 +17,8 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
+import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
+import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import {
   lightExportWarning, fullExportEstimation, zipRecommendation,
@@ -27,7 +29,7 @@ import { parseTodoBody } from './todo-presenter';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
-  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
+  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'folder', 'generic', 'opaque',
 ] as const;
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
@@ -37,6 +39,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   todo: 'Todo',
   form: 'Form',
   attachment: 'File',
+  folder: 'Folder',
   generic: 'Generic',
   opaque: 'Opaque',
 };
@@ -177,6 +180,12 @@ function renderHeader(state: AppState): HTMLElement {
     createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
     createAttBtn.textContent = '+ File';
     createGroup.appendChild(createAttBtn);
+
+    const createFolderBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    createFolderBtn.setAttribute('data-pkc-action', 'create-entry');
+    createFolderBtn.setAttribute('data-pkc-archetype', 'folder');
+    createFolderBtn.textContent = '+ Folder';
+    createGroup.appendChild(createFolderBtn);
 
     header.appendChild(createGroup);
 
@@ -439,8 +448,19 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  for (const entry of entries) {
-    list.appendChild(renderEntryItem(entry, state));
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null;
+
+  if (hasActiveFilter || !state.container) {
+    // Flat mode when filters are active (tree doesn't make sense for search results)
+    for (const entry of entries) {
+      list.appendChild(renderEntryItem(entry, state));
+    }
+  } else {
+    // Tree mode: build from structural relations
+    const tree = buildTree(entries, state.container.relations);
+    for (const node of tree) {
+      renderTreeNode(node, list, state);
+    }
   }
   sidebar.appendChild(list);
 
@@ -494,6 +514,20 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   return sidebar;
+}
+
+function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): void {
+  const li = renderEntryItem(node.entry, state);
+  if (node.depth > 0) {
+    li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
+  }
+  if (node.entry.archetype === 'folder') {
+    li.setAttribute('data-pkc-folder', 'true');
+  }
+  parent.appendChild(li);
+  for (const child of node.children) {
+    renderTreeNode(child, parent, state);
+  }
 }
 
 function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
@@ -587,6 +621,30 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   titleRow.appendChild(archLabel);
   view.appendChild(titleRow);
 
+  // Breadcrumb: show parent folder path
+  if (container) {
+    const breadcrumb = getBreadcrumb(container.relations, container.entries, entry.lid);
+    if (breadcrumb.length > 0) {
+      const bc = createElement('div', 'pkc-breadcrumb');
+      bc.setAttribute('data-pkc-region', 'breadcrumb');
+      let bcIndex = 0;
+      for (const ancestor of breadcrumb) {
+        if (bcIndex > 0) {
+          const sep = createElement('span', 'pkc-breadcrumb-sep');
+          sep.textContent = ' › ';
+          bc.appendChild(sep);
+        }
+        const link = createElement('span', 'pkc-breadcrumb-item');
+        link.setAttribute('data-pkc-action', 'select-entry');
+        link.setAttribute('data-pkc-lid', ancestor.lid);
+        link.textContent = ancestor.title || '(untitled)';
+        bc.appendChild(link);
+        bcIndex++;
+      }
+      view.appendChild(bc);
+    }
+  }
+
   // Archetype-dispatched body rendering
   const presenter = getPresenter(entry.archetype);
   view.appendChild(presenter.renderBody(entry));
@@ -654,6 +712,47 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     }
 
     view.appendChild(tagSection);
+  }
+
+  // Move to Folder UI
+  if (container && canEdit) {
+    const folders = getAvailableFolders(container.entries, container.relations, entry.lid);
+    const moveSection = createElement('div', 'pkc-move-to-folder');
+    moveSection.setAttribute('data-pkc-region', 'move-to-folder');
+    moveSection.setAttribute('data-pkc-lid', entry.lid);
+
+    const moveLabel = createElement('span', 'pkc-move-label');
+    moveLabel.textContent = 'Folder:';
+    moveSection.appendChild(moveLabel);
+
+    // Find current parent folder
+    const currentParent = getStructuralParent(container.relations, container.entries, entry.lid);
+
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-field', 'move-target');
+    select.className = 'pkc-move-select';
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '(none — root level)';
+    if (!currentParent) noneOpt.selected = true;
+    select.appendChild(noneOpt);
+
+    for (const f of folders) {
+      const opt = document.createElement('option');
+      opt.value = f.lid;
+      opt.textContent = f.title || `(${f.lid})`;
+      if (currentParent && currentParent.lid === f.lid) opt.selected = true;
+      select.appendChild(opt);
+    }
+    moveSection.appendChild(select);
+
+    const moveBtn = createElement('button', 'pkc-btn-small');
+    moveBtn.setAttribute('data-pkc-action', 'move-to-folder');
+    moveBtn.textContent = 'Move';
+    moveSection.appendChild(moveBtn);
+
+    view.appendChild(moveSection);
   }
 
   // History section
