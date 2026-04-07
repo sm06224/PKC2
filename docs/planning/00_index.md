@@ -29,6 +29,8 @@
 | `15_基盤方針追補_type_dispatch_adapter.md` | discriminated union、Archetype dispatch、dependency governance、ESLint規約 | ★★ |
 | `16_基盤方針追補_versioning_UX_Issues.md` | semver+kind+timestamp、AppPhase状態機械、操作契約 | ★★ |
 | `17_保存再水和可搬モデル.md` | 4系統モデル、HTML mode行列、body-assets分離、IDB進化、export形式、圧縮方針 | ★★ |
+| `18_運用ガイド_export_import_rehydrate.md` | Export/Import/Rehydrate の利用手順・判断基準・操作シナリオ（利用ガイド） | ★★ |
+| `19_pre_release.md` | プレリリース文書 — 到達点・制約・future・バージョニング・技術仕様サマリ | ★★ |
 
 ### 第3群: 将来計画（必要時に読む）
 
@@ -67,8 +69,9 @@
 | `23_import.md` | #9 | Import |
 | `24_message_transport.md` | #10 | PKC-Message Transport |
 
-Issue #11〜#33 は個別設計文書なし（基盤方針の延長として実装）。
+Issue #11〜#42 は個別設計文書なし（基盤方針の延長として実装）。
 到達点は `HANDOVER.md` に集約。feature 層パターンは `12_基盤方針追補_責務分離.md` に反映済み。
+Issue #43 の運用ガイドは `18_運用ガイド_export_import_rehydrate.md` として直下に配置。
 
 ## 前提文書
 
