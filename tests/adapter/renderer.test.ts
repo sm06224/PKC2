@@ -1174,6 +1174,62 @@ describe('Renderer', () => {
     expect(desc!.textContent).toBe('milk and eggs');
   });
 
+  it('sidebar shows todo status badge for todo entries', () => {
+    registerPresenter('todo', todoPresenter);
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Open task', body: '{"status":"open","description":"do it"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 't2', title: 'Done task', body: '{"status":"done","description":"did it"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        { lid: 'n1', title: 'A note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    // t1 — open
+    const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
+    const openBadge = t1.querySelector('.pkc-todo-status-badge');
+    expect(openBadge).not.toBeNull();
+    expect(openBadge!.getAttribute('data-pkc-todo-status')).toBe('open');
+    expect(openBadge!.textContent).toBe('[ ]');
+
+    // t2 — done
+    const t2 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't2')!;
+    const doneBadge = t2.querySelector('.pkc-todo-status-badge');
+    expect(doneBadge!.getAttribute('data-pkc-todo-status')).toBe('done');
+    expect(doneBadge!.textContent).toBe('[x]');
+
+    // n1 — no status badge for text entries
+    const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
+    expect(n1.querySelector('.pkc-todo-status-badge')).toBeNull();
+  });
+
+  it('detail view todo toggle button has correct data attributes', () => {
+    registerPresenter('todo', todoPresenter);
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Task', body: '{"status":"open","description":"desc"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-todo-status"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle!.getAttribute('data-pkc-lid')).toBe('t1');
+    expect(toggle!.getAttribute('data-pkc-todo-status')).toBe('open');
+    expect(toggle!.textContent).toBe('[ ]');
+  });
+
   it('header has both Note and Todo create buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

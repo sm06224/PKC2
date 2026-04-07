@@ -3,6 +3,7 @@ import type { RelationKind } from '../../core/model/relation';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
+import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -113,6 +114,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (relId) {
           dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
         }
+        break;
+      }
+      case 'toggle-todo-status': {
+        if (!lid) break;
+        const state = dispatcher.getState();
+        const entry = state.container?.entries.find((e) => e.lid === lid);
+        if (!entry) break;
+        const todo = parseTodoBody(entry.body);
+        const toggled = serializeTodoBody({
+          ...todo,
+          status: todo.status === 'done' ? 'open' : 'done',
+        });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
         break;
       }
       case 'filter-by-tag':

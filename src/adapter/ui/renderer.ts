@@ -19,6 +19,7 @@ import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation
 import { filterByTag } from '../../features/relation/tag-filter';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
+import { parseTodoBody } from './todo-presenter';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -320,6 +321,15 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   const badge = createElement('span', 'pkc-archetype-badge');
   badge.textContent = entry.archetype;
   li.appendChild(badge);
+
+  // Todo status indicator
+  if (entry.archetype === 'todo') {
+    const todo = parseTodoBody(entry.body);
+    const statusBadge = createElement('span', 'pkc-todo-status-badge');
+    statusBadge.setAttribute('data-pkc-todo-status', todo.status);
+    statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
+    li.appendChild(statusBadge);
+  }
 
   // History indicator
   if (state.container) {

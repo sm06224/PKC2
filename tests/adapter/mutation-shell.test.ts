@@ -318,4 +318,36 @@ describe('Mutation → Shell integration', () => {
     expect(parsed.status).toBe('done');
     expect(parsed.description).toBe('Completed task');
   });
+
+  it('todo quick toggle: click toggles status without entering edit mode', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('todo', todoPresenter);
+
+    // Create todo entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
+    const lid = dispatcher.getState().selectedLid!;
+    expect(dispatcher.getState().phase).toBe('ready');
+
+    // Find the toggle button in detail view
+    const toggle = root.querySelector('[data-pkc-action="toggle-todo-status"]') as HTMLElement;
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute('data-pkc-todo-status')).toBe('open');
+
+    // Click toggle
+    toggle.click();
+
+    // Should stay in ready phase (no edit mode)
+    expect(dispatcher.getState().phase).toBe('ready');
+
+    // Entry body should now be done
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(entry.body);
+    expect(parsed.status).toBe('done');
+
+    // Toggle button should now show [x]
+    const updatedToggle = root.querySelector('[data-pkc-action="toggle-todo-status"]') as HTMLElement;
+    expect(updatedToggle.getAttribute('data-pkc-todo-status')).toBe('done');
+    expect(updatedToggle.textContent).toBe('[x]');
+  });
 });

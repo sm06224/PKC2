@@ -33,9 +33,11 @@ export const todoPresenter: DetailPresenter = {
     const container = document.createElement('div');
     container.className = 'pkc-todo-view';
 
-    const statusEl = document.createElement('span');
+    const statusEl = document.createElement('button');
     statusEl.className = 'pkc-todo-status';
     statusEl.setAttribute('data-pkc-todo-status', todo.status);
+    statusEl.setAttribute('data-pkc-action', 'toggle-todo-status');
+    statusEl.setAttribute('data-pkc-lid', entry.lid);
     statusEl.textContent = todo.status === 'done' ? '[x]' : '[ ]';
     container.appendChild(statusEl);
 

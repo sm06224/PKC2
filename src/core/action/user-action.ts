@@ -31,7 +31,8 @@ export type UserAction =
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
-  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' };
+  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' }
+  | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

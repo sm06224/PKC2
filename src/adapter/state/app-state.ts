@@ -356,6 +356,20 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
       return { state: next, events: [] };
     }
+    case 'QUICK_UPDATE_ENTRY': {
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const ts = now();
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      const container = updateEntry(snapshotted, action.lid, entry.title, action.body, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
       return { state: next, events: [{ type: 'ERROR_OCCURRED', error: action.error }] };

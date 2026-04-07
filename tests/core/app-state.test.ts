@@ -877,4 +877,43 @@ describe('sort', () => {
     const state = readyState();
     expect(state.tagFilter).toBeNull();
   });
+
+  // ── QUICK_UPDATE_ENTRY ─────────────────────────
+
+  it('QUICK_UPDATE_ENTRY updates body without phase change', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'new body',
+    });
+    expect(state.phase).toBe('ready');
+    const entry = state.container!.entries.find((e) => e.lid === 'e1');
+    expect(entry!.body).toBe('new body');
+    expect(entry!.title).toBe('Entry One');
+    expect(events).toContainEqual({ type: 'ENTRY_UPDATED', lid: 'e1' });
+  });
+
+  it('QUICK_UPDATE_ENTRY creates a revision snapshot', () => {
+    const base = readyState();
+    expect(base.container!.revisions).toHaveLength(0);
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'updated',
+    });
+    expect(state.container!.revisions.length).toBeGreaterThan(0);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocks for unknown lid', () => {
+    const base = readyState();
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'nonexistent', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in editing phase', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
 });

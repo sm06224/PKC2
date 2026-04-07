@@ -69,6 +69,7 @@ describe('todoPresenter', () => {
     expect(status).not.toBeNull();
     expect(status!.getAttribute('data-pkc-todo-status')).toBe('open');
     expect(status!.textContent).toBe('[ ]');
+    expect(status!.tagName).toBe('BUTTON');
   });
 
   it('renderBody shows done status', () => {
@@ -76,6 +77,13 @@ describe('todoPresenter', () => {
     const status = el.querySelector('.pkc-todo-status');
     expect(status!.getAttribute('data-pkc-todo-status')).toBe('done');
     expect(status!.textContent).toBe('[x]');
+  });
+
+  it('renderBody toggle button has data-pkc-action', () => {
+    const el = todoPresenter.renderBody(makeTodoEntry());
+    const status = el.querySelector('.pkc-todo-status');
+    expect(status!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+    expect(status!.getAttribute('data-pkc-lid')).toBe('todo1');
   });
 
   it('renderBody shows description', () => {
