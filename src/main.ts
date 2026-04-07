@@ -8,6 +8,7 @@ import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
+import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
@@ -65,23 +66,27 @@ async function boot(): Promise<void> {
   const store = createIDBStore();
   mountPersistence(dispatcher, { store });
 
-  // 7. Export handler: when phase becomes 'exporting', run export
+  // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
   dispatcher.onState((state) => {
     if (state.phase === 'exporting' && state.container) {
       const mode = state.exportMode ?? 'full';
       const mutability = state.exportMutability ?? 'editable';
-      const result = exportContainerAsHtml(state.container, { mode, mutability });
-      if (result.success) {
-        console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
-        dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
-      } else {
-        dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
-      }
+      exportContainerAsHtml(state.container, { mode, mutability }).then((result) => {
+        if (result.success) {
+          console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+          dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+        } else {
+          dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+        }
+      });
     }
   });
 
-  // 8. Import handler: file input wiring
+  // 8. Import handler: file input wiring (HTML + ZIP)
   mountImportHandler(root, dispatcher);
+
+  // 8b. ZIP export handler: direct async export (no phase transition needed)
+  mountZipExportHandler(root, dispatcher);
 
   // 9. Message handler registry + bridge
   const registry = createHandlerRegistry();
@@ -220,7 +225,7 @@ function createEmptyContainer(): Container {
 function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.html';
+  fileInput.accept = '.html,.zip';
   fileInput.style.display = 'none';
   fileInput.setAttribute('data-pkc-role', 'import-input');
   document.body.appendChild(fileInput);
@@ -238,27 +243,70 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
     const file = fileInput.files?.[0];
     if (!file) return;
 
-    const result = await importFromFile(file);
-
-    if (result.ok) {
-      // Show preview for user confirmation instead of immediate replace
-      dispatcher.dispatch({
-        type: 'SYS_IMPORT_PREVIEW',
-        preview: {
-          title: result.container.meta.title,
-          container_id: result.container.meta.container_id,
-          entry_count: result.container.entries.length,
-          revision_count: result.container.revisions.length,
-          schema_version: result.container.meta.schema_version,
-          source: result.source,
-          container: result.container,
-        },
-      });
-      console.log(`[PKC2] Import preview: ${result.source} (${result.container.entries.length} entries)`);
+    // Route to appropriate importer based on file extension
+    if (file.name.endsWith('.zip')) {
+      const result = await importContainerFromZip(file);
+      if (result.ok) {
+        dispatcher.dispatch({
+          type: 'SYS_IMPORT_PREVIEW',
+          preview: {
+            title: result.container.meta.title,
+            container_id: result.container.meta.container_id,
+            entry_count: result.container.entries.length,
+            revision_count: result.container.revisions.length,
+            schema_version: result.container.meta.schema_version,
+            source: result.source,
+            container: result.container,
+          },
+        });
+        console.log(`[PKC2] ZIP import preview: ${result.source} (${result.container.entries.length} entries, ${Object.keys(result.container.assets).length} assets)`);
+      } else {
+        console.warn(`[PKC2] ZIP import failed: ${result.error}`);
+        dispatcher.dispatch({ type: 'SYS_ERROR', error: `ZIP import failed: ${result.error}` });
+      }
     } else {
-      const msg = formatImportErrors(result.errors);
-      console.warn(`[PKC2] Import failed:\n${msg}`);
-      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Import failed: ${msg}` });
+      const result = await importFromFile(file);
+      if (result.ok) {
+        dispatcher.dispatch({
+          type: 'SYS_IMPORT_PREVIEW',
+          preview: {
+            title: result.container.meta.title,
+            container_id: result.container.meta.container_id,
+            entry_count: result.container.entries.length,
+            revision_count: result.container.revisions.length,
+            schema_version: result.container.meta.schema_version,
+            source: result.source,
+            container: result.container,
+          },
+        });
+        console.log(`[PKC2] Import preview: ${result.source} (${result.container.entries.length} entries)`);
+      } else {
+        const msg = formatImportErrors(result.errors);
+        console.warn(`[PKC2] Import failed:\n${msg}`);
+        dispatcher.dispatch({ type: 'SYS_ERROR', error: `Import failed: ${msg}` });
+      }
+    }
+  });
+}
+
+/**
+ * Mount ZIP export handler: handles export-zip clicks.
+ * Directly triggers async ZIP export without phase transition.
+ */
+function mountZipExportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  root.addEventListener('click', async (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="export-zip"]');
+    if (!target) return;
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready') return;
+
+    const result = await exportContainerAsZip(state.container);
+    if (result.success) {
+      console.log(`[PKC2] ZIP exported: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+    } else {
+      console.warn(`[PKC2] ZIP export failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `ZIP export failed: ${result.error}` });
     }
   });
 }

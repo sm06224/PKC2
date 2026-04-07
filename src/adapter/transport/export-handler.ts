@@ -50,21 +50,24 @@ export const exportRequestHandler: MessageHandler = (ctx: HandlerContext): boole
   }
 
   const payload = (ctx.envelope.payload ?? {}) as Partial<ExportRequestPayload>;
-  const html = buildExportHtml(ctx.container);
-  const filename = generateExportFilename(ctx.container, payload.filename);
 
-  const resultPayload: ExportResultPayload = {
-    html,
-    filename,
-    size: html.length,
-  };
+  // buildExportHtml is async (compression), fire and forget within the handler
+  buildExportHtml(ctx.container).then((html) => {
+    const filename = generateExportFilename(ctx.container!, payload.filename);
 
-  ctx.sender.send(
-    ctx.sourceWindow,
-    'export:result',
-    resultPayload,
-    ctx.envelope.source_id,
-  );
+    const resultPayload: ExportResultPayload = {
+      html,
+      filename,
+      size: html.length,
+    };
+
+    ctx.sender.send(
+      ctx.sourceWindow,
+      'export:result',
+      resultPayload,
+      ctx.envelope.source_id,
+    );
+  });
 
   return true;
 };

@@ -5,6 +5,7 @@ import {
   formatImportErrors,
 } from '@adapter/platform/importer';
 import { buildExportHtml } from '@adapter/platform/exporter';
+import { compressToBase64 } from '@adapter/platform/compression';
 import type { Container } from '@core/model/container';
 import type { ReleaseMeta } from '../../src/runtime/release-meta';
 
@@ -94,10 +95,10 @@ function buildTestHtmlWithData(
 
 describe('importFromHtml', () => {
   describe('valid import', () => {
-    it('parses valid PKC2 HTML and returns Container', () => {
+    it('parses valid PKC2 HTML and returns Container', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c);
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -106,10 +107,10 @@ describe('importFromHtml', () => {
       expect(result.container.relations).toHaveLength(1);
     });
 
-    it('returns meta from the imported HTML', () => {
+    it('returns meta from the imported HTML', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c);
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -118,23 +119,23 @@ describe('importFromHtml', () => {
       expect(result.meta.schema).toBe(1);
     });
 
-    it('sets source to provided value or default', () => {
+    it('sets source to provided value or default', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c);
 
-      const r1 = importFromHtml(html, 'test-file.html');
+      const r1 = await importFromHtml(html, 'test-file.html');
       expect(r1.ok).toBe(true);
       if (r1.ok) expect(r1.source).toBe('test-file.html');
 
-      const r2 = importFromHtml(html);
+      const r2 = await importFromHtml(html);
       expect(r2.ok).toBe(true);
       if (r2.ok) expect(r2.source).toBe('html-string');
     });
 
-    it('preserves empty entries and relations arrays', () => {
+    it('preserves empty entries and relations arrays', async () => {
       const c = createTestContainer({ entries: [], relations: [] });
       const html = buildTestHtml(c);
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -144,21 +145,19 @@ describe('importFromHtml', () => {
   });
 
   describe('validation failures', () => {
-    it('rejects non-HTML input', () => {
-      const result = importFromHtml('not html at all');
-      // DOMParser doesn't fail on invalid HTML, it produces a document
-      // But without pkc-meta it should fail
+    it('rejects non-HTML input', async () => {
+      const result = await importFromHtml('not html at all');
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.errors[0]!.code).toBe('MISSING_PKC_META');
       }
     });
 
-    it('rejects HTML without pkc-meta', () => {
+    it('rejects HTML without pkc-meta', async () => {
       const html = `<!DOCTYPE html><html><body>
         <script id="pkc-data" type="application/json">{"container":{}}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -166,12 +165,12 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects HTML with empty pkc-meta', () => {
+    it('rejects HTML with empty pkc-meta', async () => {
       const html = `<!DOCTYPE html><html><body>
         <script id="pkc-meta" type="application/json">{}</script>
         <script id="pkc-data" type="application/json">{"container":{}}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -179,10 +178,10 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects wrong app ID', () => {
+    it('rejects wrong app ID', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c, { app: 'not-pkc2' as 'pkc2' });
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -191,10 +190,10 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects schema version mismatch', () => {
+    it('rejects schema version mismatch', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c, { schema: 99 });
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -203,12 +202,12 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects HTML without pkc-data', () => {
+    it('rejects HTML without pkc-data', async () => {
       const meta = createValidMeta();
       const html = `<!DOCTYPE html><html><body>
         <script id="pkc-meta" type="application/json">${JSON.stringify(meta)}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -216,13 +215,13 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects pkc-data without container key', () => {
+    it('rejects pkc-data without container key', async () => {
       const meta = createValidMeta();
       const html = `<!DOCTYPE html><html><body>
         <script id="pkc-meta" type="application/json">${JSON.stringify(meta)}</script>
         <script id="pkc-data" type="application/json">{"notContainer": true}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -231,14 +230,14 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects Container without meta', () => {
+    it('rejects Container without meta', async () => {
       const meta = createValidMeta();
       const container = { entries: [], relations: [], revisions: [], assets: {} };
       const html = `<!DOCTYPE html><html><body>
         <script id="pkc-meta" type="application/json">${JSON.stringify(meta)}</script>
         <script id="pkc-data" type="application/json">${JSON.stringify({ container })}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -246,7 +245,7 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('rejects Container without entries array', () => {
+    it('rejects Container without entries array', async () => {
       const meta = createValidMeta();
       const container = {
         meta: { container_id: 'c1', title: 'T', created_at: T, updated_at: T, schema_version: 1 },
@@ -256,7 +255,7 @@ describe('importFromHtml', () => {
         <script id="pkc-meta" type="application/json">${JSON.stringify(meta)}</script>
         <script id="pkc-data" type="application/json">${JSON.stringify({ container })}</script>
       </body></html>`;
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -264,10 +263,10 @@ describe('importFromHtml', () => {
       }
     });
 
-    it('collects multiple validation errors', () => {
+    it('collects multiple validation errors', async () => {
       const c = createTestContainer();
       const html = buildTestHtml(c, { app: 'wrong' as 'pkc2', schema: 99 });
-      const result = importFromHtml(html);
+      const result = await importFromHtml(html);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -281,24 +280,24 @@ describe('importFromHtml', () => {
 });
 
 describe('importFromHtml: export_meta', () => {
-  it('reads export_meta.mode from full export', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
+  it('reads export_meta.mode from full export', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data') } });
     const data = { container: c, export_meta: { mode: 'full', mutability: 'editable' } };
     const html = buildTestHtmlWithData(data);
-    const result = importFromHtml(html);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMode).toBe('full');
     expect(result.exportMutability).toBe('editable');
-    expect(result.container.assets).toEqual({ 'ast-1': 'data' });
+    expect(result.container.assets).toEqual({ 'ast-1': btoa('data') });
   });
 
-  it('reads export_meta.mode from light export', () => {
+  it('reads export_meta.mode from light export', async () => {
     const c = createTestContainer({ assets: {} });
     const data = { container: c, export_meta: { mode: 'light', mutability: 'editable' } };
     const html = buildTestHtmlWithData(data);
-    const result = importFromHtml(html);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -306,37 +305,106 @@ describe('importFromHtml: export_meta', () => {
     expect(result.container.assets).toEqual({});
   });
 
-  it('reads readonly mutability from export_meta', () => {
+  it('reads readonly mutability from export_meta', async () => {
     const c = createTestContainer();
     const data = { container: c, export_meta: { mode: 'full', mutability: 'readonly' } };
     const html = buildTestHtmlWithData(data);
-    const result = importFromHtml(html);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMutability).toBe('readonly');
   });
 
-  it('defaults mutability to editable when absent in export_meta', () => {
+  it('defaults mutability to editable when absent in export_meta', async () => {
     const c = createTestContainer();
     const data = { container: c, export_meta: { mode: 'full' } };
     const html = buildTestHtmlWithData(data);
-    const result = importFromHtml(html);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMutability).toBe('editable');
   });
 
-  it('exportMode is undefined when export_meta is absent (legacy)', () => {
+  it('exportMode is undefined when export_meta is absent (legacy)', async () => {
     const c = createTestContainer();
     const html = buildTestHtml(c);
-    const result = importFromHtml(html);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMode).toBeUndefined();
     expect(result.exportMutability).toBeUndefined();
+  });
+});
+
+describe('importFromHtml: gzip+base64 decompression', () => {
+  it('decompresses assets when asset_encoding=gzip+base64', async () => {
+    const originalData = btoa('Hello compressed world!');
+    const compressedData = await compressToBase64(originalData);
+
+    const c = createTestContainer({ assets: { 'ast-1': compressedData } });
+    const data = {
+      container: c,
+      export_meta: { mode: 'full', mutability: 'editable', asset_encoding: 'gzip+base64' },
+    };
+    const html = buildTestHtmlWithData(data);
+    const result = await importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Assets should be decompressed back to original base64
+    expect(result.container.assets['ast-1']).toBe(originalData);
+  });
+
+  it('passes through assets when asset_encoding=base64', async () => {
+    const originalData = btoa('uncompressed data');
+    const c = createTestContainer({ assets: { 'ast-1': originalData } });
+    const data = {
+      container: c,
+      export_meta: { mode: 'full', mutability: 'editable', asset_encoding: 'base64' },
+    };
+    const html = buildTestHtmlWithData(data);
+    const result = await importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.container.assets['ast-1']).toBe(originalData);
+  });
+
+  it('passes through assets when asset_encoding is absent (legacy)', async () => {
+    const originalData = btoa('legacy data');
+    const c = createTestContainer({ assets: { 'ast-1': originalData } });
+    const data = { container: c, export_meta: { mode: 'full', mutability: 'editable' } };
+    const html = buildTestHtmlWithData(data);
+    const result = await importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.container.assets['ast-1']).toBe(originalData);
+  });
+
+  it('handles multiple compressed assets', async () => {
+    const data1 = btoa('file one content');
+    const data2 = btoa('file two content');
+    const compressed1 = await compressToBase64(data1);
+    const compressed2 = await compressToBase64(data2);
+
+    const c = createTestContainer({
+      assets: { 'ast-1': compressed1, 'ast-2': compressed2 },
+    });
+    const data = {
+      container: c,
+      export_meta: { mode: 'full', mutability: 'editable', asset_encoding: 'gzip+base64' },
+    };
+    const html = buildTestHtmlWithData(data);
+    const result = await importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.container.assets['ast-1']).toBe(data1);
+    expect(result.container.assets['ast-2']).toBe(data2);
   });
 });
 
@@ -375,15 +443,15 @@ describe('export → import round-trip', () => {
     `;
   }
 
-  it('round-trips Container through export → import', () => {
+  it('round-trips Container through export → import', async () => {
     setupShellDom();
     const original = createTestContainer();
 
     // Export
-    const html = buildExportHtml(original);
+    const html = await buildExportHtml(original);
 
     // Import
-    const result = importFromHtml(html, 'exported.html');
+    const result = await importFromHtml(html, 'exported.html');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -397,23 +465,41 @@ describe('export → import round-trip', () => {
     expect(result.source).toBe('exported.html');
   });
 
-  it('round-trips full export with assets and export_meta', () => {
+  it('round-trips full export with compressed assets', async () => {
     setupShellDom();
-    const original = createTestContainer({ assets: { 'ast-1': 'base64data' } });
-    const html = buildExportHtml(original, 'full');
-    const result = importFromHtml(html);
+    const original = createTestContainer({ assets: { 'ast-1': btoa('base64data content') } });
+    const html = await buildExportHtml(original, 'full');
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMode).toBe('full');
-    expect(result.container.assets).toEqual({ 'ast-1': 'base64data' });
+    // After round-trip: compress on export, decompress on import → original data
+    expect(result.container.assets).toEqual({ 'ast-1': btoa('base64data content') });
   });
 
-  it('round-trips light export with stripped assets', () => {
+  it('round-trips full export with multiple assets', async () => {
     setupShellDom();
-    const original = createTestContainer({ assets: { 'ast-1': 'base64data' } });
-    const html = buildExportHtml(original, 'light');
-    const result = importFromHtml(html);
+    const original = createTestContainer({
+      assets: {
+        'ast-1': btoa('document content'),
+        'ast-2': btoa('image data ' + 'x'.repeat(1000)),
+        'ast-3': btoa('spreadsheet'),
+      },
+    });
+    const html = await buildExportHtml(original, 'full');
+    const result = await importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.container.assets).toEqual(original.assets);
+  });
+
+  it('round-trips light export with stripped assets', async () => {
+    setupShellDom();
+    const original = createTestContainer({ assets: { 'ast-1': btoa('base64data') } });
+    const html = await buildExportHtml(original, 'light');
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -421,7 +507,7 @@ describe('export → import round-trip', () => {
     expect(result.container.assets).toEqual({});
   });
 
-  it('round-trips Container with special characters', () => {
+  it('round-trips Container with special characters', async () => {
     setupShellDom();
     const original = createTestContainer({
       entries: [
@@ -436,8 +522,8 @@ describe('export → import round-trip', () => {
       ],
     });
 
-    const html = buildExportHtml(original);
-    const result = importFromHtml(html);
+    const html = await buildExportHtml(original);
+    const result = await importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -447,9 +533,7 @@ describe('export → import round-trip', () => {
 });
 
 describe('reducer: SYS_IMPORT_COMPLETE', () => {
-  // Test the reducer integration indirectly via the dispatcher
   it('is handled by the dispatcher in ready phase', async () => {
-    // Dynamic import to avoid env issues
     const { createDispatcher } = await import('@adapter/state/dispatcher');
 
     const dispatcher = createDispatcher();

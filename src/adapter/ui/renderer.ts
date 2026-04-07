@@ -200,6 +200,11 @@ function renderHeader(state: AppState): HTMLElement {
     exportRoFullBtn.textContent = 'Export RO Full';
     header.appendChild(exportRoFullBtn);
 
+    const exportZipBtn = createElement('button', 'pkc-btn');
+    exportZipBtn.setAttribute('data-pkc-action', 'export-zip');
+    exportZipBtn.textContent = 'Export ZIP';
+    header.appendChild(exportZipBtn);
+
     const importBtn = createElement('button', 'pkc-btn');
     importBtn.setAttribute('data-pkc-action', 'begin-import');
     importBtn.textContent = 'Import';
