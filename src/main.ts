@@ -18,6 +18,7 @@ import { detectEmbedContext } from './adapter/platform/embed-detect';
 import { VERSION } from './runtime/release-meta';
 import { registerPresenter } from './adapter/ui/detail-presenter';
 import { todoPresenter } from './adapter/ui/todo-presenter';
+import { formPresenter } from './adapter/ui/form-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -39,6 +40,7 @@ async function boot(): Promise<void> {
 
   // 0. Register archetype presenters
   registerPresenter('todo', todoPresenter);
+  registerPresenter('form', formPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();

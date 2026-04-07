@@ -144,6 +144,12 @@ function renderHeader(state: AppState): HTMLElement {
     createTodoBtn.textContent = '+ Todo';
     header.appendChild(createTodoBtn);
 
+    const createFormBtn = createElement('button', 'pkc-btn');
+    createFormBtn.setAttribute('data-pkc-action', 'create-entry');
+    createFormBtn.setAttribute('data-pkc-archetype', 'form');
+    createFormBtn.textContent = '+ Form';
+    header.appendChild(createFormBtn);
+
     const exportBtn = createElement('button', 'pkc-btn');
     exportBtn.setAttribute('data-pkc-action', 'begin-export');
     exportBtn.textContent = 'Export';

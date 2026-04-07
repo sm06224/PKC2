@@ -7,6 +7,7 @@ import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
+import { formPresenter } from '@adapter/ui/form-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -349,5 +350,65 @@ describe('Mutation → Shell integration', () => {
     const updatedToggle = root.querySelector('[data-pkc-action="toggle-todo-status"]') as HTMLElement;
     expect(updatedToggle.getAttribute('data-pkc-todo-status')).toBe('done');
     expect(updatedToggle.textContent).toBe('[x]');
+  });
+
+  it('form entry lifecycle: create → edit → save → re-render → re-edit', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('form', formPresenter);
+
+    // Create form entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'form', title: 'My Form' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('form');
+
+    // View should show form presenter output
+    const formView = root.querySelector('.pkc-form-view');
+    expect(formView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('form');
+
+    // Fill in form fields
+    const nameInput = root.querySelector<HTMLInputElement>('[data-pkc-field="form-name"]');
+    expect(nameInput).not.toBeNull();
+    nameInput!.value = 'Alice';
+
+    const noteArea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="form-note"]');
+    expect(noteArea).not.toBeNull();
+    noteArea!.value = 'Some notes';
+
+    const checkedInput = root.querySelector<HTMLInputElement>('[data-pkc-field="form-checked"]');
+    expect(checkedInput).not.toBeNull();
+    checkedInput!.checked = true;
+
+    // Save
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.name).toBe('Alice');
+    expect(parsed.note).toBe('Some notes');
+    expect(parsed.checked).toBe(true);
+
+    // Re-render: view should show saved values
+    const reRenderedView = root.querySelector('.pkc-form-view');
+    expect(reRenderedView).not.toBeNull();
+    const values = reRenderedView!.querySelectorAll('.pkc-form-value');
+    expect(values[0]!.textContent).toBe('Alice');
+    expect(values[1]!.textContent).toBe('Some notes');
+    expect(values[2]!.textContent).toBe('Yes');
+
+    // Re-edit: fields should be pre-populated
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const nameInput2 = root.querySelector<HTMLInputElement>('[data-pkc-field="form-name"]');
+    expect(nameInput2!.value).toBe('Alice');
+    const checkedInput2 = root.querySelector<HTMLInputElement>('[data-pkc-field="form-checked"]');
+    expect(checkedInput2!.checked).toBe(true);
   });
 });

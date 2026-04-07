@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
+import { formPresenter } from '@adapter/ui/form-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 
@@ -1244,5 +1245,54 @@ describe('Renderer', () => {
     const todoBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
     expect(todoBtn).not.toBeNull();
     expect(todoBtn!.textContent).toBe('+ Todo');
+
+    const formBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="form"]');
+    expect(formBtn).not.toBeNull();
+    expect(formBtn!.textContent).toBe('+ Form');
+  });
+
+  it('form entry uses form presenter when registered', () => {
+    registerPresenter('form', formPresenter);
+
+    const formContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'f1', title: 'My Form', body: '{"name":"Alice","note":"Hello","checked":true}', archetype: 'form', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: formContainer,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const formView = root.querySelector('.pkc-form-view');
+    expect(formView).not.toBeNull();
+
+    const values = formView!.querySelectorAll('.pkc-form-value');
+    expect(values[0]!.textContent).toBe('Alice');
+    expect(values[2]!.textContent).toBe('Yes');
+  });
+
+  it('form entry renders editor with form fields', () => {
+    registerPresenter('form', formPresenter);
+
+    const formContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'f1', title: 'My Form', body: '{"name":"Bob","note":"test","checked":false}', archetype: 'form', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'editing', container: formContainer,
+      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('form');
+    expect(root.querySelector('[data-pkc-field="form-name"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="form-note"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="form-checked"]')).not.toBeNull();
   });
 });
