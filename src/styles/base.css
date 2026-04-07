@@ -260,20 +260,65 @@
   border-bottom: 1px solid var(--c-border);
 }
 
-/* ── Guardrail warnings ── */
-.pkc-export-guardrails {
+/* ── Export / Import panel ── */
+.pkc-export-import-panel {
   width: 100%;
   margin-top: 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pkc-eip-section {
+  flex: 1 1 200px;
   padding: 0.5rem;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  font-size: 0.8rem;
 }
 
+.pkc-eip-heading {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.pkc-eip-desc {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  margin-bottom: 0.5rem;
+}
+
+.pkc-eip-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.pkc-eip-group-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.pkc-eip-btn {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.pkc-eip-hint {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+}
+
+/* ── Guardrail warnings ── */
 .pkc-guardrail-info {
   color: var(--c-muted);
-  padding: 0.15rem 0;
+  font-size: 0.75rem;
+  padding: 0.2rem 0;
+  margin-top: 0.25rem;
 }
 
 .pkc-guardrail-warning {

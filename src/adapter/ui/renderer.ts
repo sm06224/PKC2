@@ -18,7 +18,10 @@ import { getRelationsForEntry, resolveRelations } from '../../features/relation/
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import type { RelationKind } from '../../core/model/relation';
-import { lightExportWarning, fullExportEstimation, zipRecommendation } from './guardrails';
+import {
+  lightExportWarning, fullExportEstimation, zipRecommendation,
+  hasAssets, assetCount,
+} from './guardrails';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
 
@@ -173,64 +176,8 @@ function renderHeader(state: AppState): HTMLElement {
     createAttBtn.textContent = '+ File';
     header.appendChild(createAttBtn);
 
-    const exportLightBtn = createElement('button', 'pkc-btn');
-    exportLightBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportLightBtn.setAttribute('data-pkc-export-mode', 'light');
-    exportLightBtn.setAttribute('data-pkc-export-mutability', 'editable');
-    exportLightBtn.textContent = 'Export Light';
-    header.appendChild(exportLightBtn);
-
-    const exportFullBtn = createElement('button', 'pkc-btn');
-    exportFullBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportFullBtn.setAttribute('data-pkc-export-mode', 'full');
-    exportFullBtn.setAttribute('data-pkc-export-mutability', 'editable');
-    exportFullBtn.textContent = 'Export Full';
-    header.appendChild(exportFullBtn);
-
-    const exportRoLightBtn = createElement('button', 'pkc-btn');
-    exportRoLightBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportRoLightBtn.setAttribute('data-pkc-export-mode', 'light');
-    exportRoLightBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-    exportRoLightBtn.textContent = 'Export RO Light';
-    header.appendChild(exportRoLightBtn);
-
-    const exportRoFullBtn = createElement('button', 'pkc-btn');
-    exportRoFullBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportRoFullBtn.setAttribute('data-pkc-export-mode', 'full');
-    exportRoFullBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-    exportRoFullBtn.textContent = 'Export RO Full';
-    header.appendChild(exportRoFullBtn);
-
-    const exportZipBtn = createElement('button', 'pkc-btn');
-    exportZipBtn.setAttribute('data-pkc-action', 'export-zip');
-    exportZipBtn.textContent = 'Export ZIP';
-    header.appendChild(exportZipBtn);
-
-    const importBtn = createElement('button', 'pkc-btn');
-    importBtn.setAttribute('data-pkc-action', 'begin-import');
-    importBtn.textContent = 'Import';
-    header.appendChild(importBtn);
-
-    // Export guardrail warnings
-    if (state.container) {
-      const warnings: string[] = [];
-      const lightWarn = lightExportWarning(state.container);
-      if (lightWarn) warnings.push(lightWarn);
-      const fullEst = fullExportEstimation(state.container);
-      if (fullEst) warnings.push(fullEst);
-      const zipRec = zipRecommendation(state.container);
-      if (zipRec) warnings.push(zipRec);
-      if (warnings.length > 0) {
-        const guardrailEl = createElement('div', 'pkc-export-guardrails');
-        guardrailEl.setAttribute('data-pkc-region', 'export-guardrails');
-        for (const msg of warnings) {
-          const line = createElement('div', 'pkc-guardrail-info');
-          line.textContent = msg;
-          guardrailEl.appendChild(line);
-        }
-        header.appendChild(guardrailEl);
-      }
-    }
+    // Export / Import panel
+    header.appendChild(renderExportImportPanel(state));
   }
 
   // Readonly mode: show readonly badge and rehydrate button
@@ -253,6 +200,146 @@ function renderHeader(state: AppState): HTMLElement {
   }
 
   return header;
+}
+
+function renderExportImportPanel(state: AppState): HTMLElement {
+  const panel = createElement('div', 'pkc-export-import-panel');
+  panel.setAttribute('data-pkc-region', 'export-import-panel');
+
+  const container = state.container;
+  const containerHasAssets = container ? hasAssets(container) : false;
+
+  // ── Section 1: HTML Export ──
+  const htmlSection = createElement('div', 'pkc-eip-section');
+  const htmlHeading = createElement('div', 'pkc-eip-heading');
+  htmlHeading.textContent = 'HTML Export';
+  htmlSection.appendChild(htmlHeading);
+  const htmlDesc = createElement('div', 'pkc-eip-desc');
+  htmlDesc.textContent = 'Single self-contained HTML file. Opens in any browser.';
+  htmlSection.appendChild(htmlDesc);
+
+  // Editable group
+  const editableGroup = createElement('div', 'pkc-eip-group');
+  const editableLabel = createElement('span', 'pkc-eip-group-label');
+  editableLabel.textContent = 'Editable';
+  editableGroup.appendChild(editableLabel);
+
+  const lightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  lightBtn.setAttribute('data-pkc-action', 'begin-export');
+  lightBtn.setAttribute('data-pkc-export-mode', 'light');
+  lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
+  lightBtn.textContent = 'Light';
+  editableGroup.appendChild(lightBtn);
+  editableGroup.appendChild(makeHint('Text only, small file'));
+
+  const fullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  fullBtn.setAttribute('data-pkc-action', 'begin-export');
+  fullBtn.setAttribute('data-pkc-export-mode', 'full');
+  fullBtn.setAttribute('data-pkc-export-mutability', 'editable');
+  fullBtn.textContent = 'Full';
+  editableGroup.appendChild(fullBtn);
+  editableGroup.appendChild(makeHint('All data including attachments'));
+
+  htmlSection.appendChild(editableGroup);
+
+  // Readonly group
+  const readonlyGroup = createElement('div', 'pkc-eip-group');
+  const readonlyLabel = createElement('span', 'pkc-eip-group-label');
+  readonlyLabel.textContent = 'Readonly';
+  readonlyGroup.appendChild(readonlyLabel);
+
+  const roLightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  roLightBtn.setAttribute('data-pkc-action', 'begin-export');
+  roLightBtn.setAttribute('data-pkc-export-mode', 'light');
+  roLightBtn.setAttribute('data-pkc-export-mutability', 'readonly');
+  roLightBtn.textContent = 'Light';
+  readonlyGroup.appendChild(roLightBtn);
+
+  const roFullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  roFullBtn.setAttribute('data-pkc-action', 'begin-export');
+  roFullBtn.setAttribute('data-pkc-export-mode', 'full');
+  roFullBtn.setAttribute('data-pkc-export-mutability', 'readonly');
+  roFullBtn.textContent = 'Full';
+  readonlyGroup.appendChild(roFullBtn);
+
+  readonlyGroup.appendChild(makeHint('View-only, can rehydrate to workspace'));
+  htmlSection.appendChild(readonlyGroup);
+
+  // HTML guardrails (inline, next to relevant section)
+  if (container) {
+    const lightWarn = lightExportWarning(container);
+    if (lightWarn) {
+      htmlSection.appendChild(makeGuardrail(lightWarn));
+    }
+    const fullEst = fullExportEstimation(container);
+    if (fullEst) {
+      htmlSection.appendChild(makeGuardrail(fullEst));
+    }
+  }
+
+  panel.appendChild(htmlSection);
+
+  // ── Section 2: ZIP Package ──
+  const zipSection = createElement('div', 'pkc-eip-section');
+  const zipHeading = createElement('div', 'pkc-eip-heading');
+  zipHeading.textContent = 'ZIP Package';
+  zipSection.appendChild(zipHeading);
+  const zipDesc = createElement('div', 'pkc-eip-desc');
+  zipDesc.textContent = 'Complete backup with raw files. Best for large data or migration.';
+  zipSection.appendChild(zipDesc);
+
+  const zipBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  zipBtn.setAttribute('data-pkc-action', 'export-zip');
+  zipBtn.textContent = 'Export ZIP';
+  zipSection.appendChild(zipBtn);
+
+  if (containerHasAssets && container) {
+    const count = assetCount(container);
+    const info = createElement('div', 'pkc-eip-hint');
+    info.textContent = `${count} file(s), raw binary — no base64 overhead`;
+    zipSection.appendChild(info);
+  }
+
+  // ZIP recommendation guardrail
+  if (container) {
+    const zipRec = zipRecommendation(container);
+    if (zipRec) {
+      zipSection.appendChild(makeGuardrail(zipRec));
+    }
+  }
+
+  panel.appendChild(zipSection);
+
+  // ── Section 3: Import ──
+  const importSection = createElement('div', 'pkc-eip-section');
+  const importHeading = createElement('div', 'pkc-eip-heading');
+  importHeading.textContent = 'Import';
+  importSection.appendChild(importHeading);
+  const importDesc = createElement('div', 'pkc-eip-desc');
+  importDesc.textContent = 'Load from HTML (.html) or ZIP Package (.zip). Replaces current data.';
+  importSection.appendChild(importDesc);
+
+  const importBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  importBtn.setAttribute('data-pkc-action', 'begin-import');
+  importBtn.textContent = 'Import';
+  importSection.appendChild(importBtn);
+
+  panel.appendChild(importSection);
+
+  return panel;
+}
+
+function makeHint(text: string): HTMLElement {
+  const el = createElement('span', 'pkc-eip-hint');
+  el.textContent = text;
+  return el;
+}
+
+function makeGuardrail(text: string): HTMLElement {
+  const el = createElement('div', 'pkc-guardrail-info');
+  el.setAttribute('data-pkc-region', 'export-guardrails');
+  el.textContent = text;
+  return el;
 }
 
 function renderSidebar(state: AppState): HTMLElement {

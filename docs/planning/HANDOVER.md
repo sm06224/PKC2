@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #41 完了・棚卸し完了時点（2026-04-07）
+**最終更新**: Issue #42 完了時点（Export/Import UX 統合）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,7 +11,7 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#41 が完了し、保存・再水和・可搬の基幹線が完成しています。
+Issue #1〜#42 が完了し、保存・再水和・可搬の基幹線が完成し、UX 統合も完了しています。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
 【Language Policy】
@@ -123,7 +123,12 @@ Archetype / Presenter (#26〜#33):
 | 40 | ZIP PKC2 Package — manifest/container/assets構造、自前ZIP、外部依存ゼロ |
 | 41 | Attachment Guardrail UX — サイズ警告(1MB/5MB)、export警告、ZIP推奨 |
 
-テスト: 693 tests / 36 files 全通過、typecheck clean、build clean
+UX 統合 (#42):
+| # | 内容 |
+|---|------|
+| 42 | Export/Import UX 統合 — 3セクション構造化パネル、mode説明、guardrail統合、契約変更なし |
+
+テスト: 702 tests / 36 files 全通過、typecheck clean、build clean
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 不変条件（必ず守ること）
@@ -153,6 +158,7 @@ Archetype / Presenter (#26〜#33):
 19. pkc-data shape: { container: Container, export_meta?: ExportMeta }
 20. Light export は assets 空（「欠落」ではなく「同梱対象外」）
 21. guardrail は非ブロッキング（情報提示のみ、操作をブロックしない）
+22. export/import UI は構造化パネル（HTML Export / ZIP Package / Import の3セクション）
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ feature 層の実装方針（#20〜#33 で確立）

@@ -184,11 +184,11 @@ describe('Renderer', () => {
     // Editable Light
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('light');
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[0]!.textContent).toBe('Export Light');
+    expect(exportBtns[0]!.textContent).toBe('Light');
     // Editable Full
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('full');
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[1]!.textContent).toBe('Export Full');
+    expect(exportBtns[1]!.textContent).toBe('Full');
     // Readonly Light
     expect(exportBtns[2]!.getAttribute('data-pkc-export-mode')).toBe('light');
     expect(exportBtns[2]!.getAttribute('data-pkc-export-mutability')).toBe('readonly');
@@ -1502,5 +1502,114 @@ describe('Renderer', () => {
     expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
     expect(root.querySelector('[data-pkc-field="attachment-file"]')).not.toBeNull();
     expect(root.querySelector('[data-pkc-field="attachment-name"]')).not.toBeNull();
+  });
+
+  // ── Export/Import panel structure tests ──
+
+  it('renders export/import panel with three sections in ready phase', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+    expect(panel).not.toBeNull();
+    const sections = panel!.querySelectorAll('.pkc-eip-section');
+    expect(sections).toHaveLength(3);
+  });
+
+  it('export/import panel has HTML Export, ZIP Package, and Import headings', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const headings = root.querySelectorAll('.pkc-eip-heading');
+    const texts = Array.from(headings).map(h => h.textContent);
+    expect(texts).toContain('HTML Export');
+    expect(texts).toContain('ZIP Package');
+    expect(texts).toContain('Import');
+  });
+
+  it('HTML section has editable and readonly groups with labels', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const groupLabels = root.querySelectorAll('.pkc-eip-group-label');
+    const texts = Array.from(groupLabels).map(l => l.textContent);
+    expect(texts).toContain('Editable');
+    expect(texts).toContain('Readonly');
+  });
+
+  it('export/import panel has mode descriptions', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const descs = root.querySelectorAll('.pkc-eip-desc');
+    const texts = Array.from(descs).map(d => d.textContent);
+    expect(texts.some(t => t!.includes('HTML'))).toBe(true);
+    expect(texts.some(t => t!.includes('backup'))).toBe(true);
+    expect(texts.some(t => t!.includes('Replaces'))).toBe(true);
+  });
+
+  it('shows hints explaining Light vs Full', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const hints = root.querySelectorAll('.pkc-eip-hint');
+    const texts = Array.from(hints).map(h => h.textContent);
+    expect(texts.some(t => t!.includes('Text only'))).toBe(true);
+    expect(texts.some(t => t!.includes('attachments'))).toBe(true);
+  });
+
+  it('shows guardrail warnings in panel when assets exist', () => {
+    const containerWithAssets: Container = {
+      ...mockContainer,
+      assets: { 'ast-1': 'AAAA'.repeat(1000) },
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithAssets,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const guardrails = root.querySelectorAll('[data-pkc-region="export-guardrails"]');
+    expect(guardrails.length).toBeGreaterThan(0);
+  });
+
+  it('does not render export/import panel in readonly mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="export-import-panel"]')).toBeNull();
+  });
+
+  it('export ZIP button is inside ZIP section', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const zipBtn = root.querySelector('[data-pkc-action="export-zip"]');
+    expect(zipBtn).not.toBeNull();
+    expect(zipBtn!.textContent).toBe('Export ZIP');
+  });
+
+  it('import button is inside Import section', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
+    expect(importBtn).not.toBeNull();
+    expect(importBtn!.textContent).toBe('Import');
   });
 });
