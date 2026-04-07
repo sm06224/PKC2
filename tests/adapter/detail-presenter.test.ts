@@ -67,6 +67,10 @@ describe('DetailPresenter', () => {
         input.setAttribute('data-pkc-field', 'body');
         return input;
       },
+      collectBody(root: HTMLElement) {
+        const el = root.querySelector<HTMLInputElement>('[data-pkc-field="body"]');
+        return el?.value ?? '';
+      },
     };
 
     registerPresenter('todo', custom);
@@ -79,5 +83,24 @@ describe('DetailPresenter', () => {
 
     const editorEl = presenter.renderEditorBody(makeEntry('todo'));
     expect(editorEl.tagName).toBe('INPUT');
+  });
+
+  // ── collectBody ──
+
+  it('default presenter collectBody reads textarea value', () => {
+    const presenter = getDefaultPresenter();
+    const container = document.createElement('div');
+    const textarea = document.createElement('textarea');
+    textarea.setAttribute('data-pkc-field', 'body');
+    textarea.value = 'collected text';
+    container.appendChild(textarea);
+
+    expect(presenter.collectBody(container)).toBe('collected text');
+  });
+
+  it('default presenter collectBody returns empty for missing field', () => {
+    const presenter = getDefaultPresenter();
+    const container = document.createElement('div');
+    expect(presenter.collectBody(container)).toBe('');
   });
 });

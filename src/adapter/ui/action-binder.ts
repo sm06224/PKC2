@@ -2,6 +2,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
+import { getPresenter } from './detail-presenter';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -196,19 +197,11 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
   const title = titleEl?.value ?? '';
 
-  // Todo archetype: assemble body from status + description fields
-  const todoStatusEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
-  if (todoStatusEl) {
-    const status = todoStatusEl.value === 'done' ? 'done' : 'open';
-    const descEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
-    const description = descEl?.value ?? '';
-    const body = JSON.stringify({ status, description });
-    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
-    return;
-  }
+  // Determine archetype from editor container, delegate body collection to presenter
+  const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]');
+  const archetype = (editor?.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+  const presenter = getPresenter(archetype);
+  const body = presenter.collectBody(root);
 
-  // Default: read body field directly
-  const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
-  const body = bodyEl?.value ?? '';
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
 }

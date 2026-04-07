@@ -105,6 +105,40 @@ describe('todoPresenter', () => {
     expect(hidden).not.toBeNull();
     expect(hidden.type).toBe('hidden');
   });
+
+  // ── collectBody ──
+
+  it('collectBody serializes status and description from DOM', () => {
+    const container = document.createElement('div');
+    const statusSelect = document.createElement('select');
+    statusSelect.setAttribute('data-pkc-field', 'todo-status');
+    const openOpt = document.createElement('option');
+    openOpt.value = 'open';
+    const doneOpt = document.createElement('option');
+    doneOpt.value = 'done';
+    doneOpt.selected = true;
+    statusSelect.appendChild(openOpt);
+    statusSelect.appendChild(doneOpt);
+    container.appendChild(statusSelect);
+
+    const descArea = document.createElement('textarea');
+    descArea.setAttribute('data-pkc-field', 'todo-description');
+    descArea.value = 'Completed task';
+    container.appendChild(descArea);
+
+    const body = todoPresenter.collectBody(container);
+    const parsed = JSON.parse(body);
+    expect(parsed.status).toBe('done');
+    expect(parsed.description).toBe('Completed task');
+  });
+
+  it('collectBody defaults to open when no status field', () => {
+    const container = document.createElement('div');
+    const body = todoPresenter.collectBody(container);
+    const parsed = JSON.parse(body);
+    expect(parsed.status).toBe('open');
+    expect(parsed.description).toBe('');
+  });
 });
 
 describe('presenter registry integration', () => {

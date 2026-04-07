@@ -15,6 +15,8 @@ export interface DetailPresenter {
   renderBody(entry: Entry): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
+  /** Collect the body string from the editor DOM. Called on commit. */
+  collectBody(root: HTMLElement): string;
 }
 
 // ── Default presenter (text) ──────────────────────────
@@ -33,6 +35,10 @@ const textPresenter: DetailPresenter = {
     bodyArea.className = 'pkc-editor-body';
     bodyArea.rows = 10;
     return bodyArea;
+  },
+  collectBody(root: HTMLElement): string {
+    const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    return bodyEl?.value ?? '';
   },
 };
 

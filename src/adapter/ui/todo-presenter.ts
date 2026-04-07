@@ -85,4 +85,12 @@ export const todoPresenter: DetailPresenter = {
 
     return container;
   },
+
+  collectBody(root: HTMLElement): string {
+    const statusEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
+    const descEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
+    const status = statusEl?.value === 'done' ? 'done' : 'open';
+    const description = descEl?.value ?? '';
+    return serializeTodoBody({ status, description });
+  },
 };
