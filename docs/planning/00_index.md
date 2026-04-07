@@ -28,6 +28,7 @@
 | `11_基盤方針追補_Viteの効用と限界.md` | Viteの責務境界、3段階build pipeline、minify-safe規約 | ★★ |
 | `15_基盤方針追補_type_dispatch_adapter.md` | discriminated union、Archetype dispatch、dependency governance、ESLint規約 | ★★ |
 | `16_基盤方針追補_versioning_UX_Issues.md` | semver+kind+timestamp、AppPhase状態機械、操作契約 | ★★ |
+| `17_保存再水和可搬モデル.md` | 4系統モデル、HTML mode行列、body-assets分離、IDB進化、export形式、圧縮方針 | ★★ |
 
 ### 第3群: 将来計画（必要時に読む）
 
