@@ -54,7 +54,7 @@ describe('Renderer', () => {
   it('renders initializing phase', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('initializing');
@@ -64,7 +64,7 @@ describe('Renderer', () => {
   it('renders error phase with message', () => {
     const state: AppState = {
       phase: 'error', container: null,
-      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('error');
@@ -74,7 +74,7 @@ describe('Renderer', () => {
   it('renders ready phase with entry list', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('ready');
@@ -95,7 +95,7 @@ describe('Renderer', () => {
   it('marks selected entry with data-pkc-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -107,7 +107,7 @@ describe('Renderer', () => {
   it('renders detail view for selected entry', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -126,7 +126,7 @@ describe('Renderer', () => {
   it('renders editor in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -147,14 +147,14 @@ describe('Renderer', () => {
   it('shows create button only in ready phase', () => {
     const readyState: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(readyState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).not.toBeNull();
 
     const editingState: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(editingState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
@@ -167,40 +167,110 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.textContent).toContain('Create an entry to begin');
   });
 
-  it('shows light and full export buttons in ready phase', () => {
+  it('shows export buttons with mode and mutability in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
-    expect(exportBtns).toHaveLength(2);
+    expect(exportBtns).toHaveLength(4);
+    // Editable Light
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('light');
+    expect(exportBtns[0]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
     expect(exportBtns[0]!.textContent).toBe('Export Light');
+    // Editable Full
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(exportBtns[1]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
     expect(exportBtns[1]!.textContent).toBe('Export Full');
+    // Readonly Light
+    expect(exportBtns[2]!.getAttribute('data-pkc-export-mode')).toBe('light');
+    expect(exportBtns[2]!.getAttribute('data-pkc-export-mutability')).toBe('readonly');
+    // Readonly Full
+    expect(exportBtns[3]!.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(exportBtns[3]!.getAttribute('data-pkc-export-mutability')).toBe('readonly');
   });
 
   it('shows exporting badge in exporting phase', () => {
     const state: AppState = {
       phase: 'exporting', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
     expect(root.textContent).toContain('Exporting');
   });
 
+  it('readonly mode: no edit/create/delete/export buttons, shows rehydrate', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    // No create buttons
+    expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
+    // No export buttons
+    expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
+    // No edit button in detail view
+    expect(root.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    // No delete button in detail view
+    expect(root.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
+    // No import button
+    expect(root.querySelector('[data-pkc-action="begin-import"]')).toBeNull();
+    // Has rehydrate button
+    const rehydrateBtn = root.querySelector('[data-pkc-action="rehydrate"]');
+    expect(rehydrateBtn).not.toBeNull();
+    expect(rehydrateBtn!.textContent).toBe('Rehydrate to Workspace');
+    // Has readonly badge
+    expect(root.textContent).toContain('Readonly');
+  });
+
+  it('readonly mode: shows data-pkc-readonly=true on root', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    expect(root.getAttribute('data-pkc-readonly')).toBe('true');
+  });
+
+  it('readonly mode: search/filter/sort still work', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    // Search input exists
+    const searchInput = root.querySelector('[data-pkc-field="search"]');
+    expect(searchInput).not.toBeNull();
+    // Sort controls exist
+    expect(root.querySelector('[data-pkc-region="sort-controls"]')).not.toBeNull();
+  });
+
+  it('readonly mode with export buttons shows all 4 mutability variants in editable mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
+    expect(exportBtns).toHaveLength(4);
+    // Check mutability attributes
+    const mutabilities = Array.from(exportBtns).map(b => b.getAttribute('data-pkc-export-mutability'));
+    expect(mutabilities).toContain('editable');
+    expect(mutabilities).toContain('readonly');
+  });
+
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -217,7 +287,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=false for standalone', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('false');
@@ -226,7 +296,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=true for embedded', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
@@ -235,7 +305,7 @@ describe('Renderer', () => {
   it('sets data-pkc-capabilities with current capabilities', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     const caps = root.getAttribute('data-pkc-capabilities');
@@ -248,7 +318,7 @@ describe('Renderer', () => {
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="pending-offers"]')).toBeNull();
@@ -263,7 +333,7 @@ describe('Renderer', () => {
           archetype: 'text', source_container_id: null,
           reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
         },
-      ], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      ], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -291,7 +361,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -303,7 +373,7 @@ describe('Renderer', () => {
   it('does not show revision badge on entries without revisions', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
@@ -320,7 +390,7 @@ describe('Renderer', () => {
         schema_version: 1,
         source: 'backup.html',
         container: mockContainer,
-      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -351,7 +421,7 @@ describe('Renderer', () => {
   it('does not render import panel when importPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="import-confirm"]')).toBeNull();
@@ -366,7 +436,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -388,7 +458,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -413,7 +483,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -439,7 +509,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -466,7 +536,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -495,7 +565,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -507,7 +577,7 @@ describe('Renderer', () => {
   it('renders search input when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -521,7 +591,7 @@ describe('Renderer', () => {
     const emptyContainer: Container = { ...mockContainer, entries: [] };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -531,7 +601,7 @@ describe('Renderer', () => {
   it('filters entries by search query', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -543,7 +613,7 @@ describe('Renderer', () => {
   it('shows "No matching entries" when search has no results', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -554,7 +624,7 @@ describe('Renderer', () => {
   it('preserves search input value from state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -565,7 +635,7 @@ describe('Renderer', () => {
   it('renders archetype filter bar when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -585,7 +655,7 @@ describe('Renderer', () => {
   it('marks active archetype filter button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -599,7 +669,7 @@ describe('Renderer', () => {
   it('filters entries by archetype', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -611,7 +681,7 @@ describe('Renderer', () => {
   it('shows result count when filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'text', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'text', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -623,7 +693,7 @@ describe('Renderer', () => {
   it('shows result count when search query is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -635,7 +705,7 @@ describe('Renderer', () => {
   it('does not show result count when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -645,7 +715,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when search query is non-empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -657,7 +727,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when archetype filter is set', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -668,7 +738,7 @@ describe('Renderer', () => {
   it('does not show clear-filters button when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -678,7 +748,7 @@ describe('Renderer', () => {
   it('renders sort controls when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -697,7 +767,7 @@ describe('Renderer', () => {
   it('sort select reflects current sort state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -712,7 +782,7 @@ describe('Renderer', () => {
     // Sort by title asc: e1 "Entry One" < e2 "Entry Two"
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -725,7 +795,7 @@ describe('Renderer', () => {
   it('applies sort after filter: desc reverses order', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -739,7 +809,7 @@ describe('Renderer', () => {
     // Filter to "One" → only e1. Sort does not change single item.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -759,7 +829,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -780,7 +850,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -798,7 +868,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -818,7 +888,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -832,7 +902,7 @@ describe('Renderer', () => {
   it('does not show relation section when no relations exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -843,7 +913,7 @@ describe('Renderer', () => {
   it('shows relation creation form in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -870,7 +940,7 @@ describe('Renderer', () => {
   it('does not show relation create form in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -889,7 +959,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -912,7 +982,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -931,7 +1001,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerMixed,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -942,7 +1012,7 @@ describe('Renderer', () => {
   it('shows tag add form with available targets', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -966,7 +1036,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -978,7 +1048,7 @@ describe('Renderer', () => {
   it('tags section always shows even with no tags', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1000,7 +1070,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1013,7 +1083,7 @@ describe('Renderer', () => {
   it('shows tag filter indicator when tag filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1035,7 +1105,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1060,7 +1130,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: threeEntries,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1079,7 +1149,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1092,7 +1162,7 @@ describe('Renderer', () => {
   it('no tag filter indicator when tagFilter is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1105,7 +1175,7 @@ describe('Renderer', () => {
   it('detail view has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1117,7 +1187,7 @@ describe('Renderer', () => {
   it('editor has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1129,7 +1199,7 @@ describe('Renderer', () => {
   it('detail view uses presenter for body rendering', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1144,7 +1214,7 @@ describe('Renderer', () => {
     // e2 is archetype: 'todo'
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1163,7 +1233,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1191,7 +1261,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1224,7 +1294,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1238,7 +1308,7 @@ describe('Renderer', () => {
   it('header has both Note and Todo create buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1266,7 +1336,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: formContainer,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1289,7 +1359,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: formContainer,
-      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1313,7 +1383,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: mixedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1338,7 +1408,7 @@ describe('Renderer', () => {
   it('detail view shows archetype label next to title', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1351,7 +1421,7 @@ describe('Renderer', () => {
   it('editor shows archetype label next to title input', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1364,7 +1434,7 @@ describe('Renderer', () => {
   it('archetype filter bar uses human-readable labels', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1383,7 +1453,7 @@ describe('Renderer', () => {
   it('header has Attachment create button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1403,7 +1473,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: attContainer,
-      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 
@@ -1424,7 +1494,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: attContainer,
-      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null,
+      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
 

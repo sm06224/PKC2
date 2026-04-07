@@ -93,7 +93,7 @@ describe('serializePkcData', () => {
     const json = serializePkcData(c, 'full');
     const parsed = JSON.parse(json);
 
-    expect(parsed.export_meta).toEqual({ mode: 'full' });
+    expect(parsed.export_meta).toEqual({ mode: 'full', mutability: 'editable' });
     expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
   });
 
@@ -102,7 +102,7 @@ describe('serializePkcData', () => {
     const json = serializePkcData(c, 'light');
     const parsed = JSON.parse(json);
 
-    expect(parsed.export_meta).toEqual({ mode: 'light' });
+    expect(parsed.export_meta).toEqual({ mode: 'light', mutability: 'editable' });
     expect(parsed.container.assets).toEqual({});
   });
 
@@ -112,6 +112,7 @@ describe('serializePkcData', () => {
     const parsed = JSON.parse(json);
 
     expect(parsed.export_meta.mode).toBe('full');
+    expect(parsed.export_meta.mutability).toBe('editable');
     expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
   });
 
@@ -269,6 +270,47 @@ describe('buildExportHtml: export modes', () => {
     const fullHtml = buildExportHtml(c, 'full');
 
     expect(lightHtml.length).toBeLessThan(fullHtml.length);
+  });
+});
+
+describe('buildExportHtml: mutability', () => {
+  it('readonly export embeds mutability=readonly in export_meta', () => {
+    const c = createTestContainer();
+    const html = buildExportHtml(c, 'full', 'readonly');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.export_meta.mutability).toBe('readonly');
+    expect(data.export_meta.mode).toBe('full');
+  });
+
+  it('editable export embeds mutability=editable in export_meta', () => {
+    const c = createTestContainer();
+    const html = buildExportHtml(c, 'light', 'editable');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.export_meta.mutability).toBe('editable');
+    expect(data.export_meta.mode).toBe('light');
+  });
+
+  it('readonly-light combines both axes', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
+    const html = buildExportHtml(c, 'light', 'readonly');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.export_meta).toEqual({ mode: 'light', mutability: 'readonly' });
+    expect(data.container.assets).toEqual({});
+  });
+
+  it('readonly-full preserves assets', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
+    const html = buildExportHtml(c, 'full', 'readonly');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.container.assets).toEqual({ 'ast-1': 'data' });
   });
 });
 

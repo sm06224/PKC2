@@ -31,6 +31,7 @@ export type DomainEvent =
   | { type: 'RECORD_OFFERED'; offer_id: string; title: string }
   | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string }
   | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null }
+  | { type: 'CONTAINER_REHYDRATED'; old_cid: string; new_cid: string }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

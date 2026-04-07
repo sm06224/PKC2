@@ -24,7 +24,7 @@
 
 import { SLOT } from '../../runtime/contract';
 import type { Container } from '../../core/model/container';
-import type { ExportMode } from '../../core/action/user-action';
+import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 
 /**
@@ -38,10 +38,11 @@ export interface ExportResult {
 }
 
 /**
- * export_meta: metadata embedded in pkc-data to identify the export mode.
+ * export_meta: metadata embedded in pkc-data to identify the export configuration.
  */
 export interface ExportMeta {
   mode: ExportMode;
+  mutability: ExportMutability;
 }
 
 /**
@@ -52,6 +53,8 @@ export interface ExportOptions {
   filename?: string;
   /** Export mode: 'light' strips assets, 'full' includes everything. Default: 'full'. */
   mode?: ExportMode;
+  /** Export mutability: 'editable' or 'readonly'. Default: 'editable'. */
+  mutability?: ExportMutability;
 }
 
 /**
@@ -60,9 +63,14 @@ export interface ExportOptions {
  *
  * Light mode: strips container.assets to {}, adds export_meta.mode = 'light'.
  * Full mode: includes everything, adds export_meta.mode = 'full'.
+ * Mutability: 'editable' (default) or 'readonly' (view-only with rehydrate).
  */
-export function serializePkcData(container: Container, mode: ExportMode = 'full'): string {
-  const exportMeta: ExportMeta = { mode };
+export function serializePkcData(
+  container: Container,
+  mode: ExportMode = 'full',
+  mutability: ExportMutability = 'editable',
+): string {
+  const exportMeta: ExportMeta = { mode, mutability };
   const exported = mode === 'light'
     ? { ...container, assets: {} }
     : container;
@@ -84,7 +92,11 @@ export function serializePkcData(container: Container, mode: ExportMode = 'full'
  *
  * Injects the given Container as pkc-data.
  */
-export function buildExportHtml(container: Container, mode: ExportMode = 'full'): string {
+export function buildExportHtml(
+  container: Container,
+  mode: ExportMode = 'full',
+  mutability: ExportMutability = 'editable',
+): string {
   // Read from live DOM
   const coreEl = document.getElementById(SLOT.CORE);
   const stylesEl = document.getElementById(SLOT.STYLES);
@@ -116,7 +128,7 @@ export function buildExportHtml(container: Container, mode: ExportMode = 'full')
   const kind = htmlEl.getAttribute('data-pkc-kind') ?? 'dev';
 
   // Serialize container data
-  const dataJson = serializePkcData(container, mode);
+  const dataJson = serializePkcData(container, mode, mutability);
 
   // Assemble HTML matching shell.html contract
   return `<!DOCTYPE html>
@@ -169,7 +181,8 @@ export function exportContainerAsHtml(
 ): ExportResult {
   try {
     const mode = options?.mode ?? 'full';
-    const html = buildExportHtml(container, mode);
+    const mutability = options?.mutability ?? 'editable';
+    const html = buildExportHtml(container, mode, mutability);
     const filename = generateExportFilename(container, options?.filename);
 
     const download = options?.downloadFn ?? triggerDownload;
