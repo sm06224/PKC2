@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #47 完了時点（Entry Editing Flow 修正）
+**最終更新**: Issue #48 完了時点（Attachment UX 改善）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,9 +11,9 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#47 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
-Issue #45 で UI 実用性監査、#46 で CSS/レイアウト改善（C1/C3 解消）、#47 で編集フロー改善（H1/H2 解消 + C2 軽減）を実施。
-現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換の本格解決、Attachment UX、フォルダ未実装。
+Issue #1〜#48 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
+Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善を実施。
+現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換の本格解決、フォルダ未実装、レスポンシブ対応。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
 【Language Policy】
@@ -141,8 +141,9 @@ UI 監査・整備 (#45〜#46):
 | 45 | UI Usability Audit — エントリ編集・フォルダ・CSS/レイアウト監査、blocker一覧、次Issue推薦 |
 | 46 | CSS整備 + Header改善 — export panel折りたたみ(details/summary)、全未整備クラスのCSS追加、レイアウト密度調整 |
 | 47 | Entry Editing Flow — Create→即Edit、Delete確認ダイアログ、scroll/focus復元（DOM全置換の応急処置） |
+| 48 | Attachment UX — ダウンロード機能、ファイルカード表示、画像プレビュー、download-attachment action |
 
-テスト: 702 tests / 36 files 全通過、typecheck clean、build clean
+テスト: 708 tests / 36 files 全通過、typecheck clean、build clean
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 不変条件（必ず守ること）

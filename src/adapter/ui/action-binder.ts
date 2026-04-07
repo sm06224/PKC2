@@ -5,7 +5,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
-import { collectAssetData } from './attachment-presenter';
+import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -146,6 +146,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-tag-filter':
         dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: null });
         break;
+      case 'download-attachment':
+        if (lid) downloadAttachment(lid, dispatcher);
+        break;
     }
   }
 
@@ -238,4 +241,75 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   }
 
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body, assets });
+}
+
+/**
+ * Resolve attachment base64 data from container.assets or legacy body.data.
+ */
+function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: string; mime: string; name: string } | null {
+  const state = dispatcher.getState();
+  const entry = state.container?.entries.find((e) => e.lid === lid);
+  if (!entry || entry.archetype !== 'attachment') return null;
+
+  const att = parseAttachmentBody(entry.body);
+  if (!att.name) return null;
+
+  // Try container.assets first (new format), then body.data (legacy)
+  let base64 = '';
+  if (att.asset_key && state.container?.assets?.[att.asset_key] != null) {
+    base64 = state.container.assets[att.asset_key]!;
+  } else if (att.data) {
+    base64 = att.data;
+  }
+  if (!base64) return null;
+
+  return { data: base64, mime: att.mime, name: att.name };
+}
+
+function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
+  const resolved = resolveAttachmentData(lid, dispatcher);
+  if (!resolved) return;
+
+  const byteChars = atob(resolved.data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: resolved.mime });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = resolved.name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+
+/**
+ * Populate image preview elements that appear after render.
+ * Called from main.ts after each render cycle.
+ */
+export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
+  const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
+  for (const el of previews) {
+    // Skip if already populated
+    if (el.querySelector('img')) continue;
+
+    const lid = el.getAttribute('data-pkc-lid');
+    if (!lid) continue;
+
+    const resolved = resolveAttachmentData(lid, dispatcher);
+    if (!resolved) continue;
+
+    el.innerHTML = '';
+    const img = document.createElement('img');
+    img.className = 'pkc-attachment-preview-img';
+    img.src = `data:${resolved.mime};base64,${resolved.data}`;
+    img.alt = resolved.name;
+    el.appendChild(img);
+  }
 }

@@ -1479,8 +1479,8 @@ describe('Renderer', () => {
 
     const attView = root.querySelector('.pkc-attachment-view');
     expect(attView).not.toBeNull();
-    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('doc.pdf');
-    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('application/pdf');
+    expect(root.querySelector('.pkc-attachment-filename')!.textContent).toBe('doc.pdf');
+    expect(root.querySelector('.pkc-attachment-mime-badge')!.textContent).toBe('application/pdf');
   });
 
   it('attachment entry renders editor with file input', () => {

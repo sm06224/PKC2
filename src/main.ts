@@ -2,7 +2,7 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions } from './adapter/ui/action-binder';
+import { bindActions, populateAttachmentPreviews } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -72,6 +72,9 @@ async function boot(): Promise<void> {
         : root.querySelector<HTMLElement>('[data-pkc-field="title"]');
       target?.focus();
     }
+
+    // Populate attachment image previews (needs container.assets data)
+    populateAttachmentPreviews(root, dispatcher);
   });
 
   // 3. Action binder: DOM events → UserAction

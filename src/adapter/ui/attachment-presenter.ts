@@ -92,54 +92,99 @@ export function isLegacyFormat(att: AttachmentBody): boolean {
   return att.data !== undefined && att.asset_key === undefined;
 }
 
+/**
+ * Check if a MIME type is an image type that browsers can display.
+ */
+function isPreviewableImage(mime: string): boolean {
+  return /^image\/(png|jpeg|gif|webp|svg\+xml|bmp|ico)$/i.test(mime);
+}
+
 export const attachmentPresenter: DetailPresenter = {
   renderBody(entry: Entry): HTMLElement {
     const att = parseAttachmentBody(entry.body);
-    const container = document.createElement('div');
-    container.className = 'pkc-attachment-view';
+    const root = document.createElement('div');
+    root.className = 'pkc-attachment-view';
 
-    const nameEl = document.createElement('div');
-    nameEl.className = 'pkc-attachment-field';
-    const nameLabel = document.createElement('strong');
-    nameLabel.textContent = 'File: ';
-    nameEl.appendChild(nameLabel);
-    const nameValue = document.createElement('span');
-    nameValue.className = 'pkc-attachment-name';
-    nameValue.textContent = att.name || '(no file)';
-    nameEl.appendChild(nameValue);
-    container.appendChild(nameEl);
-
-    const mimeEl = document.createElement('div');
-    mimeEl.className = 'pkc-attachment-field';
-    const mimeLabel = document.createElement('strong');
-    mimeLabel.textContent = 'Type: ';
-    mimeEl.appendChild(mimeLabel);
-    const mimeValue = document.createElement('span');
-    mimeValue.className = 'pkc-attachment-mime';
-    mimeValue.textContent = att.mime;
-    mimeEl.appendChild(mimeValue);
-    container.appendChild(mimeEl);
-
-    const sizeEl = document.createElement('div');
-    sizeEl.className = 'pkc-attachment-field';
-    const sizeLabel = document.createElement('strong');
-    sizeLabel.textContent = 'Size: ';
-    sizeEl.appendChild(sizeLabel);
-    const sizeValue = document.createElement('span');
-    sizeValue.className = 'pkc-attachment-size';
+    const hasFile = !!att.name;
     const displaySize = resolveDisplaySize(att);
-    if (displaySize > 0) {
-      sizeValue.textContent = formatSize(displaySize);
-    } else if (att.asset_key && !att.data) {
-      // Light export: asset_key exists but data was stripped
-      sizeValue.textContent = '(not included)';
-    } else {
-      sizeValue.textContent = '(empty)';
-    }
-    sizeEl.appendChild(sizeValue);
-    container.appendChild(sizeEl);
+    // Data availability: asset_key with no data means Light export (stripped)
+    const dataAvailable = !!(att.data || att.asset_key);
+    const dataStripped = !!att.asset_key && !att.data;
 
-    return container;
+    if (!hasFile) {
+      const empty = document.createElement('div');
+      empty.className = 'pkc-attachment-empty';
+      empty.textContent = 'No file attached';
+      root.appendChild(empty);
+      return root;
+    }
+
+    // File info card
+    const card = document.createElement('div');
+    card.className = 'pkc-attachment-card';
+
+    // File icon + name row
+    const nameRow = document.createElement('div');
+    nameRow.className = 'pkc-attachment-name-row';
+    const icon = document.createElement('span');
+    icon.className = 'pkc-attachment-icon';
+    icon.textContent = isPreviewableImage(att.mime) ? '\ud83d\uddbc' : '\ud83d\udcc4';
+    nameRow.appendChild(icon);
+    const nameText = document.createElement('span');
+    nameText.className = 'pkc-attachment-filename';
+    nameText.textContent = att.name;
+    nameRow.appendChild(nameText);
+    card.appendChild(nameRow);
+
+    // Meta row: type + size
+    const metaRow = document.createElement('div');
+    metaRow.className = 'pkc-attachment-meta';
+    const mimeSpan = document.createElement('span');
+    mimeSpan.className = 'pkc-attachment-mime-badge';
+    mimeSpan.textContent = att.mime;
+    metaRow.appendChild(mimeSpan);
+    if (displaySize > 0) {
+      const sizeSpan = document.createElement('span');
+      sizeSpan.className = 'pkc-attachment-size-badge';
+      sizeSpan.textContent = formatSize(displaySize);
+      metaRow.appendChild(sizeSpan);
+    }
+    if (dataStripped) {
+      const stripped = document.createElement('span');
+      stripped.className = 'pkc-attachment-stripped';
+      stripped.textContent = 'Data not included (Light export)';
+      metaRow.appendChild(stripped);
+    }
+    card.appendChild(metaRow);
+
+    // Download button
+    if (dataAvailable && !dataStripped) {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'pkc-btn pkc-attachment-download';
+      downloadBtn.setAttribute('data-pkc-action', 'download-attachment');
+      downloadBtn.setAttribute('data-pkc-lid', entry.lid);
+      downloadBtn.textContent = 'Download';
+      card.appendChild(downloadBtn);
+    }
+
+    root.appendChild(card);
+
+    // Image preview (inline, for previewable image types)
+    if (isPreviewableImage(att.mime) && dataAvailable && !dataStripped) {
+      const previewContainer = document.createElement('div');
+      previewContainer.className = 'pkc-attachment-preview';
+      previewContainer.setAttribute('data-pkc-region', 'attachment-preview');
+      previewContainer.setAttribute('data-pkc-lid', entry.lid);
+      // Actual image rendering is deferred — action-binder will populate
+      // with the real data from container.assets when the element appears
+      const placeholder = document.createElement('div');
+      placeholder.className = 'pkc-attachment-preview-placeholder';
+      placeholder.textContent = 'Loading preview…';
+      previewContainer.appendChild(placeholder);
+      root.appendChild(previewContainer);
+    }
+
+    return root;
   },
 
   renderEditorBody(entry: Entry): HTMLElement {

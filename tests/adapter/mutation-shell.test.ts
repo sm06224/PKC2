@@ -455,8 +455,8 @@ describe('Mutation → Shell integration', () => {
     // Re-render: view should show saved values
     const reRendered = root.querySelector('.pkc-attachment-view');
     expect(reRendered).not.toBeNull();
-    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('readme.txt');
-    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('text/plain');
-    expect(root.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
+    expect(root.querySelector('.pkc-attachment-filename')!.textContent).toBe('readme.txt');
+    expect(root.querySelector('.pkc-attachment-mime-badge')!.textContent).toBe('text/plain');
+    expect(root.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
   });
 });

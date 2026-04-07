@@ -960,6 +960,95 @@
   flex-shrink: 0;
 }
 
+.pkc-attachment-empty {
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+  background: var(--c-surface);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+}
+
+.pkc-attachment-card {
+  padding: 0.75rem 1rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 0.75rem;
+}
+
+.pkc-attachment-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.pkc-attachment-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.pkc-attachment-filename {
+  font-size: 0.95rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.pkc-attachment-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.pkc-attachment-mime-badge {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius);
+  background: var(--c-border);
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+}
+
+.pkc-attachment-size-badge {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius);
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.pkc-attachment-stripped {
+  font-size: 0.7rem;
+  color: #92400e;
+  font-style: italic;
+}
+
+.pkc-attachment-download {
+  margin-top: 0.25rem;
+}
+
+.pkc-attachment-preview {
+  margin-top: 0.5rem;
+}
+
+.pkc-attachment-preview-placeholder {
+  font-size: 0.8rem;
+  color: var(--c-muted);
+  padding: 0.5rem;
+}
+
+.pkc-attachment-preview-img {
+  max-width: 100%;
+  max-height: 400px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
 .pkc-attachment-editor {
   display: flex;
   flex-direction: column;
