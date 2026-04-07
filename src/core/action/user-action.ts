@@ -32,6 +32,20 @@ export type UserAction =
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' }
+  /**
+   * QUICK_UPDATE_ENTRY — body-only update without entering edit mode.
+   *
+   * Contract:
+   * - Updates body ONLY; title is preserved from the existing entry.
+   * - Allowed in ready phase only (blocked in editing/exporting/initializing/error).
+   * - Creates a revision snapshot before applying the update.
+   * - Emits ENTRY_UPDATED event.
+   * - Does NOT change phase, selectedLid, or editingLid.
+   *
+   * Intended use: small immediate operations on presenter-rendered views
+   * (e.g., todo status toggle). NOT for title changes, archetype changes,
+   * or operations that warrant full editor interaction.
+   */
   | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string };
 
 /** Extract the type literal from a UserAction. */

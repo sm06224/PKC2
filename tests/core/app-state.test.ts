@@ -879,6 +879,9 @@ describe('sort', () => {
   });
 
   // ── QUICK_UPDATE_ENTRY ─────────────────────────
+  // Contract: body-only update in ready phase, title preserved, snapshot created.
+  // Intended for small immediate operations (e.g., todo status toggle).
+  // NOT for title changes, archetype changes, or bulk updates.
 
   it('QUICK_UPDATE_ENTRY updates body without phase change', () => {
     const base = readyState();
@@ -892,6 +895,27 @@ describe('sort', () => {
     expect(events).toContainEqual({ type: 'ENTRY_UPDATED', lid: 'e1' });
   });
 
+  it('QUICK_UPDATE_ENTRY preserves title exactly (contract)', () => {
+    const base = readyState();
+    const originalTitle = base.container!.entries.find((e) => e.lid === 'e1')!.title;
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'different body',
+    });
+    const entry = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(entry.title).toBe(originalTitle);
+    expect(entry.body).toBe('different body');
+  });
+
+  it('QUICK_UPDATE_ENTRY updates updated_at timestamp', () => {
+    const base = readyState();
+    const originalUpdatedAt = base.container!.entries.find((e) => e.lid === 'e1')!.updated_at;
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'updated',
+    });
+    const entry = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(entry.updated_at).not.toBe(originalUpdatedAt);
+  });
+
   it('QUICK_UPDATE_ENTRY creates a revision snapshot', () => {
     const base = readyState();
     expect(base.container!.revisions).toHaveLength(0);
@@ -899,6 +923,14 @@ describe('sort', () => {
       type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'updated',
     });
     expect(state.container!.revisions.length).toBeGreaterThan(0);
+  });
+
+  it('QUICK_UPDATE_ENTRY does not change selectedLid', () => {
+    const base: AppState = { ...readyState(), selectedLid: 'e2' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state.selectedLid).toBe('e2');
   });
 
   it('QUICK_UPDATE_ENTRY blocks for unknown lid', () => {
@@ -911,6 +943,30 @@ describe('sort', () => {
 
   it('QUICK_UPDATE_ENTRY blocked in editing phase', () => {
     const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in exporting phase', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in initializing phase', () => {
+    const base = createInitialState();
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked when container is null', () => {
+    const base: AppState = { ...readyState(), container: null };
     const { state } = reduce(base, {
       type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
     });

@@ -356,6 +356,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
       return { state: next, events: [] };
     }
+    // QUICK_UPDATE_ENTRY: body-only update, title preserved.
+    // See user-action.ts for full contract documentation.
     case 'QUICK_UPDATE_ENTRY': {
       if (!state.container) return blocked(state, action);
       const entry = state.container.entries.find((e) => e.lid === action.lid);
@@ -363,6 +365,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const ts = now();
       const revId = generateLid();
       const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      // Preserve entry.title — QUICK_UPDATE_ENTRY must NOT change title
       const container = updateEntry(snapshotted, action.lid, entry.title, action.body, ts);
       const next: AppState = { ...state, container };
       return {
