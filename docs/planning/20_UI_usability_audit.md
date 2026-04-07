@@ -246,10 +246,45 @@ PKC2 の保存・可搬・構造化の基盤は堅牢。702テスト全パス、
 
 ---
 
+## 7. Issue #46 対応結果（追記）
+
+Issue #46 で C1（Header 肥大化）と C3（CSS スケルトン状態）を解消した。
+
+### 対応内容
+
+| 対象 | 変更 |
+|------|------|
+| **Header** | Export/Import panel を `<details><summary>` で折りたたみ化。デフォルト閉じ。create ボタンを `pkc-create-actions` div でグループ化・コンパクト化 |
+| **CSS** | 342行 → 約600行。40+ の未整備クラスすべてに最低限のスタイルを追加 |
+
+### CSS 整備した主要クラス群
+
+- **Sidebar**: search-row, search-input, archetype-filter, filter-btn, sort-controls, sort-select, tag-filter-indicator, result-count, restore-candidates
+- **View**: view-title-row, archetype-label
+- **Editor**: editor-title-row（flex 化）、editor-body（focus スタイル、min-height）
+- **Tags**: tags, tag-chip, tag-label, tag-remove, tag-add, tag-select
+- **Relations**: relation-group, relation-heading, relation-list, relation-item, relation-peer, relation-kind, relation-create, relation-create-row, relation-select
+- **Revision**: revision-info, revision-heading, revision-latest, revision-preview
+- **Presenters**: todo-view, todo-status, todo-editor, form-view, form-field, form-editor, attachment-view, attachment-field, attachment-editor, attachment-current
+- **Import**: import-confirm, import-warning, import-summary, import-row
+- **Pending offers**: pending-offers, pending-item
+
+### 残課題
+
+| # | 問題 | 状態 |
+|---|------|------|
+| **C2** | DOM 全置換問題 | **未対応** — アーキテクチャ変更が必要。Issue #47 で対応予定 |
+| **H1** | Create → 即 Edit フロー | **未対応** — Issue #47 |
+| **H2** | Delete 確認なし | **未対応** — Issue #47 |
+| **H3** | レスポンシブ対応 | **未対応** — Desktop 前提で今回はスキップ |
+| **M1** | フォルダ / 階層ナビ | **未対応** — 大規模。Issue #49 |
+
+---
+
 ## 検証結果
 
 | 項目 | 結果 |
 |------|------|
 | TypeScript typecheck | Clean（エラーなし） |
 | テスト | 702 passed, 0 failed |
-| Build | — （監査のみ、変更なし） |
+| Build | 成功（CSS 4.73 KB → 15.57 KB、全体 85.5 KB） |

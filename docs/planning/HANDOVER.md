@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #45 完了時点（UI Usability Audit）
+**最終更新**: Issue #46 完了時点（CSS整備 + Header レイアウト改善）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,9 +11,9 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#45 が完了し、保存・再水和・可搬の基幹線が完成しています。
-Issue #45 で UI 実用性監査を実施し、CSS/レイアウト/編集フローの課題を明文化しました。
-現在はプレリリース段階（v0.1.0）です。次は Issue #46（CSS整備 + Header レイアウト改善）が推薦されています。
+Issue #1〜#46 が完了し、保存・再水和・可搬の基幹線が完成しています。
+Issue #45 で UI 実用性監査を実施し、Issue #46 で CSS/レイアウトの Critical Blocker (C1/C3) を解消しました。
+現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換問題(C2)、編集フロー改善、フォルダ未実装。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
 【Language Policy】
@@ -135,10 +135,11 @@ UX 統合 (#42):
 | 43 | Operational Guide — Export/Import/Rehydrate の利用手順・判断基準・操作シナリオ文書化 |
 | 44 | Pre-Release Snapshot — 到達点・制約・future の明文化、README 作成、安定スナップショット |
 
-UI 監査 (#45):
+UI 監査・整備 (#45〜#46):
 | # | 内容 |
 |---|------|
 | 45 | UI Usability Audit — エントリ編集・フォルダ・CSS/レイアウト監査、blocker一覧、次Issue推薦 |
+| 46 | CSS整備 + Header改善 — export panel折りたたみ(details/summary)、全未整備クラスのCSS追加、レイアウト密度調整 |
 
 テスト: 702 tests / 36 files 全通過、typecheck clean、build clean
 

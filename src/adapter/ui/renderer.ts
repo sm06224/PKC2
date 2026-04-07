@@ -152,31 +152,35 @@ function renderHeader(state: AppState): HTMLElement {
 
   // Actions: create entry, export (suppressed in readonly mode)
   if (state.phase === 'ready' && !state.readonly) {
-    const createBtn = createElement('button', 'pkc-btn');
+    const createGroup = createElement('div', 'pkc-create-actions');
+
+    const createBtn = createElement('button', 'pkc-btn pkc-btn-create');
     createBtn.setAttribute('data-pkc-action', 'create-entry');
     createBtn.setAttribute('data-pkc-archetype', 'text');
     createBtn.textContent = '+ Note';
-    header.appendChild(createBtn);
+    createGroup.appendChild(createBtn);
 
-    const createTodoBtn = createElement('button', 'pkc-btn');
+    const createTodoBtn = createElement('button', 'pkc-btn pkc-btn-create');
     createTodoBtn.setAttribute('data-pkc-action', 'create-entry');
     createTodoBtn.setAttribute('data-pkc-archetype', 'todo');
     createTodoBtn.textContent = '+ Todo';
-    header.appendChild(createTodoBtn);
+    createGroup.appendChild(createTodoBtn);
 
-    const createFormBtn = createElement('button', 'pkc-btn');
+    const createFormBtn = createElement('button', 'pkc-btn pkc-btn-create');
     createFormBtn.setAttribute('data-pkc-action', 'create-entry');
     createFormBtn.setAttribute('data-pkc-archetype', 'form');
     createFormBtn.textContent = '+ Form';
-    header.appendChild(createFormBtn);
+    createGroup.appendChild(createFormBtn);
 
-    const createAttBtn = createElement('button', 'pkc-btn');
+    const createAttBtn = createElement('button', 'pkc-btn pkc-btn-create');
     createAttBtn.setAttribute('data-pkc-action', 'create-entry');
     createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
     createAttBtn.textContent = '+ File';
-    header.appendChild(createAttBtn);
+    createGroup.appendChild(createAttBtn);
 
-    // Export / Import panel
+    header.appendChild(createGroup);
+
+    // Export / Import panel (collapsible)
     header.appendChild(renderExportImportPanel(state));
   }
 
@@ -203,8 +207,16 @@ function renderHeader(state: AppState): HTMLElement {
 }
 
 function renderExportImportPanel(state: AppState): HTMLElement {
+  const details = document.createElement('details');
+  details.className = 'pkc-eip-disclosure';
+  details.setAttribute('data-pkc-region', 'export-import-panel');
+
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-eip-summary';
+  summary.textContent = 'Export / Import';
+  details.appendChild(summary);
+
   const panel = createElement('div', 'pkc-export-import-panel');
-  panel.setAttribute('data-pkc-region', 'export-import-panel');
 
   const container = state.container;
   const containerHasAssets = container ? hasAssets(container) : false;
@@ -326,7 +338,8 @@ function renderExportImportPanel(state: AppState): HTMLElement {
 
   panel.appendChild(importSection);
 
-  return panel;
+  details.appendChild(panel);
+  return details;
 }
 
 function makeHint(text: string): HTMLElement {
