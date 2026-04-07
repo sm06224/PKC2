@@ -14,6 +14,8 @@ import {
   getRestoreCandidates,
   restoreEntry,
   restoreDeletedEntry,
+  setAsset,
+  mergeAssets,
 } from '@core/operations/container-ops';
 import type { Container } from '@core/model/container';
 
@@ -387,5 +389,43 @@ describe('restoreDeletedEntry', () => {
     c = snapshotEntry(c, 'e1', 'rev-1', T);
     // e1 still exists
     expect(restoreDeletedEntry(c, 'rev-1', T)).toBe(c);
+  });
+});
+
+// ── Asset operations ────────────────────────────
+
+describe('setAsset', () => {
+  it('adds a new asset', () => {
+    const e = emptyContainer();
+    const c = setAsset(e, 'ast-1', 'data1');
+    expect(c.assets['ast-1']).toBe('data1');
+    expect(e.assets['ast-1']).toBeUndefined(); // immutable
+  });
+
+  it('overwrites an existing asset', () => {
+    let c = setAsset(emptyContainer(), 'ast-1', 'data1');
+    c = setAsset(c, 'ast-1', 'data2');
+    expect(c.assets['ast-1']).toBe('data2');
+  });
+});
+
+describe('mergeAssets', () => {
+  it('merges multiple assets', () => {
+    const c = mergeAssets(emptyContainer(), { 'ast-1': 'a', 'ast-2': 'b' });
+    expect(c.assets['ast-1']).toBe('a');
+    expect(c.assets['ast-2']).toBe('b');
+  });
+
+  it('returns same container for empty assets', () => {
+    const e = emptyContainer();
+    const c = mergeAssets(e, {});
+    expect(c).toBe(e);
+  });
+
+  it('preserves existing assets', () => {
+    let c = setAsset(emptyContainer(), 'ast-existing', 'old');
+    c = mergeAssets(c, { 'ast-new': 'new' });
+    expect(c.assets['ast-existing']).toBe('old');
+    expect(c.assets['ast-new']).toBe('new');
   });
 });

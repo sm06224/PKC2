@@ -15,7 +15,7 @@ export type UserAction =
   | { type: 'SELECT_ENTRY'; lid: string }
   | { type: 'DESELECT_ENTRY' }
   | { type: 'BEGIN_EDIT'; lid: string }
-  | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string }
+  | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string; assets?: Record<string, string> }
   | { type: 'CANCEL_EDIT' }
   | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string }
   | { type: 'DELETE_ENTRY'; lid: string }

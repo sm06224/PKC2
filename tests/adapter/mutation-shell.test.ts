@@ -413,7 +413,7 @@ describe('Mutation → Shell integration', () => {
     expect(checkedInput2!.checked).toBe(true);
   });
 
-  it('attachment entry lifecycle: create → edit (populate hidden fields) → save → re-render', () => {
+  it('attachment entry lifecycle: create → edit (populate hidden fields) → save → data in assets', () => {
     const { dispatcher } = setup();
 
     registerPresenter('attachment', attachmentPresenter);
@@ -438,19 +438,29 @@ describe('Mutation → Shell integration', () => {
     nameField!.value = 'readme.txt';
     const mimeField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-mime"]');
     mimeField!.value = 'text/plain';
+    const assetKeyField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-asset-key"]');
+    assetKeyField!.value = 'ast-test-001';
     const dataField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-data"]');
     dataField!.value = 'SGVsbG8='; // "Hello"
+    const sizeField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-size"]');
+    sizeField!.value = '5';
 
-    // Save
+    // Save via click (action-binder extracts asset data)
     const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
     saveBtn.click();
 
-    // Verify saved body
+    // Verify saved body has metadata only (no data field)
     const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
     const parsed = JSON.parse(saved.body);
     expect(parsed.name).toBe('readme.txt');
     expect(parsed.mime).toBe('text/plain');
-    expect(parsed.data).toBe('SGVsbG8=');
+    expect(parsed.asset_key).toBe('ast-test-001');
+    expect(parsed.size).toBe(5);
+    expect(parsed.data).toBeUndefined();
+
+    // Verify data is in container.assets
+    const assets = dispatcher.getState().container!.assets;
+    expect(assets['ast-test-001']).toBe('SGVsbG8=');
 
     // Re-render: view should show saved values
     const reRendered = root.querySelector('.pkc-attachment-view');

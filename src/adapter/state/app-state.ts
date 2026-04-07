@@ -15,6 +15,7 @@ import {
   snapshotEntry,
   restoreEntry,
   restoreDeletedEntry,
+  mergeAssets,
 } from '../../core/operations/container-ops';
 
 /**
@@ -392,6 +393,10 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       let container = snapshotEntry(state.container, action.lid, revId, ts);
       // Apply the update
       container = updateEntry(container, action.lid, action.title, action.body, ts);
+      // Merge any assets (e.g., attachment file data)
+      if (action.assets) {
+        container = mergeAssets(container, action.assets);
+      }
       const next: AppState = { ...state, phase: 'ready', editingLid: null, container };
       return {
         state: next,

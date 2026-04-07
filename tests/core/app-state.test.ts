@@ -243,6 +243,31 @@ describe('AppState reducer', () => {
     expect(base.container!.revisions).toHaveLength(0);
   });
 
+  it('COMMIT_EDIT with assets merges into container.assets', () => {
+    const base: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+    };
+    const { state } = reduce(base, {
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'File', body: '{}',
+      assets: { 'ast-001': 'base64data' },
+    });
+    expect(state.container!.assets['ast-001']).toBe('base64data');
+  });
+
+  it('COMMIT_EDIT without assets does not modify container.assets', () => {
+    const base: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+    };
+    const { state } = reduce(base, {
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'Text', body: 'hello',
+    });
+    expect(Object.keys(state.container!.assets)).toHaveLength(0);
+  });
+
   it('CANCEL_EDIT does not modify container', () => {
     const base: AppState = {
       ...readyState(),

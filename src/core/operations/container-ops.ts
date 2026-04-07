@@ -113,6 +113,38 @@ export function nextSelectedAfterRemove(
   return remaining[nextIdx]!.lid;
 }
 
+// ── Asset operations ─────────────────────────
+
+/**
+ * Set an asset in the container. Overwrites if key already exists.
+ * Used by attachment archetype to store file data separately from entry.body.
+ */
+export function setAsset(
+  container: Container,
+  key: string,
+  data: string,
+): Container {
+  return {
+    ...container,
+    assets: { ...container.assets, [key]: data },
+  };
+}
+
+/**
+ * Merge multiple assets into the container.
+ * Used when COMMIT_EDIT carries asset data from attachment editor.
+ */
+export function mergeAssets(
+  container: Container,
+  assets: Record<string, string>,
+): Container {
+  if (Object.keys(assets).length === 0) return container;
+  return {
+    ...container,
+    assets: { ...container.assets, ...assets },
+  };
+}
+
 // ── Relation operations ──────────────────────
 
 export function addRelation(

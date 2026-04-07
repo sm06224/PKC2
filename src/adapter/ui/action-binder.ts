@@ -4,6 +4,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { collectAssetData } from './attachment-presenter';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -218,5 +219,14 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   const presenter = getPresenter(archetype);
   const body = presenter.collectBody(root);
 
-  dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
+  // For attachment archetype: extract asset data separately from body
+  let assets: Record<string, string> | undefined;
+  if (archetype === 'attachment') {
+    const assetData = collectAssetData(root);
+    if (assetData) {
+      assets = { [assetData.key]: assetData.data };
+    }
+  }
+
+  dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body, assets });
 }
