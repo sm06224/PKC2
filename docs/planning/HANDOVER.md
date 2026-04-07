@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #49 完了時点（Folder / Structural Navigation Foundation）
+**最終更新**: Issue #50 完了時点（Folder UX Hardening）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,8 +11,8 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#49 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
-Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ/階層ナビゲーションを実施。
+Issue #1〜#50 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
+Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ基盤、#50 でフォルダUX強化を実施。
 現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換の本格解決、レスポンシブ対応。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
@@ -143,8 +143,9 @@ UI 監査・整備 (#45〜#46):
 | 47 | Entry Editing Flow — Create→即Edit、Delete確認ダイアログ、scroll/focus復元（DOM全置換の応急処置） |
 | 48 | Attachment UX — ダウンロード機能、ファイルカード表示、画像プレビュー、download-attachment action |
 | 49 | Folder / Structural Navigation — folder archetype、sidebar tree表示、breadcrumb、Move to Folder UI |
+| 50 | Folder UX Hardening — フォルダ配下作成導線、current location強調、空フォルダガイド、tree child count、Move UX改善 |
 
-テスト: 730 tests / 38 files 全通過、typecheck clean、build clean
+テスト: 741 tests / 38 files 全通過、typecheck clean、build clean
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 不変条件（必ず守ること）
@@ -220,7 +221,7 @@ src/
 build/
 ├── release-builder.ts  # Stage 2 builder
 └── shell.html          # HTML template
-tests/                  # 730 tests across 38 test files
+tests/                  # 741 tests across 38 test files
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 保存・再水和・可搬モデルの到達点

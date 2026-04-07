@@ -155,37 +155,37 @@ function renderHeader(state: AppState): HTMLElement {
 
   // Actions: create entry, export (suppressed in readonly mode)
   if (state.phase === 'ready' && !state.readonly) {
+    // Determine context folder for creation
+    const contextFolder = resolveContextFolder(state);
+
     const createGroup = createElement('div', 'pkc-create-actions');
 
-    const createBtn = createElement('button', 'pkc-btn pkc-btn-create');
-    createBtn.setAttribute('data-pkc-action', 'create-entry');
-    createBtn.setAttribute('data-pkc-archetype', 'text');
-    createBtn.textContent = '+ Note';
-    createGroup.appendChild(createBtn);
+    // Show context indicator when creating inside a folder
+    if (contextFolder) {
+      const ctx = createElement('span', 'pkc-create-context');
+      ctx.setAttribute('data-pkc-region', 'create-context');
+      ctx.textContent = `in ${truncate(contextFolder.title || '(untitled)', 20)}:`;
+      createGroup.appendChild(ctx);
+    }
 
-    const createTodoBtn = createElement('button', 'pkc-btn pkc-btn-create');
-    createTodoBtn.setAttribute('data-pkc-action', 'create-entry');
-    createTodoBtn.setAttribute('data-pkc-archetype', 'todo');
-    createTodoBtn.textContent = '+ Todo';
-    createGroup.appendChild(createTodoBtn);
+    const archetypeButtons: { arch: ArchetypeId; label: string }[] = [
+      { arch: 'text', label: '+ Note' },
+      { arch: 'todo', label: '+ Todo' },
+      { arch: 'form', label: '+ Form' },
+      { arch: 'attachment', label: '+ File' },
+      { arch: 'folder', label: '+ Folder' },
+    ];
 
-    const createFormBtn = createElement('button', 'pkc-btn pkc-btn-create');
-    createFormBtn.setAttribute('data-pkc-action', 'create-entry');
-    createFormBtn.setAttribute('data-pkc-archetype', 'form');
-    createFormBtn.textContent = '+ Form';
-    createGroup.appendChild(createFormBtn);
-
-    const createAttBtn = createElement('button', 'pkc-btn pkc-btn-create');
-    createAttBtn.setAttribute('data-pkc-action', 'create-entry');
-    createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
-    createAttBtn.textContent = '+ File';
-    createGroup.appendChild(createAttBtn);
-
-    const createFolderBtn = createElement('button', 'pkc-btn pkc-btn-create');
-    createFolderBtn.setAttribute('data-pkc-action', 'create-entry');
-    createFolderBtn.setAttribute('data-pkc-archetype', 'folder');
-    createFolderBtn.textContent = '+ Folder';
-    createGroup.appendChild(createFolderBtn);
+    for (const { arch, label } of archetypeButtons) {
+      const btn = createElement('button', 'pkc-btn pkc-btn-create');
+      btn.setAttribute('data-pkc-action', 'create-entry');
+      btn.setAttribute('data-pkc-archetype', arch);
+      if (contextFolder) {
+        btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+      }
+      btn.textContent = label;
+      createGroup.appendChild(btn);
+    }
 
     header.appendChild(createGroup);
 
@@ -523,6 +523,10 @@ function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): v
   }
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
+    // Show child count for folders
+    const childCount = createElement('span', 'pkc-folder-count');
+    childCount.textContent = `(${node.children.length})`;
+    li.appendChild(childCount);
   }
   parent.appendChild(li);
   for (const child of node.children) {
@@ -621,26 +625,28 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   titleRow.appendChild(archLabel);
   view.appendChild(titleRow);
 
-  // Breadcrumb: show parent folder path
+  // Breadcrumb: show parent folder path + current entry
   if (container) {
     const breadcrumb = getBreadcrumb(container.relations, container.entries, entry.lid);
     if (breadcrumb.length > 0) {
       const bc = createElement('div', 'pkc-breadcrumb');
       bc.setAttribute('data-pkc-region', 'breadcrumb');
-      let bcIndex = 0;
       for (const ancestor of breadcrumb) {
-        if (bcIndex > 0) {
-          const sep = createElement('span', 'pkc-breadcrumb-sep');
-          sep.textContent = ' › ';
-          bc.appendChild(sep);
-        }
         const link = createElement('span', 'pkc-breadcrumb-item');
         link.setAttribute('data-pkc-action', 'select-entry');
         link.setAttribute('data-pkc-lid', ancestor.lid);
         link.textContent = ancestor.title || '(untitled)';
         bc.appendChild(link);
-        bcIndex++;
+
+        const sep = createElement('span', 'pkc-breadcrumb-sep');
+        sep.textContent = ' › ';
+        bc.appendChild(sep);
       }
+      // Current entry (non-clickable)
+      const current = createElement('span', 'pkc-breadcrumb-current');
+      current.textContent = entry.title || '(untitled)';
+      bc.appendChild(current);
+
       view.appendChild(bc);
     }
   }
@@ -648,6 +654,11 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   // Archetype-dispatched body rendering
   const presenter = getPresenter(entry.archetype);
   view.appendChild(presenter.renderBody(entry));
+
+  // Folder contents section (show children for folder entries)
+  if (entry.archetype === 'folder' && container) {
+    view.appendChild(renderFolderContents(entry, container));
+  }
 
   // Tags section
   if (container) {
@@ -722,11 +733,18 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     moveSection.setAttribute('data-pkc-lid', entry.lid);
 
     const moveLabel = createElement('span', 'pkc-move-label');
-    moveLabel.textContent = 'Folder:';
+    moveLabel.textContent = 'Move to:';
     moveSection.appendChild(moveLabel);
 
     // Find current parent folder
     const currentParent = getStructuralParent(container.relations, container.entries, entry.lid);
+
+    // Show current location
+    if (currentParent) {
+      const currentLoc = createElement('span', 'pkc-move-current');
+      currentLoc.textContent = `Currently in: ${currentParent.title || '(untitled)'}`;
+      moveSection.appendChild(currentLoc);
+    }
 
     const select = document.createElement('select');
     select.setAttribute('data-pkc-field', 'move-target');
@@ -734,7 +752,7 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
 
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
-    noneOpt.textContent = '(none — root level)';
+    noneOpt.textContent = currentParent ? '↑ Move to root level' : '(root level)';
     if (!currentParent) noneOpt.selected = true;
     select.appendChild(noneOpt);
 
@@ -1108,6 +1126,68 @@ function createElement(tag: string, className: string): HTMLElement {
   const el = document.createElement(tag);
   el.className = className;
   return el;
+}
+
+function renderFolderContents(folder: Entry, container: Container): HTMLElement {
+  const section = createElement('div', 'pkc-folder-contents');
+  section.setAttribute('data-pkc-region', 'folder-contents');
+
+  const heading = createElement('div', 'pkc-folder-contents-heading');
+  heading.textContent = 'Contents';
+  section.appendChild(heading);
+
+  // Find children via structural relations
+  const children: Entry[] = [];
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && r.from === folder.lid) {
+      const child = container.entries.find((e) => e.lid === r.to);
+      if (child) children.push(child);
+    }
+  }
+
+  if (children.length === 0) {
+    const empty = createElement('div', 'pkc-folder-contents-empty');
+    empty.textContent = 'This folder is empty. Use the + buttons above to add entries here.';
+    section.appendChild(empty);
+  } else {
+    const list = createElement('ul', 'pkc-folder-contents-list');
+    for (const child of children) {
+      const item = createElement('li', 'pkc-folder-contents-item');
+      const link = createElement('span', 'pkc-folder-contents-link');
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', child.lid);
+      link.textContent = child.title || '(untitled)';
+      item.appendChild(link);
+
+      const badge = createElement('span', 'pkc-archetype-badge');
+      badge.setAttribute('data-pkc-archetype', child.archetype);
+      badge.textContent = archetypeLabel(child.archetype);
+      item.appendChild(badge);
+
+      list.appendChild(item);
+    }
+    section.appendChild(list);
+  }
+
+  return section;
+}
+
+/**
+ * Resolve the folder context for creation.
+ * If selected entry is a folder → create inside it.
+ * If selected entry has a structural parent → create in the same folder.
+ * Otherwise → no context (root level).
+ */
+function resolveContextFolder(state: AppState): Entry | null {
+  if (!state.selectedLid || !state.container) return null;
+  const selected = state.container.entries.find((e) => e.lid === state.selectedLid);
+  if (!selected) return null;
+
+  if (selected.archetype === 'folder') return selected;
+
+  // Check if the selected entry has a structural parent (folder)
+  const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+  return parent ?? null;
 }
 
 function findSelectedEntry(state: AppState): Entry | null {

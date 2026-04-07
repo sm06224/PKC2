@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { folderPresenter } from '@adapter/ui/folder-presenter';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
 import type { Entry } from '@core/model/record';

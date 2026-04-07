@@ -953,6 +953,53 @@
   border-radius: var(--radius-lg);
 }
 
+/* Folder contents in detail view */
+.pkc-folder-contents {
+  margin-bottom: 0.75rem;
+}
+
+.pkc-folder-contents-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pkc-folder-contents-empty {
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: var(--c-surface);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.pkc-folder-contents-list {
+  list-style: none;
+}
+
+.pkc-folder-contents-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--c-border);
+  font-size: 0.85rem;
+}
+
+.pkc-folder-contents-link {
+  color: var(--c-accent);
+  cursor: pointer;
+  flex: 1;
+}
+
+.pkc-folder-contents-link:hover {
+  text-decoration: underline;
+}
+
 /* ── Breadcrumb ── */
 .pkc-breadcrumb {
   display: flex;
@@ -965,7 +1012,7 @@
 }
 
 .pkc-breadcrumb-sep {
-  color: var(--c-border);
+  color: var(--c-muted);
 }
 
 .pkc-breadcrumb-item {
@@ -977,11 +1024,17 @@
   text-decoration: underline;
 }
 
+.pkc-breadcrumb-current {
+  color: var(--c-fg);
+  font-weight: 500;
+}
+
 /* ── Move to Folder ── */
 .pkc-move-to-folder {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  flex-wrap: wrap;
   margin-top: 0.75rem;
   padding-top: 0.6rem;
   border-top: 1px solid var(--c-border);
@@ -994,6 +1047,12 @@
   color: var(--c-muted);
 }
 
+.pkc-move-current {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  font-style: italic;
+}
+
 .pkc-move-select {
   font-size: 0.75rem;
   padding: 0.2rem 0.3rem;
@@ -1004,10 +1063,28 @@
   max-width: 200px;
 }
 
+/* ── Create context indicator ── */
+.pkc-create-context {
+  font-size: 0.75rem;
+  color: var(--c-accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* ── Sidebar tree folder indicator ── */
 [data-pkc-folder="true"] .pkc-entry-title::before {
   content: '📁 ';
   font-size: 0.8rem;
+}
+
+.pkc-folder-count {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+[data-pkc-selected="true"] .pkc-folder-count {
+  color: rgba(255,255,255,0.7);
 }
 
 /* ── Attachment presenter ── */

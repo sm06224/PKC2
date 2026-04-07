@@ -47,7 +47,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
         const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Entry';
+        // Determine context folder: if currently selected entry is a folder, or
+        // if currently selected entry is inside a folder, use that as parent
+        const contextFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
         dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
+        // After creation, place the new entry in the context folder
+        if (contextFolder) {
+          const newState = dispatcher.getState();
+          if (newState.selectedLid) {
+            dispatcher.dispatch({ type: 'CREATE_RELATION', from: contextFolder, to: newState.selectedLid, kind: 'structural' });
+          }
+        }
         break;
       }
       case 'delete-entry':
