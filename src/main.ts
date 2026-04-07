@@ -2,7 +2,7 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions } from './adapter/ui/action-binder';
+import { bindActions, populateAttachmentPreviews } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -21,6 +21,7 @@ import { registerPresenter } from './adapter/ui/detail-presenter';
 import { todoPresenter } from './adapter/ui/todo-presenter';
 import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
+import { folderPresenter } from './adapter/ui/folder-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { Container } from './core/model/container';
 
@@ -44,13 +45,38 @@ async function boot(): Promise<void> {
   registerPresenter('todo', todoPresenter);
   registerPresenter('form', formPresenter);
   registerPresenter('attachment', attachmentPresenter);
+  registerPresenter('folder', folderPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();
 
-  // 2. Renderer: state → DOM
+  // 2. Renderer: state → DOM (with scroll/focus restoration)
   dispatcher.onState((state) => {
+    // Save scroll positions and active element info before re-render
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    const detail = root.querySelector('.pkc-detail');
+    const sidebarScroll = sidebar?.scrollTop ?? 0;
+    const detailScroll = detail?.scrollTop ?? 0;
+    const focusField = document.activeElement?.getAttribute('data-pkc-field') ?? null;
+
     render(state, root);
+
+    // Restore scroll positions
+    const newSidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    const newDetail = root.querySelector('.pkc-detail');
+    if (newSidebar) newSidebar.scrollTop = sidebarScroll;
+    if (newDetail) newDetail.scrollTop = detailScroll;
+
+    // Restore focus: if editing, focus the title or previously focused field
+    if (state.phase === 'editing') {
+      const target = focusField
+        ? root.querySelector<HTMLElement>(`[data-pkc-field="${focusField}"]`)
+        : root.querySelector<HTMLElement>('[data-pkc-field="title"]');
+      target?.focus();
+    }
+
+    // Populate attachment image previews (needs container.assets data)
+    populateAttachmentPreviews(root, dispatcher);
   });
 
   // 3. Action binder: DOM events → UserAction

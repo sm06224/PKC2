@@ -177,37 +177,80 @@ describe('Attachment Presenter', () => {
     it('shows file info (legacy format)', () => {
       const el = attachmentPresenter.renderBody(makeLegacyEntry());
       expect(el.className).toBe('pkc-attachment-view');
-      expect(el.querySelector('.pkc-attachment-name')!.textContent).toBe('test.txt');
-      expect(el.querySelector('.pkc-attachment-mime')!.textContent).toBe('text/plain');
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
+      expect(el.querySelector('.pkc-attachment-filename')!.textContent).toBe('test.txt');
+      expect(el.querySelector('.pkc-attachment-mime-badge')!.textContent).toBe('text/plain');
+      expect(el.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
     });
 
     it('shows file info (new format with size)', () => {
       const el = attachmentPresenter.renderBody(makeNewFormatEntry());
-      expect(el.querySelector('.pkc-attachment-name')!.textContent).toBe('test.txt');
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
+      expect(el.querySelector('.pkc-attachment-filename')!.textContent).toBe('test.txt');
+      expect(el.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
     });
 
-    it('shows (no file) for empty name', () => {
+    it('shows empty state for empty name', () => {
       const el = attachmentPresenter.renderBody(makeLegacyEntry('{}'));
-      expect(el.querySelector('.pkc-attachment-name')!.textContent).toBe('(no file)');
+      expect(el.querySelector('.pkc-attachment-empty')!.textContent).toBe('No file attached');
+      expect(el.querySelector('.pkc-attachment-filename')).toBeNull();
     });
 
-    it('shows (empty) for no data and no size', () => {
+    it('shows no size badge when no data and no size', () => {
       const el = attachmentPresenter.renderBody(makeLegacyEntry('{"name":"x","mime":"text/plain"}'));
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('(empty)');
+      expect(el.querySelector('.pkc-attachment-size-badge')).toBeNull();
     });
 
-    it('shows (not included) when asset_key exists but no data (light export)', () => {
+    it('shows stripped notice when asset_key exists but no data (light export)', () => {
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123"}');
       const el = attachmentPresenter.renderBody(entry);
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('(not included)');
+      expect(el.querySelector('.pkc-attachment-stripped')!.textContent).toBe('Data not included (Light export)');
     });
 
     it('shows size when asset_key exists with size field', () => {
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
       const el = attachmentPresenter.renderBody(entry);
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('4.9 KB');
+      expect(el.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('4.9 KB');
+    });
+
+    it('shows download button when data is available (legacy)', () => {
+      const el = attachmentPresenter.renderBody(makeLegacyEntry());
+      const btn = el.querySelector('[data-pkc-action="download-attachment"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Download');
+    });
+
+    it('hides download button when asset_key has no data (even with size)', () => {
+      // asset_key with size but no data = light export, data not available for download
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const el = attachmentPresenter.renderBody(entry);
+      const btn = el.querySelector('[data-pkc-action="download-attachment"]');
+      expect(btn).toBeNull();
+    });
+
+    it('hides download button when data is stripped (light export)', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123"}');
+      const el = attachmentPresenter.renderBody(entry);
+      const btn = el.querySelector('[data-pkc-action="download-attachment"]');
+      expect(btn).toBeNull();
+    });
+
+    it('shows image preview placeholder for image types', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","data":"iVBOR","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview).not.toBeNull();
+    });
+
+    it('does not show image preview for non-image types', () => {
+      const el = attachmentPresenter.renderBody(makeLegacyEntry());
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview).toBeNull();
+    });
+
+    it('does not show image preview when data is stripped', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","asset_key":"ast-123"}');
+      const el = attachmentPresenter.renderBody(entry);
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview).toBeNull();
     });
   });
 
@@ -346,15 +389,15 @@ describe('Attachment Presenter', () => {
     it('legacy body renders correctly in view', () => {
       const entry = makeLegacyEntry();
       const el = attachmentPresenter.renderBody(entry);
-      expect(el.querySelector('.pkc-attachment-name')!.textContent).toBe('test.txt');
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
+      expect(el.querySelector('.pkc-attachment-filename')!.textContent).toBe('test.txt');
+      expect(el.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
     });
 
     it('new format body renders correctly in view', () => {
       const entry = makeNewFormatEntry();
       const el = attachmentPresenter.renderBody(entry);
-      expect(el.querySelector('.pkc-attachment-name')!.textContent).toBe('test.txt');
-      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
+      expect(el.querySelector('.pkc-attachment-filename')!.textContent).toBe('test.txt');
+      expect(el.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
     });
 
     it('legacy entry editor pre-populates data for migration', () => {

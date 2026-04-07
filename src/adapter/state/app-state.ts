@@ -176,10 +176,19 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const lid = generateLid();
       const ts = now();
       const container = addEntry(state.container, lid, action.archetype, action.title, ts);
-      const next: AppState = { ...state, container, selectedLid: lid };
+      const next: AppState = {
+        ...state,
+        container,
+        selectedLid: lid,
+        phase: 'editing',
+        editingLid: lid,
+      };
       return {
         state: next,
-        events: [{ type: 'ENTRY_CREATED', lid, archetype: action.archetype }],
+        events: [
+          { type: 'ENTRY_CREATED', lid, archetype: action.archetype },
+          { type: 'EDIT_BEGUN', lid },
+        ],
       };
     }
     case 'DELETE_ENTRY': {

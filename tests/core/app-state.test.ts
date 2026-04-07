@@ -95,11 +95,14 @@ describe('AppState reducer', () => {
     expect(created.title).toBe('New Entry');
     expect(created.archetype).toBe('text');
     expect(created.body).toBe('');
-    // Selected the new entry
+    // Selected the new entry and entered editing
     expect(state.selectedLid).toBe(created.lid);
-    // Event emitted
-    expect(events).toHaveLength(1);
+    expect(state.phase).toBe('editing');
+    expect(state.editingLid).toBe(created.lid);
+    // Events emitted: ENTRY_CREATED + EDIT_BEGUN
+    expect(events).toHaveLength(2);
     expect(events[0]!.type).toBe('ENTRY_CREATED');
+    expect(events[1]!.type).toBe('EDIT_BEGUN');
   });
 
   it('CREATE_ENTRY does not mutate original container', () => {

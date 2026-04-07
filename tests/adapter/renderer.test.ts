@@ -1479,8 +1479,8 @@ describe('Renderer', () => {
 
     const attView = root.querySelector('.pkc-attachment-view');
     expect(attView).not.toBeNull();
-    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('doc.pdf');
-    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('application/pdf');
+    expect(root.querySelector('.pkc-attachment-filename')!.textContent).toBe('doc.pdf');
+    expect(root.querySelector('.pkc-attachment-mime-badge')!.textContent).toBe('application/pdf');
   });
 
   it('attachment entry renders editor with file input', () => {
@@ -1611,5 +1611,135 @@ describe('Renderer', () => {
     const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
     expect(importBtn).not.toBeNull();
     expect(importBtn!.textContent).toBe('Import');
+  });
+});
+
+// ── Issue #50: Folder UX Hardening ──
+
+describe('Folder UX Hardening', () => {
+  const folderContainer: Container = {
+    meta: {
+      container_id: 'test-id', title: 'Test', created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+    },
+    entries: [
+      { lid: 'f1', title: 'My Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'e1', title: 'Note in Folder', body: 'content', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'e2', title: 'Root Note', body: 'root content', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'f1', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  const baseState: AppState = {
+    phase: 'ready', container: folderContainer,
+    selectedLid: null, editingLid: null, error: null, embedded: false,
+    pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+    tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    exportMode: null, exportMutability: null, readonly: false,
+  };
+
+  it('shows tree with folder and child in sidebar', () => {
+    render({ ...baseState }, root);
+    const items = root.querySelectorAll('.pkc-entry-item');
+    // Tree mode: f1, e1 (child of f1), e2 (root)
+    expect(items.length).toBeGreaterThanOrEqual(3);
+    // Folder should have data-pkc-folder attribute
+    const folderItem = root.querySelector('[data-pkc-folder="true"]');
+    expect(folderItem).not.toBeNull();
+  });
+
+  it('shows child count on folder node in tree', () => {
+    render({ ...baseState }, root);
+    const folderCount = root.querySelector('.pkc-folder-count');
+    expect(folderCount).not.toBeNull();
+    expect(folderCount!.textContent).toBe('(1)');
+  });
+
+  it('shows context folder indicator when folder is selected', () => {
+    render({ ...baseState, selectedLid: 'f1' }, root);
+    const ctx = root.querySelector('[data-pkc-region="create-context"]');
+    expect(ctx).not.toBeNull();
+    expect(ctx!.textContent).toContain('My Folder');
+  });
+
+  it('shows context folder when child of folder is selected', () => {
+    render({ ...baseState, selectedLid: 'e1' }, root);
+    const ctx = root.querySelector('[data-pkc-region="create-context"]');
+    expect(ctx).not.toBeNull();
+    expect(ctx!.textContent).toContain('My Folder');
+  });
+
+  it('does not show context folder when root entry is selected', () => {
+    render({ ...baseState, selectedLid: 'e2' }, root);
+    const ctx = root.querySelector('[data-pkc-region="create-context"]');
+    expect(ctx).toBeNull();
+  });
+
+  it('create buttons have data-pkc-context-folder when folder is selected', () => {
+    render({ ...baseState, selectedLid: 'f1' }, root);
+    const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
+    expect(createBtns.length).toBeGreaterThan(0);
+    for (const btn of createBtns) {
+      expect(btn.getAttribute('data-pkc-context-folder')).toBe('f1');
+    }
+  });
+
+  it('shows breadcrumb with current entry name for child entries', () => {
+    render({ ...baseState, selectedLid: 'e1' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    // Should show "My Folder > Note in Folder"
+    const items = bc!.querySelectorAll('.pkc-breadcrumb-item');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.textContent).toBe('My Folder');
+    const current = bc!.querySelector('.pkc-breadcrumb-current');
+    expect(current).not.toBeNull();
+    expect(current!.textContent).toBe('Note in Folder');
+  });
+
+  it('shows folder contents section when folder is selected', () => {
+    render({ ...baseState, selectedLid: 'f1' }, root);
+    const contents = root.querySelector('[data-pkc-region="folder-contents"]');
+    expect(contents).not.toBeNull();
+    const contentItems = contents!.querySelectorAll('.pkc-folder-contents-item');
+    expect(contentItems).toHaveLength(1);
+    expect(contentItems[0]!.textContent).toContain('Note in Folder');
+  });
+
+  it('shows empty message for empty folder', () => {
+    const emptyFolderContainer = {
+      ...folderContainer,
+      entries: [
+        { lid: 'f2', title: 'Empty Folder', body: '', archetype: 'folder' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [],
+    };
+    render({ ...baseState, container: emptyFolderContainer, selectedLid: 'f2' }, root);
+    const contents = root.querySelector('[data-pkc-region="folder-contents"]');
+    expect(contents).not.toBeNull();
+    const emptyMsg = contents!.querySelector('.pkc-folder-contents-empty');
+    expect(emptyMsg).not.toBeNull();
+    expect(emptyMsg!.textContent).toContain('empty');
+  });
+
+  it('shows current parent in move-to-folder section', () => {
+    render({ ...baseState, selectedLid: 'e1' }, root);
+    const moveSection = root.querySelector('[data-pkc-region="move-to-folder"]');
+    expect(moveSection).not.toBeNull();
+    const currentLoc = moveSection!.querySelector('.pkc-move-current');
+    expect(currentLoc).not.toBeNull();
+    expect(currentLoc!.textContent).toContain('My Folder');
+  });
+
+  it('move select shows "Move to root level" option when entry has parent', () => {
+    render({ ...baseState, selectedLid: 'e1' }, root);
+    const select = root.querySelector('[data-pkc-field="move-target"]') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    const firstOpt = select.options[0];
+    expect(firstOpt!.textContent).toContain('root level');
   });
 });

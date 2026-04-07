@@ -7,6 +7,7 @@ export type ArchetypeId =
   | 'todo'
   | 'form'
   | 'attachment'
+  | 'folder'
   | 'generic'
   | 'opaque';
 

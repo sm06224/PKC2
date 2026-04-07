@@ -17,6 +17,8 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
+import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
+import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import {
   lightExportWarning, fullExportEstimation, zipRecommendation,
@@ -27,7 +29,7 @@ import { parseTodoBody } from './todo-presenter';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
-  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
+  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'folder', 'generic', 'opaque',
 ] as const;
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
@@ -37,6 +39,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   todo: 'Todo',
   form: 'Form',
   attachment: 'File',
+  folder: 'Folder',
   generic: 'Generic',
   opaque: 'Opaque',
 };
@@ -152,31 +155,41 @@ function renderHeader(state: AppState): HTMLElement {
 
   // Actions: create entry, export (suppressed in readonly mode)
   if (state.phase === 'ready' && !state.readonly) {
-    const createBtn = createElement('button', 'pkc-btn');
-    createBtn.setAttribute('data-pkc-action', 'create-entry');
-    createBtn.setAttribute('data-pkc-archetype', 'text');
-    createBtn.textContent = '+ Note';
-    header.appendChild(createBtn);
+    // Determine context folder for creation
+    const contextFolder = resolveContextFolder(state);
 
-    const createTodoBtn = createElement('button', 'pkc-btn');
-    createTodoBtn.setAttribute('data-pkc-action', 'create-entry');
-    createTodoBtn.setAttribute('data-pkc-archetype', 'todo');
-    createTodoBtn.textContent = '+ Todo';
-    header.appendChild(createTodoBtn);
+    const createGroup = createElement('div', 'pkc-create-actions');
 
-    const createFormBtn = createElement('button', 'pkc-btn');
-    createFormBtn.setAttribute('data-pkc-action', 'create-entry');
-    createFormBtn.setAttribute('data-pkc-archetype', 'form');
-    createFormBtn.textContent = '+ Form';
-    header.appendChild(createFormBtn);
+    // Show context indicator when creating inside a folder
+    if (contextFolder) {
+      const ctx = createElement('span', 'pkc-create-context');
+      ctx.setAttribute('data-pkc-region', 'create-context');
+      ctx.textContent = `in ${truncate(contextFolder.title || '(untitled)', 20)}:`;
+      createGroup.appendChild(ctx);
+    }
 
-    const createAttBtn = createElement('button', 'pkc-btn');
-    createAttBtn.setAttribute('data-pkc-action', 'create-entry');
-    createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
-    createAttBtn.textContent = '+ File';
-    header.appendChild(createAttBtn);
+    const archetypeButtons: { arch: ArchetypeId; label: string }[] = [
+      { arch: 'text', label: '+ Note' },
+      { arch: 'todo', label: '+ Todo' },
+      { arch: 'form', label: '+ Form' },
+      { arch: 'attachment', label: '+ File' },
+      { arch: 'folder', label: '+ Folder' },
+    ];
 
-    // Export / Import panel
+    for (const { arch, label } of archetypeButtons) {
+      const btn = createElement('button', 'pkc-btn pkc-btn-create');
+      btn.setAttribute('data-pkc-action', 'create-entry');
+      btn.setAttribute('data-pkc-archetype', arch);
+      if (contextFolder) {
+        btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+      }
+      btn.textContent = label;
+      createGroup.appendChild(btn);
+    }
+
+    header.appendChild(createGroup);
+
+    // Export / Import panel (collapsible)
     header.appendChild(renderExportImportPanel(state));
   }
 
@@ -203,8 +216,16 @@ function renderHeader(state: AppState): HTMLElement {
 }
 
 function renderExportImportPanel(state: AppState): HTMLElement {
+  const details = document.createElement('details');
+  details.className = 'pkc-eip-disclosure';
+  details.setAttribute('data-pkc-region', 'export-import-panel');
+
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-eip-summary';
+  summary.textContent = 'Export / Import';
+  details.appendChild(summary);
+
   const panel = createElement('div', 'pkc-export-import-panel');
-  panel.setAttribute('data-pkc-region', 'export-import-panel');
 
   const container = state.container;
   const containerHasAssets = container ? hasAssets(container) : false;
@@ -326,7 +347,8 @@ function renderExportImportPanel(state: AppState): HTMLElement {
 
   panel.appendChild(importSection);
 
-  return panel;
+  details.appendChild(panel);
+  return details;
 }
 
 function makeHint(text: string): HTMLElement {
@@ -426,8 +448,19 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  for (const entry of entries) {
-    list.appendChild(renderEntryItem(entry, state));
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null;
+
+  if (hasActiveFilter || !state.container) {
+    // Flat mode when filters are active (tree doesn't make sense for search results)
+    for (const entry of entries) {
+      list.appendChild(renderEntryItem(entry, state));
+    }
+  } else {
+    // Tree mode: build from structural relations
+    const tree = buildTree(entries, state.container.relations);
+    for (const node of tree) {
+      renderTreeNode(node, list, state);
+    }
   }
   sidebar.appendChild(list);
 
@@ -481,6 +514,24 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   return sidebar;
+}
+
+function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): void {
+  const li = renderEntryItem(node.entry, state);
+  if (node.depth > 0) {
+    li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
+  }
+  if (node.entry.archetype === 'folder') {
+    li.setAttribute('data-pkc-folder', 'true');
+    // Show child count for folders
+    const childCount = createElement('span', 'pkc-folder-count');
+    childCount.textContent = `(${node.children.length})`;
+    li.appendChild(childCount);
+  }
+  parent.appendChild(li);
+  for (const child of node.children) {
+    renderTreeNode(child, parent, state);
+  }
 }
 
 function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
@@ -574,9 +625,40 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   titleRow.appendChild(archLabel);
   view.appendChild(titleRow);
 
+  // Breadcrumb: show parent folder path + current entry
+  if (container) {
+    const breadcrumb = getBreadcrumb(container.relations, container.entries, entry.lid);
+    if (breadcrumb.length > 0) {
+      const bc = createElement('div', 'pkc-breadcrumb');
+      bc.setAttribute('data-pkc-region', 'breadcrumb');
+      for (const ancestor of breadcrumb) {
+        const link = createElement('span', 'pkc-breadcrumb-item');
+        link.setAttribute('data-pkc-action', 'select-entry');
+        link.setAttribute('data-pkc-lid', ancestor.lid);
+        link.textContent = ancestor.title || '(untitled)';
+        bc.appendChild(link);
+
+        const sep = createElement('span', 'pkc-breadcrumb-sep');
+        sep.textContent = ' › ';
+        bc.appendChild(sep);
+      }
+      // Current entry (non-clickable)
+      const current = createElement('span', 'pkc-breadcrumb-current');
+      current.textContent = entry.title || '(untitled)';
+      bc.appendChild(current);
+
+      view.appendChild(bc);
+    }
+  }
+
   // Archetype-dispatched body rendering
   const presenter = getPresenter(entry.archetype);
   view.appendChild(presenter.renderBody(entry));
+
+  // Folder contents section (show children for folder entries)
+  if (entry.archetype === 'folder' && container) {
+    view.appendChild(renderFolderContents(entry, container));
+  }
 
   // Tags section
   if (container) {
@@ -641,6 +723,54 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     }
 
     view.appendChild(tagSection);
+  }
+
+  // Move to Folder UI
+  if (container && canEdit) {
+    const folders = getAvailableFolders(container.entries, container.relations, entry.lid);
+    const moveSection = createElement('div', 'pkc-move-to-folder');
+    moveSection.setAttribute('data-pkc-region', 'move-to-folder');
+    moveSection.setAttribute('data-pkc-lid', entry.lid);
+
+    const moveLabel = createElement('span', 'pkc-move-label');
+    moveLabel.textContent = 'Move to:';
+    moveSection.appendChild(moveLabel);
+
+    // Find current parent folder
+    const currentParent = getStructuralParent(container.relations, container.entries, entry.lid);
+
+    // Show current location
+    if (currentParent) {
+      const currentLoc = createElement('span', 'pkc-move-current');
+      currentLoc.textContent = `Currently in: ${currentParent.title || '(untitled)'}`;
+      moveSection.appendChild(currentLoc);
+    }
+
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-field', 'move-target');
+    select.className = 'pkc-move-select';
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = currentParent ? '↑ Move to root level' : '(root level)';
+    if (!currentParent) noneOpt.selected = true;
+    select.appendChild(noneOpt);
+
+    for (const f of folders) {
+      const opt = document.createElement('option');
+      opt.value = f.lid;
+      opt.textContent = f.title || `(${f.lid})`;
+      if (currentParent && currentParent.lid === f.lid) opt.selected = true;
+      select.appendChild(opt);
+    }
+    moveSection.appendChild(select);
+
+    const moveBtn = createElement('button', 'pkc-btn-small');
+    moveBtn.setAttribute('data-pkc-action', 'move-to-folder');
+    moveBtn.textContent = 'Move';
+    moveSection.appendChild(moveBtn);
+
+    view.appendChild(moveSection);
   }
 
   // History section
@@ -996,6 +1126,68 @@ function createElement(tag: string, className: string): HTMLElement {
   const el = document.createElement(tag);
   el.className = className;
   return el;
+}
+
+function renderFolderContents(folder: Entry, container: Container): HTMLElement {
+  const section = createElement('div', 'pkc-folder-contents');
+  section.setAttribute('data-pkc-region', 'folder-contents');
+
+  const heading = createElement('div', 'pkc-folder-contents-heading');
+  heading.textContent = 'Contents';
+  section.appendChild(heading);
+
+  // Find children via structural relations
+  const children: Entry[] = [];
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && r.from === folder.lid) {
+      const child = container.entries.find((e) => e.lid === r.to);
+      if (child) children.push(child);
+    }
+  }
+
+  if (children.length === 0) {
+    const empty = createElement('div', 'pkc-folder-contents-empty');
+    empty.textContent = 'This folder is empty. Use the + buttons above to add entries here.';
+    section.appendChild(empty);
+  } else {
+    const list = createElement('ul', 'pkc-folder-contents-list');
+    for (const child of children) {
+      const item = createElement('li', 'pkc-folder-contents-item');
+      const link = createElement('span', 'pkc-folder-contents-link');
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', child.lid);
+      link.textContent = child.title || '(untitled)';
+      item.appendChild(link);
+
+      const badge = createElement('span', 'pkc-archetype-badge');
+      badge.setAttribute('data-pkc-archetype', child.archetype);
+      badge.textContent = archetypeLabel(child.archetype);
+      item.appendChild(badge);
+
+      list.appendChild(item);
+    }
+    section.appendChild(list);
+  }
+
+  return section;
+}
+
+/**
+ * Resolve the folder context for creation.
+ * If selected entry is a folder → create inside it.
+ * If selected entry has a structural parent → create in the same folder.
+ * Otherwise → no context (root level).
+ */
+function resolveContextFolder(state: AppState): Entry | null {
+  if (!state.selectedLid || !state.container) return null;
+  const selected = state.container.entries.find((e) => e.lid === state.selectedLid);
+  if (!selected) return null;
+
+  if (selected.archetype === 'folder') return selected;
+
+  // Check if the selected entry has a structural parent (folder)
+  const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+  return parent ?? null;
 }
 
 function findSelectedEntry(state: AppState): Entry | null {
