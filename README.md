@@ -1,38 +1,47 @@
 # PKC2 — Portable Knowledge Container
 
-PKC2 is a self-contained knowledge container that runs as a single HTML file.
-Open it in any browser — no server, no network, no installation required.
-Create, organize, and export structured knowledge that goes wherever you go.
+**単一HTMLで動作する、ローカル完結型の知識コンテナ**
+
+## What is this?
+
+PKC2 は、以下を1つにまとめたツールです:
+
+- メモ・タスク・構造化データの管理
+- 添付ファイルを含む知識の保持
+- HTML 1ファイルとしての配布
+- ZIP による完全バックアップ
+- 再水和（Rehydrate）でどこでも作業環境を復元
+
+**「書く・持ち出す・戻す」を1つのモデルで扱えます。**
 
 ## Features
 
 - **Single HTML, zero dependencies** — works offline, from a USB drive, or as an email attachment
+- **Auto-save** — IndexedDB persistence, no manual save needed
 - **4 entry types** — Note, Todo, Form, File (attachment)
-- **Relations and tags** — connect entries with structural, categorical, semantic, and temporal links
-- **Auto-save** — IndexedDB persistence with 300ms debounce
-- **Search, filter, sort** — find entries instantly by text, type, or tag
-- **Version history** — automatic snapshots with restore capability
-- **HTML Export (4 modes)** — Light/Full × Editable/Readonly
-- **ZIP Package** — lossless backup with raw binary attachments
-- **Rehydrate** — turn a readonly artifact back into an editable workspace
-- **PostMessage protocol** — embed in iframes with structured communication
+- **HTML / ZIP export** — light sharing, full archive, or lossless backup
+- **Rehydrate** — turn a readonly HTML back into an editable workspace
+- **Relations and tags** — connect entries structurally
+- **Search, filter, sort** — find anything instantly
+- **Version history** — automatic snapshots with restore
+- **Size guardrails** — warnings before large exports
 
 ## Quick Start
 
-1. **Open** — Open `dist/bundle.js` output (or a built HTML) in any modern browser
-2. **Create** — Click `+ Note`, `+ Todo`, `+ Form`, or `+ File` to add entries
-3. **Export** — Use the Export panel to save as HTML or ZIP
+1. **Open** `dist/pkc2.html` in any modern browser
+2. **Create** entries with `+ Note`, `+ Todo`, `+ Form`, or `+ File`
+3. **Export** via the Export panel — choose HTML or ZIP
 
-## Export / Import Guide
+## Which Export should I use?
 
-| Format | Best for | Attachments |
-|--------|----------|-------------|
-| **HTML Light** | Quick sharing, text-focused content | Excluded (metadata only) |
-| **HTML Full** | Complete archive, offline use | Included (gzip+base64) |
-| **ZIP Package** | Backup, migration, large files | Included (raw binary) |
-| **Readonly HTML** | Distribution, presentations | Depends on Light/Full |
+| Goal | Recommended |
+|------|-------------|
+| Quick sharing | HTML Light |
+| Share with attachments | HTML Full |
+| Distribution (read-only) | Readonly HTML |
+| Backup / migration | ZIP Package |
 
-For detailed usage, see [Operation Guide](docs/planning/18_運用ガイド_export_import_rehydrate.md).
+For detailed usage, see the [Operation Guide](docs/planning/18_運用ガイド_export_import_rehydrate.md).
 
 ## Architecture
 
@@ -48,6 +57,8 @@ core → adapter → feature → runtime → builder
 - **runtime** — contract validation, metadata
 - **builder** — Stage 2 HTML generation
 
+Runtime has zero external npm dependencies.
+
 ## Documentation
 
 | Document | Purpose |
@@ -55,15 +66,15 @@ core → adapter → feature → runtime → builder
 | [Design Principles](docs/planning/05_設計原則.md) | Core values and constraints |
 | [Architecture](docs/planning/12_基盤方針追補_責務分離.md) | 5-layer structure and rules |
 | [Data Model](docs/planning/17_保存再水和可搬モデル.md) | Storage, export, compression |
-| [Operation Guide](docs/planning/18_運用ガイド_export_import_rehydrate.md) | How to use export/import |
-| [Pre-Release](docs/planning/19_pre_release.md) | Current status, constraints, future |
+| [Operation Guide](docs/planning/18_運用ガイド_export_import_rehydrate.md) | How to use export/import/rehydrate |
+| [Pre-Release Notes](docs/planning/19_pre_release.md) | Current status, constraints, future |
 
 ## Development
 
 ```bash
 npm install          # Install dependencies
 npm run dev          # Start dev server
-npm run build        # Build (Vite Stage 1)
+npm run build        # Build (Stage 1 bundle + Stage 2 HTML)
 npm run typecheck    # TypeScript check
 npm test             # Run tests (702 tests)
 ```
@@ -74,4 +85,4 @@ npm test             # Run tests (702 tests)
 
 ## License
 
-See repository for license information.
+AGPL-3.0 — See [LICENSE](LICENSE) for details.
