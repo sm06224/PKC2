@@ -6,6 +6,7 @@ import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 
@@ -1374,5 +1375,59 @@ describe('Renderer', () => {
     expect(todoBtn!.textContent).toBe('Todo');
     const formBtn = bar!.querySelector('[data-pkc-archetype="form"]');
     expect(formBtn!.textContent).toBe('Form');
+  });
+
+  it('header has Attachment create button', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const attBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attBtn).not.toBeNull();
+    expect(attBtn!.textContent).toBe('+ File');
+  });
+
+  it('attachment entry uses attachment presenter when registered', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'a1', title: 'My File', body: '{"name":"doc.pdf","mime":"application/pdf","data":"AQID"}', archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: attContainer,
+      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const attView = root.querySelector('.pkc-attachment-view');
+    expect(attView).not.toBeNull();
+    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('doc.pdf');
+    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('application/pdf');
+  });
+
+  it('attachment entry renders editor with file input', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'a1', title: 'My File', body: '{"name":"x.bin","mime":"application/octet-stream","data":""}', archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'editing', container: attContainer,
+      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
+    expect(root.querySelector('[data-pkc-field="attachment-file"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="attachment-name"]')).not.toBeNull();
   });
 });

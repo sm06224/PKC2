@@ -8,6 +8,7 @@ import { bindActions } from '@adapter/ui/action-binder';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -410,5 +411,52 @@ describe('Mutation → Shell integration', () => {
     expect(nameInput2!.value).toBe('Alice');
     const checkedInput2 = root.querySelector<HTMLInputElement>('[data-pkc-field="form-checked"]');
     expect(checkedInput2!.checked).toBe(true);
+  });
+
+  it('attachment entry lifecycle: create → edit (populate hidden fields) → save → re-render', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('attachment', attachmentPresenter);
+
+    // Create attachment entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: 'My Attachment' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('attachment');
+
+    // View should show attachment presenter output
+    const attView = root.querySelector('.pkc-attachment-view');
+    expect(attView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
+
+    // Simulate file selection by populating hidden fields
+    const nameField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-name"]');
+    nameField!.value = 'readme.txt';
+    const mimeField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-mime"]');
+    mimeField!.value = 'text/plain';
+    const dataField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-data"]');
+    dataField!.value = 'SGVsbG8='; // "Hello"
+
+    // Save
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.name).toBe('readme.txt');
+    expect(parsed.mime).toBe('text/plain');
+    expect(parsed.data).toBe('SGVsbG8=');
+
+    // Re-render: view should show saved values
+    const reRendered = root.querySelector('.pkc-attachment-view');
+    expect(reRendered).not.toBeNull();
+    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('readme.txt');
+    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('text/plain');
+    expect(root.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
   });
 });

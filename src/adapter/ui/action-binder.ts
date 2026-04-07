@@ -43,7 +43,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
-        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form' };
+        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment' };
         const title = titleMap[arch] ?? 'New Entry';
         dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
         break;

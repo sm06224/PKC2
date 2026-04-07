@@ -165,6 +165,12 @@ function renderHeader(state: AppState): HTMLElement {
     createFormBtn.textContent = '+ Form';
     header.appendChild(createFormBtn);
 
+    const createAttBtn = createElement('button', 'pkc-btn');
+    createAttBtn.setAttribute('data-pkc-action', 'create-entry');
+    createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
+    createAttBtn.textContent = '+ File';
+    header.appendChild(createAttBtn);
+
     const exportBtn = createElement('button', 'pkc-btn');
     exportBtn.setAttribute('data-pkc-action', 'begin-export');
     exportBtn.textContent = 'Export';
