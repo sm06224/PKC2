@@ -18,6 +18,7 @@ import { getRelationsForEntry, resolveRelations } from '../../features/relation/
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import type { RelationKind } from '../../core/model/relation';
+import { lightExportWarning, fullExportEstimation, zipRecommendation } from './guardrails';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
 
@@ -209,6 +210,27 @@ function renderHeader(state: AppState): HTMLElement {
     importBtn.setAttribute('data-pkc-action', 'begin-import');
     importBtn.textContent = 'Import';
     header.appendChild(importBtn);
+
+    // Export guardrail warnings
+    if (state.container) {
+      const warnings: string[] = [];
+      const lightWarn = lightExportWarning(state.container);
+      if (lightWarn) warnings.push(lightWarn);
+      const fullEst = fullExportEstimation(state.container);
+      if (fullEst) warnings.push(fullEst);
+      const zipRec = zipRecommendation(state.container);
+      if (zipRec) warnings.push(zipRec);
+      if (warnings.length > 0) {
+        const guardrailEl = createElement('div', 'pkc-export-guardrails');
+        guardrailEl.setAttribute('data-pkc-region', 'export-guardrails');
+        for (const msg of warnings) {
+          const line = createElement('div', 'pkc-guardrail-info');
+          line.textContent = msg;
+          guardrailEl.appendChild(line);
+        }
+        header.appendChild(guardrailEl);
+      }
+    }
   }
 
   // Readonly mode: show readonly badge and rehydrate button
