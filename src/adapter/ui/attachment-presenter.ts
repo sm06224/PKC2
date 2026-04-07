@@ -1,5 +1,6 @@
 import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
+import { classifyFileSize, fileSizeWarningMessage } from './guardrails';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -198,6 +199,12 @@ export const attachmentPresenter: DetailPresenter = {
     sizeField.value = String(displaySize);
     container.appendChild(sizeField);
 
+    // Size warning element (shown when file exceeds thresholds)
+    const sizeWarning = document.createElement('div');
+    sizeWarning.setAttribute('data-pkc-region', 'attachment-size-warning');
+    sizeWarning.style.display = 'none';
+    container.appendChild(sizeWarning);
+
     // When file is selected, read and populate hidden fields
     fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0];
@@ -206,6 +213,21 @@ export const attachmentPresenter: DetailPresenter = {
       mimeField.value = file.type || 'application/octet-stream';
       // Generate new asset key for new file
       assetKeyField.value = generateAssetKey();
+
+      // Show file size warning if needed
+      const warningMsg = fileSizeWarningMessage(file.size);
+      const level = classifyFileSize(file.size);
+      if (warningMsg) {
+        sizeWarning.textContent = warningMsg;
+        sizeWarning.className = level === 'heavy'
+          ? 'pkc-guardrail-warning pkc-guardrail-heavy'
+          : 'pkc-guardrail-warning pkc-guardrail-soft';
+        sizeWarning.style.display = '';
+      } else {
+        sizeWarning.style.display = 'none';
+        sizeWarning.textContent = '';
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
