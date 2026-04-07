@@ -171,10 +171,17 @@ function renderHeader(state: AppState): HTMLElement {
     createAttBtn.textContent = '+ File';
     header.appendChild(createAttBtn);
 
-    const exportBtn = createElement('button', 'pkc-btn');
-    exportBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportBtn.textContent = 'Export';
-    header.appendChild(exportBtn);
+    const exportLightBtn = createElement('button', 'pkc-btn');
+    exportLightBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportLightBtn.setAttribute('data-pkc-export-mode', 'light');
+    exportLightBtn.textContent = 'Export Light';
+    header.appendChild(exportLightBtn);
+
+    const exportFullBtn = createElement('button', 'pkc-btn');
+    exportFullBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportFullBtn.setAttribute('data-pkc-export-mode', 'full');
+    exportFullBtn.textContent = 'Export Full';
+    header.appendChild(exportFullBtn);
 
     const importBtn = createElement('button', 'pkc-btn');
     importBtn.setAttribute('data-pkc-action', 'begin-import');

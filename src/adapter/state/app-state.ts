@@ -1,5 +1,6 @@
 import type { Container } from '../../core/model/container';
 import type { ArchetypeId } from '../../core/model/record';
+import type { ExportMode } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef } from '../../core/action/system-command';
@@ -15,6 +16,7 @@ import {
   snapshotEntry,
   restoreEntry,
   restoreDeletedEntry,
+  mergeAssets,
 } from '../../core/operations/container-ops';
 
 /**
@@ -56,6 +58,8 @@ export interface AppState {
   sortKey: SortKey;
   /** Current sort direction (runtime-only, feature layer). */
   sortDirection: SortDirection;
+  /** Export mode for the current export operation (runtime-only). */
+  exportMode: ExportMode | null;
 }
 
 /**
@@ -82,6 +86,7 @@ export function createInitialState(): AppState {
     tagFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',
+    exportMode: null,
   };
 }
 
@@ -183,7 +188,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'ENTRY_DELETED', lid: action.lid }] };
     }
     case 'BEGIN_EXPORT': {
-      const next: AppState = { ...state, phase: 'exporting' };
+      const next: AppState = { ...state, phase: 'exporting', exportMode: action.mode };
       return { state: next, events: [] };
     }
     case 'CREATE_RELATION': {
@@ -392,6 +397,10 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       let container = snapshotEntry(state.container, action.lid, revId, ts);
       // Apply the update
       container = updateEntry(container, action.lid, action.title, action.body, ts);
+      // Merge any assets (e.g., attachment file data)
+      if (action.assets) {
+        container = mergeAssets(container, action.assets);
+      }
       const next: AppState = { ...state, phase: 'ready', editingLid: null, container };
       return {
         state: next,
@@ -413,7 +422,7 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
 function reduceExporting(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SYS_FINISH_EXPORT': {
-      const next: AppState = { ...state, phase: 'ready' };
+      const next: AppState = { ...state, phase: 'ready', exportMode: null };
       return { state: next, events: [{ type: 'EXPORT_COMPLETED' }] };
     }
     case 'SYS_ERROR': {

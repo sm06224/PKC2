@@ -171,9 +171,16 @@ describe('AppState reducer', () => {
     expect(events).toEqual([{ type: 'EDIT_BEGUN', lid: 'e1' }]);
   });
 
-  it('BEGIN_EXPORT in ready → exporting phase', () => {
-    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT' });
+  it('BEGIN_EXPORT in ready → exporting phase with mode', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'full' });
     expect(state.phase).toBe('exporting');
+    expect(state.exportMode).toBe('full');
+  });
+
+  it('BEGIN_EXPORT light mode stores exportMode', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'light' });
+    expect(state.phase).toBe('exporting');
+    expect(state.exportMode).toBe('light');
   });
 
   it('CREATE_RELATION adds to container', () => {
@@ -243,6 +250,31 @@ describe('AppState reducer', () => {
     expect(base.container!.revisions).toHaveLength(0);
   });
 
+  it('COMMIT_EDIT with assets merges into container.assets', () => {
+    const base: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+    };
+    const { state } = reduce(base, {
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'File', body: '{}',
+      assets: { 'ast-001': 'base64data' },
+    });
+    expect(state.container!.assets['ast-001']).toBe('base64data');
+  });
+
+  it('COMMIT_EDIT without assets does not modify container.assets', () => {
+    const base: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+    };
+    const { state } = reduce(base, {
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'Text', body: 'hello',
+    });
+    expect(Object.keys(state.container!.assets)).toHaveLength(0);
+  });
+
   it('CANCEL_EDIT does not modify container', () => {
     const base: AppState = {
       ...readyState(),
@@ -262,10 +294,11 @@ describe('AppState reducer', () => {
   });
 
   // ── exporting ────────────────────────────
-  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED', () => {
-    const base: AppState = { ...readyState(), phase: 'exporting' };
+  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED + clears exportMode', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting', exportMode: 'light' };
     const { state, events } = reduce(base, { type: 'SYS_FINISH_EXPORT' });
     expect(state.phase).toBe('ready');
+    expect(state.exportMode).toBeNull();
     expect(events).toEqual([{ type: 'EXPORT_COMPLETED' }]);
   });
 

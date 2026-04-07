@@ -28,7 +28,7 @@ describe('Action type boundaries', () => {
       { type: 'CANCEL_EDIT' },
       { type: 'CREATE_ENTRY', archetype: 'text', title: '' },
       { type: 'DELETE_ENTRY', lid: '' },
-      { type: 'BEGIN_EXPORT' },
+      { type: 'BEGIN_EXPORT', mode: 'full' },
       { type: 'CREATE_RELATION', from: '', to: '', kind: 'structural' },
       { type: 'DELETE_RELATION', id: '' },
     ];

@@ -21,6 +21,8 @@
  */
 
 import type { Container } from '../../core/model/container';
+import type { ExportMode } from '../../core/action/user-action';
+import type { ExportMeta } from './exporter';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 import { APP_ID, SCHEMA_VERSION } from '../../runtime/release-meta';
 
@@ -45,6 +47,8 @@ export interface ImportSuccess {
   container: Container;
   meta: ReleaseMeta;
   source: string;
+  /** Export mode of the imported file, if present. */
+  exportMode?: ExportMode;
 }
 
 export interface ImportFailure {
@@ -120,6 +124,7 @@ export function importFromHtml(html: string, source?: string): ImportResult {
   }
 
   let container: Container;
+  let exportMeta: ExportMeta | undefined;
   try {
     const raw = dataEl.textContent?.trim();
     if (!raw || raw === '{}') {
@@ -132,6 +137,10 @@ export function importFromHtml(html: string, source?: string): ImportResult {
       return fail([{ code: 'INVALID_CONTAINER', message: 'pkc-data missing "container" key' }]);
     }
     container = data.container as Container;
+    // Read export_meta if present
+    if (data.export_meta && typeof data.export_meta.mode === 'string') {
+      exportMeta = data.export_meta as ExportMeta;
+    }
   } catch {
     return fail([{ code: 'MISSING_PKC_DATA', message: 'pkc-data contains invalid JSON' }]);
   }
@@ -150,6 +159,7 @@ export function importFromHtml(html: string, source?: string): ImportResult {
     container,
     meta,
     source: source ?? 'html-string',
+    exportMode: exportMeta?.mode,
   };
 }
 

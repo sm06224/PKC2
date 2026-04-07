@@ -2,19 +2,25 @@ import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
 
 /**
- * Attachment body schema (minimal file-like archetype).
- * Data is stored as base64 in entry.body — NOT as Blob or ArrayBuffer.
+ * Attachment body schema (file-like archetype).
  *
- * Constraints:
- * - base64 encoding inflates size ~33%; keep files small (< 1 MB recommended)
- * - Large attachments will increase HTML export size and memory usage
- * - No streaming, chunking, or external storage
- * - Single file per entry
+ * New format (body-assets separation):
+ *   body = { name, mime, size, asset_key }
+ *   container.assets[asset_key] = base64 data
+ *
+ * Legacy format (backward compatibility):
+ *   body = { name, mime, data }
+ *   data is base64-encoded, stored directly in body
+ *
+ * parseAttachmentBody handles both formats transparently.
+ * On next save, legacy format is migrated to new format (lazy migration).
  */
 export interface AttachmentBody {
   name: string;
   mime: string;
-  data: string; // base64-encoded
+  size?: number;
+  asset_key?: string;
+  data?: string; // legacy: base64-encoded. new format: absent
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -23,23 +29,52 @@ export function parseAttachmentBody(body: string): AttachmentBody {
     return {
       name: typeof parsed.name === 'string' ? parsed.name : '',
       mime: typeof parsed.mime === 'string' ? parsed.mime : 'application/octet-stream',
-      data: typeof parsed.data === 'string' ? parsed.data : '',
+      size: typeof parsed.size === 'number' ? parsed.size : undefined,
+      asset_key: typeof parsed.asset_key === 'string' ? parsed.asset_key : undefined,
+      data: typeof parsed.data === 'string' ? parsed.data : undefined,
     };
   } catch {
-    return { name: '', mime: 'application/octet-stream', data: '' };
+    return { name: '', mime: 'application/octet-stream' };
   }
 }
 
-export function serializeAttachmentBody(attachment: AttachmentBody): string {
-  return JSON.stringify({ name: attachment.name, mime: attachment.mime, data: attachment.data });
+/**
+ * Serialize attachment body as metadata-only JSON (new format).
+ * Does NOT include data — data goes to container.assets.
+ */
+export function serializeAttachmentBody(att: AttachmentBody): string {
+  const obj: Record<string, unknown> = { name: att.name, mime: att.mime };
+  if (att.size !== undefined) obj.size = att.size;
+  if (att.asset_key !== undefined) obj.asset_key = att.asset_key;
+  // Include data only if present (legacy round-trip support)
+  if (att.data !== undefined) obj.data = att.data;
+  return JSON.stringify(obj);
 }
 
 /** Estimate decoded byte size from base64 string length. */
 export function estimateSize(base64: string): number {
   if (!base64) return 0;
-  // base64: 4 chars = 3 bytes, minus padding
   const padding = (base64.match(/=+$/) ?? [''])[0]!.length;
   return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/**
+ * Resolve the display size for an attachment.
+ * Prefers stored size field; falls back to estimating from data.
+ */
+export function resolveDisplaySize(att: AttachmentBody): number {
+  if (att.size !== undefined) return att.size;
+  if (att.data) return estimateSize(att.data);
+  return 0;
+}
+
+/**
+ * Generate an asset key for a new attachment.
+ */
+export function generateAssetKey(): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `ast-${ts}-${rand}`;
 }
 
 function formatSize(bytes: number): string {
@@ -47,6 +82,13 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Check whether the attachment body uses legacy format (data in body).
+ */
+export function isLegacyFormat(att: AttachmentBody): boolean {
+  return att.data !== undefined && att.asset_key === undefined;
 }
 
 export const attachmentPresenter: DetailPresenter = {
@@ -84,7 +126,15 @@ export const attachmentPresenter: DetailPresenter = {
     sizeEl.appendChild(sizeLabel);
     const sizeValue = document.createElement('span');
     sizeValue.className = 'pkc-attachment-size';
-    sizeValue.textContent = att.data ? formatSize(estimateSize(att.data)) : '(empty)';
+    const displaySize = resolveDisplaySize(att);
+    if (displaySize > 0) {
+      sizeValue.textContent = formatSize(displaySize);
+    } else if (att.asset_key && !att.data) {
+      // Light export: asset_key exists but data was stripped
+      sizeValue.textContent = '(not included)';
+    } else {
+      sizeValue.textContent = '(empty)';
+    }
     sizeEl.appendChild(sizeValue);
     container.appendChild(sizeEl);
 
@@ -97,10 +147,11 @@ export const attachmentPresenter: DetailPresenter = {
     container.className = 'pkc-attachment-editor';
 
     // Current file info
+    const displaySize = resolveDisplaySize(att);
     if (att.name) {
       const current = document.createElement('div');
       current.className = 'pkc-attachment-current';
-      current.textContent = `Current: ${att.name} (${att.mime}, ${formatSize(estimateSize(att.data))})`;
+      current.textContent = `Current: ${att.name} (${att.mime}, ${formatSize(displaySize)})`;
       container.appendChild(current);
     }
 
@@ -111,7 +162,7 @@ export const attachmentPresenter: DetailPresenter = {
     fileInput.className = 'pkc-attachment-file-input';
     container.appendChild(fileInput);
 
-    // Hidden fields to hold current/new data
+    // Hidden fields for metadata
     const nameField = document.createElement('input');
     nameField.type = 'hidden';
     nameField.setAttribute('data-pkc-field', 'attachment-name');
@@ -124,11 +175,28 @@ export const attachmentPresenter: DetailPresenter = {
     mimeField.value = att.mime;
     container.appendChild(mimeField);
 
+    // Asset key: preserve existing or empty for new
+    const assetKeyField = document.createElement('input');
+    assetKeyField.type = 'hidden';
+    assetKeyField.setAttribute('data-pkc-field', 'attachment-asset-key');
+    assetKeyField.value = att.asset_key ?? '';
+    container.appendChild(assetKeyField);
+
+    // Asset data: holds base64 data for new/changed files.
+    // For legacy entries, pre-populate with existing data for migration on save.
+    // For new-format entries, leave empty (asset already in container.assets).
     const dataField = document.createElement('input');
     dataField.type = 'hidden';
     dataField.setAttribute('data-pkc-field', 'attachment-data');
-    dataField.value = att.data;
+    dataField.value = isLegacyFormat(att) ? (att.data ?? '') : '';
     container.appendChild(dataField);
+
+    // Size field
+    const sizeField = document.createElement('input');
+    sizeField.type = 'hidden';
+    sizeField.setAttribute('data-pkc-field', 'attachment-size');
+    sizeField.value = String(displaySize);
+    container.appendChild(sizeField);
 
     // When file is selected, read and populate hidden fields
     fileInput.addEventListener('change', () => {
@@ -136,12 +204,14 @@ export const attachmentPresenter: DetailPresenter = {
       if (!file) return;
       nameField.value = file.name;
       mimeField.value = file.type || 'application/octet-stream';
+      // Generate new asset key for new file
+      assetKeyField.value = generateAssetKey();
       const reader = new FileReader();
       reader.onload = () => {
-        // result is "data:<mime>;base64,<data>" — extract the base64 part
         const result = reader.result as string;
         const base64 = result.split(',')[1] ?? '';
         dataField.value = base64;
+        sizeField.value = String(estimateSize(base64));
       };
       reader.readAsDataURL(file);
     });
@@ -149,13 +219,40 @@ export const attachmentPresenter: DetailPresenter = {
     return container;
   },
 
+  /**
+   * Collect body as metadata-only JSON.
+   * Data is NOT included in body — it's in the separate attachment-data field,
+   * extracted by the action-binder and written to container.assets.
+   */
   collectBody(root: HTMLElement): string {
     const nameEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-name"]');
     const mimeEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-mime"]');
-    const dataEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-data"]');
+    const assetKeyEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-asset-key"]');
+    const sizeEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-size"]');
+
     const name = nameEl?.value ?? '';
     const mime = mimeEl?.value ?? 'application/octet-stream';
-    const data = dataEl?.value ?? '';
-    return serializeAttachmentBody({ name, mime, data });
+    const asset_key = assetKeyEl?.value || undefined;
+    const size = sizeEl?.value ? Number(sizeEl.value) : undefined;
+
+    const body: AttachmentBody = { name, mime };
+    if (size !== undefined && size > 0) body.size = size;
+    if (asset_key) body.asset_key = asset_key;
+    return serializeAttachmentBody(body);
   },
 };
+
+/**
+ * Extract asset data from the editor DOM for the action-binder.
+ * Returns { key, data } if there's asset data to write, or null.
+ */
+export function collectAssetData(root: HTMLElement): { key: string; data: string } | null {
+  const assetKeyEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-asset-key"]');
+  const dataEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-data"]');
+  const key = assetKeyEl?.value;
+  const data = dataEl?.value;
+  if (key && data) {
+    return { key, data };
+  }
+  return null;
+}

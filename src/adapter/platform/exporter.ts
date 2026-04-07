@@ -24,6 +24,7 @@
 
 import { SLOT } from '../../runtime/contract';
 import type { Container } from '../../core/model/container';
+import type { ExportMode } from '../../core/action/user-action';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 
 /**
@@ -37,19 +38,35 @@ export interface ExportResult {
 }
 
 /**
+ * export_meta: metadata embedded in pkc-data to identify the export mode.
+ */
+export interface ExportMeta {
+  mode: ExportMode;
+}
+
+/**
  * ExportOptions: optional configuration for export.
  */
 export interface ExportOptions {
   /** Override filename (without extension). */
   filename?: string;
+  /** Export mode: 'light' strips assets, 'full' includes everything. Default: 'full'. */
+  mode?: ExportMode;
 }
 
 /**
  * Build the pkc-data JSON string from a Container.
- * Shape: { container: Container } — matches readPkcData() contract.
+ * Shape: { container, export_meta } — matches readPkcData() contract.
+ *
+ * Light mode: strips container.assets to {}, adds export_meta.mode = 'light'.
+ * Full mode: includes everything, adds export_meta.mode = 'full'.
  */
-export function serializePkcData(container: Container): string {
-  const json = JSON.stringify({ container }, null, 2);
+export function serializePkcData(container: Container, mode: ExportMode = 'full'): string {
+  const exportMeta: ExportMeta = { mode };
+  const exported = mode === 'light'
+    ? { ...container, assets: {} }
+    : container;
+  const json = JSON.stringify({ container: exported, export_meta: exportMeta }, null, 2);
   // Escape </script> inside JSON to prevent premature script tag closure in HTML.
   // This is a standard HTML-in-script safety measure.
   return json.replace(/<\/(script)/gi, '<\\/$1');
@@ -67,7 +84,7 @@ export function serializePkcData(container: Container): string {
  *
  * Injects the given Container as pkc-data.
  */
-export function buildExportHtml(container: Container): string {
+export function buildExportHtml(container: Container, mode: ExportMode = 'full'): string {
   // Read from live DOM
   const coreEl = document.getElementById(SLOT.CORE);
   const stylesEl = document.getElementById(SLOT.STYLES);
@@ -99,7 +116,7 @@ export function buildExportHtml(container: Container): string {
   const kind = htmlEl.getAttribute('data-pkc-kind') ?? 'dev';
 
   // Serialize container data
-  const dataJson = serializePkcData(container);
+  const dataJson = serializePkcData(container, mode);
 
   // Assemble HTML matching shell.html contract
   return `<!DOCTYPE html>
@@ -151,7 +168,8 @@ export function exportContainerAsHtml(
   options?: ExportOptions & { downloadFn?: (content: string, filename: string) => void },
 ): ExportResult {
   try {
-    const html = buildExportHtml(container);
+    const mode = options?.mode ?? 'full';
+    const html = buildExportHtml(container, mode);
     const filename = generateExportFilename(container, options?.filename);
 
     const download = options?.downloadFn ?? triggerDownload;
