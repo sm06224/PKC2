@@ -417,7 +417,7 @@ describe('Renderer', () => {
     expect(section).not.toBeNull();
     expect(section!.textContent).toContain('1 restorable');
     expect(section!.textContent).toContain('Deleted Entry');
-    expect(section!.textContent).toContain('text'); // archetype badge
+    expect(section!.textContent).toContain('Note'); // archetype badge (label)
 
     const restoreBtn = section!.querySelector('[data-pkc-action="restore-entry"]');
     expect(restoreBtn).not.toBeNull();
@@ -497,7 +497,7 @@ describe('Renderer', () => {
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
     expect(section!.textContent).toContain('2026-04-01 09:15');
-    expect(section!.textContent).toContain('todo'); // archetype
+    expect(section!.textContent).toContain('Todo'); // archetype label
   });
 
   it('renders search input when entries exist', () => {
@@ -575,7 +575,7 @@ describe('Renderer', () => {
 
     const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
     expect(textBtn).not.toBeNull();
-    expect(textBtn!.textContent).toBe('text');
+    expect(textBtn!.textContent).toBe('Note');
   });
 
   it('marks active archetype filter button', () => {
@@ -1294,5 +1294,85 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-field="form-name"]')).not.toBeNull();
     expect(root.querySelector('[data-pkc-field="form-note"]')).not.toBeNull();
     expect(root.querySelector('[data-pkc-field="form-checked"]')).not.toBeNull();
+  });
+
+  // ── Archetype UX Polish (Issue #32) ─────────────────
+
+  it('sidebar badge shows human-readable label and data-pkc-archetype', () => {
+    const mixedContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'n1', title: 'Note', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 't1', title: 'Task', body: '{}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        { lid: 'f1', title: 'Form', body: '{}', archetype: 'form', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: mixedContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    for (const item of items) {
+      const badge = item.querySelector('.pkc-archetype-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.hasAttribute('data-pkc-archetype')).toBe(true);
+    }
+
+    const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
+    expect(n1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Note');
+    expect(n1.querySelector('.pkc-archetype-badge')!.getAttribute('data-pkc-archetype')).toBe('text');
+
+    const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
+    expect(t1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Todo');
+
+    const f1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'f1')!;
+    expect(f1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Form');
+  });
+
+  it('detail view shows archetype label next to title', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const label = root.querySelector('.pkc-archetype-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe('Note');
+    expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('editor shows archetype label next to title input', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const label = root.querySelector('.pkc-archetype-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe('Note');
+    expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('archetype filter bar uses human-readable labels', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const bar = root.querySelector('[data-pkc-region="archetype-filter"]');
+    expect(bar).not.toBeNull();
+    const allBtn = bar!.querySelector('[data-pkc-archetype=""]');
+    expect(allBtn!.textContent).toBe('All');
+    const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
+    expect(textBtn!.textContent).toBe('Note');
+    const todoBtn = bar!.querySelector('[data-pkc-archetype="todo"]');
+    expect(todoBtn!.textContent).toBe('Todo');
+    const formBtn = bar!.querySelector('[data-pkc-archetype="form"]');
+    expect(formBtn!.textContent).toBe('Form');
   });
 });

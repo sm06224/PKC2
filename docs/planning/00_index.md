@@ -66,7 +66,7 @@
 | `23_import.md` | #9 | Import |
 | `24_message_transport.md` | #10 | PKC-Message Transport |
 
-Issue #11〜#31 は個別設計文書なし（基盤方針の延長として実装）。
+Issue #11〜#32 は個別設計文書なし（基盤方針の延長として実装）。
 到達点は `HANDOVER.md` に集約。feature 層パターンは `12_基盤方針追補_責務分離.md` に反映済み。
 
 ## 前提文書

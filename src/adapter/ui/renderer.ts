@@ -26,6 +26,21 @@ const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
   null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
 ] as const;
 
+/** Human-readable labels for archetypes. Used in badges, filters, and headers. */
+const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
+  text: 'Note',
+  textlog: 'Log',
+  todo: 'Todo',
+  form: 'Form',
+  attachment: 'File',
+  generic: 'Generic',
+  opaque: 'Opaque',
+};
+
+function archetypeLabel(archetype: ArchetypeId): string {
+  return ARCHETYPE_LABELS[archetype] ?? archetype;
+}
+
 /** Sort key options with display labels. Single source of truth. */
 const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
   { key: 'created_at', label: 'Created' },
@@ -284,7 +299,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
         if (parsed) {
           const archetype = createElement('span', 'pkc-archetype-badge');
-          archetype.textContent = parsed.archetype;
+          archetype.textContent = archetypeLabel(parsed.archetype as ArchetypeId);
           info.appendChild(archetype);
         }
 
@@ -325,7 +340,8 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   li.appendChild(title);
 
   const badge = createElement('span', 'pkc-archetype-badge');
-  badge.textContent = entry.archetype;
+  badge.setAttribute('data-pkc-archetype', entry.archetype);
+  badge.textContent = archetypeLabel(entry.archetype);
   li.appendChild(badge);
 
   // Todo status indicator
@@ -383,9 +399,16 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
 
+  const titleRow = createElement('div', 'pkc-view-title-row');
   const title = createElement('h2', 'pkc-view-title');
   title.textContent = entry.title || '(untitled)';
-  view.appendChild(title);
+  titleRow.appendChild(title);
+
+  const archLabel = createElement('span', 'pkc-archetype-label');
+  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
+  archLabel.textContent = archetypeLabel(entry.archetype);
+  titleRow.appendChild(archLabel);
+  view.appendChild(titleRow);
 
   // Archetype-dispatched body rendering
   const presenter = getPresenter(entry.archetype);
@@ -636,12 +659,19 @@ function renderEditor(entry: Entry): HTMLElement {
   editor.setAttribute('data-pkc-mode', 'edit');
   editor.setAttribute('data-pkc-archetype', entry.archetype);
 
+  const titleRow = createElement('div', 'pkc-editor-title-row');
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
   titleInput.value = entry.title;
   titleInput.setAttribute('data-pkc-field', 'title');
   titleInput.className = 'pkc-editor-title';
-  editor.appendChild(titleInput);
+  titleRow.appendChild(titleInput);
+
+  const archLabel = createElement('span', 'pkc-archetype-label');
+  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
+  archLabel.textContent = archetypeLabel(entry.archetype);
+  titleRow.appendChild(archLabel);
+  editor.appendChild(titleRow);
 
   // Archetype-dispatched editor body
   const presenter = getPresenter(entry.archetype);
@@ -753,7 +783,7 @@ function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
     const btn = createElement('button', 'pkc-filter-btn');
     btn.setAttribute('data-pkc-action', 'set-archetype-filter');
     btn.setAttribute('data-pkc-archetype', opt ?? '');
-    btn.textContent = opt ?? 'All';
+    btn.textContent = opt ? archetypeLabel(opt) : 'All';
     if (opt === current) {
       btn.setAttribute('data-pkc-active', 'true');
     }
