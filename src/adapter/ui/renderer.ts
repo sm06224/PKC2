@@ -10,7 +10,51 @@ import {
   getRestoreCandidates,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
-import { filterEntries } from '../../features/search/filter';
+import type { ArchetypeId } from '../../core/model/record';
+import { applyFilters } from '../../features/search/filter';
+import { sortEntries } from '../../features/search/sort';
+import type { SortKey, SortDirection } from '../../features/search/sort';
+import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
+import { filterByTag } from '../../features/relation/tag-filter';
+import type { RelationKind } from '../../core/model/relation';
+import { getPresenter } from './detail-presenter';
+import { parseTodoBody } from './todo-presenter';
+
+/** Archetype options for the filter bar. Single source of truth. */
+const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
+  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'generic', 'opaque',
+] as const;
+
+/** Human-readable labels for archetypes. Used in badges, filters, and headers. */
+const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
+  text: 'Note',
+  textlog: 'Log',
+  todo: 'Todo',
+  form: 'Form',
+  attachment: 'File',
+  generic: 'Generic',
+  opaque: 'Opaque',
+};
+
+function archetypeLabel(archetype: ArchetypeId): string {
+  return ARCHETYPE_LABELS[archetype] ?? archetype;
+}
+
+/** Sort key options with display labels. Single source of truth. */
+const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
+  { key: 'created_at', label: 'Created' },
+  { key: 'updated_at', label: 'Updated' },
+  { key: 'title', label: 'Title' },
+] as const;
+
+/** Relation kind options with display labels. */
+const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = [
+  { kind: 'structural', label: 'Structural' },
+  { kind: 'categorical', label: 'Categorical' },
+  { kind: 'semantic', label: 'Semantic' },
+  { kind: 'temporal', label: 'Temporal' },
+] as const;
 
 /**
  * Renderer: pure function that projects AppState → DOM.
@@ -105,8 +149,27 @@ function renderHeader(state: AppState): HTMLElement {
   if (state.phase === 'ready') {
     const createBtn = createElement('button', 'pkc-btn');
     createBtn.setAttribute('data-pkc-action', 'create-entry');
-    createBtn.textContent = '+ New';
+    createBtn.setAttribute('data-pkc-archetype', 'text');
+    createBtn.textContent = '+ Note';
     header.appendChild(createBtn);
+
+    const createTodoBtn = createElement('button', 'pkc-btn');
+    createTodoBtn.setAttribute('data-pkc-action', 'create-entry');
+    createTodoBtn.setAttribute('data-pkc-archetype', 'todo');
+    createTodoBtn.textContent = '+ Todo';
+    header.appendChild(createTodoBtn);
+
+    const createFormBtn = createElement('button', 'pkc-btn');
+    createFormBtn.setAttribute('data-pkc-action', 'create-entry');
+    createFormBtn.setAttribute('data-pkc-archetype', 'form');
+    createFormBtn.textContent = '+ Form';
+    header.appendChild(createFormBtn);
+
+    const createAttBtn = createElement('button', 'pkc-btn');
+    createAttBtn.setAttribute('data-pkc-action', 'create-entry');
+    createAttBtn.setAttribute('data-pkc-archetype', 'attachment');
+    createAttBtn.textContent = '+ File';
+    header.appendChild(createAttBtn);
 
     const exportBtn = createElement('button', 'pkc-btn');
     exportBtn.setAttribute('data-pkc-action', 'begin-export');
@@ -136,16 +199,66 @@ function renderSidebar(state: AppState): HTMLElement {
 
   // Search input (always shown when entries exist)
   if (allEntries.length > 0) {
+    const searchRow = createElement('div', 'pkc-search-row');
+
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.placeholder = 'Search entries…';
     searchInput.value = state.searchQuery;
     searchInput.setAttribute('data-pkc-field', 'search');
     searchInput.className = 'pkc-search-input';
-    sidebar.appendChild(searchInput);
+    searchRow.appendChild(searchInput);
+
+    if (state.searchQuery !== '' || state.archetypeFilter !== null) {
+      const clearBtn = createElement('button', 'pkc-btn-clear');
+      clearBtn.setAttribute('data-pkc-action', 'clear-filters');
+      clearBtn.textContent = '×';
+      searchRow.appendChild(clearBtn);
+    }
+
+    sidebar.appendChild(searchRow);
+
+    // Archetype filter bar
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+
+    // Sort controls
+    sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
   }
 
-  const entries = filterEntries(allEntries, state.searchQuery);
+  // Active tag filter indicator
+  if (state.tagFilter && state.container) {
+    const tagEntry = state.container.entries.find((e) => e.lid === state.tagFilter);
+    if (tagEntry) {
+      const indicator = createElement('div', 'pkc-tag-filter-indicator');
+      indicator.setAttribute('data-pkc-region', 'tag-filter-indicator');
+
+      const label = createElement('span', 'pkc-tag-filter-label');
+      label.textContent = `Tag: ${tagEntry.title || '(untitled)'}`;
+      indicator.appendChild(label);
+
+      const clearBtn = createElement('button', 'pkc-btn-small');
+      clearBtn.setAttribute('data-pkc-action', 'clear-tag-filter');
+      clearBtn.textContent = '\u00d7';
+      indicator.appendChild(clearBtn);
+
+      sidebar.appendChild(indicator);
+    }
+  }
+
+  // Pipeline: query → archetype → tag → sort
+  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  if (state.tagFilter && state.container) {
+    filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  }
+  const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
+
+  // Result count (shown when any filter is active)
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null)) {
+    const count = createElement('div', 'pkc-result-count');
+    count.setAttribute('data-pkc-region', 'result-count');
+    count.textContent = `${entries.length} / ${allEntries.length} entries`;
+    sidebar.appendChild(count);
+  }
 
   if (allEntries.length === 0) {
     const empty = createElement('div', 'pkc-empty');
@@ -192,7 +305,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
         if (parsed) {
           const archetype = createElement('span', 'pkc-archetype-badge');
-          archetype.textContent = parsed.archetype;
+          archetype.textContent = archetypeLabel(parsed.archetype as ArchetypeId);
           info.appendChild(archetype);
         }
 
@@ -233,8 +346,18 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   li.appendChild(title);
 
   const badge = createElement('span', 'pkc-archetype-badge');
-  badge.textContent = entry.archetype;
+  badge.setAttribute('data-pkc-archetype', entry.archetype);
+  badge.textContent = archetypeLabel(entry.archetype);
   li.appendChild(badge);
+
+  // Todo status indicator
+  if (entry.archetype === 'todo') {
+    const todo = parseTodoBody(entry.body);
+    const statusBadge = createElement('span', 'pkc-todo-status-badge');
+    statusBadge.setAttribute('data-pkc-todo-status', todo.status);
+    statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
+    li.appendChild(statusBadge);
+  }
 
   // History indicator
   if (state.container) {
@@ -280,14 +403,87 @@ function renderDetail(state: AppState): HTMLElement {
 function renderView(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
+  view.setAttribute('data-pkc-archetype', entry.archetype);
 
+  const titleRow = createElement('div', 'pkc-view-title-row');
   const title = createElement('h2', 'pkc-view-title');
   title.textContent = entry.title || '(untitled)';
-  view.appendChild(title);
+  titleRow.appendChild(title);
 
-  const body = createElement('pre', 'pkc-view-body');
-  body.textContent = entry.body || '(empty)';
-  view.appendChild(body);
+  const archLabel = createElement('span', 'pkc-archetype-label');
+  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
+  archLabel.textContent = archetypeLabel(entry.archetype);
+  titleRow.appendChild(archLabel);
+  view.appendChild(titleRow);
+
+  // Archetype-dispatched body rendering
+  const presenter = getPresenter(entry.archetype);
+  view.appendChild(presenter.renderBody(entry));
+
+  // Tags section
+  if (container) {
+    const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
+    const tagSection = createElement('div', 'pkc-tags');
+    tagSection.setAttribute('data-pkc-region', 'tags');
+
+    const tagHeading = createElement('span', 'pkc-tags-label');
+    tagHeading.textContent = 'Tags:';
+    tagSection.appendChild(tagHeading);
+
+    for (const tag of tags) {
+      const chip = createElement('span', 'pkc-tag-chip');
+      chip.setAttribute('data-pkc-tag-relation-id', tag.relationId);
+
+      const chipLabel = createElement('span', 'pkc-tag-label');
+      chipLabel.setAttribute('data-pkc-action', 'filter-by-tag');
+      chipLabel.setAttribute('data-pkc-lid', tag.peer.lid);
+      chipLabel.textContent = tag.peer.title || '(untitled)';
+      chip.appendChild(chipLabel);
+
+      if (canEdit) {
+        const removeBtn = createElement('button', 'pkc-tag-remove');
+        removeBtn.setAttribute('data-pkc-action', 'remove-tag');
+        removeBtn.setAttribute('data-pkc-relation-id', tag.relationId);
+        removeBtn.textContent = '\u00d7';
+        chip.appendChild(removeBtn);
+      }
+
+      tagSection.appendChild(chip);
+    }
+
+    if (canEdit) {
+      const available = getAvailableTagTargets(container.relations, container.entries, entry.lid);
+      if (available.length > 0) {
+        const addForm = createElement('span', 'pkc-tag-add');
+        addForm.setAttribute('data-pkc-region', 'tag-add');
+        addForm.setAttribute('data-pkc-from', entry.lid);
+
+        const select = document.createElement('select');
+        select.setAttribute('data-pkc-field', 'tag-target');
+        select.className = 'pkc-tag-select';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '+ Tag';
+        select.appendChild(defaultOpt);
+        for (const e of available) {
+          const opt = document.createElement('option');
+          opt.value = e.lid;
+          opt.textContent = e.title || `(${e.lid})`;
+          select.appendChild(opt);
+        }
+        addForm.appendChild(select);
+
+        const addBtn = createElement('button', 'pkc-btn-small');
+        addBtn.setAttribute('data-pkc-action', 'add-tag');
+        addBtn.textContent = 'Add';
+        addForm.appendChild(addBtn);
+
+        tagSection.appendChild(addForm);
+      }
+    }
+
+    view.appendChild(tagSection);
+  }
 
   // History section
   if (container) {
@@ -334,6 +530,33 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     }
   }
 
+  // Relation sections
+  if (container) {
+    const directed = getRelationsForEntry(container.relations, entry.lid);
+    const resolved = resolveRelations(directed, container.entries);
+    const outbound = resolved.filter((r) => r.direction === 'outbound');
+    const inbound = resolved.filter((r) => r.direction === 'inbound');
+
+    if (outbound.length > 0 || inbound.length > 0) {
+      const relSection = createElement('div', 'pkc-relations');
+      relSection.setAttribute('data-pkc-region', 'relations');
+
+      if (outbound.length > 0) {
+        relSection.appendChild(renderRelationGroup('Outbound', outbound));
+      }
+      if (inbound.length > 0) {
+        relSection.appendChild(renderRelationGroup('Inbound', inbound));
+      }
+
+      view.appendChild(relSection);
+    }
+
+    // Relation creation form (only in ready phase)
+    if (canEdit && container.entries.length > 1) {
+      view.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+    }
+  }
+
   if (canEdit) {
     const actions = createElement('div', 'pkc-view-actions');
 
@@ -355,23 +578,110 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
   return view;
 }
 
+function renderRelationGroup(
+  label: string,
+  relations: { relation: { id: string; kind: string }; direction: string; peer: Entry }[],
+): HTMLElement {
+  const group = createElement('div', 'pkc-relation-group');
+  group.setAttribute('data-pkc-relation-direction', label.toLowerCase());
+
+  const heading = createElement('div', 'pkc-relation-heading');
+  heading.textContent = `${label} (${relations.length})`;
+  group.appendChild(heading);
+
+  const list = createElement('ul', 'pkc-relation-list');
+  for (const r of relations) {
+    const item = createElement('li', 'pkc-relation-item');
+    item.setAttribute('data-pkc-relation-id', r.relation.id);
+
+    const link = createElement('span', 'pkc-relation-peer');
+    link.setAttribute('data-pkc-action', 'select-entry');
+    link.setAttribute('data-pkc-lid', r.peer.lid);
+    link.textContent = r.peer.title || '(untitled)';
+    item.appendChild(link);
+
+    const kindBadge = createElement('span', 'pkc-relation-kind');
+    kindBadge.textContent = r.relation.kind;
+    item.appendChild(kindBadge);
+
+    list.appendChild(item);
+  }
+  group.appendChild(list);
+  return group;
+}
+
+function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): HTMLElement {
+  const form = createElement('div', 'pkc-relation-create');
+  form.setAttribute('data-pkc-region', 'relation-create');
+  form.setAttribute('data-pkc-from', fromLid);
+
+  const heading = createElement('div', 'pkc-relation-create-heading');
+  heading.textContent = 'Add Relation';
+  form.appendChild(heading);
+
+  const row = createElement('div', 'pkc-relation-create-row');
+
+  // Target entry select
+  const targetSelect = document.createElement('select');
+  targetSelect.setAttribute('data-pkc-field', 'relation-target');
+  targetSelect.className = 'pkc-relation-select';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = '-- Target --';
+  targetSelect.appendChild(defaultOpt);
+  for (const e of entries) {
+    if (e.lid === fromLid) continue;
+    const opt = document.createElement('option');
+    opt.value = e.lid;
+    opt.textContent = e.title || `(${e.lid})`;
+    targetSelect.appendChild(opt);
+  }
+  row.appendChild(targetSelect);
+
+  // Kind select
+  const kindSelect = document.createElement('select');
+  kindSelect.setAttribute('data-pkc-field', 'relation-kind');
+  kindSelect.className = 'pkc-relation-select';
+  for (const opt of RELATION_KIND_OPTIONS) {
+    const el = document.createElement('option');
+    el.value = opt.kind;
+    el.textContent = opt.label;
+    kindSelect.appendChild(el);
+  }
+  row.appendChild(kindSelect);
+
+  // Create button
+  const btn = createElement('button', 'pkc-btn');
+  btn.setAttribute('data-pkc-action', 'create-relation');
+  btn.textContent = 'Add';
+  row.appendChild(btn);
+
+  form.appendChild(row);
+  return form;
+}
+
 function renderEditor(entry: Entry): HTMLElement {
   const editor = createElement('div', 'pkc-editor');
   editor.setAttribute('data-pkc-mode', 'edit');
+  editor.setAttribute('data-pkc-archetype', entry.archetype);
 
+  const titleRow = createElement('div', 'pkc-editor-title-row');
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
   titleInput.value = entry.title;
   titleInput.setAttribute('data-pkc-field', 'title');
   titleInput.className = 'pkc-editor-title';
-  editor.appendChild(titleInput);
+  titleRow.appendChild(titleInput);
 
-  const bodyArea = document.createElement('textarea');
-  bodyArea.value = entry.body;
-  bodyArea.setAttribute('data-pkc-field', 'body');
-  bodyArea.className = 'pkc-editor-body';
-  bodyArea.rows = 10;
-  editor.appendChild(bodyArea);
+  const archLabel = createElement('span', 'pkc-archetype-label');
+  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
+  archLabel.textContent = archetypeLabel(entry.archetype);
+  titleRow.appendChild(archLabel);
+  editor.appendChild(titleRow);
+
+  // Archetype-dispatched editor body
+  const presenter = getPresenter(entry.archetype);
+  editor.appendChild(presenter.renderEditorBody(entry));
 
   const actions = createElement('div', 'pkc-editor-actions');
 
@@ -469,6 +779,57 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
   }
 
   return bar;
+}
+
+function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
+  const bar = createElement('div', 'pkc-archetype-filter');
+  bar.setAttribute('data-pkc-region', 'archetype-filter');
+
+  for (const opt of ARCHETYPE_FILTER_OPTIONS) {
+    const btn = createElement('button', 'pkc-filter-btn');
+    btn.setAttribute('data-pkc-action', 'set-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', opt ?? '');
+    btn.textContent = opt ? archetypeLabel(opt) : 'All';
+    if (opt === current) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    bar.appendChild(btn);
+  }
+
+  return bar;
+}
+
+function renderSortControls(currentKey: SortKey, currentDirection: SortDirection): HTMLElement {
+  const row = createElement('div', 'pkc-sort-controls');
+  row.setAttribute('data-pkc-region', 'sort-controls');
+  row.setAttribute('data-pkc-sort-key', currentKey);
+  row.setAttribute('data-pkc-sort-direction', currentDirection);
+
+  const keySelect = document.createElement('select');
+  keySelect.setAttribute('data-pkc-field', 'sort-key');
+  keySelect.className = 'pkc-sort-select';
+  for (const opt of SORT_KEY_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = opt.key;
+    option.textContent = opt.label;
+    if (opt.key === currentKey) option.selected = true;
+    keySelect.appendChild(option);
+  }
+  row.appendChild(keySelect);
+
+  const dirSelect = document.createElement('select');
+  dirSelect.setAttribute('data-pkc-field', 'sort-direction');
+  dirSelect.className = 'pkc-sort-select';
+  for (const [value, label] of [['asc', '↑ Asc'], ['desc', '↓ Desc']] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    if (value === currentDirection) option.selected = true;
+    dirSelect.appendChild(option);
+  }
+  row.appendChild(dirSelect);
+
+  return row;
 }
 
 // ---- Helpers ----

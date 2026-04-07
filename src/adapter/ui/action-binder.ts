@@ -1,4 +1,9 @@
+import type { ArchetypeId } from '../../core/model/record';
+import type { RelationKind } from '../../core/model/relation';
+import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
+import { getPresenter } from './detail-presenter';
+import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -36,9 +41,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'cancel-edit':
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
         break;
-      case 'create-entry':
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+      case 'create-entry': {
+        const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment' };
+        const title = titleMap[arch] ?? 'New Entry';
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
         break;
+      }
       case 'delete-entry':
         if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
         break;
@@ -67,6 +76,65 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'cancel-import':
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
+        break;
+      case 'set-archetype-filter': {
+        const raw = target.getAttribute('data-pkc-archetype');
+        const archetype: ArchetypeId | null = raw ? raw as ArchetypeId : null;
+        dispatcher.dispatch({ type: 'SET_ARCHETYPE_FILTER', archetype });
+        break;
+      }
+      case 'clear-filters':
+        dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
+        break;
+      case 'create-relation': {
+        const form = target.closest<HTMLElement>('[data-pkc-region="relation-create"]');
+        if (!form) break;
+        const from = form.getAttribute('data-pkc-from');
+        const targetEl = form.querySelector<HTMLSelectElement>('[data-pkc-field="relation-target"]');
+        const kindEl = form.querySelector<HTMLSelectElement>('[data-pkc-field="relation-kind"]');
+        const to = targetEl?.value;
+        const kind = kindEl?.value as RelationKind | undefined;
+        if (from && to && kind) {
+          dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind });
+        }
+        break;
+      }
+      case 'add-tag': {
+        const addForm = target.closest<HTMLElement>('[data-pkc-region="tag-add"]');
+        if (!addForm) break;
+        const from = addForm.getAttribute('data-pkc-from');
+        const tagTargetEl = addForm.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+        const to = tagTargetEl?.value;
+        if (from && to) {
+          dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind: 'categorical' });
+        }
+        break;
+      }
+      case 'remove-tag': {
+        const relId = target.getAttribute('data-pkc-relation-id');
+        if (relId) {
+          dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
+        }
+        break;
+      }
+      case 'toggle-todo-status': {
+        if (!lid) break;
+        const state = dispatcher.getState();
+        const entry = state.container?.entries.find((e) => e.lid === lid);
+        if (!entry) break;
+        const todo = parseTodoBody(entry.body);
+        const toggled = serializeTodoBody({
+          ...todo,
+          status: todo.status === 'done' ? 'open' : 'done',
+        });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        break;
+      }
+      case 'filter-by-tag':
+        if (lid) dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: lid });
+        break;
+      case 'clear-tag-filter':
+        dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: null });
         break;
     }
   }
@@ -110,14 +178,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  function handleChange(e: Event): void {
+    const target = e.target as HTMLElement;
+    const field = target.getAttribute('data-pkc-field');
+
+    if (field === 'sort-key' || field === 'sort-direction') {
+      const state = dispatcher.getState();
+      const keyEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="sort-key"]');
+      const dirEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="sort-direction"]');
+      const key = (keyEl?.value ?? state.sortKey) as SortKey;
+      const direction = (dirEl?.value ?? state.sortDirection) as SortDirection;
+      dispatcher.dispatch({ type: 'SET_SORT', key, direction });
+    }
+  }
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
+  root.addEventListener('change', handleChange);
   document.addEventListener('keydown', handleKeydown);
 
   // Return cleanup function
   return () => {
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
+    root.removeEventListener('change', handleChange);
     document.removeEventListener('keydown', handleKeydown);
   };
 }
@@ -126,10 +210,13 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   if (!lid) return;
 
   const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
-  const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
-
   const title = titleEl?.value ?? '';
-  const body = bodyEl?.value ?? '';
+
+  // Determine archetype from editor container, delegate body collection to presenter
+  const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]');
+  const archetype = (editor?.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+  const presenter = getPresenter(archetype);
+  const body = presenter.collectBody(root);
 
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body });
 }

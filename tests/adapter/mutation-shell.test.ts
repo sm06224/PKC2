@@ -5,6 +5,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { todoPresenter } from '@adapter/ui/todo-presenter';
+import { formPresenter } from '@adapter/ui/form-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -111,10 +115,10 @@ describe('Mutation → Shell integration', () => {
       title: 'Updated Title', body: 'Updated Body',
     });
 
-    // Sidebar shows updated title
-    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
-    const firstTitle = items[0]!.querySelector('.pkc-entry-title');
-    expect(firstTitle?.textContent).toBe('Updated Title');
+    // Sidebar shows updated title (find e1 by lid, not by position — sort may reorder)
+    const e1Item = root.querySelector('[data-pkc-lid="e1"]');
+    const e1Title = e1Item!.querySelector('.pkc-entry-title');
+    expect(e1Title?.textContent).toBe('Updated Title');
 
     // Detail shows updated content
     const viewTitle = root.querySelector('.pkc-view-title');
@@ -183,5 +187,276 @@ describe('Mutation → Shell integration', () => {
     expect(types).toContain('EDIT_COMMITTED');
     expect(types).toContain('ENTRY_UPDATED');
     expect(types).toContain('ENTRY_DELETED');
+  });
+
+  it('CREATE_RELATION shows relation in detail view', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+
+    // Relation section should appear
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).not.toBeNull();
+
+    // Outbound section with peer title
+    const peer = relRegion!.querySelector('[data-pkc-action="select-entry"]');
+    expect(peer).not.toBeNull();
+    expect(peer!.textContent).toBe('Second');
+  });
+
+  it('relation peer click navigates to target entry', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural' });
+
+    // Click the peer link (dispatches SELECT_ENTRY via action-binder)
+    const peer = root.querySelector('.pkc-relation-peer') as HTMLElement;
+    expect(peer).not.toBeNull();
+    peer.click();
+
+    // Should now have e2 selected
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+    const viewTitle = root.querySelector('.pkc-view-title');
+    expect(viewTitle?.textContent).toBe('Second');
+  });
+
+  it('categorical relation shows as tag chip', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'categorical' });
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1);
+    const label = chips[0]!.querySelector('.pkc-tag-label');
+    expect(label!.textContent).toBe('Second');
+  });
+
+  it('remove-tag click deletes categorical relation', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'categorical' });
+
+    // Verify tag exists
+    expect(dispatcher.getState().container!.relations).toHaveLength(1);
+
+    // Click remove button
+    const removeBtn = root.querySelector('[data-pkc-action="remove-tag"]') as HTMLElement;
+    expect(removeBtn).not.toBeNull();
+    removeBtn.click();
+
+    // Relation should be gone
+    expect(dispatcher.getState().container!.relations).toHaveLength(0);
+    const chips = root.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(0);
+  });
+
+  it('add-tag creates categorical relation via UI', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    // Find the tag add form and select a target
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).not.toBeNull();
+
+    const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+    select!.value = 'e2';
+
+    // Click add button
+    const addBtn = addForm!.querySelector('[data-pkc-action="add-tag"]') as HTMLElement;
+    addBtn.click();
+
+    // Should have created a categorical relation
+    const rels = dispatcher.getState().container!.relations;
+    expect(rels).toHaveLength(1);
+    expect(rels[0]!.kind).toBe('categorical');
+    expect(rels[0]!.from).toBe('e1');
+    expect(rels[0]!.to).toBe('e2');
+  });
+
+  it('todo entry lifecycle: create → view → edit → save', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('todo', todoPresenter);
+
+    // Create todo entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('todo');
+
+    // View should show todo presenter output
+    const todoView = root.querySelector('.pkc-todo-view');
+    expect(todoView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('todo');
+
+    // Fill in todo fields
+    const statusSelect = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
+    expect(statusSelect).not.toBeNull();
+    statusSelect!.value = 'done';
+
+    const descArea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
+    expect(descArea).not.toBeNull();
+    descArea!.value = 'Completed task';
+
+    // Save — action-binder should serialize todo body
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.status).toBe('done');
+    expect(parsed.description).toBe('Completed task');
+  });
+
+  it('todo quick toggle: click toggles status without entering edit mode', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('todo', todoPresenter);
+
+    // Create todo entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
+    const lid = dispatcher.getState().selectedLid!;
+    expect(dispatcher.getState().phase).toBe('ready');
+
+    // Find the toggle button in detail view
+    const toggle = root.querySelector('[data-pkc-action="toggle-todo-status"]') as HTMLElement;
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute('data-pkc-todo-status')).toBe('open');
+
+    // Click toggle
+    toggle.click();
+
+    // Should stay in ready phase (no edit mode)
+    expect(dispatcher.getState().phase).toBe('ready');
+
+    // Entry body should now be done
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(entry.body);
+    expect(parsed.status).toBe('done');
+
+    // Toggle button should now show [x]
+    const updatedToggle = root.querySelector('[data-pkc-action="toggle-todo-status"]') as HTMLElement;
+    expect(updatedToggle.getAttribute('data-pkc-todo-status')).toBe('done');
+    expect(updatedToggle.textContent).toBe('[x]');
+  });
+
+  it('form entry lifecycle: create → edit → save → re-render → re-edit', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('form', formPresenter);
+
+    // Create form entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'form', title: 'My Form' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('form');
+
+    // View should show form presenter output
+    const formView = root.querySelector('.pkc-form-view');
+    expect(formView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('form');
+
+    // Fill in form fields
+    const nameInput = root.querySelector<HTMLInputElement>('[data-pkc-field="form-name"]');
+    expect(nameInput).not.toBeNull();
+    nameInput!.value = 'Alice';
+
+    const noteArea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="form-note"]');
+    expect(noteArea).not.toBeNull();
+    noteArea!.value = 'Some notes';
+
+    const checkedInput = root.querySelector<HTMLInputElement>('[data-pkc-field="form-checked"]');
+    expect(checkedInput).not.toBeNull();
+    checkedInput!.checked = true;
+
+    // Save
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.name).toBe('Alice');
+    expect(parsed.note).toBe('Some notes');
+    expect(parsed.checked).toBe(true);
+
+    // Re-render: view should show saved values
+    const reRenderedView = root.querySelector('.pkc-form-view');
+    expect(reRenderedView).not.toBeNull();
+    const values = reRenderedView!.querySelectorAll('.pkc-form-value');
+    expect(values[0]!.textContent).toBe('Alice');
+    expect(values[1]!.textContent).toBe('Some notes');
+    expect(values[2]!.textContent).toBe('Yes');
+
+    // Re-edit: fields should be pre-populated
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const nameInput2 = root.querySelector<HTMLInputElement>('[data-pkc-field="form-name"]');
+    expect(nameInput2!.value).toBe('Alice');
+    const checkedInput2 = root.querySelector<HTMLInputElement>('[data-pkc-field="form-checked"]');
+    expect(checkedInput2!.checked).toBe(true);
+  });
+
+  it('attachment entry lifecycle: create → edit (populate hidden fields) → save → re-render', () => {
+    const { dispatcher } = setup();
+
+    registerPresenter('attachment', attachmentPresenter);
+
+    // Create attachment entry
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: 'My Attachment' });
+    const lid = dispatcher.getState().selectedLid!;
+    const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
+    expect(created!.archetype).toBe('attachment');
+
+    // View should show attachment presenter output
+    const attView = root.querySelector('.pkc-attachment-view');
+    expect(attView).not.toBeNull();
+
+    // Edit
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
+
+    // Simulate file selection by populating hidden fields
+    const nameField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-name"]');
+    nameField!.value = 'readme.txt';
+    const mimeField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-mime"]');
+    mimeField!.value = 'text/plain';
+    const dataField = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-data"]');
+    dataField!.value = 'SGVsbG8='; // "Hello"
+
+    // Save
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]') as HTMLElement;
+    saveBtn.click();
+
+    // Verify saved body
+    const saved = dispatcher.getState().container!.entries.find((e) => e.lid === lid)!;
+    const parsed = JSON.parse(saved.body);
+    expect(parsed.name).toBe('readme.txt');
+    expect(parsed.mime).toBe('text/plain');
+    expect(parsed.data).toBe('SGVsbG8=');
+
+    // Re-render: view should show saved values
+    const reRendered = root.querySelector('.pkc-attachment-view');
+    expect(reRendered).not.toBeNull();
+    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('readme.txt');
+    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('text/plain');
+    expect(root.querySelector('.pkc-attachment-size')!.textContent).toBe('5 B');
   });
 });

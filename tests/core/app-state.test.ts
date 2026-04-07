@@ -624,3 +624,352 @@ describe('search query', () => {
     expect(back.searchQuery).toBe('test');
   });
 });
+
+// ── Archetype filter ────────────────────────
+
+describe('archetype filter', () => {
+  it('createInitialState has null archetypeFilter', () => {
+    expect(createInitialState().archetypeFilter).toBeNull();
+  });
+
+  it('SET_ARCHETYPE_FILTER sets archetype in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_ARCHETYPE_FILTER', archetype: 'todo',
+    });
+    expect(state.archetypeFilter).toBe('todo');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_ARCHETYPE_FILTER can clear to null', () => {
+    const base = { ...readyState(), archetypeFilter: 'text' as const };
+    const { state } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: null });
+    expect(state.archetypeFilter).toBeNull();
+  });
+
+  it('SET_ARCHETYPE_FILTER is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state, events } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: 'todo' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_ARCHETYPE_FILTER is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), {
+      type: 'SET_ARCHETYPE_FILTER', archetype: 'todo',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_ARCHETYPE_FILTER is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: 'todo' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('archetypeFilter persists through phase transitions', () => {
+    const withFilter = { ...readyState(), archetypeFilter: 'todo' as const };
+    const { state: editing } = reduce(withFilter, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.archetypeFilter).toBe('todo');
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.archetypeFilter).toBe('todo');
+  });
+});
+
+// ── Clear filters ────────────────────────
+
+describe('clear filters', () => {
+  it('CLEAR_FILTERS resets both searchQuery and archetypeFilter', () => {
+    const base = { ...readyState(), searchQuery: 'hello', archetypeFilter: 'todo' as const };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is a no-op when already clear', () => {
+    const { state } = reduce(readyState(), { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+  });
+
+  it('CLEAR_FILTERS is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), { type: 'CLEAR_FILTERS' });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', searchQuery: 'x' };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state).toBe(base);
+    expect(state.searchQuery).toBe('x');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting', searchQuery: 'x' };
+    const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS does not reset sort state', () => {
+    const base = {
+      ...readyState(),
+      searchQuery: 'hello', archetypeFilter: 'todo' as const,
+      sortKey: 'title' as const, sortDirection: 'asc' as const,
+    };
+    const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
+  });
+});
+
+// ── Sort ────────────────────────
+
+describe('sort', () => {
+  it('createInitialState has default sort (created_at desc)', () => {
+    const state = createInitialState();
+    expect(state.sortKey).toBe('created_at');
+    expect(state.sortDirection).toBe('desc');
+  });
+
+  it('SET_SORT updates sort key and direction in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT can change direction only', () => {
+    const { state } = reduce(readyState(), {
+      type: 'SET_SORT', key: 'created_at', direction: 'asc',
+    });
+    expect(state.sortKey).toBe('created_at');
+    expect(state.sortDirection).toBe('asc');
+  });
+
+  it('SET_SORT is blocked during initializing', () => {
+    const { state, events } = reduce(createInitialState(), {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state, events } = reduce(base, {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_SORT is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, {
+      type: 'SET_SORT', key: 'title', direction: 'asc',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('sort state persists through phase transitions', () => {
+    const withSort = { ...readyState(), sortKey: 'title' as const, sortDirection: 'asc' as const };
+    const { state: editing } = reduce(withSort, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(editing.sortKey).toBe('title');
+    expect(editing.sortDirection).toBe('asc');
+    const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
+    expect(back.sortKey).toBe('title');
+    expect(back.sortDirection).toBe('asc');
+  });
+
+  // ── CREATE_RELATION phase blocks ──
+
+  it('CREATE_RELATION is blocked during initializing', () => {
+    const base: AppState = { ...readyState(), phase: 'initializing' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('CREATE_RELATION is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', selectedLid: 'e1' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state.container!.relations).toHaveLength(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it('CREATE_RELATION is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  // ── SET_TAG_FILTER ──
+
+  it('SET_TAG_FILTER sets tagFilter in ready phase', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SET_TAG_FILTER', tagLid: 'e2',
+    });
+    expect(state.tagFilter).toBe('e2');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_TAG_FILTER with null clears tag filter', () => {
+    const base = { ...readyState(), tagFilter: 'e2' };
+    const { state } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: null });
+    expect(state.tagFilter).toBeNull();
+  });
+
+  it('SET_TAG_FILTER is blocked during initializing', () => {
+    const base: AppState = { ...readyState(), phase: 'initializing' };
+    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    expect(state.phase).toBe('initializing');
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_TAG_FILTER is blocked during editing', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', selectedLid: 'e1' };
+    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e2' });
+    expect(state.tagFilter).toBeNull();
+    expect(events).toHaveLength(0);
+  });
+
+  it('SET_TAG_FILTER is blocked during exporting', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('CLEAR_FILTERS also clears tagFilter', () => {
+    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: 'text' as const, tagFilter: 'e2' };
+    const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.searchQuery).toBe('');
+    expect(state.archetypeFilter).toBeNull();
+    expect(state.tagFilter).toBeNull();
+  });
+
+  it('CLEAR_FILTERS preserves sort when clearing tag filter', () => {
+    const base = { ...readyState(), tagFilter: 'e2', sortKey: 'title' as const, sortDirection: 'asc' as const };
+    const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
+    expect(state.tagFilter).toBeNull();
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
+  });
+
+  it('default tagFilter is null', () => {
+    const state = readyState();
+    expect(state.tagFilter).toBeNull();
+  });
+
+  // ── QUICK_UPDATE_ENTRY ─────────────────────────
+  // Contract: body-only update in ready phase, title preserved, snapshot created.
+  // Intended for small immediate operations (e.g., todo status toggle).
+  // NOT for title changes, archetype changes, or bulk updates.
+
+  it('QUICK_UPDATE_ENTRY updates body without phase change', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'new body',
+    });
+    expect(state.phase).toBe('ready');
+    const entry = state.container!.entries.find((e) => e.lid === 'e1');
+    expect(entry!.body).toBe('new body');
+    expect(entry!.title).toBe('Entry One');
+    expect(events).toContainEqual({ type: 'ENTRY_UPDATED', lid: 'e1' });
+  });
+
+  it('QUICK_UPDATE_ENTRY preserves title exactly (contract)', () => {
+    const base = readyState();
+    const originalTitle = base.container!.entries.find((e) => e.lid === 'e1')!.title;
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'different body',
+    });
+    const entry = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(entry.title).toBe(originalTitle);
+    expect(entry.body).toBe('different body');
+  });
+
+  it('QUICK_UPDATE_ENTRY updates updated_at timestamp', () => {
+    const base = readyState();
+    const originalUpdatedAt = base.container!.entries.find((e) => e.lid === 'e1')!.updated_at;
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'updated',
+    });
+    const entry = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(entry.updated_at).not.toBe(originalUpdatedAt);
+  });
+
+  it('QUICK_UPDATE_ENTRY creates a revision snapshot', () => {
+    const base = readyState();
+    expect(base.container!.revisions).toHaveLength(0);
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'updated',
+    });
+    expect(state.container!.revisions.length).toBeGreaterThan(0);
+  });
+
+  it('QUICK_UPDATE_ENTRY does not change selectedLid', () => {
+    const base: AppState = { ...readyState(), selectedLid: 'e2' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state.selectedLid).toBe('e2');
+  });
+
+  it('QUICK_UPDATE_ENTRY blocks for unknown lid', () => {
+    const base = readyState();
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'nonexistent', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in editing phase', () => {
+    const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in exporting phase', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting' };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in initializing phase', () => {
+    const base = createInitialState();
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked when container is null', () => {
+    const base: AppState = { ...readyState(), container: null };
+    const { state } = reduce(base, {
+      type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
+    });
+    expect(state).toBe(base);
+  });
+});

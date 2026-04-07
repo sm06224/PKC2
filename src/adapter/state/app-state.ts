@@ -1,8 +1,10 @@
 import type { Container } from '../../core/model/container';
+import type { ArchetypeId } from '../../core/model/record';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
+import type { SortKey, SortDirection } from '../../features/search/sort';
 import {
   addEntry,
   updateEntry,
@@ -46,6 +48,14 @@ export interface AppState {
   importPreview: ImportPreviewRef | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
+  /** Current archetype filter (runtime-only, feature layer). null = show all. */
+  archetypeFilter: ArchetypeId | null;
+  /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
+  tagFilter: string | null;
+  /** Current sort key (runtime-only, feature layer). */
+  sortKey: SortKey;
+  /** Current sort direction (runtime-only, feature layer). */
+  sortDirection: SortDirection;
 }
 
 /**
@@ -68,6 +78,10 @@ export function createInitialState(): AppState {
     pendingOffers: [],
     importPreview: null,
     searchQuery: '',
+    archetypeFilter: null,
+    tagFilter: null,
+    sortKey: 'created_at',
+    sortDirection: 'desc',
   };
 }
 
@@ -325,6 +339,39 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'SET_SEARCH_QUERY': {
       const next: AppState = { ...state, searchQuery: action.query };
       return { state: next, events: [] };
+    }
+    case 'SET_ARCHETYPE_FILTER': {
+      const next: AppState = { ...state, archetypeFilter: action.archetype };
+      return { state: next, events: [] };
+    }
+    case 'SET_TAG_FILTER': {
+      const next: AppState = { ...state, tagFilter: action.tagLid };
+      return { state: next, events: [] };
+    }
+    case 'CLEAR_FILTERS': {
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null, tagFilter: null };
+      return { state: next, events: [] };
+    }
+    case 'SET_SORT': {
+      const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
+      return { state: next, events: [] };
+    }
+    // QUICK_UPDATE_ENTRY: body-only update, title preserved.
+    // See user-action.ts for full contract documentation.
+    case 'QUICK_UPDATE_ENTRY': {
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const ts = now();
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      // Preserve entry.title — QUICK_UPDATE_ENTRY must NOT change title
+      const container = updateEntry(snapshotted, action.lid, entry.title, action.body, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
     }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };

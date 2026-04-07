@@ -3,6 +3,10 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@adapter/ui/renderer';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { todoPresenter } from '@adapter/ui/todo-presenter';
+import { formPresenter } from '@adapter/ui/form-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 
@@ -50,7 +54,7 @@ describe('Renderer', () => {
   it('renders initializing phase', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('initializing');
@@ -60,7 +64,7 @@ describe('Renderer', () => {
   it('renders error phase with message', () => {
     const state: AppState = {
       phase: 'error', container: null,
-      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('error');
@@ -70,7 +74,7 @@ describe('Renderer', () => {
   it('renders ready phase with entry list', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('ready');
@@ -79,18 +83,19 @@ describe('Renderer', () => {
     const header = root.querySelector('.pkc-header-title');
     expect(header?.textContent).toBe('Test Container');
 
-    // Sidebar shows entries
+    // Sidebar shows entries (sorted by created_at desc: e2 before e1)
     const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
     expect(items).toHaveLength(2);
 
-    // First entry has correct lid
-    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1');
+    // Default sort: created_at desc → e2 (newer) first
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e2');
+    expect(items[1]!.getAttribute('data-pkc-lid')).toBe('e1');
   });
 
   it('marks selected entry with data-pkc-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -102,7 +107,7 @@ describe('Renderer', () => {
   it('renders detail view for selected entry', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -121,7 +126,7 @@ describe('Renderer', () => {
   it('renders editor in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -142,14 +147,14 @@ describe('Renderer', () => {
   it('shows create button only in ready phase', () => {
     const readyState: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(readyState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).not.toBeNull();
 
     const editingState: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(editingState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
@@ -162,7 +167,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.textContent).toContain('Create an entry to begin');
@@ -171,7 +176,7 @@ describe('Renderer', () => {
   it('shows export button in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     const exportBtn = root.querySelector('[data-pkc-action="begin-export"]');
@@ -182,7 +187,7 @@ describe('Renderer', () => {
   it('shows exporting badge in exporting phase', () => {
     const state: AppState = {
       phase: 'exporting', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
@@ -192,7 +197,7 @@ describe('Renderer', () => {
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -209,7 +214,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=false for standalone', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('false');
@@ -218,7 +223,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=true for embedded', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
@@ -227,7 +232,7 @@ describe('Renderer', () => {
   it('sets data-pkc-capabilities with current capabilities', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     const caps = root.getAttribute('data-pkc-capabilities');
@@ -240,7 +245,7 @@ describe('Renderer', () => {
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="pending-offers"]')).toBeNull();
@@ -255,7 +260,7 @@ describe('Renderer', () => {
           archetype: 'text', source_container_id: null,
           reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
         },
-      ], importPreview: null, searchQuery: '',
+      ], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -283,7 +288,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -295,7 +300,7 @@ describe('Renderer', () => {
   it('does not show revision badge on entries without revisions', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
@@ -312,7 +317,7 @@ describe('Renderer', () => {
         schema_version: 1,
         source: 'backup.html',
         container: mockContainer,
-      }, searchQuery: '',
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -343,7 +348,7 @@ describe('Renderer', () => {
   it('does not render import panel when importPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="import-confirm"]')).toBeNull();
@@ -358,7 +363,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -380,7 +385,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -405,7 +410,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -413,7 +418,7 @@ describe('Renderer', () => {
     expect(section).not.toBeNull();
     expect(section!.textContent).toContain('1 restorable');
     expect(section!.textContent).toContain('Deleted Entry');
-    expect(section!.textContent).toContain('text'); // archetype badge
+    expect(section!.textContent).toContain('Note'); // archetype badge (label)
 
     const restoreBtn = section!.querySelector('[data-pkc-action="restore-entry"]');
     expect(restoreBtn).not.toBeNull();
@@ -431,7 +436,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -458,7 +463,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -487,19 +492,19 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
     expect(section!.textContent).toContain('2026-04-01 09:15');
-    expect(section!.textContent).toContain('todo'); // archetype
+    expect(section!.textContent).toContain('Todo'); // archetype label
   });
 
   it('renders search input when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -513,7 +518,7 @@ describe('Renderer', () => {
     const emptyContainer: Container = { ...mockContainer, entries: [] };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -523,7 +528,7 @@ describe('Renderer', () => {
   it('filters entries by search query', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -535,7 +540,7 @@ describe('Renderer', () => {
   it('shows "No matching entries" when search has no results', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
@@ -546,11 +551,883 @@ describe('Renderer', () => {
   it('preserves search input value from state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello',
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
     };
     render(state, root);
 
     const input = root.querySelector<HTMLInputElement>('[data-pkc-field="search"]');
     expect(input!.value).toBe('hello');
+  });
+
+  it('renders archetype filter bar when entries exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const bar = root.querySelector('[data-pkc-region="archetype-filter"]');
+    expect(bar).not.toBeNull();
+
+    const allBtn = bar!.querySelector('[data-pkc-archetype=""]');
+    expect(allBtn).not.toBeNull();
+    expect(allBtn!.textContent).toBe('All');
+    expect(allBtn!.getAttribute('data-pkc-active')).toBe('true');
+
+    const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
+    expect(textBtn).not.toBeNull();
+    expect(textBtn!.textContent).toBe('Note');
+  });
+
+  it('marks active archetype filter button', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const todoBtn = root.querySelector('[data-pkc-action="set-archetype-filter"][data-pkc-archetype="todo"]');
+    expect(todoBtn!.getAttribute('data-pkc-active')).toBe('true');
+
+    const allBtn = root.querySelector('[data-pkc-action="set-archetype-filter"][data-pkc-archetype=""]');
+    expect(allBtn!.hasAttribute('data-pkc-active')).toBe(false);
+  });
+
+  it('filters entries by archetype', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e2');
+  });
+
+  it('shows result count when filter is active', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'text', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const count = root.querySelector('[data-pkc-region="result-count"]');
+    expect(count).not.toBeNull();
+    expect(count!.textContent).toBe('1 / 2 entries');
+  });
+
+  it('shows result count when search query is active', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const count = root.querySelector('[data-pkc-region="result-count"]');
+    expect(count).not.toBeNull();
+    expect(count!.textContent).toBe('1 / 2 entries');
+  });
+
+  it('does not show result count when no filter is active', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="result-count"]')).toBeNull();
+  });
+
+  it('shows clear-filters button when search query is non-empty', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const clearBtn = root.querySelector('[data-pkc-action="clear-filters"]');
+    expect(clearBtn).not.toBeNull();
+    expect(clearBtn!.textContent).toBe('×');
+  });
+
+  it('shows clear-filters button when archetype filter is set', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const clearBtn = root.querySelector('[data-pkc-action="clear-filters"]');
+    expect(clearBtn).not.toBeNull();
+  });
+
+  it('does not show clear-filters button when no filter is active', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-action="clear-filters"]')).toBeNull();
+  });
+
+  it('renders sort controls when entries exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const sortRegion = root.querySelector('[data-pkc-region="sort-controls"]');
+    expect(sortRegion).not.toBeNull();
+
+    const keySelect = sortRegion!.querySelector<HTMLSelectElement>('[data-pkc-field="sort-key"]');
+    expect(keySelect).not.toBeNull();
+    expect(keySelect!.value).toBe('created_at');
+
+    const dirSelect = sortRegion!.querySelector<HTMLSelectElement>('[data-pkc-field="sort-direction"]');
+    expect(dirSelect).not.toBeNull();
+    expect(dirSelect!.value).toBe('desc');
+  });
+
+  it('sort select reflects current sort state', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc',
+    };
+    render(state, root);
+
+    const sortControls = root.querySelector('[data-pkc-sort-key]');
+    expect(sortControls).not.toBeNull();
+    expect(sortControls!.getAttribute('data-pkc-sort-key')).toBe('title');
+    expect(sortControls!.getAttribute('data-pkc-sort-direction')).toBe('asc');
+  });
+
+  it('applies sort after filter (filter → sort pipeline)', () => {
+    // mockContainer has e1 (text, 00:00) and e2 (todo, 00:01)
+    // Sort by title asc: e1 "Entry One" < e2 "Entry Two"
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(2);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1'); // Entry One
+    expect(items[1]!.getAttribute('data-pkc-lid')).toBe('e2'); // Entry Two
+  });
+
+  it('applies sort after filter: desc reverses order', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(2);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e2'); // Entry Two
+    expect(items[1]!.getAttribute('data-pkc-lid')).toBe('e1'); // Entry One
+  });
+
+  it('filter narrows then sort orders the result', () => {
+    // Filter to "One" → only e1. Sort does not change single item.
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1');
+  });
+
+  // ── Relation UI ──────────────────
+
+  it('shows relation sections when entry has relations', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).not.toBeNull();
+
+    // Outbound group for e1
+    const outbound = relRegion!.querySelector('[data-pkc-relation-direction="outbound"]');
+    expect(outbound).not.toBeNull();
+  });
+
+  it('shows relation kind badge', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const kindBadge = root.querySelector('.pkc-relation-kind');
+    expect(kindBadge).not.toBeNull();
+    expect(kindBadge!.textContent).toBe('structural');
+  });
+
+  it('shows inbound relations for target entry', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const inbound = root.querySelector('[data-pkc-relation-direction="inbound"]');
+    expect(inbound).not.toBeNull();
+    const peer = inbound!.querySelector('[data-pkc-action="select-entry"]');
+    expect(peer).not.toBeNull();
+    expect(peer!.getAttribute('data-pkc-lid')).toBe('e1');
+  });
+
+  it('relation peer link has select-entry action for navigation', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const peer = root.querySelector('.pkc-relation-peer');
+    expect(peer).not.toBeNull();
+    expect(peer!.getAttribute('data-pkc-action')).toBe('select-entry');
+    expect(peer!.getAttribute('data-pkc-lid')).toBe('e2');
+    expect(peer!.textContent).toBe('Entry Two');
+  });
+
+  it('does not show relation section when no relations exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const relRegion = root.querySelector('[data-pkc-region="relations"]');
+    expect(relRegion).toBeNull();
+  });
+
+  it('shows relation creation form in ready phase', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const createForm = root.querySelector('[data-pkc-region="relation-create"]');
+    expect(createForm).not.toBeNull();
+    expect(createForm!.getAttribute('data-pkc-from')).toBe('e1');
+
+    // Target select excludes current entry
+    const targetSelect = createForm!.querySelector('[data-pkc-field="relation-target"]');
+    expect(targetSelect).not.toBeNull();
+    const options = targetSelect!.querySelectorAll('option');
+    // 1 default + 1 other entry (e2)
+    expect(options).toHaveLength(2);
+
+    // Kind select
+    const kindSelect = createForm!.querySelector('[data-pkc-field="relation-kind"]');
+    expect(kindSelect).not.toBeNull();
+
+    // Create button
+    const createBtn = createForm!.querySelector('[data-pkc-action="create-relation"]');
+    expect(createBtn).not.toBeNull();
+  });
+
+  it('does not show relation create form in editing phase', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const createForm = root.querySelector('[data-pkc-region="relation-create"]');
+    expect(createForm).toBeNull();
+  });
+
+  // ── Tags UI ──────────────────
+
+  it('shows tag chips for categorical relations', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1);
+
+    const label = chips[0]!.querySelector('.pkc-tag-label');
+    expect(label!.textContent).toBe('Entry Two');
+  });
+
+  it('shows remove button on tag chips in ready phase', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const removeBtn = root.querySelector('[data-pkc-action="remove-tag"]');
+    expect(removeBtn).not.toBeNull();
+    expect(removeBtn!.getAttribute('data-pkc-relation-id')).toBe('r1');
+  });
+
+  it('does not show non-categorical relations as tags', () => {
+    const containerMixed: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerMixed,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const chips = root.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(1); // only categorical
+  });
+
+  it('shows tag add form with available targets', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).not.toBeNull();
+    expect(addForm!.getAttribute('data-pkc-from')).toBe('e1');
+
+    const select = addForm!.querySelector('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+
+    const addBtn = addForm!.querySelector('[data-pkc-action="add-tag"]');
+    expect(addBtn).not.toBeNull();
+  });
+
+  it('tag add form excludes already-tagged entries', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // e2 is already tagged, so no available targets (only 2 entries total)
+    const addForm = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(addForm).toBeNull(); // no form when all tagged
+  });
+
+  it('tags section always shows even with no tags', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull();
+    // No chips
+    const chips = tagRegion!.querySelectorAll('.pkc-tag-chip');
+    expect(chips).toHaveLength(0);
+  });
+
+  // ── Tag Filter UI ──────────────────
+
+  it('tag chip label has filter-by-tag action', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const chipLabel = root.querySelector('.pkc-tag-label');
+    expect(chipLabel).not.toBeNull();
+    expect(chipLabel!.getAttribute('data-pkc-action')).toBe('filter-by-tag');
+    expect(chipLabel!.getAttribute('data-pkc-lid')).toBe('e2');
+  });
+
+  it('shows tag filter indicator when tag filter is active', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const indicator = root.querySelector('[data-pkc-region="tag-filter-indicator"]');
+    expect(indicator).not.toBeNull();
+    expect(indicator!.textContent).toContain('Entry Two');
+
+    const clearBtn = indicator!.querySelector('[data-pkc-action="clear-tag-filter"]');
+    expect(clearBtn).not.toBeNull();
+  });
+
+  it('tag filter narrows sidebar entries', () => {
+    // e1 tagged with e2 (categorical), e2 not tagged
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1');
+  });
+
+  it('tag filter combines with query and sort', () => {
+    // 3 entries: e1 (text), e2 (todo), e3 (text)
+    // e1 and e3 tagged with e2, sort by title asc
+    const threeEntries: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'e3', title: 'Entry Three', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'e3', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: threeEntries,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'title', sortDirection: 'asc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items).toHaveLength(2);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('e1'); // Entry One
+    expect(items[1]!.getAttribute('data-pkc-lid')).toBe('e3'); // Entry Three
+  });
+
+  it('result count shows when tag filter is active', () => {
+    const containerWithTags: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTags,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const count = root.querySelector('[data-pkc-region="result-count"]');
+    expect(count).not.toBeNull();
+    expect(count!.textContent).toContain('1');
+    expect(count!.textContent).toContain('2');
+  });
+
+  it('no tag filter indicator when tagFilter is null', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const indicator = root.querySelector('[data-pkc-region="tag-filter-indicator"]');
+    expect(indicator).toBeNull();
+  });
+
+  // ── Archetype Dispatch ──────────────────
+
+  it('detail view has data-pkc-archetype attribute', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view).not.toBeNull();
+    expect(view!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('editor has data-pkc-archetype attribute', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor).not.toBeNull();
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('detail view uses presenter for body rendering', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // Default text presenter renders body as <pre>
+    const body = root.querySelector('.pkc-view-body');
+    expect(body).not.toBeNull();
+    expect(body!.tagName).toBe('PRE');
+    expect(body!.textContent).toBe('Body of entry one');
+  });
+
+  it('todo archetype entry gets same data-pkc-archetype value', () => {
+    // e2 is archetype: 'todo'
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view!.getAttribute('data-pkc-archetype')).toBe('todo');
+  });
+
+  it('todo entry uses todo presenter when registered', () => {
+    registerPresenter('todo', todoPresenter);
+
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Buy groceries', body: '{"status":"open","description":"milk and eggs"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    // Should render todo-specific view, not <pre>
+    const todoView = root.querySelector('.pkc-todo-view');
+    expect(todoView).not.toBeNull();
+
+    const status = root.querySelector('.pkc-todo-status');
+    expect(status).not.toBeNull();
+    expect(status!.getAttribute('data-pkc-todo-status')).toBe('open');
+
+    const desc = root.querySelector('.pkc-todo-description');
+    expect(desc!.textContent).toBe('milk and eggs');
+  });
+
+  it('sidebar shows todo status badge for todo entries', () => {
+    registerPresenter('todo', todoPresenter);
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Open task', body: '{"status":"open","description":"do it"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 't2', title: 'Done task', body: '{"status":"done","description":"did it"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        { lid: 'n1', title: 'A note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    // t1 — open
+    const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
+    const openBadge = t1.querySelector('.pkc-todo-status-badge');
+    expect(openBadge).not.toBeNull();
+    expect(openBadge!.getAttribute('data-pkc-todo-status')).toBe('open');
+    expect(openBadge!.textContent).toBe('[ ]');
+
+    // t2 — done
+    const t2 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't2')!;
+    const doneBadge = t2.querySelector('.pkc-todo-status-badge');
+    expect(doneBadge!.getAttribute('data-pkc-todo-status')).toBe('done');
+    expect(doneBadge!.textContent).toBe('[x]');
+
+    // n1 — no status badge for text entries
+    const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
+    expect(n1.querySelector('.pkc-todo-status-badge')).toBeNull();
+  });
+
+  it('detail view todo toggle button has correct data attributes', () => {
+    registerPresenter('todo', todoPresenter);
+    const todoContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 't1', title: 'Task', body: '{"status":"open","description":"desc"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: todoContainer,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-todo-status"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle!.getAttribute('data-pkc-lid')).toBe('t1');
+    expect(toggle!.getAttribute('data-pkc-todo-status')).toBe('open');
+    expect(toggle!.textContent).toBe('[ ]');
+  });
+
+  it('header has both Note and Todo create buttons', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const noteBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+    expect(noteBtn).not.toBeNull();
+    expect(noteBtn!.textContent).toBe('+ Note');
+
+    const todoBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
+    expect(todoBtn).not.toBeNull();
+    expect(todoBtn!.textContent).toBe('+ Todo');
+
+    const formBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="form"]');
+    expect(formBtn).not.toBeNull();
+    expect(formBtn!.textContent).toBe('+ Form');
+  });
+
+  it('form entry uses form presenter when registered', () => {
+    registerPresenter('form', formPresenter);
+
+    const formContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'f1', title: 'My Form', body: '{"name":"Alice","note":"Hello","checked":true}', archetype: 'form', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: formContainer,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const formView = root.querySelector('.pkc-form-view');
+    expect(formView).not.toBeNull();
+
+    const values = formView!.querySelectorAll('.pkc-form-value');
+    expect(values[0]!.textContent).toBe('Alice');
+    expect(values[2]!.textContent).toBe('Yes');
+  });
+
+  it('form entry renders editor with form fields', () => {
+    registerPresenter('form', formPresenter);
+
+    const formContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'f1', title: 'My Form', body: '{"name":"Bob","note":"test","checked":false}', archetype: 'form', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'editing', container: formContainer,
+      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('form');
+    expect(root.querySelector('[data-pkc-field="form-name"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="form-note"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="form-checked"]')).not.toBeNull();
+  });
+
+  // ── Archetype UX Polish (Issue #32) ─────────────────
+
+  it('sidebar badge shows human-readable label and data-pkc-archetype', () => {
+    const mixedContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'n1', title: 'Note', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 't1', title: 'Task', body: '{}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        { lid: 'f1', title: 'Form', body: '{}', archetype: 'form', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: mixedContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    for (const item of items) {
+      const badge = item.querySelector('.pkc-archetype-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.hasAttribute('data-pkc-archetype')).toBe(true);
+    }
+
+    const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
+    expect(n1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Note');
+    expect(n1.querySelector('.pkc-archetype-badge')!.getAttribute('data-pkc-archetype')).toBe('text');
+
+    const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
+    expect(t1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Todo');
+
+    const f1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'f1')!;
+    expect(f1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Form');
+  });
+
+  it('detail view shows archetype label next to title', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const label = root.querySelector('.pkc-archetype-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe('Note');
+    expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('editor shows archetype label next to title input', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const label = root.querySelector('.pkc-archetype-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe('Note');
+    expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
+  });
+
+  it('archetype filter bar uses human-readable labels', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const bar = root.querySelector('[data-pkc-region="archetype-filter"]');
+    expect(bar).not.toBeNull();
+    const allBtn = bar!.querySelector('[data-pkc-archetype=""]');
+    expect(allBtn!.textContent).toBe('All');
+    const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
+    expect(textBtn!.textContent).toBe('Note');
+    const todoBtn = bar!.querySelector('[data-pkc-archetype="todo"]');
+    expect(todoBtn!.textContent).toBe('Todo');
+    const formBtn = bar!.querySelector('[data-pkc-archetype="form"]');
+    expect(formBtn!.textContent).toBe('Form');
+  });
+
+  it('header has Attachment create button', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const attBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attBtn).not.toBeNull();
+    expect(attBtn!.textContent).toBe('+ File');
+  });
+
+  it('attachment entry uses attachment presenter when registered', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'a1', title: 'My File', body: '{"name":"doc.pdf","mime":"application/pdf","data":"AQID"}', archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: attContainer,
+      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const attView = root.querySelector('.pkc-attachment-view');
+    expect(attView).not.toBeNull();
+    expect(root.querySelector('.pkc-attachment-name')!.textContent).toBe('doc.pdf');
+    expect(root.querySelector('.pkc-attachment-mime')!.textContent).toBe('application/pdf');
+  });
+
+  it('attachment entry renders editor with file input', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'a1', title: 'My File', body: '{"name":"x.bin","mime":"application/octet-stream","data":""}', archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'editing', container: attContainer,
+      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    };
+    render(state, root);
+
+    const editor = root.querySelector('[data-pkc-mode="edit"]');
+    expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
+    expect(root.querySelector('[data-pkc-field="attachment-file"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-field="attachment-name"]')).not.toBeNull();
   });
 });

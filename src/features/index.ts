@@ -4,4 +4,20 @@
 // Features export pure functions/types consumed by adapter (renderer, binder).
 // Feature state lives in AppState as runtime-only fields.
 
-export { filterEntries, entryMatchesQuery } from './search/filter';
+export {
+  filterEntries,
+  entryMatchesQuery,
+  filterByArchetype,
+  applyFilters,
+} from './search/filter';
+
+export { sortEntries } from './search/sort';
+export type { SortKey, SortDirection } from './search/sort';
+
+export { getRelationsForEntry, resolveRelations } from './relation/selector';
+export type { Direction, DirectedRelation, ResolvedRelation } from './relation/selector';
+
+export { getTagsForEntry, getAvailableTagTargets } from './relation/tag-selector';
+export type { Tag } from './relation/tag-selector';
+
+export { entryHasTag, filterByTag } from './relation/tag-filter';
