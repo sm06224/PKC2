@@ -61,9 +61,13 @@ describe('mountPersistence', () => {
     mountPersistence(dispatcher, { store, debounceMs: 200 });
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
 
-    // Rapid mutations
+    // Rapid mutations: create enters editing, so save+create+save for subsequent
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'A' });
+    const lidA = dispatcher.getState().selectedLid!;
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: lidA, title: 'A', body: '' });
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'B' });
+    const lidB = dispatcher.getState().selectedLid!;
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: lidB, title: 'B', body: '' });
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'C' });
 
     // Advance past debounce — only 1 save for the batch (+ 1 for CONTAINER_LOADED)

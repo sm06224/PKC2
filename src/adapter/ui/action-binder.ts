@@ -51,7 +51,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'delete-entry':
-        if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
+        if (lid && confirm('Delete this entry? This cannot be undone.')) {
+          dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
+        }
         break;
       case 'begin-export': {
         const mode = (target.getAttribute('data-pkc-export-mode') ?? 'full') as ExportMode;

@@ -160,13 +160,13 @@ describe('Mutation → Shell integration', () => {
   it('full lifecycle: create → edit → save → delete', () => {
     const { dispatcher, events } = setup();
 
-    // Create
+    // Create — auto-enters editing
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'New TODO' });
     const createdLid = dispatcher.getState().selectedLid!;
     expect(dispatcher.getState().container!.entries).toHaveLength(3);
+    expect(dispatcher.getState().phase).toBe('editing');
 
-    // Edit
-    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: createdLid });
+    // Save (already in editing from create)
     dispatcher.dispatch({
       type: 'COMMIT_EDIT', lid: createdLid,
       title: 'Buy milk', body: '2L whole milk',
@@ -281,23 +281,19 @@ describe('Mutation → Shell integration', () => {
     expect(rels[0]!.to).toBe('e2');
   });
 
-  it('todo entry lifecycle: create → view → edit → save', () => {
+  it('todo entry lifecycle: create → auto-edit → save', () => {
     const { dispatcher } = setup();
 
     registerPresenter('todo', todoPresenter);
 
-    // Create todo entry
+    // Create todo entry — now auto-enters editing mode
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
     const lid = dispatcher.getState().selectedLid!;
     const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
     expect(created!.archetype).toBe('todo');
+    expect(dispatcher.getState().phase).toBe('editing');
 
-    // View should show todo presenter output
-    const todoView = root.querySelector('.pkc-todo-view');
-    expect(todoView).not.toBeNull();
-
-    // Edit
-    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    // Editor should be shown directly
     const editor = root.querySelector('[data-pkc-mode="edit"]');
     expect(editor!.getAttribute('data-pkc-archetype')).toBe('todo');
 
@@ -326,9 +322,11 @@ describe('Mutation → Shell integration', () => {
 
     registerPresenter('todo', todoPresenter);
 
-    // Create todo entry
+    // Create todo entry — auto-enters editing, save to get to ready phase
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'todo', title: 'My Todo' });
     const lid = dispatcher.getState().selectedLid!;
+    // Save immediately to return to ready phase
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title: 'My Todo', body: '{"status":"open","description":""}' });
     expect(dispatcher.getState().phase).toBe('ready');
 
     // Find the toggle button in detail view
@@ -353,23 +351,19 @@ describe('Mutation → Shell integration', () => {
     expect(updatedToggle.textContent).toBe('[x]');
   });
 
-  it('form entry lifecycle: create → edit → save → re-render → re-edit', () => {
+  it('form entry lifecycle: create → auto-edit → save → re-render → re-edit', () => {
     const { dispatcher } = setup();
 
     registerPresenter('form', formPresenter);
 
-    // Create form entry
+    // Create form entry — auto-enters editing
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'form', title: 'My Form' });
     const lid = dispatcher.getState().selectedLid!;
     const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
     expect(created!.archetype).toBe('form');
+    expect(dispatcher.getState().phase).toBe('editing');
 
-    // View should show form presenter output
-    const formView = root.querySelector('.pkc-form-view');
-    expect(formView).not.toBeNull();
-
-    // Edit
-    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    // Editor should be shown directly
     const editor = root.querySelector('[data-pkc-mode="edit"]');
     expect(editor!.getAttribute('data-pkc-archetype')).toBe('form');
 
@@ -413,23 +407,19 @@ describe('Mutation → Shell integration', () => {
     expect(checkedInput2!.checked).toBe(true);
   });
 
-  it('attachment entry lifecycle: create → edit (populate hidden fields) → save → data in assets', () => {
+  it('attachment entry lifecycle: create → auto-edit (populate hidden fields) → save → data in assets', () => {
     const { dispatcher } = setup();
 
     registerPresenter('attachment', attachmentPresenter);
 
-    // Create attachment entry
+    // Create attachment entry — auto-enters editing
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: 'My Attachment' });
     const lid = dispatcher.getState().selectedLid!;
     const created = dispatcher.getState().container!.entries.find((e) => e.lid === lid);
     expect(created!.archetype).toBe('attachment');
+    expect(dispatcher.getState().phase).toBe('editing');
 
-    // View should show attachment presenter output
-    const attView = root.querySelector('.pkc-attachment-view');
-    expect(attView).not.toBeNull();
-
-    // Edit
-    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    // Editor should be shown directly
     const editor = root.querySelector('[data-pkc-mode="edit"]');
     expect(editor!.getAttribute('data-pkc-archetype')).toBe('attachment');
 

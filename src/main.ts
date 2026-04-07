@@ -48,9 +48,30 @@ async function boot(): Promise<void> {
   // 1. Dispatcher
   const dispatcher = createDispatcher();
 
-  // 2. Renderer: state → DOM
+  // 2. Renderer: state → DOM (with scroll/focus restoration)
   dispatcher.onState((state) => {
+    // Save scroll positions and active element info before re-render
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    const detail = root.querySelector('.pkc-detail');
+    const sidebarScroll = sidebar?.scrollTop ?? 0;
+    const detailScroll = detail?.scrollTop ?? 0;
+    const focusField = document.activeElement?.getAttribute('data-pkc-field') ?? null;
+
     render(state, root);
+
+    // Restore scroll positions
+    const newSidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    const newDetail = root.querySelector('.pkc-detail');
+    if (newSidebar) newSidebar.scrollTop = sidebarScroll;
+    if (newDetail) newDetail.scrollTop = detailScroll;
+
+    // Restore focus: if editing, focus the title or previously focused field
+    if (state.phase === 'editing') {
+      const target = focusField
+        ? root.querySelector<HTMLElement>(`[data-pkc-field="${focusField}"]`)
+        : root.querySelector<HTMLElement>('[data-pkc-field="title"]');
+      target?.focus();
+    }
   });
 
   // 3. Action binder: DOM events → UserAction
