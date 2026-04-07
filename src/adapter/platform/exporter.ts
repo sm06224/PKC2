@@ -26,6 +26,7 @@ import { SLOT } from '../../runtime/contract';
 import type { Container } from '../../core/model/container';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { ReleaseMeta } from '../../runtime/release-meta';
+import { compressAssets } from './compression';
 
 /**
  * ExportResult: outcome of an export attempt.
@@ -43,6 +44,7 @@ export interface ExportResult {
 export interface ExportMeta {
   mode: ExportMode;
   mutability: ExportMutability;
+  asset_encoding?: 'base64' | 'gzip+base64';
 }
 
 /**
@@ -62,18 +64,26 @@ export interface ExportOptions {
  * Shape: { container, export_meta } — matches readPkcData() contract.
  *
  * Light mode: strips container.assets to {}, adds export_meta.mode = 'light'.
- * Full mode: includes everything, adds export_meta.mode = 'full'.
+ * Full mode: compresses assets (gzip+base64), adds export_meta with asset_encoding.
  * Mutability: 'editable' (default) or 'readonly' (view-only with rehydrate).
  */
-export function serializePkcData(
+export async function serializePkcData(
   container: Container,
   mode: ExportMode = 'full',
   mutability: ExportMutability = 'editable',
-): string {
+): Promise<string> {
   const exportMeta: ExportMeta = { mode, mutability };
-  const exported = mode === 'light'
-    ? { ...container, assets: {} }
-    : container;
+
+  let exported: Container;
+  if (mode === 'light') {
+    exported = { ...container, assets: {} };
+  } else {
+    // Full mode: compress assets for size efficiency
+    const { assets: compressedAssets, encoding } = await compressAssets(container.assets);
+    exported = { ...container, assets: compressedAssets };
+    exportMeta.asset_encoding = encoding;
+  }
+
   const json = JSON.stringify({ container: exported, export_meta: exportMeta }, null, 2);
   // Escape </script> inside JSON to prevent premature script tag closure in HTML.
   // This is a standard HTML-in-script safety measure.
@@ -92,11 +102,11 @@ export function serializePkcData(
  *
  * Injects the given Container as pkc-data.
  */
-export function buildExportHtml(
+export async function buildExportHtml(
   container: Container,
   mode: ExportMode = 'full',
   mutability: ExportMutability = 'editable',
-): string {
+): Promise<string> {
   // Read from live DOM
   const coreEl = document.getElementById(SLOT.CORE);
   const stylesEl = document.getElementById(SLOT.STYLES);
@@ -127,8 +137,8 @@ export function buildExportHtml(
   const timestamp = htmlEl.getAttribute('data-pkc-timestamp') ?? '';
   const kind = htmlEl.getAttribute('data-pkc-kind') ?? 'dev';
 
-  // Serialize container data
-  const dataJson = serializePkcData(container, mode, mutability);
+  // Serialize container data (async: may compress assets)
+  const dataJson = await serializePkcData(container, mode, mutability);
 
   // Assemble HTML matching shell.html contract
   return `<!DOCTYPE html>
@@ -175,14 +185,14 @@ export function generateExportFilename(container: Container, override?: string):
  *
  * @param downloadFn - Override for testing. Defaults to triggerDownload.
  */
-export function exportContainerAsHtml(
+export async function exportContainerAsHtml(
   container: Container,
   options?: ExportOptions & { downloadFn?: (content: string, filename: string) => void },
-): ExportResult {
+): Promise<ExportResult> {
   try {
     const mode = options?.mode ?? 'full';
     const mutability = options?.mutability ?? 'editable';
-    const html = buildExportHtml(container, mode, mutability);
+    const html = await buildExportHtml(container, mode, mutability);
     const filename = generateExportFilename(container, options?.filename);
 
     const download = options?.downloadFn ?? triggerDownload;

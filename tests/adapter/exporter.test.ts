@@ -68,9 +68,9 @@ beforeEach(() => {
 });
 
 describe('serializePkcData', () => {
-  it('wraps Container in { container } shape', () => {
+  it('wraps Container in { container } shape', async () => {
     const c = createTestContainer();
-    const json = serializePkcData(c);
+    const json = await serializePkcData(c);
     const parsed = JSON.parse(json);
 
     expect(parsed).toHaveProperty('container');
@@ -79,55 +79,67 @@ describe('serializePkcData', () => {
     expect(parsed.container.relations).toHaveLength(1);
   });
 
-  it('does not include runtime state (selectedLid, phase, etc.)', () => {
+  it('does not include runtime state (selectedLid, phase, etc.)', async () => {
     const c = createTestContainer();
-    const json = serializePkcData(c);
+    const json = await serializePkcData(c);
 
     expect(json).not.toContain('selectedLid');
     expect(json).not.toContain('editingLid');
     expect(json).not.toContain('phase');
   });
 
-  it('full mode includes assets and export_meta.mode=full', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
-    const json = serializePkcData(c, 'full');
+  it('full mode includes assets and export_meta.mode=full', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data1') } });
+    const json = await serializePkcData(c, 'full');
     const parsed = JSON.parse(json);
 
-    expect(parsed.export_meta).toEqual({ mode: 'full', mutability: 'editable' });
-    expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
+    expect(parsed.export_meta.mode).toBe('full');
+    expect(parsed.export_meta.mutability).toBe('editable');
+    // Assets are compressed (gzip+base64), so they differ from original
+    expect(parsed.export_meta.asset_encoding).toBe('gzip+base64');
+    expect(parsed.container.assets['ast-1']).toBeDefined();
   });
 
-  it('light mode strips assets and sets export_meta.mode=light', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data1', 'ast-2': 'data2' } });
-    const json = serializePkcData(c, 'light');
+  it('light mode strips assets and sets export_meta.mode=light', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data1'), 'ast-2': btoa('data2') } });
+    const json = await serializePkcData(c, 'light');
     const parsed = JSON.parse(json);
 
     expect(parsed.export_meta).toEqual({ mode: 'light', mutability: 'editable' });
     expect(parsed.container.assets).toEqual({});
   });
 
-  it('default mode is full', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
-    const json = serializePkcData(c);
+  it('default mode is full with asset_encoding', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data1') } });
+    const json = await serializePkcData(c);
     const parsed = JSON.parse(json);
 
     expect(parsed.export_meta.mode).toBe('full');
     expect(parsed.export_meta.mutability).toBe('editable');
-    expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
+    expect(parsed.export_meta.asset_encoding).toBe('gzip+base64');
   });
 
-  it('light mode does not mutate original container', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
-    serializePkcData(c, 'light');
+  it('full mode with empty assets sets encoding to base64', async () => {
+    const c = createTestContainer({ assets: {} });
+    const json = await serializePkcData(c);
+    const parsed = JSON.parse(json);
 
-    expect(c.assets).toEqual({ 'ast-1': 'data1' });
+    expect(parsed.export_meta.mode).toBe('full');
+    expect(parsed.export_meta.asset_encoding).toBe('base64');
+  });
+
+  it('light mode does not mutate original container', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data1') } });
+    await serializePkcData(c, 'light');
+
+    expect(c.assets).toEqual({ 'ast-1': btoa('data1') });
   });
 });
 
 describe('buildExportHtml', () => {
-  it('produces valid HTML with all fixed-ID slots', () => {
+  it('produces valid HTML with all fixed-ID slots', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('id="pkc-root"');
@@ -138,9 +150,9 @@ describe('buildExportHtml', () => {
     expect(html).toContain('id="pkc-theme"');
   });
 
-  it('embeds Container data in pkc-data slot', () => {
+  it('embeds Container data in pkc-data slot', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     // Extract pkc-data content
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
@@ -150,23 +162,23 @@ describe('buildExportHtml', () => {
     expect(data.container.entries).toHaveLength(2);
   });
 
-  it('preserves pkc-core content from DOM', () => {
+  it('preserves pkc-core content from DOM', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     expect(html).toContain('console.log("PKC2 bundle")');
   });
 
-  it('preserves pkc-styles content from DOM', () => {
+  it('preserves pkc-styles content from DOM', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     expect(html).toContain('body { margin: 0; }');
   });
 
-  it('preserves data-pkc-* attributes on html element', () => {
+  it('preserves data-pkc-* attributes on html element', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     expect(html).toContain('data-pkc-app="pkc2"');
     expect(html).toContain('data-pkc-version="2.0.0"');
@@ -174,9 +186,9 @@ describe('buildExportHtml', () => {
     expect(html).toContain('data-pkc-kind="dev"');
   });
 
-  it('adds export capability to metadata', () => {
+  it('adds export capability to metadata', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     const metaMatch = html.match(/<script id="pkc-meta" type="application\/json">([\s\S]*?)<\/script>/);
     expect(metaMatch).toBeTruthy();
@@ -184,23 +196,23 @@ describe('buildExportHtml', () => {
     expect(meta.capabilities).toContain('export');
   });
 
-  it('preserves code_integrity (same code, same hash)', () => {
+  it('preserves code_integrity (same code, same hash)', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     const metaMatch = html.match(/<script id="pkc-meta" type="application\/json">([\s\S]*?)<\/script>/);
     const meta = JSON.parse(metaMatch![1]!);
     expect(meta.code_integrity).toBe('sha256:deadbeef');
   });
 
-  it('uses container title as HTML title', () => {
+  it('uses container title as HTML title', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     expect(html).toContain('<title>Test Container</title>');
   });
 
-  it('escapes special characters in HTML title element', () => {
+  it('escapes special characters in HTML title element', async () => {
     const c = createTestContainer({
       meta: {
         container_id: 'c1',
@@ -210,13 +222,13 @@ describe('buildExportHtml', () => {
         schema_version: 1,
       },
     });
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     // HTML title element has escaped angle brackets
     expect(html).toContain('<title>Test &lt;b&gt;bold&lt;/b&gt;</title>');
   });
 
-  it('escapes </script> in pkc-data JSON to prevent tag closure', () => {
+  it('escapes </script> in pkc-data JSON to prevent tag closure', async () => {
     const c = createTestContainer({
       meta: {
         container_id: 'c1',
@@ -226,7 +238,7 @@ describe('buildExportHtml', () => {
         schema_version: 1,
       },
     });
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     // The raw </script> must not appear inside the pkc-data script element
     // (it would prematurely close the tag). serializePkcData escapes it.
@@ -243,9 +255,9 @@ describe('buildExportHtml', () => {
 });
 
 describe('buildExportHtml: export modes', () => {
-  it('light mode strips assets from exported HTML', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'x'.repeat(1000) } });
-    const html = buildExportHtml(c, 'light');
+  it('light mode strips assets from exported HTML', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('x'.repeat(1000)) } });
+    const html = await buildExportHtml(c, 'light');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
@@ -253,30 +265,31 @@ describe('buildExportHtml: export modes', () => {
     expect(data.export_meta.mode).toBe('light');
   });
 
-  it('full mode preserves assets in exported HTML', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'hello' } });
-    const html = buildExportHtml(c, 'full');
+  it('full mode includes compressed assets in exported HTML', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('hello') } });
+    const html = await buildExportHtml(c, 'full');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
-    expect(data.container.assets).toEqual({ 'ast-1': 'hello' });
+    expect(data.container.assets['ast-1']).toBeDefined();
     expect(data.export_meta.mode).toBe('full');
+    expect(data.export_meta.asset_encoding).toBe('gzip+base64');
   });
 
-  it('light export is smaller than full when assets exist', () => {
-    const bigAssets = { 'ast-1': 'x'.repeat(10000), 'ast-2': 'y'.repeat(10000) };
+  it('light export is smaller than full when assets exist', async () => {
+    const bigAssets = { 'ast-1': btoa('x'.repeat(10000)), 'ast-2': btoa('y'.repeat(10000)) };
     const c = createTestContainer({ assets: bigAssets });
-    const lightHtml = buildExportHtml(c, 'light');
-    const fullHtml = buildExportHtml(c, 'full');
+    const lightHtml = await buildExportHtml(c, 'light');
+    const fullHtml = await buildExportHtml(c, 'full');
 
     expect(lightHtml.length).toBeLessThan(fullHtml.length);
   });
 });
 
 describe('buildExportHtml: mutability', () => {
-  it('readonly export embeds mutability=readonly in export_meta', () => {
+  it('readonly export embeds mutability=readonly in export_meta', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c, 'full', 'readonly');
+    const html = await buildExportHtml(c, 'full', 'readonly');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
@@ -284,9 +297,9 @@ describe('buildExportHtml: mutability', () => {
     expect(data.export_meta.mode).toBe('full');
   });
 
-  it('editable export embeds mutability=editable in export_meta', () => {
+  it('editable export embeds mutability=editable in export_meta', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c, 'light', 'editable');
+    const html = await buildExportHtml(c, 'light', 'editable');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
@@ -294,23 +307,25 @@ describe('buildExportHtml: mutability', () => {
     expect(data.export_meta.mode).toBe('light');
   });
 
-  it('readonly-light combines both axes', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
-    const html = buildExportHtml(c, 'light', 'readonly');
+  it('readonly-light combines both axes', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data') } });
+    const html = await buildExportHtml(c, 'light', 'readonly');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
-    expect(data.export_meta).toEqual({ mode: 'light', mutability: 'readonly' });
+    expect(data.export_meta.mode).toBe('light');
+    expect(data.export_meta.mutability).toBe('readonly');
     expect(data.container.assets).toEqual({});
   });
 
-  it('readonly-full preserves assets', () => {
-    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
-    const html = buildExportHtml(c, 'full', 'readonly');
+  it('readonly-full preserves compressed assets', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data') } });
+    const html = await buildExportHtml(c, 'full', 'readonly');
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
-    expect(data.container.assets).toEqual({ 'ast-1': 'data' });
+    expect(data.container.assets['ast-1']).toBeDefined();
+    expect(data.export_meta.asset_encoding).toBe('gzip+base64');
   });
 });
 
@@ -348,9 +363,9 @@ describe('generateExportFilename', () => {
 describe('exportContainerAsHtml', () => {
   const noopDownload = vi.fn();
 
-  it('returns success with filename and size', () => {
+  it('returns success with filename and size', async () => {
     const c = createTestContainer();
-    const result = exportContainerAsHtml(c, { downloadFn: noopDownload });
+    const result = await exportContainerAsHtml(c, { downloadFn: noopDownload });
 
     expect(result.success).toBe(true);
     expect(result.filename).toMatch(/^pkc2-test-container-\d{8}\.html$/);
@@ -358,10 +373,10 @@ describe('exportContainerAsHtml', () => {
     expect(result.error).toBeUndefined();
   });
 
-  it('calls download function with HTML content and filename', () => {
+  it('calls download function with HTML content and filename', async () => {
     const downloadSpy = vi.fn();
     const c = createTestContainer();
-    exportContainerAsHtml(c, { downloadFn: downloadSpy });
+    await exportContainerAsHtml(c, { downloadFn: downloadSpy });
 
     expect(downloadSpy).toHaveBeenCalledTimes(1);
     const [html, filename] = downloadSpy.mock.calls[0]!;
@@ -370,26 +385,26 @@ describe('exportContainerAsHtml', () => {
     expect(filename).toMatch(/\.html$/);
   });
 
-  it('returns failure when download throws', () => {
+  it('returns failure when download throws', async () => {
     const failingDownload = vi.fn(() => { throw new Error('download failed'); });
     const c = createTestContainer();
-    const result = exportContainerAsHtml(c, { downloadFn: failingDownload });
+    const result = await exportContainerAsHtml(c, { downloadFn: failingDownload });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('download failed');
   });
 
-  it('accepts filename override via options', () => {
+  it('accepts filename override via options', async () => {
     const c = createTestContainer();
-    const result = exportContainerAsHtml(c, { filename: 'custom-name', downloadFn: noopDownload });
+    const result = await exportContainerAsHtml(c, { filename: 'custom-name', downloadFn: noopDownload });
 
     expect(result.filename).toBe('custom-name.html');
   });
 
-  it('passes mode to buildExportHtml', () => {
+  it('passes mode to buildExportHtml', async () => {
     const downloadSpy = vi.fn();
-    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
-    exportContainerAsHtml(c, { mode: 'light', downloadFn: downloadSpy });
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data1') } });
+    await exportContainerAsHtml(c, { mode: 'light', downloadFn: downloadSpy });
 
     const [html] = downloadSpy.mock.calls[0]!;
     const match = (html as string).match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
@@ -400,9 +415,9 @@ describe('exportContainerAsHtml', () => {
 });
 
 describe('export round-trip: pkc-data readability', () => {
-  it('exported pkc-data can be parsed back to Container', () => {
+  it('exported pkc-data can be parsed back to Container', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     // Simulate readPkcData() from main.ts
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
@@ -417,9 +432,9 @@ describe('export round-trip: pkc-data readability', () => {
     expect(container.revisions).toHaveLength(0);
   });
 
-  it('exported HTML preserves full Container fidelity', () => {
+  it('exported HTML preserves full Container fidelity (no assets)', async () => {
     const c = createTestContainer();
-    const html = buildExportHtml(c);
+    const html = await buildExportHtml(c);
 
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const roundTripped = JSON.parse(match![1]!).container as Container;
@@ -430,5 +445,36 @@ describe('export round-trip: pkc-data readability', () => {
     expect(roundTripped.relations).toEqual(c.relations);
     expect(roundTripped.revisions).toEqual(c.revisions);
     expect(roundTripped.assets).toEqual(c.assets);
+  });
+});
+
+describe('compression in full export', () => {
+  it('full export with assets includes asset_encoding=gzip+base64', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('test data') } });
+    const json = await serializePkcData(c, 'full');
+    const parsed = JSON.parse(json);
+
+    expect(parsed.export_meta.asset_encoding).toBe('gzip+base64');
+  });
+
+  it('full export compresses repetitive assets significantly', async () => {
+    const largeRepetitive = btoa('AAAA'.repeat(2000));
+    const c = createTestContainer({ assets: { 'ast-1': largeRepetitive } });
+
+    const fullJson = await serializePkcData(c, 'full');
+    const uncompressedJson = JSON.stringify({
+      container: c,
+      export_meta: { mode: 'full', mutability: 'editable', asset_encoding: 'base64' },
+    }, null, 2);
+
+    expect(fullJson.length).toBeLessThan(uncompressedJson.length);
+  });
+
+  it('light export does not have asset_encoding', async () => {
+    const c = createTestContainer({ assets: { 'ast-1': btoa('data') } });
+    const json = await serializePkcData(c, 'light');
+    const parsed = JSON.parse(json);
+
+    expect(parsed.export_meta.asset_encoding).toBeUndefined();
   });
 });

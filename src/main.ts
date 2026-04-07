@@ -65,18 +65,19 @@ async function boot(): Promise<void> {
   const store = createIDBStore();
   mountPersistence(dispatcher, { store });
 
-  // 7. Export handler: when phase becomes 'exporting', run export
+  // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
   dispatcher.onState((state) => {
     if (state.phase === 'exporting' && state.container) {
       const mode = state.exportMode ?? 'full';
       const mutability = state.exportMutability ?? 'editable';
-      const result = exportContainerAsHtml(state.container, { mode, mutability });
-      if (result.success) {
-        console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
-        dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
-      } else {
-        dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
-      }
+      exportContainerAsHtml(state.container, { mode, mutability }).then((result) => {
+        if (result.success) {
+          console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+          dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+        } else {
+          dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+        }
+      });
     }
   });
 

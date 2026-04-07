@@ -92,18 +92,22 @@ function makeContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
   };
 }
 
+/** Wait for all microtasks (Promise.then) to flush. */
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('exportRequestHandler', () => {
   beforeEach(() => {
     setupDom();
     return () => { cleanupDom(); };
   });
 
-  it('processes export even when embedded=false (capability guard is external)', () => {
-    // The embedded check is now handled by the capability guard (capability.ts)
-    // before messages reach handlers. The handler itself processes any valid context.
+  it('processes export even when embedded=false (capability guard is external)', async () => {
     const ctx = makeContext({ embedded: false });
 
     const result = exportRequestHandler(ctx);
+    await flushMicrotasks();
 
     expect(result).toBe(true);
     expect(ctx.sender.send).toHaveBeenCalledTimes(1);
@@ -120,10 +124,11 @@ describe('exportRequestHandler', () => {
     warnSpy.mockRestore();
   });
 
-  it('sends export:result when embedded with container', () => {
+  it('sends export:result when embedded with container', async () => {
     const ctx = makeContext();
 
     const result = exportRequestHandler(ctx);
+    await flushMicrotasks();
 
     expect(result).toBe(true);
     expect(ctx.sender.send).toHaveBeenCalledTimes(1);
@@ -141,23 +146,25 @@ describe('exportRequestHandler', () => {
     expect(resultPayload.size).toBe(resultPayload.html.length);
   });
 
-  it('uses filename from payload when provided', () => {
+  it('uses filename from payload when provided', async () => {
     const ctx = makeContext({
       envelope: { ...makeExportRequest(), payload: { filename: 'custom-export' } },
     });
 
     exportRequestHandler(ctx);
+    await flushMicrotasks();
 
     const [, , payload] = (ctx.sender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect((payload as ExportResultPayload).filename).toBe('custom-export.html');
   });
 
-  it('targets response to the source_id of the request', () => {
+  it('targets response to the source_id of the request', async () => {
     const ctx = makeContext({
       envelope: makeExportRequest('requester-42'),
     });
 
     exportRequestHandler(ctx);
+    await flushMicrotasks();
 
     const [, , , targetId] = (ctx.sender.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(targetId).toBe('requester-42');

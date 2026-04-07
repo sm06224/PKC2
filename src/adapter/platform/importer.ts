@@ -25,6 +25,7 @@ import type { ExportMode, ExportMutability } from '../../core/action/user-action
 import type { ExportMeta } from './exporter';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 import { APP_ID, SCHEMA_VERSION } from '../../runtime/release-meta';
+import { decompressAssets } from './compression';
 
 // ── Result types ────────────────────────
 
@@ -65,8 +66,9 @@ export type ImportResult = ImportSuccess | ImportFailure;
 /**
  * Parse and validate a PKC2 HTML string.
  * Returns ImportResult with either the validated Container or structured errors.
+ * Async because gzip+base64 assets require decompression.
  */
-export function importFromHtml(html: string, source?: string): ImportResult {
+export async function importFromHtml(html: string, source?: string): Promise<ImportResult> {
   // 1. Parse HTML
   let doc: Document;
   try {
@@ -146,6 +148,9 @@ export function importFromHtml(html: string, source?: string): ImportResult {
         mutability: typeof data.export_meta.mutability === 'string'
           ? data.export_meta.mutability
           : 'editable',
+        asset_encoding: typeof data.export_meta.asset_encoding === 'string'
+          ? data.export_meta.asset_encoding
+          : undefined,
       };
     }
   } catch {
@@ -159,6 +164,12 @@ export function importFromHtml(html: string, source?: string): ImportResult {
   // 7. Normalize optional arrays (backward compatibility with older exports)
   if (!Array.isArray(container.revisions)) {
     container = { ...container, revisions: [] };
+  }
+
+  // 8. Decompress assets if needed (gzip+base64 → base64 for IDB storage)
+  if (container.assets && Object.keys(container.assets).length > 0) {
+    const decompressed = await decompressAssets(container.assets, exportMeta?.asset_encoding);
+    container = { ...container, assets: decompressed };
   }
 
   return {
