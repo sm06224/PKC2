@@ -31,6 +31,7 @@
 | `17_保存再水和可搬モデル.md` | 4系統モデル、HTML mode行列、body-assets分離、IDB進化、export形式、圧縮方針 | ★★ |
 | `18_運用ガイド_export_import_rehydrate.md` | Export/Import/Rehydrate の利用手順・判断基準・操作シナリオ（利用ガイド） | ★★ |
 | `19_pre_release.md` | プレリリース文書 — 到達点・制約・future・バージョニング・技術仕様サマリ | ★★ |
+| `20_UI_usability_audit.md` | UI実用性監査 — エントリ編集・フォルダ・CSS/レイアウト・blocker一覧・次Issue推薦 | ★★ |
 
 ### 第3群: 将来計画（必要時に読む）
 
