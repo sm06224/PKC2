@@ -283,19 +283,20 @@ describe('importFromHtml', () => {
 describe('importFromHtml: export_meta', () => {
   it('reads export_meta.mode from full export', () => {
     const c = createTestContainer({ assets: { 'ast-1': 'data' } });
-    const data = { container: c, export_meta: { mode: 'full' } };
+    const data = { container: c, export_meta: { mode: 'full', mutability: 'editable' } };
     const html = buildTestHtmlWithData(data);
     const result = importFromHtml(html);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMode).toBe('full');
+    expect(result.exportMutability).toBe('editable');
     expect(result.container.assets).toEqual({ 'ast-1': 'data' });
   });
 
   it('reads export_meta.mode from light export', () => {
     const c = createTestContainer({ assets: {} });
-    const data = { container: c, export_meta: { mode: 'light' } };
+    const data = { container: c, export_meta: { mode: 'light', mutability: 'editable' } };
     const html = buildTestHtmlWithData(data);
     const result = importFromHtml(html);
 
@@ -303,6 +304,28 @@ describe('importFromHtml: export_meta', () => {
     if (!result.ok) return;
     expect(result.exportMode).toBe('light');
     expect(result.container.assets).toEqual({});
+  });
+
+  it('reads readonly mutability from export_meta', () => {
+    const c = createTestContainer();
+    const data = { container: c, export_meta: { mode: 'full', mutability: 'readonly' } };
+    const html = buildTestHtmlWithData(data);
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMutability).toBe('readonly');
+  });
+
+  it('defaults mutability to editable when absent in export_meta', () => {
+    const c = createTestContainer();
+    const data = { container: c, export_meta: { mode: 'full' } };
+    const html = buildTestHtmlWithData(data);
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMutability).toBe('editable');
   });
 
   it('exportMode is undefined when export_meta is absent (legacy)', () => {
@@ -313,6 +336,7 @@ describe('importFromHtml: export_meta', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.exportMode).toBeUndefined();
+    expect(result.exportMutability).toBeUndefined();
   });
 });
 

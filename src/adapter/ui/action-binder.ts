@@ -1,6 +1,6 @@
 import type { ArchetypeId } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
-import type { ExportMode } from '../../core/action/user-action';
+import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
@@ -55,9 +55,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'begin-export': {
         const mode = (target.getAttribute('data-pkc-export-mode') ?? 'full') as ExportMode;
-        dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode });
+        const mutability = (target.getAttribute('data-pkc-export-mutability') ?? 'editable') as ExportMutability;
+        dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode, mutability });
         break;
       }
+      case 'rehydrate':
+        dispatcher.dispatch({ type: 'REHYDRATE' });
+        break;
       case 'accept-offer': {
         const offerId = target.getAttribute('data-pkc-offer-id');
         if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });

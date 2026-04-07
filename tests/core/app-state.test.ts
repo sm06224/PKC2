@@ -171,16 +171,29 @@ describe('AppState reducer', () => {
     expect(events).toEqual([{ type: 'EDIT_BEGUN', lid: 'e1' }]);
   });
 
-  it('BEGIN_EXPORT in ready → exporting phase with mode', () => {
-    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'full' });
+  it('BEGIN_EXPORT in ready → exporting phase with mode and mutability', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' });
     expect(state.phase).toBe('exporting');
     expect(state.exportMode).toBe('full');
+    expect(state.exportMutability).toBe('editable');
   });
 
   it('BEGIN_EXPORT light mode stores exportMode', () => {
-    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'light' });
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'light', mutability: 'editable' });
     expect(state.phase).toBe('exporting');
     expect(state.exportMode).toBe('light');
+  });
+
+  it('BEGIN_EXPORT readonly stores exportMutability', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'full', mutability: 'readonly' });
+    expect(state.phase).toBe('exporting');
+    expect(state.exportMutability).toBe('readonly');
+  });
+
+  it('BEGIN_EXPORT blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' });
+    expect(state.phase).toBe('ready');
   });
 
   it('CREATE_RELATION adds to container', () => {
@@ -294,11 +307,12 @@ describe('AppState reducer', () => {
   });
 
   // ── exporting ────────────────────────────
-  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED + clears exportMode', () => {
-    const base: AppState = { ...readyState(), phase: 'exporting', exportMode: 'light' };
+  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED + clears export state', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting', exportMode: 'light', exportMutability: 'readonly' };
     const { state, events } = reduce(base, { type: 'SYS_FINISH_EXPORT' });
     expect(state.phase).toBe('ready');
     expect(state.exportMode).toBeNull();
+    expect(state.exportMutability).toBeNull();
     expect(events).toEqual([{ type: 'EXPORT_COMPLETED' }]);
   });
 
@@ -1004,5 +1018,98 @@ describe('sort', () => {
       type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'x',
     });
     expect(state).toBe(base);
+  });
+
+  // ── readonly mode ──────────────────────
+  it('SYS_INIT_COMPLETE sets readonly flag', () => {
+    const { state } = reduce(createInitialState(), {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer, readonly: true,
+    });
+    expect(state.readonly).toBe(true);
+  });
+
+  it('SYS_INIT_COMPLETE defaults readonly to false', () => {
+    const { state } = reduce(createInitialState(), {
+      type: 'SYS_INIT_COMPLETE', container: mockContainer,
+    });
+    expect(state.readonly).toBe(false);
+  });
+
+  it('BEGIN_EDIT blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(state.phase).toBe('ready');
+    expect(state.editingLid).toBeNull();
+  });
+
+  it('CREATE_ENTRY blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'CREATE_ENTRY', archetype: 'text', title: 'T' });
+    expect(state.container!.entries).toHaveLength(3);
+  });
+
+  it('DELETE_ENTRY blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'DELETE_ENTRY', lid: 'e1' });
+    expect(state.container!.entries).toHaveLength(3);
+  });
+
+  it('QUICK_UPDATE_ENTRY blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'new' });
+    expect(state.container!.entries[0]!.body).toBe('Body one');
+  });
+
+  it('CREATE_RELATION blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural' });
+    expect(state.container!.relations).toHaveLength(0);
+  });
+
+  it('DELETE_RELATION blocked in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'DELETE_RELATION', id: 'r1' });
+    expect(state).toBe(ro);
+  });
+
+  it('SELECT_ENTRY allowed in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(state.selectedLid).toBe('e1');
+  });
+
+  it('SET_SEARCH_QUERY allowed in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'SET_SEARCH_QUERY', query: 'test' });
+    expect(state.searchQuery).toBe('test');
+  });
+
+  it('SET_SORT allowed in readonly mode', () => {
+    const ro = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'SET_SORT', key: 'title', direction: 'asc' });
+    expect(state.sortKey).toBe('title');
+  });
+
+  // ── rehydrate ──────────────────────────
+  it('REHYDRATE in readonly mode → creates new cid and clears readonly', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state, events } = reduce(ro, { type: 'REHYDRATE' });
+    expect(state.readonly).toBe(false);
+    expect(state.container!.meta.container_id).not.toBe('test-id');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('CONTAINER_REHYDRATED');
+  });
+
+  it('REHYDRATE blocked when not readonly', () => {
+    const base = readyState();
+    const { state } = reduce(base, { type: 'REHYDRATE' });
+    expect(state).toBe(base);
+  });
+
+  it('REHYDRATE preserves entries and relations', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'REHYDRATE' });
+    expect(state.container!.entries).toHaveLength(3);
+    expect(state.container!.meta.title).toBe('Test');
   });
 });

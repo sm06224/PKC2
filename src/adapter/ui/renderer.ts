@@ -75,6 +75,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
+  root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
 
   switch (state.phase) {
@@ -145,8 +146,8 @@ function renderHeader(state: AppState): HTMLElement {
   phase.textContent = state.phase;
   header.appendChild(phase);
 
-  // Actions: create entry, export
-  if (state.phase === 'ready') {
+  // Actions: create entry, export (suppressed in readonly mode)
+  if (state.phase === 'ready' && !state.readonly) {
     const createBtn = createElement('button', 'pkc-btn');
     createBtn.setAttribute('data-pkc-action', 'create-entry');
     createBtn.setAttribute('data-pkc-archetype', 'text');
@@ -174,19 +175,48 @@ function renderHeader(state: AppState): HTMLElement {
     const exportLightBtn = createElement('button', 'pkc-btn');
     exportLightBtn.setAttribute('data-pkc-action', 'begin-export');
     exportLightBtn.setAttribute('data-pkc-export-mode', 'light');
+    exportLightBtn.setAttribute('data-pkc-export-mutability', 'editable');
     exportLightBtn.textContent = 'Export Light';
     header.appendChild(exportLightBtn);
 
     const exportFullBtn = createElement('button', 'pkc-btn');
     exportFullBtn.setAttribute('data-pkc-action', 'begin-export');
     exportFullBtn.setAttribute('data-pkc-export-mode', 'full');
+    exportFullBtn.setAttribute('data-pkc-export-mutability', 'editable');
     exportFullBtn.textContent = 'Export Full';
     header.appendChild(exportFullBtn);
+
+    const exportRoLightBtn = createElement('button', 'pkc-btn');
+    exportRoLightBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportRoLightBtn.setAttribute('data-pkc-export-mode', 'light');
+    exportRoLightBtn.setAttribute('data-pkc-export-mutability', 'readonly');
+    exportRoLightBtn.textContent = 'Export RO Light';
+    header.appendChild(exportRoLightBtn);
+
+    const exportRoFullBtn = createElement('button', 'pkc-btn');
+    exportRoFullBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportRoFullBtn.setAttribute('data-pkc-export-mode', 'full');
+    exportRoFullBtn.setAttribute('data-pkc-export-mutability', 'readonly');
+    exportRoFullBtn.textContent = 'Export RO Full';
+    header.appendChild(exportRoFullBtn);
 
     const importBtn = createElement('button', 'pkc-btn');
     importBtn.setAttribute('data-pkc-action', 'begin-import');
     importBtn.textContent = 'Import';
     header.appendChild(importBtn);
+  }
+
+  // Readonly mode: show readonly badge and rehydrate button
+  if (state.phase === 'ready' && state.readonly) {
+    const roBadge = createElement('span', 'pkc-readonly-badge');
+    roBadge.setAttribute('data-pkc-region', 'readonly-badge');
+    roBadge.textContent = 'Readonly';
+    header.appendChild(roBadge);
+
+    const rehydrateBtn = createElement('button', 'pkc-btn');
+    rehydrateBtn.setAttribute('data-pkc-action', 'rehydrate');
+    rehydrateBtn.textContent = 'Rehydrate to Workspace';
+    header.appendChild(rehydrateBtn);
   }
 
   if (state.phase === 'exporting') {
@@ -391,9 +421,15 @@ function renderDetail(state: AppState): HTMLElement {
 
   if (!selected) {
     const placeholder = createElement('div', 'pkc-empty');
-    placeholder.textContent = state.container?.entries?.length
-      ? 'Select an entry'
-      : 'Create an entry to begin';
+    if (state.readonly) {
+      placeholder.textContent = state.container?.entries?.length
+        ? 'Select an entry'
+        : 'No entries';
+    } else {
+      placeholder.textContent = state.container?.entries?.length
+        ? 'Select an entry'
+        : 'Create an entry to begin';
+    }
     detail.appendChild(placeholder);
     return detail;
   }
@@ -401,7 +437,8 @@ function renderDetail(state: AppState): HTMLElement {
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
     detail.appendChild(renderEditor(selected));
   } else {
-    detail.appendChild(renderView(selected, state.phase === 'ready', state.container));
+    const canEdit = state.phase === 'ready' && !state.readonly;
+    detail.appendChild(renderView(selected, canEdit, state.container));
   }
 
   return detail;

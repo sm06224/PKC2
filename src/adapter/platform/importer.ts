@@ -21,7 +21,7 @@
  */
 
 import type { Container } from '../../core/model/container';
-import type { ExportMode } from '../../core/action/user-action';
+import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { ExportMeta } from './exporter';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 import { APP_ID, SCHEMA_VERSION } from '../../runtime/release-meta';
@@ -49,6 +49,8 @@ export interface ImportSuccess {
   source: string;
   /** Export mode of the imported file, if present. */
   exportMode?: ExportMode;
+  /** Export mutability of the imported file, if present. */
+  exportMutability?: ExportMutability;
 }
 
 export interface ImportFailure {
@@ -139,7 +141,12 @@ export function importFromHtml(html: string, source?: string): ImportResult {
     container = data.container as Container;
     // Read export_meta if present
     if (data.export_meta && typeof data.export_meta.mode === 'string') {
-      exportMeta = data.export_meta as ExportMeta;
+      exportMeta = {
+        mode: data.export_meta.mode,
+        mutability: typeof data.export_meta.mutability === 'string'
+          ? data.export_meta.mutability
+          : 'editable',
+      };
     }
   } catch {
     return fail([{ code: 'MISSING_PKC_DATA', message: 'pkc-data contains invalid JSON' }]);
@@ -160,6 +167,7 @@ export function importFromHtml(html: string, source?: string): ImportResult {
     meta,
     source: source ?? 'html-string',
     exportMode: exportMeta?.mode,
+    exportMutability: exportMeta?.mutability,
   };
 }
 

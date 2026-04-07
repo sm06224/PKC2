@@ -1,6 +1,6 @@
 import type { Container } from '../../core/model/container';
 import type { ArchetypeId } from '../../core/model/record';
-import type { ExportMode } from '../../core/action/user-action';
+import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef } from '../../core/action/system-command';
@@ -60,6 +60,10 @@ export interface AppState {
   sortDirection: SortDirection;
   /** Export mode for the current export operation (runtime-only). */
   exportMode: ExportMode | null;
+  /** Export mutability for the current export operation (runtime-only). */
+  exportMutability: ExportMutability | null;
+  /** True when running as a readonly artifact. Suppresses edit UI. */
+  readonly: boolean;
 }
 
 /**
@@ -87,6 +91,8 @@ export function createInitialState(): AppState {
     sortKey: 'created_at',
     sortDirection: 'desc',
     exportMode: null,
+    exportMutability: null,
+    readonly: false,
   };
 }
 
@@ -129,6 +135,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         phase: 'ready',
         container: action.container,
         embedded: action.embedded ?? false,
+        readonly: action.readonly ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -154,6 +161,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'ENTRY_DESELECTED' }] };
     }
     case 'BEGIN_EDIT': {
+      if (state.readonly) return blocked(state, action);
       const next: AppState = {
         ...state,
         phase: 'editing',
@@ -163,6 +171,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
     case 'CREATE_ENTRY': {
+      if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const lid = generateLid();
       const ts = now();
@@ -174,6 +183,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'DELETE_ENTRY': {
+      if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const ts = now();
       const entriesBefore = state.container.entries;
@@ -188,10 +198,15 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'ENTRY_DELETED', lid: action.lid }] };
     }
     case 'BEGIN_EXPORT': {
-      const next: AppState = { ...state, phase: 'exporting', exportMode: action.mode };
+      if (state.readonly) return blocked(state, action);
+      const next: AppState = {
+        ...state, phase: 'exporting',
+        exportMode: action.mode, exportMutability: action.mutability,
+      };
       return { state: next, events: [] };
     }
     case 'CREATE_RELATION': {
+      if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const id = generateLid();
       const ts = now();
@@ -208,6 +223,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'DELETE_RELATION': {
+      if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const container = removeRelation(state.container, action.id);
       const next: AppState = { ...state, container };
@@ -364,6 +380,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     // QUICK_UPDATE_ENTRY: body-only update, title preserved.
     // See user-action.ts for full contract documentation.
     case 'QUICK_UPDATE_ENTRY': {
+      if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const entry = state.container.entries.find((e) => e.lid === action.lid);
       if (!entry) return blocked(state, action);
@@ -376,6 +393,29 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
+    case 'REHYDRATE': {
+      if (!state.readonly || !state.container) return blocked(state, action);
+      const ts = now();
+      const oldCid = state.container.meta.container_id;
+      const newCid = generateLid();
+      const rehydrated: Container = {
+        ...state.container,
+        meta: {
+          ...state.container.meta,
+          container_id: newCid,
+          updated_at: ts,
+        },
+      };
+      const next: AppState = {
+        ...state,
+        container: rehydrated,
+        readonly: false,
+      };
+      return {
+        state: next,
+        events: [{ type: 'CONTAINER_REHYDRATED', old_cid: oldCid, new_cid: newCid }],
       };
     }
     case 'SYS_ERROR': {
@@ -422,7 +462,7 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
 function reduceExporting(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SYS_FINISH_EXPORT': {
-      const next: AppState = { ...state, phase: 'ready', exportMode: null };
+      const next: AppState = { ...state, phase: 'ready', exportMode: null, exportMutability: null };
       return { state: next, events: [{ type: 'EXPORT_COMPLETED' }] };
     }
     case 'SYS_ERROR': {
@@ -442,6 +482,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         phase: 'ready',
         container: action.container,
         embedded: action.embedded ?? state.embedded,
+        readonly: action.readonly ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';

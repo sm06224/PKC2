@@ -69,9 +69,10 @@ async function boot(): Promise<void> {
   dispatcher.onState((state) => {
     if (state.phase === 'exporting' && state.container) {
       const mode = state.exportMode ?? 'full';
-      const result = exportContainerAsHtml(state.container, { mode });
+      const mutability = state.exportMutability ?? 'editable';
+      const result = exportContainerAsHtml(state.container, { mode, mutability });
       if (result.success) {
-        console.log(`[PKC2] Exported (${mode}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+        console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
         dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
       } else {
         dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
@@ -157,9 +158,14 @@ async function boot(): Promise<void> {
     }
 
     // Fallback: read pkc-data
-    const htmlContainer = readPkcData();
-    if (htmlContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: htmlContainer, embedded: embedCtx.embedded });
+    const pkcData = readPkcData();
+    if (pkcData) {
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: pkcData.container,
+        embedded: embedCtx.embedded,
+        readonly: pkcData.readonly,
+      });
       return;
     }
 
@@ -174,13 +180,21 @@ async function boot(): Promise<void> {
   }
 }
 
-function readPkcData(): Container | null {
+interface PkcDataResult {
+  container: Container;
+  readonly: boolean;
+}
+
+function readPkcData(): PkcDataResult | null {
   const dataEl = document.getElementById(SLOT.DATA);
   const raw = dataEl?.textContent?.trim();
   if (!raw || raw === '{}') return null;
 
   const data = JSON.parse(raw);
-  return data.container ?? null;
+  if (!data.container) return null;
+
+  const isReadonly = data.export_meta?.mutability === 'readonly';
+  return { container: data.container, readonly: isReadonly };
 }
 
 function createEmptyContainer(): Container {

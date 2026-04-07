@@ -1,8 +1,11 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
 
-/** Export mode: 'light' omits assets; 'full' includes everything. */
+/** Export scope: 'light' omits assets; 'full' includes everything. */
 export type ExportMode = 'light' | 'full';
+
+/** Export mutability: 'editable' allows editing; 'readonly' is view-only with rehydrate option. */
+export type ExportMutability = 'editable' | 'readonly';
 
 /**
  * UserAction: actions initiated by the user through the UI.
@@ -22,7 +25,7 @@ export type UserAction =
   | { type: 'CANCEL_EDIT' }
   | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string }
   | { type: 'DELETE_ENTRY'; lid: string }
-  | { type: 'BEGIN_EXPORT'; mode: ExportMode }
+  | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
   | { type: 'DELETE_RELATION'; id: string }
   | { type: 'ACCEPT_OFFER'; offer_id: string }
@@ -49,7 +52,18 @@ export type UserAction =
    * (e.g., todo status toggle). NOT for title changes, archetype changes,
    * or operations that warrant full editor interaction.
    */
-  | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string };
+  | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string }
+  /**
+   * REHYDRATE — convert readonly artifact to editable workspace.
+   *
+   * Contract:
+   * - Only allowed in ready phase when state.readonly is true.
+   * - Creates a new container with a fresh cid (independent copy).
+   * - Saves to browser storage (IDB) via persistence layer.
+   * - Clears readonly flag, making the workspace fully editable.
+   * - Does NOT modify the original artifact.
+   */
+  | { type: 'REHYDRATE' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];
