@@ -1,5 +1,6 @@
 import type { ArchetypeId } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
+import type { ExportMode } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
@@ -52,9 +53,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'delete-entry':
         if (lid) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
         break;
-      case 'begin-export':
-        dispatcher.dispatch({ type: 'BEGIN_EXPORT' });
+      case 'begin-export': {
+        const mode = (target.getAttribute('data-pkc-export-mode') ?? 'full') as ExportMode;
+        dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode });
         break;
+      }
       case 'accept-offer': {
         const offerId = target.getAttribute('data-pkc-offer-id');
         if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });

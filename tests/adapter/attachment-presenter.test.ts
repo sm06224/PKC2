@@ -197,6 +197,18 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(makeLegacyEntry('{"name":"x","mime":"text/plain"}'));
       expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('(empty)');
     });
+
+    it('shows (not included) when asset_key exists but no data (light export)', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123"}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('(not included)');
+    });
+
+    it('shows size when asset_key exists with size field', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('.pkc-attachment-size')!.textContent).toBe('4.9 KB');
+    });
   });
 
   // ── renderEditorBody ─────────────────

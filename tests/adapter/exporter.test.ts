@@ -87,6 +87,40 @@ describe('serializePkcData', () => {
     expect(json).not.toContain('editingLid');
     expect(json).not.toContain('phase');
   });
+
+  it('full mode includes assets and export_meta.mode=full', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
+    const json = serializePkcData(c, 'full');
+    const parsed = JSON.parse(json);
+
+    expect(parsed.export_meta).toEqual({ mode: 'full' });
+    expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
+  });
+
+  it('light mode strips assets and sets export_meta.mode=light', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data1', 'ast-2': 'data2' } });
+    const json = serializePkcData(c, 'light');
+    const parsed = JSON.parse(json);
+
+    expect(parsed.export_meta).toEqual({ mode: 'light' });
+    expect(parsed.container.assets).toEqual({});
+  });
+
+  it('default mode is full', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
+    const json = serializePkcData(c);
+    const parsed = JSON.parse(json);
+
+    expect(parsed.export_meta.mode).toBe('full');
+    expect(parsed.container.assets).toEqual({ 'ast-1': 'data1' });
+  });
+
+  it('light mode does not mutate original container', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
+    serializePkcData(c, 'light');
+
+    expect(c.assets).toEqual({ 'ast-1': 'data1' });
+  });
 });
 
 describe('buildExportHtml', () => {
@@ -207,6 +241,37 @@ describe('buildExportHtml', () => {
   });
 });
 
+describe('buildExportHtml: export modes', () => {
+  it('light mode strips assets from exported HTML', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'x'.repeat(1000) } });
+    const html = buildExportHtml(c, 'light');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.container.assets).toEqual({});
+    expect(data.export_meta.mode).toBe('light');
+  });
+
+  it('full mode preserves assets in exported HTML', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'hello' } });
+    const html = buildExportHtml(c, 'full');
+
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.container.assets).toEqual({ 'ast-1': 'hello' });
+    expect(data.export_meta.mode).toBe('full');
+  });
+
+  it('light export is smaller than full when assets exist', () => {
+    const bigAssets = { 'ast-1': 'x'.repeat(10000), 'ast-2': 'y'.repeat(10000) };
+    const c = createTestContainer({ assets: bigAssets });
+    const lightHtml = buildExportHtml(c, 'light');
+    const fullHtml = buildExportHtml(c, 'full');
+
+    expect(lightHtml.length).toBeLessThan(fullHtml.length);
+  });
+});
+
 describe('generateExportFilename', () => {
   it('generates pkc2-{slug}-{date}.html format', () => {
     const c = createTestContainer();
@@ -277,6 +342,18 @@ describe('exportContainerAsHtml', () => {
     const result = exportContainerAsHtml(c, { filename: 'custom-name', downloadFn: noopDownload });
 
     expect(result.filename).toBe('custom-name.html');
+  });
+
+  it('passes mode to buildExportHtml', () => {
+    const downloadSpy = vi.fn();
+    const c = createTestContainer({ assets: { 'ast-1': 'data1' } });
+    exportContainerAsHtml(c, { mode: 'light', downloadFn: downloadSpy });
+
+    const [html] = downloadSpy.mock.calls[0]!;
+    const match = (html as string).match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!);
+    expect(data.export_meta.mode).toBe('light');
+    expect(data.container.assets).toEqual({});
   });
 });
 

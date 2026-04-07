@@ -171,9 +171,16 @@ describe('AppState reducer', () => {
     expect(events).toEqual([{ type: 'EDIT_BEGUN', lid: 'e1' }]);
   });
 
-  it('BEGIN_EXPORT in ready → exporting phase', () => {
-    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT' });
+  it('BEGIN_EXPORT in ready → exporting phase with mode', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'full' });
     expect(state.phase).toBe('exporting');
+    expect(state.exportMode).toBe('full');
+  });
+
+  it('BEGIN_EXPORT light mode stores exportMode', () => {
+    const { state } = reduce(readyState(), { type: 'BEGIN_EXPORT', mode: 'light' });
+    expect(state.phase).toBe('exporting');
+    expect(state.exportMode).toBe('light');
   });
 
   it('CREATE_RELATION adds to container', () => {
@@ -287,10 +294,11 @@ describe('AppState reducer', () => {
   });
 
   // ── exporting ────────────────────────────
-  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED', () => {
-    const base: AppState = { ...readyState(), phase: 'exporting' };
+  it('SYS_FINISH_EXPORT in exporting → ready + EXPORT_COMPLETED + clears exportMode', () => {
+    const base: AppState = { ...readyState(), phase: 'exporting', exportMode: 'light' };
     const { state, events } = reduce(base, { type: 'SYS_FINISH_EXPORT' });
     expect(state.phase).toBe('ready');
+    expect(state.exportMode).toBeNull();
     expect(events).toEqual([{ type: 'EXPORT_COMPLETED' }]);
   });
 

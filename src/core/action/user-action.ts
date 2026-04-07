@@ -1,6 +1,9 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
 
+/** Export mode: 'light' omits assets; 'full' includes everything. */
+export type ExportMode = 'light' | 'full';
+
 /**
  * UserAction: actions initiated by the user through the UI.
  *
@@ -19,7 +22,7 @@ export type UserAction =
   | { type: 'CANCEL_EDIT' }
   | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string }
   | { type: 'DELETE_ENTRY'; lid: string }
-  | { type: 'BEGIN_EXPORT' }
+  | { type: 'BEGIN_EXPORT'; mode: ExportMode }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
   | { type: 'DELETE_RELATION'; id: string }
   | { type: 'ACCEPT_OFFER'; offer_id: string }

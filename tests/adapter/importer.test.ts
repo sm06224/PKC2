@@ -69,6 +69,29 @@ function buildTestHtml(
 </html>`;
 }
 
+/**
+ * Build test HTML with custom pkc-data payload (e.g., with export_meta).
+ */
+function buildTestHtmlWithData(
+  data: Record<string, unknown>,
+  meta?: Partial<ReleaseMeta>,
+): string {
+  const fullMeta = { ...createValidMeta(), ...meta };
+  const dataJson = JSON.stringify(data, null, 2);
+  const metaJson = JSON.stringify(fullMeta, null, 2);
+
+  return `<!DOCTYPE html>
+<html lang="ja" data-pkc-app="pkc2" data-pkc-version="2.0.0" data-pkc-schema="1">
+<head><meta charset="UTF-8"><title>PKC2</title></head>
+<body>
+  <div id="pkc-root"></div>
+  <script id="pkc-data" type="application/json">${dataJson}</script>
+  <script id="pkc-meta" type="application/json">${metaJson}</script>
+  <script id="pkc-core">console.log("bundle")</script>
+</body>
+</html>`;
+}
+
 describe('importFromHtml', () => {
   describe('valid import', () => {
     it('parses valid PKC2 HTML and returns Container', () => {
@@ -257,6 +280,42 @@ describe('importFromHtml', () => {
   });
 });
 
+describe('importFromHtml: export_meta', () => {
+  it('reads export_meta.mode from full export', () => {
+    const c = createTestContainer({ assets: { 'ast-1': 'data' } });
+    const data = { container: c, export_meta: { mode: 'full' } };
+    const html = buildTestHtmlWithData(data);
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMode).toBe('full');
+    expect(result.container.assets).toEqual({ 'ast-1': 'data' });
+  });
+
+  it('reads export_meta.mode from light export', () => {
+    const c = createTestContainer({ assets: {} });
+    const data = { container: c, export_meta: { mode: 'light' } };
+    const html = buildTestHtmlWithData(data);
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMode).toBe('light');
+    expect(result.container.assets).toEqual({});
+  });
+
+  it('exportMode is undefined when export_meta is absent (legacy)', () => {
+    const c = createTestContainer();
+    const html = buildTestHtml(c);
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMode).toBeUndefined();
+  });
+});
+
 describe('formatImportErrors', () => {
   it('formats errors for display', () => {
     const errors = [
@@ -312,6 +371,30 @@ describe('export → import round-trip', () => {
     expect(result.container.revisions).toEqual(original.revisions);
     expect(result.container.assets).toEqual(original.assets);
     expect(result.source).toBe('exported.html');
+  });
+
+  it('round-trips full export with assets and export_meta', () => {
+    setupShellDom();
+    const original = createTestContainer({ assets: { 'ast-1': 'base64data' } });
+    const html = buildExportHtml(original, 'full');
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMode).toBe('full');
+    expect(result.container.assets).toEqual({ 'ast-1': 'base64data' });
+  });
+
+  it('round-trips light export with stripped assets', () => {
+    setupShellDom();
+    const original = createTestContainer({ assets: { 'ast-1': 'base64data' } });
+    const html = buildExportHtml(original, 'light');
+    const result = importFromHtml(html);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportMode).toBe('light');
+    expect(result.container.assets).toEqual({});
   });
 
   it('round-trips Container with special characters', () => {

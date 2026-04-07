@@ -127,7 +127,14 @@ export const attachmentPresenter: DetailPresenter = {
     const sizeValue = document.createElement('span');
     sizeValue.className = 'pkc-attachment-size';
     const displaySize = resolveDisplaySize(att);
-    sizeValue.textContent = displaySize > 0 ? formatSize(displaySize) : '(empty)';
+    if (displaySize > 0) {
+      sizeValue.textContent = formatSize(displaySize);
+    } else if (att.asset_key && !att.data) {
+      // Light export: asset_key exists but data was stripped
+      sizeValue.textContent = '(not included)';
+    } else {
+      sizeValue.textContent = '(empty)';
+    }
     sizeEl.appendChild(sizeValue);
     container.appendChild(sizeEl);
 

@@ -68,9 +68,10 @@ async function boot(): Promise<void> {
   // 7. Export handler: when phase becomes 'exporting', run export
   dispatcher.onState((state) => {
     if (state.phase === 'exporting' && state.container) {
-      const result = exportContainerAsHtml(state.container);
+      const mode = state.exportMode ?? 'full';
+      const result = exportContainerAsHtml(state.container, { mode });
       if (result.success) {
-        console.log(`[PKC2] Exported: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+        console.log(`[PKC2] Exported (${mode}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
         dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
       } else {
         dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
