@@ -4,7 +4,7 @@ import type { Container } from '@core/model/container';
 
 const T = '2026-04-06T00:00:00Z';
 
-function mockContainer(id = 'c1'): Container {
+function mockContainer(id = 'c1', assets: Record<string, string> = {}): Container {
   return {
     meta: {
       container_id: id,
@@ -18,7 +18,7 @@ function mockContainer(id = 'c1'): Container {
     ],
     relations: [],
     revisions: [],
-    assets: {},
+    assets,
   };
 }
 
@@ -91,5 +91,108 @@ describe('MemoryStore (ContainerStore contract)', () => {
     const loaded2 = await store.load('c1');
     expect(loaded1).not.toBe(loaded2); // different objects
     expect(loaded1).toEqual(loaded2);  // same content
+  });
+});
+
+describe('MemoryStore: assets separation (Phase 1)', () => {
+  it('save separates assets; load reassembles them', async () => {
+    const store = createMemoryStore();
+    const c = mockContainer('c1', { 'ast-1': 'data1', 'ast-2': 'data2' });
+    await store.save(c);
+
+    const loaded = await store.load('c1');
+    expect(loaded!.assets['ast-1']).toBe('data1');
+    expect(loaded!.assets['ast-2']).toBe('data2');
+  });
+
+  it('loadDefault reassembles assets', async () => {
+    const store = createMemoryStore();
+    const c = mockContainer('c1', { 'ast-x': 'hello' });
+    await store.save(c);
+
+    const loaded = await store.loadDefault();
+    expect(loaded!.assets['ast-x']).toBe('hello');
+  });
+
+  it('container stored internally without heavy assets', async () => {
+    const store = createMemoryStore();
+    const bigData = 'x'.repeat(100000);
+    const c = mockContainer('c1', { 'ast-big': bigData });
+    await store.save(c);
+
+    // Directly use saveAsset/loadAsset to verify asset is stored separately
+    const assetData = await store.loadAsset('c1', 'ast-big');
+    expect(assetData).toBe(bigData);
+  });
+
+  it('delete removes associated assets', async () => {
+    const store = createMemoryStore();
+    const c = mockContainer('c1', { 'ast-1': 'data1' });
+    await store.save(c);
+    await store.delete('c1');
+
+    expect(await store.loadAsset('c1', 'ast-1')).toBeNull();
+  });
+
+  it('assets from different containers are isolated', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'from-c1' }));
+    await store.save(mockContainer('c2', { 'ast-1': 'from-c2' }));
+
+    const loaded1 = await store.load('c1');
+    const loaded2 = await store.load('c2');
+    expect(loaded1!.assets['ast-1']).toBe('from-c1');
+    expect(loaded2!.assets['ast-1']).toBe('from-c2');
+  });
+});
+
+describe('MemoryStore: asset CRUD operations', () => {
+  it('saveAsset and loadAsset', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ast-1', 'hello');
+    expect(await store.loadAsset('c1', 'ast-1')).toBe('hello');
+  });
+
+  it('loadAsset returns null for unknown key', async () => {
+    const store = createMemoryStore();
+    expect(await store.loadAsset('c1', 'nonexistent')).toBeNull();
+  });
+
+  it('deleteAsset removes the asset', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ast-1', 'data');
+    await store.deleteAsset('c1', 'ast-1');
+    expect(await store.loadAsset('c1', 'ast-1')).toBeNull();
+  });
+
+  it('listAssetKeys returns all keys for a container', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ast-a', 'a');
+    await store.saveAsset('c1', 'ast-b', 'b');
+    await store.saveAsset('c2', 'ast-c', 'c');
+
+    const keys = await store.listAssetKeys('c1');
+    expect(keys.sort()).toEqual(['ast-a', 'ast-b']);
+  });
+
+  it('listAssetKeys returns empty array when no assets', async () => {
+    const store = createMemoryStore();
+    expect(await store.listAssetKeys('c1')).toEqual([]);
+  });
+
+  it('saveAsset overwrites existing data', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ast-1', 'old');
+    await store.saveAsset('c1', 'ast-1', 'new');
+    expect(await store.loadAsset('c1', 'ast-1')).toBe('new');
+  });
+
+  it('saved assets are included in next load', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1'));
+    await store.saveAsset('c1', 'ast-extra', 'bonus');
+
+    const loaded = await store.load('c1');
+    expect(loaded!.assets['ast-extra']).toBe('bonus');
   });
 });
