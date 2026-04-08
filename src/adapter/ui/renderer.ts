@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType, isHtml, SANDBOX_ATTRIBUTES } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -306,6 +306,17 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   lightBtn.setAttribute('title', 'Export text-only HTML (no attachments)');
   lightBtn.textContent = 'Light';
   group.appendChild(lightBtn);
+
+  // ZIP Export
+  const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  zipBtn.setAttribute('data-pkc-action', 'export-zip');
+  zipBtn.setAttribute('title', 'Export as ZIP package (.pkc2.zip)');
+  zipBtn.textContent = 'ZIP';
+  group.appendChild(zipBtn);
+
+  const sep2 = createElement('span', 'pkc-eip-sep');
+  sep2.textContent = '|';
+  group.appendChild(sep2);
 
   // Import
   const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
@@ -679,6 +690,9 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLE
     btn.textContent = label;
     if (key === viewMode) {
       btn.setAttribute('data-pkc-active', 'true');
+    } else {
+      // Non-active tabs accept drag-over to switch views during DnD
+      btn.setAttribute('data-pkc-view-switch', key);
     }
     bar.appendChild(btn);
   }
@@ -740,6 +754,8 @@ function renderCalendarView(state: AppState): HTMLElement {
       }
 
       const key = dateKey(state.calendarYear, state.calendarMonth, day);
+      cell.setAttribute('data-pkc-calendar-drop-target', 'true');
+      cell.setAttribute('data-pkc-date', key);
       if (key === todayKey) {
         cell.setAttribute('data-pkc-calendar-today', 'true');
       }
@@ -768,6 +784,11 @@ function renderCalendarView(state: AppState): HTMLElement {
           }
           if (isTodoPastDue(t.todo)) {
             item.setAttribute('data-pkc-todo-overdue', 'true');
+          }
+          // DnD: make calendar todo item draggable in non-readonly mode
+          if (!state.readonly) {
+            item.setAttribute('draggable', 'true');
+            item.setAttribute('data-pkc-calendar-draggable', 'true');
           }
           item.textContent = t.entry.title || t.todo.description || '(untitled)';
           todoList.appendChild(item);
@@ -825,6 +846,7 @@ function renderKanbanView(state: AppState): HTMLElement {
     column.appendChild(header);
 
     const list = createElement('div', 'pkc-kanban-list');
+    list.setAttribute('data-pkc-kanban-drop-target', col.status);
 
     for (const item of grouped[col.status]) {
       const card = createElement('div', 'pkc-kanban-card');
@@ -835,6 +857,11 @@ function renderKanbanView(state: AppState): HTMLElement {
       }
       if (state.selectedLid === item.entry.lid) {
         card.setAttribute('data-pkc-selected', 'true');
+      }
+      // DnD: make card draggable in non-readonly mode
+      if (!state.readonly) {
+        card.setAttribute('draggable', 'true');
+        card.setAttribute('data-pkc-kanban-draggable', 'true');
       }
 
       const title = createElement('div', 'pkc-kanban-card-title');
@@ -854,6 +881,21 @@ function renderKanbanView(state: AppState): HTMLElement {
           date.classList.add('pkc-todo-date-overdue');
         }
         card.appendChild(date);
+      }
+
+      // Status move button (reuses existing toggle-todo-status action)
+      if (!state.readonly) {
+        const moveBtn = createElement('button', 'pkc-kanban-status-btn');
+        moveBtn.setAttribute('data-pkc-action', 'toggle-todo-status');
+        moveBtn.setAttribute('data-pkc-lid', item.entry.lid);
+        if (item.todo.status === 'open') {
+          moveBtn.textContent = '✓ Done';
+          moveBtn.setAttribute('title', 'Mark as done');
+        } else {
+          moveBtn.textContent = '↺ Reopen';
+          moveBtn.setAttribute('title', 'Reopen this todo');
+        }
+        card.appendChild(moveBtn);
       }
 
       list.appendChild(card);
@@ -1181,6 +1223,44 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
 
   if (canEdit && container.entries.length > 1) {
     meta.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+  }
+
+  // Sandbox control section for HTML attachments
+  if (entry.archetype === 'attachment') {
+    const att = parseAttachmentBody(entry.body);
+    if (isHtml(att.mime)) {
+      const sandboxSection = createElement('div', 'pkc-sandbox-control');
+      sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
+      sandboxSection.setAttribute('data-pkc-lid', entry.lid);
+
+      const heading = createElement('div', 'pkc-sandbox-heading');
+      heading.textContent = 'Sandbox Policy';
+      sandboxSection.appendChild(heading);
+
+      const currentAllow = att.sandbox_allow ?? [];
+
+      for (const attr of SANDBOX_ATTRIBUTES) {
+        const row = createElement('label', 'pkc-sandbox-row');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'pkc-sandbox-checkbox';
+        checkbox.setAttribute('data-pkc-action', 'toggle-sandbox-attr');
+        checkbox.setAttribute('data-pkc-lid', entry.lid);
+        checkbox.setAttribute('data-pkc-sandbox-attr', attr);
+        checkbox.checked = currentAllow.includes(attr);
+        if (!canEdit) checkbox.disabled = true;
+        row.appendChild(checkbox);
+
+        const label = createElement('span', 'pkc-sandbox-label');
+        label.textContent = attr;
+        row.appendChild(label);
+
+        sandboxSection.appendChild(row);
+      }
+
+      meta.appendChild(sandboxSection);
+    }
   }
 
   return meta;
@@ -1701,14 +1781,14 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
 
   // Check data availability
   const hasData = !!(att.data || (att.asset_key && container?.assets?.[att.asset_key]));
-  const isImage = att.mime.startsWith('image/');
+  const previewType = classifyPreviewType(att.mime);
 
-  if (isImage && hasData) {
-    // Image preview: show placeholder with data-pkc attributes for population
+  if (previewType !== 'none' && hasData) {
+    // Preview area: populated by action-binder based on MIME type
     const previewArea = createElement('div', 'pkc-detached-preview');
     previewArea.setAttribute('data-pkc-region', 'detached-attachment-preview');
     previewArea.setAttribute('data-pkc-lid', entry.lid);
-    // Placeholder text until populateDetachedPreviews fills it in
+    previewArea.setAttribute('data-pkc-preview-type', previewType);
     const placeholder = createElement('div', 'pkc-attachment-preview-placeholder');
     placeholder.textContent = 'Loading preview…';
     previewArea.appendChild(placeholder);

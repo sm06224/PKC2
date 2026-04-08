@@ -1,4 +1,5 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
+import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 
 /**
  * DetailPresenter: archetype-specific rendering for the detail view.
@@ -23,9 +24,25 @@ export interface DetailPresenter {
 
 const textPresenter: DetailPresenter = {
   renderBody(entry: Entry): HTMLElement {
+    if (!entry.body) {
+      const body = document.createElement('pre');
+      body.className = 'pkc-view-body';
+      body.textContent = '(empty)';
+      return body;
+    }
+
+    // Render as markdown if the body contains markdown syntax
+    if (hasMarkdownSyntax(entry.body)) {
+      const body = document.createElement('div');
+      body.className = 'pkc-view-body pkc-md-rendered';
+      body.innerHTML = renderMarkdown(entry.body);
+      return body;
+    }
+
+    // Fallback to plain text
     const body = document.createElement('pre');
     body.className = 'pkc-view-body';
-    body.textContent = entry.body || '(empty)';
+    body.textContent = entry.body;
     return body;
   },
   renderEditorBody(entry: Entry): HTMLElement {

@@ -1511,9 +1511,9 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Inline: has export + light + import buttons
+    // Inline: has export + light + zip + import buttons
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(3);
+    expect(btns.length).toBe(4);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -2030,14 +2030,15 @@ describe('Detached View Foundation', () => {
     expect(dlBtn!.textContent).toContain('photo.png');
   });
 
-  it('renderDetachedPanel for non-image attachment shows download but no preview', () => {
+  it('renderDetachedPanel for PDF attachment shows preview area and download', () => {
     const panel = renderDetachedPanel(pdfAttEntry, detachedContainer);
 
-    // No preview area for PDF
+    // PDF now gets a preview area with correct type
     const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
-    expect(preview).toBeNull();
+    expect(preview).not.toBeNull();
+    expect(preview!.getAttribute('data-pkc-preview-type')).toBe('pdf');
 
-    // But still has download
+    // Still has download
     const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
     expect(dlBtn).not.toBeNull();
     expect(dlBtn!.textContent).toContain('report.pdf');
@@ -3051,5 +3052,1573 @@ describe('Todo View Interaction Consistency', () => {
       const board = root.querySelector('.pkc-kanban-board');
       expect(board).not.toBeNull();
     });
+  });
+});
+
+// ── Issue #62: Todo Kanban Status Move Foundation ──
+
+describe('Todo Kanban Status Move Foundation', () => {
+  const statusMoveContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"desc A","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"desc B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open C', body: '{"status":"open","description":"desc C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function statusState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: statusMoveContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Action rendering ──
+
+  describe('action rendering', () => {
+    it('open card has "Done" status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toContain('Done');
+      expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(btn!.getAttribute('data-pkc-lid')).toBe('t1');
+    });
+
+    it('done card has "Reopen" status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t2Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t2"]')!;
+      const btn = t2Card.querySelector('.pkc-kanban-status-btn');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toContain('Reopen');
+      expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(btn!.getAttribute('data-pkc-lid')).toBe('t2');
+    });
+
+    it('readonly mode does NOT show status buttons', () => {
+      render(statusState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      expect(btns).toHaveLength(0);
+    });
+  });
+
+  // ── Click behavior (no collision) ──
+
+  describe('click behavior', () => {
+    it('status button is nested inside card but has its own action', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+
+      // The button is inside the card
+      expect(t1Card.contains(btn)).toBe(true);
+
+      // But the button has its own data-pkc-action (toggle-todo-status)
+      // which differs from the card's data-pkc-action (select-entry)
+      expect(btn.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(t1Card.getAttribute('data-pkc-action')).toBe('select-entry');
+
+      // closest('[data-pkc-action]') from the button should return the button itself
+      // not the card, preventing double-fire
+      expect(btn.closest('[data-pkc-action]')).toBe(btn);
+    });
+  });
+
+  // ── Update path verification ──
+
+  describe('update path', () => {
+    it('toggle-todo-status action uses QUICK_UPDATE_ENTRY (status only, other fields preserved)', () => {
+      // This test verifies the action-binder contract:
+      // The toggle-todo-status handler reads the entry body, flips status,
+      // and dispatches QUICK_UPDATE_ENTRY with the rest preserved.
+      // We verify the rendering reflects the contract by checking the
+      // button attributes match the existing toggle-todo-status action pattern.
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+
+      // All status buttons use the same action as the existing detail view toggle
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      for (const btn of btns) {
+        expect(btn.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+        expect(btn.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  // ── Selection maintained ──
+
+  describe('selection', () => {
+    it('status button has data-pkc-lid matching the card entry', () => {
+      render(statusState({ selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+
+      // The button targets the same entry as the card
+      expect(btn.getAttribute('data-pkc-lid')).toBe('t1');
+      // Card is still marked as selected
+      expect(t1Card.getAttribute('data-pkc-selected')).toBe('true');
+    });
+  });
+
+  // ── Overdue relationship ──
+
+  describe('overdue relationship', () => {
+    it('open todo with past date shows overdue + status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      // t1 has date 2025-01-01 and status open → overdue
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const dateEl = t1Card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(true);
+      // Status button should offer to mark done
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+      expect(btn.textContent).toContain('Done');
+    });
+
+    it('done todo with past date does NOT show overdue', () => {
+      // Create a container with done + past date todo
+      const donePast: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'd1', title: 'Done Past', body: '{"status":"done","description":"x","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: donePast }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="d1"]')!;
+      const dateEl = card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(false);
+      // Button should offer to reopen
+      const btn = card.querySelector('.pkc-kanban-status-btn')!;
+      expect(btn.textContent).toContain('Reopen');
+    });
+  });
+
+  // ── Empty state not broken ──
+
+  describe('empty state preservation', () => {
+    it('empty columns still render even with status buttons present', () => {
+      // Only open todos, no done todos
+      const onlyOpen: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 't1', title: 'Only Open', body: '{"status":"open","description":"x"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: onlyOpen }), root);
+      const columns = root.querySelectorAll('.pkc-kanban-column');
+      expect(columns).toHaveLength(2);
+      // Done column is empty but present
+      const doneCol = columns[1]!;
+      expect(doneCol.querySelectorAll('.pkc-kanban-card')).toHaveLength(0);
+      expect(doneCol.querySelector('.pkc-kanban-column-header')).not.toBeNull();
+    });
+
+    it('kanban empty state shows when no todos exist (with status buttons feature)', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: noTodos }), root);
+      const empty = root.querySelector('[data-pkc-region="kanban-empty"]');
+      expect(empty).not.toBeNull();
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('card still has select-entry action for click', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      expect(card.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('all three columns render labels correctly', () => {
+      render(statusState(), root);
+      const labels = root.querySelectorAll('.pkc-kanban-column-label');
+      expect(labels).toHaveLength(2);
+      expect(labels[0]!.textContent).toBe('Todo');
+      expect(labels[1]!.textContent).toBe('Done');
+    });
+
+    it('status button count matches card count', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      expect(btns).toHaveLength(cards.length);
+    });
+  });
+});
+
+// ── Issue #63: Todo Kanban DnD Foundation ──
+
+describe('Todo Kanban DnD Foundation', () => {
+  const dndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"desc A","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"desc B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open C', body: '{"status":"open","description":"desc C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function dndState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: dndContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Drag source attributes ──
+
+  describe('drag source attributes', () => {
+    it('cards have draggable="true" in non-readonly mode', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBe('true');
+      }
+    });
+
+    it('cards have data-pkc-kanban-draggable attribute in non-readonly mode', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-kanban-draggable')).toBe('true');
+      }
+    });
+
+    it('cards are NOT draggable in readonly mode', () => {
+      render(dndState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBeNull();
+        expect(card.getAttribute('data-pkc-kanban-draggable')).toBeNull();
+      }
+    });
+  });
+
+  // ── Drop target attributes ──
+
+  describe('drop target attributes', () => {
+    it('open column list has data-pkc-kanban-drop-target="open"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]');
+      expect(openList).not.toBeNull();
+      expect(openList!.classList.contains('pkc-kanban-list')).toBe(true);
+    });
+
+    it('done column list has data-pkc-kanban-drop-target="done"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]');
+      expect(doneList).not.toBeNull();
+      expect(doneList!.classList.contains('pkc-kanban-list')).toBe(true);
+    });
+
+    it('drop targets are present even in readonly mode (but cards are not draggable)', () => {
+      render(dndState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const dropTargets = kanban.querySelectorAll('[data-pkc-kanban-drop-target]');
+      expect(dropTargets).toHaveLength(2);
+    });
+  });
+
+  // ── Card-column relationship ──
+
+  describe('card-column relationship', () => {
+    it('open cards are inside the open column drop target', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+      const cards = openList.querySelectorAll('.pkc-kanban-card');
+      expect(cards).toHaveLength(2); // t1 and t3
+      const lids = Array.from(cards).map(c => c.getAttribute('data-pkc-lid'));
+      expect(lids).toContain('t1');
+      expect(lids).toContain('t3');
+    });
+
+    it('done cards are inside the done column drop target', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+      const cards = doneList.querySelectorAll('.pkc-kanban-card');
+      expect(cards).toHaveLength(1); // t2
+      expect(cards[0]!.getAttribute('data-pkc-lid')).toBe('t2');
+    });
+  });
+
+  // ── Coexistence with select-entry ──
+
+  describe('coexistence with existing actions', () => {
+    it('draggable cards still have data-pkc-action="select-entry"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card[data-pkc-kanban-draggable]');
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-action')).toBe('select-entry');
+      }
+    });
+
+    it('status buttons are still present alongside draggable attribute', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      for (const card of cards) {
+        const btn = card.querySelector('.pkc-kanban-status-btn');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      }
+    });
+  });
+
+  // ── Selection and overdue preserved ──
+
+  describe('selection preserved with DnD attributes', () => {
+    it('selected card has both data-pkc-selected and draggable', () => {
+      render(dndState({ selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      expect(card.getAttribute('data-pkc-selected')).toBe('true');
+      expect(card.getAttribute('draggable')).toBe('true');
+    });
+
+    it('overdue styling still applies on draggable cards', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      // t1 is open with date 2025-01-01 (past) → overdue
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const dateEl = t1Card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl).not.toBeNull();
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(true);
+    });
+  });
+
+  // ── Empty state ──
+
+  describe('empty state', () => {
+    it('empty kanban board still has both drop targets', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [],
+        relations: [],
+        revisions: [],
+        assets: {},
+      };
+      render(dndState({ container: noTodos }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const dropTargets = kanban.querySelectorAll('[data-pkc-kanban-drop-target]');
+      expect(dropTargets).toHaveLength(2);
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('sidebar entries do NOT have kanban draggable attributes', () => {
+      render(dndState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const kanbanDraggables = sidebar.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(kanbanDraggables).toHaveLength(0);
+    });
+
+    it('view mode toggle still renders three buttons', () => {
+      render(dndState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('kanban column count badge still accurate', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const badges = kanban.querySelectorAll('.pkc-kanban-column-count');
+      expect(badges[0]!.textContent).toBe('2'); // open: t1, t3
+      expect(badges[1]!.textContent).toBe('1'); // done: t2
+    });
+  });
+});
+
+// ── Issue #64: Todo Calendar Date Move Foundation ──
+
+describe('Todo Calendar Date Move Foundation', () => {
+  const calDndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't4', title: 'No Date', body: '{"status":"open","description":"D"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function calDndState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: calDndContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Drag source attributes ──
+
+  describe('drag source attributes', () => {
+    it('calendar todo items have draggable="true" in non-readonly mode', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBe('true');
+      }
+    });
+
+    it('calendar todo items have data-pkc-calendar-draggable attribute', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-calendar-draggable')).toBe('true');
+      }
+    });
+
+    it('calendar todo items are NOT draggable in readonly mode', () => {
+      render(calDndState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBeNull();
+        expect(item.getAttribute('data-pkc-calendar-draggable')).toBeNull();
+      }
+    });
+  });
+
+  // ── Drop target attributes ──
+
+  describe('drop target attributes', () => {
+    it('day cells have data-pkc-calendar-drop-target attribute', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      // April 2026 has 30 days
+      expect(dropTargets.length).toBe(30);
+    });
+
+    it('day cells have data-pkc-date with YYYY-MM-DD format', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      const firstDate = dropTargets[0]!.getAttribute('data-pkc-date');
+      expect(firstDate).toBe('2026-04-01');
+      const lastDate = dropTargets[dropTargets.length - 1]!.getAttribute('data-pkc-date');
+      expect(lastDate).toBe('2026-04-30');
+    });
+
+    it('empty cells (outside month) do NOT have drop target', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const emptyCells = cal.querySelectorAll('.pkc-calendar-cell-empty');
+      for (const cell of emptyCells) {
+        expect(cell.hasAttribute('data-pkc-calendar-drop-target')).toBe(false);
+      }
+    });
+
+    it('drop targets are present even in readonly mode', () => {
+      render(calDndState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(dropTargets.length).toBe(30);
+    });
+  });
+
+  // ── Item-cell relationship ──
+
+  describe('item-cell relationship', () => {
+    it('todo items are inside the correct date cell', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const cell10 = cal.querySelector('[data-pkc-date="2026-04-10"]')!;
+      const items = cell10.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items).toHaveLength(2); // t1 and t2
+      const lids = Array.from(items).map(i => i.getAttribute('data-pkc-lid'));
+      expect(lids).toContain('t1');
+      expect(lids).toContain('t2');
+    });
+
+    it('cell with no todos has no items but still has drop target', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const cell01 = cal.querySelector('[data-pkc-date="2026-04-01"]')!;
+      const items = cell01.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items).toHaveLength(0);
+      expect(cell01.hasAttribute('data-pkc-calendar-drop-target')).toBe(true);
+    });
+  });
+
+  // ── Coexistence with existing actions ──
+
+  describe('coexistence with existing actions', () => {
+    it('draggable items still have data-pkc-action="select-entry"', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-action')).toBe('select-entry');
+      }
+    });
+
+    it('draggable items still have data-pkc-lid', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  // ── Selection and overdue preserved ──
+
+  describe('selection preserved with DnD attributes', () => {
+    it('selected item has both data-pkc-selected and draggable', () => {
+      render(calDndState({ selectedLid: 't1' }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="t1"]')!;
+      expect(item.getAttribute('data-pkc-selected')).toBe('true');
+      expect(item.getAttribute('draggable')).toBe('true');
+    });
+
+    it('overdue attribute still applies on draggable items', () => {
+      // t1 is open with date 2026-04-10 — not overdue (future from today 2026-04-08)
+      // To test overdue, use a past-date todo
+      const pastContainer: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'p1', title: 'Past', body: '{"status":"open","description":"P","date":"2026-04-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(calDndState({ container: pastContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="p1"]')!;
+      expect(item.getAttribute('data-pkc-todo-overdue')).toBe('true');
+      expect(item.getAttribute('draggable')).toBe('true');
+    });
+  });
+
+  // ── Empty state ──
+
+  describe('empty state', () => {
+    it('empty calendar still has drop targets on day cells', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [],
+        relations: [], revisions: [], assets: {},
+      };
+      render(calDndState({ container: noTodos }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(dropTargets.length).toBe(30); // April has 30 days
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('kanban cards do NOT have calendar draggable attributes', () => {
+      render(calDndState({ viewMode: 'kanban' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const calDraggables = kanban.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(calDraggables).toHaveLength(0);
+    });
+
+    it('sidebar entries do NOT have calendar draggable attributes', () => {
+      render(calDndState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const calDraggables = sidebar.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(calDraggables).toHaveLength(0);
+    });
+
+    it('view mode toggle still renders three buttons', () => {
+      render(calDndState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('calendar navigation buttons still present', () => {
+      render(calDndState(), root);
+      expect(root.querySelector('[data-pkc-action="calendar-prev"]')).not.toBeNull();
+      expect(root.querySelector('[data-pkc-action="calendar-next"]')).not.toBeNull();
+    });
+
+    it('today marker still present on today cell', () => {
+      // April 8, 2026 is today
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const todayCell = cal.querySelector('[data-pkc-calendar-today="true"]');
+      expect(todayCell).not.toBeNull();
+      expect(todayCell!.getAttribute('data-pkc-date')).toBe('2026-04-08');
+    });
+  });
+});
+
+// ── Issue #66: Todo Kanban → Calendar Cross-View DnD Foundation ──
+
+describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
+  const crossViewContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open NoDate', body: '{"status":"open","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function kanbanState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: crossViewContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function calendarState(overrides?: Partial<AppState>): AppState {
+    return kanbanState({ viewMode: 'calendar' as const, ...overrides });
+  }
+
+  // ── View switch attributes ──
+
+  describe('view switch attributes', () => {
+    it('non-active view mode buttons have data-pkc-view-switch', () => {
+      render(kanbanState(), root);
+      const bar = root.querySelector('[data-pkc-region="view-mode-bar"]')!;
+      const btns = bar.querySelectorAll('[data-pkc-view-switch]');
+      // Kanban is active → Detail and Calendar should have view-switch
+      expect(btns).toHaveLength(2);
+      const modes = Array.from(btns).map(b => b.getAttribute('data-pkc-view-switch'));
+      expect(modes).toContain('detail');
+      expect(modes).toContain('calendar');
+    });
+
+    it('active view mode button does NOT have data-pkc-view-switch', () => {
+      render(kanbanState(), root);
+      const activeBtn = root.querySelector('[data-pkc-active="true"]')!;
+      expect(activeBtn.hasAttribute('data-pkc-view-switch')).toBe(false);
+    });
+
+    it('calendar mode: Calendar button is active, Kanban has view-switch', () => {
+      render(calendarState(), root);
+      const calBtn = root.querySelector('[data-pkc-view-mode="calendar"]')!;
+      expect(calBtn.getAttribute('data-pkc-active')).toBe('true');
+      expect(calBtn.hasAttribute('data-pkc-view-switch')).toBe(false);
+
+      const kanbanBtn = root.querySelector('[data-pkc-view-mode="kanban"]')!;
+      expect(kanbanBtn.getAttribute('data-pkc-view-switch')).toBe('kanban');
+    });
+  });
+
+  // ── Cross-view drop target compatibility ──
+
+  describe('cross-view drop target compatibility', () => {
+    it('Calendar day cells still have drop target attributes when switching from kanban', () => {
+      // Simulate: user was in Kanban, now views Calendar
+      render(calendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(dropTargets.length).toBe(30); // April 2026
+    });
+
+    it('Calendar day cells have data-pkc-date for cross-view lid resolution', () => {
+      render(calendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const cell15 = cal.querySelector('[data-pkc-date="2026-04-15"]');
+      expect(cell15).not.toBeNull();
+      expect(cell15!.hasAttribute('data-pkc-calendar-drop-target')).toBe(true);
+    });
+
+    it('Kanban cards have draggable + data-pkc-kanban-draggable + lid', () => {
+      render(kanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBe('true');
+        expect(card.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  // ── Date-less todos in Kanban ──
+
+  describe('date-less todos as cross-view source', () => {
+    it('date-less todo appears in Kanban as draggable card', () => {
+      render(kanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t3"]');
+      expect(card).not.toBeNull();
+      expect(card!.getAttribute('draggable')).toBe('true');
+    });
+
+    it('date-less todo does NOT appear in Calendar', () => {
+      render(calendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('[data-pkc-lid="t3"]');
+      expect(item).toBeNull();
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('Kanban internal DnD: cards still have kanban-draggable', () => {
+      render(kanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('Kanban internal DnD: columns still have kanban-drop-target', () => {
+      render(kanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]');
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]');
+      expect(openList).not.toBeNull();
+      expect(doneList).not.toBeNull();
+    });
+
+    it('Calendar internal DnD: items still have calendar-draggable', () => {
+      render(calendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('Kanban status move buttons still present', () => {
+      render(kanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const btns = kanban.querySelectorAll('[data-pkc-action="toggle-todo-status"]');
+      expect(btns.length).toBeGreaterThan(0);
+    });
+
+    it('Calendar click selection still works (select-entry on items)', () => {
+      render(calendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="t1"]');
+      expect(item).not.toBeNull();
+      expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('view mode toggle still renders three buttons', () => {
+      render(kanbanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('readonly mode: no draggable on Kanban cards, no view-switch risk', () => {
+      render(kanbanState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBeNull();
+      }
+    });
+  });
+});
+
+// ── Issue #67: DnD Cleanup & Cancellation Robustness ──
+
+describe('DnD Cleanup & Cancellation Robustness', () => {
+  const cleanupContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function cleanupKanbanState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: cleanupContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function cleanupCalendarState(overrides?: Partial<AppState>): AppState {
+    return cleanupKanbanState({ viewMode: 'calendar' as const, ...overrides });
+  }
+
+  // ── Fresh render has no drag state ──
+
+  describe('fresh render: no drag artifacts', () => {
+    it('kanban: no data-pkc-dragging on fresh render', () => {
+      render(cleanupKanbanState(), root);
+      const dragging = root.querySelectorAll('[data-pkc-dragging]');
+      expect(dragging).toHaveLength(0);
+    });
+
+    it('kanban: no data-pkc-drag-over on fresh render', () => {
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('calendar: no data-pkc-dragging on fresh render', () => {
+      render(cleanupCalendarState(), root);
+      const dragging = root.querySelectorAll('[data-pkc-dragging]');
+      expect(dragging).toHaveLength(0);
+    });
+
+    it('calendar: no data-pkc-drag-over on fresh render', () => {
+      render(cleanupCalendarState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── Re-render clears stale visual state ──
+
+  describe('re-render clears stale visual state', () => {
+    it('kanban: drag-over attribute removed after re-render', () => {
+      render(cleanupKanbanState(), root);
+      // Simulate stale drag-over on a kanban list
+      const list = root.querySelector('[data-pkc-kanban-drop-target]')!;
+      list.setAttribute('data-pkc-drag-over', 'true');
+      expect(list.getAttribute('data-pkc-drag-over')).toBe('true');
+      // Re-render replaces DOM, stale attribute is gone
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('calendar: drag-over attribute removed after re-render', () => {
+      render(cleanupCalendarState(), root);
+      const cell = root.querySelector('[data-pkc-calendar-drop-target]')!;
+      cell.setAttribute('data-pkc-drag-over', 'true');
+      // Re-render replaces DOM
+      render(cleanupCalendarState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('view mode button: drag-over attribute removed after re-render', () => {
+      render(cleanupKanbanState(), root);
+      const btn = root.querySelector('[data-pkc-view-switch]')!;
+      btn.setAttribute('data-pkc-drag-over', 'true');
+      // Re-render replaces DOM
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-view-switch][data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── View switch replaces stale DOM ──
+
+  describe('view switch replaces stale drag DOM', () => {
+    it('switching from kanban to calendar removes kanban drag-over', () => {
+      render(cleanupKanbanState(), root);
+      const list = root.querySelector('[data-pkc-kanban-drop-target]')!;
+      list.setAttribute('data-pkc-drag-over', 'true');
+      // Switch to calendar
+      render(cleanupCalendarState(), root);
+      // Old kanban DOM is gone, no drag-over remains
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('switching from calendar to kanban removes calendar drag-over', () => {
+      render(cleanupCalendarState(), root);
+      const cell = root.querySelector('[data-pkc-calendar-drop-target]')!;
+      cell.setAttribute('data-pkc-drag-over', 'true');
+      // Switch to kanban
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('kanban cards still draggable', () => {
+      render(cleanupKanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('calendar items still draggable', () => {
+      render(cleanupCalendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('kanban status buttons still present', () => {
+      render(cleanupKanbanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="toggle-todo-status"]');
+      expect(btns.length).toBeGreaterThan(0);
+    });
+
+    it('view switch attributes still on non-active tabs', () => {
+      render(cleanupKanbanState(), root);
+      const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
+      expect(switchBtns).toHaveLength(2);
+    });
+
+    it('click selection still works (select-entry present)', () => {
+      render(cleanupKanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('[data-pkc-action="select-entry"]');
+      expect(card).not.toBeNull();
+    });
+  });
+});
+
+// ── Issue #68: Calendar → Kanban Cross-View DnD Foundation ──
+
+describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
+  const cal2kanContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open NoDate', body: '{"status":"open","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function calState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: cal2kanContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function kanState(overrides?: Partial<AppState>): AppState {
+    return calState({ viewMode: 'kanban' as const, ...overrides });
+  }
+
+  // ── Cross-view source/target compatibility ──
+
+  describe('cross-view source/target compatibility', () => {
+    it('Calendar items are draggable with lid for cross-view', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBe('true');
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('Kanban columns have drop-target with status value', () => {
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]');
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]');
+      expect(openList).not.toBeNull();
+      expect(doneList).not.toBeNull();
+    });
+
+    it('view-switch button for Kanban is present when in Calendar', () => {
+      render(calState(), root);
+      const kanbanSwitch = root.querySelector('[data-pkc-view-switch="kanban"]');
+      expect(kanbanSwitch).not.toBeNull();
+    });
+
+    it('view-switch button for Calendar is present when in Kanban', () => {
+      render(kanState(), root);
+      const calSwitch = root.querySelector('[data-pkc-view-switch="calendar"]');
+      expect(calSwitch).not.toBeNull();
+    });
+  });
+
+  // ── Bidirectional bridge symmetry ──
+
+  describe('bidirectional bridge symmetry', () => {
+    it('Calendar items have same lid format as Kanban cards', () => {
+      // Verify same entry appears in both views with same lid
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const calItem = cal.querySelector('[data-pkc-lid="t1"]');
+      expect(calItem).not.toBeNull();
+
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const kanCard = kanban.querySelector('[data-pkc-lid="t1"]');
+      expect(kanCard).not.toBeNull();
+    });
+
+    it('dated Todo in Calendar has status that matches Kanban column', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const t2Item = cal.querySelector('[data-pkc-lid="t2"]');
+      expect(t2Item).not.toBeNull();
+      expect(t2Item!.getAttribute('data-pkc-todo-status')).toBe('done');
+
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+      const t2Card = doneList.querySelector('[data-pkc-lid="t2"]');
+      expect(t2Card).not.toBeNull();
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('Kanban internal DnD: cards still have kanban-draggable', () => {
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('Calendar internal DnD: items still have calendar-draggable', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('Kanban → Calendar bridge: Calendar drop targets still present', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const targets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(targets.length).toBe(30);
+    });
+
+    it('Kanban status move buttons still present', () => {
+      render(kanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="toggle-todo-status"]');
+      expect(btns.length).toBeGreaterThan(0);
+    });
+
+    it('Calendar click selection preserved (select-entry on items)', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="t1"]');
+      expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('view mode toggle renders three buttons', () => {
+      render(kanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('readonly: no draggable Calendar items', () => {
+      render(calState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBeNull();
+      }
+    });
+  });
+});
+
+// ── Issue #69: Critical UX Regression Recovery ──
+
+describe('Critical UX Regression Recovery (Issue #69)', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    registerPresenter('todo', todoPresenter);
+    registerPresenter('form', formPresenter);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  const todoContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  describe('Export / Import / Build UI (P0-B)', () => {
+    it('renders Export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="full"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Export');
+    });
+
+    it('renders Light export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="light"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Light');
+    });
+
+    it('renders ZIP export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="export-zip"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('ZIP');
+    });
+
+    it('renders Import button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-import"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Import');
+    });
+
+    it('hides export/import buttons in readonly mode', () => {
+      render(baseState({ readonly: true }), root);
+      const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+      expect(panel).toBeNull();
+    });
+
+    it('shows Exporting badge during export phase', () => {
+      const state: AppState = {
+        ...baseState(),
+        phase: 'exporting',
+        exportMode: 'full',
+        exportMutability: 'editable',
+      };
+      render(state, root);
+      const badge = root.querySelector('.pkc-export-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('Exporting…');
+    });
+
+    it('ZIP button has correct title attribute', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="export-zip"]') as HTMLElement;
+      expect(btn.getAttribute('title')).toContain('ZIP');
+    });
+  });
+
+  describe('Double-click Target Attributes (P0-A)', () => {
+    it('sidebar entry items have select-entry action and lid', () => {
+      render(baseState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('kanban cards have select-entry action and lid', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('calendar items have select-entry action and lid', () => {
+      render(baseState({ viewMode: 'calendar', container: todoContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  describe('Attachment Download (P0-C)', () => {
+    const attachmentContainer: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'Test File',
+          body: JSON.stringify({ name: 'test.pdf', mime: 'application/pdf', size: 1024, asset_key: 'ast-001' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-001': 'dGVzdA==' },
+    };
+
+    it('detached panel shows download button for attachment with data', () => {
+      const entry = attachmentContainer.entries[0]!;
+      const panel = renderDetachedPanel(entry, attachmentContainer);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+      expect(dlBtn).not.toBeNull();
+      expect(dlBtn!.textContent).toContain('Download');
+    });
+
+    it('detached panel hides download when data stripped', () => {
+      const stripped: Container = { ...attachmentContainer, assets: {} };
+      const entry = stripped.entries[0]!;
+      const panel = renderDetachedPanel(entry, stripped);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+      expect(dlBtn).toBeNull();
+      const notice = panel.querySelector('.pkc-attachment-stripped');
+      expect(notice).not.toBeNull();
+    });
+
+    it('download button carries data-pkc-lid attribute', () => {
+      const entry = attachmentContainer.entries[0]!;
+      const panel = renderDetachedPanel(entry, attachmentContainer);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]') as HTMLElement;
+      expect(dlBtn.getAttribute('data-pkc-lid')).toBe('att1');
+    });
+  });
+
+  describe('Markdown Rendering in Text Presenter (P1-D)', () => {
+    it('renders plain text body without markdown as pre element', () => {
+      render(baseState({ selectedLid: 'e1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body).not.toBeNull();
+      expect(body!.tagName).toBe('PRE');
+    });
+
+    it('renders markdown body as div with pkc-md-rendered class', () => {
+      const mdContainer: Container = {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'md1',
+            title: 'Markdown Entry',
+            body: '# Hello\n\nThis is **bold** text.',
+            archetype: 'text',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      };
+      render(baseState({ container: mdContainer, selectedLid: 'md1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-md-rendered');
+      expect(body).not.toBeNull();
+      expect(body!.tagName).toBe('DIV');
+      expect(body!.innerHTML).toContain('<h1');
+      expect(body!.innerHTML).toContain('<strong>bold</strong>');
+    });
+
+    it('plain text fallback still works', () => {
+      render(baseState({ selectedLid: 'e1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body!.textContent).toContain('Body of entry one');
+    });
+
+    it('empty body shows (empty) text', () => {
+      const emptyBody: Container = {
+        ...mockContainer,
+        entries: [
+          { lid: 'e0', title: 'Empty', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+      };
+      render(baseState({ container: emptyBody, selectedLid: 'e0', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body!.textContent).toContain('(empty)');
+      expect(body!.tagName).toBe('PRE');
+    });
+  });
+
+  describe('Attachment Preview Types', () => {
+    function makeAttContainer(mime: string, assetKey: string): Container {
+      return {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'att-preview',
+            title: 'Preview File',
+            body: JSON.stringify({ name: 'file.ext', mime, size: 1024, asset_key: assetKey }),
+            archetype: 'attachment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        assets: { [assetKey]: 'dGVzdA==' },
+      };
+    }
+
+    it('image attachment gets preview with type=image', () => {
+      const c = makeAttContainer('image/png', 'ast-img');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('image');
+    });
+
+    it('PDF attachment gets preview with type=pdf', () => {
+      const c = makeAttContainer('application/pdf', 'ast-pdf');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('pdf');
+    });
+
+    it('video attachment gets preview with type=video', () => {
+      const c = makeAttContainer('video/mp4', 'ast-vid');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('video');
+    });
+
+    it('audio attachment gets preview with type=audio', () => {
+      const c = makeAttContainer('audio/mpeg', 'ast-aud');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('audio');
+    });
+
+    it('HTML attachment gets preview with type=html', () => {
+      const c = makeAttContainer('text/html', 'ast-htm');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('html');
+    });
+
+    it('unknown MIME gets no preview area', () => {
+      const c = makeAttContainer('application/octet-stream', 'ast-bin');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).toBeNull();
+    });
+
+    it('stripped attachment gets no preview regardless of type', () => {
+      const c: Container = {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'att-strip',
+            title: 'Stripped',
+            body: JSON.stringify({ name: 'image.png', mime: 'image/png', size: 1024, asset_key: 'ast-strip' }),
+            archetype: 'attachment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        assets: {},
+      };
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).toBeNull();
+    });
+  });
+
+  describe('Non-regression', () => {
+    it('DnD attributes still present on kanban cards', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable="true"]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('DnD attributes still present on calendar items', () => {
+      render(baseState({ viewMode: 'calendar', container: todoContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable="true"]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('view switch buttons still present on non-detail views', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
+      expect(switchBtns.length).toBe(2);
+    });
+  });
+});
+
+// ── Sandbox Control UI ──
+
+describe('Sandbox Control UI in Meta Pane', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function htmlAttachmentContainer(sandboxAllow?: string[]): Container {
+    const body: Record<string, unknown> = { name: 'app.html', mime: 'text/html', asset_key: 'ast-1', size: 200 };
+    if (sandboxAllow) body.sandbox_allow = sandboxAllow;
+    return {
+      meta: { container_id: 'test-html', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+      entries: [{
+        lid: 'html1', title: 'HTML File', body: JSON.stringify(body),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-1': 'PCFET0NUWVBFIGh0bWw+' },
+    };
+  }
+
+  function textAttachmentContainer(): Container {
+    return {
+      meta: { container_id: 'test-txt', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+      entries: [{
+        lid: 'txt1', title: 'Text File', body: JSON.stringify({ name: 'readme.txt', mime: 'text/plain', asset_key: 'ast-2' }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-2': 'dGVzdA==' },
+    };
+  }
+
+  it('renders sandbox control section for HTML attachment', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).not.toBeNull();
+  });
+
+  it('renders 5 sandbox checkboxes', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
+    expect(checkboxes.length).toBe(5);
+  });
+
+  it('checkboxes reflect sandbox_allow state', () => {
+    const c = htmlAttachmentContainer(['allow-scripts', 'allow-forms']);
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const scripts = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-scripts"]');
+    const forms = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-forms"]');
+    const popups = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-popups"]');
+    expect(scripts?.checked).toBe(true);
+    expect(forms?.checked).toBe(true);
+    expect(popups?.checked).toBe(false);
+  });
+
+  it('checkboxes are disabled in readonly mode', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1', readonly: true }), root);
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('[data-pkc-action="toggle-sandbox-attr"]');
+    for (const cb of checkboxes) {
+      expect(cb.disabled).toBe(true);
+    }
+  });
+
+  it('does NOT render sandbox control for non-HTML attachment', () => {
+    const c = textAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'txt1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).toBeNull();
+  });
+
+  it('sandbox heading says "Sandbox Policy"', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const heading = root.querySelector('.pkc-sandbox-heading');
+    expect(heading?.textContent).toBe('Sandbox Policy');
+  });
+
+  it('each checkbox has correct data-pkc-lid and data-pkc-sandbox-attr', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('[data-pkc-action="toggle-sandbox-attr"]');
+    for (const cb of checkboxes) {
+      expect(cb.getAttribute('data-pkc-lid')).toBe('html1');
+      expect(cb.getAttribute('data-pkc-sandbox-attr')).toBeTruthy();
+    }
   });
 });

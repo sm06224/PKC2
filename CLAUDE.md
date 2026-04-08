@@ -1,189 +1,105 @@
-# claude.md — PKC2 AI Execution Contract (Project Memory Edition)
+# CLAUDE.md
 
-## 0. Purpose
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-This document defines the execution contract for Claude Code working on PKC2.
-
-This includes:
-- Architecture invariants
-- Implementation constraints
-- Operational safety rules (CRITICAL)
-
-This is NOT guidance. This is enforceable behavior.
-
----
-
-## 1. Language Policy
+## Language Policy
 
 - Internal reasoning MUST be in American English
-- DO NOT output internal reasoning
 - Final output MUST be in Japanese
 
----
+## Build & Development Commands
 
-## 2. Architecture Invariants (ABSOLUTE)
+```bash
+npm run build:bundle     # Vite build → dist/bundle.{js,css}
+npm run build:release    # Bundle → single HTML (dist/pkc2.html)
+npm run build            # Both steps
 
-(unchanged — 略)
+npm test                 # vitest run (all tests)
+npx vitest run tests/adapter/renderer.test.ts  # single test file
+npx vitest run -t "Todo Kanban"                # tests matching name
 
----
+npm run typecheck        # tsc --noEmit
+npm run lint             # eslint src/ tests/
+npm run lint:fix         # eslint --fix
+```
 
-## 3. Data Integrity Rules
+**Before every commit**: run `npm test` and `npm run build:bundle`. The dist files must be updated.
 
-(unchanged — 略)
+## Architecture: 5-Layer Structure
 
----
+```
+core/         → Domain model. Pure types + operations. NO browser APIs.
+features/     → Pure algorithmic functions (filter, sort, tree, calendar, kanban).
+               Imports from core (read-only types) only.
+adapter/      → Runtime integration: state machine, UI rendering, persistence, transport.
+  state/      → AppState + Dispatcher (Redux-like pure reducer)
+  ui/         → renderer.ts, action-binder.ts, *-presenter.ts
+  platform/   → IndexedDB, compression, export/import, embed detection
+  transport/  → PostMessage protocol for cross-origin communication
+runtime/      → Build constants, version, DOM slot contracts
+main.ts       → Bootstrap: wires everything together
+```
 
-## 4. Implementation Principles
+**Import rules**: core ← features ← adapter. Core never imports from adapter or features. Features never import from adapter. Adapter orchestrates everything.
 
-(unchanged — 略)
+**Path aliases** (tsconfig): `@core/*`, `@adapter/*`, `@features/*`, `@runtime/*`
 
----
+## Data Model
 
-## 5. ⚠️ File Handling Strategy (CRITICAL)
+**Container** is the top-level aggregate (source of truth):
+- `entries: Entry[]` — fundamental data units, each with `lid`, `title`, `body` (string), `archetype`
+- `relations: Relation[]` — structural, categorical, semantic, temporal links between entries
+- `revisions: Revision[]` — historical snapshots of entries
+- `assets: Record<string, string>` — base64 file data (separated from body)
 
-Claude MUST assume:
+**Archetypes**: `text | textlog | todo | form | attachment | folder | generic | opaque`
+Each archetype has a **DetailPresenter** (registered at boot) that handles view/edit/collect for its body format.
 
-- Large files are ERROR-PRONE
-- Full-file rewrite is DANGEROUS
+**Todo body** is JSON stored as string: `{ status: 'open'|'done', description, date?, archived? }`
 
-### Rules:
+## State Machine
 
-1. NEVER blindly load entire large file
+```
+AppPhase: 'initializing' → 'ready' ↔ 'editing' / 'exporting' → 'error'
+```
 
-2. If file > ~500 lines:
-   → Split reading into logical sections
+**Dispatchable** = `UserAction | SystemCommand` → pure **reducer** → `(state', DomainEvent[])`
 
-3. Perform edits as:
-   - localized patch
-   - NOT full rewrite
+Key state fields: `container`, `selectedLid`, `editingLid`, `viewMode ('detail'|'calendar'|'kanban')`, `phase`
 
-4. When multiple edits:
-   → operate per section
-   → merge explicitly
+The **Dispatcher** is the single coordination point: dispatch → reduce → notify state listeners → emit events.
 
-5. Preserve:
-   - ordering
-   - formatting
-   - unrelated code
+## Renderer / ActionBinder / Presenter Pattern
 
-6. If safe edit is not possible:
-   → STOP and report
+- **Renderer** (`renderer.ts`): pure function `render(state, root)` → DOM. Never reads DOM to derive state. Uses `data-pkc-*` attributes for all functional selectors (minify-safe).
+- **ActionBinder** (`action-binder.ts`): event delegation on root via `data-pkc-action` attributes → dispatches UserActions. Never renders DOM.
+- **DetailPresenter** (`detail-presenter.ts`): archetype-specific `renderBody` / `renderEditorBody` / `collectBody`. Registry pattern with text fallback.
 
----
+## Key Conventions
 
-## 6. ⚠️ Build Integrity Rule (MANDATORY)
+- All functional DOM selectors use `data-pkc-*` attributes, never CSS class names
+- `QUICK_UPDATE_ENTRY` updates body only (no title change, no phase transition). Used for inline operations like todo status toggle.
+- `selectedLid` is the single source of truth for selection across all views
+- `SET_VIEW_MODE` does NOT clear selection
+- Todo helpers: `parseTodoBody()`, `serializeTodoBody()`, `formatTodoDate()`, `isTodoPastDue()`
+- Kanban always excludes archived todos; Calendar respects `showArchived` flag
 
-PKC is a **single HTML product**.
+## Invariants
 
-Therefore:
+1. **5-layer structure** must be maintained — no cross-layer violations
+2. **core has NO browser APIs** — pure TypeScript only
+3. **Single HTML product** — everything bundles into one file via `build/release-builder.ts`
+4. **Container is source of truth** — UI state is runtime-only
+5. **Backward compatibility** — never break existing data contracts
+6. **No premature abstraction** — three similar lines > one premature helper
 
-### BEFORE commit:
+## Testing
 
-1. Build MUST be executed
-2. Output HTML MUST be generated
-3. No build errors allowed
+- Framework: Vitest + happy-dom
+- Test environment declared per file: `/** @vitest-environment happy-dom */`
+- Tests mirror src structure: `tests/adapter/`, `tests/core/`, `tests/features/`
+- Renderer tests query DOM using `data-pkc-*` selectors, scoped to regions (`[data-pkc-region="kanban-view"]`)
 
-### AFTER build:
+## Specification Documents
 
-4. Verify:
-   - HTML loads
-   - no runtime error
-
-5. dist file MUST be updated
-
-### Violation:
-
-→ Implementation is INVALID
-
----
-
-## 7. ⚠️ Change Scope Control
-
-Claude MUST:
-
-- Avoid cross-file ripple changes
-- Avoid "cleanup" outside scope
-- Avoid refactoring unless required
-
-Allowed:
-
-- Minimal patch
-- Explicit extension
-
-Forbidden:
-
-- Implicit redesign
-- Hidden behavior change
-
----
-
-## 8. ⚠️ Failure Handling
-
-If any of the following occurs:
-
-- unclear architecture impact
-- large-scale modification needed
-- risk of state inconsistency
-
-Claude MUST:
-
-1. STOP implementation
-2. Explain risk
-3. Propose alternative
-
----
-
-## 9. ⚠️ AI Error Patterns (Known Issues)
-
-Claude tends to:
-
-- rewrite entire files
-- forget build step
-- break unrelated logic
-- introduce hidden state
-
-Therefore:
-
-Claude MUST actively prevent:
-
-- unintended overwrite
-- skipped build
-- silent behavior change
-
----
-
-## 10. Testing Requirements
-
-(unchanged)
-
----
-
-## 11. Documentation Requirements
-
-(unchanged)
-
----
-
-## 12. UX Principles
-
-(unchanged)
-
----
-
-## 13. Priority Order
-
-1. Data integrity
-2. Build integrity
-3. Architecture invariants
-4. UX consistency
-5. Code simplicity
-
----
-
-## 14. Final Rule
-
-If unsure:
-→ DO NOT implement blindly
-
-Instead:
-→ ask OR propose opt
+- `docs/development/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban

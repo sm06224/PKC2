@@ -48,11 +48,27 @@ This dispatches `SELECT_ENTRY` via the shared action-binder click handler.
 
 ### Double click
 
-Double-click opens a **detached view panel** for the target entry.
+Double-click は **全領域共通で別ブラウザウィンドウ** を開く。
 
-- Supported in: **Sidebar, Calendar, Kanban**
-- Detection: action-binder `handleDblClick` matches `[data-pkc-lid][data-pkc-action="select-entry"]` inside `[data-pkc-region="sidebar"]`, `[data-pkc-region="calendar-view"]`, or `[data-pkc-region="kanban-view"]`.
-- Duplicate panels are prevented: if a panel for the same `lid` already exists, it pulses instead of creating a new one.
+| Location   | 動作 | 機能 |
+|------------|------|------|
+| Sidebar    | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
+| Calendar   | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
+| Kanban     | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
+
+**別窓エディタの機能**:
+- Markdown レンダリング表示 (markdown-it)
+- Edit ボタンで Source/Preview タブ切替
+- Save で postMessage 経由で親ウィンドウに body を送信
+- 親ウィンドウ側で BEGIN_EDIT → COMMIT_EDIT を dispatch (revision 作成)
+- 競合検出: 別窓 open 時の `updated_at` と Save 時の現在値を比較
+- 重複防止: 同一 lid の別窓が既存なら focus
+
+**検出方式**: `MouseEvent.detail >= 2` を click handler 内で検出。
+従来の `dblclick` イベントは同期 re-render による DOM 置換で到達しないため、
+click handler の `detail` プロパティによるプライマリ検出 + `dblclick` リスナーの fallback の二重構造。
+
+- readonly mode では別窓は readonly 表示（Edit ボタンなし）。
 
 ## 4. Archived / Overdue / Date Display Rules
 
@@ -132,10 +148,257 @@ Verified flow:
 
 All transitions use the same `AppState` and `Dispatcher`. No private state exists.
 
-## 8. Impact on Future DnD (Issue #62+)
+## 8. Kanban Status Move (Issue #62)
 
-When DnD is added to Kanban:
-- Status changes should dispatch `QUICK_UPDATE_ENTRY` (same as todo-status toggle)
-- `selectedLid` should update to the dragged entry on drop
-- Calendar date DnD (if added) should update `todo.date` via the same mechanism
-- No new state variables should be needed; DnD is an action dispatch, not a state concern
+### Purpose
+
+This is the pre-DnD stage. Before adding drag-and-drop, the status update path
+is established and verified via simple button clicks.
+
+### Available Actions
+
+Each Kanban card has a status move button:
+
+| Current status | Button label | Result          |
+|---------------|-------------|-----------------|
+| open          | `✓ Done`    | status → done   |
+| done          | `↺ Reopen`  | status → open   |
+
+- Buttons are hidden in readonly mode.
+- Only `todo.status` is changed. `title`, `description`, `date`, `archived` are preserved.
+
+### Update Path
+
+```
+User clicks status button
+  → action-binder: toggle-todo-status
+    → parseTodoBody → flip status → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+```
+
+This is the same path used by the Detail view's status toggle button.
+No new actions or reducers were added.
+
+### Click Collision Prevention
+
+The status button is nested inside the card element:
+
+```
+div.pkc-kanban-card [data-pkc-action="select-entry"]
+  └── button.pkc-kanban-status-btn [data-pkc-action="toggle-todo-status"]
+```
+
+The action-binder uses `closest('[data-pkc-action]')` from the event target.
+When the button is clicked, `closest` returns the button (not the card),
+so `toggle-todo-status` fires instead of `select-entry`. No `stopPropagation` needed.
+
+Double-click on the button does not trigger detached view because
+`handleDblClick` checks for `data-pkc-action="select-entry"`, which the button lacks.
+
+### Selection Behavior
+
+- Clicking the status button does NOT change `selectedLid`.
+- The `QUICK_UPDATE_ENTRY` action does not modify `selectedLid` in the reducer.
+- After status change, the entry moves to a different column but remains selected if it was selected.
+
+### Overdue Re-evaluation
+
+- When an open overdue todo is marked done → overdue is cleared (`isTodoPastDue` returns false for done).
+- When a done todo with a past date is reopened → overdue is applied.
+- This happens automatically because `isTodoPastDue` is evaluated on every render.
+
+### Operation Flow
+
+1. View Kanban board with open/done todos
+2. Click `✓ Done` on an open card → card moves to Done column
+3. Click `↺ Reopen` on a done card → card moves to Todo column
+4. Switch to Detail → entry body reflects updated status
+5. Switch to Calendar → overdue markers re-evaluated
+6. Selection is maintained throughout
+
+## 9. Kanban DnD Foundation (Issue #63)
+
+### Purpose
+
+Drag-and-drop between Kanban columns as an alternative UI for the status toggle
+established in #62. The drop action reuses the exact same update path.
+
+### Drag Source
+
+Each Kanban card is a drag source (non-readonly mode only):
+
+| Attribute                      | Value    | Purpose                |
+|-------------------------------|----------|------------------------|
+| `draggable`                   | `"true"` | Native HTML5 DnD       |
+| `data-pkc-kanban-draggable`   | `"true"` | Kanban DnD identifier  |
+
+In readonly mode, neither attribute is set. Cards remain non-draggable.
+
+### Drop Target
+
+Each column list is a drop target:
+
+| Attribute                      | Value            | Purpose              |
+|-------------------------------|------------------|----------------------|
+| `data-pkc-kanban-drop-target` | `"open"` / `"done"` | Target status on drop |
+
+### Update Path
+
+```
+User drags card to different column
+  → handleKanbanDrop: read target column status
+    → parseTodoBody → set status to target → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+    → dispatch SELECT_ENTRY { lid }
+```
+
+This is the same `QUICK_UPDATE_ENTRY` path used by the status move button (#62).
+If the card is dropped on the same column (no status change), no update is dispatched.
+
+### Visual Feedback
+
+| State      | Attribute                        | CSS effect                           |
+|-----------|----------------------------------|--------------------------------------|
+| Dragging  | `data-pkc-dragging="true"` on card | Semi-transparent (opacity: 0.4), dashed border |
+| Drag over | `data-pkc-drag-over="true"` on list | Green tinted background, dashed outline |
+
+Both attributes are cleaned up in `handleKanbanDragEnd`.
+
+### Selection Behavior
+
+- Dropping a card dispatches `SELECT_ENTRY` for the dragged entry.
+- This updates `selectedLid` and is reflected in sidebar and all views.
+
+### Isolation from Sidebar DnD
+
+Kanban DnD uses separate attributes (`data-pkc-kanban-*`) and separate handler
+functions (`handleKanbanDrag*`) from sidebar tree DnD (`data-pkc-draggable` /
+`data-pkc-drop-target`). The two systems do not interfere.
+
+**Exception**: Kanban drop handler also accepts `calendarDraggedLid` for
+cross-view DnD (Issue #68). This is a controlled bridge, not a state merge.
+
+### Scope Boundaries
+
+Not implemented in this issue:
+- Column reorder (columns are fixed: Todo / Done)
+- Touch support / pointer events
+- Custom drag preview / ghost image
+- Drag between different containers
+
+## 10. Calendar Date Move Foundation (Issue #64)
+
+### Purpose
+
+Drag-and-drop within the Calendar view to move a Todo to a different date.
+This is the date-axis counterpart to Kanban DnD (#63), which handles the status axis.
+Both use the same `QUICK_UPDATE_ENTRY` path — only the field being updated differs.
+
+### Drag Source
+
+Each Calendar todo item is a drag source (non-readonly mode only):
+
+| Attribute                        | Value    | Purpose                  |
+|---------------------------------|----------|--------------------------|
+| `draggable`                     | `"true"` | Native HTML5 DnD         |
+| `data-pkc-calendar-draggable`   | `"true"` | Calendar DnD identifier  |
+
+In readonly mode, neither attribute is set.
+
+### Drop Target
+
+Each day cell (non-empty, i.e. a real date) is a drop target:
+
+| Attribute                        | Value          | Purpose              |
+|---------------------------------|----------------|----------------------|
+| `data-pkc-calendar-drop-target` | `"true"`       | Accepts drops        |
+| `data-pkc-date`                 | `"YYYY-MM-DD"` | Target date on drop  |
+
+Empty cells (outside the current month) do not have drop target attributes.
+
+### Update Path
+
+```
+User drags todo item to a different day cell
+  → handleCalendarDrop: read target date from data-pkc-date
+    → parseTodoBody → set date to target → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+    → dispatch SELECT_ENTRY { lid }
+```
+
+If the item is dropped on the same date (no change), no update is dispatched.
+
+### Visual Feedback
+
+| State      | Attribute                             | CSS effect                           |
+|-----------|---------------------------------------|--------------------------------------|
+| Dragging  | `data-pkc-dragging="true"` on item    | Semi-transparent (opacity: 0.4), dashed border |
+| Drag over | `data-pkc-drag-over="true"` on cell   | Green tinted background, dashed outline |
+
+Both attributes are cleaned up in `handleCalendarDragEnd`.
+
+### Selection Behavior
+
+- Dropping an item dispatches `SELECT_ENTRY` for the dragged entry.
+- `selectedLid` is updated and reflected across all views.
+
+### Overdue Re-evaluation
+
+- Moving an open overdue todo to a future date clears overdue status.
+- Moving an open todo to a past date triggers overdue status.
+- This happens automatically because `isTodoPastDue` is evaluated on every render.
+
+### Click / Double-Click Coexistence
+
+- Calendar todo items have both `data-pkc-action="select-entry"` and `draggable`.
+- Single click triggers `select-entry` via the action-binder click handler.
+- Double-click triggers detached panel via `handleDblClick`.
+- Drag starts only fire after pointer movement (native browser behavior), so they do not interfere with click/dblclick.
+
+### Isolation from Other DnD Systems
+
+Calendar DnD uses `data-pkc-calendar-*` attributes and `handleCalendarDrag*` functions.
+Kanban DnD uses `data-pkc-kanban-*` / `handleKanbanDrag*`.
+Sidebar DnD uses `data-pkc-draggable` / `data-pkc-drop-target`.
+Each system has its own `draggedLid` variable. No cross-interference.
+
+**Exception**: Calendar drop handler also accepts `kanbanDraggedLid` for
+cross-view DnD (Issue #66). This is a controlled bridge, not a state merge.
+
+### User Operation Flow
+
+1. Open Calendar view with dated todos
+2. Drag a todo item from its current date cell
+3. Drop on a different date cell
+4. The todo's date updates to the target date
+5. The item appears in the new cell on re-render
+6. Switch to Detail → entry body reflects updated date
+7. Switch to Kanban → card shows new date, overdue re-evaluated
+8. Selection is maintained throughout
+
+### Scope Boundaries
+
+Not implemented in this issue:
+- Month-crossing auto-navigation (drop only within visible month)
+- Date removal (cannot drop to "unset date")
+- Time-of-day support
+- Multiple todo batch move
+- Touch drag support
+- Cross-view DnD (e.g. Kanban card → Calendar cell)
+
+### Impact on Future Cross-View DnD
+
+### Cross-View DnD (Issue #66)
+
+Kanban → Calendar cross-view DnD is implemented via drag-over-tab view switching.
+See `docs/development/todo-cross-view-move-strategy.md` §8 Phase 1 for details.
+
+- Calendar drop handler accepts `kanbanDraggedLid` as a fallback source
+- Update path is `QUICK_UPDATE_ENTRY` (date only, no status change)
+- No unified `draggedLid` — the bridge is a minimal `??` fallback in the drop handler

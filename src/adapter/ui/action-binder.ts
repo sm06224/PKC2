@@ -5,10 +5,11 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
-import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
+import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
-import { renderContextMenu, renderDetachedPanel } from './renderer';
+import { renderContextMenu } from './renderer';
+import { openEntryWindow } from './entry-window';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -35,7 +36,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     switch (action) {
       case 'select-entry':
-        if (lid) dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        if (!lid) break;
+        // Double-click detection via MouseEvent.detail.
+        // Normal dblclick event is unreliable because SELECT_ENTRY triggers
+        // synchronous re-render, removing the target element from DOM before
+        // the dblclick event can bubble to the delegated listener on root.
+        if ((e as MouseEvent).detail >= 2) {
+          handleDblClickAction(target, lid);
+        } else {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        }
         break;
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
@@ -151,6 +161,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           status: todo.status === 'done' ? 'open' : 'done',
         });
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        break;
+      }
+      case 'toggle-sandbox-attr': {
+        if (!lid) break;
+        const sandboxAttr = target.getAttribute('data-pkc-sandbox-attr');
+        if (!sandboxAttr) break;
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        const currentAllow = att.sandbox_allow ?? [];
+        const checked = (target as HTMLInputElement).checked;
+        const newAllow = checked
+          ? [...currentAllow, sandboxAttr]
+          : currentAllow.filter((a) => a !== sandboxAttr);
+        const updatedBody = serializeAttachmentBody({ ...att, sandbox_allow: newAllow });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         break;
       }
       case 'move-to-folder': {
@@ -290,7 +317,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
-  // ── DnD handlers for sidebar tree ──
+  // ── DnD handlers ──
+  // Three isolated DnD systems: sidebar (relations), kanban (status), calendar (date).
+  // See docs/development/todo-cross-view-move-strategy.md for design rationale.
+
+  // ── DnD: sidebar tree ──
 
   let draggedLid: string | null = null;
 
@@ -374,6 +405,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     draggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
   function handleDragEnd(e: DragEvent): void {
@@ -381,11 +413,257 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
     if (target) target.removeAttribute('data-pkc-dragging');
 
-    // Remove any lingering drag-over highlights
-    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    // Remove any lingering drag-over highlights on sidebar drop targets
+    const overEls = root.querySelectorAll('[data-pkc-drop-target][data-pkc-drag-over]');
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     draggedLid = null;
+  }
+
+  // ── DnD: kanban board ──
+
+  let kanbanDraggedLid: string | null = null;
+
+  function handleKanbanDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    kanbanDraggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleKanbanDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    // Accept drops from kanban-internal drag OR cross-view calendar drag
+    if (!dropTarget || (!kanbanDraggedLid && !calendarDraggedLid)) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleKanbanDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleKanbanDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    // Accept drops from kanban-internal drag OR cross-view calendar drag
+    const lid = kanbanDraggedLid ?? calendarDraggedLid;
+    if (!dropTarget || !lid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
+    if (!targetStatus) return;
+
+    const entry = state.container.entries.find((e) => e.lid === lid);
+    if (!entry) return;
+
+    const todo = parseTodoBody(entry.body);
+
+    // Only update if status actually changes
+    if (todo.status !== targetStatus) {
+      const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+    }
+
+    // Select the dragged entry
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+
+    // Clean up both possible drag sources
+    kanbanDraggedLid = null;
+    calendarDraggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
+  }
+
+  function handleKanbanDragEnd(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights on kanban columns
+    const overEls = root.querySelectorAll('[data-pkc-kanban-drop-target][data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    kanbanDraggedLid = null;
+  }
+
+  // ── DnD: calendar date move ──
+
+  let calendarDraggedLid: string | null = null;
+
+  function handleCalendarDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    calendarDraggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleCalendarDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    // Accept drops from calendar-internal drag OR cross-view kanban drag
+    if (!dropTarget || (!calendarDraggedLid && !kanbanDraggedLid)) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleCalendarDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleCalendarDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    // Accept drops from calendar-internal drag OR cross-view kanban drag
+    const lid = calendarDraggedLid ?? kanbanDraggedLid;
+    if (!dropTarget || !lid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const targetDate = dropTarget.getAttribute('data-pkc-date');
+    if (!targetDate) return;
+
+    const entry = state.container.entries.find((e) => e.lid === lid);
+    if (!entry) return;
+
+    const todo = parseTodoBody(entry.body);
+
+    // Only update if date actually changes
+    if (todo.date !== targetDate) {
+      const updated = serializeTodoBody({ ...todo, date: targetDate });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+    }
+
+    // Select the dragged entry
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+
+    // Clean up both possible drag sources
+    calendarDraggedLid = null;
+    kanbanDraggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
+  }
+
+  function handleCalendarDragEnd(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights on calendar cells
+    const overEls = root.querySelectorAll('[data-pkc-calendar-drop-target][data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    calendarDraggedLid = null;
+  }
+
+  // ── DnD: cleanup helper ──
+  // Clears all drag state, timers, and visual attributes across all DnD systems.
+  // Called as a safety net from fallback handlers when normal cleanup may not fire.
+  // See docs/development/dnd-cleanup-robustness.md for rationale.
+
+  function clearAllDragState(): void {
+    draggedLid = null;
+    kanbanDraggedLid = null;
+    calendarDraggedLid = null;
+    if (viewSwitchTimer) {
+      clearTimeout(viewSwitchTimer);
+      viewSwitchTimer = null;
+    }
+    // Remove all lingering visual drag state
+    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+    const draggingEls = root.querySelectorAll('[data-pkc-dragging]');
+    for (const el of draggingEls) el.removeAttribute('data-pkc-dragging');
+  }
+
+  // ── DnD: drag-over-tab view switch ──
+  // When dragging over a non-active view mode button, switch views after a delay.
+  // This enables cross-view DnD (e.g. Kanban card → Calendar day cell).
+
+  let viewSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function handleViewSwitchDragOver(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (!btn) return;
+
+    // Only activate when a drag is in progress
+    if (!draggedLid && !kanbanDraggedLid && !calendarDraggedLid) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    btn.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleViewSwitchDragEnter(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (!btn) return;
+    if (!draggedLid && !kanbanDraggedLid && !calendarDraggedLid) return;
+
+    // Clear any existing timer
+    if (viewSwitchTimer) clearTimeout(viewSwitchTimer);
+
+    const targetMode = btn.getAttribute('data-pkc-view-switch') as 'detail' | 'calendar' | 'kanban';
+    viewSwitchTimer = setTimeout(() => {
+      viewSwitchTimer = null;
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: targetMode });
+    }, 600);
+  }
+
+  function handleViewSwitchDragLeave(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (btn) {
+      btn.removeAttribute('data-pkc-drag-over');
+    }
+    if (viewSwitchTimer) {
+      clearTimeout(viewSwitchTimer);
+      viewSwitchTimer = null;
+    }
+  }
+
+  // ── DnD: fallback cleanup ──
+  // Safety nets for cases where normal dragend doesn't fire on root
+  // (e.g. source element removed from DOM during cross-view drag).
+
+  function handleDocumentDragEnd(): void {
+    // document-level dragend: clear all drag state as fallback
+    clearAllDragState();
+  }
+
+  function handleStaleDragCleanup(e: MouseEvent): void {
+    // If a mousedown fires while drag state is still set, the previous drag
+    // ended without proper cleanup (e.g. cross-view source DOM removal).
+    // Clean up stale state so the new interaction isn't affected.
+    if (draggedLid || kanbanDraggedLid || calendarDraggedLid || viewSwitchTimer) {
+      // Don't clean up if this mousedown is part of an ongoing drag
+      // (mousedown during drag doesn't normally happen, but guard anyway)
+      if (!(e as unknown as DragEvent).dataTransfer) {
+        clearAllDragState();
+      }
+    }
   }
 
   // ── Context menu handler ──
@@ -481,52 +759,53 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
   }
 
-  // ── Double-click handler for detached view ──
+  // ── Double-click action handler ──
+  //
+  // Called from handleClick when MouseEvent.detail >= 2.
+  // Sidebar: opens detached read-only panel.
+  // Calendar/Kanban: dispatches BEGIN_EDIT (editing in detail view).
 
-  function handleDblClick(e: MouseEvent): void {
-    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
-    if (!entryItem) return;
-
-    // Allow double-click in sidebar, calendar, or kanban
-    const validRegion = entryItem.closest('[data-pkc-region="sidebar"], [data-pkc-region="calendar-view"], [data-pkc-region="kanban-view"]');
-    if (!validRegion) return;
-
+  function handleDblClickAction(_target: HTMLElement, lid: string): void {
     const state = dispatcher.getState();
     if (!state.container) return;
-
-    const lid = entryItem.getAttribute('data-pkc-lid');
-    if (!lid) return;
 
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
+    // Select the entry first
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+
+    // Open in a separate browser window with markdown rendering + edit capability
+    openEntryWindow(entry, !!state.readonly, (saveLid, title, body, openedAt) => {
+      const currentState = dispatcher.getState();
+      if (!currentState.container) return;
+
+      // Conflict detection: check if entry was modified after the window opened
+      const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
+      if (currentEntry && currentEntry.updated_at !== openedAt) {
+        // Entry was modified in the parent window after the child window opened
+        import('./entry-window').then(({ notifyConflict }) => {
+          notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
+        });
+      }
+
+      // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
+      dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
+    });
+  }
+
+  // ── dblclick fallback (secondary path) ──
+  // Primary double-click detection is in handleClick via MouseEvent.detail >= 2.
+  // This fallback catches cases where the dblclick event reaches root
+  // (e.g., when the entry was already selected and re-render didn't replace DOM).
+  function handleDblClick(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid) return;
     e.preventDefault();
-
-    // Don't open duplicate detached panel for the same entry
-    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`) as HTMLElement | null;
-    if (existing) {
-      // Bring to front with visual pulse
-      existing.remove();
-      root.appendChild(existing);
-      existing.style.animation = 'none';
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      existing.offsetHeight; // force reflow
-      existing.style.animation = 'pkc-panel-pulse 300ms ease-out';
-      return;
-    }
-
-    const panel = renderDetachedPanel(entry, state.container);
-
-    // Offset position slightly for each open panel to avoid stacking
-    const openPanels = root.querySelectorAll('[data-pkc-region="detached-panel"]');
-    const offset = openPanels.length * 24;
-    panel.style.top = `${80 + offset}px`;
-    panel.style.right = `${16 + offset}px`;
-
-    root.appendChild(panel);
-
-    // Populate image previews for attachment entries
-    populateDetachedPreview(panel, lid, dispatcher);
+    handleDblClickAction(entryItem, lid);
   }
 
   // ── Resize handle logic ──
@@ -585,16 +864,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
+  root.addEventListener('dragstart', handleKanbanDragStart);
+  root.addEventListener('dragstart', handleCalendarDragStart);
   root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragover', handleKanbanDragOver);
+  root.addEventListener('dragover', handleCalendarDragOver);
+  root.addEventListener('dragover', handleViewSwitchDragOver);
   root.addEventListener('dragover', handleFileDropOver);
+  root.addEventListener('dragenter', handleViewSwitchDragEnter);
   root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('dragleave', handleKanbanDragLeave);
+  root.addEventListener('dragleave', handleCalendarDragLeave);
+  root.addEventListener('dragleave', handleViewSwitchDragLeave);
   root.addEventListener('dragleave', handleFileDropLeave);
   root.addEventListener('drop', handleDrop);
+  root.addEventListener('drop', handleKanbanDrop);
+  root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('dragend', handleDragEnd);
+  root.addEventListener('dragend', handleKanbanDragEnd);
+  root.addEventListener('dragend', handleCalendarDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
+  root.addEventListener('mousedown', handleStaleDragCleanup);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
+  document.addEventListener('dragend', handleDocumentDragEnd);
 
   // Return cleanup function
   return () => {
@@ -604,16 +898,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('change', handleChange);
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
+    root.removeEventListener('dragstart', handleKanbanDragStart);
+    root.removeEventListener('dragstart', handleCalendarDragStart);
     root.removeEventListener('dragover', handleDragOver);
+    root.removeEventListener('dragover', handleKanbanDragOver);
+    root.removeEventListener('dragover', handleCalendarDragOver);
+    root.removeEventListener('dragover', handleViewSwitchDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
+    root.removeEventListener('dragenter', handleViewSwitchDragEnter);
     root.removeEventListener('dragleave', handleDragLeave);
+    root.removeEventListener('dragleave', handleKanbanDragLeave);
+    root.removeEventListener('dragleave', handleCalendarDragLeave);
+    root.removeEventListener('dragleave', handleViewSwitchDragLeave);
     root.removeEventListener('dragleave', handleFileDropLeave);
     root.removeEventListener('drop', handleDrop);
+    root.removeEventListener('drop', handleKanbanDrop);
+    root.removeEventListener('drop', handleCalendarDrop);
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('dragend', handleDragEnd);
+    root.removeEventListener('dragend', handleKanbanDragEnd);
+    root.removeEventListener('dragend', handleCalendarDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
+    root.removeEventListener('mousedown', handleStaleDragCleanup);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
+    document.removeEventListener('dragend', handleDocumentDragEnd);
+    clearAllDragState();
   };
 }
 
@@ -681,14 +991,7 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
   const resolved = resolveAttachmentData(lid, dispatcher);
   if (!resolved) return;
 
-  const byteChars = atob(resolved.data);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) {
-    bytes[i] = byteChars.charCodeAt(i);
-  }
-  const blob = new Blob([bytes], { type: resolved.mime });
-  const url = URL.createObjectURL(blob);
-
+  const url = createBlobUrl(resolved);
   const a = document.createElement('a');
   a.href = url;
   a.download = resolved.name;
@@ -707,8 +1010,8 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
 export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
   const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
   for (const el of previews) {
-    // Skip if already populated
-    if (el.querySelector('img')) continue;
+    // Skip if already populated (has child elements beyond placeholder)
+    if (el.querySelector('img, video, audio, iframe, object')) continue;
 
     const lid = el.getAttribute('data-pkc-lid');
     if (!lid) continue;
@@ -716,31 +1019,136 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const resolved = resolveAttachmentData(lid, dispatcher);
     if (!resolved) continue;
 
-    el.innerHTML = '';
-    const img = document.createElement('img');
-    img.className = 'pkc-attachment-preview-img';
-    img.src = `data:${resolved.mime};base64,${resolved.data}`;
-    img.alt = resolved.name;
-    el.appendChild(img);
+    // Read sandbox_allow from the entry body for HTML previews
+    const entryForPreview = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+    const sandboxAllow = entryForPreview
+      ? (parseAttachmentBody(entryForPreview.body).sandbox_allow ?? [])
+      : [];
+    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
 
 /**
- * Populate image preview in a detached panel for attachment entries.
+ * Create a Blob URL from resolved base64 attachment data.
  */
-function populateDetachedPreview(panel: HTMLElement, lid: string, dispatcher: Dispatcher): void {
-  const previewEl = panel.querySelector<HTMLElement>('[data-pkc-region="detached-attachment-preview"]');
-  if (!previewEl) return;
+function createBlobUrl(resolved: { data: string; mime: string }): string {
+  const byteChars = atob(resolved.data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: resolved.mime });
+  return URL.createObjectURL(blob);
+}
 
-  const resolved = resolveAttachmentData(lid, dispatcher);
-  if (!resolved) return;
+/**
+ * Populate a preview element based on MIME type classification.
+ */
+function populatePreviewElement(
+  el: HTMLElement,
+  resolved: { data: string; mime: string; name: string },
+  imgClass: string,
+  sandboxAllow: string[] = [],
+): void {
+  const previewType = classifyPreviewType(resolved.mime);
+  el.innerHTML = '';
 
-  previewEl.innerHTML = '';
-  const img = document.createElement('img');
-  img.className = 'pkc-detached-preview-img';
-  img.src = `data:${resolved.mime};base64,${resolved.data}`;
-  img.alt = resolved.name;
-  previewEl.appendChild(img);
+  switch (previewType) {
+    case 'image': {
+      const img = document.createElement('img');
+      img.className = imgClass;
+      img.src = `data:${resolved.mime};base64,${resolved.data}`;
+      img.alt = resolved.name;
+      el.appendChild(img);
+      break;
+    }
+
+    case 'pdf': {
+      const blobUrl = createBlobUrl(resolved);
+      const obj = document.createElement('object');
+      obj.className = 'pkc-attachment-pdf-preview';
+      obj.type = 'application/pdf';
+      obj.data = blobUrl;
+      obj.setAttribute('data-pkc-blob-url', blobUrl);
+      const fallback = document.createElement('p');
+      fallback.textContent = 'PDF preview not available in this browser.';
+      obj.appendChild(fallback);
+      el.appendChild(obj);
+      // Open in new window button
+      el.appendChild(createOpenButton(blobUrl, resolved.name, '📄 Open PDF in New Window'));
+      break;
+    }
+
+    case 'video': {
+      const blobUrl = createBlobUrl(resolved);
+      const video = document.createElement('video');
+      video.className = 'pkc-attachment-video-preview';
+      video.controls = true;
+      video.preload = 'metadata';
+      video.setAttribute('data-pkc-blob-url', blobUrl);
+      const source = document.createElement('source');
+      source.src = blobUrl;
+      source.type = resolved.mime;
+      video.appendChild(source);
+      el.appendChild(video);
+      break;
+    }
+
+    case 'audio': {
+      const blobUrl = createBlobUrl(resolved);
+      const audio = document.createElement('audio');
+      audio.className = 'pkc-attachment-audio-preview';
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.setAttribute('data-pkc-blob-url', blobUrl);
+      const source = document.createElement('source');
+      source.src = blobUrl;
+      source.type = resolved.mime;
+      audio.appendChild(source);
+      el.appendChild(audio);
+      break;
+    }
+
+    case 'html': {
+      // Sandboxed iframe for HTML preview
+      const blobUrl = createBlobUrl(resolved);
+      const iframe = document.createElement('iframe');
+      iframe.className = 'pkc-attachment-html-preview';
+      // Apply user-configured sandbox permissions
+      // 'allow-same-origin' is always added as a baseline
+      iframe.sandbox.add('allow-same-origin');
+      for (const attr of sandboxAllow) {
+        iframe.sandbox.add(attr);
+      }
+      iframe.src = blobUrl;
+      iframe.setAttribute('data-pkc-blob-url', blobUrl);
+      iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
+      el.appendChild(iframe);
+      // Open in new window button
+      el.appendChild(createOpenButton(blobUrl, resolved.name, '🌐 Open HTML in New Window'));
+      // Sandbox status note
+      const activePerms = ['allow-same-origin', ...sandboxAllow.filter((a) => a !== 'allow-same-origin')];
+      const sandboxNote = document.createElement('div');
+      sandboxNote.className = 'pkc-attachment-sandbox-note';
+      sandboxNote.textContent = `Sandbox: ${activePerms.join(', ')}`;
+      el.appendChild(sandboxNote);
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+function createOpenButton(blobUrl: string, name: string, label: string): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-attachment-open-btn';
+  btn.textContent = label;
+  btn.setAttribute('title', `Open ${name} in a new browser window`);
+  btn.addEventListener('click', () => {
+    window.open(blobUrl, '_blank', 'noopener');
+  });
+  return btn;
 }
 
 /**

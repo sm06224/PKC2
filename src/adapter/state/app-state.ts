@@ -179,6 +179,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         phase: 'editing',
         selectedLid: action.lid,
         editingLid: action.lid,
+        viewMode: 'detail',
       };
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
@@ -194,6 +195,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         selectedLid: lid,
         phase: 'editing',
         editingLid: lid,
+        viewMode: 'detail',
       };
       return {
         state: next,

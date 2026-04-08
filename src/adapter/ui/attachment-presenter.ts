@@ -22,6 +22,7 @@ export interface AttachmentBody {
   size?: number;
   asset_key?: string;
   data?: string; // legacy: base64-encoded. new format: absent
+  sandbox_allow?: string[]; // HTML sandbox permissions, e.g. ['allow-scripts', 'allow-forms']
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -33,6 +34,9 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       size: typeof parsed.size === 'number' ? parsed.size : undefined,
       asset_key: typeof parsed.asset_key === 'string' ? parsed.asset_key : undefined,
       data: typeof parsed.data === 'string' ? parsed.data : undefined,
+      sandbox_allow: Array.isArray(parsed.sandbox_allow)
+        ? parsed.sandbox_allow.filter((v): v is string => typeof v === 'string')
+        : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
@@ -49,8 +53,20 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   if (att.asset_key !== undefined) obj.asset_key = att.asset_key;
   // Include data only if present (legacy round-trip support)
   if (att.data !== undefined) obj.data = att.data;
+  if (att.sandbox_allow !== undefined && att.sandbox_allow.length > 0) obj.sandbox_allow = att.sandbox_allow;
   return JSON.stringify(obj);
 }
+
+/** Valid sandbox allow attributes that users can toggle. */
+export const SANDBOX_ATTRIBUTES = [
+  'allow-scripts',
+  'allow-forms',
+  'allow-popups',
+  'allow-modals',
+  'allow-same-origin',
+] as const;
+
+export type SandboxAttribute = typeof SANDBOX_ATTRIBUTES[number];
 
 /** Estimate decoded byte size from base64 string length. */
 export function estimateSize(base64: string): number {
@@ -95,8 +111,41 @@ export function isLegacyFormat(att: AttachmentBody): boolean {
 /**
  * Check if a MIME type is an image type that browsers can display.
  */
-function isPreviewableImage(mime: string): boolean {
+export function isPreviewableImage(mime: string): boolean {
   return /^image\/(png|jpeg|gif|webp|svg\+xml|bmp|ico)$/i.test(mime);
+}
+
+/**
+ * Check if a MIME type is a video/audio type that browsers can play.
+ */
+export function isPreviewableMedia(mime: string): boolean {
+  return /^(video\/(mp4|webm|ogg)|audio\/(mp3|mpeg|ogg|wav|webm))$/i.test(mime);
+}
+
+/**
+ * Check if a MIME type is PDF.
+ */
+export function isPdf(mime: string): boolean {
+  return mime === 'application/pdf';
+}
+
+/**
+ * Check if a MIME type is HTML.
+ */
+export function isHtml(mime: string): boolean {
+  return /^text\/html$/i.test(mime);
+}
+
+/**
+ * Classify a MIME type for preview rendering.
+ */
+export function classifyPreviewType(mime: string): 'image' | 'pdf' | 'video' | 'audio' | 'html' | 'none' {
+  if (isPreviewableImage(mime)) return 'image';
+  if (isPdf(mime)) return 'pdf';
+  if (/^video\//i.test(mime)) return 'video';
+  if (/^audio\//i.test(mime)) return 'audio';
+  if (isHtml(mime)) return 'html';
+  return 'none';
 }
 
 export const attachmentPresenter: DetailPresenter = {
@@ -169,14 +218,14 @@ export const attachmentPresenter: DetailPresenter = {
 
     root.appendChild(card);
 
-    // Image preview (inline, for previewable image types)
-    if (isPreviewableImage(att.mime) && dataAvailable && !dataStripped) {
+    // Preview area (deferred — action-binder populates with actual data)
+    const previewType = classifyPreviewType(att.mime);
+    if (previewType !== 'none' && dataAvailable && !dataStripped) {
       const previewContainer = document.createElement('div');
       previewContainer.className = 'pkc-attachment-preview';
       previewContainer.setAttribute('data-pkc-region', 'attachment-preview');
       previewContainer.setAttribute('data-pkc-lid', entry.lid);
-      // Actual image rendering is deferred — action-binder will populate
-      // with the real data from container.assets when the element appears
+      previewContainer.setAttribute('data-pkc-preview-type', previewType);
       const placeholder = document.createElement('div');
       placeholder.className = 'pkc-attachment-preview-placeholder';
       placeholder.textContent = 'Loading preview…';
