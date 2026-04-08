@@ -325,6 +325,17 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   importBtn.textContent = 'Import';
   group.appendChild(importBtn);
 
+  const sep3 = createElement('span', 'pkc-eip-sep');
+  sep3.textContent = '|';
+  group.appendChild(sep3);
+
+  // Clear local data (workspace reset)
+  const clearBtn = createElement('button', 'pkc-btn pkc-btn-create pkc-btn-danger');
+  clearBtn.setAttribute('data-pkc-action', 'clear-local-data');
+  clearBtn.setAttribute('title', 'Clear browser storage and reload from HTML');
+  clearBtn.textContent = 'Reset';
+  group.appendChild(clearBtn);
+
   return group;
 }
 

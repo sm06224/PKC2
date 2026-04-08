@@ -64,6 +64,8 @@ export interface AppState {
   exportMutability: ExportMutability | null;
   /** True when running as a readonly artifact. Suppresses edit UI. */
   readonly: boolean;
+  /** True when container was loaded from a Light export (no assets). Suppresses IDB save. */
+  lightSource: boolean;
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
@@ -101,6 +103,7 @@ export function createInitialState(): AppState {
     exportMode: null,
     exportMutability: null,
     readonly: false,
+    lightSource: false,
     showArchived: false,
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
@@ -148,6 +151,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         container: action.container,
         embedded: action.embedded ?? false,
         readonly: action.readonly ?? false,
+        lightSource: action.lightSource ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -366,6 +370,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         editingLid: null,
         error: null,
         importPreview: null,
+        lightSource: false,
       };
       const cid = imported?.meta?.container_id ?? 'unknown';
       return {
@@ -447,6 +452,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container: rehydrated,
         readonly: false,
+        lightSource: false,
       };
       return {
         state: next,
@@ -518,6 +524,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         container: action.container,
         embedded: action.embedded ?? state.embedded,
         readonly: action.readonly ?? false,
+        lightSource: action.lightSource ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -531,6 +538,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         selectedLid: null,
         editingLid: null,
         error: null,
+        lightSource: false,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
       return {
