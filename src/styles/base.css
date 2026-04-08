@@ -1525,6 +1525,14 @@
   color: var(--c-accent-fg);
 }
 
+.pkc-attachment-preview-mode {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius);
+  background: var(--c-hover);
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+}
 .pkc-attachment-stripped {
   font-size: 0.7rem;
   color: var(--c-warn);
@@ -1535,6 +1543,15 @@
   margin-top: 0.25rem;
 }
 
+.pkc-attachment-no-preview {
+  font-size: 0.8rem;
+  color: var(--c-muted);
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  background: var(--c-surface);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+}
 .pkc-attachment-preview {
   margin-top: 0.5rem;
 }

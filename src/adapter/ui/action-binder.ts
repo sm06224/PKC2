@@ -1079,6 +1079,8 @@ function populatePreviewElement(
       img.src = `data:${resolved.mime};base64,${resolved.data}`;
       img.alt = resolved.name;
       el.appendChild(img);
+      // Open image in new window via Blob URL (created on click, revoked after)
+      el.appendChild(createLazyOpenButton(resolved, '🖼 Open Image in New Window'));
       break;
     }
 
@@ -1110,6 +1112,8 @@ function populatePreviewElement(
       source.type = resolved.mime;
       video.appendChild(source);
       el.appendChild(video);
+      // Open video in new window
+      el.appendChild(createOpenButton(blobUrl, resolved.name, '🎬 Open Video in New Window'));
       break;
     }
 
@@ -1166,6 +1170,24 @@ function createOpenButton(blobUrl: string, name: string, label: string): HTMLEle
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
     window.open(blobUrl, '_blank', 'noopener');
+  });
+  return btn;
+}
+
+/**
+ * Create an "Open in New Window" button that creates a Blob URL on-click.
+ * Used for images (which use data URIs inline, not persistent Blob URLs).
+ * The Blob URL is revoked shortly after opening to prevent leaks.
+ */
+function createLazyOpenButton(resolved: { data: string; mime: string; name: string }, label: string): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-attachment-open-btn';
+  btn.textContent = label;
+  btn.setAttribute('title', `Open ${resolved.name} in a new browser window`);
+  btn.addEventListener('click', () => {
+    const url = createBlobUrl(resolved);
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 500);
   });
   return btn;
 }
