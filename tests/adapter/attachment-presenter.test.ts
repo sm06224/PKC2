@@ -16,6 +16,7 @@ import {
   isPreviewableMedia,
   isPdf,
   isHtml,
+  isSvg,
   SANDBOX_ATTRIBUTES,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
@@ -430,16 +431,32 @@ describe('Attachment Presenter', () => {
 
 describe('MIME type classification', () => {
   describe('isPreviewableImage', () => {
-    it('recognizes standard image types', () => {
+    it('recognizes safe image types', () => {
       expect(isPreviewableImage('image/png')).toBe(true);
       expect(isPreviewableImage('image/jpeg')).toBe(true);
       expect(isPreviewableImage('image/gif')).toBe(true);
       expect(isPreviewableImage('image/webp')).toBe(true);
-      expect(isPreviewableImage('image/svg+xml')).toBe(true);
+    });
+    it('excludes SVG (treated as sandboxed content)', () => {
+      expect(isPreviewableImage('image/svg+xml')).toBe(false);
     });
     it('rejects non-image types', () => {
       expect(isPreviewableImage('application/pdf')).toBe(false);
       expect(isPreviewableImage('video/mp4')).toBe(false);
+    });
+  });
+
+  describe('isSvg', () => {
+    it('recognizes SVG MIME type', () => {
+      expect(isSvg('image/svg+xml')).toBe(true);
+    });
+    it('is case insensitive', () => {
+      expect(isSvg('Image/SVG+XML')).toBe(true);
+    });
+    it('rejects non-SVG types', () => {
+      expect(isSvg('image/png')).toBe(false);
+      expect(isSvg('text/html')).toBe(false);
+      expect(isSvg('application/svg')).toBe(false);
     });
   });
 
@@ -477,8 +494,12 @@ describe('MIME type classification', () => {
   });
 
   describe('classifyPreviewType', () => {
-    it('classifies images', () => {
+    it('classifies safe images', () => {
       expect(classifyPreviewType('image/png')).toBe('image');
+      expect(classifyPreviewType('image/jpeg')).toBe('image');
+    });
+    it('classifies SVG as html (sandboxed)', () => {
+      expect(classifyPreviewType('image/svg+xml')).toBe('html');
     });
     it('classifies PDF', () => {
       expect(classifyPreviewType('application/pdf')).toBe('pdf');

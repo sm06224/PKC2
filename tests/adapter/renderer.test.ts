@@ -4621,6 +4621,24 @@ describe('Sandbox Control UI in Meta Pane', () => {
       expect(cb.getAttribute('data-pkc-sandbox-attr')).toBeTruthy();
     }
   });
+
+  it('renders sandbox control section for SVG attachment', () => {
+    const svgContainer: Container = {
+      meta: { container_id: 'test-svg', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+      entries: [{
+        lid: 'svg1', title: 'SVG File', body: JSON.stringify({ name: 'icon.svg', mime: 'image/svg+xml', asset_key: 'ast-svg', size: 100 }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-svg': 'PHN2Zz48L3N2Zz4=' },
+    };
+    render(baseState({ container: svgContainer, selectedLid: 'svg1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).not.toBeNull();
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
+    expect(checkboxes.length).toBe(5);
+  });
 });
 
 // ── Light mode badge + edit restriction UI ──

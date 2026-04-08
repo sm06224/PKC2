@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType, isHtml, SANDBOX_ATTRIBUTES } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -1269,7 +1269,7 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   // Sandbox control section for HTML attachments
   if (entry.archetype === 'attachment') {
     const att = parseAttachmentBody(entry.body);
-    if (isHtml(att.mime)) {
+    if (isHtml(att.mime) || isSvg(att.mime)) {
       const sandboxSection = createElement('div', 'pkc-sandbox-control');
       sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
       sandboxSection.setAttribute('data-pkc-lid', entry.lid);
