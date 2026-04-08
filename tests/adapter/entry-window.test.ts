@@ -43,11 +43,11 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
 }
 
 /** Helper: open an entry window and return the captured HTML. */
-async function openAndCapture(readonly = false) {
+async function openAndCapture(readonly = false, overrides: Record<string, unknown> = {}) {
   capturedHtml = '';
   setupWindowOpenMock();
   const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
-  openEntryWindow(makeEntry() as never, readonly, vi.fn());
+  openEntryWindow(makeEntry(overrides) as never, readonly, vi.fn());
   return capturedHtml;
 }
 
@@ -206,6 +206,141 @@ describe('Entry Window', () => {
       expect(html).not.toContain('class="body-view"');
       expect(html).not.toContain('class="body-edit"');
       expect(html).not.toContain('class="title-input"');
+    });
+  });
+
+  // ── Archetype-aware display ──
+
+  describe('Text archetype', () => {
+    it('renders markdown for text entries', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
+      expect(html).toContain('<h1>');
+      expect(html).toContain('Hello');
+    });
+
+    it('shows (empty) for empty text body', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '' });
+      expect(html).toContain('(empty)');
+    });
+  });
+
+  describe('Attachment archetype', () => {
+    const attBody = JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 102400, asset_key: 'a1' });
+
+    it('renders file info card instead of JSON', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).toContain('data-pkc-ew-card="attachment"');
+      expect(html).toContain('report.pdf');
+      expect(html).toContain('application/pdf');
+    });
+
+    it('shows file size formatted', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).toContain('100.0 KB');
+    });
+
+    it('shows file extension', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).toContain('pdf');
+    });
+
+    it('does not show raw JSON body in the view pane', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      const viewBody = html.match(/id="body-view">([\s\S]*?)<\/div>/)?.[1] ?? '';
+      expect(viewBody).not.toContain('"asset_key"');
+      expect(viewBody).toContain('data-pkc-ew-card="attachment"');
+    });
+
+    it('shows download note', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).toContain('Preview is available in the main window');
+    });
+  });
+
+  describe('Todo archetype', () => {
+    const todoBody = JSON.stringify({ status: 'open', description: 'Buy groceries', date: '2099-12-31' });
+
+    it('renders todo card instead of JSON', async () => {
+      const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+      expect(html).toContain('data-pkc-ew-card="todo"');
+      expect(html).toContain('Open');
+      expect(html).toContain('Buy groceries');
+    });
+
+    it('shows date formatted', async () => {
+      const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+      expect(html).toContain('2099');
+    });
+
+    it('does not show raw JSON body in the view pane', async () => {
+      const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+      // The view body should contain the card, not the raw JSON keys in view context
+      const viewBody = html.match(/id="body-view">([\s\S]*?)<\/div>/)?.[1] ?? '';
+      expect(viewBody).not.toContain('"status"');
+      expect(viewBody).toContain('data-pkc-ew-card="todo"');
+    });
+
+    it('shows done status icon for done todo', async () => {
+      const doneBody = JSON.stringify({ status: 'done', description: 'Already done' });
+      const html = await openAndCapture(false, { archetype: 'todo', body: doneBody });
+      expect(html).toContain('Done');
+    });
+
+    it('shows archived badge when archived', async () => {
+      const archivedBody = JSON.stringify({ status: 'done', description: 'old', archived: true });
+      const html = await openAndCapture(false, { archetype: 'todo', body: archivedBody });
+      expect(html).toContain('Archived');
+    });
+
+    it('marks overdue date with danger color', async () => {
+      const overdueBody = JSON.stringify({ status: 'open', description: 'late', date: '2020-01-01' });
+      const html = await openAndCapture(false, { archetype: 'todo', body: overdueBody });
+      expect(html).toContain('c-danger');
+    });
+  });
+
+  describe('Form archetype', () => {
+    const formBody = JSON.stringify({ name: 'John Doe', note: 'Some note', checked: true });
+
+    it('renders form card instead of JSON', async () => {
+      const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+      expect(html).toContain('data-pkc-ew-card="form"');
+      expect(html).toContain('John Doe');
+      expect(html).toContain('Some note');
+    });
+
+    it('shows checked status', async () => {
+      const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+      expect(html).toContain('Yes');
+    });
+
+    it('does not show raw JSON body in the view pane', async () => {
+      const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+      const viewBody = html.match(/id="body-view">([\s\S]*?)<\/div>/)?.[1] ?? '';
+      expect(viewBody).not.toContain('"name"');
+      expect(viewBody).toContain('data-pkc-ew-card="form"');
+    });
+  });
+
+  describe('Fallback archetype', () => {
+    it('renders markdown for unknown archetype', async () => {
+      const html = await openAndCapture(false, { archetype: 'generic', body: '# Test' });
+      expect(html).toContain('<h1>');
+      expect(html).toContain('Test');
+    });
+
+    it('renders markdown for folder archetype', async () => {
+      const html = await openAndCapture(false, { archetype: 'folder', body: 'Folder notes' });
+      expect(html).toContain('Folder notes');
+    });
+  });
+
+  describe('Archetype card CSS', () => {
+    it('includes pkc-ew-card styles in the window HTML', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: '{"name":"a.txt","mime":"text/plain"}' });
+      expect(html).toContain('.pkc-ew-card');
+      expect(html).toContain('.pkc-ew-card-icon');
+      expect(html).toContain('.pkc-ew-card-fields');
     });
   });
 });
