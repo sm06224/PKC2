@@ -1511,9 +1511,9 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Inline: has export + light + import buttons
+    // Inline: has export + light + zip + import buttons
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(3);
+    expect(btns.length).toBe(4);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -4180,6 +4180,246 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       for (const item of items) {
         expect(item.getAttribute('draggable')).toBeNull();
       }
+    });
+  });
+});
+
+// ── Issue #69: Critical UX Regression Recovery ──
+
+describe('Critical UX Regression Recovery (Issue #69)', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    registerPresenter('todo', todoPresenter);
+    registerPresenter('form', formPresenter);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  const todoContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  describe('Export / Import / Build UI (P0-B)', () => {
+    it('renders Export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="full"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Export');
+    });
+
+    it('renders Light export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="light"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Light');
+    });
+
+    it('renders ZIP export button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="export-zip"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('ZIP');
+    });
+
+    it('renders Import button in ready state', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="begin-import"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Import');
+    });
+
+    it('hides export/import buttons in readonly mode', () => {
+      render(baseState({ readonly: true }), root);
+      const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+      expect(panel).toBeNull();
+    });
+
+    it('shows Exporting badge during export phase', () => {
+      const state: AppState = {
+        ...baseState(),
+        phase: 'exporting',
+        exportMode: 'full',
+        exportMutability: 'editable',
+      };
+      render(state, root);
+      const badge = root.querySelector('.pkc-export-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('Exporting…');
+    });
+
+    it('ZIP button has correct title attribute', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="export-zip"]') as HTMLElement;
+      expect(btn.getAttribute('title')).toContain('ZIP');
+    });
+  });
+
+  describe('Double-click Target Attributes (P0-A)', () => {
+    it('sidebar entry items have select-entry action and lid', () => {
+      render(baseState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('kanban cards have select-entry action and lid', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('calendar items have select-entry action and lid', () => {
+      render(baseState({ viewMode: 'calendar', container: todoContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-action="select-entry"]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  describe('Attachment Download (P0-C)', () => {
+    const attachmentContainer: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'Test File',
+          body: JSON.stringify({ name: 'test.pdf', mime: 'application/pdf', size: 1024, asset_key: 'ast-001' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-001': 'dGVzdA==' },
+    };
+
+    it('detached panel shows download button for attachment with data', () => {
+      const entry = attachmentContainer.entries[0]!;
+      const panel = renderDetachedPanel(entry, attachmentContainer);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+      expect(dlBtn).not.toBeNull();
+      expect(dlBtn!.textContent).toContain('Download');
+    });
+
+    it('detached panel hides download when data stripped', () => {
+      const stripped: Container = { ...attachmentContainer, assets: {} };
+      const entry = stripped.entries[0]!;
+      const panel = renderDetachedPanel(entry, stripped);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+      expect(dlBtn).toBeNull();
+      const notice = panel.querySelector('.pkc-attachment-stripped');
+      expect(notice).not.toBeNull();
+    });
+
+    it('download button carries data-pkc-lid attribute', () => {
+      const entry = attachmentContainer.entries[0]!;
+      const panel = renderDetachedPanel(entry, attachmentContainer);
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]') as HTMLElement;
+      expect(dlBtn.getAttribute('data-pkc-lid')).toBe('att1');
+    });
+  });
+
+  describe('Markdown Rendering in Text Presenter (P1-D)', () => {
+    it('renders plain text body without markdown as pre element', () => {
+      render(baseState({ selectedLid: 'e1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body).not.toBeNull();
+      expect(body!.tagName).toBe('PRE');
+    });
+
+    it('renders markdown body as div with pkc-md-rendered class', () => {
+      const mdContainer: Container = {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'md1',
+            title: 'Markdown Entry',
+            body: '# Hello\n\nThis is **bold** text.',
+            archetype: 'text',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      };
+      render(baseState({ container: mdContainer, selectedLid: 'md1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-md-rendered');
+      expect(body).not.toBeNull();
+      expect(body!.tagName).toBe('DIV');
+      expect(body!.innerHTML).toContain('<h1');
+      expect(body!.innerHTML).toContain('<strong>bold</strong>');
+    });
+
+    it('plain text fallback still works', () => {
+      render(baseState({ selectedLid: 'e1', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body!.textContent).toContain('Body of entry one');
+    });
+
+    it('empty body shows (empty) text', () => {
+      const emptyBody: Container = {
+        ...mockContainer,
+        entries: [
+          { lid: 'e0', title: 'Empty', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+      };
+      render(baseState({ container: emptyBody, selectedLid: 'e0', viewMode: 'detail' }), root);
+      const body = root.querySelector('.pkc-view-body');
+      expect(body!.textContent).toContain('(empty)');
+      expect(body!.tagName).toBe('PRE');
+    });
+  });
+
+  describe('Non-regression', () => {
+    it('DnD attributes still present on kanban cards', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable="true"]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('DnD attributes still present on calendar items', () => {
+      render(baseState({ viewMode: 'calendar', container: todoContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable="true"]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('view switch buttons still present on non-detail views', () => {
+      render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
+      const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
+      expect(switchBtns.length).toBe(2);
     });
   });
 });

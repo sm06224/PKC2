@@ -307,6 +307,17 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   lightBtn.textContent = 'Light';
   group.appendChild(lightBtn);
 
+  // ZIP Export
+  const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  zipBtn.setAttribute('data-pkc-action', 'export-zip');
+  zipBtn.setAttribute('title', 'Export as ZIP package (.pkc2.zip)');
+  zipBtn.textContent = 'ZIP';
+  group.appendChild(zipBtn);
+
+  const sep2 = createElement('span', 'pkc-eip-sep');
+  sep2.textContent = '|';
+  group.appendChild(sep2);
+
   // Import
   const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');

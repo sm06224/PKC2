@@ -48,11 +48,20 @@ This dispatches `SELECT_ENTRY` via the shared action-binder click handler.
 
 ### Double click
 
-Double-click opens a **detached view panel** for the target entry.
+Double-click の動作は **対象領域によって異なる**。
 
-- Supported in: **Sidebar, Calendar, Kanban**
-- Detection: action-binder `handleDblClick` matches `[data-pkc-lid][data-pkc-action="select-entry"]` inside `[data-pkc-region="sidebar"]`, `[data-pkc-region="calendar-view"]`, or `[data-pkc-region="kanban-view"]`.
-- Duplicate panels are prevented: if a panel for the same `lid` already exists, it pulses instead of creating a new one.
+| Location   | 動作 | 理由 |
+|------------|------|------|
+| Sidebar    | detached read-only panel を開く | 概要確認用途 |
+| Calendar   | BEGIN_EDIT → detail view で編集 | 編集導線 |
+| Kanban     | BEGIN_EDIT → detail view で編集 | 編集導線 |
+
+**検出方式**: `MouseEvent.detail >= 2` を click handler 内で検出（Issue #69 で修正）。
+従来の `dblclick` イベントは同期 re-render による DOM 置換で到達しないため、
+click handler の `detail` プロパティによるプライマリ検出 + `dblclick` リスナーの fallback の二重構造。
+
+- Sidebar: detached panel の重複防止あり（同一 lid のパネルが存在する場合は pulse）。
+- Calendar / Kanban: readonly mode では BEGIN_EDIT を dispatch しない。
 
 ## 4. Archived / Overdue / Date Display Rules
 

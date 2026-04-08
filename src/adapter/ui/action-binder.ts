@@ -35,7 +35,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     switch (action) {
       case 'select-entry':
-        if (lid) dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        if (!lid) break;
+        // Double-click detection via MouseEvent.detail.
+        // Normal dblclick event is unreliable because SELECT_ENTRY triggers
+        // synchronous re-render, removing the target element from DOM before
+        // the dblclick event can bubble to the delegated listener on root.
+        if ((e as MouseEvent).detail >= 2) {
+          handleDblClickAction(target, lid);
+        } else {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        }
         break;
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
@@ -732,26 +741,41 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
   }
 
-  // ── Double-click handler for detached view ──
+  // ── Double-click action handler ──
+  //
+  // Called from handleClick when MouseEvent.detail >= 2.
+  // Sidebar: opens detached read-only panel.
+  // Calendar/Kanban: dispatches BEGIN_EDIT (editing in detail view).
 
-  function handleDblClick(e: MouseEvent): void {
-    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
-    if (!entryItem) return;
-
-    // Allow double-click in sidebar, calendar, or kanban
-    const validRegion = entryItem.closest('[data-pkc-region="sidebar"], [data-pkc-region="calendar-view"], [data-pkc-region="kanban-view"]');
-    if (!validRegion) return;
-
+  function handleDblClickAction(target: HTMLElement, lid: string): void {
     const state = dispatcher.getState();
     if (!state.container) return;
-
-    const lid = entryItem.getAttribute('data-pkc-lid');
-    if (!lid) return;
 
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
-    e.preventDefault();
+    const inSidebar = !!target.closest('[data-pkc-region="sidebar"]');
+    const inCenterPane = !!target.closest('[data-pkc-region="calendar-view"], [data-pkc-region="kanban-view"]');
+
+    if (inCenterPane) {
+      // Calendar / Kanban double-click → open editing
+      if (!state.readonly) {
+        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+      }
+      return;
+    }
+
+    if (!inSidebar) return;
+
+    // Sidebar double-click → detached read-only panel
+    openDetachedPanel(lid);
+  }
+
+  function openDetachedPanel(lid: string): void {
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const entry = state.container.entries.find((e) => e.lid === lid);
+    if (!entry) return;
 
     // Don't open duplicate detached panel for the same entry
     const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`) as HTMLElement | null;
@@ -778,6 +802,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Populate image previews for attachment entries
     populateDetachedPreview(panel, lid, dispatcher);
+  }
+
+  // ── dblclick fallback (secondary path) ──
+  // Primary double-click detection is in handleClick via MouseEvent.detail >= 2.
+  // This fallback catches cases where the dblclick event reaches root
+  // (e.g., when the entry was already selected and re-render didn't replace DOM).
+  function handleDblClick(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    e.preventDefault();
+    handleDblClickAction(entryItem, lid);
   }
 
   // ── Resize handle logic ──
