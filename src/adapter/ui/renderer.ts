@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType, isHtml, SANDBOX_ATTRIBUTES } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -1223,6 +1223,44 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
 
   if (canEdit && container.entries.length > 1) {
     meta.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+  }
+
+  // Sandbox control section for HTML attachments
+  if (entry.archetype === 'attachment') {
+    const att = parseAttachmentBody(entry.body);
+    if (isHtml(att.mime)) {
+      const sandboxSection = createElement('div', 'pkc-sandbox-control');
+      sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
+      sandboxSection.setAttribute('data-pkc-lid', entry.lid);
+
+      const heading = createElement('div', 'pkc-sandbox-heading');
+      heading.textContent = 'Sandbox Policy';
+      sandboxSection.appendChild(heading);
+
+      const currentAllow = att.sandbox_allow ?? [];
+
+      for (const attr of SANDBOX_ATTRIBUTES) {
+        const row = createElement('label', 'pkc-sandbox-row');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'pkc-sandbox-checkbox';
+        checkbox.setAttribute('data-pkc-action', 'toggle-sandbox-attr');
+        checkbox.setAttribute('data-pkc-lid', entry.lid);
+        checkbox.setAttribute('data-pkc-sandbox-attr', attr);
+        checkbox.checked = currentAllow.includes(attr);
+        if (!canEdit) checkbox.disabled = true;
+        row.appendChild(checkbox);
+
+        const label = createElement('span', 'pkc-sandbox-label');
+        label.textContent = attr;
+        row.appendChild(label);
+
+        sandboxSection.appendChild(row);
+      }
+
+      meta.appendChild(sandboxSection);
+    }
   }
 
   return meta;

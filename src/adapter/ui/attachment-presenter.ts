@@ -22,6 +22,7 @@ export interface AttachmentBody {
   size?: number;
   asset_key?: string;
   data?: string; // legacy: base64-encoded. new format: absent
+  sandbox_allow?: string[]; // HTML sandbox permissions, e.g. ['allow-scripts', 'allow-forms']
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -33,6 +34,9 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       size: typeof parsed.size === 'number' ? parsed.size : undefined,
       asset_key: typeof parsed.asset_key === 'string' ? parsed.asset_key : undefined,
       data: typeof parsed.data === 'string' ? parsed.data : undefined,
+      sandbox_allow: Array.isArray(parsed.sandbox_allow)
+        ? parsed.sandbox_allow.filter((v): v is string => typeof v === 'string')
+        : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
@@ -49,8 +53,20 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   if (att.asset_key !== undefined) obj.asset_key = att.asset_key;
   // Include data only if present (legacy round-trip support)
   if (att.data !== undefined) obj.data = att.data;
+  if (att.sandbox_allow !== undefined && att.sandbox_allow.length > 0) obj.sandbox_allow = att.sandbox_allow;
   return JSON.stringify(obj);
 }
+
+/** Valid sandbox allow attributes that users can toggle. */
+export const SANDBOX_ATTRIBUTES = [
+  'allow-scripts',
+  'allow-forms',
+  'allow-popups',
+  'allow-modals',
+  'allow-same-origin',
+] as const;
+
+export type SandboxAttribute = typeof SANDBOX_ATTRIBUTES[number];
 
 /** Estimate decoded byte size from base64 string length. */
 export function estimateSize(base64: string): number {

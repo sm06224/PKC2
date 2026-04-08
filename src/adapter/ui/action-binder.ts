@@ -5,7 +5,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
-import { collectAssetData, parseAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu } from './renderer';
@@ -161,6 +161,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           status: todo.status === 'done' ? 'open' : 'done',
         });
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        break;
+      }
+      case 'toggle-sandbox-attr': {
+        if (!lid) break;
+        const sandboxAttr = target.getAttribute('data-pkc-sandbox-attr');
+        if (!sandboxAttr) break;
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        const currentAllow = att.sandbox_allow ?? [];
+        const checked = (target as HTMLInputElement).checked;
+        const newAllow = checked
+          ? [...currentAllow, sandboxAttr]
+          : currentAllow.filter((a) => a !== sandboxAttr);
+        const updatedBody = serializeAttachmentBody({ ...att, sandbox_allow: newAllow });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         break;
       }
       case 'move-to-folder': {
@@ -1002,7 +1019,12 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const resolved = resolveAttachmentData(lid, dispatcher);
     if (!resolved) continue;
 
-    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img');
+    // Read sandbox_allow from the entry body for HTML previews
+    const entryForPreview = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+    const sandboxAllow = entryForPreview
+      ? (parseAttachmentBody(entryForPreview.body).sandbox_allow ?? [])
+      : [];
+    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
 
@@ -1026,6 +1048,7 @@ function populatePreviewElement(
   el: HTMLElement,
   resolved: { data: string; mime: string; name: string },
   imgClass: string,
+  sandboxAllow: string[] = [],
 ): void {
   const previewType = classifyPreviewType(resolved.mime);
   el.innerHTML = '';
@@ -1091,18 +1114,23 @@ function populatePreviewElement(
       const blobUrl = createBlobUrl(resolved);
       const iframe = document.createElement('iframe');
       iframe.className = 'pkc-attachment-html-preview';
-      // Strict sandbox: no scripts, no forms, no popups by default
+      // Apply user-configured sandbox permissions
+      // 'allow-same-origin' is always added as a baseline
       iframe.sandbox.add('allow-same-origin');
+      for (const attr of sandboxAllow) {
+        iframe.sandbox.add(attr);
+      }
       iframe.src = blobUrl;
       iframe.setAttribute('data-pkc-blob-url', blobUrl);
       iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
       el.appendChild(iframe);
       // Open in new window button
       el.appendChild(createOpenButton(blobUrl, resolved.name, '🌐 Open HTML in New Window'));
-      // Sandbox toggle info
+      // Sandbox status note
+      const activePerms = ['allow-same-origin', ...sandboxAllow.filter((a) => a !== 'allow-same-origin')];
       const sandboxNote = document.createElement('div');
       sandboxNote.className = 'pkc-attachment-sandbox-note';
-      sandboxNote.textContent = 'Sandbox: scripts disabled. Use "Open in New Window" for full functionality.';
+      sandboxNote.textContent = `Sandbox: ${activePerms.join(', ')}`;
       el.appendChild(sandboxNote);
       break;
     }

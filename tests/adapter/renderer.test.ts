@@ -4510,3 +4510,115 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     });
   });
 });
+
+// ── Sandbox Control UI ──
+
+describe('Sandbox Control UI in Meta Pane', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function htmlAttachmentContainer(sandboxAllow?: string[]): Container {
+    const body: Record<string, unknown> = { name: 'app.html', mime: 'text/html', asset_key: 'ast-1', size: 200 };
+    if (sandboxAllow) body.sandbox_allow = sandboxAllow;
+    return {
+      meta: { title: 'Test', schema_version: 1 },
+      entries: [{
+        lid: 'html1', title: 'HTML File', body: JSON.stringify(body),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-1': 'PCFET0NUWVBFIGh0bWw+' },
+    };
+  }
+
+  function textAttachmentContainer(): Container {
+    return {
+      meta: { title: 'Test', schema_version: 1 },
+      entries: [{
+        lid: 'txt1', title: 'Text File', body: JSON.stringify({ name: 'readme.txt', mime: 'text/plain', asset_key: 'ast-2' }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-2': 'dGVzdA==' },
+    };
+  }
+
+  it('renders sandbox control section for HTML attachment', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).not.toBeNull();
+  });
+
+  it('renders 5 sandbox checkboxes', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
+    expect(checkboxes.length).toBe(5);
+  });
+
+  it('checkboxes reflect sandbox_allow state', () => {
+    const c = htmlAttachmentContainer(['allow-scripts', 'allow-forms']);
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const scripts = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-scripts"]');
+    const forms = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-forms"]');
+    const popups = root.querySelector<HTMLInputElement>('[data-pkc-sandbox-attr="allow-popups"]');
+    expect(scripts?.checked).toBe(true);
+    expect(forms?.checked).toBe(true);
+    expect(popups?.checked).toBe(false);
+  });
+
+  it('checkboxes are disabled in readonly mode', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1', readonly: true }), root);
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('[data-pkc-action="toggle-sandbox-attr"]');
+    for (const cb of checkboxes) {
+      expect(cb.disabled).toBe(true);
+    }
+  });
+
+  it('does NOT render sandbox control for non-HTML attachment', () => {
+    const c = textAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'txt1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).toBeNull();
+  });
+
+  it('sandbox heading says "Sandbox Policy"', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const heading = root.querySelector('.pkc-sandbox-heading');
+    expect(heading?.textContent).toBe('Sandbox Policy');
+  });
+
+  it('each checkbox has correct data-pkc-lid and data-pkc-sandbox-attr', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('[data-pkc-action="toggle-sandbox-attr"]');
+    for (const cb of checkboxes) {
+      expect(cb.getAttribute('data-pkc-lid')).toBe('html1');
+      expect(cb.getAttribute('data-pkc-sandbox-attr')).toBeTruthy();
+    }
+  });
+});

@@ -16,6 +16,7 @@ import {
   isPreviewableMedia,
   isPdf,
   isHtml,
+  SANDBOX_ATTRIBUTES,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
@@ -494,6 +495,87 @@ describe('MIME type classification', () => {
     it('returns none for unknown types', () => {
       expect(classifyPreviewType('application/octet-stream')).toBe('none');
       expect(classifyPreviewType('text/plain')).toBe('none');
+    });
+  });
+
+  describe('sandbox_allow field', () => {
+    it('parseAttachmentBody reads sandbox_allow array', () => {
+      const body = JSON.stringify({
+        name: 'test.html',
+        mime: 'text/html',
+        asset_key: 'ast-1',
+        sandbox_allow: ['allow-scripts', 'allow-forms'],
+      });
+      const parsed = parseAttachmentBody(body);
+      expect(parsed.sandbox_allow).toEqual(['allow-scripts', 'allow-forms']);
+    });
+
+    it('parseAttachmentBody returns undefined when sandbox_allow absent', () => {
+      const body = JSON.stringify({ name: 'test.html', mime: 'text/html' });
+      const parsed = parseAttachmentBody(body);
+      expect(parsed.sandbox_allow).toBeUndefined();
+    });
+
+    it('parseAttachmentBody filters non-string values in sandbox_allow', () => {
+      const body = JSON.stringify({
+        name: 'test.html',
+        mime: 'text/html',
+        sandbox_allow: ['allow-scripts', 42, null, 'allow-forms'],
+      });
+      const parsed = parseAttachmentBody(body);
+      expect(parsed.sandbox_allow).toEqual(['allow-scripts', 'allow-forms']);
+    });
+
+    it('serializeAttachmentBody includes sandbox_allow when non-empty', () => {
+      const body = serializeAttachmentBody({
+        name: 'test.html',
+        mime: 'text/html',
+        sandbox_allow: ['allow-scripts'],
+      });
+      const parsed = JSON.parse(body);
+      expect(parsed.sandbox_allow).toEqual(['allow-scripts']);
+    });
+
+    it('serializeAttachmentBody omits sandbox_allow when empty', () => {
+      const body = serializeAttachmentBody({
+        name: 'test.html',
+        mime: 'text/html',
+        sandbox_allow: [],
+      });
+      const parsed = JSON.parse(body);
+      expect(parsed.sandbox_allow).toBeUndefined();
+    });
+
+    it('serializeAttachmentBody omits sandbox_allow when undefined', () => {
+      const body = serializeAttachmentBody({
+        name: 'test.html',
+        mime: 'text/html',
+      });
+      const parsed = JSON.parse(body);
+      expect(parsed.sandbox_allow).toBeUndefined();
+    });
+
+    it('SANDBOX_ATTRIBUTES contains the expected values', () => {
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-scripts');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-forms');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-popups');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-modals');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-same-origin');
+      expect(SANDBOX_ATTRIBUTES.length).toBe(5);
+    });
+
+    it('sandbox_allow round-trips through parse/serialize', () => {
+      const original = {
+        name: 'app.html',
+        mime: 'text/html',
+        asset_key: 'ast-1',
+        sandbox_allow: ['allow-scripts', 'allow-popups'],
+      };
+      const serialized = serializeAttachmentBody(original);
+      const parsed = parseAttachmentBody(serialized);
+      expect(parsed.sandbox_allow).toEqual(['allow-scripts', 'allow-popups']);
+      expect(parsed.name).toBe('app.html');
+      expect(parsed.asset_key).toBe('ast-1');
     });
   });
 });

@@ -1564,6 +1564,36 @@
   font-style: italic;
   margin-top: 0.15rem;
 }
+/* ── Sandbox control (right pane) ── */
+.pkc-sandbox-control {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--c-border);
+}
+.pkc-sandbox-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-fg);
+  margin-bottom: 0.25rem;
+}
+.pkc-sandbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+.pkc-sandbox-checkbox {
+  accent-color: var(--c-accent);
+  cursor: pointer;
+}
+.pkc-sandbox-label {
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
 .pkc-attachment-open-btn {
   margin-top: 0.25rem;
 }
