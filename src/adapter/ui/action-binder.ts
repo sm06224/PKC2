@@ -290,7 +290,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
-  // ── DnD handlers for sidebar tree ──
+  // ── DnD handlers ──
+  // Three isolated DnD systems: sidebar (relations), kanban (status), calendar (date).
+  // See docs/development/todo-cross-view-move-strategy.md for design rationale.
+
+  // ── DnD: sidebar tree ──
 
   let draggedLid: string | null = null;
 
@@ -381,14 +385,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
     if (target) target.removeAttribute('data-pkc-dragging');
 
-    // Remove any lingering drag-over highlights
-    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    // Remove any lingering drag-over highlights on sidebar drop targets
+    const overEls = root.querySelectorAll('[data-pkc-drop-target][data-pkc-drag-over]');
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     draggedLid = null;
   }
 
-  // ── DnD handlers for kanban board ──
+  // ── DnD: kanban board ──
 
   let kanbanDraggedLid: string | null = null;
 
@@ -462,7 +466,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     kanbanDraggedLid = null;
   }
 
-  // ── DnD handlers for calendar date move ──
+  // ── DnD: calendar date move ──
 
   let calendarDraggedLid: string | null = null;
 
