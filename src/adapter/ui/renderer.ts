@@ -20,12 +20,10 @@ import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
-import {
-  lightExportWarning, fullExportEstimation, zipRecommendation,
-  hasAssets, assetCount,
-} from './guardrails';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
+import { parseAttachmentBody } from './attachment-presenter';
+import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -43,6 +41,22 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   generic: 'Generic',
   opaque: 'Opaque',
 };
+
+/** Archetype icons for visual distinction. */
+const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
+  text: '📝',
+  textlog: '📋',
+  todo: '☑️',
+  form: '📊',
+  attachment: '📎',
+  folder: '📁',
+  generic: '📄',
+  opaque: '🔒',
+};
+
+function archetypeIcon(archetype: ArchetypeId): string {
+  return ARCHETYPE_ICONS[archetype] ?? '📄';
+}
 
 function archetypeLabel(archetype: ArchetypeId): string {
   return ARCHETYPE_LABELS[archetype] ?? archetype;
@@ -128,14 +142,50 @@ function renderShell(state: AppState): HTMLElement {
     shell.appendChild(renderPendingOffers(state.pendingOffers));
   }
 
-  // Main area: sidebar + detail
+  // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
 
-  // Sidebar: entry list
-  main.appendChild(renderSidebar(state));
+  // Left tray bar (shown when sidebar is collapsed)
+  const leftTray = createElement('div', 'pkc-tray-bar');
+  leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
+  leftTray.setAttribute('title', 'Click to expand sidebar');
+  leftTray.textContent = 'SIDEBAR';
+  leftTray.style.display = 'none';
+  leftTray.setAttribute('data-pkc-region', 'tray-left');
+  main.appendChild(leftTray);
 
-  // Detail: selected entry or placeholder
-  main.appendChild(renderDetail(state));
+  // Left pane: entry list / tree / search / filters
+  const sidebar = renderSidebar(state);
+  main.appendChild(sidebar);
+
+  // Resize handle: sidebar ↔ center
+  const leftHandle = createElement('div', 'pkc-resize-handle');
+  leftHandle.setAttribute('data-pkc-resize', 'left');
+  main.appendChild(leftHandle);
+
+  // Center pane: content view/edit + fixed action bar
+  main.appendChild(renderCenter(state));
+
+  // Right pane: meta information (tags, relations, history, move)
+  const selected = findSelectedEntry(state);
+  if (selected) {
+    // Resize handle: center ↔ meta
+    const rightHandle = createElement('div', 'pkc-resize-handle');
+    rightHandle.setAttribute('data-pkc-resize', 'right');
+    main.appendChild(rightHandle);
+
+    const canEdit = state.phase === 'ready' && !state.readonly;
+    main.appendChild(renderMetaPane(selected, canEdit, state.container));
+  }
+
+  // Right tray bar (shown when meta pane is collapsed)
+  const rightTray = createElement('div', 'pkc-tray-bar pkc-tray-bar-right');
+  rightTray.setAttribute('data-pkc-action', 'toggle-meta');
+  rightTray.setAttribute('title', 'Click to expand meta pane');
+  rightTray.textContent = 'META';
+  rightTray.style.display = 'none';
+  rightTray.setAttribute('data-pkc-region', 'tray-right');
+  main.appendChild(rightTray);
 
   shell.appendChild(main);
   return shell;
@@ -168,18 +218,19 @@ function renderHeader(state: AppState): HTMLElement {
       createGroup.appendChild(ctx);
     }
 
-    const archetypeButtons: { arch: ArchetypeId; label: string }[] = [
-      { arch: 'text', label: '+ Note' },
-      { arch: 'todo', label: '+ Todo' },
-      { arch: 'form', label: '+ Form' },
-      { arch: 'attachment', label: '+ File' },
-      { arch: 'folder', label: '+ Folder' },
+    const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
+      { arch: 'text', label: `${archetypeIcon('text')} Note`, tip: 'Create a new note entry' },
+      { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
+      { arch: 'form', label: `${archetypeIcon('form')} Form`, tip: 'Create a new form entry' },
+      { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
+      { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
 
-    for (const { arch, label } of archetypeButtons) {
+    for (const { arch, label, tip } of archetypeButtons) {
       const btn = createElement('button', 'pkc-btn pkc-btn-create');
       btn.setAttribute('data-pkc-action', 'create-entry');
       btn.setAttribute('data-pkc-archetype', arch);
+      btn.setAttribute('title', tip);
       if (contextFolder) {
         btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
       }
@@ -189,8 +240,8 @@ function renderHeader(state: AppState): HTMLElement {
 
     header.appendChild(createGroup);
 
-    // Export / Import panel (collapsible)
-    header.appendChild(renderExportImportPanel(state));
+    // Export / Import inline buttons
+    header.appendChild(renderExportImportInline(state));
   }
 
   // Readonly mode: show readonly badge and rehydrate button
@@ -202,6 +253,7 @@ function renderHeader(state: AppState): HTMLElement {
 
     const rehydrateBtn = createElement('button', 'pkc-btn');
     rehydrateBtn.setAttribute('data-pkc-action', 'rehydrate');
+    rehydrateBtn.setAttribute('title', 'Copy this container to your browser storage for editing');
     rehydrateBtn.textContent = 'Rehydrate to Workspace';
     header.appendChild(rehydrateBtn);
   }
@@ -212,156 +264,56 @@ function renderHeader(state: AppState): HTMLElement {
     header.appendChild(badge);
   }
 
+  // Pane toggle buttons (always shown)
+  const sidebarToggle = createElement('button', 'pkc-tray-toggle');
+  sidebarToggle.setAttribute('data-pkc-action', 'toggle-sidebar');
+  sidebarToggle.setAttribute('title', 'Toggle sidebar');
+  sidebarToggle.textContent = '◧';
+  header.appendChild(sidebarToggle);
+
+  const metaToggle = createElement('button', 'pkc-tray-toggle');
+  metaToggle.setAttribute('data-pkc-action', 'toggle-meta');
+  metaToggle.setAttribute('title', 'Toggle meta pane');
+  metaToggle.textContent = '◨';
+  header.appendChild(metaToggle);
+
   return header;
 }
 
-function renderExportImportPanel(state: AppState): HTMLElement {
-  const details = document.createElement('details');
-  details.className = 'pkc-eip-disclosure';
-  details.setAttribute('data-pkc-region', 'export-import-panel');
+function renderExportImportInline(_state: AppState): HTMLElement {
+  const group = createElement('div', 'pkc-eip-inline');
+  group.setAttribute('data-pkc-region', 'export-import-panel');
 
-  const summary = document.createElement('summary');
-  summary.className = 'pkc-eip-summary';
-  summary.textContent = 'Export / Import';
-  details.appendChild(summary);
+  const sep1 = createElement('span', 'pkc-eip-sep');
+  sep1.textContent = '|';
+  group.appendChild(sep1);
 
-  const panel = createElement('div', 'pkc-export-import-panel');
+  // Export Full (editable) — most common
+  const exportBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  exportBtn.setAttribute('data-pkc-action', 'begin-export');
+  exportBtn.setAttribute('data-pkc-export-mode', 'full');
+  exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
+  exportBtn.setAttribute('title', 'Export complete HTML (editable, all data)');
+  exportBtn.textContent = 'Export';
+  group.appendChild(exportBtn);
 
-  const container = state.container;
-  const containerHasAssets = container ? hasAssets(container) : false;
-
-  // ── Section 1: HTML Export ──
-  const htmlSection = createElement('div', 'pkc-eip-section');
-  const htmlHeading = createElement('div', 'pkc-eip-heading');
-  htmlHeading.textContent = 'HTML Export';
-  htmlSection.appendChild(htmlHeading);
-  const htmlDesc = createElement('div', 'pkc-eip-desc');
-  htmlDesc.textContent = 'Single self-contained HTML file. Opens in any browser.';
-  htmlSection.appendChild(htmlDesc);
-
-  // Editable group
-  const editableGroup = createElement('div', 'pkc-eip-group');
-  const editableLabel = createElement('span', 'pkc-eip-group-label');
-  editableLabel.textContent = 'Editable';
-  editableGroup.appendChild(editableLabel);
-
-  const lightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  // Export Light (editable)
+  const lightBtn = createElement('button', 'pkc-btn pkc-btn-create');
   lightBtn.setAttribute('data-pkc-action', 'begin-export');
   lightBtn.setAttribute('data-pkc-export-mode', 'light');
   lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
+  lightBtn.setAttribute('title', 'Export text-only HTML (no attachments)');
   lightBtn.textContent = 'Light';
-  editableGroup.appendChild(lightBtn);
-  editableGroup.appendChild(makeHint('Text only, small file'));
+  group.appendChild(lightBtn);
 
-  const fullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  fullBtn.setAttribute('data-pkc-action', 'begin-export');
-  fullBtn.setAttribute('data-pkc-export-mode', 'full');
-  fullBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  fullBtn.textContent = 'Full';
-  editableGroup.appendChild(fullBtn);
-  editableGroup.appendChild(makeHint('All data including attachments'));
-
-  htmlSection.appendChild(editableGroup);
-
-  // Readonly group
-  const readonlyGroup = createElement('div', 'pkc-eip-group');
-  const readonlyLabel = createElement('span', 'pkc-eip-group-label');
-  readonlyLabel.textContent = 'Readonly';
-  readonlyGroup.appendChild(readonlyLabel);
-
-  const roLightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  roLightBtn.setAttribute('data-pkc-action', 'begin-export');
-  roLightBtn.setAttribute('data-pkc-export-mode', 'light');
-  roLightBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-  roLightBtn.textContent = 'Light';
-  readonlyGroup.appendChild(roLightBtn);
-
-  const roFullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  roFullBtn.setAttribute('data-pkc-action', 'begin-export');
-  roFullBtn.setAttribute('data-pkc-export-mode', 'full');
-  roFullBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-  roFullBtn.textContent = 'Full';
-  readonlyGroup.appendChild(roFullBtn);
-
-  readonlyGroup.appendChild(makeHint('View-only, can rehydrate to workspace'));
-  htmlSection.appendChild(readonlyGroup);
-
-  // HTML guardrails (inline, next to relevant section)
-  if (container) {
-    const lightWarn = lightExportWarning(container);
-    if (lightWarn) {
-      htmlSection.appendChild(makeGuardrail(lightWarn));
-    }
-    const fullEst = fullExportEstimation(container);
-    if (fullEst) {
-      htmlSection.appendChild(makeGuardrail(fullEst));
-    }
-  }
-
-  panel.appendChild(htmlSection);
-
-  // ── Section 2: ZIP Package ──
-  const zipSection = createElement('div', 'pkc-eip-section');
-  const zipHeading = createElement('div', 'pkc-eip-heading');
-  zipHeading.textContent = 'ZIP Package';
-  zipSection.appendChild(zipHeading);
-  const zipDesc = createElement('div', 'pkc-eip-desc');
-  zipDesc.textContent = 'Complete backup with raw files. Best for large data or migration.';
-  zipSection.appendChild(zipDesc);
-
-  const zipBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  zipBtn.setAttribute('data-pkc-action', 'export-zip');
-  zipBtn.textContent = 'Export ZIP';
-  zipSection.appendChild(zipBtn);
-
-  if (containerHasAssets && container) {
-    const count = assetCount(container);
-    const info = createElement('div', 'pkc-eip-hint');
-    info.textContent = `${count} file(s), raw binary — no base64 overhead`;
-    zipSection.appendChild(info);
-  }
-
-  // ZIP recommendation guardrail
-  if (container) {
-    const zipRec = zipRecommendation(container);
-    if (zipRec) {
-      zipSection.appendChild(makeGuardrail(zipRec));
-    }
-  }
-
-  panel.appendChild(zipSection);
-
-  // ── Section 3: Import ──
-  const importSection = createElement('div', 'pkc-eip-section');
-  const importHeading = createElement('div', 'pkc-eip-heading');
-  importHeading.textContent = 'Import';
-  importSection.appendChild(importHeading);
-  const importDesc = createElement('div', 'pkc-eip-desc');
-  importDesc.textContent = 'Load from HTML (.html) or ZIP Package (.zip). Replaces current data.';
-  importSection.appendChild(importDesc);
-
-  const importBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  // Import
+  const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');
+  importBtn.setAttribute('title', 'Import from HTML or ZIP');
   importBtn.textContent = 'Import';
-  importSection.appendChild(importBtn);
+  group.appendChild(importBtn);
 
-  panel.appendChild(importSection);
-
-  details.appendChild(panel);
-  return details;
-}
-
-function makeHint(text: string): HTMLElement {
-  const el = createElement('span', 'pkc-eip-hint');
-  el.textContent = text;
-  return el;
-}
-
-function makeGuardrail(text: string): HTMLElement {
-  const el = createElement('div', 'pkc-guardrail-info');
-  el.setAttribute('data-pkc-region', 'export-guardrails');
-  el.textContent = text;
-  return el;
+  return group;
 }
 
 function renderSidebar(state: AppState): HTMLElement {
@@ -385,6 +337,7 @@ function renderSidebar(state: AppState): HTMLElement {
     if (state.searchQuery !== '' || state.archetypeFilter !== null) {
       const clearBtn = createElement('button', 'pkc-btn-clear');
       clearBtn.setAttribute('data-pkc-action', 'clear-filters');
+      clearBtn.setAttribute('title', 'Clear search and filters');
       clearBtn.textContent = '×';
       searchRow.appendChild(clearBtn);
     }
@@ -396,6 +349,21 @@ function renderSidebar(state: AppState): HTMLElement {
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
+  }
+
+  // Show archived toggle (only when there are archived todos)
+  if (allEntries.some((e) => e.archetype === 'todo' && parseTodoBody(e.body).archived)) {
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.showArchived;
+    check.setAttribute('data-pkc-action', 'toggle-show-archived');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show archived';
+    toggle.appendChild(labelText);
+    sidebar.appendChild(toggle);
   }
 
   // Active tag filter indicator
@@ -411,6 +379,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
       const clearBtn = createElement('button', 'pkc-btn-small');
       clearBtn.setAttribute('data-pkc-action', 'clear-tag-filter');
+      clearBtn.setAttribute('title', 'Clear tag filter');
       clearBtn.textContent = '\u00d7';
       indicator.appendChild(clearBtn);
 
@@ -418,10 +387,16 @@ function renderSidebar(state: AppState): HTMLElement {
     }
   }
 
-  // Pipeline: query → archetype → tag → sort
+  // Pipeline: query → archetype → tag → archive → sort
   let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
   if (state.tagFilter && state.container) {
     filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  }
+  if (!state.showArchived) {
+    filtered = filtered.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      return !parseTodoBody(e.body).archived;
+    });
   }
   const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
 
@@ -434,15 +409,21 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   if (allEntries.length === 0) {
-    const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No entries';
+    const empty = createElement('div', 'pkc-empty pkc-guidance');
+    empty.setAttribute('data-pkc-region', 'empty-guidance');
+    if (state.phase === 'ready' && !state.readonly) {
+      empty.innerHTML = 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
+    } else {
+      empty.textContent = 'No entries in this container.';
+    }
     sidebar.appendChild(empty);
     return sidebar;
   }
 
   if (entries.length === 0) {
-    const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No matching entries';
+    const empty = createElement('div', 'pkc-empty pkc-guidance');
+    empty.setAttribute('data-pkc-region', 'empty-guidance');
+    empty.textContent = 'No matching entries. Try adjusting your search or filters.';
     sidebar.appendChild(empty);
     return sidebar;
   }
@@ -464,16 +445,38 @@ function renderSidebar(state: AppState): HTMLElement {
   }
   sidebar.appendChild(list);
 
-  // Restore candidates (deleted entries with revisions)
+  // Root drop zone: drop here to move entry to root level
+  if (state.phase === 'ready' && !state.readonly) {
+    const rootDrop = createElement('div', 'pkc-root-drop-zone');
+    rootDrop.setAttribute('data-pkc-drop-target', 'root');
+    rootDrop.textContent = '↑ Drop here for root level';
+    sidebar.appendChild(rootDrop);
+  }
+
+  // Interaction hints (non-intrusive)
+  if (entries.length > 0) {
+    const hints = createElement('div', 'pkc-interaction-hints');
+    hints.setAttribute('data-pkc-region', 'interaction-hints');
+    hints.innerHTML = [
+      '<span>Drag to move</span>',
+      '<span>Double-click to open</span>',
+      '<span>Right-click for menu</span>',
+    ].join(' · ');
+    sidebar.appendChild(hints);
+  }
+
+  // Restore candidates (deleted entries with revisions) — collapsible, closed by default
   if (state.container && state.phase === 'ready') {
     const candidates = getRestoreCandidates(state.container);
     if (candidates.length > 0) {
-      const section = createElement('div', 'pkc-restore-candidates');
-      section.setAttribute('data-pkc-region', 'restore-candidates');
+      const details = document.createElement('details');
+      details.className = 'pkc-restore-candidates';
+      details.setAttribute('data-pkc-region', 'restore-candidates');
 
-      const heading = createElement('div', 'pkc-restore-heading');
-      heading.textContent = `Deleted (${candidates.length} restorable)`;
-      section.appendChild(heading);
+      const summary = document.createElement('summary');
+      summary.className = 'pkc-restore-heading';
+      summary.textContent = `🗑️ Deleted (${candidates.length})`;
+      details.appendChild(summary);
 
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
@@ -499,17 +502,18 @@ function renderSidebar(state: AppState): HTMLElement {
 
         item.appendChild(info);
 
-        const btn = createElement('button', 'pkc-btn');
+        const btn = createElement('button', 'pkc-btn-small');
         btn.setAttribute('data-pkc-action', 'restore-entry');
         btn.setAttribute('data-pkc-lid', rev.entry_lid);
         btn.setAttribute('data-pkc-revision-id', rev.id);
-        btn.textContent = 'Restore deleted entry';
+        btn.setAttribute('title', 'Restore this deleted entry');
+        btn.textContent = 'Restore';
         item.appendChild(btn);
 
-        section.appendChild(item);
+        details.appendChild(item);
       }
 
-      sidebar.appendChild(section);
+      sidebar.appendChild(details);
     }
   }
 
@@ -521,8 +525,12 @@ function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): v
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
   }
+  // All tree items are draggable
+  li.setAttribute('draggable', 'true');
+  li.setAttribute('data-pkc-draggable', 'true');
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
+    li.setAttribute('data-pkc-drop-target', 'true');
     // Show child count for folders
     const childCount = createElement('span', 'pkc-folder-count');
     childCount.textContent = `(${node.children.length})`;
@@ -549,7 +557,7 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
 
   const badge = createElement('span', 'pkc-archetype-badge');
   badge.setAttribute('data-pkc-archetype', entry.archetype);
-  badge.textContent = archetypeLabel(entry.archetype);
+  badge.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   li.appendChild(badge);
 
   // Todo status indicator
@@ -559,6 +567,12 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
     statusBadge.setAttribute('data-pkc-todo-status', todo.status);
     statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
     li.appendChild(statusBadge);
+    if (todo.archived) {
+      li.setAttribute('data-pkc-todo-archived', 'true');
+      const archivedBadge = createElement('span', 'pkc-todo-archived-sidebar');
+      archivedBadge.textContent = 'Archived';
+      li.appendChild(archivedBadge);
+    }
   }
 
   // History indicator
@@ -578,38 +592,232 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   return li;
 }
 
-function renderDetail(state: AppState): HTMLElement {
-  const detail = createElement('section', 'pkc-detail');
-  detail.setAttribute('data-pkc-region', 'detail');
+function renderCenter(state: AppState): HTMLElement {
+  const center = createElement('section', 'pkc-center');
+  center.setAttribute('data-pkc-region', 'center');
 
+  // View mode toggle (always visible when container has entries)
+  if (state.container && state.container.entries.length > 0) {
+    center.appendChild(renderViewModeToggle(state.viewMode));
+  }
+
+  // Calendar view
+  if (state.viewMode === 'calendar') {
+    center.appendChild(renderCalendarView(state));
+    return center;
+  }
+
+  // Detail view (existing behavior)
   const selected = findSelectedEntry(state);
+  const canEdit = state.phase === 'ready' && !state.readonly;
 
   if (!selected) {
-    const placeholder = createElement('div', 'pkc-empty');
-    if (state.readonly) {
-      placeholder.textContent = state.container?.entries?.length
-        ? 'Select an entry'
-        : 'No entries';
+    if (canEdit) {
+      // Large drop zone invitation when nothing is selected
+      const dropInvite = renderDropZone(state, true);
+      center.appendChild(dropInvite);
     } else {
-      placeholder.textContent = state.container?.entries?.length
-        ? 'Select an entry'
-        : 'Create an entry to begin';
+      const placeholder = createElement('div', 'pkc-empty pkc-guidance');
+      placeholder.setAttribute('data-pkc-region', 'center-guidance');
+      if (state.readonly) {
+        placeholder.textContent = state.container?.entries?.length
+          ? 'Select an entry from the sidebar to view it here.'
+          : 'This container has no entries.';
+      } else {
+        placeholder.textContent = state.container?.entries?.length
+          ? 'Select an entry from the sidebar to view it here.'
+          : 'Create your first entry using the + buttons above.';
+      }
+      center.appendChild(placeholder);
     }
-    detail.appendChild(placeholder);
-    return detail;
+    return center;
   }
+
+  // Content area (scrollable)
+  const content = createElement('div', 'pkc-center-content');
 
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
-    detail.appendChild(renderEditor(selected));
+    content.appendChild(renderEditor(selected));
   } else {
-    const canEdit = state.phase === 'ready' && !state.readonly;
-    detail.appendChild(renderView(selected, canEdit, state.container));
+    content.appendChild(renderView(selected, canEdit, state.container));
   }
 
-  return detail;
+  // Compact drop zone strip when viewing an entry (not editing)
+  if (canEdit && state.phase !== 'editing') {
+    content.appendChild(renderDropZone(state, false));
+  }
+
+  center.appendChild(content);
+
+  // Fixed action bar at bottom
+  center.appendChild(renderActionBar(selected, state.phase, canEdit));
+
+  return center;
 }
 
-function renderView(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar'): HTMLElement {
+  const bar = createElement('div', 'pkc-view-mode-bar');
+  bar.setAttribute('data-pkc-region', 'view-mode-bar');
+
+  for (const mode of ['detail', 'calendar'] as const) {
+    const btn = createElement('button', 'pkc-view-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-view-mode');
+    btn.setAttribute('data-pkc-view-mode', mode);
+    btn.textContent = mode === 'detail' ? 'Detail' : 'Calendar';
+    if (mode === viewMode) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    bar.appendChild(btn);
+  }
+
+  return bar;
+}
+
+function renderCalendarView(state: AppState): HTMLElement {
+  const cal = createElement('div', 'pkc-calendar');
+  cal.setAttribute('data-pkc-region', 'calendar-view');
+
+  // Navigation: < Month Year >
+  const nav = createElement('div', 'pkc-calendar-nav');
+
+  const prevBtn = createElement('button', 'pkc-btn pkc-calendar-nav-btn');
+  prevBtn.setAttribute('data-pkc-action', 'calendar-prev');
+  prevBtn.setAttribute('title', 'Previous month');
+  prevBtn.textContent = '◀';
+  nav.appendChild(prevBtn);
+
+  const title = createElement('span', 'pkc-calendar-title');
+  title.textContent = `${monthName(state.calendarMonth)} ${state.calendarYear}`;
+  nav.appendChild(title);
+
+  const nextBtn = createElement('button', 'pkc-btn pkc-calendar-nav-btn');
+  nextBtn.setAttribute('data-pkc-action', 'calendar-next');
+  nextBtn.setAttribute('title', 'Next month');
+  nextBtn.textContent = '▶';
+  nav.appendChild(nextBtn);
+
+  cal.appendChild(nav);
+
+  // Day-of-week header
+  const header = createElement('div', 'pkc-calendar-header');
+  for (const day of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+    const cell = createElement('div', 'pkc-calendar-dow');
+    cell.textContent = day;
+    header.appendChild(cell);
+  }
+  cal.appendChild(header);
+
+  // Build todo map
+  const entries = state.container?.entries ?? [];
+  const todoMap = groupTodosByDate(entries, state.showArchived);
+
+  // Month grid
+  const weeks = getMonthGrid(state.calendarYear, state.calendarMonth);
+  const today = new Date();
+  const todayKey = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const grid = createElement('div', 'pkc-calendar-grid');
+
+  for (const week of weeks) {
+    for (const day of week) {
+      const cell = createElement('div', 'pkc-calendar-cell');
+      if (day === null) {
+        cell.classList.add('pkc-calendar-cell-empty');
+        grid.appendChild(cell);
+        continue;
+      }
+
+      const key = dateKey(state.calendarYear, state.calendarMonth, day);
+      if (key === todayKey) {
+        cell.setAttribute('data-pkc-calendar-today', 'true');
+      }
+
+      const dayNum = createElement('div', 'pkc-calendar-day');
+      dayNum.textContent = String(day);
+      cell.appendChild(dayNum);
+
+      const todos = todoMap[key];
+      if (todos && todos.length > 0) {
+        const todoList = createElement('div', 'pkc-calendar-todos');
+        const maxShow = 3;
+        for (let i = 0; i < Math.min(todos.length, maxShow); i++) {
+          const t = todos[i]!;
+          const item = createElement('div', 'pkc-calendar-todo-item');
+          item.setAttribute('data-pkc-action', 'select-entry');
+          item.setAttribute('data-pkc-lid', t.entry.lid);
+          if (t.todo.status === 'done') {
+            item.setAttribute('data-pkc-todo-status', 'done');
+          }
+          if (t.todo.archived) {
+            item.setAttribute('data-pkc-todo-archived', 'true');
+          }
+          item.textContent = t.entry.title || t.todo.description || '(untitled)';
+          todoList.appendChild(item);
+        }
+        if (todos.length > maxShow) {
+          const more = createElement('div', 'pkc-calendar-todo-more');
+          more.textContent = `+${todos.length - maxShow} more`;
+          todoList.appendChild(more);
+        }
+        cell.appendChild(todoList);
+      }
+
+      grid.appendChild(cell);
+    }
+  }
+
+  cal.appendChild(grid);
+  return cal;
+}
+
+/** Fixed action bar at bottom of center pane. Shows contextual actions. */
+function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLElement {
+  const bar = createElement('div', 'pkc-action-bar');
+  bar.setAttribute('data-pkc-region', 'action-bar');
+
+  if (phase === 'editing') {
+    bar.setAttribute('data-pkc-editing', 'true');
+
+    const editingLabel = createElement('span', 'pkc-action-bar-status');
+    editingLabel.textContent = '✎ Editing';
+    bar.appendChild(editingLabel);
+
+    const saveBtn = createElement('button', 'pkc-btn pkc-btn-primary');
+    saveBtn.setAttribute('data-pkc-action', 'commit-edit');
+    saveBtn.setAttribute('data-pkc-lid', entry.lid);
+    saveBtn.setAttribute('title', 'Save changes (Ctrl+S)');
+    saveBtn.textContent = '💾 Save';
+    bar.appendChild(saveBtn);
+
+    const cancelBtn = createElement('button', 'pkc-btn');
+    cancelBtn.setAttribute('data-pkc-action', 'cancel-edit');
+    cancelBtn.setAttribute('title', 'Discard changes (Esc)');
+    cancelBtn.textContent = 'Cancel';
+    bar.appendChild(cancelBtn);
+  } else if (canEdit) {
+    const editBtn = createElement('button', 'pkc-btn');
+    editBtn.setAttribute('data-pkc-action', 'begin-edit');
+    editBtn.setAttribute('data-pkc-lid', entry.lid);
+    editBtn.setAttribute('title', 'Edit this entry');
+    editBtn.textContent = '✏️ Edit';
+    bar.appendChild(editBtn);
+
+    const deleteBtn = createElement('button', 'pkc-btn-danger');
+    deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
+    deleteBtn.setAttribute('data-pkc-lid', entry.lid);
+    deleteBtn.setAttribute('title', 'Delete this entry permanently');
+    deleteBtn.textContent = '🗑️ Delete';
+    bar.appendChild(deleteBtn);
+  }
+
+  // Entry info badge
+  const info = createElement('span', 'pkc-action-bar-info');
+  info.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
+  bar.appendChild(info);
+
+  return bar;
+}
+
+function renderView(entry: Entry, _canEdit: boolean, container: Container | null): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
@@ -621,7 +829,7 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
 
   const archLabel = createElement('span', 'pkc-archetype-label');
   archLabel.setAttribute('data-pkc-archetype', entry.archetype);
-  archLabel.textContent = archetypeLabel(entry.archetype);
+  archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   titleRow.appendChild(archLabel);
   view.appendChild(titleRow);
 
@@ -660,89 +868,115 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
     view.appendChild(renderFolderContents(entry, container));
   }
 
+  // Tags, relations, history, move → moved to right meta pane (renderMetaPane)
+
+  return view;
+}
+
+/** Right pane: meta information — tags, relations, history, move-to-folder. */
+function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
+  const meta = createElement('aside', 'pkc-meta-pane');
+  meta.setAttribute('data-pkc-region', 'meta');
+
+  // Entry info header
+  const infoHeader = createElement('div', 'pkc-meta-header');
+  infoHeader.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
+  meta.appendChild(infoHeader);
+
+  // Created / Updated timestamps
+  const timestamps = createElement('div', 'pkc-meta-timestamps');
+  const created = createElement('div', 'pkc-meta-ts');
+  created.textContent = `Created: ${formatTimestamp(entry.created_at)}`;
+  timestamps.appendChild(created);
+  const updated = createElement('div', 'pkc-meta-ts');
+  updated.textContent = `Updated: ${formatTimestamp(entry.updated_at)}`;
+  timestamps.appendChild(updated);
+  meta.appendChild(timestamps);
+
+  if (!container) return meta;
+
   // Tags section
-  if (container) {
-    const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
-    const tagSection = createElement('div', 'pkc-tags');
-    tagSection.setAttribute('data-pkc-region', 'tags');
+  const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
+  const tagSection = createElement('div', 'pkc-tags');
+  tagSection.setAttribute('data-pkc-region', 'tags');
 
-    const tagHeading = createElement('span', 'pkc-tags-label');
-    tagHeading.textContent = 'Tags:';
-    tagSection.appendChild(tagHeading);
+  const tagHeading = createElement('span', 'pkc-tags-label');
+  tagHeading.textContent = 'Tags';
+  tagSection.appendChild(tagHeading);
 
-    for (const tag of tags) {
-      const chip = createElement('span', 'pkc-tag-chip');
-      chip.setAttribute('data-pkc-tag-relation-id', tag.relationId);
+  for (const tag of tags) {
+    const chip = createElement('span', 'pkc-tag-chip');
+    chip.setAttribute('data-pkc-tag-relation-id', tag.relationId);
 
-      const chipLabel = createElement('span', 'pkc-tag-label');
-      chipLabel.setAttribute('data-pkc-action', 'filter-by-tag');
-      chipLabel.setAttribute('data-pkc-lid', tag.peer.lid);
-      chipLabel.textContent = tag.peer.title || '(untitled)';
-      chip.appendChild(chipLabel);
-
-      if (canEdit) {
-        const removeBtn = createElement('button', 'pkc-tag-remove');
-        removeBtn.setAttribute('data-pkc-action', 'remove-tag');
-        removeBtn.setAttribute('data-pkc-relation-id', tag.relationId);
-        removeBtn.textContent = '\u00d7';
-        chip.appendChild(removeBtn);
-      }
-
-      tagSection.appendChild(chip);
-    }
+    const chipLabel = createElement('span', 'pkc-tag-label');
+    chipLabel.setAttribute('data-pkc-action', 'filter-by-tag');
+    chipLabel.setAttribute('data-pkc-lid', tag.peer.lid);
+    chipLabel.setAttribute('title', 'Click to filter by this tag');
+    chipLabel.textContent = tag.peer.title || '(untitled)';
+    chip.appendChild(chipLabel);
 
     if (canEdit) {
-      const available = getAvailableTagTargets(container.relations, container.entries, entry.lid);
-      if (available.length > 0) {
-        const addForm = createElement('span', 'pkc-tag-add');
-        addForm.setAttribute('data-pkc-region', 'tag-add');
-        addForm.setAttribute('data-pkc-from', entry.lid);
-
-        const select = document.createElement('select');
-        select.setAttribute('data-pkc-field', 'tag-target');
-        select.className = 'pkc-tag-select';
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = '+ Tag';
-        select.appendChild(defaultOpt);
-        for (const e of available) {
-          const opt = document.createElement('option');
-          opt.value = e.lid;
-          opt.textContent = e.title || `(${e.lid})`;
-          select.appendChild(opt);
-        }
-        addForm.appendChild(select);
-
-        const addBtn = createElement('button', 'pkc-btn-small');
-        addBtn.setAttribute('data-pkc-action', 'add-tag');
-        addBtn.textContent = 'Add';
-        addForm.appendChild(addBtn);
-
-        tagSection.appendChild(addForm);
-      }
+      const removeBtn = createElement('button', 'pkc-tag-remove');
+      removeBtn.setAttribute('data-pkc-action', 'remove-tag');
+      removeBtn.setAttribute('data-pkc-relation-id', tag.relationId);
+      removeBtn.setAttribute('title', 'Remove this tag');
+      removeBtn.textContent = '\u00d7';
+      chip.appendChild(removeBtn);
     }
 
-    view.appendChild(tagSection);
+    tagSection.appendChild(chip);
   }
 
-  // Move to Folder UI
-  if (container && canEdit) {
+  if (canEdit) {
+    const available = getAvailableTagTargets(container.relations, container.entries, entry.lid);
+    if (available.length > 0) {
+      const addForm = createElement('span', 'pkc-tag-add');
+      addForm.setAttribute('data-pkc-region', 'tag-add');
+      addForm.setAttribute('data-pkc-from', entry.lid);
+
+      const select = document.createElement('select');
+      select.setAttribute('data-pkc-field', 'tag-target');
+      select.className = 'pkc-tag-select';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = '+ Tag';
+      select.appendChild(defaultOpt);
+      for (const e of available) {
+        const opt = document.createElement('option');
+        opt.value = e.lid;
+        opt.textContent = e.title || `(${e.lid})`;
+        select.appendChild(opt);
+      }
+      addForm.appendChild(select);
+
+      const addBtn = createElement('button', 'pkc-btn-small');
+      addBtn.setAttribute('data-pkc-action', 'add-tag');
+      addBtn.setAttribute('title', 'Add a tag to this entry');
+      addBtn.textContent = 'Add';
+      addForm.appendChild(addBtn);
+
+      tagSection.appendChild(addForm);
+    }
+  }
+
+  meta.appendChild(tagSection);
+
+  // Move to Folder
+  if (canEdit) {
     const folders = getAvailableFolders(container.entries, container.relations, entry.lid);
     const moveSection = createElement('div', 'pkc-move-to-folder');
     moveSection.setAttribute('data-pkc-region', 'move-to-folder');
     moveSection.setAttribute('data-pkc-lid', entry.lid);
 
     const moveLabel = createElement('span', 'pkc-move-label');
-    moveLabel.textContent = 'Move to:';
+    moveLabel.textContent = 'Folder';
     moveSection.appendChild(moveLabel);
 
-    // Find current parent folder
     const currentParent = getStructuralParent(container.relations, container.entries, entry.lid);
 
-    // Show current location
     if (currentParent) {
       const currentLoc = createElement('span', 'pkc-move-current');
-      currentLoc.textContent = `Currently in: ${currentParent.title || '(untitled)'}`;
+      currentLoc.textContent = `in: ${currentParent.title || '(untitled)'}`;
       moveSection.appendChild(currentLoc);
     }
 
@@ -752,7 +986,7 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
 
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
-    noneOpt.textContent = currentParent ? '↑ Move to root level' : '(root level)';
+    noneOpt.textContent = currentParent ? '↑ Root level' : '(root)';
     if (!currentParent) noneOpt.selected = true;
     select.appendChild(noneOpt);
 
@@ -767,103 +1001,81 @@ function renderView(entry: Entry, canEdit: boolean, container: Container | null)
 
     const moveBtn = createElement('button', 'pkc-btn-small');
     moveBtn.setAttribute('data-pkc-action', 'move-to-folder');
+    moveBtn.setAttribute('title', 'Move this entry to the selected folder');
     moveBtn.textContent = 'Move';
     moveSection.appendChild(moveBtn);
 
-    view.appendChild(moveSection);
+    meta.appendChild(moveSection);
   }
 
   // History section
-  if (container) {
-    const revCount = getRevisionCount(container, entry.lid);
-    if (revCount > 0) {
-      const latest = getLatestRevision(container, entry.lid);
-      const revInfo = createElement('div', 'pkc-revision-info');
-      revInfo.setAttribute('data-pkc-region', 'revision-info');
-      revInfo.setAttribute('data-pkc-revision-count', String(revCount));
+  const revCount = getRevisionCount(container, entry.lid);
+  if (revCount > 0) {
+    const latest = getLatestRevision(container, entry.lid);
+    const revInfo = createElement('div', 'pkc-revision-info');
+    revInfo.setAttribute('data-pkc-region', 'revision-info');
+    revInfo.setAttribute('data-pkc-revision-count', String(revCount));
 
-      const heading = createElement('div', 'pkc-revision-heading');
-      heading.textContent = `History: ${revCount} previous version${revCount > 1 ? 's' : ''}`;
-      revInfo.appendChild(heading);
+    const heading = createElement('div', 'pkc-revision-heading');
+    heading.textContent = `History (${revCount})`;
+    revInfo.appendChild(heading);
 
-      if (latest) {
-        const latestInfo = createElement('div', 'pkc-revision-latest');
-        latestInfo.setAttribute('data-pkc-region', 'revision-latest');
-        const latestLabel = createElement('span', 'pkc-revision-latest-label');
-        latestLabel.textContent = `Last saved: ${formatTimestamp(latest.created_at)}`;
-        latestInfo.appendChild(latestLabel);
+    if (latest) {
+      const latestInfo = createElement('div', 'pkc-revision-latest');
+      latestInfo.setAttribute('data-pkc-region', 'revision-latest');
+      const latestLabel = createElement('span', 'pkc-revision-latest-label');
+      latestLabel.textContent = formatTimestamp(latest.created_at);
+      latestInfo.appendChild(latestLabel);
 
-        // Show what the previous version contained
-        const parsed = parseRevisionSnapshot(latest);
-        if (parsed) {
-          const preview = createElement('span', 'pkc-revision-preview');
-          preview.setAttribute('data-pkc-region', 'revision-preview');
-          preview.textContent = `"${truncate(parsed.title, 40)}"`;
-          latestInfo.appendChild(preview);
-        }
-
-        revInfo.appendChild(latestInfo);
+      const parsed = parseRevisionSnapshot(latest);
+      if (parsed) {
+        const preview = createElement('span', 'pkc-revision-preview');
+        preview.setAttribute('data-pkc-region', 'revision-preview');
+        preview.textContent = `"${truncate(parsed.title, 30)}"`;
+        latestInfo.appendChild(preview);
       }
 
-      if (canEdit && latest) {
-        const restoreBtn = createElement('button', 'pkc-btn');
-        restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
-        restoreBtn.setAttribute('data-pkc-lid', entry.lid);
-        restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
-        restoreBtn.textContent = 'Revert to previous version';
-        revInfo.appendChild(restoreBtn);
-      }
-
-      view.appendChild(revInfo);
-    }
-  }
-
-  // Relation sections
-  if (container) {
-    const directed = getRelationsForEntry(container.relations, entry.lid);
-    const resolved = resolveRelations(directed, container.entries);
-    const outbound = resolved.filter((r) => r.direction === 'outbound');
-    const inbound = resolved.filter((r) => r.direction === 'inbound');
-
-    if (outbound.length > 0 || inbound.length > 0) {
-      const relSection = createElement('div', 'pkc-relations');
-      relSection.setAttribute('data-pkc-region', 'relations');
-
-      if (outbound.length > 0) {
-        relSection.appendChild(renderRelationGroup('Outbound', outbound));
-      }
-      if (inbound.length > 0) {
-        relSection.appendChild(renderRelationGroup('Inbound', inbound));
-      }
-
-      view.appendChild(relSection);
+      revInfo.appendChild(latestInfo);
     }
 
-    // Relation creation form (only in ready phase)
-    if (canEdit && container.entries.length > 1) {
-      view.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+    if (canEdit && latest) {
+      const restoreBtn = createElement('button', 'pkc-btn-small');
+      restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
+      restoreBtn.setAttribute('data-pkc-lid', entry.lid);
+      restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
+      restoreBtn.setAttribute('title', 'Revert this entry to its previous saved version');
+      restoreBtn.textContent = 'Revert';
+      revInfo.appendChild(restoreBtn);
     }
+
+    meta.appendChild(revInfo);
   }
 
-  if (canEdit) {
-    const actions = createElement('div', 'pkc-view-actions');
+  // Relations section
+  const directed = getRelationsForEntry(container.relations, entry.lid);
+  const resolved = resolveRelations(directed, container.entries);
+  const outbound = resolved.filter((r) => r.direction === 'outbound');
+  const inbound = resolved.filter((r) => r.direction === 'inbound');
 
-    const editBtn = createElement('button', 'pkc-btn');
-    editBtn.setAttribute('data-pkc-action', 'begin-edit');
-    editBtn.setAttribute('data-pkc-lid', entry.lid);
-    editBtn.textContent = 'Edit';
-    actions.appendChild(editBtn);
+  if (outbound.length > 0 || inbound.length > 0) {
+    const relSection = createElement('div', 'pkc-relations');
+    relSection.setAttribute('data-pkc-region', 'relations');
 
-    const deleteBtn = createElement('button', 'pkc-btn-danger');
-    deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
-    deleteBtn.setAttribute('data-pkc-lid', entry.lid);
-    deleteBtn.textContent = 'Delete';
-    actions.appendChild(deleteBtn);
+    if (outbound.length > 0) {
+      relSection.appendChild(renderRelationGroup('Outbound', outbound));
+    }
+    if (inbound.length > 0) {
+      relSection.appendChild(renderRelationGroup('Inbound', inbound));
+    }
 
-    view.appendChild(actions);
+    meta.appendChild(relSection);
   }
 
-  return view;
+  if (canEdit && container.entries.length > 1) {
+    meta.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+  }
+
+  return meta;
 }
 
 function renderRelationGroup(
@@ -941,6 +1153,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   // Create button
   const btn = createElement('button', 'pkc-btn');
   btn.setAttribute('data-pkc-action', 'create-relation');
+  btn.setAttribute('title', 'Create a relation to the selected entry');
   btn.textContent = 'Add';
   row.appendChild(btn);
 
@@ -963,7 +1176,7 @@ function renderEditor(entry: Entry): HTMLElement {
 
   const archLabel = createElement('span', 'pkc-archetype-label');
   archLabel.setAttribute('data-pkc-archetype', entry.archetype);
-  archLabel.textContent = archetypeLabel(entry.archetype);
+  archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   titleRow.appendChild(archLabel);
   editor.appendChild(titleRow);
 
@@ -971,20 +1184,7 @@ function renderEditor(entry: Entry): HTMLElement {
   const presenter = getPresenter(entry.archetype);
   editor.appendChild(presenter.renderEditorBody(entry));
 
-  const actions = createElement('div', 'pkc-editor-actions');
-
-  const commitBtn = createElement('button', 'pkc-btn');
-  commitBtn.setAttribute('data-pkc-action', 'commit-edit');
-  commitBtn.setAttribute('data-pkc-lid', entry.lid);
-  commitBtn.textContent = 'Save';
-  actions.appendChild(commitBtn);
-
-  const cancelBtn = createElement('button', 'pkc-btn');
-  cancelBtn.setAttribute('data-pkc-action', 'cancel-edit');
-  cancelBtn.textContent = 'Cancel';
-  actions.appendChild(cancelBtn);
-
-  editor.appendChild(actions);
+  // Actions moved to fixed action bar (renderActionBar)
   return editor;
 }
 
@@ -1054,12 +1254,14 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
     const acceptBtn = createElement('button', 'pkc-btn');
     acceptBtn.setAttribute('data-pkc-action', 'accept-offer');
     acceptBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    acceptBtn.setAttribute('title', 'Accept this incoming entry');
     acceptBtn.textContent = 'Accept';
     item.appendChild(acceptBtn);
 
     const dismissBtn = createElement('button', 'pkc-btn');
     dismissBtn.setAttribute('data-pkc-action', 'dismiss-offer');
     dismissBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    dismissBtn.setAttribute('title', 'Decline this incoming entry');
     dismissBtn.textContent = 'Dismiss';
     item.appendChild(dismissBtn);
 
@@ -1217,4 +1419,245 @@ function formatTimestamp(iso: string): string {
 function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1) + '…';
+}
+
+/**
+ * Render a context menu at the given position for an entry.
+ * Returns the menu element to be appended to the DOM.
+ */
+export function renderContextMenu(
+  lid: string,
+  x: number,
+  y: number,
+  hasParent: boolean,
+): HTMLElement {
+  const menu = createElement('div', 'pkc-context-menu');
+  menu.setAttribute('data-pkc-region', 'context-menu');
+  menu.setAttribute('data-pkc-lid', lid);
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  const items: { action: string; label: string; tip: string; lid?: string; show: boolean }[] = [
+    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: true },
+    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: true },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: hasParent },
+  ];
+
+  for (const item of items) {
+    if (!item.show) continue;
+    const btn = createElement('button', 'pkc-context-menu-item');
+    btn.setAttribute('data-pkc-action', item.action);
+    btn.setAttribute('title', item.tip);
+    if (item.lid) btn.setAttribute('data-pkc-lid', item.lid);
+    btn.textContent = item.label;
+    menu.appendChild(btn);
+  }
+
+  return menu;
+}
+
+// ── Persistent Drop Zone ──
+
+/**
+ * Render a persistent file drop zone.
+ * @param large - If true, renders full-area invitation (when no entry selected).
+ *                If false, renders compact strip (below entry content).
+ */
+function renderDropZone(state: AppState, large: boolean): HTMLElement {
+  const zone = createElement('div', large ? 'pkc-drop-zone pkc-drop-zone-large' : 'pkc-drop-zone pkc-drop-zone-compact');
+  zone.setAttribute('data-pkc-region', 'file-drop-zone');
+
+  // Show context folder if applicable
+  const contextFolder = resolveContextFolder(state);
+
+  if (large) {
+    const icon = createElement('div', 'pkc-drop-zone-icon');
+    icon.textContent = '📎';
+    zone.appendChild(icon);
+
+    const label = createElement('div', 'pkc-drop-zone-label');
+    label.textContent = 'Drop a file here to attach';
+    zone.appendChild(label);
+
+    if (contextFolder) {
+      const ctx = createElement('div', 'pkc-drop-zone-context');
+      ctx.textContent = `→ ${contextFolder.title || '(untitled)'}`;
+      zone.appendChild(ctx);
+    }
+
+    // Also show the "or create" hint
+    const hint = createElement('div', 'pkc-drop-zone-hint');
+    hint.textContent = state.container?.entries?.length
+      ? 'or select an entry from the sidebar'
+      : 'or use the + buttons above to create an entry';
+    zone.appendChild(hint);
+  } else {
+    const label = createElement('span', 'pkc-drop-zone-label');
+    label.textContent = '📎 Drop file to attach';
+    zone.appendChild(label);
+
+    if (contextFolder) {
+      const ctx = createElement('span', 'pkc-drop-zone-context');
+      ctx.textContent = `→ ${truncate(contextFolder.title || '(untitled)', 20)}`;
+      zone.appendChild(ctx);
+    }
+  }
+
+  // Store context folder lid for action-binder to read
+  if (contextFolder) {
+    zone.setAttribute('data-pkc-context-folder', contextFolder.lid);
+  }
+
+  return zone;
+}
+
+// ── Detached View ──
+
+/**
+ * Render a detached (floating) view panel for an entry.
+ * Non-modal: does not block main UI interaction.
+ * Draggable via header bar.
+ */
+export function renderDetachedPanel(entry: Entry, container: Container | null): HTMLElement {
+  const panel = createElement('div', 'pkc-detached-panel');
+  panel.setAttribute('data-pkc-region', 'detached-panel');
+  panel.setAttribute('data-pkc-lid', entry.lid);
+
+  // Header bar (draggable handle + close button)
+  const header = createElement('div', 'pkc-detached-header');
+  header.setAttribute('data-pkc-region', 'detached-header');
+
+  const icon = createElement('span', 'pkc-detached-icon');
+  icon.textContent = archetypeIcon(entry.archetype);
+  header.appendChild(icon);
+
+  const titleEl = createElement('span', 'pkc-detached-title');
+  titleEl.textContent = entry.title || '(untitled)';
+  header.appendChild(titleEl);
+
+  const typeBadge = createElement('span', 'pkc-archetype-badge');
+  typeBadge.textContent = archetypeLabel(entry.archetype);
+  header.appendChild(typeBadge);
+
+  const closeBtn = createElement('button', 'pkc-detached-close');
+  closeBtn.setAttribute('data-pkc-action', 'close-detached');
+  closeBtn.setAttribute('title', 'Close this panel');
+  closeBtn.textContent = '×';
+  header.appendChild(closeBtn);
+
+  panel.appendChild(header);
+
+  // Content area
+  const content = createElement('div', 'pkc-detached-content');
+
+  if (entry.archetype === 'attachment') {
+    content.appendChild(renderDetachedAttachment(entry, container));
+  } else {
+    // Use presenter for body rendering (read-only)
+    const presenter = getPresenter(entry.archetype);
+    content.appendChild(presenter.renderBody(entry));
+
+    // Folder contents
+    if (entry.archetype === 'folder' && container) {
+      content.appendChild(renderFolderContents(entry, container));
+    }
+  }
+
+  panel.appendChild(content);
+
+  // Make panel draggable via header
+  makeDraggablePanel(panel, header);
+
+  return panel;
+}
+
+/**
+ * Render attachment content for detached view.
+ * image/* → large preview, others → metadata + download button.
+ */
+function renderDetachedAttachment(entry: Entry, container: Container | null): HTMLElement {
+  const root = createElement('div', 'pkc-detached-attachment');
+  const att = parseAttachmentBody(entry.body);
+
+  if (!att.name) {
+    const empty = createElement('div', 'pkc-attachment-empty');
+    empty.textContent = 'No file attached. Edit this entry to add a file, or drop one into the center pane.';
+    root.appendChild(empty);
+    return root;
+  }
+
+  // File info
+  const info = createElement('div', 'pkc-detached-attachment-info');
+  info.textContent = `${att.name} — ${att.mime}${att.size ? ` (${formatFileSize(att.size)})` : ''}`;
+  root.appendChild(info);
+
+  // Check data availability
+  const hasData = !!(att.data || (att.asset_key && container?.assets?.[att.asset_key]));
+  const isImage = att.mime.startsWith('image/');
+
+  if (isImage && hasData) {
+    // Image preview: show placeholder with data-pkc attributes for population
+    const previewArea = createElement('div', 'pkc-detached-preview');
+    previewArea.setAttribute('data-pkc-region', 'detached-attachment-preview');
+    previewArea.setAttribute('data-pkc-lid', entry.lid);
+    // Placeholder text until populateDetachedPreviews fills it in
+    const placeholder = createElement('div', 'pkc-attachment-preview-placeholder');
+    placeholder.textContent = 'Loading preview…';
+    previewArea.appendChild(placeholder);
+    root.appendChild(previewArea);
+  }
+
+  if (hasData) {
+    const dlBtn = createElement('button', 'pkc-btn');
+    dlBtn.setAttribute('data-pkc-action', 'download-attachment');
+    dlBtn.setAttribute('data-pkc-lid', entry.lid);
+    dlBtn.setAttribute('title', `Download ${att.name}`);
+    dlBtn.textContent = `📥 Download ${att.name}`;
+    root.appendChild(dlBtn);
+  } else {
+    const stripped = createElement('div', 'pkc-attachment-stripped');
+    stripped.textContent = 'File data not available (Light export)';
+    root.appendChild(stripped);
+  }
+
+  return root;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Make a panel draggable by its header.
+ */
+function makeDraggablePanel(panel: HTMLElement, handle: HTMLElement): void {
+  let offsetX = 0;
+  let offsetY = 0;
+
+  function onMouseDown(e: MouseEvent): void {
+    // Only drag via the header, not buttons inside it
+    if ((e.target as HTMLElement).closest('button')) return;
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    e.preventDefault();
+  }
+
+  function onMouseMove(e: MouseEvent): void {
+    panel.style.left = `${e.clientX - offsetX}px`;
+    panel.style.top = `${e.clientY - offsetY}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+
+  function onMouseUp(): void {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  handle.addEventListener('mousedown', onMouseDown);
+  handle.style.cursor = 'grab';
 }

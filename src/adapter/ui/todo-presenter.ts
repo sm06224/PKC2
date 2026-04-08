@@ -2,12 +2,17 @@ import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
 
 /**
- * Todo body schema (minimal).
+ * Todo body schema.
  * Stored as JSON string in entry.body.
+ *
+ * `date` is optional (YYYY-MM-DD). Absent for legacy todos or todos without a due date.
+ * `archived` is optional (boolean). Absent or false = active. true = archived.
  */
 export interface TodoBody {
   status: 'open' | 'done';
   description: string;
+  date?: string;
+  archived?: boolean;
 }
 
 export function parseTodoBody(body: string): TodoBody {
@@ -16,6 +21,8 @@ export function parseTodoBody(body: string): TodoBody {
     return {
       status: parsed.status === 'done' ? 'done' : 'open',
       description: typeof parsed.description === 'string' ? parsed.description : '',
+      date: typeof parsed.date === 'string' && parsed.date !== '' ? parsed.date : undefined,
+      archived: parsed.archived === true ? true : undefined,
     };
   } catch {
     // Non-JSON body: treat as description with open status
@@ -24,7 +31,39 @@ export function parseTodoBody(body: string): TodoBody {
 }
 
 export function serializeTodoBody(todo: TodoBody): string {
-  return JSON.stringify({ status: todo.status, description: todo.description });
+  const out: Record<string, unknown> = { status: todo.status, description: todo.description };
+  if (todo.date) {
+    out.date = todo.date;
+  }
+  if (todo.archived) {
+    out.archived = true;
+  }
+  return JSON.stringify(out);
+}
+
+/**
+ * Format a YYYY-MM-DD date string for display.
+ * Returns localized short date (e.g. "2026/04/08" for ja, "4/8/2026" for en).
+ */
+export function formatTodoDate(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  if (!y || !m || !d) return date; // fallback: show raw string
+  const dt = new Date(y, m - 1, d);
+  if (isNaN(dt.getTime())) return date;
+  return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric' });
+}
+
+/**
+ * Returns true if a todo is open and its date is before today.
+ */
+export function isTodoPastDue(todo: TodoBody): boolean {
+  if (todo.status === 'done' || !todo.date) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [y, m, d] = todo.date.split('-').map(Number);
+  if (!y || !m || !d) return false;
+  const due = new Date(y, m - 1, d);
+  return due.getTime() < today.getTime();
 }
 
 export const todoPresenter: DetailPresenter = {
@@ -32,6 +71,9 @@ export const todoPresenter: DetailPresenter = {
     const todo = parseTodoBody(entry.body);
     const container = document.createElement('div');
     container.className = 'pkc-todo-view';
+    if (todo.archived) {
+      container.setAttribute('data-pkc-todo-archived', 'true');
+    }
 
     const statusEl = document.createElement('button');
     statusEl.className = 'pkc-todo-status';
@@ -41,13 +83,36 @@ export const todoPresenter: DetailPresenter = {
     statusEl.textContent = todo.status === 'done' ? '[x]' : '[ ]';
     container.appendChild(statusEl);
 
+    const right = document.createElement('div');
+    right.className = 'pkc-todo-right';
+
+    if (todo.date) {
+      const dateEl = document.createElement('span');
+      dateEl.className = 'pkc-todo-date';
+      dateEl.setAttribute('data-pkc-field', 'todo-date-display');
+      dateEl.textContent = formatTodoDate(todo.date);
+      if (isTodoPastDue(todo)) {
+        dateEl.classList.add('pkc-todo-date-overdue');
+      }
+      right.appendChild(dateEl);
+    }
+
+    if (todo.archived) {
+      const archivedEl = document.createElement('span');
+      archivedEl.className = 'pkc-todo-archived-badge';
+      archivedEl.setAttribute('data-pkc-field', 'todo-archived-display');
+      archivedEl.textContent = 'Archived';
+      right.appendChild(archivedEl);
+    }
+
     if (todo.description) {
       const desc = document.createElement('span');
       desc.className = 'pkc-todo-description';
       desc.textContent = todo.description;
-      container.appendChild(desc);
+      right.appendChild(desc);
     }
 
+    container.appendChild(right);
     return container;
   },
 
@@ -68,6 +133,28 @@ export const todoPresenter: DetailPresenter = {
       statusSelect.appendChild(opt);
     }
     container.appendChild(statusSelect);
+
+    // Date input
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.setAttribute('data-pkc-field', 'todo-date');
+    dateInput.className = 'pkc-todo-date-input';
+    if (todo.date) dateInput.value = todo.date;
+    container.appendChild(dateInput);
+
+    // Archived checkbox
+    const archivedRow = document.createElement('label');
+    archivedRow.className = 'pkc-todo-archived-label';
+    const archivedCheck = document.createElement('input');
+    archivedCheck.type = 'checkbox';
+    archivedCheck.setAttribute('data-pkc-field', 'todo-archived');
+    archivedCheck.className = 'pkc-todo-archived-check';
+    if (todo.archived) archivedCheck.checked = true;
+    archivedRow.appendChild(archivedCheck);
+    const archivedText = document.createElement('span');
+    archivedText.textContent = 'Archived';
+    archivedRow.appendChild(archivedText);
+    container.appendChild(archivedRow);
 
     // Description textarea
     const descArea = document.createElement('textarea');
@@ -91,8 +178,12 @@ export const todoPresenter: DetailPresenter = {
   collectBody(root: HTMLElement): string {
     const statusEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
     const descEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
+    const dateEl = root.querySelector<HTMLInputElement>('[data-pkc-field="todo-date"]');
+    const archivedEl = root.querySelector<HTMLInputElement>('[data-pkc-field="todo-archived"]');
     const status = statusEl?.value === 'done' ? 'done' : 'open';
     const description = descEl?.value ?? '';
-    return serializeTodoBody({ status, description });
+    const date = dateEl?.value || undefined;
+    const archived = archivedEl?.checked ? true : undefined;
+    return serializeTodoBody({ status, description, date, archived });
   },
 };

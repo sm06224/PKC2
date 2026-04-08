@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #50 完了時点（Folder UX Hardening）
+**最終更新**: Issue #54 完了時点（Persistent Drop Zone + File Attach Flow）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,8 +11,8 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#50 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
-Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ基盤、#50 でフォルダUX強化を実施。
+Issue #1〜#54 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
+Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ基盤、#50 でフォルダUX強化、#51 で3ペインレイアウト+固定アクションバー、#52 でDnD+コンテキストメニュー、#53 でダブルクリック別表示、#54 で常設ファイルドロップゾーンを実施。
 現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換の本格解決、レスポンシブ対応。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
@@ -144,8 +144,12 @@ UI 監査・整備 (#45〜#46):
 | 48 | Attachment UX — ダウンロード機能、ファイルカード表示、画像プレビュー、download-attachment action |
 | 49 | Folder / Structural Navigation — folder archetype、sidebar tree表示、breadcrumb、Move to Folder UI |
 | 50 | Folder UX Hardening — フォルダ配下作成導線、current location強調、空フォルダガイド、tree child count、Move UX改善 |
+| 51 | Three-Pane Layout + Fixed Action Bar — 3ペイン構造(sidebar/center/meta)、固定アクションバー、BIZ UDGothicフォント、Fallout/PIP風ダークテーマ+ライトテーマ、archetype絵文字アイコン、ボタンツールチップ |
+| 52 | DnD + Context Menu Foundation — sidebar tree DnD(folder drop)、root drop zone、右クリックコンテキストメニュー(Edit/Delete/Move to Root)、循環防止、視覚フィードバック |
+| 53 | Double-Click Open + Detached View — sidebar dblclickでfloating panel表示、attachment image preview/download、ドラッグ移動可能パネル、削除済みエントリ折りたたみ |
+| 54 | Persistent Drop Zone + File Attach Flow — center pane常設ドロップゾーン、file drop→attachment自動作成、folder context連動、drag/dropフィードバック |
 
-テスト: 741 tests / 38 files 全通過、typecheck clean、build clean
+テスト: 778 tests / 38 files 全通過、typecheck clean、build clean
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 不変条件（必ず守ること）
@@ -256,20 +260,17 @@ Phase δ 残り: Document Set / Template は future
 ■ 次にやるべき Issue
 ━━━━━━━━━━━━━━━━━━━━━━
 
-**推奨: Export/Import UX 統合**
+Issue #51 で3ペインレイアウト・固定アクションバー・テーマ・フォント・アイコンの基盤が完成。
+ユーザーの元要望リストから、次の候補:
 
-現在 export ボタンが6個（Light, Full, RO Light, RO Full, ZIP, Import）並列で分かりにくい。
-- Export ボタンを統合 → モード選択 UI（modal or dropdown）
-- Light/Full/ZIP の選択を1画面で
-- Guardrail 警告をモード選択 UI に統合
-- adapter/ui 層のみの変更。core・feature に影響しない
-- #41 Guardrail の自然な延長
+- DnD（ドラッグ＆ドロップ）でフォルダ間移動
+- カレンダービュー / カンバンビュー
+- 右クリックコンテキストメニュー
+- 別窓編集
+- Form の再考（動的スキーマ）
+- Export/Import UX 統合
 
-他の候補（比較用）:
-- 操作順序ドキュメント強化（リスク: 極低、価値: 中）
-- Export/Import round-trip テスト強化（リスク: 極低、価値: 高）
-- archetype 拡張の次段（リスク: 中、価値: 中）
-- renderer UX 改善（レイアウト・CSS）（リスク: 低、価値: 中）
+これらはユーザーの判断で優先順位を決定する。
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ やってはいけない寄り道

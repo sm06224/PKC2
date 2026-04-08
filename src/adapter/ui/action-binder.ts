@@ -6,6 +6,9 @@ import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
+import { isDescendant } from '../../features/relation/tree';
+import { getStructuralParent } from '../../features/relation/tree';
+import { renderContextMenu, renderDetachedPanel } from './renderer';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -181,6 +184,56 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'ctx-move-to-root': {
+        if (!lid) break;
+        const state = dispatcher.getState();
+        if (!state.container) break;
+        for (const r of state.container.relations) {
+          if (r.kind === 'structural' && r.to === lid) {
+            dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+            break;
+          }
+        }
+        break;
+      }
+      case 'close-detached': {
+        const panel = target.closest('[data-pkc-region="detached-panel"]');
+        if (panel) panel.remove();
+        break;
+      }
+      case 'toggle-show-archived': {
+        dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
+        break;
+      }
+      case 'set-view-mode': {
+        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar';
+        if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'calendar-prev': {
+        const state = dispatcher.getState();
+        let y = state.calendarYear;
+        let m = state.calendarMonth - 1;
+        if (m < 1) { m = 12; y--; }
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        break;
+      }
+      case 'calendar-next': {
+        const state = dispatcher.getState();
+        let y = state.calendarYear;
+        let m = state.calendarMonth + 1;
+        if (m > 12) { m = 1; y++; }
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        break;
+      }
+      case 'toggle-sidebar': {
+        togglePane(root, 'sidebar');
+        break;
+      }
+      case 'toggle-meta': {
+        togglePane(root, 'meta');
+        break;
+      }
     }
   }
 
@@ -237,17 +290,330 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // ── DnD handlers for sidebar tree ──
+
+  let draggedLid: string | null = null;
+
+  function handleDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    draggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    // Add dragging style after a tick (so the drag ghost is clean)
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (!dropTarget || !draggedLid) return;
+
+    const state = dispatcher.getState();
+    if (!state.container) return;
+
+    const folderLid = dropTarget.getAttribute('data-pkc-lid');
+    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+
+    // Prevent dropping on self
+    if (folderLid === draggedLid) return;
+
+    // Prevent dropping on descendant (cycle)
+    if (folderLid && isDescendant(state.container.relations, draggedLid, folderLid)) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+
+    // Root drop zone
+    if (isRoot) {
+      dropTarget.setAttribute('data-pkc-drag-over', 'true');
+    }
+  }
+
+  function handleDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (!dropTarget || !draggedLid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const folderLid = isRoot ? null : dropTarget.getAttribute('data-pkc-lid');
+
+    // Don't drop on self
+    if (folderLid === draggedLid) return;
+
+    // Cycle check
+    if (folderLid && isDescendant(state.container.relations, draggedLid, folderLid)) return;
+
+    // Remove existing structural parent relation
+    for (const r of state.container.relations) {
+      if (r.kind === 'structural' && r.to === draggedLid) {
+        dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+        break;
+      }
+    }
+
+    // Create new structural relation (unless moving to root)
+    if (folderLid) {
+      dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: draggedLid, kind: 'structural' });
+    }
+
+    draggedLid = null;
+  }
+
+  function handleDragEnd(e: DragEvent): void {
+    // Clean up all drag state
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights
+    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    draggedLid = null;
+  }
+
+  // ── Context menu handler ──
+
+  function dismissContextMenu(): void {
+    const existing = root.querySelector('[data-pkc-region="context-menu"]');
+    if (existing) existing.remove();
+  }
+
+  function handleContextMenu(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+
+    // Only in sidebar tree
+    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+    if (!sidebar) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    dismissContextMenu();
+
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid || !state.container) return;
+
+    const hasParent = getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+    const menu = renderContextMenu(lid, e.clientX, e.clientY, hasParent);
+    root.appendChild(menu);
+
+    // Select the entry being right-clicked
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+  }
+
+  function handleDocumentClick(e: MouseEvent): void {
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    if (!menu) return;
+    // If clicking inside the menu, let the action handler fire first
+    if (menu.contains(e.target as Node)) {
+      // Dismiss after action fires
+      requestAnimationFrame(() => dismissContextMenu());
+      return;
+    }
+    dismissContextMenu();
+  }
+
+  // ── File drop zone handler (external file → attachment entry) ──
+
+  function handleFileDropOver(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (!dropZone) return;
+
+    // Only handle external file drops (not internal entry DnD)
+    if (!e.dataTransfer?.types.includes('Files')) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    dropZone.setAttribute('data-pkc-file-drag-over', 'true');
+  }
+
+  function handleFileDropLeave(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (dropZone) {
+      dropZone.removeAttribute('data-pkc-file-drag-over');
+    }
+  }
+
+  function handleFileDrop(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (!dropZone) return;
+
+    if (!e.dataTransfer?.files.length) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.removeAttribute('data-pkc-file-drag-over');
+
+    // Take the first file only (single file for now)
+    const file = e.dataTransfer.files[0]!;
+    const contextFolder = dropZone.getAttribute('data-pkc-context-folder') ?? undefined;
+
+    processFileAttachment(file, contextFolder, dispatcher);
+
+    // Visual feedback: flash the drop zone
+    dropZone.setAttribute('data-pkc-drop-success', 'true');
+    setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
+  }
+
+  // ── Double-click handler for detached view ──
+
+  function handleDblClick(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+
+    // Only in sidebar tree/list
+    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+    if (!sidebar) return;
+
+    const state = dispatcher.getState();
+    if (!state.container) return;
+
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    const entry = state.container.entries.find((e) => e.lid === lid);
+    if (!entry) return;
+
+    e.preventDefault();
+
+    // Don't open duplicate detached panel for the same entry
+    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`) as HTMLElement | null;
+    if (existing) {
+      // Bring to front with visual pulse
+      existing.remove();
+      root.appendChild(existing);
+      existing.style.animation = 'none';
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      existing.offsetHeight; // force reflow
+      existing.style.animation = 'pkc-panel-pulse 300ms ease-out';
+      return;
+    }
+
+    const panel = renderDetachedPanel(entry, state.container);
+
+    // Offset position slightly for each open panel to avoid stacking
+    const openPanels = root.querySelectorAll('[data-pkc-region="detached-panel"]');
+    const offset = openPanels.length * 24;
+    panel.style.top = `${80 + offset}px`;
+    panel.style.right = `${16 + offset}px`;
+
+    root.appendChild(panel);
+
+    // Populate image previews for attachment entries
+    populateDetachedPreview(panel, lid, dispatcher);
+  }
+
+  // ── Resize handle logic ──
+
+  let resizeTarget: 'left' | 'right' | null = null;
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+  let resizePane: HTMLElement | null = null;
+
+  function handleResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-resize]');
+    if (!handle) return;
+
+    const side = handle.getAttribute('data-pkc-resize') as 'left' | 'right';
+    resizeTarget = side;
+    resizeStartX = e.clientX;
+    handle.setAttribute('data-pkc-resizing', 'true');
+
+    if (side === 'left') {
+      resizePane = root.querySelector<HTMLElement>('.pkc-sidebar');
+    } else {
+      resizePane = root.querySelector<HTMLElement>('.pkc-meta-pane');
+    }
+
+    if (resizePane) {
+      resizeStartWidth = resizePane.getBoundingClientRect().width;
+    }
+
+    e.preventDefault();
+    document.addEventListener('mousemove', handleResizeMouseMove);
+    document.addEventListener('mouseup', handleResizeMouseUp);
+  }
+
+  function handleResizeMouseMove(e: MouseEvent): void {
+    if (!resizeTarget || !resizePane) return;
+    const dx = e.clientX - resizeStartX;
+    const newWidth = resizeTarget === 'left'
+      ? Math.max(120, resizeStartWidth + dx)
+      : Math.max(120, resizeStartWidth - dx);
+    resizePane.style.width = `${newWidth}px`;
+  }
+
+  function handleResizeMouseUp(): void {
+    const handle = root.querySelector<HTMLElement>('[data-pkc-resizing="true"]');
+    if (handle) handle.removeAttribute('data-pkc-resizing');
+    resizeTarget = null;
+    resizePane = null;
+    document.removeEventListener('mousemove', handleResizeMouseMove);
+    document.removeEventListener('mouseup', handleResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleResizeMouseDown);
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+  root.addEventListener('dblclick', handleDblClick);
+  root.addEventListener('dragstart', handleDragStart);
+  root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragover', handleFileDropOver);
+  root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('dragleave', handleFileDropLeave);
+  root.addEventListener('drop', handleDrop);
+  root.addEventListener('drop', handleFileDrop);
+  root.addEventListener('dragend', handleDragEnd);
+  root.addEventListener('contextmenu', handleContextMenu);
   document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('click', handleDocumentClick);
 
   // Return cleanup function
   return () => {
+    root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('change', handleChange);
+    root.removeEventListener('dblclick', handleDblClick);
+    root.removeEventListener('dragstart', handleDragStart);
+    root.removeEventListener('dragover', handleDragOver);
+    root.removeEventListener('dragover', handleFileDropOver);
+    root.removeEventListener('dragleave', handleDragLeave);
+    root.removeEventListener('dragleave', handleFileDropLeave);
+    root.removeEventListener('drop', handleDrop);
+    root.removeEventListener('drop', handleFileDrop);
+    root.removeEventListener('dragend', handleDragEnd);
+    root.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('click', handleDocumentClick);
   };
 }
 
@@ -273,6 +639,19 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   }
 
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body, assets });
+}
+
+/**
+ * Apply a brief flash highlight to a sidebar entry (e.g., after create or move).
+ * Called by main.ts after re-render when an entry was just created.
+ */
+export function flashEntry(root: HTMLElement, lid: string): void {
+  requestAnimationFrame(() => {
+    const item = root.querySelector<HTMLElement>(`[data-pkc-lid="${lid}"][data-pkc-action="select-entry"]`);
+    if (!item) return;
+    item.setAttribute('data-pkc-flash', 'true');
+    item.addEventListener('animationend', () => item.removeAttribute('data-pkc-flash'), { once: true });
+  });
 }
 
 /**
@@ -343,5 +722,111 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     img.src = `data:${resolved.mime};base64,${resolved.data}`;
     img.alt = resolved.name;
     el.appendChild(img);
+  }
+}
+
+/**
+ * Populate image preview in a detached panel for attachment entries.
+ */
+function populateDetachedPreview(panel: HTMLElement, lid: string, dispatcher: Dispatcher): void {
+  const previewEl = panel.querySelector<HTMLElement>('[data-pkc-region="detached-attachment-preview"]');
+  if (!previewEl) return;
+
+  const resolved = resolveAttachmentData(lid, dispatcher);
+  if (!resolved) return;
+
+  previewEl.innerHTML = '';
+  const img = document.createElement('img');
+  img.className = 'pkc-detached-preview-img';
+  img.src = `data:${resolved.mime};base64,${resolved.data}`;
+  img.alt = resolved.name;
+  previewEl.appendChild(img);
+}
+
+/**
+ * Process a dropped file: create an attachment entry and commit it immediately.
+ * Flow: CREATE_ENTRY → COMMIT_EDIT (with body metadata + assets) → CREATE_RELATION (if folder context)
+ */
+function processFileAttachment(file: File, contextFolder: string | undefined, dispatcher: Dispatcher): void {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const arrayBuffer = reader.result as ArrayBuffer;
+    const bytes = new Uint8Array(arrayBuffer);
+
+    // Convert to base64
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    const base64 = btoa(binary);
+
+    // Generate asset key
+    const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Build attachment body metadata
+    const bodyMeta = JSON.stringify({
+      name: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+      asset_key: assetKey,
+    });
+
+    // Step 1: Create entry (enters editing mode automatically)
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+
+    // Step 2: Get the new entry's lid and commit with file data
+    const state = dispatcher.getState();
+    if (state.editingLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: state.editingLid,
+        title: file.name,
+        body: bodyMeta,
+        assets: { [assetKey]: base64 },
+      });
+
+      // Step 3: Place in context folder if applicable
+      if (contextFolder) {
+        const newState = dispatcher.getState();
+        if (newState.selectedLid) {
+          dispatcher.dispatch({
+            type: 'CREATE_RELATION',
+            from: contextFolder,
+            to: newState.selectedLid,
+            kind: 'structural',
+          });
+        }
+      }
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/**
+ * Toggle a pane between visible and collapsed (tray) state.
+ */
+function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
+  const selector = pane === 'sidebar' ? '.pkc-sidebar' : '.pkc-meta-pane';
+  const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
+  const handleSide = pane === 'sidebar' ? 'left' : 'right';
+
+  const paneEl = root.querySelector<HTMLElement>(selector);
+  const trayEl = root.querySelector<HTMLElement>(`[data-pkc-region="${trayRegion}"]`);
+  const handleEl = root.querySelector<HTMLElement>(`[data-pkc-resize="${handleSide}"]`);
+
+  if (!paneEl) return;
+
+  const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
+
+  if (isCollapsed) {
+    // Expand
+    paneEl.removeAttribute('data-pkc-collapsed');
+    if (trayEl) trayEl.style.display = 'none';
+    if (handleEl) handleEl.removeAttribute('data-pkc-collapsed');
+  } else {
+    // Collapse
+    paneEl.setAttribute('data-pkc-collapsed', 'true');
+    if (trayEl) trayEl.style.display = '';
+    if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
   }
 }
