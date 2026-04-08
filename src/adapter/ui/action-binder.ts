@@ -450,6 +450,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const contextFolder = dropZone.getAttribute('data-pkc-context-folder') ?? undefined;
 
     processFileAttachment(file, contextFolder, dispatcher);
+
+    // Visual feedback: flash the drop zone
+    dropZone.setAttribute('data-pkc-drop-success', 'true');
+    setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
   }
 
   // ── Double-click handler for detached view ──
@@ -474,11 +478,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     e.preventDefault();
 
     // Don't open duplicate detached panel for the same entry
-    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`);
+    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`) as HTMLElement | null;
     if (existing) {
-      // Bring to front
+      // Bring to front with visual pulse
       existing.remove();
       root.appendChild(existing);
+      existing.style.animation = 'none';
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      existing.offsetHeight; // force reflow
+      existing.style.animation = 'pkc-panel-pulse 300ms ease-out';
       return;
     }
 
@@ -606,6 +614,19 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   }
 
   dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title, body, assets });
+}
+
+/**
+ * Apply a brief flash highlight to a sidebar entry (e.g., after create or move).
+ * Called by main.ts after re-render when an entry was just created.
+ */
+export function flashEntry(root: HTMLElement, lid: string): void {
+  requestAnimationFrame(() => {
+    const item = root.querySelector<HTMLElement>(`[data-pkc-lid="${lid}"][data-pkc-action="select-entry"]`);
+    if (!item) return;
+    item.setAttribute('data-pkc-flash', 'true');
+    item.addEventListener('animationend', () => item.removeAttribute('data-pkc-flash'), { once: true });
+  });
 }
 
 /**

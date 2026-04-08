@@ -2,7 +2,7 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions, populateAttachmentPreviews } from './adapter/ui/action-binder';
+import { bindActions, populateAttachmentPreviews, flashEntry } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -50,7 +50,10 @@ async function boot(): Promise<void> {
   // 1. Dispatcher
   const dispatcher = createDispatcher();
 
-  // 2. Renderer: state → DOM (with scroll/focus restoration)
+  // 2. Renderer: state → DOM (with scroll/focus restoration + flash feedback)
+  let prevSelectedLid: string | null = null;
+  let prevEntryCount = 0;
+
   dispatcher.onState((state) => {
     // Save scroll positions and active element info before re-render
     const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
@@ -58,6 +61,9 @@ async function boot(): Promise<void> {
     const sidebarScroll = sidebar?.scrollTop ?? 0;
     const detailScroll = detail?.scrollTop ?? 0;
     const focusField = document.activeElement?.getAttribute('data-pkc-field') ?? null;
+
+    const currentCount = state.container?.entries.length ?? 0;
+    const justCreated = currentCount > prevEntryCount && state.selectedLid && state.selectedLid !== prevSelectedLid;
 
     render(state, root);
 
@@ -74,6 +80,14 @@ async function boot(): Promise<void> {
         : root.querySelector<HTMLElement>('[data-pkc-field="title"]');
       target?.focus();
     }
+
+    // Flash newly created entry in sidebar
+    if (justCreated && state.selectedLid) {
+      flashEntry(root, state.selectedLid);
+    }
+
+    prevSelectedLid = state.selectedLid;
+    prevEntryCount = currentCount;
 
     // Populate attachment image previews (needs container.assets data)
     populateAttachmentPreviews(root, dispatcher);
