@@ -20,10 +20,6 @@ import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
-import {
-  lightExportWarning, fullExportEstimation, zipRecommendation,
-  hasAssets, assetCount,
-} from './guardrails';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
 import { parseAttachmentBody } from './attachment-presenter';
@@ -145,11 +141,25 @@ function renderShell(state: AppState): HTMLElement {
     shell.appendChild(renderPendingOffers(state.pendingOffers));
   }
 
-  // Main area: sidebar + center + meta (3-pane)
+  // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
 
+  // Left tray bar (shown when sidebar is collapsed)
+  const leftTray = createElement('div', 'pkc-tray-bar');
+  leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
+  leftTray.textContent = 'SIDEBAR';
+  leftTray.style.display = 'none';
+  leftTray.setAttribute('data-pkc-region', 'tray-left');
+  main.appendChild(leftTray);
+
   // Left pane: entry list / tree / search / filters
-  main.appendChild(renderSidebar(state));
+  const sidebar = renderSidebar(state);
+  main.appendChild(sidebar);
+
+  // Resize handle: sidebar ↔ center
+  const leftHandle = createElement('div', 'pkc-resize-handle');
+  leftHandle.setAttribute('data-pkc-resize', 'left');
+  main.appendChild(leftHandle);
 
   // Center pane: content view/edit + fixed action bar
   main.appendChild(renderCenter(state));
@@ -157,9 +167,22 @@ function renderShell(state: AppState): HTMLElement {
   // Right pane: meta information (tags, relations, history, move)
   const selected = findSelectedEntry(state);
   if (selected) {
+    // Resize handle: center ↔ meta
+    const rightHandle = createElement('div', 'pkc-resize-handle');
+    rightHandle.setAttribute('data-pkc-resize', 'right');
+    main.appendChild(rightHandle);
+
     const canEdit = state.phase === 'ready' && !state.readonly;
     main.appendChild(renderMetaPane(selected, canEdit, state.container));
   }
+
+  // Right tray bar (shown when meta pane is collapsed)
+  const rightTray = createElement('div', 'pkc-tray-bar pkc-tray-bar-right');
+  rightTray.setAttribute('data-pkc-action', 'toggle-meta');
+  rightTray.textContent = 'META';
+  rightTray.style.display = 'none';
+  rightTray.setAttribute('data-pkc-region', 'tray-right');
+  main.appendChild(rightTray);
 
   shell.appendChild(main);
   return shell;
@@ -214,8 +237,8 @@ function renderHeader(state: AppState): HTMLElement {
 
     header.appendChild(createGroup);
 
-    // Export / Import panel (collapsible)
-    header.appendChild(renderExportImportPanel(state));
+    // Export / Import inline buttons
+    header.appendChild(renderExportImportInline(state));
   }
 
   // Readonly mode: show readonly badge and rehydrate button
@@ -237,158 +260,56 @@ function renderHeader(state: AppState): HTMLElement {
     header.appendChild(badge);
   }
 
+  // Pane toggle buttons (always shown)
+  const sidebarToggle = createElement('button', 'pkc-tray-toggle');
+  sidebarToggle.setAttribute('data-pkc-action', 'toggle-sidebar');
+  sidebarToggle.setAttribute('title', 'Toggle sidebar');
+  sidebarToggle.textContent = '◧';
+  header.appendChild(sidebarToggle);
+
+  const metaToggle = createElement('button', 'pkc-tray-toggle');
+  metaToggle.setAttribute('data-pkc-action', 'toggle-meta');
+  metaToggle.setAttribute('title', 'Toggle meta pane');
+  metaToggle.textContent = '◨';
+  header.appendChild(metaToggle);
+
   return header;
 }
 
-function renderExportImportPanel(state: AppState): HTMLElement {
-  const details = document.createElement('details');
-  details.className = 'pkc-eip-disclosure';
-  details.setAttribute('data-pkc-region', 'export-import-panel');
+function renderExportImportInline(_state: AppState): HTMLElement {
+  const group = createElement('div', 'pkc-eip-inline');
+  group.setAttribute('data-pkc-region', 'export-import-panel');
 
-  const summary = document.createElement('summary');
-  summary.className = 'pkc-eip-summary';
-  summary.textContent = 'Export / Import';
-  details.appendChild(summary);
+  const sep1 = createElement('span', 'pkc-eip-sep');
+  sep1.textContent = '|';
+  group.appendChild(sep1);
 
-  const panel = createElement('div', 'pkc-export-import-panel');
+  // Export Full (editable) — most common
+  const exportBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  exportBtn.setAttribute('data-pkc-action', 'begin-export');
+  exportBtn.setAttribute('data-pkc-export-mode', 'full');
+  exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
+  exportBtn.setAttribute('title', 'Export complete HTML (editable, all data)');
+  exportBtn.textContent = 'Export';
+  group.appendChild(exportBtn);
 
-  const container = state.container;
-  const containerHasAssets = container ? hasAssets(container) : false;
-
-  // ── Section 1: HTML Export ──
-  const htmlSection = createElement('div', 'pkc-eip-section');
-  const htmlHeading = createElement('div', 'pkc-eip-heading');
-  htmlHeading.textContent = 'HTML Export';
-  htmlSection.appendChild(htmlHeading);
-  const htmlDesc = createElement('div', 'pkc-eip-desc');
-  htmlDesc.textContent = 'Single self-contained HTML file. Opens in any browser.';
-  htmlSection.appendChild(htmlDesc);
-
-  // Editable group
-  const editableGroup = createElement('div', 'pkc-eip-group');
-  const editableLabel = createElement('span', 'pkc-eip-group-label');
-  editableLabel.textContent = 'Editable';
-  editableGroup.appendChild(editableLabel);
-
-  const lightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  // Export Light (editable)
+  const lightBtn = createElement('button', 'pkc-btn pkc-btn-create');
   lightBtn.setAttribute('data-pkc-action', 'begin-export');
   lightBtn.setAttribute('data-pkc-export-mode', 'light');
   lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
   lightBtn.setAttribute('title', 'Export text-only HTML (no attachments)');
   lightBtn.textContent = 'Light';
-  editableGroup.appendChild(lightBtn);
-  editableGroup.appendChild(makeHint('Text only, small file'));
+  group.appendChild(lightBtn);
 
-  const fullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  fullBtn.setAttribute('data-pkc-action', 'begin-export');
-  fullBtn.setAttribute('data-pkc-export-mode', 'full');
-  fullBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  fullBtn.setAttribute('title', 'Export complete HTML with all data');
-  fullBtn.textContent = 'Full';
-  editableGroup.appendChild(fullBtn);
-  editableGroup.appendChild(makeHint('All data including attachments'));
-
-  htmlSection.appendChild(editableGroup);
-
-  // Readonly group
-  const readonlyGroup = createElement('div', 'pkc-eip-group');
-  const readonlyLabel = createElement('span', 'pkc-eip-group-label');
-  readonlyLabel.textContent = 'Readonly';
-  readonlyGroup.appendChild(readonlyLabel);
-
-  const roLightBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  roLightBtn.setAttribute('data-pkc-action', 'begin-export');
-  roLightBtn.setAttribute('data-pkc-export-mode', 'light');
-  roLightBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-  roLightBtn.textContent = 'Light';
-  readonlyGroup.appendChild(roLightBtn);
-
-  const roFullBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  roFullBtn.setAttribute('data-pkc-action', 'begin-export');
-  roFullBtn.setAttribute('data-pkc-export-mode', 'full');
-  roFullBtn.setAttribute('data-pkc-export-mutability', 'readonly');
-  roFullBtn.textContent = 'Full';
-  readonlyGroup.appendChild(roFullBtn);
-
-  readonlyGroup.appendChild(makeHint('View-only, can rehydrate to workspace'));
-  htmlSection.appendChild(readonlyGroup);
-
-  // HTML guardrails (inline, next to relevant section)
-  if (container) {
-    const lightWarn = lightExportWarning(container);
-    if (lightWarn) {
-      htmlSection.appendChild(makeGuardrail(lightWarn));
-    }
-    const fullEst = fullExportEstimation(container);
-    if (fullEst) {
-      htmlSection.appendChild(makeGuardrail(fullEst));
-    }
-  }
-
-  panel.appendChild(htmlSection);
-
-  // ── Section 2: ZIP Package ──
-  const zipSection = createElement('div', 'pkc-eip-section');
-  const zipHeading = createElement('div', 'pkc-eip-heading');
-  zipHeading.textContent = 'ZIP Package';
-  zipSection.appendChild(zipHeading);
-  const zipDesc = createElement('div', 'pkc-eip-desc');
-  zipDesc.textContent = 'Complete backup with raw files. Best for large data or migration.';
-  zipSection.appendChild(zipDesc);
-
-  const zipBtn = createElement('button', 'pkc-btn pkc-eip-btn');
-  zipBtn.setAttribute('data-pkc-action', 'export-zip');
-  zipBtn.textContent = 'Export ZIP';
-  zipSection.appendChild(zipBtn);
-
-  if (containerHasAssets && container) {
-    const count = assetCount(container);
-    const info = createElement('div', 'pkc-eip-hint');
-    info.textContent = `${count} file(s), raw binary — no base64 overhead`;
-    zipSection.appendChild(info);
-  }
-
-  // ZIP recommendation guardrail
-  if (container) {
-    const zipRec = zipRecommendation(container);
-    if (zipRec) {
-      zipSection.appendChild(makeGuardrail(zipRec));
-    }
-  }
-
-  panel.appendChild(zipSection);
-
-  // ── Section 3: Import ──
-  const importSection = createElement('div', 'pkc-eip-section');
-  const importHeading = createElement('div', 'pkc-eip-heading');
-  importHeading.textContent = 'Import';
-  importSection.appendChild(importHeading);
-  const importDesc = createElement('div', 'pkc-eip-desc');
-  importDesc.textContent = 'Load from HTML (.html) or ZIP Package (.zip). Replaces current data.';
-  importSection.appendChild(importDesc);
-
-  const importBtn = createElement('button', 'pkc-btn pkc-eip-btn');
+  // Import
+  const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');
+  importBtn.setAttribute('title', 'Import from HTML or ZIP');
   importBtn.textContent = 'Import';
-  importSection.appendChild(importBtn);
+  group.appendChild(importBtn);
 
-  panel.appendChild(importSection);
-
-  details.appendChild(panel);
-  return details;
-}
-
-function makeHint(text: string): HTMLElement {
-  const el = createElement('span', 'pkc-eip-hint');
-  el.textContent = text;
-  return el;
-}
-
-function makeGuardrail(text: string): HTMLElement {
-  const el = createElement('div', 'pkc-guardrail-info');
-  el.setAttribute('data-pkc-region', 'export-guardrails');
-  el.textContent = text;
-  return el;
+  return group;
 }
 
 function renderSidebar(state: AppState): HTMLElement {

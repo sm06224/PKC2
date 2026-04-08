@@ -201,6 +201,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (panel) panel.remove();
         break;
       }
+      case 'toggle-sidebar': {
+        togglePane(root, 'sidebar');
+        break;
+      }
+      case 'toggle-meta': {
+        togglePane(root, 'meta');
+        break;
+      }
     }
   }
 
@@ -488,6 +496,57 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     populateDetachedPreview(panel, lid, dispatcher);
   }
 
+  // ── Resize handle logic ──
+
+  let resizeTarget: 'left' | 'right' | null = null;
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+  let resizePane: HTMLElement | null = null;
+
+  function handleResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-resize]');
+    if (!handle) return;
+
+    const side = handle.getAttribute('data-pkc-resize') as 'left' | 'right';
+    resizeTarget = side;
+    resizeStartX = e.clientX;
+    handle.setAttribute('data-pkc-resizing', 'true');
+
+    if (side === 'left') {
+      resizePane = root.querySelector<HTMLElement>('.pkc-sidebar');
+    } else {
+      resizePane = root.querySelector<HTMLElement>('.pkc-meta-pane');
+    }
+
+    if (resizePane) {
+      resizeStartWidth = resizePane.getBoundingClientRect().width;
+    }
+
+    e.preventDefault();
+    document.addEventListener('mousemove', handleResizeMouseMove);
+    document.addEventListener('mouseup', handleResizeMouseUp);
+  }
+
+  function handleResizeMouseMove(e: MouseEvent): void {
+    if (!resizeTarget || !resizePane) return;
+    const dx = e.clientX - resizeStartX;
+    const newWidth = resizeTarget === 'left'
+      ? Math.max(120, resizeStartWidth + dx)
+      : Math.max(120, resizeStartWidth - dx);
+    resizePane.style.width = `${newWidth}px`;
+  }
+
+  function handleResizeMouseUp(): void {
+    const handle = root.querySelector<HTMLElement>('[data-pkc-resizing="true"]');
+    if (handle) handle.removeAttribute('data-pkc-resizing');
+    resizeTarget = null;
+    resizePane = null;
+    document.removeEventListener('mousemove', handleResizeMouseMove);
+    document.removeEventListener('mouseup', handleResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleResizeMouseDown);
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
@@ -506,6 +565,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   // Return cleanup function
   return () => {
+    root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('change', handleChange);
@@ -694,4 +754,33 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+/**
+ * Toggle a pane between visible and collapsed (tray) state.
+ */
+function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
+  const selector = pane === 'sidebar' ? '.pkc-sidebar' : '.pkc-meta-pane';
+  const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
+  const handleSide = pane === 'sidebar' ? 'left' : 'right';
+
+  const paneEl = root.querySelector<HTMLElement>(selector);
+  const trayEl = root.querySelector<HTMLElement>(`[data-pkc-region="${trayRegion}"]`);
+  const handleEl = root.querySelector<HTMLElement>(`[data-pkc-resize="${handleSide}"]`);
+
+  if (!paneEl) return;
+
+  const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
+
+  if (isCollapsed) {
+    // Expand
+    paneEl.removeAttribute('data-pkc-collapsed');
+    if (trayEl) trayEl.style.display = 'none';
+    if (handleEl) handleEl.removeAttribute('data-pkc-collapsed');
+  } else {
+    // Collapse
+    paneEl.setAttribute('data-pkc-collapsed', 'true');
+    if (trayEl) trayEl.style.display = '';
+    if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
+  }
 }

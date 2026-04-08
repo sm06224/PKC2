@@ -178,28 +178,22 @@ describe('Renderer', () => {
     expect(root.textContent).toContain('create an entry');
   });
 
-  it('shows export buttons with mode and mutability in ready phase', () => {
+  it('shows inline export buttons (Export + Light) in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
-    expect(exportBtns).toHaveLength(4);
-    // Editable Light
-    expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('light');
+    expect(exportBtns).toHaveLength(2);
+    // Full (editable) — primary export
+    expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('full');
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[0]!.textContent).toBe('Light');
-    // Editable Full
-    expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(exportBtns[0]!.textContent).toBe('Export');
+    // Light (editable)
+    expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('light');
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[1]!.textContent).toBe('Full');
-    // Readonly Light
-    expect(exportBtns[2]!.getAttribute('data-pkc-export-mode')).toBe('light');
-    expect(exportBtns[2]!.getAttribute('data-pkc-export-mutability')).toBe('readonly');
-    // Readonly Full
-    expect(exportBtns[3]!.getAttribute('data-pkc-export-mode')).toBe('full');
-    expect(exportBtns[3]!.getAttribute('data-pkc-export-mutability')).toBe('readonly');
+    expect(exportBtns[1]!.textContent).toBe('Light');
   });
 
   it('shows exporting badge in exporting phase', () => {
@@ -258,18 +252,16 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-region="sort-controls"]')).not.toBeNull();
   });
 
-  it('readonly mode with export buttons shows all 4 mutability variants in editable mode', () => {
+  it('inline export buttons are editable mutability only', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
-    expect(exportBtns).toHaveLength(4);
-    // Check mutability attributes
+    expect(exportBtns).toHaveLength(2);
     const mutabilities = Array.from(exportBtns).map(b => b.getAttribute('data-pkc-export-mutability'));
-    expect(mutabilities).toContain('editable');
-    expect(mutabilities).toContain('readonly');
+    expect(mutabilities.every(m => m === 'editable')).toBe(true);
   });
 
   it('uses data-pkc-* attributes for all action elements', () => {
@@ -1511,7 +1503,7 @@ describe('Renderer', () => {
 
   // ── Export/Import panel structure tests ──
 
-  it('renders export/import panel with three sections in ready phase', () => {
+  it('renders inline export/import panel in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
@@ -1519,72 +1511,23 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    const sections = panel!.querySelectorAll('.pkc-eip-section');
-    expect(sections).toHaveLength(3);
+    // Inline: has export + light + import buttons
+    const btns = panel!.querySelectorAll('button');
+    expect(btns.length).toBe(3);
   });
 
-  it('export/import panel has HTML Export, ZIP Package, and Import headings', () => {
+  it('inline export panel has Export, Light, and Import buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
-    const headings = root.querySelectorAll('.pkc-eip-heading');
-    const texts = Array.from(headings).map(h => h.textContent);
-    expect(texts).toContain('HTML Export');
-    expect(texts).toContain('ZIP Package');
+    const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+    expect(panel).not.toBeNull();
+    const texts = Array.from(panel!.querySelectorAll('button')).map(b => b.textContent);
+    expect(texts).toContain('Export');
+    expect(texts).toContain('Light');
     expect(texts).toContain('Import');
-  });
-
-  it('HTML section has editable and readonly groups with labels', () => {
-    const state: AppState = {
-      phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
-    };
-    render(state, root);
-    const groupLabels = root.querySelectorAll('.pkc-eip-group-label');
-    const texts = Array.from(groupLabels).map(l => l.textContent);
-    expect(texts).toContain('Editable');
-    expect(texts).toContain('Readonly');
-  });
-
-  it('export/import panel has mode descriptions', () => {
-    const state: AppState = {
-      phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
-    };
-    render(state, root);
-    const descs = root.querySelectorAll('.pkc-eip-desc');
-    const texts = Array.from(descs).map(d => d.textContent);
-    expect(texts.some(t => t!.includes('HTML'))).toBe(true);
-    expect(texts.some(t => t!.includes('backup'))).toBe(true);
-    expect(texts.some(t => t!.includes('Replaces'))).toBe(true);
-  });
-
-  it('shows hints explaining Light vs Full', () => {
-    const state: AppState = {
-      phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
-    };
-    render(state, root);
-    const hints = root.querySelectorAll('.pkc-eip-hint');
-    const texts = Array.from(hints).map(h => h.textContent);
-    expect(texts.some(t => t!.includes('Text only'))).toBe(true);
-    expect(texts.some(t => t!.includes('attachments'))).toBe(true);
-  });
-
-  it('shows guardrail warnings in panel when assets exist', () => {
-    const containerWithAssets: Container = {
-      ...mockContainer,
-      assets: { 'ast-1': 'AAAA'.repeat(1000) },
-    };
-    const state: AppState = {
-      phase: 'ready', container: containerWithAssets,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
-    };
-    render(state, root);
-    const guardrails = root.querySelectorAll('[data-pkc-region="export-guardrails"]');
-    expect(guardrails.length).toBeGreaterThan(0);
   });
 
   it('does not render export/import panel in readonly mode', () => {
@@ -1596,15 +1539,16 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-region="export-import-panel"]')).toBeNull();
   });
 
-  it('export ZIP button is inside ZIP section', () => {
+  it('pane toggle buttons are present in header', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
-    const zipBtn = root.querySelector('[data-pkc-action="export-zip"]');
-    expect(zipBtn).not.toBeNull();
-    expect(zipBtn!.textContent).toBe('Export ZIP');
+    const sidebarToggle = root.querySelector('[data-pkc-action="toggle-sidebar"]');
+    const metaToggle = root.querySelector('[data-pkc-action="toggle-meta"]');
+    expect(sidebarToggle).not.toBeNull();
+    expect(metaToggle).not.toBeNull();
   });
 
   it('import button is inside Import section', () => {
