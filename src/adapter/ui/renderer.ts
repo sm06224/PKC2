@@ -26,6 +26,7 @@ import {
 } from './guardrails';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
+import { parseAttachmentBody } from './attachment-presenter';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -1332,4 +1333,155 @@ export function renderContextMenu(
   }
 
   return menu;
+}
+
+// ── Detached View ──
+
+/**
+ * Render a detached (floating) view panel for an entry.
+ * Non-modal: does not block main UI interaction.
+ * Draggable via header bar.
+ */
+export function renderDetachedPanel(entry: Entry, container: Container | null): HTMLElement {
+  const panel = createElement('div', 'pkc-detached-panel');
+  panel.setAttribute('data-pkc-region', 'detached-panel');
+  panel.setAttribute('data-pkc-lid', entry.lid);
+
+  // Header bar (draggable handle + close button)
+  const header = createElement('div', 'pkc-detached-header');
+  header.setAttribute('data-pkc-region', 'detached-header');
+
+  const icon = createElement('span', 'pkc-detached-icon');
+  icon.textContent = archetypeIcon(entry.archetype);
+  header.appendChild(icon);
+
+  const titleEl = createElement('span', 'pkc-detached-title');
+  titleEl.textContent = entry.title || '(untitled)';
+  header.appendChild(titleEl);
+
+  const typeBadge = createElement('span', 'pkc-archetype-badge');
+  typeBadge.textContent = archetypeLabel(entry.archetype);
+  header.appendChild(typeBadge);
+
+  const closeBtn = createElement('button', 'pkc-detached-close');
+  closeBtn.setAttribute('data-pkc-action', 'close-detached');
+  closeBtn.setAttribute('title', 'Close this panel');
+  closeBtn.textContent = '×';
+  header.appendChild(closeBtn);
+
+  panel.appendChild(header);
+
+  // Content area
+  const content = createElement('div', 'pkc-detached-content');
+
+  if (entry.archetype === 'attachment') {
+    content.appendChild(renderDetachedAttachment(entry, container));
+  } else {
+    // Use presenter for body rendering (read-only)
+    const presenter = getPresenter(entry.archetype);
+    content.appendChild(presenter.renderBody(entry));
+
+    // Folder contents
+    if (entry.archetype === 'folder' && container) {
+      content.appendChild(renderFolderContents(entry, container));
+    }
+  }
+
+  panel.appendChild(content);
+
+  // Make panel draggable via header
+  makeDraggablePanel(panel, header);
+
+  return panel;
+}
+
+/**
+ * Render attachment content for detached view.
+ * image/* → large preview, others → metadata + download button.
+ */
+function renderDetachedAttachment(entry: Entry, container: Container | null): HTMLElement {
+  const root = createElement('div', 'pkc-detached-attachment');
+  const att = parseAttachmentBody(entry.body);
+
+  if (!att.name) {
+    const empty = createElement('div', 'pkc-attachment-empty');
+    empty.textContent = 'No file attached';
+    root.appendChild(empty);
+    return root;
+  }
+
+  // File info
+  const info = createElement('div', 'pkc-detached-attachment-info');
+  info.textContent = `${att.name} — ${att.mime}${att.size ? ` (${formatFileSize(att.size)})` : ''}`;
+  root.appendChild(info);
+
+  // Check data availability
+  const hasData = !!(att.data || (att.asset_key && container?.assets?.[att.asset_key]));
+  const isImage = att.mime.startsWith('image/');
+
+  if (isImage && hasData) {
+    // Image preview: show placeholder with data-pkc attributes for population
+    const previewArea = createElement('div', 'pkc-detached-preview');
+    previewArea.setAttribute('data-pkc-region', 'detached-attachment-preview');
+    previewArea.setAttribute('data-pkc-lid', entry.lid);
+    // Placeholder text until populateDetachedPreviews fills it in
+    const placeholder = createElement('div', 'pkc-attachment-preview-placeholder');
+    placeholder.textContent = 'Loading preview…';
+    previewArea.appendChild(placeholder);
+    root.appendChild(previewArea);
+  }
+
+  if (hasData) {
+    const dlBtn = createElement('button', 'pkc-btn');
+    dlBtn.setAttribute('data-pkc-action', 'download-attachment');
+    dlBtn.setAttribute('data-pkc-lid', entry.lid);
+    dlBtn.setAttribute('title', `Download ${att.name}`);
+    dlBtn.textContent = `📥 Download ${att.name}`;
+    root.appendChild(dlBtn);
+  } else {
+    const stripped = createElement('div', 'pkc-attachment-stripped');
+    stripped.textContent = 'File data not available (Light export)';
+    root.appendChild(stripped);
+  }
+
+  return root;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Make a panel draggable by its header.
+ */
+function makeDraggablePanel(panel: HTMLElement, handle: HTMLElement): void {
+  let offsetX = 0;
+  let offsetY = 0;
+
+  function onMouseDown(e: MouseEvent): void {
+    // Only drag via the header, not buttons inside it
+    if ((e.target as HTMLElement).closest('button')) return;
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    e.preventDefault();
+  }
+
+  function onMouseMove(e: MouseEvent): void {
+    panel.style.left = `${e.clientX - offsetX}px`;
+    panel.style.top = `${e.clientY - offsetY}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+
+  function onMouseUp(): void {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  handle.addEventListener('mousedown', onMouseDown);
+  handle.style.cursor = 'grab';
 }

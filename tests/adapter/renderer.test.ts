@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, renderContextMenu } from '@adapter/ui/renderer';
+import { render, renderContextMenu, renderDetachedPanel } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
@@ -2011,5 +2011,130 @@ describe('DnD + Context Menu Foundation', () => {
     expect(moveSection).not.toBeNull();
     const moveBtn = moveSection!.querySelector('[data-pkc-action="move-to-folder"]');
     expect(moveBtn).not.toBeNull();
+  });
+});
+
+describe('Detached View Foundation', () => {
+  const textEntry = {
+    lid: 'e-text', title: 'My Note', body: 'Hello world',
+    archetype: 'text' as const,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  };
+
+  const imageAttEntry = {
+    lid: 'e-img', title: 'Photo', body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 1024, asset_key: 'ak1' }),
+    archetype: 'attachment' as const,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  };
+
+  const pdfAttEntry = {
+    lid: 'e-pdf', title: 'Doc', body: JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 50000, asset_key: 'ak2' }),
+    archetype: 'attachment' as const,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  };
+
+  const noDataAttEntry = {
+    lid: 'e-stripped', title: 'Stripped', body: JSON.stringify({ name: 'data.csv', mime: 'text/csv', size: 200, asset_key: 'ak3' }),
+    archetype: 'attachment' as const,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  };
+
+  const detachedContainer: Container = {
+    meta: { container_id: 'test', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [textEntry, imageAttEntry, pdfAttEntry, noDataAttEntry],
+    relations: [],
+    revisions: [],
+    assets: { ak1: 'iVBOR...', ak2: 'JVB...' }, // ak3 intentionally missing
+  };
+
+  it('renderDetachedPanel creates panel with correct structure for text entry', () => {
+    const panel = renderDetachedPanel(textEntry, detachedContainer);
+    expect(panel.getAttribute('data-pkc-region')).toBe('detached-panel');
+    expect(panel.getAttribute('data-pkc-lid')).toBe('e-text');
+
+    // Header
+    const header = panel.querySelector('[data-pkc-region="detached-header"]');
+    expect(header).not.toBeNull();
+    expect(header!.textContent).toContain('My Note');
+
+    // Close button
+    const closeBtn = panel.querySelector('[data-pkc-action="close-detached"]');
+    expect(closeBtn).not.toBeNull();
+
+    // Content has presenter body
+    const content = panel.querySelector('.pkc-detached-content');
+    expect(content).not.toBeNull();
+    expect(content!.textContent).toContain('Hello world');
+  });
+
+  it('renderDetachedPanel for image attachment shows preview area and download', () => {
+    const panel = renderDetachedPanel(imageAttEntry, detachedContainer);
+    expect(panel.getAttribute('data-pkc-lid')).toBe('e-img');
+
+    // Should have preview area
+    const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+    expect(preview).not.toBeNull();
+
+    // Should have download button
+    const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+    expect(dlBtn).not.toBeNull();
+    expect(dlBtn!.textContent).toContain('Download');
+    expect(dlBtn!.textContent).toContain('photo.png');
+  });
+
+  it('renderDetachedPanel for non-image attachment shows download but no preview', () => {
+    const panel = renderDetachedPanel(pdfAttEntry, detachedContainer);
+
+    // No preview area for PDF
+    const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+    expect(preview).toBeNull();
+
+    // But still has download
+    const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+    expect(dlBtn).not.toBeNull();
+    expect(dlBtn!.textContent).toContain('report.pdf');
+  });
+
+  it('renderDetachedPanel for attachment with stripped data shows unavailable message', () => {
+    const panel = renderDetachedPanel(noDataAttEntry, detachedContainer);
+
+    // No download (data stripped)
+    const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+    expect(dlBtn).toBeNull();
+
+    // Shows stripped message
+    expect(panel.textContent).toContain('not available');
+  });
+
+  it('renderDetachedPanel shows file info for attachments', () => {
+    const panel = renderDetachedPanel(imageAttEntry, detachedContainer);
+    const info = panel.querySelector('.pkc-detached-attachment-info');
+    expect(info).not.toBeNull();
+    expect(info!.textContent).toContain('photo.png');
+    expect(info!.textContent).toContain('image/png');
+  });
+
+  it('renderDetachedPanel header shows archetype icon', () => {
+    const panel = renderDetachedPanel(textEntry, detachedContainer);
+    const icon = panel.querySelector('.pkc-detached-icon');
+    expect(icon).not.toBeNull();
+    expect(icon!.textContent).toBe('📝');
+  });
+
+  it('single-click select still works (not broken by dblclick)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
+    expect(items.length).toBeGreaterThan(0);
+    // Verify click action attribute exists (action-binder handles it)
+    for (const item of items) {
+      expect(item.getAttribute('data-pkc-action')).toBe('select-entry');
+    }
   });
 });

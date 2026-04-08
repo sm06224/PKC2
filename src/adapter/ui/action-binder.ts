@@ -8,7 +8,7 @@ import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
-import { renderContextMenu } from './renderer';
+import { renderContextMenu, renderDetachedPanel } from './renderer';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -194,6 +194,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             break;
           }
         }
+        break;
+      }
+      case 'close-detached': {
+        const panel = target.closest('[data-pkc-region="detached-panel"]');
+        if (panel) panel.remove();
         break;
       }
     }
@@ -394,9 +399,54 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dismissContextMenu();
   }
 
+  // ── Double-click handler for detached view ──
+
+  function handleDblClick(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+
+    // Only in sidebar tree/list
+    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+    if (!sidebar) return;
+
+    const state = dispatcher.getState();
+    if (!state.container) return;
+
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    const entry = state.container.entries.find((e) => e.lid === lid);
+    if (!entry) return;
+
+    e.preventDefault();
+
+    // Don't open duplicate detached panel for the same entry
+    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`);
+    if (existing) {
+      // Bring to front
+      existing.remove();
+      root.appendChild(existing);
+      return;
+    }
+
+    const panel = renderDetachedPanel(entry, state.container);
+
+    // Offset position slightly for each open panel to avoid stacking
+    const openPanels = root.querySelectorAll('[data-pkc-region="detached-panel"]');
+    const offset = openPanels.length * 24;
+    panel.style.top = `${80 + offset}px`;
+    panel.style.right = `${16 + offset}px`;
+
+    root.appendChild(panel);
+
+    // Populate image previews for attachment entries
+    populateDetachedPreview(panel, lid, dispatcher);
+  }
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+  root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragover', handleDragOver);
   root.addEventListener('dragleave', handleDragLeave);
@@ -411,6 +461,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('change', handleChange);
+    root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
     root.removeEventListener('dragover', handleDragOver);
     root.removeEventListener('dragleave', handleDragLeave);
@@ -515,4 +566,22 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     img.alt = resolved.name;
     el.appendChild(img);
   }
+}
+
+/**
+ * Populate image preview in a detached panel for attachment entries.
+ */
+function populateDetachedPreview(panel: HTMLElement, lid: string, dispatcher: Dispatcher): void {
+  const previewEl = panel.querySelector<HTMLElement>('[data-pkc-region="detached-attachment-preview"]');
+  if (!previewEl) return;
+
+  const resolved = resolveAttachmentData(lid, dispatcher);
+  if (!resolved) return;
+
+  previewEl.innerHTML = '';
+  const img = document.createElement('img');
+  img.className = 'pkc-detached-preview-img';
+  img.src = `data:${resolved.mime};base64,${resolved.data}`;
+  img.alt = resolved.name;
+  previewEl.appendChild(img);
 }

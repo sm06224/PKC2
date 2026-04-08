@@ -1,6 +1,6 @@
 # PKC2 新セッション受け継ぎプロンプト
 
-**最終更新**: Issue #52 完了時点（DnD + Context Menu Foundation）
+**最終更新**: Issue #53 完了時点（Double-Click Open + Detached View Foundation）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
 以下の ``` ``` 内を新セッションの最初のプロンプトとして使ってください。
@@ -11,8 +11,8 @@
 
 ```text
 あなたは PKC2（次世代 Portable Knowledge Container）プロジェクトの実装を担当する Claude です。
-Issue #1〜#52 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
-Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ基盤、#50 でフォルダUX強化、#51 で3ペインレイアウト+固定アクションバー、#52 でDnD+コンテキストメニューを実施。
+Issue #1〜#53 が完了し、保存・再水和・可搬の基幹線 + UI 実用性が成立しています。
+Issue #45 で UI 監査、#46 で CSS/レイアウト改善、#47 で編集フロー改善、#48 で Attachment UX 改善、#49 でフォルダ基盤、#50 でフォルダUX強化、#51 で3ペインレイアウト+固定アクションバー、#52 でDnD+コンテキストメニュー、#53 でダブルクリック別表示を実施。
 現在はプレリリース段階（v0.1.0）です。残課題: DOM全置換の本格解決、レスポンシブ対応。
 まず現状を把握してから、ユーザーの指示に従ってください。
 
@@ -146,8 +146,9 @@ UI 監査・整備 (#45〜#46):
 | 50 | Folder UX Hardening — フォルダ配下作成導線、current location強調、空フォルダガイド、tree child count、Move UX改善 |
 | 51 | Three-Pane Layout + Fixed Action Bar — 3ペイン構造(sidebar/center/meta)、固定アクションバー、BIZ UDGothicフォント、Fallout/PIP風ダークテーマ+ライトテーマ、archetype絵文字アイコン、ボタンツールチップ |
 | 52 | DnD + Context Menu Foundation — sidebar tree DnD(folder drop)、root drop zone、右クリックコンテキストメニュー(Edit/Delete/Move to Root)、循環防止、視覚フィードバック |
+| 53 | Double-Click Open + Detached View — sidebar dblclickでfloating panel表示、attachment image preview/download、ドラッグ移動可能パネル、削除済みエントリ折りたたみ |
 
-テスト: 764 tests / 38 files 全通過、typecheck clean、build clean
+テスト: 771 tests / 38 files 全通過、typecheck clean、build clean
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ■ 不変条件（必ず守ること）
