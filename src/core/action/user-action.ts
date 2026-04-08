@@ -65,7 +65,7 @@ export type UserAction =
    */
   | { type: 'REHYDRATE' }
   | { type: 'TOGGLE_SHOW_ARCHIVED' }
-  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' }
+  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number };
 
 /** Extract the type literal from a UserAction. */
