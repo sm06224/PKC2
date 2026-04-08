@@ -161,7 +161,7 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
   });
 
-  it('shows placeholder when no entries exist', () => {
+  it('shows drop zone invitation when no entries exist', () => {
     const emptyContainer: Container = {
       ...mockContainer,
       entries: [],
@@ -171,7 +171,11 @@ describe('Renderer', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false,
     };
     render(state, root);
-    expect(root.textContent).toContain('Create an entry to begin');
+    // Drop zone replaces the old placeholder when editable
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).not.toBeNull();
+    expect(root.textContent).toContain('Drop a file');
+    expect(root.textContent).toContain('create an entry');
   });
 
   it('shows export buttons with mode and mutability in ready phase', () => {
@@ -2132,9 +2136,118 @@ describe('Detached View Foundation', () => {
     render(state, root);
     const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
     expect(items.length).toBeGreaterThan(0);
-    // Verify click action attribute exists (action-binder handles it)
     for (const item of items) {
       expect(item.getAttribute('data-pkc-action')).toBe('select-entry');
     }
+  });
+});
+
+describe('Persistent Drop Zone', () => {
+  it('large drop zone shown when no entry selected and editable', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).not.toBeNull();
+    expect(dropZone!.classList.contains('pkc-drop-zone-large')).toBe(true);
+    expect(dropZone!.textContent).toContain('Drop a file');
+  });
+
+  it('no drop zone in readonly mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).toBeNull();
+  });
+
+  it('compact drop zone shown when entry selected and not editing', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).not.toBeNull();
+    expect(dropZone!.classList.contains('pkc-drop-zone-compact')).toBe(true);
+  });
+
+  it('no drop zone during editing phase', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).toBeNull();
+  });
+
+  it('drop zone shows folder context when folder is selected', () => {
+    const folderContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'f1', title: 'My Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).not.toBeNull();
+    expect(dropZone!.getAttribute('data-pkc-context-folder')).toBe('f1');
+    expect(dropZone!.textContent).toContain('My Folder');
+  });
+
+  it('drop zone has no context folder attribute when at root level', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(dropZone).not.toBeNull();
+    expect(dropZone!.getAttribute('data-pkc-context-folder')).toBeNull();
+  });
+
+  it('existing attachment creation flow still works', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const attachBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attachBtn).not.toBeNull();
+    expect(attachBtn!.textContent).toContain('File');
   });
 });

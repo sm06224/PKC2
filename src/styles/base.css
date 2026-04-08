@@ -1524,6 +1524,69 @@
   color: var(--c-accent-fg);
 }
 
+/* ── Persistent File Drop Zone ── */
+.pkc-drop-zone {
+  border: 2px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  color: var(--c-muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.pkc-drop-zone-large {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 1rem;
+  padding: 2rem;
+}
+
+.pkc-drop-zone-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.pkc-drop-zone-large .pkc-drop-zone-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.pkc-drop-zone-hint {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  margin-top: 0.5rem;
+}
+
+.pkc-drop-zone-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.pkc-drop-zone-context {
+  font-size: 0.75rem;
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+/* Active drag-over state */
+[data-pkc-file-drag-over="true"].pkc-drop-zone {
+  border-color: var(--c-accent);
+  background: rgba(74, 222, 128, 0.08);
+  color: var(--c-accent);
+}
+
+.pkc-drop-zone:hover {
+  border-color: var(--c-muted);
+}
+
 /* ── Detached Panel (floating view) ── */
 .pkc-detached-panel {
   position: fixed;

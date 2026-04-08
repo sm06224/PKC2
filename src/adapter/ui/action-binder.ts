@@ -399,6 +399,51 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dismissContextMenu();
   }
 
+  // ── File drop zone handler (external file → attachment entry) ──
+
+  function handleFileDropOver(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (!dropZone) return;
+
+    // Only handle external file drops (not internal entry DnD)
+    if (!e.dataTransfer?.types.includes('Files')) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    dropZone.setAttribute('data-pkc-file-drag-over', 'true');
+  }
+
+  function handleFileDropLeave(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (dropZone) {
+      dropZone.removeAttribute('data-pkc-file-drag-over');
+    }
+  }
+
+  function handleFileDrop(e: DragEvent): void {
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    if (!dropZone) return;
+
+    if (!e.dataTransfer?.files.length) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.removeAttribute('data-pkc-file-drag-over');
+
+    // Take the first file only (single file for now)
+    const file = e.dataTransfer.files[0]!;
+    const contextFolder = dropZone.getAttribute('data-pkc-context-folder') ?? undefined;
+
+    processFileAttachment(file, contextFolder, dispatcher);
+  }
+
   // ── Double-click handler for detached view ──
 
   function handleDblClick(e: MouseEvent): void {
@@ -449,8 +494,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragover', handleFileDropOver);
   root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('dragleave', handleFileDropLeave);
   root.addEventListener('drop', handleDrop);
+  root.addEventListener('drop', handleFileDrop);
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   document.addEventListener('keydown', handleKeydown);
@@ -464,8 +512,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
     root.removeEventListener('dragover', handleDragOver);
+    root.removeEventListener('dragover', handleFileDropOver);
     root.removeEventListener('dragleave', handleDragLeave);
+    root.removeEventListener('dragleave', handleFileDropLeave);
     root.removeEventListener('drop', handleDrop);
+    root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('keydown', handleKeydown);
@@ -584,4 +635,63 @@ function populateDetachedPreview(panel: HTMLElement, lid: string, dispatcher: Di
   img.src = `data:${resolved.mime};base64,${resolved.data}`;
   img.alt = resolved.name;
   previewEl.appendChild(img);
+}
+
+/**
+ * Process a dropped file: create an attachment entry and commit it immediately.
+ * Flow: CREATE_ENTRY → COMMIT_EDIT (with body metadata + assets) → CREATE_RELATION (if folder context)
+ */
+function processFileAttachment(file: File, contextFolder: string | undefined, dispatcher: Dispatcher): void {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const arrayBuffer = reader.result as ArrayBuffer;
+    const bytes = new Uint8Array(arrayBuffer);
+
+    // Convert to base64
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    const base64 = btoa(binary);
+
+    // Generate asset key
+    const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Build attachment body metadata
+    const bodyMeta = JSON.stringify({
+      name: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+      asset_key: assetKey,
+    });
+
+    // Step 1: Create entry (enters editing mode automatically)
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+
+    // Step 2: Get the new entry's lid and commit with file data
+    const state = dispatcher.getState();
+    if (state.editingLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: state.editingLid,
+        title: file.name,
+        body: bodyMeta,
+        assets: { [assetKey]: base64 },
+      });
+
+      // Step 3: Place in context folder if applicable
+      if (contextFolder) {
+        const newState = dispatcher.getState();
+        if (newState.selectedLid) {
+          dispatcher.dispatch({
+            type: 'CREATE_RELATION',
+            from: contextFolder,
+            to: newState.selectedLid,
+            kind: 'structural',
+          });
+        }
+      }
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }

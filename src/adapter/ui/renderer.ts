@@ -624,19 +624,26 @@ function renderCenter(state: AppState): HTMLElement {
   center.setAttribute('data-pkc-region', 'center');
 
   const selected = findSelectedEntry(state);
+  const canEdit = state.phase === 'ready' && !state.readonly;
 
   if (!selected) {
-    const placeholder = createElement('div', 'pkc-empty');
-    if (state.readonly) {
-      placeholder.textContent = state.container?.entries?.length
-        ? 'Select an entry'
-        : 'No entries';
+    if (canEdit) {
+      // Large drop zone invitation when nothing is selected
+      const dropInvite = renderDropZone(state, true);
+      center.appendChild(dropInvite);
     } else {
-      placeholder.textContent = state.container?.entries?.length
-        ? 'Select an entry'
-        : 'Create an entry to begin';
+      const placeholder = createElement('div', 'pkc-empty');
+      if (state.readonly) {
+        placeholder.textContent = state.container?.entries?.length
+          ? 'Select an entry'
+          : 'No entries';
+      } else {
+        placeholder.textContent = state.container?.entries?.length
+          ? 'Select an entry'
+          : 'Create an entry to begin';
+      }
+      center.appendChild(placeholder);
     }
-    center.appendChild(placeholder);
     return center;
   }
 
@@ -646,14 +653,17 @@ function renderCenter(state: AppState): HTMLElement {
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
     content.appendChild(renderEditor(selected));
   } else {
-    const canEdit = state.phase === 'ready' && !state.readonly;
     content.appendChild(renderView(selected, canEdit, state.container));
+  }
+
+  // Compact drop zone strip when viewing an entry (not editing)
+  if (canEdit && state.phase !== 'editing') {
+    content.appendChild(renderDropZone(state, false));
   }
 
   center.appendChild(content);
 
   // Fixed action bar at bottom
-  const canEdit = state.phase === 'ready' && !state.readonly;
   center.appendChild(renderActionBar(selected, state.phase, canEdit));
 
   return center;
@@ -1333,6 +1343,61 @@ export function renderContextMenu(
   }
 
   return menu;
+}
+
+// ── Persistent Drop Zone ──
+
+/**
+ * Render a persistent file drop zone.
+ * @param large - If true, renders full-area invitation (when no entry selected).
+ *                If false, renders compact strip (below entry content).
+ */
+function renderDropZone(state: AppState, large: boolean): HTMLElement {
+  const zone = createElement('div', large ? 'pkc-drop-zone pkc-drop-zone-large' : 'pkc-drop-zone pkc-drop-zone-compact');
+  zone.setAttribute('data-pkc-region', 'file-drop-zone');
+
+  // Show context folder if applicable
+  const contextFolder = resolveContextFolder(state);
+
+  if (large) {
+    const icon = createElement('div', 'pkc-drop-zone-icon');
+    icon.textContent = '📎';
+    zone.appendChild(icon);
+
+    const label = createElement('div', 'pkc-drop-zone-label');
+    label.textContent = 'Drop a file here to attach';
+    zone.appendChild(label);
+
+    if (contextFolder) {
+      const ctx = createElement('div', 'pkc-drop-zone-context');
+      ctx.textContent = `→ ${contextFolder.title || '(untitled)'}`;
+      zone.appendChild(ctx);
+    }
+
+    // Also show the "or create" hint
+    const hint = createElement('div', 'pkc-drop-zone-hint');
+    hint.textContent = state.container?.entries?.length
+      ? 'or select an entry from the sidebar'
+      : 'or use the + buttons above to create an entry';
+    zone.appendChild(hint);
+  } else {
+    const label = createElement('span', 'pkc-drop-zone-label');
+    label.textContent = '📎 Drop file to attach';
+    zone.appendChild(label);
+
+    if (contextFolder) {
+      const ctx = createElement('span', 'pkc-drop-zone-context');
+      ctx.textContent = `→ ${truncate(contextFolder.title || '(untitled)', 20)}`;
+      zone.appendChild(ctx);
+    }
+  }
+
+  // Store context folder lid for action-binder to read
+  if (contextFolder) {
+    zone.setAttribute('data-pkc-context-folder', contextFolder.lid);
+  }
+
+  return zone;
 }
 
 // ── Detached View ──
