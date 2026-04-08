@@ -349,6 +349,9 @@ Kanban DnD uses `data-pkc-kanban-*` / `handleKanbanDrag*`.
 Sidebar DnD uses `data-pkc-draggable` / `data-pkc-drop-target`.
 Each system has its own `draggedLid` variable. No cross-interference.
 
+**Exception**: Calendar drop handler also accepts `kanbanDraggedLid` for
+cross-view DnD (Issue #66). This is a controlled bridge, not a state merge.
+
 ### User Operation Flow
 
 1. Open Calendar view with dated todos
@@ -372,8 +375,11 @@ Not implemented in this issue:
 
 ### Impact on Future Cross-View DnD
 
-If cross-view DnD is added later:
-- A unified `draggedLid` may be needed, but only when cross-view is truly required
-- The update paths (`QUICK_UPDATE_ENTRY` for status or date) remain the same
-- The distinction is which field is updated based on the drop target type
-- No new actions or reducers should be needed
+### Cross-View DnD (Issue #66)
+
+Kanban → Calendar cross-view DnD is implemented via drag-over-tab view switching.
+See `docs/development/todo-cross-view-move-strategy.md` §8 Phase 1 for details.
+
+- Calendar drop handler accepts `kanbanDraggedLid` as a fallback source
+- Update path is `QUICK_UPDATE_ENTRY` (date only, no status change)
+- No unified `draggedLid` — the bridge is a minimal `??` fallback in the drop handler

@@ -679,6 +679,9 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLE
     btn.textContent = label;
     if (key === viewMode) {
       btn.setAttribute('data-pkc-active', 'true');
+    } else {
+      // Non-active tabs accept drag-over to switch views during DnD
+      btn.setAttribute('data-pkc-view-switch', key);
     }
     bar.appendChild(btn);
   }

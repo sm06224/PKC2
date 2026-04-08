@@ -485,7 +485,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   function handleCalendarDragOver(e: DragEvent): void {
     const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
-    if (!dropTarget || !calendarDraggedLid) return;
+    // Accept drops from calendar-internal drag OR cross-view kanban drag
+    if (!dropTarget || (!calendarDraggedLid && !kanbanDraggedLid)) return;
 
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -502,7 +503,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleCalendarDrop(e: DragEvent): void {
     e.preventDefault();
     const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
-    if (!dropTarget || !calendarDraggedLid) return;
+    // Accept drops from calendar-internal drag OR cross-view kanban drag
+    const lid = calendarDraggedLid ?? kanbanDraggedLid;
+    if (!dropTarget || !lid) return;
 
     dropTarget.removeAttribute('data-pkc-drag-over');
 
@@ -512,7 +515,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetDate = dropTarget.getAttribute('data-pkc-date');
     if (!targetDate) return;
 
-    const entry = state.container.entries.find((e) => e.lid === calendarDraggedLid);
+    const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
     const todo = parseTodoBody(entry.body);
@@ -520,13 +523,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Only update if date actually changes
     if (todo.date !== targetDate) {
       const updated = serializeTodoBody({ ...todo, date: targetDate });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: calendarDraggedLid, body: updated });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
     }
 
     // Select the dragged entry
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: calendarDraggedLid });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
+    // Clean up both possible drag sources
     calendarDraggedLid = null;
+    kanbanDraggedLid = null;
   }
 
   function handleCalendarDragEnd(e: DragEvent): void {
@@ -538,6 +543,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     calendarDraggedLid = null;
+  }
+
+  // ── DnD: drag-over-tab view switch ──
+  // When dragging over a non-active view mode button, switch views after a delay.
+  // This enables cross-view DnD (e.g. Kanban card → Calendar day cell).
+
+  let viewSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function handleViewSwitchDragOver(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (!btn) return;
+
+    // Only activate when a drag is in progress
+    if (!draggedLid && !kanbanDraggedLid && !calendarDraggedLid) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    btn.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleViewSwitchDragEnter(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (!btn) return;
+    if (!draggedLid && !kanbanDraggedLid && !calendarDraggedLid) return;
+
+    // Clear any existing timer
+    if (viewSwitchTimer) clearTimeout(viewSwitchTimer);
+
+    const targetMode = btn.getAttribute('data-pkc-view-switch') as 'detail' | 'calendar' | 'kanban';
+    viewSwitchTimer = setTimeout(() => {
+      viewSwitchTimer = null;
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: targetMode });
+    }, 600);
+  }
+
+  function handleViewSwitchDragLeave(e: DragEvent): void {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-view-switch]');
+    if (btn) {
+      btn.removeAttribute('data-pkc-drag-over');
+    }
+    if (viewSwitchTimer) {
+      clearTimeout(viewSwitchTimer);
+      viewSwitchTimer = null;
+    }
   }
 
   // ── Context menu handler ──
@@ -742,10 +791,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragover', handleDragOver);
   root.addEventListener('dragover', handleKanbanDragOver);
   root.addEventListener('dragover', handleCalendarDragOver);
+  root.addEventListener('dragover', handleViewSwitchDragOver);
   root.addEventListener('dragover', handleFileDropOver);
+  root.addEventListener('dragenter', handleViewSwitchDragEnter);
   root.addEventListener('dragleave', handleDragLeave);
   root.addEventListener('dragleave', handleKanbanDragLeave);
   root.addEventListener('dragleave', handleCalendarDragLeave);
+  root.addEventListener('dragleave', handleViewSwitchDragLeave);
   root.addEventListener('dragleave', handleFileDropLeave);
   root.addEventListener('drop', handleDrop);
   root.addEventListener('drop', handleKanbanDrop);
@@ -771,10 +823,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dragover', handleDragOver);
     root.removeEventListener('dragover', handleKanbanDragOver);
     root.removeEventListener('dragover', handleCalendarDragOver);
+    root.removeEventListener('dragover', handleViewSwitchDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
+    root.removeEventListener('dragenter', handleViewSwitchDragEnter);
     root.removeEventListener('dragleave', handleDragLeave);
     root.removeEventListener('dragleave', handleKanbanDragLeave);
     root.removeEventListener('dragleave', handleCalendarDragLeave);
+    root.removeEventListener('dragleave', handleViewSwitchDragLeave);
     root.removeEventListener('dragleave', handleFileDropLeave);
     root.removeEventListener('drop', handleDrop);
     root.removeEventListener('drop', handleKanbanDrop);

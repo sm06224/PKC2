@@ -2057,6 +2057,13 @@
   color: var(--c-accent);
 }
 
+/* View mode button drag-over (cross-view DnD tab switch hint) */
+.pkc-view-mode-btn[data-pkc-drag-over="true"] {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+  background: rgba(51,255,102,0.12);
+}
+
 /* ── Calendar View ── */
 
 .pkc-calendar {

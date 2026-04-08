@@ -221,20 +221,31 @@ Drop handler が lid から entry を取得し、date を更新するだけ。
 
 ## 8. Recommended Implementation Order
 
-### Phase 1: Cross-View Foundation (次 Issue)
+### Phase 1: Kanban → Calendar (Issue #66 — 実装済み)
 
 Kanban card を Calendar day cell に drop して `todo.date` を付与する。
 
-理由:
-- 日付なし Todo に date を付与するユースケースが実用的
-- Drop target (Calendar cell) はすでに `data-pkc-date` を持っている
-- Kanban card はすでに `data-pkc-lid` を持っている
-- 既存の `calendarDraggedLid` を使わず、Kanban の drag が Calendar cell に着地する形
+**実現方式: drag-over-tab view switch**
 
-実装方針:
-- Calendar の dragover handler に、`kanbanDraggedLid` が non-null の場合も受け入れる分岐を追加
-- または、cross-view 専用の軽量 handler を追加
-- **統合 DragManager は作らない**
+Kanban と Calendar は排他的にセンターペインに表示されるため、
+drag 中に非 active な view mode タブにホバーすると 600ms 後にビュー切替が発生する。
+
+```
+Kanban card を drag 開始
+  → Calendar タブにホバー (600ms)
+    → SET_VIEW_MODE 'calendar' 発火 → Calendar 再描画
+      → Calendar day cell に drop
+        → kanbanDraggedLid から lid 解決
+          → parseTodoBody → date 更新 → QUICK_UPDATE_ENTRY
+            → SELECT_ENTRY
+```
+
+**実装詳細**:
+- View mode button に `data-pkc-view-switch` 属性を追加 (非 active のみ)
+- `handleViewSwitchDragEnter`: 600ms timer で `SET_VIEW_MODE` dispatch
+- `handleCalendarDragOver/Drop`: `kanbanDraggedLid` non-null でも受入れ
+- Drop 後に `kanbanDraggedLid = null` でクリーンアップ
+- Status は変更しない (Calendar cell の責務は date のみ)
 
 ### Phase 2: Reverse Direction
 
@@ -258,22 +269,25 @@ Phase 1 の対称実装。
 
 1. **Kanban**: Todo card を open/done column 間で drag して status を変更
 2. **Calendar**: Todo item を別日セルに drag して date を変更
-3. **Sidebar**: Entry をフォルダ間で drag して所属を変更
-4. **Detail**: 単票画面で任意フィールドを手動編集
+3. **Kanban → Calendar**: Kanban card を drag → Calendar タブにホバー → day cell に drop して date を付与
+4. **Sidebar**: Entry をフォルダ間で drag して所属を変更
+5. **Detail**: 単票画面で任意フィールドを手動編集
 
 ### 現在できないこと
 
-1. Kanban card を Calendar cell に drag して date を付与
-2. Calendar item を Kanban column に drag して status を変更
-3. 日付なし Todo を Calendar cell に drag（Kanban からの cross-view で可能になる予定）
-4. 月をまたぐ drag
-5. Touch / mobile での drag
+1. Calendar item → Kanban column への drag (status 変更)
+2. 月をまたぐ drag
+3. Touch / mobile での drag
 
-### 将来の想定操作フロー
+### ユーザー利用手順: Kanban → Calendar
 
-1. Kanban の open column にある「日付なし Todo」を掴む
-2. Calendar view の 4/15 セルにドロップする
-3. Todo に `date: "2026-04-15"` が設定される
-4. Calendar の 4/15 セルに item が表示される
+1. Kanban view で Todo card を drag 開始する
+2. 上部の「Calendar」タブにカーソルを持っていく（ホバー）
+3. 600ms 後に Calendar view に自動切替
+4. 目的の日セルに card を drop する
+5. `todo.date` がその日に設定される
+6. Detail view で body を確認すると date フィールドが更新されている
+7. Kanban view に戻ると日付表示が反映されている
+8. Status は変わらない（open のまま / done のまま）
 5. Kanban 上では status は変わらない（open のまま）
 6. selectedLid が当該 Todo に更新される
