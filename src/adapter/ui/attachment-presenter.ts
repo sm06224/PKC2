@@ -160,6 +160,20 @@ export function classifyPreviewType(mime: string): 'image' | 'pdf' | 'video' | '
   return 'none';
 }
 
+/**
+ * Human-readable label for preview mode, shown in meta row.
+ */
+export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): string {
+  switch (type) {
+    case 'image': return 'Inline';
+    case 'pdf': return 'PDF Viewer';
+    case 'video': return 'Video';
+    case 'audio': return 'Audio';
+    case 'html': return 'Sandbox';
+    case 'none': return 'No Preview';
+  }
+}
+
 export const attachmentPresenter: DetailPresenter = {
   renderBody(entry: Entry): HTMLElement {
     const att = parseAttachmentBody(entry.body);
@@ -210,6 +224,14 @@ export const attachmentPresenter: DetailPresenter = {
       sizeSpan.textContent = formatSize(displaySize);
       metaRow.appendChild(sizeSpan);
     }
+    // Preview mode badge
+    const previewType = classifyPreviewType(att.mime);
+    const modeBadge = document.createElement('span');
+    modeBadge.className = 'pkc-attachment-preview-mode';
+    modeBadge.setAttribute('data-pkc-region', 'preview-mode');
+    modeBadge.textContent = previewModeLabel(previewType);
+    metaRow.appendChild(modeBadge);
+
     if (dataStripped) {
       const stripped = document.createElement('span');
       stripped.className = 'pkc-attachment-stripped';
@@ -231,7 +253,6 @@ export const attachmentPresenter: DetailPresenter = {
     root.appendChild(card);
 
     // Preview area (deferred — action-binder populates with actual data)
-    const previewType = classifyPreviewType(att.mime);
     if (previewType !== 'none' && dataAvailable && !dataStripped) {
       const previewContainer = document.createElement('div');
       previewContainer.className = 'pkc-attachment-preview';
@@ -243,6 +264,15 @@ export const attachmentPresenter: DetailPresenter = {
       placeholder.textContent = 'Loading preview…';
       previewContainer.appendChild(placeholder);
       root.appendChild(previewContainer);
+    }
+
+    // Fallback message for unsupported preview types
+    if (previewType === 'none' && dataAvailable && !dataStripped) {
+      const noPreview = document.createElement('div');
+      noPreview.className = 'pkc-attachment-no-preview';
+      noPreview.setAttribute('data-pkc-region', 'no-preview');
+      noPreview.textContent = 'Preview is not available for this file type — use Download to save the file.';
+      root.appendChild(noPreview);
     }
 
     return root;

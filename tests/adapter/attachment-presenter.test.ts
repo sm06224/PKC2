@@ -17,6 +17,7 @@ import {
   isPdf,
   isHtml,
   isSvg,
+  previewModeLabel,
   SANDBOX_ATTRIBUTES,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
@@ -258,6 +259,90 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(entry);
       const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
       expect(preview).toBeNull();
+    });
+  });
+
+  // ── preview mode badge ─────────────────
+
+  describe('preview mode badge', () => {
+    it('shows Inline badge for image types', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","data":"iVBOR","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('Inline');
+    });
+
+    it('shows Sandbox badge for HTML types', () => {
+      const entry = makeLegacyEntry('{"name":"page.html","mime":"text/html","data":"PCFET0NUWVBF","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('Sandbox');
+    });
+
+    it('shows PDF Viewer badge for PDF', () => {
+      const entry = makeLegacyEntry('{"name":"doc.pdf","mime":"application/pdf","data":"JVBER","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('PDF Viewer');
+    });
+
+    it('shows Video badge for video types', () => {
+      const entry = makeLegacyEntry('{"name":"clip.mp4","mime":"video/mp4","data":"AAAA","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('Video');
+    });
+
+    it('shows Audio badge for audio types', () => {
+      const entry = makeLegacyEntry('{"name":"song.mp3","mime":"audio/mpeg","data":"AAAA","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('Audio');
+    });
+
+    it('shows No Preview badge for unsupported types', () => {
+      const entry = makeLegacyEntry('{"name":"data.bin","mime":"application/octet-stream","data":"AAAA","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('No Preview');
+    });
+
+    it('shows Sandbox badge for SVG', () => {
+      const entry = makeLegacyEntry('{"name":"icon.svg","mime":"image/svg+xml","data":"PHN2Zz4=","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const badge = el.querySelector('[data-pkc-region="preview-mode"]');
+      expect(badge!.textContent).toBe('Sandbox');
+    });
+  });
+
+  // ── no-preview fallback message ─────────────────
+
+  describe('no-preview fallback message', () => {
+    it('shows fallback message for unsupported MIME with data available', () => {
+      const entry = makeLegacyEntry('{"name":"data.bin","mime":"application/octet-stream","data":"AAAA","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      const msg = el.querySelector('[data-pkc-region="no-preview"]');
+      expect(msg).not.toBeNull();
+      expect(msg!.textContent).toContain('Preview is not available');
+      expect(msg!.textContent).toContain('Download');
+    });
+
+    it('does not show fallback for previewable types', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","data":"iVBOR","size":100}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('[data-pkc-region="no-preview"]')).toBeNull();
+    });
+
+    it('does not show fallback when data is stripped (Light export)', () => {
+      const entry = makeLegacyEntry('{"name":"data.bin","mime":"application/octet-stream","asset_key":"ast-123"}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('[data-pkc-region="no-preview"]')).toBeNull();
+    });
+
+    it('does not show fallback for empty attachment', () => {
+      const el = attachmentPresenter.renderBody(makeLegacyEntry('{}'));
+      expect(el.querySelector('[data-pkc-region="no-preview"]')).toBeNull();
     });
   });
 
@@ -516,6 +601,17 @@ describe('MIME type classification', () => {
     it('returns none for unknown types', () => {
       expect(classifyPreviewType('application/octet-stream')).toBe('none');
       expect(classifyPreviewType('text/plain')).toBe('none');
+    });
+  });
+
+  describe('previewModeLabel', () => {
+    it('returns correct labels for all types', () => {
+      expect(previewModeLabel('image')).toBe('Inline');
+      expect(previewModeLabel('pdf')).toBe('PDF Viewer');
+      expect(previewModeLabel('video')).toBe('Video');
+      expect(previewModeLabel('audio')).toBe('Audio');
+      expect(previewModeLabel('html')).toBe('Sandbox');
+      expect(previewModeLabel('none')).toBe('No Preview');
     });
   });
 
