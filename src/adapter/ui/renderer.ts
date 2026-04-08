@@ -147,6 +147,7 @@ function renderShell(state: AppState): HTMLElement {
   // Left tray bar (shown when sidebar is collapsed)
   const leftTray = createElement('div', 'pkc-tray-bar');
   leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
+  leftTray.setAttribute('title', 'Click to expand sidebar');
   leftTray.textContent = 'SIDEBAR';
   leftTray.style.display = 'none';
   leftTray.setAttribute('data-pkc-region', 'tray-left');
@@ -179,6 +180,7 @@ function renderShell(state: AppState): HTMLElement {
   // Right tray bar (shown when meta pane is collapsed)
   const rightTray = createElement('div', 'pkc-tray-bar pkc-tray-bar-right');
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
+  rightTray.setAttribute('title', 'Click to expand meta pane');
   rightTray.textContent = 'META';
   rightTray.style.display = 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
@@ -216,10 +218,10 @@ function renderHeader(state: AppState): HTMLElement {
     }
 
     const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
-      { arch: 'text', label: `${archetypeIcon('text')} Note`, tip: 'Create a new text note' },
-      { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo item' },
+      { arch: 'text', label: `${archetypeIcon('text')} Note`, tip: 'Create a new note entry' },
+      { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
       { arch: 'form', label: `${archetypeIcon('form')} Form`, tip: 'Create a new form entry' },
-      { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment' },
+      { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
 
@@ -250,6 +252,7 @@ function renderHeader(state: AppState): HTMLElement {
 
     const rehydrateBtn = createElement('button', 'pkc-btn');
     rehydrateBtn.setAttribute('data-pkc-action', 'rehydrate');
+    rehydrateBtn.setAttribute('title', 'Copy this container to your browser storage for editing');
     rehydrateBtn.textContent = 'Rehydrate to Workspace';
     header.appendChild(rehydrateBtn);
   }
@@ -333,6 +336,7 @@ function renderSidebar(state: AppState): HTMLElement {
     if (state.searchQuery !== '' || state.archetypeFilter !== null) {
       const clearBtn = createElement('button', 'pkc-btn-clear');
       clearBtn.setAttribute('data-pkc-action', 'clear-filters');
+      clearBtn.setAttribute('title', 'Clear search and filters');
       clearBtn.textContent = '×';
       searchRow.appendChild(clearBtn);
     }
@@ -359,6 +363,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
       const clearBtn = createElement('button', 'pkc-btn-small');
       clearBtn.setAttribute('data-pkc-action', 'clear-tag-filter');
+      clearBtn.setAttribute('title', 'Clear tag filter');
       clearBtn.textContent = '\u00d7';
       indicator.appendChild(clearBtn);
 
@@ -382,15 +387,21 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   if (allEntries.length === 0) {
-    const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No entries';
+    const empty = createElement('div', 'pkc-empty pkc-guidance');
+    empty.setAttribute('data-pkc-region', 'empty-guidance');
+    if (state.phase === 'ready' && !state.readonly) {
+      empty.innerHTML = 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
+    } else {
+      empty.textContent = 'No entries in this container.';
+    }
     sidebar.appendChild(empty);
     return sidebar;
   }
 
   if (entries.length === 0) {
-    const empty = createElement('div', 'pkc-empty');
-    empty.textContent = 'No matching entries';
+    const empty = createElement('div', 'pkc-empty pkc-guidance');
+    empty.setAttribute('data-pkc-region', 'empty-guidance');
+    empty.textContent = 'No matching entries. Try adjusting your search or filters.';
     sidebar.appendChild(empty);
     return sidebar;
   }
@@ -418,6 +429,18 @@ function renderSidebar(state: AppState): HTMLElement {
     rootDrop.setAttribute('data-pkc-drop-target', 'root');
     rootDrop.textContent = '↑ Drop here for root level';
     sidebar.appendChild(rootDrop);
+  }
+
+  // Interaction hints (non-intrusive)
+  if (entries.length > 0) {
+    const hints = createElement('div', 'pkc-interaction-hints');
+    hints.setAttribute('data-pkc-region', 'interaction-hints');
+    hints.innerHTML = [
+      '<span>Drag to move</span>',
+      '<span>Double-click to open</span>',
+      '<span>Right-click for menu</span>',
+    ].join(' · ');
+    sidebar.appendChild(hints);
   }
 
   // Restore candidates (deleted entries with revisions) — collapsible, closed by default
@@ -461,6 +484,7 @@ function renderSidebar(state: AppState): HTMLElement {
         btn.setAttribute('data-pkc-action', 'restore-entry');
         btn.setAttribute('data-pkc-lid', rev.entry_lid);
         btn.setAttribute('data-pkc-revision-id', rev.id);
+        btn.setAttribute('title', 'Restore this deleted entry');
         btn.textContent = 'Restore';
         item.appendChild(btn);
 
@@ -553,15 +577,16 @@ function renderCenter(state: AppState): HTMLElement {
       const dropInvite = renderDropZone(state, true);
       center.appendChild(dropInvite);
     } else {
-      const placeholder = createElement('div', 'pkc-empty');
+      const placeholder = createElement('div', 'pkc-empty pkc-guidance');
+      placeholder.setAttribute('data-pkc-region', 'center-guidance');
       if (state.readonly) {
         placeholder.textContent = state.container?.entries?.length
-          ? 'Select an entry'
-          : 'No entries';
+          ? 'Select an entry from the sidebar to view it here.'
+          : 'This container has no entries.';
       } else {
         placeholder.textContent = state.container?.entries?.length
-          ? 'Select an entry'
-          : 'Create an entry to begin';
+          ? 'Select an entry from the sidebar to view it here.'
+          : 'Create your first entry using the + buttons above.';
       }
       center.appendChild(placeholder);
     }
@@ -596,6 +621,12 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
   bar.setAttribute('data-pkc-region', 'action-bar');
 
   if (phase === 'editing') {
+    bar.setAttribute('data-pkc-editing', 'true');
+
+    const editingLabel = createElement('span', 'pkc-action-bar-status');
+    editingLabel.textContent = '✎ Editing';
+    bar.appendChild(editingLabel);
+
     const saveBtn = createElement('button', 'pkc-btn pkc-btn-primary');
     saveBtn.setAttribute('data-pkc-action', 'commit-edit');
     saveBtn.setAttribute('data-pkc-lid', entry.lid);
@@ -726,6 +757,7 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     const chipLabel = createElement('span', 'pkc-tag-label');
     chipLabel.setAttribute('data-pkc-action', 'filter-by-tag');
     chipLabel.setAttribute('data-pkc-lid', tag.peer.lid);
+    chipLabel.setAttribute('title', 'Click to filter by this tag');
     chipLabel.textContent = tag.peer.title || '(untitled)';
     chip.appendChild(chipLabel);
 
@@ -857,7 +889,7 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
       restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
       restoreBtn.setAttribute('data-pkc-lid', entry.lid);
       restoreBtn.setAttribute('data-pkc-revision-id', latest.id);
-      restoreBtn.setAttribute('title', 'Revert to the previous version');
+      restoreBtn.setAttribute('title', 'Revert this entry to its previous saved version');
       restoreBtn.textContent = 'Revert';
       revInfo.appendChild(restoreBtn);
     }
@@ -967,6 +999,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   // Create button
   const btn = createElement('button', 'pkc-btn');
   btn.setAttribute('data-pkc-action', 'create-relation');
+  btn.setAttribute('title', 'Create a relation to the selected entry');
   btn.textContent = 'Add';
   row.appendChild(btn);
 
@@ -1067,12 +1100,14 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
     const acceptBtn = createElement('button', 'pkc-btn');
     acceptBtn.setAttribute('data-pkc-action', 'accept-offer');
     acceptBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    acceptBtn.setAttribute('title', 'Accept this incoming entry');
     acceptBtn.textContent = 'Accept';
     item.appendChild(acceptBtn);
 
     const dismissBtn = createElement('button', 'pkc-btn');
     dismissBtn.setAttribute('data-pkc-action', 'dismiss-offer');
     dismissBtn.setAttribute('data-pkc-offer-id', offer.offer_id);
+    dismissBtn.setAttribute('title', 'Decline this incoming entry');
     dismissBtn.textContent = 'Dismiss';
     item.appendChild(dismissBtn);
 
@@ -1248,16 +1283,17 @@ export function renderContextMenu(
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
-  const items: { action: string; label: string; lid?: string; show: boolean }[] = [
-    { action: 'begin-edit', label: '✏️ Edit', lid, show: true },
-    { action: 'delete-entry', label: '🗑️ Delete', lid, show: true },
-    { action: 'ctx-move-to-root', label: '↑ Move to Root', lid, show: hasParent },
+  const items: { action: string; label: string; tip: string; lid?: string; show: boolean }[] = [
+    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: true },
+    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: true },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: hasParent },
   ];
 
   for (const item of items) {
     if (!item.show) continue;
     const btn = createElement('button', 'pkc-context-menu-item');
     btn.setAttribute('data-pkc-action', item.action);
+    btn.setAttribute('title', item.tip);
     if (item.lid) btn.setAttribute('data-pkc-lid', item.lid);
     btn.textContent = item.label;
     menu.appendChild(btn);
@@ -1391,7 +1427,7 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
 
   if (!att.name) {
     const empty = createElement('div', 'pkc-attachment-empty');
-    empty.textContent = 'No file attached';
+    empty.textContent = 'No file attached. Edit this entry to add a file, or drop one into the center pane.';
     root.appendChild(empty);
     return root;
   }

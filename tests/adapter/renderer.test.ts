@@ -2195,3 +2195,172 @@ describe('Persistent Drop Zone', () => {
     expect(attachBtn!.textContent).toContain('File');
   });
 });
+
+// ── Issue #55: Interaction Consistency & Guidance Layer ──
+
+describe('Interaction Consistency & Guidance Layer', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    registerPresenter('todo', todoPresenter);
+    registerPresenter('form', formPresenter);
+    registerPresenter('attachment', attachmentPresenter);
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+  });
+
+  const readyState: AppState = {
+    phase: 'ready', container: mockContainer,
+    selectedLid: null, editingLid: null, error: null, embedded: false,
+    pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+    tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+    exportMode: null, exportMutability: null, readonly: false,
+  };
+
+  const emptyContainer: Container = {
+    meta: { container_id: 'empty', title: 'Empty', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [], relations: [], revisions: [], assets: {},
+  };
+
+  it('all create buttons have title tooltips', () => {
+    render(readyState, root);
+    const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
+    for (const btn of createBtns) {
+      expect(btn.getAttribute('title')).toBeTruthy();
+    }
+  });
+
+  it('export and import buttons have title tooltips', () => {
+    render(readyState, root);
+    const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
+    for (const btn of exportBtns) {
+      expect(btn.getAttribute('title')).toBeTruthy();
+    }
+    const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
+    expect(importBtn!.getAttribute('title')).toBeTruthy();
+  });
+
+  it('action bar buttons have tooltips', () => {
+    const state = { ...readyState, selectedLid: 'e1' };
+    render(state, root);
+    const editBtn = root.querySelector('[data-pkc-action="begin-edit"]');
+    expect(editBtn!.getAttribute('title')).toBeTruthy();
+    const deleteBtn = root.querySelector('[data-pkc-action="delete-entry"]');
+    expect(deleteBtn!.getAttribute('title')).toBeTruthy();
+  });
+
+  it('editing action bar has save/cancel tooltips and editing status', () => {
+    const state: AppState = {
+      ...readyState, phase: 'editing', editingLid: 'e1', selectedLid: 'e1',
+    };
+    render(state, root);
+    const saveBtn = root.querySelector('[data-pkc-action="commit-edit"]');
+    expect(saveBtn!.getAttribute('title')).toContain('Ctrl+S');
+    const cancelBtn = root.querySelector('[data-pkc-action="cancel-edit"]');
+    expect(cancelBtn!.getAttribute('title')).toContain('Esc');
+    // Editing status indicator
+    const status = root.querySelector('.pkc-action-bar-status');
+    expect(status).not.toBeNull();
+    expect(status!.textContent).toContain('Editing');
+  });
+
+  it('editing action bar has data-pkc-editing attribute', () => {
+    const state: AppState = {
+      ...readyState, phase: 'editing', editingLid: 'e1', selectedLid: 'e1',
+    };
+    render(state, root);
+    const bar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(bar!.getAttribute('data-pkc-editing')).toBe('true');
+  });
+
+  it('clear-filters button has tooltip', () => {
+    const state = { ...readyState, searchQuery: 'test' };
+    render(state, root);
+    const clearBtn = root.querySelector('[data-pkc-action="clear-filters"]');
+    expect(clearBtn).not.toBeNull();
+    expect(clearBtn!.getAttribute('title')).toBeTruthy();
+  });
+
+  it('empty state with no entries shows guidance message', () => {
+    const state: AppState = { ...readyState, container: emptyContainer };
+    render(state, root);
+    const guidance = root.querySelector('[data-pkc-region="empty-guidance"]');
+    expect(guidance).not.toBeNull();
+    expect(guidance!.textContent).toContain('No entries yet');
+    expect(guidance!.textContent).toContain('buttons');
+  });
+
+  it('empty state in readonly mode shows appropriate message', () => {
+    const state: AppState = { ...readyState, container: emptyContainer, readonly: true };
+    render(state, root);
+    const guidance = root.querySelector('.pkc-empty');
+    expect(guidance).not.toBeNull();
+    expect(guidance!.textContent).toContain('No entries');
+  });
+
+  it('center pane shows guidance when entries exist but none selected', () => {
+    render(readyState, root);
+    const guidance = root.querySelector('[data-pkc-region="center-guidance"]');
+    // Drop zone replaces guidance in editable mode, so check for either
+    const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
+    expect(guidance || dropZone).not.toBeNull();
+  });
+
+  it('filter results empty shows helpful message', () => {
+    const state = { ...readyState, searchQuery: 'nonexistent_xyz_12345' };
+    render(state, root);
+    const empty = root.querySelector('.pkc-empty');
+    expect(empty).not.toBeNull();
+    expect(empty!.textContent).toContain('adjusting');
+  });
+
+  it('interaction hints are shown in sidebar when entries exist', () => {
+    render(readyState, root);
+    const hints = root.querySelector('[data-pkc-region="interaction-hints"]');
+    expect(hints).not.toBeNull();
+    expect(hints!.textContent).toContain('Drag');
+    expect(hints!.textContent).toContain('Double-click');
+    expect(hints!.textContent).toContain('Right-click');
+  });
+
+  it('interaction hints are NOT shown when no entries', () => {
+    const state: AppState = { ...readyState, container: emptyContainer };
+    render(state, root);
+    const hints = root.querySelector('[data-pkc-region="interaction-hints"]');
+    expect(hints).toBeNull();
+  });
+
+  it('pane toggle buttons have tooltips', () => {
+    render(readyState, root);
+    const sidebarToggle = root.querySelector('button[data-pkc-action="toggle-sidebar"]');
+    expect(sidebarToggle!.getAttribute('title')).toBeTruthy();
+    const metaToggle = root.querySelector('button[data-pkc-action="toggle-meta"]');
+    expect(metaToggle!.getAttribute('title')).toBeTruthy();
+  });
+
+  it('tray bars have tooltips', () => {
+    render(readyState, root);
+    const leftTray = root.querySelector('[data-pkc-region="tray-left"]');
+    expect(leftTray!.getAttribute('title')).toContain('expand');
+    const rightTray = root.querySelector('[data-pkc-region="tray-right"]');
+    expect(rightTray!.getAttribute('title')).toContain('expand');
+  });
+
+  it('context menu items have tooltips', () => {
+    const menu = renderContextMenu('e1', 100, 200, true);
+    const items = menu.querySelectorAll('.pkc-context-menu-item');
+    for (const item of items) {
+      expect(item.getAttribute('title')).toBeTruthy();
+    }
+  });
+
+  it('terminology is consistent: all create tooltips say "entry"', () => {
+    render(readyState, root);
+    const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
+    for (const btn of createBtns) {
+      const tip = btn.getAttribute('title') ?? '';
+      // Each tooltip should contain "entry" or "folder" (archetype name)
+      expect(tip.includes('entry') || tip.includes('folder')).toBe(true);
+    }
+  });
+});
