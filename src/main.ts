@@ -2,7 +2,7 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions, populateAttachmentPreviews, flashEntry } from './adapter/ui/action-binder';
+import { bindActions, populateAttachmentPreviews, cleanupBlobUrls, flashEntry } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -66,6 +66,9 @@ async function boot(): Promise<void> {
 
     const currentCount = state.container?.entries.length ?? 0;
     const justCreated = currentCount > prevEntryCount && state.selectedLid && state.selectedLid !== prevSelectedLid;
+
+    // Revoke preview Blob URLs before DOM replacement to prevent memory leaks
+    cleanupBlobUrls(root);
 
     render(state, root);
 

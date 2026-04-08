@@ -1029,6 +1029,21 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
 }
 
 /**
+ * Revoke all tracked preview Blob URLs in the given root.
+ * Must be called before render() replaces the DOM to prevent memory leaks.
+ * Elements with data-pkc-blob-url store the Blob URL created for previews.
+ */
+export function cleanupBlobUrls(root: HTMLElement): void {
+  const elements = root.querySelectorAll<HTMLElement>('[data-pkc-blob-url]');
+  for (const el of elements) {
+    const url = el.getAttribute('data-pkc-blob-url');
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+/**
  * Create a Blob URL from resolved base64 attachment data.
  */
 function createBlobUrl(resolved: { data: string; mime: string }): string {
@@ -1051,6 +1066,10 @@ function populatePreviewElement(
   sandboxAllow: string[] = [],
 ): void {
   const previewType = classifyPreviewType(resolved.mime);
+
+  // Revoke any previous Blob URL before replacing content
+  const oldBlobUrl = el.querySelector<HTMLElement>('[data-pkc-blob-url]')?.getAttribute('data-pkc-blob-url');
+  if (oldBlobUrl) URL.revokeObjectURL(oldBlobUrl);
   el.innerHTML = '';
 
   switch (previewType) {

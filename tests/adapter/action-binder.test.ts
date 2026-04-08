@@ -1,8 +1,8 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { bindActions } from '@adapter/ui/action-binder';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { bindActions, cleanupBlobUrls } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import type { Container } from '@core/model/container';
@@ -157,5 +157,65 @@ describe('ActionBinder', () => {
     // (the item may be stale but the listener is gone)
     // We verify no new events were dispatched via the listener
     expect(events.length).toBe(eventsBefore);
+  });
+});
+
+// ── Blob URL lifecycle management ──
+
+describe('cleanupBlobUrls', () => {
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+  });
+
+  it('revokes all tracked blob URLs in the DOM', () => {
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const el1 = document.createElement('object');
+    el1.setAttribute('data-pkc-blob-url', 'blob:http://localhost/pdf-1');
+    container.appendChild(el1);
+
+    const el2 = document.createElement('iframe');
+    el2.setAttribute('data-pkc-blob-url', 'blob:http://localhost/html-2');
+    container.appendChild(el2);
+
+    cleanupBlobUrls(container);
+
+    expect(revokeSpy).toHaveBeenCalledTimes(2);
+    expect(revokeSpy).toHaveBeenCalledWith('blob:http://localhost/pdf-1');
+    expect(revokeSpy).toHaveBeenCalledWith('blob:http://localhost/html-2');
+
+    revokeSpy.mockRestore();
+  });
+
+  it('does nothing when no blob URLs are tracked', () => {
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,iVBORw0KGgo=';
+    container.appendChild(img);
+
+    cleanupBlobUrls(container);
+
+    expect(revokeSpy).not.toHaveBeenCalled();
+    revokeSpy.mockRestore();
+  });
+
+  it('handles nested blob URL elements', () => {
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const preview = document.createElement('div');
+    preview.setAttribute('data-pkc-region', 'attachment-preview');
+    const video = document.createElement('video');
+    video.setAttribute('data-pkc-blob-url', 'blob:http://localhost/video-3');
+    preview.appendChild(video);
+    container.appendChild(preview);
+
+    cleanupBlobUrls(container);
+
+    expect(revokeSpy).toHaveBeenCalledTimes(1);
+    expect(revokeSpy).toHaveBeenCalledWith('blob:http://localhost/video-3');
+    revokeSpy.mockRestore();
   });
 });
