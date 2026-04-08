@@ -23,6 +23,7 @@ import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
 import { parseAttachmentBody } from './attachment-presenter';
+import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -595,6 +596,18 @@ function renderCenter(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
 
+  // View mode toggle (always visible when container has entries)
+  if (state.container && state.container.entries.length > 0) {
+    center.appendChild(renderViewModeToggle(state.viewMode));
+  }
+
+  // Calendar view
+  if (state.viewMode === 'calendar') {
+    center.appendChild(renderCalendarView(state));
+    return center;
+  }
+
+  // Detail view (existing behavior)
   const selected = findSelectedEntry(state);
   const canEdit = state.phase === 'ready' && !state.readonly;
 
@@ -640,6 +653,120 @@ function renderCenter(state: AppState): HTMLElement {
   center.appendChild(renderActionBar(selected, state.phase, canEdit));
 
   return center;
+}
+
+function renderViewModeToggle(viewMode: 'detail' | 'calendar'): HTMLElement {
+  const bar = createElement('div', 'pkc-view-mode-bar');
+  bar.setAttribute('data-pkc-region', 'view-mode-bar');
+
+  for (const mode of ['detail', 'calendar'] as const) {
+    const btn = createElement('button', 'pkc-view-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-view-mode');
+    btn.setAttribute('data-pkc-view-mode', mode);
+    btn.textContent = mode === 'detail' ? 'Detail' : 'Calendar';
+    if (mode === viewMode) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    bar.appendChild(btn);
+  }
+
+  return bar;
+}
+
+function renderCalendarView(state: AppState): HTMLElement {
+  const cal = createElement('div', 'pkc-calendar');
+  cal.setAttribute('data-pkc-region', 'calendar-view');
+
+  // Navigation: < Month Year >
+  const nav = createElement('div', 'pkc-calendar-nav');
+
+  const prevBtn = createElement('button', 'pkc-btn pkc-calendar-nav-btn');
+  prevBtn.setAttribute('data-pkc-action', 'calendar-prev');
+  prevBtn.setAttribute('title', 'Previous month');
+  prevBtn.textContent = '◀';
+  nav.appendChild(prevBtn);
+
+  const title = createElement('span', 'pkc-calendar-title');
+  title.textContent = `${monthName(state.calendarMonth)} ${state.calendarYear}`;
+  nav.appendChild(title);
+
+  const nextBtn = createElement('button', 'pkc-btn pkc-calendar-nav-btn');
+  nextBtn.setAttribute('data-pkc-action', 'calendar-next');
+  nextBtn.setAttribute('title', 'Next month');
+  nextBtn.textContent = '▶';
+  nav.appendChild(nextBtn);
+
+  cal.appendChild(nav);
+
+  // Day-of-week header
+  const header = createElement('div', 'pkc-calendar-header');
+  for (const day of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+    const cell = createElement('div', 'pkc-calendar-dow');
+    cell.textContent = day;
+    header.appendChild(cell);
+  }
+  cal.appendChild(header);
+
+  // Build todo map
+  const entries = state.container?.entries ?? [];
+  const todoMap = groupTodosByDate(entries, state.showArchived);
+
+  // Month grid
+  const weeks = getMonthGrid(state.calendarYear, state.calendarMonth);
+  const today = new Date();
+  const todayKey = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const grid = createElement('div', 'pkc-calendar-grid');
+
+  for (const week of weeks) {
+    for (const day of week) {
+      const cell = createElement('div', 'pkc-calendar-cell');
+      if (day === null) {
+        cell.classList.add('pkc-calendar-cell-empty');
+        grid.appendChild(cell);
+        continue;
+      }
+
+      const key = dateKey(state.calendarYear, state.calendarMonth, day);
+      if (key === todayKey) {
+        cell.setAttribute('data-pkc-calendar-today', 'true');
+      }
+
+      const dayNum = createElement('div', 'pkc-calendar-day');
+      dayNum.textContent = String(day);
+      cell.appendChild(dayNum);
+
+      const todos = todoMap[key];
+      if (todos && todos.length > 0) {
+        const todoList = createElement('div', 'pkc-calendar-todos');
+        const maxShow = 3;
+        for (let i = 0; i < Math.min(todos.length, maxShow); i++) {
+          const t = todos[i]!;
+          const item = createElement('div', 'pkc-calendar-todo-item');
+          item.setAttribute('data-pkc-action', 'select-entry');
+          item.setAttribute('data-pkc-lid', t.entry.lid);
+          if (t.todo.status === 'done') {
+            item.setAttribute('data-pkc-todo-status', 'done');
+          }
+          if (t.todo.archived) {
+            item.setAttribute('data-pkc-todo-archived', 'true');
+          }
+          item.textContent = t.entry.title || t.todo.description || '(untitled)';
+          todoList.appendChild(item);
+        }
+        if (todos.length > maxShow) {
+          const more = createElement('div', 'pkc-calendar-todo-more');
+          more.textContent = `+${todos.length - maxShow} more`;
+          todoList.appendChild(more);
+        }
+        cell.appendChild(todoList);
+      }
+
+      grid.appendChild(cell);
+    }
+  }
+
+  cal.appendChild(grid);
+  return cal;
 }
 
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */

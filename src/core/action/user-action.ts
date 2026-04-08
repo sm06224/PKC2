@@ -64,7 +64,9 @@ export type UserAction =
    * - Does NOT modify the original artifact.
    */
   | { type: 'REHYDRATE' }
-  | { type: 'TOGGLE_SHOW_ARCHIVED' };
+  | { type: 'TOGGLE_SHOW_ARCHIVED' }
+  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' }
+  | { type: 'SET_CALENDAR_MONTH'; year: number; month: number };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

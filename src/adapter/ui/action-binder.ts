@@ -205,6 +205,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
       }
+      case 'set-view-mode': {
+        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar';
+        if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'calendar-prev': {
+        const state = dispatcher.getState();
+        let y = state.calendarYear;
+        let m = state.calendarMonth - 1;
+        if (m < 1) { m = 12; y--; }
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        break;
+      }
+      case 'calendar-next': {
+        const state = dispatcher.getState();
+        let y = state.calendarYear;
+        let m = state.calendarMonth + 1;
+        if (m > 12) { m = 1; y++; }
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        break;
+      }
       case 'toggle-sidebar': {
         togglePane(root, 'sidebar');
         break;

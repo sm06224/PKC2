@@ -66,6 +66,12 @@ export interface AppState {
   readonly: boolean;
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
+  /** Current center pane view mode. Runtime-only. */
+  viewMode: 'detail' | 'calendar';
+  /** Calendar navigation: year. Runtime-only. */
+  calendarYear: number;
+  /** Calendar navigation: month (1-12). Runtime-only. */
+  calendarMonth: number;
 }
 
 /**
@@ -96,6 +102,9 @@ export function createInitialState(): AppState {
     exportMutability: null,
     readonly: false,
     showArchived: false,
+    viewMode: 'detail',
+    calendarYear: new Date().getFullYear(),
+    calendarMonth: new Date().getMonth() + 1,
   };
 }
 
@@ -409,6 +418,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_SHOW_ARCHIVED': {
       const next: AppState = { ...state, showArchived: !state.showArchived };
+      return { state: next, events: [] };
+    }
+    case 'SET_VIEW_MODE': {
+      const next: AppState = { ...state, viewMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'SET_CALENDAR_MONTH': {
+      const next: AppState = { ...state, calendarYear: action.year, calendarMonth: action.month };
       return { state: next, events: [] };
     }
     case 'REHYDRATE': {

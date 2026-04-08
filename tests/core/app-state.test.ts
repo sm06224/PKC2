@@ -779,6 +779,40 @@ describe('clear filters', () => {
   });
 });
 
+// ── Calendar ────────────────────────
+
+describe('calendar', () => {
+  it('createInitialState has detail viewMode and current date', () => {
+    const state = createInitialState();
+    expect(state.viewMode).toBe('detail');
+    expect(state.calendarYear).toBe(new Date().getFullYear());
+    expect(state.calendarMonth).toBe(new Date().getMonth() + 1);
+  });
+
+  it('SET_VIEW_MODE changes viewMode in ready phase', () => {
+    const { state } = reduce(readyState(), { type: 'SET_VIEW_MODE', mode: 'calendar' });
+    expect(state.viewMode).toBe('calendar');
+  });
+
+  it('SET_VIEW_MODE toggles back to detail', () => {
+    const base = { ...readyState(), viewMode: 'calendar' as const };
+    const { state } = reduce(base, { type: 'SET_VIEW_MODE', mode: 'detail' });
+    expect(state.viewMode).toBe('detail');
+  });
+
+  it('SET_CALENDAR_MONTH updates year and month', () => {
+    const { state } = reduce(readyState(), { type: 'SET_CALENDAR_MONTH', year: 2026, month: 12 });
+    expect(state.calendarYear).toBe(2026);
+    expect(state.calendarMonth).toBe(12);
+  });
+
+  it('SET_CALENDAR_MONTH allows navigating to previous year', () => {
+    const { state } = reduce(readyState(), { type: 'SET_CALENDAR_MONTH', year: 2025, month: 1 });
+    expect(state.calendarYear).toBe(2025);
+    expect(state.calendarMonth).toBe(1);
+  });
+});
+
 // ── Show Archived ────────────────────────
 
 describe('show archived', () => {
