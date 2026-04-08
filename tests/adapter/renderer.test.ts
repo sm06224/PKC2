@@ -4031,3 +4031,155 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
     });
   });
 });
+
+// ── Issue #68: Calendar → Kanban Cross-View DnD Foundation ──
+
+describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
+  const cal2kanContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open NoDate', body: '{"status":"open","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function calState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: cal2kanContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function kanState(overrides?: Partial<AppState>): AppState {
+    return calState({ viewMode: 'kanban' as const, ...overrides });
+  }
+
+  // ── Cross-view source/target compatibility ──
+
+  describe('cross-view source/target compatibility', () => {
+    it('Calendar items are draggable with lid for cross-view', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBe('true');
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+
+    it('Kanban columns have drop-target with status value', () => {
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]');
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]');
+      expect(openList).not.toBeNull();
+      expect(doneList).not.toBeNull();
+    });
+
+    it('view-switch button for Kanban is present when in Calendar', () => {
+      render(calState(), root);
+      const kanbanSwitch = root.querySelector('[data-pkc-view-switch="kanban"]');
+      expect(kanbanSwitch).not.toBeNull();
+    });
+
+    it('view-switch button for Calendar is present when in Kanban', () => {
+      render(kanState(), root);
+      const calSwitch = root.querySelector('[data-pkc-view-switch="calendar"]');
+      expect(calSwitch).not.toBeNull();
+    });
+  });
+
+  // ── Bidirectional bridge symmetry ──
+
+  describe('bidirectional bridge symmetry', () => {
+    it('Calendar items have same lid format as Kanban cards', () => {
+      // Verify same entry appears in both views with same lid
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const calItem = cal.querySelector('[data-pkc-lid="t1"]');
+      expect(calItem).not.toBeNull();
+
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const kanCard = kanban.querySelector('[data-pkc-lid="t1"]');
+      expect(kanCard).not.toBeNull();
+    });
+
+    it('dated Todo in Calendar has status that matches Kanban column', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const t2Item = cal.querySelector('[data-pkc-lid="t2"]');
+      expect(t2Item).not.toBeNull();
+      expect(t2Item!.getAttribute('data-pkc-todo-status')).toBe('done');
+
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+      const t2Card = doneList.querySelector('[data-pkc-lid="t2"]');
+      expect(t2Card).not.toBeNull();
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('Kanban internal DnD: cards still have kanban-draggable', () => {
+      render(kanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('Calendar internal DnD: items still have calendar-draggable', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('Kanban → Calendar bridge: Calendar drop targets still present', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const targets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(targets.length).toBe(30);
+    });
+
+    it('Kanban status move buttons still present', () => {
+      render(kanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="toggle-todo-status"]');
+      expect(btns.length).toBeGreaterThan(0);
+    });
+
+    it('Calendar click selection preserved (select-entry on items)', () => {
+      render(calState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="t1"]');
+      expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('view mode toggle renders three buttons', () => {
+      render(kanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('readonly: no draggable Calendar items', () => {
+      render(calState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBeNull();
+      }
+    });
+  });
+});

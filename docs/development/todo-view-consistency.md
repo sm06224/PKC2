@@ -263,6 +263,9 @@ Kanban DnD uses separate attributes (`data-pkc-kanban-*`) and separate handler
 functions (`handleKanbanDrag*`) from sidebar tree DnD (`data-pkc-draggable` /
 `data-pkc-drop-target`). The two systems do not interfere.
 
+**Exception**: Kanban drop handler also accepts `calendarDraggedLid` for
+cross-view DnD (Issue #68). This is a controlled bridge, not a state merge.
+
 ### Scope Boundaries
 
 Not implemented in this issue:

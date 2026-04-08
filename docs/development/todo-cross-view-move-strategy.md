@@ -247,10 +247,32 @@ Kanban card を drag 開始
 - Drop 後に `kanbanDraggedLid = null` でクリーンアップ
 - Status は変更しない (Calendar cell の責務は date のみ)
 
-### Phase 2: Reverse Direction
+### Phase 2: Calendar → Kanban (Issue #68 — 実装済み)
 
 Calendar item → Kanban column への drop で `todo.status` を変える。
 Phase 1 の対称実装。
+
+**実現方式: drag-over-tab view switch (Phase 1 と同一)**
+
+Calendar と Kanban は排他的にセンターペインに表示されるため、
+drag 中に非 active な Kanban タブにホバーすると 600ms 後にビュー切替が発生する。
+
+```
+Calendar item を drag 開始
+  → Kanban タブにホバー (600ms)
+    → SET_VIEW_MODE 'kanban' 発火 → Kanban 再描画
+      → Kanban column list に drop
+        → calendarDraggedLid から lid 解決
+          → parseTodoBody → status 更新 → QUICK_UPDATE_ENTRY
+            → SELECT_ENTRY
+```
+
+**実装詳細**:
+- `handleKanbanDragOver`: `calendarDraggedLid` non-null でも受入れ (`??` fallback)
+- `handleKanbanDrop`: `kanbanDraggedLid ?? calendarDraggedLid` で lid 解決
+- Drop 後に `calendarDraggedLid = null` でクリーンアップ
+- Date は変更しない (Kanban column の責務は status のみ)
+- View-switch の仕組みは Phase 1 で追加済み。新規 handler 不要
 
 ### Phase 3: UX Refinement
 
@@ -270,14 +292,14 @@ Phase 1 の対称実装。
 1. **Kanban**: Todo card を open/done column 間で drag して status を変更
 2. **Calendar**: Todo item を別日セルに drag して date を変更
 3. **Kanban → Calendar**: Kanban card を drag → Calendar タブにホバー → day cell に drop して date を付与
-4. **Sidebar**: Entry をフォルダ間で drag して所属を変更
-5. **Detail**: 単票画面で任意フィールドを手動編集
+4. **Calendar → Kanban**: Calendar item を drag → Kanban タブにホバー → column に drop して status を変更
+5. **Sidebar**: Entry をフォルダ間で drag して所属を変更
+6. **Detail**: 単票画面で任意フィールドを手動編集
 
 ### 現在できないこと
 
-1. Calendar item → Kanban column への drag (status 変更)
-2. 月をまたぐ drag
-3. Touch / mobile での drag
+1. 月をまたぐ drag
+2. Touch / mobile での drag
 
 ### ユーザー利用手順: Kanban → Calendar
 
@@ -289,5 +311,16 @@ Phase 1 の対称実装。
 6. Detail view で body を確認すると date フィールドが更新されている
 7. Kanban view に戻ると日付表示が反映されている
 8. Status は変わらない（open のまま / done のまま）
-5. Kanban 上では status は変わらない（open のまま）
-6. selectedLid が当該 Todo に更新される
+9. selectedLid が当該 Todo に更新される
+
+### ユーザー利用手順: Calendar → Kanban
+
+1. Calendar view で Todo item を drag 開始する
+2. 上部の「Kanban」タブにカーソルを持っていく（ホバー）
+3. 600ms 後に Kanban view に自動切替
+4. 目的の column (Todo / Done) に item を drop する
+5. `todo.status` がその column の status に設定される
+6. Detail view で body を確認すると status フィールドが更新されている
+7. Calendar view に戻ると overdue 表示が再評価されている
+8. Date は変わらない（元の日付のまま）
+9. selectedLid が当該 Todo に更新される

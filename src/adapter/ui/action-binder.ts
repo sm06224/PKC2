@@ -412,7 +412,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   function handleKanbanDragOver(e: DragEvent): void {
     const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
-    if (!dropTarget || !kanbanDraggedLid) return;
+    // Accept drops from kanban-internal drag OR cross-view calendar drag
+    if (!dropTarget || (!kanbanDraggedLid && !calendarDraggedLid)) return;
 
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -429,7 +430,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleKanbanDrop(e: DragEvent): void {
     e.preventDefault();
     const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
-    if (!dropTarget || !kanbanDraggedLid) return;
+    // Accept drops from kanban-internal drag OR cross-view calendar drag
+    const lid = kanbanDraggedLid ?? calendarDraggedLid;
+    if (!dropTarget || !lid) return;
 
     dropTarget.removeAttribute('data-pkc-drag-over');
 
@@ -439,7 +442,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
     if (!targetStatus) return;
 
-    const entry = state.container.entries.find((e) => e.lid === kanbanDraggedLid);
+    const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
     const todo = parseTodoBody(entry.body);
@@ -447,13 +450,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Only update if status actually changes
     if (todo.status !== targetStatus) {
       const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: kanbanDraggedLid, body: updated });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
     }
 
     // Select the dragged entry
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: kanbanDraggedLid });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
+    // Clean up both possible drag sources
     kanbanDraggedLid = null;
+    calendarDraggedLid = null;
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
