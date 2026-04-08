@@ -856,6 +856,21 @@ function renderKanbanView(state: AppState): HTMLElement {
         card.appendChild(date);
       }
 
+      // Status move button (reuses existing toggle-todo-status action)
+      if (!state.readonly) {
+        const moveBtn = createElement('button', 'pkc-kanban-status-btn');
+        moveBtn.setAttribute('data-pkc-action', 'toggle-todo-status');
+        moveBtn.setAttribute('data-pkc-lid', item.entry.lid);
+        if (item.todo.status === 'open') {
+          moveBtn.textContent = '✓ Done';
+          moveBtn.setAttribute('title', 'Mark as done');
+        } else {
+          moveBtn.textContent = '↺ Reopen';
+          moveBtn.setAttribute('title', 'Reopen this todo');
+        }
+        card.appendChild(moveBtn);
+      }
+
       list.appendChild(card);
     }
 

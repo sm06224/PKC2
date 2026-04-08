@@ -132,10 +132,81 @@ Verified flow:
 
 All transitions use the same `AppState` and `Dispatcher`. No private state exists.
 
-## 8. Impact on Future DnD (Issue #62+)
+## 8. Kanban Status Move (Issue #62)
+
+### Purpose
+
+This is the pre-DnD stage. Before adding drag-and-drop, the status update path
+is established and verified via simple button clicks.
+
+### Available Actions
+
+Each Kanban card has a status move button:
+
+| Current status | Button label | Result          |
+|---------------|-------------|-----------------|
+| open          | `✓ Done`    | status → done   |
+| done          | `↺ Reopen`  | status → open   |
+
+- Buttons are hidden in readonly mode.
+- Only `todo.status` is changed. `title`, `description`, `date`, `archived` are preserved.
+
+### Update Path
+
+```
+User clicks status button
+  → action-binder: toggle-todo-status
+    → parseTodoBody → flip status → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+```
+
+This is the same path used by the Detail view's status toggle button.
+No new actions or reducers were added.
+
+### Click Collision Prevention
+
+The status button is nested inside the card element:
+
+```
+div.pkc-kanban-card [data-pkc-action="select-entry"]
+  └── button.pkc-kanban-status-btn [data-pkc-action="toggle-todo-status"]
+```
+
+The action-binder uses `closest('[data-pkc-action]')` from the event target.
+When the button is clicked, `closest` returns the button (not the card),
+so `toggle-todo-status` fires instead of `select-entry`. No `stopPropagation` needed.
+
+Double-click on the button does not trigger detached view because
+`handleDblClick` checks for `data-pkc-action="select-entry"`, which the button lacks.
+
+### Selection Behavior
+
+- Clicking the status button does NOT change `selectedLid`.
+- The `QUICK_UPDATE_ENTRY` action does not modify `selectedLid` in the reducer.
+- After status change, the entry moves to a different column but remains selected if it was selected.
+
+### Overdue Re-evaluation
+
+- When an open overdue todo is marked done → overdue is cleared (`isTodoPastDue` returns false for done).
+- When a done todo with a past date is reopened → overdue is applied.
+- This happens automatically because `isTodoPastDue` is evaluated on every render.
+
+### Operation Flow
+
+1. View Kanban board with open/done todos
+2. Click `✓ Done` on an open card → card moves to Done column
+3. Click `↺ Reopen` on a done card → card moves to Todo column
+4. Switch to Detail → entry body reflects updated status
+5. Switch to Calendar → overdue markers re-evaluated
+6. Selection is maintained throughout
+
+## 9. Impact on Future DnD (Issue #63+)
 
 When DnD is added to Kanban:
-- Status changes should dispatch `QUICK_UPDATE_ENTRY` (same as todo-status toggle)
+- The same `QUICK_UPDATE_ENTRY` path established in #62 will be used
+- DnD drop = same status flip, just triggered by gesture instead of button
 - `selectedLid` should update to the dragged entry on drop
 - Calendar date DnD (if added) should update `todo.date` via the same mechanism
 - No new state variables should be needed; DnD is an action dispatch, not a state concern

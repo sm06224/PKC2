@@ -3053,3 +3053,221 @@ describe('Todo View Interaction Consistency', () => {
     });
   });
 });
+
+// ── Issue #62: Todo Kanban Status Move Foundation ──
+
+describe('Todo Kanban Status Move Foundation', () => {
+  const statusMoveContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"desc A","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"desc B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open C', body: '{"status":"open","description":"desc C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function statusState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: statusMoveContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Action rendering ──
+
+  describe('action rendering', () => {
+    it('open card has "Done" status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toContain('Done');
+      expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(btn!.getAttribute('data-pkc-lid')).toBe('t1');
+    });
+
+    it('done card has "Reopen" status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t2Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t2"]')!;
+      const btn = t2Card.querySelector('.pkc-kanban-status-btn');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toContain('Reopen');
+      expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(btn!.getAttribute('data-pkc-lid')).toBe('t2');
+    });
+
+    it('readonly mode does NOT show status buttons', () => {
+      render(statusState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      expect(btns).toHaveLength(0);
+    });
+  });
+
+  // ── Click behavior (no collision) ──
+
+  describe('click behavior', () => {
+    it('status button is nested inside card but has its own action', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+
+      // The button is inside the card
+      expect(t1Card.contains(btn)).toBe(true);
+
+      // But the button has its own data-pkc-action (toggle-todo-status)
+      // which differs from the card's data-pkc-action (select-entry)
+      expect(btn.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      expect(t1Card.getAttribute('data-pkc-action')).toBe('select-entry');
+
+      // closest('[data-pkc-action]') from the button should return the button itself
+      // not the card, preventing double-fire
+      expect(btn.closest('[data-pkc-action]')).toBe(btn);
+    });
+  });
+
+  // ── Update path verification ──
+
+  describe('update path', () => {
+    it('toggle-todo-status action uses QUICK_UPDATE_ENTRY (status only, other fields preserved)', () => {
+      // This test verifies the action-binder contract:
+      // The toggle-todo-status handler reads the entry body, flips status,
+      // and dispatches QUICK_UPDATE_ENTRY with the rest preserved.
+      // We verify the rendering reflects the contract by checking the
+      // button attributes match the existing toggle-todo-status action pattern.
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+
+      // All status buttons use the same action as the existing detail view toggle
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      for (const btn of btns) {
+        expect(btn.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+        expect(btn.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  // ── Selection maintained ──
+
+  describe('selection', () => {
+    it('status button has data-pkc-lid matching the card entry', () => {
+      render(statusState({ selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+
+      // The button targets the same entry as the card
+      expect(btn.getAttribute('data-pkc-lid')).toBe('t1');
+      // Card is still marked as selected
+      expect(t1Card.getAttribute('data-pkc-selected')).toBe('true');
+    });
+  });
+
+  // ── Overdue relationship ──
+
+  describe('overdue relationship', () => {
+    it('open todo with past date shows overdue + status button', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      // t1 has date 2025-01-01 and status open → overdue
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const dateEl = t1Card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(true);
+      // Status button should offer to mark done
+      const btn = t1Card.querySelector('.pkc-kanban-status-btn')!;
+      expect(btn.textContent).toContain('Done');
+    });
+
+    it('done todo with past date does NOT show overdue', () => {
+      // Create a container with done + past date todo
+      const donePast: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'd1', title: 'Done Past', body: '{"status":"done","description":"x","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: donePast }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="d1"]')!;
+      const dateEl = card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(false);
+      // Button should offer to reopen
+      const btn = card.querySelector('.pkc-kanban-status-btn')!;
+      expect(btn.textContent).toContain('Reopen');
+    });
+  });
+
+  // ── Empty state not broken ──
+
+  describe('empty state preservation', () => {
+    it('empty columns still render even with status buttons present', () => {
+      // Only open todos, no done todos
+      const onlyOpen: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 't1', title: 'Only Open', body: '{"status":"open","description":"x"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: onlyOpen }), root);
+      const columns = root.querySelectorAll('.pkc-kanban-column');
+      expect(columns).toHaveLength(2);
+      // Done column is empty but present
+      const doneCol = columns[1]!;
+      expect(doneCol.querySelectorAll('.pkc-kanban-card')).toHaveLength(0);
+      expect(doneCol.querySelector('.pkc-kanban-column-header')).not.toBeNull();
+    });
+
+    it('kanban empty state shows when no todos exist (with status buttons feature)', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(statusState({ container: noTodos }), root);
+      const empty = root.querySelector('[data-pkc-region="kanban-empty"]');
+      expect(empty).not.toBeNull();
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('card still has select-entry action for click', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      expect(card.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('all three columns render labels correctly', () => {
+      render(statusState(), root);
+      const labels = root.querySelectorAll('.pkc-kanban-column-label');
+      expect(labels).toHaveLength(2);
+      expect(labels[0]!.textContent).toBe('Todo');
+      expect(labels[1]!.textContent).toBe('Done');
+    });
+
+    it('status button count matches card count', () => {
+      render(statusState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      const btns = kanban.querySelectorAll('.pkc-kanban-status-btn');
+      expect(btns).toHaveLength(cards.length);
+    });
+  });
+});

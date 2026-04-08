@@ -2324,3 +2324,24 @@
   text-align: center;
   padding: 1rem 0.5rem;
 }
+
+.pkc-kanban-status-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.15rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--c-muted);
+  background: none;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pkc-kanban-status-btn:hover {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
