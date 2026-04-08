@@ -17,11 +17,10 @@ export const KANBAN_COLUMNS: readonly { status: KanbanStatus; label: string }[] 
 
 /**
  * Group todo entries by their status for kanban display.
- * Optionally filters out archived todos.
+ * Archived todos are always excluded — kanban shows only active todos.
  */
 export function groupTodosByStatus(
   entries: readonly Entry[],
-  showArchived: boolean,
 ): Record<KanbanStatus, KanbanItem[]> {
   const result: Record<KanbanStatus, KanbanItem[]> = {
     open: [],
@@ -31,7 +30,7 @@ export function groupTodosByStatus(
   for (const entry of entries) {
     if (entry.archetype !== 'todo') continue;
     const todo = parseTodoBody(entry.body);
-    if (!showArchived && todo.archived) continue;
+    if (todo.archived) continue;
 
     result[todo.status].push({ entry, todo });
   }

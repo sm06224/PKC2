@@ -21,7 +21,7 @@ import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } fr
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
-import { parseTodoBody } from './todo-presenter';
+import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
@@ -787,7 +787,7 @@ function renderKanbanView(state: AppState): HTMLElement {
   kanban.setAttribute('data-pkc-region', 'kanban-view');
 
   const entries = state.container?.entries ?? [];
-  const grouped = groupTodosByStatus(entries, state.showArchived);
+  const grouped = groupTodosByStatus(entries);
 
   const board = createElement('div', 'pkc-kanban-board');
 
@@ -816,9 +816,6 @@ function renderKanbanView(state: AppState): HTMLElement {
       if (item.todo.status === 'done') {
         card.setAttribute('data-pkc-todo-status', 'done');
       }
-      if (item.todo.archived) {
-        card.setAttribute('data-pkc-todo-archived', 'true');
-      }
       if (state.selectedLid === item.entry.lid) {
         card.setAttribute('data-pkc-selected', 'true');
       }
@@ -835,7 +832,10 @@ function renderKanbanView(state: AppState): HTMLElement {
 
       if (item.todo.date) {
         const date = createElement('div', 'pkc-kanban-card-date');
-        date.textContent = item.todo.date;
+        date.textContent = formatTodoDate(item.todo.date);
+        if (isTodoPastDue(item.todo)) {
+          date.classList.add('pkc-todo-date-overdue');
+        }
         card.appendChild(date);
       }
 

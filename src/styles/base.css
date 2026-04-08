@@ -2274,10 +2274,6 @@
   text-decoration: line-through;
 }
 
-.pkc-kanban-card[data-pkc-todo-archived="true"] {
-  opacity: 0.4;
-}
-
 .pkc-kanban-card-title {
   font-family: var(--font-mono);
   font-size: 0.8rem;
