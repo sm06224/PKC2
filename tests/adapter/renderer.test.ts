@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render } from '@adapter/ui/renderer';
+import { render, renderContextMenu } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
@@ -1850,5 +1850,166 @@ describe('Three-Pane Layout', () => {
     for (const badge of badges) {
       expect(badge.textContent!.length).toBeGreaterThan(2);
     }
+  });
+});
+
+describe('DnD + Context Menu Foundation', () => {
+  const folderContainer: Container = {
+    meta: {
+      container_id: 'test-id', title: 'Test',
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      schema_version: 1,
+    },
+    entries: [
+      { lid: 'f1', title: 'Folder One', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'note1', title: 'Note One', body: '', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'f2', title: 'Folder Two', body: '', archetype: 'folder', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'f1', to: 'note1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  it('tree items have draggable attribute', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const draggables = root.querySelectorAll('[data-pkc-draggable="true"]');
+    expect(draggables.length).toBeGreaterThan(0);
+    for (const el of draggables) {
+      expect(el.getAttribute('draggable')).toBe('true');
+    }
+  });
+
+  it('folder nodes have drop target attribute', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const dropTargets = root.querySelectorAll('[data-pkc-drop-target="true"]');
+    expect(dropTargets.length).toBe(2); // f1 and f2
+    for (const el of dropTargets) {
+      expect(el.getAttribute('data-pkc-folder')).toBe('true');
+    }
+  });
+
+  it('non-folder nodes are draggable but not drop targets', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const note1 = root.querySelector('[data-pkc-lid="note1"][data-pkc-draggable]');
+    expect(note1).not.toBeNull();
+    expect(note1!.getAttribute('data-pkc-drop-target')).toBeNull();
+  });
+
+  it('root drop zone is rendered when not readonly', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
+    expect(rootDrop).not.toBeNull();
+    expect(rootDrop!.textContent).toContain('root');
+  });
+
+  it('root drop zone is NOT rendered in readonly mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: true,
+    };
+    render(state, root);
+    const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
+    expect(rootDrop).toBeNull();
+  });
+
+  it('DnD attributes not added in flat filter mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: 'Note', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    // In flat mode (filter active), draggable should not be set
+    const draggables = root.querySelectorAll('[data-pkc-draggable="true"]');
+    expect(draggables.length).toBe(0);
+  });
+
+  it('renderContextMenu creates menu with correct items', () => {
+    const menu = renderContextMenu('test-lid', 100, 200, true);
+    expect(menu.getAttribute('data-pkc-region')).toBe('context-menu');
+    expect(menu.getAttribute('data-pkc-lid')).toBe('test-lid');
+    expect(menu.style.left).toBe('100px');
+    expect(menu.style.top).toBe('200px');
+
+    const items = menu.querySelectorAll('.pkc-context-menu-item');
+    // Edit, Delete, Move to Root (shown because hasParent=true)
+    expect(items.length).toBe(3);
+    expect(items[0]!.textContent).toContain('Edit');
+    expect(items[1]!.textContent).toContain('Delete');
+    expect(items[2]!.textContent).toContain('Root');
+  });
+
+  it('renderContextMenu hides Move to Root when no parent', () => {
+    const menu = renderContextMenu('test-lid', 0, 0, false);
+    const items = menu.querySelectorAll('.pkc-context-menu-item');
+    // Only Edit and Delete
+    expect(items.length).toBe(2);
+    const texts = Array.from(items).map(i => i.textContent);
+    expect(texts.some(t => t!.includes('Root'))).toBe(false);
+  });
+
+  it('context menu items have correct data-pkc-action and data-pkc-lid', () => {
+    const menu = renderContextMenu('abc', 0, 0, true);
+    const editItem = menu.querySelector('[data-pkc-action="begin-edit"]');
+    expect(editItem).not.toBeNull();
+    expect(editItem!.getAttribute('data-pkc-lid')).toBe('abc');
+
+    const deleteItem = menu.querySelector('[data-pkc-action="delete-entry"]');
+    expect(deleteItem).not.toBeNull();
+    expect(deleteItem!.getAttribute('data-pkc-lid')).toBe('abc');
+
+    const moveItem = menu.querySelector('[data-pkc-action="ctx-move-to-root"]');
+    expect(moveItem).not.toBeNull();
+    expect(moveItem!.getAttribute('data-pkc-lid')).toBe('abc');
+  });
+
+  it('existing Move to Folder still works in meta pane', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderContainer,
+      selectedLid: 'note1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const moveSection = root.querySelector('[data-pkc-region="move-to-folder"]');
+    expect(moveSection).not.toBeNull();
+    const moveBtn = moveSection!.querySelector('[data-pkc-action="move-to-folder"]');
+    expect(moveBtn).not.toBeNull();
   });
 });

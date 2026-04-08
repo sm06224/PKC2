@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildTree, getStructuralParent, getBreadcrumb, getAvailableFolders,
+  buildTree, getStructuralParent, getBreadcrumb, getAvailableFolders, isDescendant,
 } from '@features/relation/tree';
 import type { Relation } from '@core/model/relation';
 import type { Entry } from '@core/model/record';
@@ -155,6 +155,44 @@ describe('getBreadcrumb', () => {
     ];
     const bc = getBreadcrumb(relations, entries, 'd', 2);
     expect(bc).toHaveLength(2); // Only last 2 ancestors
+  });
+});
+
+describe('isDescendant', () => {
+  it('returns true for direct child', () => {
+    const relations = [makeRelation('r1', 'parent', 'child')];
+    expect(isDescendant(relations, 'parent', 'child')).toBe(true);
+  });
+
+  it('returns true for nested descendant', () => {
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'c'),
+    ];
+    expect(isDescendant(relations, 'a', 'c')).toBe(true);
+  });
+
+  it('returns false for non-descendant', () => {
+    const relations = [makeRelation('r1', 'a', 'b')];
+    expect(isDescendant(relations, 'a', 'x')).toBe(false);
+  });
+
+  it('returns false when no relations', () => {
+    expect(isDescendant([], 'a', 'b')).toBe(false);
+  });
+
+  it('ignores non-structural relations', () => {
+    const relations = [makeRelation('r1', 'a', 'b', 'categorical')];
+    expect(isDescendant(relations, 'a', 'b')).toBe(false);
+  });
+
+  it('handles circular references without infinite loop', () => {
+    // This shouldn't happen in practice, but test robustness
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'a'),
+    ];
+    expect(isDescendant(relations, 'a', 'b')).toBe(true);
   });
 });
 

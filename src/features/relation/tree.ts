@@ -109,6 +109,30 @@ export function getBreadcrumb(
 }
 
 /**
+ * Check whether `candidateDescendant` is a descendant of `ancestorLid`
+ * via structural relations. Used by DnD to prevent circular moves.
+ */
+export function isDescendant(
+  relations: readonly Relation[],
+  ancestorLid: string,
+  candidateDescendant: string,
+): boolean {
+  const visited = new Set<string>();
+  function walk(lid: string): boolean {
+    if (visited.has(lid)) return false;
+    visited.add(lid);
+    for (const r of relations) {
+      if (r.kind === 'structural' && r.from === lid) {
+        if (r.to === candidateDescendant) return true;
+        if (walk(r.to)) return true;
+      }
+    }
+    return false;
+  }
+  return walk(ancestorLid);
+}
+
+/**
  * Get available folder entries for "move to" UI.
  * Excludes the entry itself and its descendants.
  */

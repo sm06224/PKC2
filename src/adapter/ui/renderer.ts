@@ -490,6 +490,14 @@ function renderSidebar(state: AppState): HTMLElement {
   }
   sidebar.appendChild(list);
 
+  // Root drop zone: drop here to move entry to root level
+  if (state.phase === 'ready' && !state.readonly) {
+    const rootDrop = createElement('div', 'pkc-root-drop-zone');
+    rootDrop.setAttribute('data-pkc-drop-target', 'root');
+    rootDrop.textContent = '↑ Drop here for root level';
+    sidebar.appendChild(rootDrop);
+  }
+
   // Restore candidates (deleted entries with revisions)
   if (state.container && state.phase === 'ready') {
     const candidates = getRestoreCandidates(state.container);
@@ -547,8 +555,12 @@ function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): v
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
   }
+  // All tree items are draggable
+  li.setAttribute('draggable', 'true');
+  li.setAttribute('data-pkc-draggable', 'true');
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
+    li.setAttribute('data-pkc-drop-target', 'true');
     // Show child count for folders
     const childCount = createElement('span', 'pkc-folder-count');
     childCount.textContent = `(${node.children.length})`;
@@ -1284,4 +1296,38 @@ function formatTimestamp(iso: string): string {
 function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1) + '…';
+}
+
+/**
+ * Render a context menu at the given position for an entry.
+ * Returns the menu element to be appended to the DOM.
+ */
+export function renderContextMenu(
+  lid: string,
+  x: number,
+  y: number,
+  hasParent: boolean,
+): HTMLElement {
+  const menu = createElement('div', 'pkc-context-menu');
+  menu.setAttribute('data-pkc-region', 'context-menu');
+  menu.setAttribute('data-pkc-lid', lid);
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  const items: { action: string; label: string; lid?: string; show: boolean }[] = [
+    { action: 'begin-edit', label: '✏️ Edit', lid, show: true },
+    { action: 'delete-entry', label: '🗑️ Delete', lid, show: true },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', lid, show: hasParent },
+  ];
+
+  for (const item of items) {
+    if (!item.show) continue;
+    const btn = createElement('button', 'pkc-context-menu-item');
+    btn.setAttribute('data-pkc-action', item.action);
+    if (item.lid) btn.setAttribute('data-pkc-lid', item.lid);
+    btn.textContent = item.label;
+    menu.appendChild(btn);
+  }
+
+  return menu;
 }

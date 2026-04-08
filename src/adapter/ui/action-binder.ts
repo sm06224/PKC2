@@ -6,6 +6,9 @@ import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
+import { isDescendant } from '../../features/relation/tree';
+import { getStructuralParent } from '../../features/relation/tree';
+import { renderContextMenu } from './renderer';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -181,6 +184,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'ctx-move-to-root': {
+        if (!lid) break;
+        const state = dispatcher.getState();
+        if (!state.container) break;
+        for (const r of state.container.relations) {
+          if (r.kind === 'structural' && r.to === lid) {
+            dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+            break;
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -237,17 +252,173 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // ── DnD handlers for sidebar tree ──
+
+  let draggedLid: string | null = null;
+
+  function handleDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    draggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    // Add dragging style after a tick (so the drag ghost is clean)
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (!dropTarget || !draggedLid) return;
+
+    const state = dispatcher.getState();
+    if (!state.container) return;
+
+    const folderLid = dropTarget.getAttribute('data-pkc-lid');
+    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+
+    // Prevent dropping on self
+    if (folderLid === draggedLid) return;
+
+    // Prevent dropping on descendant (cycle)
+    if (folderLid && isDescendant(state.container.relations, draggedLid, folderLid)) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+
+    // Root drop zone
+    if (isRoot) {
+      dropTarget.setAttribute('data-pkc-drag-over', 'true');
+    }
+  }
+
+  function handleDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-drop-target]');
+    if (!dropTarget || !draggedLid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const folderLid = isRoot ? null : dropTarget.getAttribute('data-pkc-lid');
+
+    // Don't drop on self
+    if (folderLid === draggedLid) return;
+
+    // Cycle check
+    if (folderLid && isDescendant(state.container.relations, draggedLid, folderLid)) return;
+
+    // Remove existing structural parent relation
+    for (const r of state.container.relations) {
+      if (r.kind === 'structural' && r.to === draggedLid) {
+        dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+        break;
+      }
+    }
+
+    // Create new structural relation (unless moving to root)
+    if (folderLid) {
+      dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: draggedLid, kind: 'structural' });
+    }
+
+    draggedLid = null;
+  }
+
+  function handleDragEnd(e: DragEvent): void {
+    // Clean up all drag state
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights
+    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    draggedLid = null;
+  }
+
+  // ── Context menu handler ──
+
+  function dismissContextMenu(): void {
+    const existing = root.querySelector('[data-pkc-region="context-menu"]');
+    if (existing) existing.remove();
+  }
+
+  function handleContextMenu(e: MouseEvent): void {
+    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
+
+    // Only in sidebar tree
+    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+    if (!sidebar) return;
+
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    e.preventDefault();
+    dismissContextMenu();
+
+    const lid = entryItem.getAttribute('data-pkc-lid');
+    if (!lid || !state.container) return;
+
+    const hasParent = getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+    const menu = renderContextMenu(lid, e.clientX, e.clientY, hasParent);
+    root.appendChild(menu);
+
+    // Select the entry being right-clicked
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+  }
+
+  function handleDocumentClick(e: MouseEvent): void {
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    if (!menu) return;
+    // If clicking inside the menu, let the action handler fire first
+    if (menu.contains(e.target as Node)) {
+      // Dismiss after action fires
+      requestAnimationFrame(() => dismissContextMenu());
+      return;
+    }
+    dismissContextMenu();
+  }
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+  root.addEventListener('dragstart', handleDragStart);
+  root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('drop', handleDrop);
+  root.addEventListener('dragend', handleDragEnd);
+  root.addEventListener('contextmenu', handleContextMenu);
   document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('click', handleDocumentClick);
 
   // Return cleanup function
   return () => {
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('change', handleChange);
+    root.removeEventListener('dragstart', handleDragStart);
+    root.removeEventListener('dragover', handleDragOver);
+    root.removeEventListener('dragleave', handleDragLeave);
+    root.removeEventListener('drop', handleDrop);
+    root.removeEventListener('dragend', handleDragEnd);
+    root.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('click', handleDocumentClick);
   };
 }
 
