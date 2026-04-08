@@ -92,9 +92,9 @@ function main(): void {
   html = html.replace('{{SCHEMA}}', String(SCHEMA_VERSION));
   html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
-  html = html.replace('{{STYLES}}', css);
-  html = html.replace('{{META}}', metaJson);
-  html = html.replace('{{CORE}}', js);
+  html = html.replace('{{STYLES}}', () => css);
+  html = html.replace('{{META}}', () => metaJson);
+  html = html.replace('{{CORE}}', () => js);
 
   if (!existsSync(DIST)) {
     mkdirSync(DIST, { recursive: true });
