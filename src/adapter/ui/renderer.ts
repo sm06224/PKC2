@@ -24,6 +24,7 @@ import { getPresenter } from './detail-presenter';
 import { parseTodoBody } from './todo-presenter';
 import { parseAttachmentBody } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
+import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -607,6 +608,12 @@ function renderCenter(state: AppState): HTMLElement {
     return center;
   }
 
+  // Kanban view
+  if (state.viewMode === 'kanban') {
+    center.appendChild(renderKanbanView(state));
+    return center;
+  }
+
   // Detail view (existing behavior)
   const selected = findSelectedEntry(state);
   const canEdit = state.phase === 'ready' && !state.readonly;
@@ -655,16 +662,22 @@ function renderCenter(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
-  for (const mode of ['detail', 'calendar'] as const) {
+  const modes: { key: typeof viewMode; label: string }[] = [
+    { key: 'detail', label: 'Detail' },
+    { key: 'calendar', label: 'Calendar' },
+    { key: 'kanban', label: 'Kanban' },
+  ];
+
+  for (const { key, label } of modes) {
     const btn = createElement('button', 'pkc-view-mode-btn');
     btn.setAttribute('data-pkc-action', 'set-view-mode');
-    btn.setAttribute('data-pkc-view-mode', mode);
-    btn.textContent = mode === 'detail' ? 'Detail' : 'Calendar';
-    if (mode === viewMode) {
+    btn.setAttribute('data-pkc-view-mode', key);
+    btn.textContent = label;
+    if (key === viewMode) {
       btn.setAttribute('data-pkc-active', 'true');
     }
     bar.appendChild(btn);
@@ -767,6 +780,74 @@ function renderCalendarView(state: AppState): HTMLElement {
 
   cal.appendChild(grid);
   return cal;
+}
+
+function renderKanbanView(state: AppState): HTMLElement {
+  const kanban = createElement('div', 'pkc-kanban');
+  kanban.setAttribute('data-pkc-region', 'kanban-view');
+
+  const entries = state.container?.entries ?? [];
+  const grouped = groupTodosByStatus(entries, state.showArchived);
+
+  const board = createElement('div', 'pkc-kanban-board');
+
+  for (const col of KANBAN_COLUMNS) {
+    const column = createElement('div', 'pkc-kanban-column');
+    column.setAttribute('data-pkc-kanban-status', col.status);
+
+    const header = createElement('div', 'pkc-kanban-column-header');
+    const headerLabel = createElement('span', 'pkc-kanban-column-label');
+    headerLabel.textContent = col.label;
+    header.appendChild(headerLabel);
+
+    const count = grouped[col.status].length;
+    const badge = createElement('span', 'pkc-kanban-column-count');
+    badge.textContent = String(count);
+    header.appendChild(badge);
+
+    column.appendChild(header);
+
+    const list = createElement('div', 'pkc-kanban-list');
+
+    for (const item of grouped[col.status]) {
+      const card = createElement('div', 'pkc-kanban-card');
+      card.setAttribute('data-pkc-action', 'select-entry');
+      card.setAttribute('data-pkc-lid', item.entry.lid);
+      if (item.todo.status === 'done') {
+        card.setAttribute('data-pkc-todo-status', 'done');
+      }
+      if (item.todo.archived) {
+        card.setAttribute('data-pkc-todo-archived', 'true');
+      }
+      if (state.selectedLid === item.entry.lid) {
+        card.setAttribute('data-pkc-selected', 'true');
+      }
+
+      const title = createElement('div', 'pkc-kanban-card-title');
+      title.textContent = item.entry.title || '(untitled)';
+      card.appendChild(title);
+
+      if (item.todo.description) {
+        const desc = createElement('div', 'pkc-kanban-card-desc');
+        desc.textContent = item.todo.description;
+        card.appendChild(desc);
+      }
+
+      if (item.todo.date) {
+        const date = createElement('div', 'pkc-kanban-card-date');
+        date.textContent = item.todo.date;
+        card.appendChild(date);
+      }
+
+      list.appendChild(card);
+    }
+
+    column.appendChild(list);
+    board.appendChild(column);
+  }
+
+  kanban.appendChild(board);
+  return kanban;
 }
 
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */

@@ -2224,9 +2224,10 @@ describe('Todo Calendar Foundation', () => {
     const bar = root.querySelector('[data-pkc-region="view-mode-bar"]');
     expect(bar).not.toBeNull();
     const btns = bar!.querySelectorAll('.pkc-view-mode-btn');
-    expect(btns).toHaveLength(2);
+    expect(btns).toHaveLength(3);
     expect(btns[0]!.textContent).toBe('Detail');
     expect(btns[1]!.textContent).toBe('Calendar');
+    expect(btns[2]!.textContent).toBe('Kanban');
   });
 
   it('marks active view mode button', () => {

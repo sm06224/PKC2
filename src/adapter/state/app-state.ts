@@ -67,7 +67,7 @@ export interface AppState {
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar';
+  viewMode: 'detail' | 'calendar' | 'kanban';
   /** Calendar navigation: year. Runtime-only. */
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */

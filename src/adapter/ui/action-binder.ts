@@ -206,7 +206,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'set-view-mode': {
-        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar';
+        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
