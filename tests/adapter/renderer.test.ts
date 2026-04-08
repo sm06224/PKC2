@@ -2821,3 +2821,235 @@ describe('Todo Kanban Foundation', () => {
     expect(archivedCards).toHaveLength(0);
   });
 });
+
+// ── Issue #61: Todo View Interaction Consistency ──
+
+describe('Todo View Interaction Consistency', () => {
+  const consistencyContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"desc","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"done desc"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Overdue C', body: '{"status":"open","description":"overdue","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't4', title: 'Archived D', body: '{"status":"open","description":"archived","archived":true,"date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function makeState(viewMode: 'detail' | 'calendar' | 'kanban', overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: consistencyContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Selection state consistency ──
+
+  describe('selection state', () => {
+    it('Kanban shows selected entry when selectedLid is set', () => {
+      render(makeState('kanban', { selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]');
+      expect(card!.getAttribute('data-pkc-selected')).toBe('true');
+    });
+
+    it('Calendar shows selected entry when selectedLid is set', () => {
+      render(makeState('calendar', { selectedLid: 't1' }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('[data-pkc-lid="t1"]');
+      expect(item).not.toBeNull();
+      expect(item!.getAttribute('data-pkc-selected')).toBe('true');
+    });
+
+    it('sidebar shows selected entry in all view modes', () => {
+      for (const mode of ['detail', 'calendar', 'kanban'] as const) {
+        render(makeState(mode, { selectedLid: 't1' }), root);
+        const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+        const item = sidebar.querySelector('[data-pkc-lid="t1"]');
+        expect(item).not.toBeNull();
+        expect(item!.getAttribute('data-pkc-selected')).toBe('true');
+      }
+    });
+
+    it('selection survives view mode switch (same selectedLid)', () => {
+      // Render detail with selection
+      render(makeState('detail', { selectedLid: 't1' }), root);
+      const sidebarDetail = root.querySelector('[data-pkc-region="sidebar"]')!;
+      expect(sidebarDetail.querySelector('[data-pkc-lid="t1"][data-pkc-selected="true"]')).not.toBeNull();
+
+      // Switch to kanban with same selectedLid
+      render(makeState('kanban', { selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      expect(kanban.querySelector('[data-pkc-lid="t1"][data-pkc-selected="true"]')).not.toBeNull();
+
+      // Switch to calendar with same selectedLid
+      render(makeState('calendar', { selectedLid: 't1' }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      expect(cal.querySelector('[data-pkc-lid="t1"][data-pkc-selected="true"]')).not.toBeNull();
+    });
+  });
+
+  // ── Click behavior consistency ──
+
+  describe('click behavior', () => {
+    it('Calendar todo items have select-entry action', () => {
+      render(makeState('calendar'), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('[data-pkc-lid="t1"]');
+      expect(item).not.toBeNull();
+      expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('Kanban cards have select-entry action', () => {
+      render(makeState('kanban'), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('[data-pkc-lid="t1"]');
+      expect(card).not.toBeNull();
+      expect(card!.getAttribute('data-pkc-action')).toBe('select-entry');
+    });
+
+    it('sidebar items have select-entry action in all view modes', () => {
+      for (const mode of ['detail', 'calendar', 'kanban'] as const) {
+        render(makeState(mode), root);
+        const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+        const item = sidebar.querySelector('[data-pkc-lid="t1"]');
+        expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
+      }
+    });
+  });
+
+  // ── Overdue consistency ──
+
+  describe('overdue display', () => {
+    it('Calendar marks overdue todo items', () => {
+      // t3 has date 2025-01-01 and status open → overdue
+      // t3 won't show in April 2026 calendar. Use Jan 2025.
+      render(makeState('calendar', { calendarYear: 2025, calendarMonth: 1 }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('[data-pkc-lid="t3"]');
+      expect(item).not.toBeNull();
+      expect(item!.getAttribute('data-pkc-todo-overdue')).toBe('true');
+    });
+
+    it('Calendar does NOT mark done todo as overdue', () => {
+      // Use container with done + past date
+      const doneOverdue: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'd1', title: 'Done', body: '{"status":"done","description":"x","date":"2025-01-15"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(makeState('calendar', { container: doneOverdue, calendarYear: 2025, calendarMonth: 1 }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('[data-pkc-lid="d1"]');
+      expect(item).not.toBeNull();
+      expect(item!.hasAttribute('data-pkc-todo-overdue')).toBe(false);
+    });
+
+    it('Kanban marks overdue todo cards (same as Calendar)', () => {
+      render(makeState('kanban'), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t3"]');
+      expect(card).not.toBeNull();
+      const dateEl = card!.querySelector('.pkc-kanban-card-date');
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(true);
+    });
+  });
+
+  // ── Empty state consistency ──
+
+  describe('empty state', () => {
+    const emptyContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+
+    it('Kanban shows empty state when no active todos exist', () => {
+      render(makeState('kanban', { container: emptyContainer }), root);
+      const empty = root.querySelector('[data-pkc-region="kanban-empty"]');
+      expect(empty).not.toBeNull();
+      expect(empty!.textContent).toContain('No active todos');
+    });
+
+    it('Kanban still shows columns even in empty state', () => {
+      render(makeState('kanban', { container: emptyContainer }), root);
+      const columns = root.querySelectorAll('.pkc-kanban-column');
+      expect(columns).toHaveLength(2);
+    });
+
+    it('Calendar shows empty state when no dated todos this month', () => {
+      render(makeState('calendar', { container: emptyContainer }), root);
+      const empty = root.querySelector('[data-pkc-region="calendar-empty"]');
+      expect(empty).not.toBeNull();
+      expect(empty!.textContent).toContain('No dated todos');
+    });
+
+    it('Calendar does NOT show empty state when there are dated todos this month', () => {
+      render(makeState('calendar'), root);
+      const empty = root.querySelector('[data-pkc-region="calendar-empty"]');
+      expect(empty).toBeNull();
+    });
+
+    it('Kanban does NOT show empty state when active todos exist', () => {
+      render(makeState('kanban'), root);
+      const empty = root.querySelector('[data-pkc-region="kanban-empty"]');
+      expect(empty).toBeNull();
+    });
+  });
+
+  // ── View mode toggle consistency ──
+
+  describe('view mode toggle', () => {
+    it('view mode toggle is visible in all three views', () => {
+      for (const mode of ['detail', 'calendar', 'kanban'] as const) {
+        render(makeState(mode), root);
+        const bar = root.querySelector('[data-pkc-region="view-mode-bar"]');
+        expect(bar).not.toBeNull();
+      }
+    });
+
+    it('correct button is active for each view mode', () => {
+      for (const mode of ['detail', 'calendar', 'kanban'] as const) {
+        render(makeState(mode), root);
+        const activeBtn = root.querySelector(`.pkc-view-mode-btn[data-pkc-active="true"]`);
+        expect(activeBtn).not.toBeNull();
+        expect(activeBtn!.getAttribute('data-pkc-view-mode')).toBe(mode);
+      }
+    });
+  });
+
+  // ── Non-regression: existing tests still hold ──
+
+  describe('non-regression', () => {
+    it('Detail view still works with selected entry', () => {
+      render(makeState('detail', { selectedLid: 't1' }), root);
+      // Detail should show the entry detail
+      const detail = root.querySelector('[data-pkc-mode="view"]');
+      expect(detail).not.toBeNull();
+    });
+
+    it('Calendar still renders grid', () => {
+      render(makeState('calendar'), root);
+      const grid = root.querySelector('.pkc-calendar-grid');
+      expect(grid).not.toBeNull();
+    });
+
+    it('Kanban still renders board', () => {
+      render(makeState('kanban'), root);
+      const board = root.querySelector('.pkc-kanban-board');
+      expect(board).not.toBeNull();
+    });
+  });
+});

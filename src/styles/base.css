@@ -2178,11 +2178,28 @@
   opacity: 0.4;
 }
 
+.pkc-calendar-todo-item[data-pkc-selected="true"] {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
+.pkc-calendar-todo-item[data-pkc-todo-overdue="true"] {
+  border-left: 2px solid var(--c-danger);
+}
+
 .pkc-calendar-todo-more {
   font-size: 0.6rem;
   color: var(--c-muted);
   text-align: center;
   padding: 0.05rem;
+}
+
+.pkc-calendar-empty {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--c-muted);
+  text-align: center;
+  padding: 1rem 0.5rem;
 }
 
 /* ── Kanban View ── */
@@ -2298,4 +2315,12 @@
   font-size: 0.65rem;
   color: var(--c-muted);
   margin-top: 0.15rem;
+}
+
+.pkc-kanban-empty {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--c-muted);
+  text-align: center;
+  padding: 1rem 0.5rem;
 }

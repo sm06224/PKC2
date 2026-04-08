@@ -487,9 +487,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
     if (!entryItem) return;
 
-    // Only in sidebar tree/list
-    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
-    if (!sidebar) return;
+    // Allow double-click in sidebar, calendar, or kanban
+    const validRegion = entryItem.closest('[data-pkc-region="sidebar"], [data-pkc-region="calendar-view"], [data-pkc-region="kanban-view"]');
+    if (!validRegion) return;
 
     const state = dispatcher.getState();
     if (!state.container) return;

@@ -763,6 +763,12 @@ function renderCalendarView(state: AppState): HTMLElement {
           if (t.todo.archived) {
             item.setAttribute('data-pkc-todo-archived', 'true');
           }
+          if (state.selectedLid === t.entry.lid) {
+            item.setAttribute('data-pkc-selected', 'true');
+          }
+          if (isTodoPastDue(t.todo)) {
+            item.setAttribute('data-pkc-todo-overdue', 'true');
+          }
           item.textContent = t.entry.title || t.todo.description || '(untitled)';
           todoList.appendChild(item);
         }
@@ -779,6 +785,17 @@ function renderCalendarView(state: AppState): HTMLElement {
   }
 
   cal.appendChild(grid);
+
+  // Empty state: hint when no dated todos exist for this month
+  const monthKey = `${state.calendarYear}-${String(state.calendarMonth).padStart(2, '0')}`;
+  const hasTodosThisMonth = Object.keys(todoMap).some((k) => k.startsWith(monthKey));
+  if (!hasTodosThisMonth) {
+    const empty = createElement('div', 'pkc-calendar-empty');
+    empty.setAttribute('data-pkc-region', 'calendar-empty');
+    empty.textContent = 'No dated todos this month.';
+    cal.appendChild(empty);
+  }
+
   return cal;
 }
 
@@ -847,6 +864,16 @@ function renderKanbanView(state: AppState): HTMLElement {
   }
 
   kanban.appendChild(board);
+
+  // Empty state: show hint when no active todos exist at all
+  const totalCards = grouped.open.length + grouped.done.length;
+  if (totalCards === 0) {
+    const empty = createElement('div', 'pkc-kanban-empty');
+    empty.setAttribute('data-pkc-region', 'kanban-empty');
+    empty.textContent = 'No active todos. Create a todo to see it here.';
+    kanban.appendChild(empty);
+  }
+
   return kanban;
 }
 
