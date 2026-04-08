@@ -38,6 +38,7 @@ export function openEntryWindow(
   entry: Entry,
   readonly: boolean,
   onSave: (lid: string, title: string, body: string, openedAt: string) => void,
+  lightSource = false,
 ): void {
   // Check for existing window
   const existing = openWindows.get(entry.lid);
@@ -54,7 +55,7 @@ export function openEntryWindow(
   const openedAt = entry.updated_at;
 
   child.document.open();
-  child.document.write(buildWindowHtml(entry, readonly));
+  child.document.write(buildWindowHtml(entry, readonly, lightSource));
   child.document.close();
 
   // Listen for messages from child
@@ -211,6 +212,7 @@ function escapeForHtml(text: string): string {
 function buildWindowHtml(
   entry: Entry,
   readonly: boolean,
+  lightSource = false,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
   const renderedBody = renderViewBody(entry);
@@ -433,12 +435,19 @@ body {
   margin-top: 0.25rem; padding: 0.3rem 0.5rem;
   background: var(--c-bg); border-radius: var(--radius); border: 1px solid var(--c-border);
 }
+
+/* ── Light mode notice ── */
+.pkc-light-notice {
+  font-size: 0.75rem; padding: 0.35rem 0.5rem; margin: 0.5rem 0;
+  border-radius: var(--radius); border-left: 3px solid var(--c-accent-dim);
+  background: var(--c-surface); color: var(--c-muted);
+}
 </style>
 </head>
 <body>
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
-
+${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-notice" data-pkc-region="light-notice">This is a Light export — attachment file data is not available.</div>' : ''}
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
     <!-- View mode (initial state) -->

@@ -792,7 +792,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
       dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
       dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
-    });
+    }, !!state.lightSource);
   }
 
   // ── dblclick fallback (secondary path) ──

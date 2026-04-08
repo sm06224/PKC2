@@ -43,11 +43,11 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
 }
 
 /** Helper: open an entry window and return the captured HTML. */
-async function openAndCapture(readonly = false, overrides: Record<string, unknown> = {}) {
+async function openAndCapture(readonly = false, overrides: Record<string, unknown> = {}, lightSource = false) {
   capturedHtml = '';
   setupWindowOpenMock();
   const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
-  openEntryWindow(makeEntry(overrides) as never, readonly, vi.fn());
+  openEntryWindow(makeEntry(overrides) as never, readonly, vi.fn(), lightSource);
   return capturedHtml;
 }
 
@@ -341,6 +341,31 @@ describe('Entry Window', () => {
       expect(html).toContain('.pkc-ew-card');
       expect(html).toContain('.pkc-ew-card-icon');
       expect(html).toContain('.pkc-ew-card-fields');
+    });
+  });
+
+  // ── Light mode notice ──
+
+  describe('Light mode notice in entry window', () => {
+    it('shows Light notice for attachment entry when lightSource is true', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: '{"name":"a.txt","mime":"text/plain"}' }, true);
+      expect(html).toContain('data-pkc-region="light-notice"');
+      expect(html).toContain('Light export');
+    });
+
+    it('does not show Light notice for text entry when lightSource is true', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' }, true);
+      expect(html).not.toContain('data-pkc-region="light-notice"');
+    });
+
+    it('does not show Light notice when lightSource is false', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: '{"name":"a.txt","mime":"text/plain"}' }, false);
+      expect(html).not.toContain('data-pkc-region="light-notice"');
+    });
+
+    it('includes Light notice CSS', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: '{"name":"a.txt","mime":"text/plain"}' }, true);
+      expect(html).toContain('.pkc-light-notice');
     });
   });
 });

@@ -235,6 +235,12 @@ function renderHeader(state: AppState): HTMLElement {
       if (contextFolder) {
         btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
       }
+      // Disable attachment creation in Light mode (no asset storage)
+      if (arch === 'attachment' && state.lightSource) {
+        (btn as HTMLButtonElement).disabled = true;
+        btn.setAttribute('title', 'File attachments cannot be created in Light mode');
+        btn.setAttribute('data-pkc-light-disabled', 'true');
+      }
       btn.textContent = label;
       createGroup.appendChild(btn);
     }
@@ -257,6 +263,15 @@ function renderHeader(state: AppState): HTMLElement {
     rehydrateBtn.setAttribute('title', 'Copy this container to your browser storage for editing');
     rehydrateBtn.textContent = 'Rehydrate to Workspace';
     header.appendChild(rehydrateBtn);
+  }
+
+  // Light mode: show light badge (assets stripped)
+  if (state.phase === 'ready' && state.lightSource) {
+    const lightBadge = createElement('span', 'pkc-light-badge');
+    lightBadge.setAttribute('data-pkc-region', 'light-badge');
+    lightBadge.textContent = 'Light';
+    lightBadge.setAttribute('title', 'Loaded from Light export — file attachments have no data');
+    header.appendChild(lightBadge);
   }
 
   if (state.phase === 'exporting') {
@@ -665,7 +680,22 @@ function renderCenter(state: AppState): HTMLElement {
   // Content area (scrollable)
   const content = createElement('div', 'pkc-center-content');
 
+  // Light mode notice for attachment entries
+  if (state.lightSource && selected.archetype === 'attachment') {
+    const notice = createElement('div', 'pkc-light-notice');
+    notice.setAttribute('data-pkc-region', 'light-notice');
+    notice.textContent = 'This is a Light export — attachment file data is not available. Use the full export to access file previews and downloads.';
+    content.appendChild(notice);
+  }
+
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
+    // Light mode warning in attachment editor
+    if (state.lightSource && selected.archetype === 'attachment') {
+      const editWarn = createElement('div', 'pkc-light-notice');
+      editWarn.setAttribute('data-pkc-region', 'light-edit-notice');
+      editWarn.textContent = 'Light mode: changes to this entry will not be saved. File uploads are unavailable.';
+      content.appendChild(editWarn);
+    }
     content.appendChild(renderEditor(selected));
   } else {
     content.appendChild(renderView(selected, canEdit, state.container));

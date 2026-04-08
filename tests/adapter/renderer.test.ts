@@ -4622,3 +4622,138 @@ describe('Sandbox Control UI in Meta Pane', () => {
     }
   });
 });
+
+// ── Light mode badge + edit restriction UI ──
+
+describe('Light mode badge', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  it('shows Light badge when lightSource is true', () => {
+    render(lightState(), root);
+    const badge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('Light');
+  });
+
+  it('does not show Light badge when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const badge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(badge).toBeNull();
+  });
+
+  it('does not show Light badge in readonly mode (readonly badge takes priority)', () => {
+    render(lightState({ readonly: true }), root);
+    // Both badges can coexist; readonly badge should also be present
+    const roBadge = root.querySelector('[data-pkc-region="readonly-badge"]');
+    const lightBadge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(roBadge).not.toBeNull();
+    // Light badge is still shown even in readonly
+    expect(lightBadge).not.toBeNull();
+  });
+});
+
+describe('Light mode attachment create restriction', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  it('disables attachment create button in Light mode', () => {
+    render(lightState(), root);
+    const attachBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attachBtn).not.toBeNull();
+    expect(attachBtn!.disabled).toBe(true);
+    expect(attachBtn!.getAttribute('data-pkc-light-disabled')).toBe('true');
+  });
+
+  it('does not disable other create buttons in Light mode', () => {
+    render(lightState(), root);
+    const textBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+    const todoBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
+    expect(textBtn!.disabled).toBe(false);
+    expect(todoBtn!.disabled).toBe(false);
+  });
+
+  it('does not disable attachment create when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const attachBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attachBtn).not.toBeNull();
+    expect(attachBtn!.disabled).toBe(false);
+  });
+});
+
+describe('Light mode detail pane notice', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: attachmentContainer,
+      selectedLid: 'att1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  const attachmentContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      {
+        lid: 'att1', title: 'My File',
+        body: JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 1024, asset_key: 'a1' }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        lid: 'txt1', title: 'A Note',
+        body: 'hello',
+        archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  it('shows Light notice for attachment entry in Light mode', () => {
+    render(lightState(), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice!.textContent).toContain('Light export');
+  });
+
+  it('does not show Light notice for text entry in Light mode', () => {
+    render(lightState({ selectedLid: 'txt1' }), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).toBeNull();
+  });
+
+  it('does not show Light notice when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).toBeNull();
+  });
+
+  it('shows Light edit warning when editing attachment in Light mode', () => {
+    render(lightState({ phase: 'editing', editingLid: 'att1' }), root);
+    const notice = root.querySelector('[data-pkc-region="light-edit-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice!.textContent).toContain('Light mode');
+  });
+});
