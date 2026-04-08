@@ -54,7 +54,7 @@ describe('Renderer', () => {
   it('renders initializing phase', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('initializing');
@@ -64,7 +64,7 @@ describe('Renderer', () => {
   it('renders error phase with message', () => {
     const state: AppState = {
       phase: 'error', container: null,
-      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('error');
@@ -74,7 +74,7 @@ describe('Renderer', () => {
   it('renders ready phase with entry list', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('ready');
@@ -95,7 +95,7 @@ describe('Renderer', () => {
   it('marks selected entry with data-pkc-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -107,7 +107,7 @@ describe('Renderer', () => {
   it('renders detail view for selected entry', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -126,7 +126,7 @@ describe('Renderer', () => {
   it('renders editor in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -148,14 +148,14 @@ describe('Renderer', () => {
   it('shows create button only in ready phase', () => {
     const readyState: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(readyState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).not.toBeNull();
 
     const editingState: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(editingState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
@@ -168,7 +168,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     // Drop zone replaces the old placeholder when editable
@@ -181,7 +181,7 @@ describe('Renderer', () => {
   it('shows inline export buttons (Export + Light) in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
@@ -199,7 +199,7 @@ describe('Renderer', () => {
   it('shows exporting badge in exporting phase', () => {
     const state: AppState = {
       phase: 'exporting', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
@@ -209,7 +209,7 @@ describe('Renderer', () => {
   it('readonly mode: no edit/create/delete/export buttons, shows rehydrate', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     // No create buttons
@@ -233,7 +233,7 @@ describe('Renderer', () => {
   it('readonly mode: shows data-pkc-readonly=true on root', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-readonly')).toBe('true');
@@ -242,7 +242,7 @@ describe('Renderer', () => {
   it('readonly mode: search/filter/sort still work', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     // Search input exists
@@ -255,7 +255,7 @@ describe('Renderer', () => {
   it('inline export buttons are editable mutability only', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
@@ -267,7 +267,7 @@ describe('Renderer', () => {
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -284,7 +284,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=false for standalone', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('false');
@@ -293,7 +293,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=true for embedded', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
@@ -302,7 +302,7 @@ describe('Renderer', () => {
   it('sets data-pkc-capabilities with current capabilities', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const caps = root.getAttribute('data-pkc-capabilities');
@@ -315,7 +315,7 @@ describe('Renderer', () => {
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="pending-offers"]')).toBeNull();
@@ -330,7 +330,7 @@ describe('Renderer', () => {
           archetype: 'text', source_container_id: null,
           reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
         },
-      ], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -358,7 +358,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -370,7 +370,7 @@ describe('Renderer', () => {
   it('does not show revision badge on entries without revisions', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
@@ -387,7 +387,7 @@ describe('Renderer', () => {
         schema_version: 1,
         source: 'backup.html',
         container: mockContainer,
-      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -418,7 +418,7 @@ describe('Renderer', () => {
   it('does not render import panel when importPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="import-confirm"]')).toBeNull();
@@ -433,7 +433,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -455,7 +455,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -480,7 +480,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -506,7 +506,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -533,7 +533,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -562,7 +562,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -574,7 +574,7 @@ describe('Renderer', () => {
   it('renders search input when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -588,7 +588,7 @@ describe('Renderer', () => {
     const emptyContainer: Container = { ...mockContainer, entries: [] };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -598,7 +598,7 @@ describe('Renderer', () => {
   it('filters entries by search query', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -610,7 +610,7 @@ describe('Renderer', () => {
   it('shows "No matching entries" when search has no results', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'zzzzz', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -621,7 +621,7 @@ describe('Renderer', () => {
   it('preserves search input value from state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'hello', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -632,7 +632,7 @@ describe('Renderer', () => {
   it('renders archetype filter bar when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -652,7 +652,7 @@ describe('Renderer', () => {
   it('marks active archetype filter button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -666,7 +666,7 @@ describe('Renderer', () => {
   it('filters entries by archetype', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -678,7 +678,7 @@ describe('Renderer', () => {
   it('shows result count when filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'text', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'text', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -690,7 +690,7 @@ describe('Renderer', () => {
   it('shows result count when search query is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -702,7 +702,7 @@ describe('Renderer', () => {
   it('does not show result count when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -712,7 +712,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when search query is non-empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'test', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -724,7 +724,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when archetype filter is set', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: 'todo', tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -735,7 +735,7 @@ describe('Renderer', () => {
   it('does not show clear-filters button when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -745,7 +745,7 @@ describe('Renderer', () => {
   it('renders sort controls when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -764,7 +764,7 @@ describe('Renderer', () => {
   it('sort select reflects current sort state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -779,7 +779,7 @@ describe('Renderer', () => {
     // Sort by title asc: e1 "Entry One" < e2 "Entry Two"
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -792,7 +792,7 @@ describe('Renderer', () => {
   it('applies sort after filter: desc reverses order', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -806,7 +806,7 @@ describe('Renderer', () => {
     // Filter to "One" → only e1. Sort does not change single item.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: 'One', archetypeFilter: null, tagFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -826,7 +826,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -847,7 +847,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -865,7 +865,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -885,7 +885,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -899,7 +899,7 @@ describe('Renderer', () => {
   it('does not show relation section when no relations exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -910,7 +910,7 @@ describe('Renderer', () => {
   it('shows relation creation form in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -937,7 +937,7 @@ describe('Renderer', () => {
   it('does not show relation create form in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -956,7 +956,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -979,7 +979,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -998,7 +998,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerMixed,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1009,7 +1009,7 @@ describe('Renderer', () => {
   it('shows tag add form with available targets', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1033,7 +1033,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1045,7 +1045,7 @@ describe('Renderer', () => {
   it('tags section always shows even with no tags', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1067,7 +1067,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1080,7 +1080,7 @@ describe('Renderer', () => {
   it('shows tag filter indicator when tag filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1102,7 +1102,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1127,7 +1127,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: threeEntries,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1146,7 +1146,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1159,7 +1159,7 @@ describe('Renderer', () => {
   it('no tag filter indicator when tagFilter is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1172,7 +1172,7 @@ describe('Renderer', () => {
   it('detail view has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1184,7 +1184,7 @@ describe('Renderer', () => {
   it('editor has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1196,7 +1196,7 @@ describe('Renderer', () => {
   it('detail view uses presenter for body rendering', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1211,7 +1211,7 @@ describe('Renderer', () => {
     // e2 is archetype: 'todo'
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1230,7 +1230,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1258,7 +1258,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1291,7 +1291,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1305,7 +1305,7 @@ describe('Renderer', () => {
   it('header has both Note and Todo create buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1333,7 +1333,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: formContainer,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1356,7 +1356,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: formContainer,
-      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1380,7 +1380,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: mixedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1405,7 +1405,7 @@ describe('Renderer', () => {
   it('detail view shows archetype label next to title', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1418,7 +1418,7 @@ describe('Renderer', () => {
   it('editor shows archetype label next to title input', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1431,7 +1431,7 @@ describe('Renderer', () => {
   it('archetype filter bar uses human-readable labels', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1450,7 +1450,7 @@ describe('Renderer', () => {
   it('header has Attachment create button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1470,7 +1470,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: attContainer,
-      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1491,7 +1491,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: attContainer,
-      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -1506,20 +1506,20 @@ describe('Renderer', () => {
   it('renders inline export/import panel in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Inline: has export + light + zip + import buttons
+    // Inline: has export + light + zip + import + reset buttons
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(4);
+    expect(btns.length).toBe(5);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
@@ -1533,7 +1533,7 @@ describe('Renderer', () => {
   it('does not render export/import panel in readonly mode', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="export-import-panel"]')).toBeNull();
@@ -1542,7 +1542,7 @@ describe('Renderer', () => {
   it('pane toggle buttons are present in header', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const sidebarToggle = root.querySelector('[data-pkc-action="toggle-sidebar"]');
@@ -1554,7 +1554,7 @@ describe('Renderer', () => {
   it('import button is inside Import section', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
@@ -1588,7 +1588,7 @@ describe('Folder UX Hardening', () => {
     selectedLid: null, editingLid: null, error: null, embedded: false,
     pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
     tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-    exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
   };
 
   it('shows tree with folder and child in sidebar', () => {
@@ -1702,7 +1702,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
@@ -1716,7 +1716,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
@@ -1730,7 +1730,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -1745,7 +1745,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -1760,7 +1760,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const meta = root.querySelector('[data-pkc-region="meta"]');
@@ -1775,7 +1775,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
@@ -1790,7 +1790,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const badges = root.querySelectorAll('.pkc-archetype-badge');
@@ -1826,7 +1826,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const draggables = root.querySelectorAll('[data-pkc-draggable="true"]');
@@ -1842,7 +1842,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropTargets = root.querySelectorAll('[data-pkc-drop-target="true"]');
@@ -1858,7 +1858,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const note1 = root.querySelector('[data-pkc-lid="note1"][data-pkc-draggable]');
@@ -1872,7 +1872,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
@@ -1886,7 +1886,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
@@ -1899,7 +1899,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: 'Note', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     // In flat mode (filter active), draggable should not be set
@@ -1952,7 +1952,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: 'note1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const moveSection = root.querySelector('[data-pkc-region="move-to-folder"]');
@@ -2076,7 +2076,7 @@ describe('Detached View Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
@@ -2094,7 +2094,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2109,7 +2109,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2122,7 +2122,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2136,7 +2136,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2159,7 +2159,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'f1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2174,7 +2174,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -2188,7 +2188,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
     const attachBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
@@ -2218,7 +2218,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows view mode toggle bar with Detail and Calendar buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2234,7 +2234,7 @@ describe('Todo Calendar Foundation', () => {
   it('marks active view mode button', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2247,7 +2247,7 @@ describe('Todo Calendar Foundation', () => {
   it('renders calendar view when viewMode is calendar', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2258,7 +2258,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows month and year in calendar title', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2270,7 +2270,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows prev/next navigation buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2281,7 +2281,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows day-of-week headers', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2294,7 +2294,7 @@ describe('Todo Calendar Foundation', () => {
   it('renders todo items on their date cells', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2312,7 +2312,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows archived todos when showArchived is true', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: true, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2324,7 +2324,7 @@ describe('Todo Calendar Foundation', () => {
   it('marks done todos with data-pkc-todo-status', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2336,7 +2336,7 @@ describe('Todo Calendar Foundation', () => {
   it('todo items have select-entry action', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2348,7 +2348,7 @@ describe('Todo Calendar Foundation', () => {
   it('does not show calendar view in detail mode', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2374,7 +2374,7 @@ describe('Todo Archive Foundation', () => {
   it('hides archived todos by default (showArchived: false)', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2387,7 +2387,7 @@ describe('Todo Archive Foundation', () => {
   it('shows archived todos when showArchived is true', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2398,7 +2398,7 @@ describe('Todo Archive Foundation', () => {
   it('shows Show Archived toggle when archived todos exist', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2412,7 +2412,7 @@ describe('Todo Archive Foundation', () => {
   it('does not show Show Archived toggle when no archived todos exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2423,7 +2423,7 @@ describe('Todo Archive Foundation', () => {
   it('marks archived todo with data-pkc-todo-archived in sidebar', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2438,7 +2438,7 @@ describe('Todo Archive Foundation', () => {
   it('non-todo entries are not affected by archive filter', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
 
@@ -2466,7 +2466,7 @@ describe('Interaction Consistency & Guidance Layer', () => {
     selectedLid: null, editingLid: null, error: null, embedded: false,
     pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
     tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-    exportMode: null, exportMutability: null, readonly: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
   };
 
   const emptyContainer: Container = {
@@ -2642,7 +2642,7 @@ describe('Todo Kanban Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -2846,7 +2846,7 @@ describe('Todo View Interaction Consistency', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -3076,7 +3076,7 @@ describe('Todo Kanban Status Move Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -3294,7 +3294,7 @@ describe('Todo Kanban DnD Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -3497,7 +3497,7 @@ describe('Todo Calendar Date Move Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -3727,7 +3727,7 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -3896,7 +3896,7 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -4054,7 +4054,7 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -4206,7 +4206,7 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -4530,7 +4530,7 @@ describe('Sandbox Control UI in Meta Pane', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
       tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
       viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
       ...overrides,
     };
@@ -4620,5 +4620,218 @@ describe('Sandbox Control UI in Meta Pane', () => {
       expect(cb.getAttribute('data-pkc-lid')).toBe('html1');
       expect(cb.getAttribute('data-pkc-sandbox-attr')).toBeTruthy();
     }
+  });
+
+  it('renders sandbox control section for SVG attachment', () => {
+    const svgContainer: Container = {
+      meta: { container_id: 'test-svg', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+      entries: [{
+        lid: 'svg1', title: 'SVG File', body: JSON.stringify({ name: 'icon.svg', mime: 'image/svg+xml', asset_key: 'ast-svg', size: 100 }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-svg': 'PHN2Zz48L3N2Zz4=' },
+    };
+    render(baseState({ container: svgContainer, selectedLid: 'svg1' }), root);
+    const section = root.querySelector('[data-pkc-region="sandbox-control"]');
+    expect(section).not.toBeNull();
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
+    expect(checkboxes.length).toBe(5);
+  });
+});
+
+// ── Light mode badge + edit restriction UI ──
+
+describe('Light mode badge', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  it('shows Light badge when lightSource is true', () => {
+    render(lightState(), root);
+    const badge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('Light');
+  });
+
+  it('does not show Light badge when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const badge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(badge).toBeNull();
+  });
+
+  it('does not show Light badge in readonly mode (readonly badge takes priority)', () => {
+    render(lightState({ readonly: true }), root);
+    // Both badges can coexist; readonly badge should also be present
+    const roBadge = root.querySelector('[data-pkc-region="readonly-badge"]');
+    const lightBadge = root.querySelector('[data-pkc-region="light-badge"]');
+    expect(roBadge).not.toBeNull();
+    // Light badge is still shown even in readonly
+    expect(lightBadge).not.toBeNull();
+  });
+});
+
+describe('Light mode attachment create restriction', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  it('disables attachment create button in Light mode', () => {
+    render(lightState(), root);
+    const attachBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attachBtn).not.toBeNull();
+    expect(attachBtn!.disabled).toBe(true);
+    expect(attachBtn!.getAttribute('data-pkc-light-disabled')).toBe('true');
+  });
+
+  it('does not disable other create buttons in Light mode', () => {
+    render(lightState(), root);
+    const textBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+    const todoBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
+    expect(textBtn!.disabled).toBe(false);
+    expect(todoBtn!.disabled).toBe(false);
+  });
+
+  it('does not disable attachment create when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const attachBtn = root.querySelector<HTMLButtonElement>('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
+    expect(attachBtn).not.toBeNull();
+    expect(attachBtn!.disabled).toBe(false);
+  });
+});
+
+describe('Light mode detail pane notice', () => {
+  function lightState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: attachmentContainer,
+      selectedLid: 'att1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  const attachmentContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      {
+        lid: 'att1', title: 'My File',
+        body: JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 1024, asset_key: 'a1' }),
+        archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        lid: 'txt1', title: 'A Note',
+        body: 'hello',
+        archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  it('shows Light notice for attachment entry in Light mode', () => {
+    render(lightState(), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice!.textContent).toContain('Light export');
+  });
+
+  it('does not show Light notice for text entry in Light mode', () => {
+    render(lightState({ selectedLid: 'txt1' }), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).toBeNull();
+  });
+
+  it('does not show Light notice when lightSource is false', () => {
+    render(lightState({ lightSource: false }), root);
+    const notice = root.querySelector('[data-pkc-region="light-notice"]');
+    expect(notice).toBeNull();
+  });
+
+  it('shows Light edit warning when editing attachment in Light mode', () => {
+    render(lightState({ phase: 'editing', editingLid: 'att1' }), root);
+    const notice = root.querySelector('[data-pkc-region="light-edit-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice!.textContent).toContain('Light mode');
+  });
+});
+
+// ── Pane resize: data-pkc-* selector compliance ──
+
+describe('Pane resize DOM selectors', () => {
+  it('sidebar has data-pkc-region="sidebar" for resize targeting', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    expect(sidebar).not.toBeNull();
+    expect(sidebar!.tagName.toLowerCase()).toBe('aside');
+  });
+
+  it('meta pane has data-pkc-region="meta" for resize targeting', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const meta = root.querySelector('[data-pkc-region="meta"]');
+    expect(meta).not.toBeNull();
+    expect(meta!.tagName.toLowerCase()).toBe('aside');
+  });
+
+  it('resize handles have data-pkc-resize attributes', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const leftHandle = root.querySelector('[data-pkc-resize="left"]');
+    const rightHandle = root.querySelector('[data-pkc-resize="right"]');
+    expect(leftHandle).not.toBeNull();
+    expect(rightHandle).not.toBeNull();
+  });
+
+  it('tray bars have data-pkc-region attributes', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="tray-left"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="tray-right"]')).not.toBeNull();
   });
 });

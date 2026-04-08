@@ -792,7 +792,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
       dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
       dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
-    });
+    }, !!state.lightSource);
   }
 
   // ── dblclick fallback (secondary path) ──
@@ -825,9 +825,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     handle.setAttribute('data-pkc-resizing', 'true');
 
     if (side === 'left') {
-      resizePane = root.querySelector<HTMLElement>('.pkc-sidebar');
+      resizePane = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
     } else {
-      resizePane = root.querySelector<HTMLElement>('.pkc-meta-pane');
+      resizePane = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
     }
 
     if (resizePane) {
@@ -1029,6 +1029,21 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
 }
 
 /**
+ * Revoke all tracked preview Blob URLs in the given root.
+ * Must be called before render() replaces the DOM to prevent memory leaks.
+ * Elements with data-pkc-blob-url store the Blob URL created for previews.
+ */
+export function cleanupBlobUrls(root: HTMLElement): void {
+  const elements = root.querySelectorAll<HTMLElement>('[data-pkc-blob-url]');
+  for (const el of elements) {
+    const url = el.getAttribute('data-pkc-blob-url');
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+/**
  * Create a Blob URL from resolved base64 attachment data.
  */
 function createBlobUrl(resolved: { data: string; mime: string }): string {
@@ -1051,6 +1066,10 @@ function populatePreviewElement(
   sandboxAllow: string[] = [],
 ): void {
   const previewType = classifyPreviewType(resolved.mime);
+
+  // Revoke any previous Blob URL before replacing content
+  const oldBlobUrl = el.querySelector<HTMLElement>('[data-pkc-blob-url]')?.getAttribute('data-pkc-blob-url');
+  if (oldBlobUrl) URL.revokeObjectURL(oldBlobUrl);
   el.innerHTML = '';
 
   switch (previewType) {
@@ -1214,7 +1233,7 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
  * Toggle a pane between visible and collapsed (tray) state.
  */
 function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
-  const selector = pane === 'sidebar' ? '.pkc-sidebar' : '.pkc-meta-pane';
+  const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
   const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
   const handleSide = pane === 'sidebar' ? 'left' : 'right';
 

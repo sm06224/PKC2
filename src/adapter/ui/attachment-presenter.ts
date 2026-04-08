@@ -109,10 +109,20 @@ export function isLegacyFormat(att: AttachmentBody): boolean {
 }
 
 /**
- * Check if a MIME type is an image type that browsers can display.
+ * Check if a MIME type is an image type that browsers can safely display inline.
+ * SVG is excluded — it can contain scripts and is treated as sandboxed content.
  */
 export function isPreviewableImage(mime: string): boolean {
-  return /^image\/(png|jpeg|gif|webp|svg\+xml|bmp|ico)$/i.test(mime);
+  return /^image\/(png|jpeg|gif|webp|bmp|ico)$/i.test(mime);
+}
+
+/**
+ * Check if a MIME type is SVG.
+ * SVG is classified separately from images because it can contain
+ * <script>, <foreignObject>, event handlers, and external references.
+ */
+export function isSvg(mime: string): boolean {
+  return /^image\/svg\+xml$/i.test(mime);
 }
 
 /**
@@ -138,13 +148,15 @@ export function isHtml(mime: string): boolean {
 
 /**
  * Classify a MIME type for preview rendering.
+ * SVG is classified as 'html' because it can contain active content
+ * (scripts, foreignObject, event handlers) and requires sandbox isolation.
  */
 export function classifyPreviewType(mime: string): 'image' | 'pdf' | 'video' | 'audio' | 'html' | 'none' {
   if (isPreviewableImage(mime)) return 'image';
   if (isPdf(mime)) return 'pdf';
   if (/^video\//i.test(mime)) return 'video';
   if (/^audio\//i.test(mime)) return 'audio';
-  if (isHtml(mime)) return 'html';
+  if (isHtml(mime) || isSvg(mime)) return 'html';
   return 'none';
 }
 
@@ -177,7 +189,7 @@ export const attachmentPresenter: DetailPresenter = {
     nameRow.className = 'pkc-attachment-name-row';
     const icon = document.createElement('span');
     icon.className = 'pkc-attachment-icon';
-    icon.textContent = isPreviewableImage(att.mime) ? '\ud83d\uddbc' : '\ud83d\udcc4';
+    icon.textContent = (isPreviewableImage(att.mime) || isSvg(att.mime)) ? '\ud83d\uddbc' : '\ud83d\udcc4';
     nameRow.appendChild(icon);
     const nameText = document.createElement('span');
     nameText.className = 'pkc-attachment-filename';

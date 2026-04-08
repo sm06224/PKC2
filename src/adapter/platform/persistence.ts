@@ -62,8 +62,13 @@ export function mountPersistence(
       return;
     }
 
-    const container = dispatcher.getState().container;
+    const currentState = dispatcher.getState();
+    const container = currentState.container;
     if (!container) return;
+
+    // Skip saving when container came from a Light export (no assets).
+    // Saving it would overwrite IDB with asset-stripped data.
+    if (currentState.lightSource) return;
 
     saving = true;
     try {

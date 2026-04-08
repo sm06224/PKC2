@@ -15,6 +15,8 @@
   --c-success: #33ff66;
   --c-warn: #ffaa22;
   --c-warn-fg: #1a0e00;
+  --c-info: #3b82f6;
+  --c-info-fg: #ffffff;
   --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --radius: 2px;
@@ -41,6 +43,8 @@
     --c-success: #1a6b35;
     --c-warn: #c07000;
     --c-warn-fg: #ffffff;
+    --c-info: #2563eb;
+    --c-info-fg: #ffffff;
     --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
     --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
@@ -190,6 +194,25 @@
   background: var(--c-warn);
   color: var(--c-warn-fg);
   font-weight: 500;
+}
+
+.pkc-light-badge {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius);
+  background: var(--c-info);
+  color: var(--c-info-fg);
+  font-weight: 500;
+}
+
+.pkc-light-notice {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--c-info);
+  background: color-mix(in srgb, var(--c-info) 10%, var(--c-bg));
+  color: var(--c-fg);
 }
 
 /* ── Export / Import inline buttons ── */

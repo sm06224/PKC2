@@ -2,11 +2,12 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions, populateAttachmentPreviews, flashEntry } from './adapter/ui/action-binder';
+import { bindActions, populateAttachmentPreviews, cleanupBlobUrls, flashEntry } from './adapter/ui/action-binder';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
+import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
@@ -23,6 +24,7 @@ import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
+import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
 
 /**
@@ -64,6 +66,9 @@ async function boot(): Promise<void> {
 
     const currentCount = state.container?.entries.length ?? 0;
     const justCreated = currentCount > prevEntryCount && state.selectedLid && state.selectedLid !== prevSelectedLid;
+
+    // Revoke preview Blob URLs before DOM replacement to prevent memory leaks
+    cleanupBlobUrls(root);
 
     render(state, root);
 
@@ -121,6 +126,9 @@ async function boot(): Promise<void> {
       });
     }
   });
+
+  // 7b. Workspace reset: clear IDB and reload
+  mountClearLocalDataHandler(root, store);
 
   // 8. Import handler: file input wiring (HTML + ZIP)
   mountImportHandler(root, dispatcher);
@@ -203,14 +211,18 @@ async function boot(): Promise<void> {
     }
 
     // Fallback: read pkc-data
-    const pkcData = readPkcData();
+    const pkcData = await readPkcData();
     if (pkcData) {
       dispatcher.dispatch({
         type: 'SYS_INIT_COMPLETE',
         container: pkcData.container,
         embedded: embedCtx.embedded,
         readonly: pkcData.readonly,
+        lightSource: pkcData.lightSource,
       });
+      if (pkcData.lightSource) {
+        console.log('[PKC2] Light export detected — IDB save suppressed');
+      }
       return;
     }
 
@@ -228,9 +240,10 @@ async function boot(): Promise<void> {
 interface PkcDataResult {
   container: Container;
   readonly: boolean;
+  lightSource: boolean;
 }
 
-function readPkcData(): PkcDataResult | null {
+async function readPkcData(): Promise<PkcDataResult | null> {
   const dataEl = document.getElementById(SLOT.DATA);
   const raw = dataEl?.textContent?.trim();
   if (!raw || raw === '{}') return null;
@@ -239,7 +252,18 @@ function readPkcData(): PkcDataResult | null {
   if (!data.container) return null;
 
   const isReadonly = data.export_meta?.mutability === 'readonly';
-  return { container: data.container, readonly: isReadonly };
+  const isLight = data.export_meta?.mode === 'light';
+
+  let container = data.container as Container;
+
+  // Decompress assets if they were compressed during export (gzip+base64).
+  // Without this, compressed assets stored as-is would be unreadable.
+  const assetEncoding = data.export_meta?.asset_encoding;
+  if (assetEncoding === 'gzip+base64' && container.assets && Object.keys(container.assets).length > 0) {
+    container = { ...container, assets: await decompressAssets(container.assets, assetEncoding) };
+  }
+
+  return { container, readonly: isReadonly, lightSource: isLight };
 }
 
 function createEmptyContainer(): Container {
@@ -347,6 +371,33 @@ function mountZipExportHandler(root: HTMLElement, dispatcher: Dispatcher): void 
     } else {
       console.warn(`[PKC2] ZIP export failed: ${result.error}`);
       dispatcher.dispatch({ type: 'SYS_ERROR', error: `ZIP export failed: ${result.error}` });
+    }
+  });
+}
+
+/**
+ * Mount workspace reset handler: clears IDB and reloads page.
+ * After clearing, the app falls back to pkc-data (embedded in HTML).
+ */
+function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): void {
+  root.addEventListener('click', async (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');
+    if (!target) return;
+
+    const confirmed = confirm(
+      'ブラウザに保存されたローカルデータを削除します。\n'
+      + 'HTML に埋め込まれたデータから再読み込みされます。\n\n'
+      + '本当に実行しますか？',
+    );
+    if (!confirmed) return;
+
+    try {
+      await store.clearAll();
+      console.log('[PKC2] Local data cleared. Reloading…');
+      location.reload();
+    } catch (err) {
+      console.error('[PKC2] Failed to clear local data:', err);
+      alert('ローカルデータの削除に失敗しました。');
     }
   });
 }

@@ -15,6 +15,9 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { parseTodoBody, formatTodoDate, isTodoPastDue } from '../../features/todo/todo-body';
+import { parseAttachmentBody } from './attachment-presenter';
+import { parseFormBody } from './form-presenter';
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -35,6 +38,7 @@ export function openEntryWindow(
   entry: Entry,
   readonly: boolean,
   onSave: (lid: string, title: string, body: string, openedAt: string) => void,
+  lightSource = false,
 ): void {
   // Check for existing window
   const existing = openWindows.get(entry.lid);
@@ -51,7 +55,7 @@ export function openEntryWindow(
   const openedAt = entry.updated_at;
 
   child.document.open();
-  child.document.write(buildWindowHtml(entry, readonly));
+  child.document.write(buildWindowHtml(entry, readonly, lightSource));
   child.document.close();
 
   // Listen for messages from child
@@ -117,12 +121,101 @@ function getParentCssVars(): string {
   return lines.join('\n');
 }
 
+/**
+ * Render the view body HTML based on entry archetype.
+ * - text/textlog/generic/opaque: markdown render
+ * - attachment: file info card
+ * - todo: status/date/description card
+ * - form: key-value card
+ * - folder: markdown render (has no special body)
+ */
+function renderViewBody(entry: Entry): string {
+  switch (entry.archetype) {
+    case 'attachment':
+      return renderAttachmentCard(entry.body);
+    case 'todo':
+      return renderTodoCard(entry.body);
+    case 'form':
+      return renderFormCard(entry.body);
+    default:
+      return renderMarkdown(entry.body || '') || '<em style="color:var(--c-muted)">(empty)</em>';
+  }
+}
+
+function renderAttachmentCard(body: string): string {
+  const att = parseAttachmentBody(body);
+  const sizeStr = att.size != null ? formatFileSize(att.size) : 'unknown';
+  const ext = att.name.includes('.') ? att.name.split('.').pop() : '—';
+  return `<div class="pkc-ew-card" data-pkc-ew-card="attachment">
+  <div class="pkc-ew-card-icon">📎</div>
+  <div class="pkc-ew-card-fields">
+    <div class="pkc-ew-field"><strong>File:</strong> <span>${escapeForHtml(att.name || '(unnamed)')}</span></div>
+    <div class="pkc-ew-field"><strong>Type:</strong> <span>${escapeForHtml(att.mime)}</span></div>
+    <div class="pkc-ew-field"><strong>Size:</strong> <span>${escapeForHtml(sizeStr)}</span></div>
+    <div class="pkc-ew-field"><strong>Ext:</strong> <span>${escapeForHtml(ext ?? '—')}</span></div>
+    ${att.asset_key ? `<div class="pkc-ew-field"><strong>Asset:</strong> <span>${escapeForHtml(att.asset_key)}</span></div>` : ''}
+  </div>
+  <div class="pkc-ew-card-note" style="color:var(--c-muted);font-size:0.75rem;margin-top:0.4rem">
+    Preview is available in the main window.
+  </div>
+</div>`;
+}
+
+function renderTodoCard(body: string): string {
+  const todo = parseTodoBody(body);
+  const statusIcon = todo.status === 'done' ? '✅' : '⬜';
+  const statusLabel = todo.status === 'done' ? 'Done' : 'Open';
+  const dateHtml = todo.date
+    ? `<div class="pkc-ew-field"><strong>Date:</strong> <span${isTodoPastDue(todo) ? ' style="color:var(--c-danger)"' : ''}>${escapeForHtml(formatTodoDate(todo.date))}</span></div>`
+    : '';
+  const archivedHtml = todo.archived
+    ? '<div class="pkc-ew-field"><span style="color:var(--c-warn)">Archived</span></div>'
+    : '';
+  return `<div class="pkc-ew-card" data-pkc-ew-card="todo">
+  <div class="pkc-ew-card-icon">${statusIcon}</div>
+  <div class="pkc-ew-card-fields">
+    <div class="pkc-ew-field"><strong>Status:</strong> <span>${statusLabel}</span></div>
+    ${dateHtml}
+    ${archivedHtml}
+    <div class="pkc-ew-field"><strong>Description:</strong></div>
+    <div class="pkc-ew-desc">${escapeForHtml(todo.description || '(empty)')}</div>
+  </div>
+</div>`;
+}
+
+function renderFormCard(body: string): string {
+  const form = parseFormBody(body);
+  const checkedLabel = form.checked ? '✅ Yes' : '⬜ No';
+  return `<div class="pkc-ew-card" data-pkc-ew-card="form">
+  <div class="pkc-ew-card-icon">📋</div>
+  <div class="pkc-ew-card-fields">
+    <div class="pkc-ew-field"><strong>Name:</strong> <span>${escapeForHtml(form.name || '(empty)')}</span></div>
+    <div class="pkc-ew-field"><strong>Note:</strong> <span>${escapeForHtml(form.note || '(empty)')}</span></div>
+    <div class="pkc-ew-field"><strong>Checked:</strong> <span>${checkedLabel}</span></div>
+  </div>
+</div>`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function escapeForHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function buildWindowHtml(
   entry: Entry,
   readonly: boolean,
+  lightSource = false,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
-  const renderedBody = renderMarkdown(entry.body || '');
+  const renderedBody = renderViewBody(entry);
   const parentVars = getParentCssVars();
 
   return `<!DOCTYPE html>
@@ -326,12 +419,35 @@ body {
 .pkc-status-msg {
   font-size: 0.75rem; color: var(--c-muted); padding: 0.25rem 0;
 }
+
+/* ── Archetype info cards (attachment / todo / form) ── */
+.pkc-ew-card {
+  display: flex; gap: 0.75rem; align-items: flex-start;
+  padding: 0.75rem; border: 1px solid var(--c-border); border-radius: var(--radius-lg, 4px);
+  background: var(--c-surface);
+}
+.pkc-ew-card-icon { font-size: 1.5rem; flex-shrink: 0; line-height: 1; }
+.pkc-ew-card-fields { flex: 1; min-width: 0; }
+.pkc-ew-field { font-size: 0.8rem; line-height: 1.6; }
+.pkc-ew-field strong { color: var(--c-muted); font-weight: 600; margin-right: 0.25rem; }
+.pkc-ew-desc {
+  font-size: 0.8rem; white-space: pre-wrap; word-wrap: break-word;
+  margin-top: 0.25rem; padding: 0.3rem 0.5rem;
+  background: var(--c-bg); border-radius: var(--radius); border: 1px solid var(--c-border);
+}
+
+/* ── Light mode notice ── */
+.pkc-light-notice {
+  font-size: 0.75rem; padding: 0.35rem 0.5rem; margin: 0.5rem 0;
+  border-radius: var(--radius); border-left: 3px solid var(--c-accent-dim);
+  background: var(--c-surface); color: var(--c-muted);
+}
 </style>
 </head>
 <body>
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
-
+${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-notice" data-pkc-region="light-notice">This is a Light export — attachment file data is not available.</div>' : ''}
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
     <!-- View mode (initial state) -->
@@ -340,7 +456,7 @@ body {
         <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
         <span class="pkc-archetype-label">${entry.archetype}</span>
       </div>
-      <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody || '<em style="color:var(--c-muted)">(empty)</em>'}</div>
+      <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
     </div>
 
     <!-- Edit mode (hidden initially) -->

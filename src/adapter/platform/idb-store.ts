@@ -19,6 +19,8 @@ export interface ContainerStore {
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   delete(containerId: string): Promise<void>;
+  /** Delete all data from all stores (workspace reset). */
+  clearAll(): Promise<void>;
 
   // Phase 1: asset operations
   saveAsset(cid: string, key: string, data: string): Promise<void>;
@@ -248,8 +250,20 @@ export function createIDBStore(): ContainerStore {
     return (allKeys as string[]).map((k) => k.slice(prefix.length));
   }
 
+  async function clearAll(): Promise<void> {
+    const db = await openDB();
+    const tx = db.transaction([CONTAINERS_STORE, ASSETS_STORE], 'readwrite');
+    tx.objectStore(CONTAINERS_STORE).clear();
+    tx.objectStore(ASSETS_STORE).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }
+
   return {
-    save, load, loadDefault, delete: del,
+    save, load, loadDefault, delete: del, clearAll,
     saveAsset, loadAsset, deleteAsset, listAssetKeys,
   };
 }
@@ -307,6 +321,11 @@ export function createMemoryStore(): ContainerStore {
         if (key.startsWith(prefix)) assets.delete(key);
       }
       if (defaultId === containerId) defaultId = null;
+    },
+    async clearAll() {
+      containers.clear();
+      assets.clear();
+      defaultId = null;
     },
     async saveAsset(cid, key, data) {
       assets.set(`${cid}:${key}`, data);

@@ -45,7 +45,7 @@ export interface ImportPreviewRef {
  * All type literals are string constants (minify-safe).
  */
 export type SystemCommand =
-  | { type: 'SYS_INIT_COMPLETE'; container: Container; embedded?: boolean; readonly?: boolean }
+  | { type: 'SYS_INIT_COMPLETE'; container: Container; embedded?: boolean; readonly?: boolean; lightSource?: boolean }
   | { type: 'SYS_INIT_ERROR'; error: string }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
