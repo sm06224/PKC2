@@ -4278,6 +4278,28 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     });
   });
 
+  describe('CLEAR button safety', () => {
+    it('renders Reset button with danger class and warning icon', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="clear-local-data"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toContain('Reset');
+      expect(btn!.className).toContain('pkc-btn-danger');
+    });
+
+    it('has warning title attribute', () => {
+      render(baseState(), root);
+      const btn = root.querySelector('[data-pkc-action="clear-local-data"]') as HTMLElement;
+      expect(btn.getAttribute('title')).toContain('WARNING');
+    });
+
+    it('is not rendered in readonly mode', () => {
+      render(baseState({ readonly: true }), root);
+      const btn = root.querySelector('[data-pkc-action="clear-local-data"]');
+      expect(btn).toBeNull();
+    });
+  });
+
   describe('Double-click Target Attributes (P0-A)', () => {
     it('sidebar entry items have select-entry action and lid', () => {
       render(baseState(), root);

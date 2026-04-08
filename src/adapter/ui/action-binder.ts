@@ -759,6 +759,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
   }
 
+  // ── Clipboard paste handler (screenshot / image → attachment entry) ──
+
+  function handlePaste(e: ClipboardEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Look for image items in clipboard
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        e.preventDefault();
+
+        // Generate a descriptive filename for screenshots
+        const ext = file.type.split('/')[1] ?? 'png';
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const name = `screenshot-${ts}.${ext}`;
+        const namedFile = new File([file], name, { type: file.type });
+
+        // Determine context folder from current selection
+        const selectedEntry = state.selectedLid
+          ? state.container?.entries.find((ent) => ent.lid === state.selectedLid)
+          : undefined;
+        const contextFolder = selectedEntry?.archetype === 'folder' ? state.selectedLid ?? undefined : undefined;
+
+        processFileAttachment(namedFile, contextFolder, dispatcher);
+        return; // Process only the first image
+      }
+    }
+  }
+
   // ── Double-click action handler ──
   //
   // Called from handleClick when MouseEvent.detail >= 2.
@@ -889,6 +925,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
+  document.addEventListener('paste', handlePaste);
 
   // Return cleanup function
   return () => {
@@ -923,6 +960,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
+    document.removeEventListener('paste', handlePaste);
     clearAllDragState();
   };
 }

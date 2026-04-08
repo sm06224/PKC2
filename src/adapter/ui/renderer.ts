@@ -344,11 +344,11 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   sep3.textContent = '|';
   group.appendChild(sep3);
 
-  // Clear local data (workspace reset)
-  const clearBtn = createElement('button', 'pkc-btn pkc-btn-create pkc-btn-danger');
+  // Clear local data (workspace reset) — destructive, positioned after separator
+  const clearBtn = createElement('button', 'pkc-btn pkc-btn-danger');
   clearBtn.setAttribute('data-pkc-action', 'clear-local-data');
-  clearBtn.setAttribute('title', 'Clear browser storage and reload from HTML');
-  clearBtn.textContent = 'Reset';
+  clearBtn.setAttribute('title', 'WARNING: Clears all locally saved data (IndexedDB). This cannot be undone.');
+  clearBtn.textContent = '⚠ Reset';
   group.appendChild(clearBtn);
 
   return group;

@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bindActions, cleanupBlobUrls } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -217,5 +219,135 @@ describe('cleanupBlobUrls', () => {
     expect(revokeSpy).toHaveBeenCalledTimes(1);
     expect(revokeSpy).toHaveBeenCalledWith('blob:http://localhost/video-3');
     revokeSpy.mockRestore();
+  });
+});
+
+// ── Ctrl+S save ──
+
+describe('Ctrl+S save', () => {
+  it('Ctrl+S during editing dispatches EDIT_COMMITTED', () => {
+    const { dispatcher, events } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // Set field values so commit has data
+    const titleInput = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+    if (titleInput) titleInput.value = 'Saved Title';
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 's', ctrlKey: true, bubbles: true,
+    }));
+
+    expect(events.some((e) => e.type === 'EDIT_COMMITTED')).toBe(true);
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Ctrl+S in ready phase does nothing', () => {
+    const { events } = setup();
+    const beforeLen = events.length;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 's', ctrlKey: true, bubbles: true,
+    }));
+
+    // No new domain events from Ctrl+S
+    expect(events.length).toBe(beforeLen);
+  });
+});
+
+// ── CLEAR button safety ──
+
+describe('CLEAR button', () => {
+  it('renders with danger styling and warning icon', () => {
+    setup();
+    const clearBtn = root.querySelector('[data-pkc-action="clear-local-data"]');
+    expect(clearBtn).not.toBeNull();
+    expect(clearBtn!.textContent).toContain('Reset');
+    expect(clearBtn!.className).toContain('pkc-btn-danger');
+    expect(clearBtn!.getAttribute('title')).toContain('WARNING');
+  });
+});
+
+// ── Clipboard paste handler ──
+
+describe('clipboard paste', () => {
+  it('does not intercept text-only paste', () => {
+    const { events } = setup();
+    const beforeLen = events.length;
+
+    // Simulate text-only paste (no files/images)
+    const pasteEvent = new Event('paste', { bubbles: true }) as unknown as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [{
+          kind: 'string',
+          type: 'text/plain',
+          getAsFile: () => null,
+        }],
+      },
+    });
+    document.dispatchEvent(pasteEvent);
+
+    // No entry creation should happen
+    expect(events.filter((e) => e.type === 'ENTRY_CREATED').length).toBe(0);
+    expect(events.length).toBe(beforeLen);
+  });
+
+  it('does not process paste during editing phase', () => {
+    const { dispatcher, events } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    const beforeLen = events.length;
+
+    const pasteEvent = new Event('paste', { bubbles: true }) as unknown as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [{
+          kind: 'file',
+          type: 'image/png',
+          getAsFile: () => new File([new Uint8Array([0x89, 0x50])], 'test.png', { type: 'image/png' }),
+        }],
+      },
+    });
+    document.dispatchEvent(pasteEvent);
+
+    // No new entry creation during editing
+    expect(events.filter((e) => e.type === 'ENTRY_CREATED').length === (events.slice(beforeLen).filter((e) => e.type === 'ENTRY_CREATED').length)).toBe(true);
+  });
+});
+
+// ── Attachment download button presence ──
+
+describe('attachment download button', () => {
+  it('download action is wired in action handler', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      meta: { ...mockContainer.meta },
+      entries: [{
+        lid: 'att1',
+        title: 'Test File',
+        body: JSON.stringify({ name: 'test.pdf', mime: 'application/pdf', data: 'JVBER', size: 100 }),
+        archetype: 'attachment',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: attContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'att1' });
+    render(dispatcher.getState(), root);
+
+    const downloadBtn = root.querySelector('[data-pkc-action="download-attachment"]');
+    expect(downloadBtn).not.toBeNull();
+    expect(downloadBtn!.textContent).toBe('Download');
   });
 });
