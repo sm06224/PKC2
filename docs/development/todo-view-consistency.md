@@ -202,11 +202,72 @@ Double-click on the button does not trigger detached view because
 5. Switch to Calendar → overdue markers re-evaluated
 6. Selection is maintained throughout
 
-## 9. Impact on Future DnD (Issue #63+)
+## 9. Kanban DnD Foundation (Issue #63)
 
-When DnD is added to Kanban:
-- The same `QUICK_UPDATE_ENTRY` path established in #62 will be used
-- DnD drop = same status flip, just triggered by gesture instead of button
-- `selectedLid` should update to the dragged entry on drop
-- Calendar date DnD (if added) should update `todo.date` via the same mechanism
-- No new state variables should be needed; DnD is an action dispatch, not a state concern
+### Purpose
+
+Drag-and-drop between Kanban columns as an alternative UI for the status toggle
+established in #62. The drop action reuses the exact same update path.
+
+### Drag Source
+
+Each Kanban card is a drag source (non-readonly mode only):
+
+| Attribute                      | Value    | Purpose                |
+|-------------------------------|----------|------------------------|
+| `draggable`                   | `"true"` | Native HTML5 DnD       |
+| `data-pkc-kanban-draggable`   | `"true"` | Kanban DnD identifier  |
+
+In readonly mode, neither attribute is set. Cards remain non-draggable.
+
+### Drop Target
+
+Each column list is a drop target:
+
+| Attribute                      | Value            | Purpose              |
+|-------------------------------|------------------|----------------------|
+| `data-pkc-kanban-drop-target` | `"open"` / `"done"` | Target status on drop |
+
+### Update Path
+
+```
+User drags card to different column
+  → handleKanbanDrop: read target column status
+    → parseTodoBody → set status to target → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+    → dispatch SELECT_ENTRY { lid }
+```
+
+This is the same `QUICK_UPDATE_ENTRY` path used by the status move button (#62).
+If the card is dropped on the same column (no status change), no update is dispatched.
+
+### Visual Feedback
+
+| State      | Attribute                        | CSS effect                           |
+|-----------|----------------------------------|--------------------------------------|
+| Dragging  | `data-pkc-dragging="true"` on card | Semi-transparent (opacity: 0.4), dashed border |
+| Drag over | `data-pkc-drag-over="true"` on list | Green tinted background, dashed outline |
+
+Both attributes are cleaned up in `handleKanbanDragEnd`.
+
+### Selection Behavior
+
+- Dropping a card dispatches `SELECT_ENTRY` for the dragged entry.
+- This updates `selectedLid` and is reflected in sidebar and all views.
+
+### Isolation from Sidebar DnD
+
+Kanban DnD uses separate attributes (`data-pkc-kanban-*`) and separate handler
+functions (`handleKanbanDrag*`) from sidebar tree DnD (`data-pkc-draggable` /
+`data-pkc-drop-target`). The two systems do not interfere.
+
+### Scope Boundaries
+
+Not implemented in this issue:
+- Column reorder (columns are fixed: Todo / Done)
+- Calendar date DnD (may be added later via same pattern)
+- Touch support / pointer events
+- Custom drag preview / ghost image
+- Drag between different containers

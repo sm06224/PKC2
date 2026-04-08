@@ -2345,3 +2345,16 @@
   color: var(--c-accent);
   border-color: var(--c-accent);
 }
+
+/* Kanban DnD states */
+.pkc-kanban-card[data-pkc-dragging="true"] {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+.pkc-kanban-list[data-pkc-drag-over="true"] {
+  background: rgba(51,255,102,0.08);
+  border-radius: var(--radius);
+  outline: 2px dashed var(--c-accent);
+  outline-offset: -2px;
+}

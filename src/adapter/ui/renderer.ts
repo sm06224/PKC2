@@ -825,6 +825,7 @@ function renderKanbanView(state: AppState): HTMLElement {
     column.appendChild(header);
 
     const list = createElement('div', 'pkc-kanban-list');
+    list.setAttribute('data-pkc-kanban-drop-target', col.status);
 
     for (const item of grouped[col.status]) {
       const card = createElement('div', 'pkc-kanban-card');
@@ -835,6 +836,11 @@ function renderKanbanView(state: AppState): HTMLElement {
       }
       if (state.selectedLid === item.entry.lid) {
         card.setAttribute('data-pkc-selected', 'true');
+      }
+      // DnD: make card draggable in non-readonly mode
+      if (!state.readonly) {
+        card.setAttribute('draggable', 'true');
+        card.setAttribute('data-pkc-kanban-draggable', 'true');
       }
 
       const title = createElement('div', 'pkc-kanban-card-title');

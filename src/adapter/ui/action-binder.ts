@@ -388,6 +388,80 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     draggedLid = null;
   }
 
+  // ── DnD handlers for kanban board ──
+
+  let kanbanDraggedLid: string | null = null;
+
+  function handleKanbanDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    kanbanDraggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleKanbanDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    if (!dropTarget || !kanbanDraggedLid) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleKanbanDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleKanbanDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-drop-target]');
+    if (!dropTarget || !kanbanDraggedLid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
+    if (!targetStatus) return;
+
+    const entry = state.container.entries.find((e) => e.lid === kanbanDraggedLid);
+    if (!entry) return;
+
+    const todo = parseTodoBody(entry.body);
+
+    // Only update if status actually changes
+    if (todo.status !== targetStatus) {
+      const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: kanbanDraggedLid, body: updated });
+    }
+
+    // Select the dragged entry
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: kanbanDraggedLid });
+
+    kanbanDraggedLid = null;
+  }
+
+  function handleKanbanDragEnd(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights on kanban columns
+    const overEls = root.querySelectorAll('[data-pkc-kanban-drop-target][data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    kanbanDraggedLid = null;
+  }
+
   // ── Context menu handler ──
 
   function dismissContextMenu(): void {
@@ -585,13 +659,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
+  root.addEventListener('dragstart', handleKanbanDragStart);
   root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragover', handleKanbanDragOver);
   root.addEventListener('dragover', handleFileDropOver);
   root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('dragleave', handleKanbanDragLeave);
   root.addEventListener('dragleave', handleFileDropLeave);
   root.addEventListener('drop', handleDrop);
+  root.addEventListener('drop', handleKanbanDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('dragend', handleDragEnd);
+  root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
@@ -604,13 +683,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('change', handleChange);
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
+    root.removeEventListener('dragstart', handleKanbanDragStart);
     root.removeEventListener('dragover', handleDragOver);
+    root.removeEventListener('dragover', handleKanbanDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
     root.removeEventListener('dragleave', handleDragLeave);
+    root.removeEventListener('dragleave', handleKanbanDragLeave);
     root.removeEventListener('dragleave', handleFileDropLeave);
     root.removeEventListener('drop', handleDrop);
+    root.removeEventListener('drop', handleKanbanDrop);
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('dragend', handleDragEnd);
+    root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);

@@ -3271,3 +3271,205 @@ describe('Todo Kanban Status Move Foundation', () => {
     });
   });
 });
+
+// ── Issue #63: Todo Kanban DnD Foundation ──
+
+describe('Todo Kanban DnD Foundation', () => {
+  const dndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"desc A","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"desc B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Open C', body: '{"status":"open","description":"desc C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function dndState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: dndContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Drag source attributes ──
+
+  describe('drag source attributes', () => {
+    it('cards have draggable="true" in non-readonly mode', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBe('true');
+      }
+    });
+
+    it('cards have data-pkc-kanban-draggable attribute in non-readonly mode', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-kanban-draggable')).toBe('true');
+      }
+    });
+
+    it('cards are NOT draggable in readonly mode', () => {
+      render(dndState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.getAttribute('draggable')).toBeNull();
+        expect(card.getAttribute('data-pkc-kanban-draggable')).toBeNull();
+      }
+    });
+  });
+
+  // ── Drop target attributes ──
+
+  describe('drop target attributes', () => {
+    it('open column list has data-pkc-kanban-drop-target="open"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]');
+      expect(openList).not.toBeNull();
+      expect(openList!.classList.contains('pkc-kanban-list')).toBe(true);
+    });
+
+    it('done column list has data-pkc-kanban-drop-target="done"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]');
+      expect(doneList).not.toBeNull();
+      expect(doneList!.classList.contains('pkc-kanban-list')).toBe(true);
+    });
+
+    it('drop targets are present even in readonly mode (but cards are not draggable)', () => {
+      render(dndState({ readonly: true }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const dropTargets = kanban.querySelectorAll('[data-pkc-kanban-drop-target]');
+      expect(dropTargets).toHaveLength(2);
+    });
+  });
+
+  // ── Card-column relationship ──
+
+  describe('card-column relationship', () => {
+    it('open cards are inside the open column drop target', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const openList = kanban.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+      const cards = openList.querySelectorAll('.pkc-kanban-card');
+      expect(cards).toHaveLength(2); // t1 and t3
+      const lids = Array.from(cards).map(c => c.getAttribute('data-pkc-lid'));
+      expect(lids).toContain('t1');
+      expect(lids).toContain('t3');
+    });
+
+    it('done cards are inside the done column drop target', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const doneList = kanban.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+      const cards = doneList.querySelectorAll('.pkc-kanban-card');
+      expect(cards).toHaveLength(1); // t2
+      expect(cards[0]!.getAttribute('data-pkc-lid')).toBe('t2');
+    });
+  });
+
+  // ── Coexistence with select-entry ──
+
+  describe('coexistence with existing actions', () => {
+    it('draggable cards still have data-pkc-action="select-entry"', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card[data-pkc-kanban-draggable]');
+      for (const card of cards) {
+        expect(card.getAttribute('data-pkc-action')).toBe('select-entry');
+      }
+    });
+
+    it('status buttons are still present alongside draggable attribute', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('.pkc-kanban-card');
+      for (const card of cards) {
+        const btn = card.querySelector('.pkc-kanban-status-btn');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('data-pkc-action')).toBe('toggle-todo-status');
+      }
+    });
+  });
+
+  // ── Selection and overdue preserved ──
+
+  describe('selection preserved with DnD attributes', () => {
+    it('selected card has both data-pkc-selected and draggable', () => {
+      render(dndState({ selectedLid: 't1' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      expect(card.getAttribute('data-pkc-selected')).toBe('true');
+      expect(card.getAttribute('draggable')).toBe('true');
+    });
+
+    it('overdue styling still applies on draggable cards', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      // t1 is open with date 2025-01-01 (past) → overdue
+      const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]')!;
+      const dateEl = t1Card.querySelector('.pkc-kanban-card-date');
+      expect(dateEl).not.toBeNull();
+      expect(dateEl!.classList.contains('pkc-todo-date-overdue')).toBe(true);
+    });
+  });
+
+  // ── Empty state ──
+
+  describe('empty state', () => {
+    it('empty kanban board still has both drop targets', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [],
+        relations: [],
+        revisions: [],
+        assets: {},
+      };
+      render(dndState({ container: noTodos }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const dropTargets = kanban.querySelectorAll('[data-pkc-kanban-drop-target]');
+      expect(dropTargets).toHaveLength(2);
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('sidebar entries do NOT have kanban draggable attributes', () => {
+      render(dndState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const kanbanDraggables = sidebar.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(kanbanDraggables).toHaveLength(0);
+    });
+
+    it('view mode toggle still renders three buttons', () => {
+      render(dndState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('kanban column count badge still accurate', () => {
+      render(dndState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const badges = kanban.querySelectorAll('.pkc-kanban-column-count');
+      expect(badges[0]!.textContent).toBe('2'); // open: t1, t3
+      expect(badges[1]!.textContent).toBe('1'); // done: t2
+    });
+  });
+});
