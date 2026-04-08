@@ -4540,7 +4540,7 @@ describe('Sandbox Control UI in Meta Pane', () => {
     const body: Record<string, unknown> = { name: 'app.html', mime: 'text/html', asset_key: 'ast-1', size: 200 };
     if (sandboxAllow) body.sandbox_allow = sandboxAllow;
     return {
-      meta: { title: 'Test', schema_version: 1 },
+      meta: { container_id: 'test-html', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
       entries: [{
         lid: 'html1', title: 'HTML File', body: JSON.stringify(body),
         archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
@@ -4553,7 +4553,7 @@ describe('Sandbox Control UI in Meta Pane', () => {
 
   function textAttachmentContainer(): Container {
     return {
-      meta: { title: 'Test', schema_version: 1 },
+      meta: { container_id: 'test-txt', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
       entries: [{
         lid: 'txt1', title: 'Text File', body: JSON.stringify({ name: 'readme.txt', mime: 'text/plain', asset_key: 'ast-2' }),
         archetype: 'attachment', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
