@@ -1,6 +1,6 @@
 import type { Entry } from '../../core/model/record';
-import { parseTodoBody } from '../../adapter/ui/todo-presenter';
-import type { TodoBody } from '../../adapter/ui/todo-presenter';
+import { parseTodoBody } from '../todo/todo-body';
+import type { TodoBody } from '../todo/todo-body';
 
 export type KanbanStatus = 'open' | 'done';
 
