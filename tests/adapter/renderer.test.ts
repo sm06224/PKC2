@@ -111,7 +111,7 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const detail = root.querySelector('[data-pkc-region="detail"]');
+    const detail = root.querySelector('[data-pkc-region="center"]');
     expect(detail).not.toBeNull();
 
     const viewTitle = detail!.querySelector('.pkc-view-title');
@@ -139,9 +139,10 @@ describe('Renderer', () => {
     const bodyArea = editor!.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
     expect(bodyArea?.value).toBe('Body of entry one');
 
-    // Save and Cancel buttons
-    expect(editor!.querySelector('[data-pkc-action="commit-edit"]')).not.toBeNull();
-    expect(editor!.querySelector('[data-pkc-action="cancel-edit"]')).not.toBeNull();
+    // Save and Cancel buttons (in fixed action bar)
+    const center = root.querySelector('[data-pkc-region="center"]')!;
+    expect(center.querySelector('[data-pkc-action="commit-edit"]')).not.toBeNull();
+    expect(center.querySelector('[data-pkc-action="cancel-edit"]')).not.toBeNull();
   });
 
   it('shows create button only in ready phase', () => {
@@ -442,7 +443,7 @@ describe('Renderer', () => {
 
     const revInfo = root.querySelector('[data-pkc-region="revision-info"]');
     expect(revInfo).not.toBeNull();
-    expect(revInfo!.textContent).toContain('1 previous version');
+    expect(revInfo!.textContent).toContain('History');
   });
 
   it('shows restore button in revision info for selected entry', () => {
@@ -466,7 +467,7 @@ describe('Renderer', () => {
     expect(restoreBtn).not.toBeNull();
     expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('e1');
     expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-1');
-    expect(restoreBtn!.textContent).toContain('Revert to previous version');
+    expect(restoreBtn!.textContent).toContain('Revert');
   });
 
   it('shows restore candidates for deleted entries', () => {
@@ -1314,15 +1315,15 @@ describe('Renderer', () => {
 
     const noteBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
     expect(noteBtn).not.toBeNull();
-    expect(noteBtn!.textContent).toBe('+ Note');
+    expect(noteBtn!.textContent).toContain('Note');
 
     const todoBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
     expect(todoBtn).not.toBeNull();
-    expect(todoBtn!.textContent).toBe('+ Todo');
+    expect(todoBtn!.textContent).toContain('Todo');
 
     const formBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="form"]');
     expect(formBtn).not.toBeNull();
-    expect(formBtn!.textContent).toBe('+ Form');
+    expect(formBtn!.textContent).toContain('Form');
   });
 
   it('form entry uses form presenter when registered', () => {
@@ -1395,14 +1396,14 @@ describe('Renderer', () => {
     }
 
     const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
-    expect(n1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Note');
+    expect(n1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Note');
     expect(n1.querySelector('.pkc-archetype-badge')!.getAttribute('data-pkc-archetype')).toBe('text');
 
     const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
-    expect(t1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Todo');
+    expect(t1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Todo');
 
     const f1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'f1')!;
-    expect(f1.querySelector('.pkc-archetype-badge')!.textContent).toBe('Form');
+    expect(f1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Form');
   });
 
   it('detail view shows archetype label next to title', () => {
@@ -1414,7 +1415,7 @@ describe('Renderer', () => {
 
     const label = root.querySelector('.pkc-archetype-label');
     expect(label).not.toBeNull();
-    expect(label!.textContent).toBe('Note');
+    expect(label!.textContent).toContain('Note');
     expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
   });
 
@@ -1427,7 +1428,7 @@ describe('Renderer', () => {
 
     const label = root.querySelector('.pkc-archetype-label');
     expect(label).not.toBeNull();
-    expect(label!.textContent).toBe('Note');
+    expect(label!.textContent).toContain('Note');
     expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
   });
 
@@ -1459,7 +1460,7 @@ describe('Renderer', () => {
 
     const attBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
     expect(attBtn).not.toBeNull();
-    expect(attBtn!.textContent).toBe('+ File');
+    expect(attBtn!.textContent).toContain('File');
   });
 
   it('attachment entry uses attachment presenter when registered', () => {
@@ -1740,6 +1741,114 @@ describe('Folder UX Hardening', () => {
     const select = root.querySelector('[data-pkc-field="move-target"]') as HTMLSelectElement;
     expect(select).not.toBeNull();
     const firstOpt = select.options[0];
-    expect(firstOpt!.textContent).toContain('root level');
+    expect(firstOpt!.textContent).toContain('Root level');
+  });
+});
+
+// ── Issue #51: Three-Pane Layout + Fixed Action Bar ──
+
+describe('Three-Pane Layout', () => {
+  it('renders 3 pane regions when entry is selected', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="center"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="meta"]')).not.toBeNull();
+  });
+
+  it('meta pane not rendered when no entry selected', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="center"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="meta"]')).toBeNull();
+  });
+
+  it('fixed action bar shows Edit/Delete in view mode', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="begin-edit"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="delete-entry"]')).not.toBeNull();
+  });
+
+  it('fixed action bar shows Save/Cancel in edit mode', () => {
+    const state: AppState = {
+      phase: 'editing', container: mockContainer,
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="commit-edit"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="cancel-edit"]')).not.toBeNull();
+  });
+
+  it('meta pane shows tags and timestamps', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const meta = root.querySelector('[data-pkc-region="meta"]');
+    expect(meta).not.toBeNull();
+    expect(meta!.querySelector('[data-pkc-region="tags"]')).not.toBeNull();
+    expect(meta!.textContent).toContain('Created');
+  });
+
+  it('create buttons have tooltip titles', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
+    for (const btn of createBtns) {
+      expect(btn.getAttribute('title')).not.toBeNull();
+    }
+  });
+
+  it('archetype icons in sidebar badges', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false,
+    };
+    render(state, root);
+    const badges = root.querySelectorAll('.pkc-archetype-badge');
+    expect(badges.length).toBeGreaterThan(0);
+    for (const badge of badges) {
+      expect(badge.textContent!.length).toBeGreaterThan(2);
+    }
   });
 });

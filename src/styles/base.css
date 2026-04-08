@@ -1,20 +1,47 @@
-/* PKC2 base styles — Issue #46: CSS整備 + Header改善 */
+/* PKC2 base styles — Issue #51: 3-Pane + Fixed Action Bar */
+
+/* ── Light theme (default) ── */
 :root {
-  --c-bg: #ffffff;
-  --c-fg: #1a1a1a;
-  --c-accent: #2563eb;
-  --c-accent-fg: #ffffff;
-  --c-border: #e5e7eb;
-  --c-hover: #f3f4f6;
-  --c-danger: #dc2626;
-  --c-muted: #6b7280;
-  --c-surface: #f9fafb;
-  --c-success: #16a34a;
-  --font-sans: system-ui, -apple-system, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', monospace;
-  --radius: 4px;
-  --radius-lg: 6px;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --c-bg: #1b1d23;
+  --c-fg: #d4e0d0;
+  --c-accent: #4ade80;
+  --c-accent-fg: #0f1612;
+  --c-border: #2d3139;
+  --c-hover: #262a31;
+  --c-danger: #f87171;
+  --c-muted: #8b9585;
+  --c-surface: #21242b;
+  --c-success: #4ade80;
+  --c-warn: #fbbf24;
+  --c-warn-fg: #451a03;
+  --font-sans: 'BIZ UDGothic', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+  --font-mono: 'BIZ UDGothic', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+  --radius: 3px;
+  --radius-lg: 5px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  color-scheme: dark;
+}
+
+/* ── Light theme override ── */
+@media (prefers-color-scheme: light) {
+  :root {
+    --c-bg: #f5f2eb;
+    --c-fg: #1a1a1a;
+    --c-accent: #16774a;
+    --c-accent-fg: #ffffff;
+    --c-border: #d4cfc5;
+    --c-hover: #ece8df;
+    --c-danger: #c53030;
+    --c-muted: #6b7280;
+    --c-surface: #eae6dd;
+    --c-success: #16774a;
+    --c-warn: #d97706;
+    --c-warn-fg: #ffffff;
+    --font-sans: 'BIZ UDGothic', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+    --font-mono: 'BIZ UDGothic', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.08);
+    color-scheme: light;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,8 +51,8 @@
   color: var(--c-fg);
   background: var(--c-bg);
   min-height: 100vh;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* ── Phase indicators on root ── */
@@ -54,8 +81,8 @@
 .pkc-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
   border-bottom: 1px solid var(--c-border);
   background: var(--c-surface);
   flex-wrap: wrap;
@@ -64,13 +91,13 @@
 
 .pkc-header-title {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   white-space: nowrap;
 }
 
 .pkc-phase-badge {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
   border-radius: var(--radius);
   background: var(--c-border);
   color: var(--c-muted);
@@ -84,37 +111,38 @@
 }
 
 [data-pkc-phase-value="exporting"] {
-  background: #f59e0b;
-  color: #fff;
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
 }
 
 /* ── Create actions group ── */
 .pkc-create-actions {
   display: flex;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.15rem;
 }
 
 .pkc-btn-create {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
 }
 
 /* ── Readonly badge ── */
 .pkc-readonly-badge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
   border-radius: var(--radius);
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
   font-weight: 500;
 }
 
 .pkc-export-badge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
   border-radius: var(--radius);
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
   font-weight: 500;
 }
 
@@ -200,7 +228,7 @@
   color: var(--c-muted);
 }
 
-/* ── Main area ── */
+/* ── Main area (3-pane) ── */
 .pkc-main {
   display: flex;
   flex: 1;
@@ -208,9 +236,9 @@
   overflow: hidden;
 }
 
-/* ── Sidebar ── */
+/* ── Left Pane: Sidebar ── */
 .pkc-sidebar {
-  width: 260px;
+  width: 240px;
   border-right: 1px solid var(--c-border);
   overflow-y: auto;
   background: var(--c-surface);
@@ -223,25 +251,26 @@
 .pkc-search-row {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.4rem 0.5rem;
+  gap: 0.15rem;
+  padding: 0.25rem 0.35rem;
   border-bottom: 1px solid var(--c-border);
 }
 
 .pkc-search-input {
   flex: 1;
-  font-size: 0.8rem;
-  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.35rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
+  color: var(--c-fg);
   font-family: var(--font-sans);
   outline: none;
 }
 
 .pkc-search-input:focus {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+  box-shadow: 0 0 0 1px var(--c-accent);
 }
 
 .pkc-btn-clear {
@@ -262,14 +291,14 @@
 .pkc-archetype-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.15rem;
-  padding: 0.3rem 0.5rem;
+  gap: 0.1rem;
+  padding: 0.15rem 0.35rem;
   border-bottom: 1px solid var(--c-border);
 }
 
 .pkc-filter-btn {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
+  font-size: 0.6rem;
+  padding: 0.05rem 0.25rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -292,15 +321,15 @@
 /* ── Sort controls ── */
 .pkc-sort-controls {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  gap: 0.15rem;
+  padding: 0.15rem 0.35rem;
   border-bottom: 1px solid var(--c-border);
 }
 
 .pkc-sort-select {
   flex: 1;
-  font-size: 0.7rem;
-  padding: 0.15rem 0.25rem;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.2rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -342,11 +371,11 @@
 .pkc-entry-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.6rem;
+  gap: 0.25rem;
+  padding: 0.2rem 0.4rem;
   cursor: pointer;
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   transition: background 0.1s;
 }
 
@@ -439,31 +468,86 @@
   color: var(--c-muted);
 }
 
-/* ── Detail pane ── */
-.pkc-detail {
+/* ── Center Pane ── */
+.pkc-center {
   flex: 1;
-  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pkc-center-content {
+  flex: 1;
+  padding: 0.75rem 1rem;
   overflow-y: auto;
   min-width: 0;
 }
 
+/* ── Right Pane: Meta ── */
+.pkc-meta-pane {
+  width: 220px;
+  border-left: 1px solid var(--c-border);
+  background: var(--c-surface);
+  overflow-y: auto;
+  padding: 0.5rem;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.pkc-meta-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
+}
+
+.pkc-meta-timestamps {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
+}
+
+.pkc-meta-ts {
+  padding: 0.05rem 0;
+}
+
+/* ── Fixed Action Bar ── */
+.pkc-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 1rem;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
+  flex-shrink: 0;
+}
+
+.pkc-action-bar-info {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--c-muted);
+}
+
 .pkc-empty {
   color: var(--c-muted);
-  padding: 2rem;
+  padding: 1.5rem;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* ── View mode ── */
 .pkc-view-title-row {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
 }
 
 .pkc-view-title {
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 600;
   flex: 1;
   min-width: 0;
@@ -471,36 +555,26 @@
 }
 
 .pkc-archetype-label {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
   border-radius: var(--radius);
   background: var(--c-border);
   color: var(--c-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .pkc-view-body {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   white-space: pre-wrap;
   word-wrap: break-word;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  line-height: 1.6;
-}
-
-.pkc-view-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--c-border);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
 }
 
 /* ── Editor mode ── */
@@ -511,57 +585,57 @@
 .pkc-editor-title-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
 }
 
 .pkc-editor-title {
   flex: 1;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-family: var(--font-sans);
-  padding: 0.4rem 0.6rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-fg);
   outline: none;
 }
 
 .pkc-editor-title:focus {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+  box-shadow: 0 0 0 1px var(--c-accent);
 }
 
 .pkc-editor-body {
   display: block;
   width: 100%;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   resize: vertical;
-  line-height: 1.6;
+  line-height: 1.5;
   outline: none;
   min-height: 120px;
+  background: var(--c-bg);
+  color: var(--c-fg);
 }
 
 .pkc-editor-body:focus {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
-}
-
-.pkc-editor-actions {
-  display: flex;
-  gap: 0.5rem;
+  box-shadow: 0 0 0 1px var(--c-accent);
 }
 
 /* ── Buttons ── */
 .pkc-btn {
-  padding: 0.3rem 0.65rem;
-  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
+  color: var(--c-fg);
   cursor: pointer;
   font-family: var(--font-sans);
   white-space: nowrap;
@@ -572,9 +646,26 @@
   background: var(--c-hover);
 }
 
+.pkc-btn-primary {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.pkc-btn-primary:hover {
+  opacity: 0.9;
+}
+
 .pkc-btn-danger {
-  padding: 0.3rem 0.65rem;
-  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
   border: 1px solid var(--c-danger);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -591,11 +682,12 @@
 }
 
 .pkc-btn-small {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.35rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.25rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
+  color: var(--c-fg);
   cursor: pointer;
   font-family: var(--font-sans);
 }
@@ -606,29 +698,30 @@
 
 /* ── Tags ── */
 .pkc-tags {
-  margin-top: 0.75rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--c-border);
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
 }
 
 .pkc-tags-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: var(--c-muted);
-  margin-right: 0.35rem;
+  display: block;
+  margin-bottom: 0.15rem;
 }
 
 .pkc-tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.1rem 0.4rem;
-  margin: 0.15rem 0.15rem;
+  gap: 0.1rem;
+  padding: 0.05rem 0.3rem;
+  margin: 0.1rem 0.05rem;
   border-radius: var(--radius);
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  font-size: 0.75rem;
-  color: #1e40af;
+  background: var(--c-border);
+  border: 1px solid var(--c-border);
+  font-size: 0.65rem;
+  color: var(--c-accent);
 }
 
 .pkc-tag-label {
@@ -671,9 +764,9 @@
 
 /* ── Relations ── */
 .pkc-relations {
-  margin-top: 0.75rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--c-border);
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
 }
 
 .pkc-relation-group {
@@ -751,12 +844,10 @@
 
 /* ── Revision / History ── */
 .pkc-revision-info {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  font-size: 0.8rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
+  font-size: 0.7rem;
 }
 
 .pkc-revision-heading {
