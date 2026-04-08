@@ -378,6 +378,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     draggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
   function handleDragEnd(e: DragEvent): void {
@@ -453,6 +454,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: kanbanDraggedLid });
 
     kanbanDraggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
   function handleKanbanDragEnd(e: DragEvent): void {
@@ -532,6 +534,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     calendarDraggedLid = null;
     kanbanDraggedLid = null;
+    if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
   function handleCalendarDragEnd(e: DragEvent): void {
@@ -543,6 +546,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     calendarDraggedLid = null;
+  }
+
+  // ── DnD: cleanup helper ──
+  // Clears all drag state, timers, and visual attributes across all DnD systems.
+  // Called as a safety net from fallback handlers when normal cleanup may not fire.
+  // See docs/development/dnd-cleanup-robustness.md for rationale.
+
+  function clearAllDragState(): void {
+    draggedLid = null;
+    kanbanDraggedLid = null;
+    calendarDraggedLid = null;
+    if (viewSwitchTimer) {
+      clearTimeout(viewSwitchTimer);
+      viewSwitchTimer = null;
+    }
+    // Remove all lingering visual drag state
+    const overEls = root.querySelectorAll('[data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+    const draggingEls = root.querySelectorAll('[data-pkc-dragging]');
+    for (const el of draggingEls) el.removeAttribute('data-pkc-dragging');
   }
 
   // ── DnD: drag-over-tab view switch ──
@@ -586,6 +609,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (viewSwitchTimer) {
       clearTimeout(viewSwitchTimer);
       viewSwitchTimer = null;
+    }
+  }
+
+  // ── DnD: fallback cleanup ──
+  // Safety nets for cases where normal dragend doesn't fire on root
+  // (e.g. source element removed from DOM during cross-view drag).
+
+  function handleDocumentDragEnd(): void {
+    // document-level dragend: clear all drag state as fallback
+    clearAllDragState();
+  }
+
+  function handleStaleDragCleanup(e: MouseEvent): void {
+    // If a mousedown fires while drag state is still set, the previous drag
+    // ended without proper cleanup (e.g. cross-view source DOM removal).
+    // Clean up stale state so the new interaction isn't affected.
+    if (draggedLid || kanbanDraggedLid || calendarDraggedLid || viewSwitchTimer) {
+      // Don't clean up if this mousedown is part of an ongoing drag
+      // (mousedown during drag doesn't normally happen, but guard anyway)
+      if (!(e as unknown as DragEvent).dataTransfer) {
+        clearAllDragState();
+      }
     }
   }
 
@@ -807,8 +852,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
+  root.addEventListener('mousedown', handleStaleDragCleanup);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
+  document.addEventListener('dragend', handleDocumentDragEnd);
 
   // Return cleanup function
   return () => {
@@ -839,8 +886,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
+    root.removeEventListener('mousedown', handleStaleDragCleanup);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
+    document.removeEventListener('dragend', handleDocumentDragEnd);
+    clearAllDragState();
   };
 }
 

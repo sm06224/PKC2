@@ -3874,3 +3874,160 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
     });
   });
 });
+
+// ── Issue #67: DnD Cleanup & Cancellation Robustness ──
+
+describe('DnD Cleanup & Cancellation Robustness', () => {
+  const cleanupContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Open A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Done B', body: '{"status":"done","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function cleanupKanbanState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: cleanupContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  function cleanupCalendarState(overrides?: Partial<AppState>): AppState {
+    return cleanupKanbanState({ viewMode: 'calendar' as const, ...overrides });
+  }
+
+  // ── Fresh render has no drag state ──
+
+  describe('fresh render: no drag artifacts', () => {
+    it('kanban: no data-pkc-dragging on fresh render', () => {
+      render(cleanupKanbanState(), root);
+      const dragging = root.querySelectorAll('[data-pkc-dragging]');
+      expect(dragging).toHaveLength(0);
+    });
+
+    it('kanban: no data-pkc-drag-over on fresh render', () => {
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('calendar: no data-pkc-dragging on fresh render', () => {
+      render(cleanupCalendarState(), root);
+      const dragging = root.querySelectorAll('[data-pkc-dragging]');
+      expect(dragging).toHaveLength(0);
+    });
+
+    it('calendar: no data-pkc-drag-over on fresh render', () => {
+      render(cleanupCalendarState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── Re-render clears stale visual state ──
+
+  describe('re-render clears stale visual state', () => {
+    it('kanban: drag-over attribute removed after re-render', () => {
+      render(cleanupKanbanState(), root);
+      // Simulate stale drag-over on a kanban list
+      const list = root.querySelector('[data-pkc-kanban-drop-target]')!;
+      list.setAttribute('data-pkc-drag-over', 'true');
+      expect(list.getAttribute('data-pkc-drag-over')).toBe('true');
+      // Re-render replaces DOM, stale attribute is gone
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('calendar: drag-over attribute removed after re-render', () => {
+      render(cleanupCalendarState(), root);
+      const cell = root.querySelector('[data-pkc-calendar-drop-target]')!;
+      cell.setAttribute('data-pkc-drag-over', 'true');
+      // Re-render replaces DOM
+      render(cleanupCalendarState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('view mode button: drag-over attribute removed after re-render', () => {
+      render(cleanupKanbanState(), root);
+      const btn = root.querySelector('[data-pkc-view-switch]')!;
+      btn.setAttribute('data-pkc-drag-over', 'true');
+      // Re-render replaces DOM
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-view-switch][data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── View switch replaces stale DOM ──
+
+  describe('view switch replaces stale drag DOM', () => {
+    it('switching from kanban to calendar removes kanban drag-over', () => {
+      render(cleanupKanbanState(), root);
+      const list = root.querySelector('[data-pkc-kanban-drop-target]')!;
+      list.setAttribute('data-pkc-drag-over', 'true');
+      // Switch to calendar
+      render(cleanupCalendarState(), root);
+      // Old kanban DOM is gone, no drag-over remains
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+
+    it('switching from calendar to kanban removes calendar drag-over', () => {
+      render(cleanupCalendarState(), root);
+      const cell = root.querySelector('[data-pkc-calendar-drop-target]')!;
+      cell.setAttribute('data-pkc-drag-over', 'true');
+      // Switch to kanban
+      render(cleanupKanbanState(), root);
+      const dragOver = root.querySelectorAll('[data-pkc-drag-over]');
+      expect(dragOver).toHaveLength(0);
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('kanban cards still draggable', () => {
+      render(cleanupKanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const cards = kanban.querySelectorAll('[data-pkc-kanban-draggable]');
+      expect(cards.length).toBeGreaterThan(0);
+    });
+
+    it('calendar items still draggable', () => {
+      render(cleanupCalendarState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(items.length).toBeGreaterThan(0);
+    });
+
+    it('kanban status buttons still present', () => {
+      render(cleanupKanbanState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="toggle-todo-status"]');
+      expect(btns.length).toBeGreaterThan(0);
+    });
+
+    it('view switch attributes still on non-active tabs', () => {
+      render(cleanupKanbanState(), root);
+      const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
+      expect(switchBtns).toHaveLength(2);
+    });
+
+    it('click selection still works (select-entry present)', () => {
+      render(cleanupKanbanState(), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const card = kanban.querySelector('[data-pkc-action="select-entry"]');
+      expect(card).not.toBeNull();
+    });
+  });
+});
