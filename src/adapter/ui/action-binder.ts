@@ -5,10 +5,11 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
-import { collectAssetData, parseAttachmentBody } from './attachment-presenter';
+import { collectAssetData, parseAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
-import { renderContextMenu, renderDetachedPanel } from './renderer';
+import { renderContextMenu } from './renderer';
+import { openEntryWindow } from './entry-window';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -747,61 +748,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Sidebar: opens detached read-only panel.
   // Calendar/Kanban: dispatches BEGIN_EDIT (editing in detail view).
 
-  function handleDblClickAction(target: HTMLElement, lid: string): void {
+  function handleDblClickAction(_target: HTMLElement, lid: string): void {
     const state = dispatcher.getState();
     if (!state.container) return;
 
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
-    const inSidebar = !!target.closest('[data-pkc-region="sidebar"]');
-    const inCenterPane = !!target.closest('[data-pkc-region="calendar-view"], [data-pkc-region="kanban-view"]');
+    // Select the entry first
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
-    if (inCenterPane) {
-      // Calendar / Kanban double-click → open editing
-      if (!state.readonly) {
-        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+    // Open in a separate browser window with markdown rendering + edit capability
+    openEntryWindow(entry, !!state.readonly, (saveLid, title, body, openedAt) => {
+      const currentState = dispatcher.getState();
+      if (!currentState.container) return;
+
+      // Conflict detection: check if entry was modified after the window opened
+      const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
+      if (currentEntry && currentEntry.updated_at !== openedAt) {
+        // Entry was modified in the parent window after the child window opened
+        import('./entry-window').then(({ notifyConflict }) => {
+          notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
+        });
       }
-      return;
-    }
 
-    if (!inSidebar) return;
-
-    // Sidebar double-click → detached read-only panel
-    openDetachedPanel(lid);
-  }
-
-  function openDetachedPanel(lid: string): void {
-    const state = dispatcher.getState();
-    if (!state.container) return;
-    const entry = state.container.entries.find((e) => e.lid === lid);
-    if (!entry) return;
-
-    // Don't open duplicate detached panel for the same entry
-    const existing = root.querySelector(`[data-pkc-region="detached-panel"][data-pkc-lid="${lid}"]`) as HTMLElement | null;
-    if (existing) {
-      // Bring to front with visual pulse
-      existing.remove();
-      root.appendChild(existing);
-      existing.style.animation = 'none';
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      existing.offsetHeight; // force reflow
-      existing.style.animation = 'pkc-panel-pulse 300ms ease-out';
-      return;
-    }
-
-    const panel = renderDetachedPanel(entry, state.container);
-
-    // Offset position slightly for each open panel to avoid stacking
-    const openPanels = root.querySelectorAll('[data-pkc-region="detached-panel"]');
-    const offset = openPanels.length * 24;
-    panel.style.top = `${80 + offset}px`;
-    panel.style.right = `${16 + offset}px`;
-
-    root.appendChild(panel);
-
-    // Populate image previews for attachment entries
-    populateDetachedPreview(panel, lid, dispatcher);
+      // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
+      dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
+    });
   }
 
   // ── dblclick fallback (secondary path) ──
@@ -1000,14 +974,7 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
   const resolved = resolveAttachmentData(lid, dispatcher);
   if (!resolved) return;
 
-  const byteChars = atob(resolved.data);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) {
-    bytes[i] = byteChars.charCodeAt(i);
-  }
-  const blob = new Blob([bytes], { type: resolved.mime });
-  const url = URL.createObjectURL(blob);
-
+  const url = createBlobUrl(resolved);
   const a = document.createElement('a');
   a.href = url;
   a.download = resolved.name;
@@ -1026,8 +993,8 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
 export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
   const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
   for (const el of previews) {
-    // Skip if already populated
-    if (el.querySelector('img')) continue;
+    // Skip if already populated (has child elements beyond placeholder)
+    if (el.querySelector('img, video, audio, iframe, object')) continue;
 
     const lid = el.getAttribute('data-pkc-lid');
     if (!lid) continue;
@@ -1035,31 +1002,125 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const resolved = resolveAttachmentData(lid, dispatcher);
     if (!resolved) continue;
 
-    el.innerHTML = '';
-    const img = document.createElement('img');
-    img.className = 'pkc-attachment-preview-img';
-    img.src = `data:${resolved.mime};base64,${resolved.data}`;
-    img.alt = resolved.name;
-    el.appendChild(img);
+    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img');
   }
 }
 
 /**
- * Populate image preview in a detached panel for attachment entries.
+ * Create a Blob URL from resolved base64 attachment data.
  */
-function populateDetachedPreview(panel: HTMLElement, lid: string, dispatcher: Dispatcher): void {
-  const previewEl = panel.querySelector<HTMLElement>('[data-pkc-region="detached-attachment-preview"]');
-  if (!previewEl) return;
+function createBlobUrl(resolved: { data: string; mime: string }): string {
+  const byteChars = atob(resolved.data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: resolved.mime });
+  return URL.createObjectURL(blob);
+}
 
-  const resolved = resolveAttachmentData(lid, dispatcher);
-  if (!resolved) return;
+/**
+ * Populate a preview element based on MIME type classification.
+ */
+function populatePreviewElement(
+  el: HTMLElement,
+  resolved: { data: string; mime: string; name: string },
+  imgClass: string,
+): void {
+  const previewType = classifyPreviewType(resolved.mime);
+  el.innerHTML = '';
 
-  previewEl.innerHTML = '';
-  const img = document.createElement('img');
-  img.className = 'pkc-detached-preview-img';
-  img.src = `data:${resolved.mime};base64,${resolved.data}`;
-  img.alt = resolved.name;
-  previewEl.appendChild(img);
+  switch (previewType) {
+    case 'image': {
+      const img = document.createElement('img');
+      img.className = imgClass;
+      img.src = `data:${resolved.mime};base64,${resolved.data}`;
+      img.alt = resolved.name;
+      el.appendChild(img);
+      break;
+    }
+
+    case 'pdf': {
+      const blobUrl = createBlobUrl(resolved);
+      const obj = document.createElement('object');
+      obj.className = 'pkc-attachment-pdf-preview';
+      obj.type = 'application/pdf';
+      obj.data = blobUrl;
+      obj.setAttribute('data-pkc-blob-url', blobUrl);
+      const fallback = document.createElement('p');
+      fallback.textContent = 'PDF preview not available in this browser.';
+      obj.appendChild(fallback);
+      el.appendChild(obj);
+      // Open in new window button
+      el.appendChild(createOpenButton(blobUrl, resolved.name, '📄 Open PDF in New Window'));
+      break;
+    }
+
+    case 'video': {
+      const blobUrl = createBlobUrl(resolved);
+      const video = document.createElement('video');
+      video.className = 'pkc-attachment-video-preview';
+      video.controls = true;
+      video.preload = 'metadata';
+      video.setAttribute('data-pkc-blob-url', blobUrl);
+      const source = document.createElement('source');
+      source.src = blobUrl;
+      source.type = resolved.mime;
+      video.appendChild(source);
+      el.appendChild(video);
+      break;
+    }
+
+    case 'audio': {
+      const blobUrl = createBlobUrl(resolved);
+      const audio = document.createElement('audio');
+      audio.className = 'pkc-attachment-audio-preview';
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.setAttribute('data-pkc-blob-url', blobUrl);
+      const source = document.createElement('source');
+      source.src = blobUrl;
+      source.type = resolved.mime;
+      audio.appendChild(source);
+      el.appendChild(audio);
+      break;
+    }
+
+    case 'html': {
+      // Sandboxed iframe for HTML preview
+      const blobUrl = createBlobUrl(resolved);
+      const iframe = document.createElement('iframe');
+      iframe.className = 'pkc-attachment-html-preview';
+      // Strict sandbox: no scripts, no forms, no popups by default
+      iframe.sandbox.add('allow-same-origin');
+      iframe.src = blobUrl;
+      iframe.setAttribute('data-pkc-blob-url', blobUrl);
+      iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
+      el.appendChild(iframe);
+      // Open in new window button
+      el.appendChild(createOpenButton(blobUrl, resolved.name, '🌐 Open HTML in New Window'));
+      // Sandbox toggle info
+      const sandboxNote = document.createElement('div');
+      sandboxNote.className = 'pkc-attachment-sandbox-note';
+      sandboxNote.textContent = 'Sandbox: scripts disabled. Use "Open in New Window" for full functionality.';
+      el.appendChild(sandboxNote);
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+function createOpenButton(blobUrl: string, name: string, label: string): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-attachment-open-btn';
+  btn.textContent = label;
+  btn.setAttribute('title', `Open ${name} in a new browser window`);
+  btn.addEventListener('click', () => {
+    window.open(blobUrl, '_blank', 'noopener');
+  });
+  return btn;
 }
 
 /**

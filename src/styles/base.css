@@ -1530,6 +1530,44 @@
   object-fit: contain;
 }
 
+/* ── PDF preview ── */
+.pkc-attachment-pdf-preview {
+  width: 100%;
+  min-height: 400px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Video / Audio preview ── */
+.pkc-attachment-video-preview {
+  max-width: 100%;
+  max-height: 400px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+}
+.pkc-attachment-audio-preview {
+  width: 100%;
+  margin: 0.25rem 0;
+}
+
+/* ── HTML sandbox preview ── */
+.pkc-attachment-html-preview {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+.pkc-attachment-sandbox-note {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  font-style: italic;
+  margin-top: 0.15rem;
+}
+.pkc-attachment-open-btn {
+  margin-top: 0.25rem;
+}
+
 .pkc-attachment-editor {
   display: flex;
   flex-direction: column;

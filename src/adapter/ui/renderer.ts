@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -1743,14 +1743,14 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
 
   // Check data availability
   const hasData = !!(att.data || (att.asset_key && container?.assets?.[att.asset_key]));
-  const isImage = att.mime.startsWith('image/');
+  const previewType = classifyPreviewType(att.mime);
 
-  if (isImage && hasData) {
-    // Image preview: show placeholder with data-pkc attributes for population
+  if (previewType !== 'none' && hasData) {
+    // Preview area: populated by action-binder based on MIME type
     const previewArea = createElement('div', 'pkc-detached-preview');
     previewArea.setAttribute('data-pkc-region', 'detached-attachment-preview');
     previewArea.setAttribute('data-pkc-lid', entry.lid);
-    // Placeholder text until populateDetachedPreviews fills it in
+    previewArea.setAttribute('data-pkc-preview-type', previewType);
     const placeholder = createElement('div', 'pkc-attachment-preview-placeholder');
     placeholder.textContent = 'Loading preview…';
     previewArea.appendChild(placeholder);

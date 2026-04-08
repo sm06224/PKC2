@@ -2030,14 +2030,15 @@ describe('Detached View Foundation', () => {
     expect(dlBtn!.textContent).toContain('photo.png');
   });
 
-  it('renderDetachedPanel for non-image attachment shows download but no preview', () => {
+  it('renderDetachedPanel for PDF attachment shows preview area and download', () => {
     const panel = renderDetachedPanel(pdfAttEntry, detachedContainer);
 
-    // No preview area for PDF
+    // PDF now gets a preview area with correct type
     const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
-    expect(preview).toBeNull();
+    expect(preview).not.toBeNull();
+    expect(preview!.getAttribute('data-pkc-preview-type')).toBe('pdf');
 
-    // But still has download
+    // Still has download
     const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
     expect(dlBtn).not.toBeNull();
     expect(dlBtn!.textContent).toContain('report.pdf');
@@ -4398,6 +4399,92 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       const body = root.querySelector('.pkc-view-body');
       expect(body!.textContent).toContain('(empty)');
       expect(body!.tagName).toBe('PRE');
+    });
+  });
+
+  describe('Attachment Preview Types', () => {
+    function makeAttContainer(mime: string, assetKey: string): Container {
+      return {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'att-preview',
+            title: 'Preview File',
+            body: JSON.stringify({ name: 'file.ext', mime, size: 1024, asset_key: assetKey }),
+            archetype: 'attachment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        assets: { [assetKey]: 'dGVzdA==' },
+      };
+    }
+
+    it('image attachment gets preview with type=image', () => {
+      const c = makeAttContainer('image/png', 'ast-img');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('image');
+    });
+
+    it('PDF attachment gets preview with type=pdf', () => {
+      const c = makeAttContainer('application/pdf', 'ast-pdf');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('pdf');
+    });
+
+    it('video attachment gets preview with type=video', () => {
+      const c = makeAttContainer('video/mp4', 'ast-vid');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('video');
+    });
+
+    it('audio attachment gets preview with type=audio', () => {
+      const c = makeAttContainer('audio/mpeg', 'ast-aud');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('audio');
+    });
+
+    it('HTML attachment gets preview with type=html', () => {
+      const c = makeAttContainer('text/html', 'ast-htm');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).not.toBeNull();
+      expect(preview!.getAttribute('data-pkc-preview-type')).toBe('html');
+    });
+
+    it('unknown MIME gets no preview area', () => {
+      const c = makeAttContainer('application/octet-stream', 'ast-bin');
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).toBeNull();
+    });
+
+    it('stripped attachment gets no preview regardless of type', () => {
+      const c: Container = {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'att-strip',
+            title: 'Stripped',
+            body: JSON.stringify({ name: 'image.png', mime: 'image/png', size: 1024, asset_key: 'ast-strip' }),
+            archetype: 'attachment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        assets: {},
+      };
+      const panel = renderDetachedPanel(c.entries[0]!, c);
+      const preview = panel.querySelector('[data-pkc-region="detached-attachment-preview"]');
+      expect(preview).toBeNull();
     });
   });
 

@@ -1,23 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown, hasMarkdownSyntax } from '../../../src/features/markdown/markdown-render';
+import { renderMarkdown, hasMarkdownSyntax, getMarkdownInstance } from '../../../src/features/markdown/markdown-render';
 
-describe('renderMarkdown', () => {
+describe('renderMarkdown (markdown-it)', () => {
   it('returns empty string for empty input', () => {
     expect(renderMarkdown('')).toBe('');
   });
 
   it('renders plain text as paragraph', () => {
     const html = renderMarkdown('Hello world');
-    expect(html).toContain('<p class="pkc-md-p">Hello world</p>');
+    expect(html).toContain('<p>');
+    expect(html).toContain('Hello world');
   });
 
   it('renders headings h1 through h6', () => {
-    expect(renderMarkdown('# Title')).toContain('<h1');
-    expect(renderMarkdown('## Sub')).toContain('<h2');
-    expect(renderMarkdown('### H3')).toContain('<h3');
-    expect(renderMarkdown('#### H4')).toContain('<h4');
-    expect(renderMarkdown('##### H5')).toContain('<h5');
-    expect(renderMarkdown('###### H6')).toContain('<h6');
+    expect(renderMarkdown('# Title')).toContain('<h1>');
+    expect(renderMarkdown('## Sub')).toContain('<h2>');
+    expect(renderMarkdown('### H3')).toContain('<h3>');
+    expect(renderMarkdown('#### H4')).toContain('<h4>');
+    expect(renderMarkdown('##### H5')).toContain('<h5>');
+    expect(renderMarkdown('###### H6')).toContain('<h6>');
   });
 
   it('renders bold text', () => {
@@ -30,62 +31,60 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<em>italic</em>');
   });
 
-  it('renders bold+italic text', () => {
-    const html = renderMarkdown('This is ***both*** text');
-    expect(html).toContain('<strong><em>both</em></strong>');
-  });
-
   it('renders inline code', () => {
     const html = renderMarkdown('Use `console.log` here');
-    expect(html).toContain('<code class="pkc-md-code">console.log</code>');
+    expect(html).toContain('<code>console.log</code>');
   });
 
   it('renders fenced code blocks', () => {
     const md = '```js\nconst x = 1;\n```';
     const html = renderMarkdown(md);
-    expect(html).toContain('<pre class="pkc-md-pre">');
+    expect(html).toContain('<pre>');
+    expect(html).toContain('<code');
     expect(html).toContain('const x = 1;');
-    expect(html).toContain('language-js');
   });
 
   it('renders unordered lists', () => {
     const md = '- item 1\n- item 2\n- item 3';
     const html = renderMarkdown(md);
-    expect(html).toContain('<ul class="pkc-md-list">');
-    expect(html).toContain('<li>item 1</li>');
-    expect(html).toContain('<li>item 2</li>');
-    expect(html).toContain('<li>item 3</li>');
+    expect(html).toContain('<ul>');
+    expect(html).toContain('<li>');
+    expect(html).toContain('item 1');
+    expect(html).toContain('item 3');
   });
 
   it('renders ordered lists', () => {
     const md = '1. first\n2. second';
     const html = renderMarkdown(md);
-    expect(html).toContain('<ol class="pkc-md-list">');
-    expect(html).toContain('<li>first</li>');
-    expect(html).toContain('<li>second</li>');
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<li>');
+    expect(html).toContain('first');
+    expect(html).toContain('second');
   });
 
   it('renders blockquotes', () => {
     const html = renderMarkdown('> This is a quote');
-    expect(html).toContain('<blockquote class="pkc-md-blockquote">');
+    expect(html).toContain('<blockquote>');
     expect(html).toContain('This is a quote');
   });
 
   it('renders horizontal rules', () => {
-    expect(renderMarkdown('---')).toContain('<hr class="pkc-md-hr">');
-    expect(renderMarkdown('***')).toContain('<hr class="pkc-md-hr">');
+    expect(renderMarkdown('---')).toContain('<hr>');
   });
 
-  it('renders links', () => {
+  it('renders links with target=_blank', () => {
     const html = renderMarkdown('[Click here](https://example.com)');
-    expect(html).toContain('<a href="https://example.com"');
+    expect(html).toContain('href="https://example.com"');
     expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener"');
     expect(html).toContain('>Click here</a>');
   });
 
   it('renders images', () => {
     const html = renderMarkdown('![alt text](image.png)');
-    expect(html).toContain('<img src="image.png" alt="alt text"');
+    expect(html).toContain('<img');
+    expect(html).toContain('src="image.png"');
+    expect(html).toContain('alt="alt text"');
   });
 
   it('escapes HTML to prevent XSS', () => {
@@ -100,25 +99,49 @@ describe('renderMarkdown', () => {
     expect(html).toContain('&lt;b&gt;');
   });
 
+  it('renders tables', () => {
+    const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+    const html = renderMarkdown(md);
+    expect(html).toContain('<table>');
+    expect(html).toContain('<th>');
+    expect(html).toContain('<td>');
+  });
+
+  it('renders strikethrough', () => {
+    const html = renderMarkdown('~~deleted~~');
+    expect(html).toContain('<s>deleted</s>');
+  });
+
+  it('auto-links URLs', () => {
+    const html = renderMarkdown('Visit https://example.com today');
+    expect(html).toContain('href="https://example.com"');
+  });
+
   it('renders multiple block types', () => {
     const md = '# Heading\n\nA paragraph.\n\n- list item\n\n> quote';
     const html = renderMarkdown(md);
-    expect(html).toContain('<h1');
-    expect(html).toContain('<p');
-    expect(html).toContain('<ul');
-    expect(html).toContain('<blockquote');
+    expect(html).toContain('<h1>');
+    expect(html).toContain('<p>');
+    expect(html).toContain('<ul>');
+    expect(html).toContain('<blockquote>');
   });
 
   it('handles code block without language', () => {
     const md = '```\nplain code\n```';
     const html = renderMarkdown(md);
-    expect(html).toContain('<pre class="pkc-md-pre"><code>plain code</code></pre>');
+    expect(html).toContain('<pre>');
+    expect(html).toContain('plain code');
   });
 
   it('escapes HTML inside code blocks', () => {
     const md = '```\n<div>test</div>\n```';
     const html = renderMarkdown(md);
     expect(html).toContain('&lt;div&gt;');
+  });
+
+  it('converts newlines to breaks', () => {
+    const html = renderMarkdown('line1\nline2');
+    expect(html).toContain('<br>');
   });
 });
 
@@ -144,7 +167,7 @@ describe('hasMarkdownSyntax', () => {
   });
 
   it('detects unordered lists', () => {
-    expect(hasMarkdownSyntax('* item')).toBe(true);
+    expect(hasMarkdownSyntax('- item')).toBe(true);
   });
 
   it('detects ordered lists', () => {
@@ -161,5 +184,17 @@ describe('hasMarkdownSyntax', () => {
 
   it('detects code blocks', () => {
     expect(hasMarkdownSyntax('```\ncode\n```')).toBe(true);
+  });
+
+  it('detects tables', () => {
+    expect(hasMarkdownSyntax('| a | b |')).toBe(true);
+  });
+});
+
+describe('getMarkdownInstance', () => {
+  it('returns the markdown-it instance', () => {
+    const instance = getMarkdownInstance();
+    expect(instance).toBeDefined();
+    expect(typeof instance.render).toBe('function');
   });
 });

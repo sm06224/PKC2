@@ -11,6 +11,11 @@ import {
   isLegacyFormat,
   attachmentPresenter,
   collectAssetData,
+  classifyPreviewType,
+  isPreviewableImage,
+  isPreviewableMedia,
+  isPdf,
+  isHtml,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
@@ -419,5 +424,76 @@ describe('Attachment Presenter', () => {
   it('getPresenter returns attachmentPresenter when registered', () => {
     registerPresenter('attachment', attachmentPresenter);
     expect(getPresenter('attachment')).toBe(attachmentPresenter);
+  });
+});
+
+describe('MIME type classification', () => {
+  describe('isPreviewableImage', () => {
+    it('recognizes standard image types', () => {
+      expect(isPreviewableImage('image/png')).toBe(true);
+      expect(isPreviewableImage('image/jpeg')).toBe(true);
+      expect(isPreviewableImage('image/gif')).toBe(true);
+      expect(isPreviewableImage('image/webp')).toBe(true);
+      expect(isPreviewableImage('image/svg+xml')).toBe(true);
+    });
+    it('rejects non-image types', () => {
+      expect(isPreviewableImage('application/pdf')).toBe(false);
+      expect(isPreviewableImage('video/mp4')).toBe(false);
+    });
+  });
+
+  describe('isPreviewableMedia', () => {
+    it('recognizes video types', () => {
+      expect(isPreviewableMedia('video/mp4')).toBe(true);
+      expect(isPreviewableMedia('video/webm')).toBe(true);
+    });
+    it('recognizes audio types', () => {
+      expect(isPreviewableMedia('audio/mpeg')).toBe(true);
+      expect(isPreviewableMedia('audio/wav')).toBe(true);
+    });
+    it('rejects non-media types', () => {
+      expect(isPreviewableMedia('image/png')).toBe(false);
+      expect(isPreviewableMedia('text/html')).toBe(false);
+    });
+  });
+
+  describe('isPdf', () => {
+    it('recognizes PDF', () => {
+      expect(isPdf('application/pdf')).toBe(true);
+    });
+    it('rejects non-PDF', () => {
+      expect(isPdf('text/plain')).toBe(false);
+    });
+  });
+
+  describe('isHtml', () => {
+    it('recognizes HTML', () => {
+      expect(isHtml('text/html')).toBe(true);
+    });
+    it('rejects non-HTML', () => {
+      expect(isHtml('text/plain')).toBe(false);
+    });
+  });
+
+  describe('classifyPreviewType', () => {
+    it('classifies images', () => {
+      expect(classifyPreviewType('image/png')).toBe('image');
+    });
+    it('classifies PDF', () => {
+      expect(classifyPreviewType('application/pdf')).toBe('pdf');
+    });
+    it('classifies video', () => {
+      expect(classifyPreviewType('video/mp4')).toBe('video');
+    });
+    it('classifies audio', () => {
+      expect(classifyPreviewType('audio/mpeg')).toBe('audio');
+    });
+    it('classifies HTML', () => {
+      expect(classifyPreviewType('text/html')).toBe('html');
+    });
+    it('returns none for unknown types', () => {
+      expect(classifyPreviewType('application/octet-stream')).toBe('none');
+      expect(classifyPreviewType('text/plain')).toBe('none');
+    });
   });
 });

@@ -48,20 +48,27 @@ This dispatches `SELECT_ENTRY` via the shared action-binder click handler.
 
 ### Double click
 
-Double-click の動作は **対象領域によって異なる**。
+Double-click は **全領域共通で別ブラウザウィンドウ** を開く。
 
-| Location   | 動作 | 理由 |
+| Location   | 動作 | 機能 |
 |------------|------|------|
-| Sidebar    | detached read-only panel を開く | 概要確認用途 |
-| Calendar   | BEGIN_EDIT → detail view で編集 | 編集導線 |
-| Kanban     | BEGIN_EDIT → detail view で編集 | 編集導線 |
+| Sidebar    | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
+| Calendar   | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
+| Kanban     | 別窓 (window.open) | Markdown 表示 + 編集保存可 |
 
-**検出方式**: `MouseEvent.detail >= 2` を click handler 内で検出（Issue #69 で修正）。
+**別窓エディタの機能**:
+- Markdown レンダリング表示 (markdown-it)
+- Edit ボタンで Source/Preview タブ切替
+- Save で postMessage 経由で親ウィンドウに body を送信
+- 親ウィンドウ側で BEGIN_EDIT → COMMIT_EDIT を dispatch (revision 作成)
+- 競合検出: 別窓 open 時の `updated_at` と Save 時の現在値を比較
+- 重複防止: 同一 lid の別窓が既存なら focus
+
+**検出方式**: `MouseEvent.detail >= 2` を click handler 内で検出。
 従来の `dblclick` イベントは同期 re-render による DOM 置換で到達しないため、
 click handler の `detail` プロパティによるプライマリ検出 + `dblclick` リスナーの fallback の二重構造。
 
-- Sidebar: detached panel の重複防止あり（同一 lid のパネルが存在する場合は pulse）。
-- Calendar / Kanban: readonly mode では BEGIN_EDIT を dispatch しない。
+- readonly mode では別窓は readonly 表示（Edit ボタンなし）。
 
 ## 4. Archived / Overdue / Date Display Rules
 
