@@ -825,9 +825,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     handle.setAttribute('data-pkc-resizing', 'true');
 
     if (side === 'left') {
-      resizePane = root.querySelector<HTMLElement>('.pkc-sidebar');
+      resizePane = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
     } else {
-      resizePane = root.querySelector<HTMLElement>('.pkc-meta-pane');
+      resizePane = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
     }
 
     if (resizePane) {
@@ -1214,7 +1214,7 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
  * Toggle a pane between visible and collapsed (tray) state.
  */
 function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
-  const selector = pane === 'sidebar' ? '.pkc-sidebar' : '.pkc-meta-pane';
+  const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
   const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
   const handleSide = pane === 'sidebar' ? 'left' : 'right';
 

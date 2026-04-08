@@ -4757,3 +4757,63 @@ describe('Light mode detail pane notice', () => {
     expect(notice!.textContent).toContain('Light mode');
   });
 });
+
+// ── Pane resize: data-pkc-* selector compliance ──
+
+describe('Pane resize DOM selectors', () => {
+  it('sidebar has data-pkc-region="sidebar" for resize targeting', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+    expect(sidebar).not.toBeNull();
+    expect(sidebar!.tagName.toLowerCase()).toBe('aside');
+  });
+
+  it('meta pane has data-pkc-region="meta" for resize targeting', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const meta = root.querySelector('[data-pkc-region="meta"]');
+    expect(meta).not.toBeNull();
+    expect(meta!.tagName.toLowerCase()).toBe('aside');
+  });
+
+  it('resize handles have data-pkc-resize attributes', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    const leftHandle = root.querySelector('[data-pkc-resize="left"]');
+    const rightHandle = root.querySelector('[data-pkc-resize="right"]');
+    expect(leftHandle).not.toBeNull();
+    expect(rightHandle).not.toBeNull();
+  });
+
+  it('tray bars have data-pkc-region attributes', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
+    };
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="tray-left"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-region="tray-right"]')).not.toBeNull();
+  });
+});
