@@ -3473,3 +3473,234 @@ describe('Todo Kanban DnD Foundation', () => {
     });
   });
 });
+
+// ── Issue #64: Todo Calendar Date Move Foundation ──
+
+describe('Todo Calendar Date Move Foundation', () => {
+  const calDndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't4', title: 'No Date', body: '{"status":"open","description":"D"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function calDndState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: calDndContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, showArchived: false,
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      ...overrides,
+    };
+  }
+
+  // ── Drag source attributes ──
+
+  describe('drag source attributes', () => {
+    it('calendar todo items have draggable="true" in non-readonly mode', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBe('true');
+      }
+    });
+
+    it('calendar todo items have data-pkc-calendar-draggable attribute', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-calendar-draggable')).toBe('true');
+      }
+    });
+
+    it('calendar todo items are NOT draggable in readonly mode', () => {
+      render(calDndState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.getAttribute('draggable')).toBeNull();
+        expect(item.getAttribute('data-pkc-calendar-draggable')).toBeNull();
+      }
+    });
+  });
+
+  // ── Drop target attributes ──
+
+  describe('drop target attributes', () => {
+    it('day cells have data-pkc-calendar-drop-target attribute', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      // April 2026 has 30 days
+      expect(dropTargets.length).toBe(30);
+    });
+
+    it('day cells have data-pkc-date with YYYY-MM-DD format', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      const firstDate = dropTargets[0]!.getAttribute('data-pkc-date');
+      expect(firstDate).toBe('2026-04-01');
+      const lastDate = dropTargets[dropTargets.length - 1]!.getAttribute('data-pkc-date');
+      expect(lastDate).toBe('2026-04-30');
+    });
+
+    it('empty cells (outside month) do NOT have drop target', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const emptyCells = cal.querySelectorAll('.pkc-calendar-cell-empty');
+      for (const cell of emptyCells) {
+        expect(cell.hasAttribute('data-pkc-calendar-drop-target')).toBe(false);
+      }
+    });
+
+    it('drop targets are present even in readonly mode', () => {
+      render(calDndState({ readonly: true }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(dropTargets.length).toBe(30);
+    });
+  });
+
+  // ── Item-cell relationship ──
+
+  describe('item-cell relationship', () => {
+    it('todo items are inside the correct date cell', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const cell10 = cal.querySelector('[data-pkc-date="2026-04-10"]')!;
+      const items = cell10.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items).toHaveLength(2); // t1 and t2
+      const lids = Array.from(items).map(i => i.getAttribute('data-pkc-lid'));
+      expect(lids).toContain('t1');
+      expect(lids).toContain('t2');
+    });
+
+    it('cell with no todos has no items but still has drop target', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const cell01 = cal.querySelector('[data-pkc-date="2026-04-01"]')!;
+      const items = cell01.querySelectorAll('.pkc-calendar-todo-item');
+      expect(items).toHaveLength(0);
+      expect(cell01.hasAttribute('data-pkc-calendar-drop-target')).toBe(true);
+    });
+  });
+
+  // ── Coexistence with existing actions ──
+
+  describe('coexistence with existing actions', () => {
+    it('draggable items still have data-pkc-action="select-entry"', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-action')).toBe('select-entry');
+      }
+    });
+
+    it('draggable items still have data-pkc-lid', () => {
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const items = cal.querySelectorAll('.pkc-calendar-todo-item[data-pkc-calendar-draggable]');
+      for (const item of items) {
+        expect(item.getAttribute('data-pkc-lid')).toBeTruthy();
+      }
+    });
+  });
+
+  // ── Selection and overdue preserved ──
+
+  describe('selection preserved with DnD attributes', () => {
+    it('selected item has both data-pkc-selected and draggable', () => {
+      render(calDndState({ selectedLid: 't1' }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="t1"]')!;
+      expect(item.getAttribute('data-pkc-selected')).toBe('true');
+      expect(item.getAttribute('draggable')).toBe('true');
+    });
+
+    it('overdue attribute still applies on draggable items', () => {
+      // t1 is open with date 2026-04-10 — not overdue (future from today 2026-04-08)
+      // To test overdue, use a past-date todo
+      const pastContainer: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'p1', title: 'Past', body: '{"status":"open","description":"P","date":"2026-04-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        ],
+        relations: [], revisions: [], assets: {},
+      };
+      render(calDndState({ container: pastContainer }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const item = cal.querySelector('.pkc-calendar-todo-item[data-pkc-lid="p1"]')!;
+      expect(item.getAttribute('data-pkc-todo-overdue')).toBe('true');
+      expect(item.getAttribute('draggable')).toBe('true');
+    });
+  });
+
+  // ── Empty state ──
+
+  describe('empty state', () => {
+    it('empty calendar still has drop targets on day cells', () => {
+      const noTodos: Container = {
+        meta: mockContainer.meta,
+        entries: [],
+        relations: [], revisions: [], assets: {},
+      };
+      render(calDndState({ container: noTodos }), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const dropTargets = cal.querySelectorAll('[data-pkc-calendar-drop-target]');
+      expect(dropTargets.length).toBe(30); // April has 30 days
+    });
+  });
+
+  // ── Non-regression ──
+
+  describe('non-regression', () => {
+    it('kanban cards do NOT have calendar draggable attributes', () => {
+      render(calDndState({ viewMode: 'kanban' }), root);
+      const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+      const calDraggables = kanban.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(calDraggables).toHaveLength(0);
+    });
+
+    it('sidebar entries do NOT have calendar draggable attributes', () => {
+      render(calDndState(), root);
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+      const calDraggables = sidebar.querySelectorAll('[data-pkc-calendar-draggable]');
+      expect(calDraggables).toHaveLength(0);
+    });
+
+    it('view mode toggle still renders three buttons', () => {
+      render(calDndState(), root);
+      const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
+      expect(btns).toHaveLength(3);
+    });
+
+    it('calendar navigation buttons still present', () => {
+      render(calDndState(), root);
+      expect(root.querySelector('[data-pkc-action="calendar-prev"]')).not.toBeNull();
+      expect(root.querySelector('[data-pkc-action="calendar-next"]')).not.toBeNull();
+    });
+
+    it('today marker still present on today cell', () => {
+      // April 8, 2026 is today
+      render(calDndState(), root);
+      const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+      const todayCell = cal.querySelector('[data-pkc-calendar-today="true"]');
+      expect(todayCell).not.toBeNull();
+      expect(todayCell!.getAttribute('data-pkc-date')).toBe('2026-04-08');
+    });
+  });
+});

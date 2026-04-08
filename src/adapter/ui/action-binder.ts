@@ -462,6 +462,80 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     kanbanDraggedLid = null;
   }
 
+  // ── DnD handlers for calendar date move ──
+
+  let calendarDraggedLid: string | null = null;
+
+  function handleCalendarDragStart(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
+    if (!target) return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+
+    calendarDraggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+
+    requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  function handleCalendarDragOver(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    if (!dropTarget || !calendarDraggedLid) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget.setAttribute('data-pkc-drag-over', 'true');
+  }
+
+  function handleCalendarDragLeave(e: DragEvent): void {
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    if (dropTarget) {
+      dropTarget.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleCalendarDrop(e: DragEvent): void {
+    e.preventDefault();
+    const dropTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-drop-target]');
+    if (!dropTarget || !calendarDraggedLid) return;
+
+    dropTarget.removeAttribute('data-pkc-drag-over');
+
+    const state = dispatcher.getState();
+    if (!state.container || state.phase !== 'ready' || state.readonly) return;
+
+    const targetDate = dropTarget.getAttribute('data-pkc-date');
+    if (!targetDate) return;
+
+    const entry = state.container.entries.find((e) => e.lid === calendarDraggedLid);
+    if (!entry) return;
+
+    const todo = parseTodoBody(entry.body);
+
+    // Only update if date actually changes
+    if (todo.date !== targetDate) {
+      const updated = serializeTodoBody({ ...todo, date: targetDate });
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: calendarDraggedLid, body: updated });
+    }
+
+    // Select the dragged entry
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: calendarDraggedLid });
+
+    calendarDraggedLid = null;
+  }
+
+  function handleCalendarDragEnd(e: DragEvent): void {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
+    if (target) target.removeAttribute('data-pkc-dragging');
+
+    // Remove any lingering drag-over highlights on calendar cells
+    const overEls = root.querySelectorAll('[data-pkc-calendar-drop-target][data-pkc-drag-over]');
+    for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
+
+    calendarDraggedLid = null;
+  }
+
   // ── Context menu handler ──
 
   function dismissContextMenu(): void {
@@ -660,17 +734,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
+  root.addEventListener('dragstart', handleCalendarDragStart);
   root.addEventListener('dragover', handleDragOver);
   root.addEventListener('dragover', handleKanbanDragOver);
+  root.addEventListener('dragover', handleCalendarDragOver);
   root.addEventListener('dragover', handleFileDropOver);
   root.addEventListener('dragleave', handleDragLeave);
   root.addEventListener('dragleave', handleKanbanDragLeave);
+  root.addEventListener('dragleave', handleCalendarDragLeave);
   root.addEventListener('dragleave', handleFileDropLeave);
   root.addEventListener('drop', handleDrop);
   root.addEventListener('drop', handleKanbanDrop);
+  root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
+  root.addEventListener('dragend', handleCalendarDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
@@ -684,17 +763,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
     root.removeEventListener('dragstart', handleKanbanDragStart);
+    root.removeEventListener('dragstart', handleCalendarDragStart);
     root.removeEventListener('dragover', handleDragOver);
     root.removeEventListener('dragover', handleKanbanDragOver);
+    root.removeEventListener('dragover', handleCalendarDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
     root.removeEventListener('dragleave', handleDragLeave);
     root.removeEventListener('dragleave', handleKanbanDragLeave);
+    root.removeEventListener('dragleave', handleCalendarDragLeave);
     root.removeEventListener('dragleave', handleFileDropLeave);
     root.removeEventListener('drop', handleDrop);
     root.removeEventListener('drop', handleKanbanDrop);
+    root.removeEventListener('drop', handleCalendarDrop);
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
+    root.removeEventListener('dragend', handleCalendarDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);

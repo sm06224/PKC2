@@ -740,6 +740,8 @@ function renderCalendarView(state: AppState): HTMLElement {
       }
 
       const key = dateKey(state.calendarYear, state.calendarMonth, day);
+      cell.setAttribute('data-pkc-calendar-drop-target', 'true');
+      cell.setAttribute('data-pkc-date', key);
       if (key === todayKey) {
         cell.setAttribute('data-pkc-calendar-today', 'true');
       }
@@ -768,6 +770,11 @@ function renderCalendarView(state: AppState): HTMLElement {
           }
           if (isTodoPastDue(t.todo)) {
             item.setAttribute('data-pkc-todo-overdue', 'true');
+          }
+          // DnD: make calendar todo item draggable in non-readonly mode
+          if (!state.readonly) {
+            item.setAttribute('draggable', 'true');
+            item.setAttribute('data-pkc-calendar-draggable', 'true');
           }
           item.textContent = t.entry.title || t.todo.description || '(untitled)';
           todoList.appendChild(item);

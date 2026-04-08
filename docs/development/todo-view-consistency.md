@@ -267,7 +267,113 @@ functions (`handleKanbanDrag*`) from sidebar tree DnD (`data-pkc-draggable` /
 
 Not implemented in this issue:
 - Column reorder (columns are fixed: Todo / Done)
-- Calendar date DnD (may be added later via same pattern)
 - Touch support / pointer events
 - Custom drag preview / ghost image
 - Drag between different containers
+
+## 10. Calendar Date Move Foundation (Issue #64)
+
+### Purpose
+
+Drag-and-drop within the Calendar view to move a Todo to a different date.
+This is the date-axis counterpart to Kanban DnD (#63), which handles the status axis.
+Both use the same `QUICK_UPDATE_ENTRY` path — only the field being updated differs.
+
+### Drag Source
+
+Each Calendar todo item is a drag source (non-readonly mode only):
+
+| Attribute                        | Value    | Purpose                  |
+|---------------------------------|----------|--------------------------|
+| `draggable`                     | `"true"` | Native HTML5 DnD         |
+| `data-pkc-calendar-draggable`   | `"true"` | Calendar DnD identifier  |
+
+In readonly mode, neither attribute is set.
+
+### Drop Target
+
+Each day cell (non-empty, i.e. a real date) is a drop target:
+
+| Attribute                        | Value          | Purpose              |
+|---------------------------------|----------------|----------------------|
+| `data-pkc-calendar-drop-target` | `"true"`       | Accepts drops        |
+| `data-pkc-date`                 | `"YYYY-MM-DD"` | Target date on drop  |
+
+Empty cells (outside the current month) do not have drop target attributes.
+
+### Update Path
+
+```
+User drags todo item to a different day cell
+  → handleCalendarDrop: read target date from data-pkc-date
+    → parseTodoBody → set date to target → serializeTodoBody
+      → dispatch QUICK_UPDATE_ENTRY { lid, body }
+        → reducer: snapshotEntry + updateEntry
+          → re-render all views
+    → dispatch SELECT_ENTRY { lid }
+```
+
+If the item is dropped on the same date (no change), no update is dispatched.
+
+### Visual Feedback
+
+| State      | Attribute                             | CSS effect                           |
+|-----------|---------------------------------------|--------------------------------------|
+| Dragging  | `data-pkc-dragging="true"` on item    | Semi-transparent (opacity: 0.4), dashed border |
+| Drag over | `data-pkc-drag-over="true"` on cell   | Green tinted background, dashed outline |
+
+Both attributes are cleaned up in `handleCalendarDragEnd`.
+
+### Selection Behavior
+
+- Dropping an item dispatches `SELECT_ENTRY` for the dragged entry.
+- `selectedLid` is updated and reflected across all views.
+
+### Overdue Re-evaluation
+
+- Moving an open overdue todo to a future date clears overdue status.
+- Moving an open todo to a past date triggers overdue status.
+- This happens automatically because `isTodoPastDue` is evaluated on every render.
+
+### Click / Double-Click Coexistence
+
+- Calendar todo items have both `data-pkc-action="select-entry"` and `draggable`.
+- Single click triggers `select-entry` via the action-binder click handler.
+- Double-click triggers detached panel via `handleDblClick`.
+- Drag starts only fire after pointer movement (native browser behavior), so they do not interfere with click/dblclick.
+
+### Isolation from Other DnD Systems
+
+Calendar DnD uses `data-pkc-calendar-*` attributes and `handleCalendarDrag*` functions.
+Kanban DnD uses `data-pkc-kanban-*` / `handleKanbanDrag*`.
+Sidebar DnD uses `data-pkc-draggable` / `data-pkc-drop-target`.
+Each system has its own `draggedLid` variable. No cross-interference.
+
+### User Operation Flow
+
+1. Open Calendar view with dated todos
+2. Drag a todo item from its current date cell
+3. Drop on a different date cell
+4. The todo's date updates to the target date
+5. The item appears in the new cell on re-render
+6. Switch to Detail → entry body reflects updated date
+7. Switch to Kanban → card shows new date, overdue re-evaluated
+8. Selection is maintained throughout
+
+### Scope Boundaries
+
+Not implemented in this issue:
+- Month-crossing auto-navigation (drop only within visible month)
+- Date removal (cannot drop to "unset date")
+- Time-of-day support
+- Multiple todo batch move
+- Touch drag support
+- Cross-view DnD (e.g. Kanban card → Calendar cell)
+
+### Impact on Future Cross-View DnD
+
+If cross-view DnD is added later:
+- A unified `draggedLid` may be needed, but only when cross-view is truly required
+- The update paths (`QUICK_UPDATE_ENTRY` for status or date) remain the same
+- The distinction is which field is updated based on the drop target type
+- No new actions or reducers should be needed
