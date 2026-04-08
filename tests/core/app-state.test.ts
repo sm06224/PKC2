@@ -779,6 +779,26 @@ describe('clear filters', () => {
   });
 });
 
+// ── Show Archived ────────────────────────
+
+describe('show archived', () => {
+  it('createInitialState has showArchived false', () => {
+    const state = createInitialState();
+    expect(state.showArchived).toBe(false);
+  });
+
+  it('TOGGLE_SHOW_ARCHIVED flips showArchived in ready phase', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_SHOW_ARCHIVED' });
+    expect(state.showArchived).toBe(true);
+  });
+
+  it('TOGGLE_SHOW_ARCHIVED toggles back to false', () => {
+    const base = { ...readyState(), showArchived: true };
+    const { state } = reduce(base, { type: 'TOGGLE_SHOW_ARCHIVED' });
+    expect(state.showArchived).toBe(false);
+  });
+});
+
 // ── Sort ────────────────────────
 
 describe('sort', () => {

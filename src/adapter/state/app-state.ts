@@ -64,6 +64,8 @@ export interface AppState {
   exportMutability: ExportMutability | null;
   /** True when running as a readonly artifact. Suppresses edit UI. */
   readonly: boolean;
+  /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
+  showArchived: boolean;
 }
 
 /**
@@ -93,6 +95,7 @@ export function createInitialState(): AppState {
     exportMode: null,
     exportMutability: null,
     readonly: false,
+    showArchived: false,
   };
 }
 
@@ -403,6 +406,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: next,
         events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
       };
+    }
+    case 'TOGGLE_SHOW_ARCHIVED': {
+      const next: AppState = { ...state, showArchived: !state.showArchived };
+      return { state: next, events: [] };
     }
     case 'REHYDRATE': {
       if (!state.readonly || !state.container) return blocked(state, action);

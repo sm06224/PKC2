@@ -6,11 +6,13 @@ import type { DetailPresenter } from './detail-presenter';
  * Stored as JSON string in entry.body.
  *
  * `date` is optional (YYYY-MM-DD). Absent for legacy todos or todos without a due date.
+ * `archived` is optional (boolean). Absent or false = active. true = archived.
  */
 export interface TodoBody {
   status: 'open' | 'done';
   description: string;
   date?: string;
+  archived?: boolean;
 }
 
 export function parseTodoBody(body: string): TodoBody {
@@ -20,6 +22,7 @@ export function parseTodoBody(body: string): TodoBody {
       status: parsed.status === 'done' ? 'done' : 'open',
       description: typeof parsed.description === 'string' ? parsed.description : '',
       date: typeof parsed.date === 'string' && parsed.date !== '' ? parsed.date : undefined,
+      archived: parsed.archived === true ? true : undefined,
     };
   } catch {
     // Non-JSON body: treat as description with open status
@@ -31,6 +34,9 @@ export function serializeTodoBody(todo: TodoBody): string {
   const out: Record<string, unknown> = { status: todo.status, description: todo.description };
   if (todo.date) {
     out.date = todo.date;
+  }
+  if (todo.archived) {
+    out.archived = true;
   }
   return JSON.stringify(out);
 }
@@ -65,6 +71,9 @@ export const todoPresenter: DetailPresenter = {
     const todo = parseTodoBody(entry.body);
     const container = document.createElement('div');
     container.className = 'pkc-todo-view';
+    if (todo.archived) {
+      container.setAttribute('data-pkc-todo-archived', 'true');
+    }
 
     const statusEl = document.createElement('button');
     statusEl.className = 'pkc-todo-status';
@@ -86,6 +95,14 @@ export const todoPresenter: DetailPresenter = {
         dateEl.classList.add('pkc-todo-date-overdue');
       }
       right.appendChild(dateEl);
+    }
+
+    if (todo.archived) {
+      const archivedEl = document.createElement('span');
+      archivedEl.className = 'pkc-todo-archived-badge';
+      archivedEl.setAttribute('data-pkc-field', 'todo-archived-display');
+      archivedEl.textContent = 'Archived';
+      right.appendChild(archivedEl);
     }
 
     if (todo.description) {
@@ -125,6 +142,20 @@ export const todoPresenter: DetailPresenter = {
     if (todo.date) dateInput.value = todo.date;
     container.appendChild(dateInput);
 
+    // Archived checkbox
+    const archivedRow = document.createElement('label');
+    archivedRow.className = 'pkc-todo-archived-label';
+    const archivedCheck = document.createElement('input');
+    archivedCheck.type = 'checkbox';
+    archivedCheck.setAttribute('data-pkc-field', 'todo-archived');
+    archivedCheck.className = 'pkc-todo-archived-check';
+    if (todo.archived) archivedCheck.checked = true;
+    archivedRow.appendChild(archivedCheck);
+    const archivedText = document.createElement('span');
+    archivedText.textContent = 'Archived';
+    archivedRow.appendChild(archivedText);
+    container.appendChild(archivedRow);
+
     // Description textarea
     const descArea = document.createElement('textarea');
     descArea.setAttribute('data-pkc-field', 'todo-description');
@@ -148,9 +179,11 @@ export const todoPresenter: DetailPresenter = {
     const statusEl = root.querySelector<HTMLSelectElement>('[data-pkc-field="todo-status"]');
     const descEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="todo-description"]');
     const dateEl = root.querySelector<HTMLInputElement>('[data-pkc-field="todo-date"]');
+    const archivedEl = root.querySelector<HTMLInputElement>('[data-pkc-field="todo-archived"]');
     const status = statusEl?.value === 'done' ? 'done' : 'open';
     const description = descEl?.value ?? '';
     const date = dateEl?.value || undefined;
-    return serializeTodoBody({ status, description, date });
+    const archived = archivedEl?.checked ? true : undefined;
+    return serializeTodoBody({ status, description, date, archived });
   },
 };

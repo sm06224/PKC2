@@ -63,7 +63,8 @@ export type UserAction =
    * - Clears readonly flag, making the workspace fully editable.
    * - Does NOT modify the original artifact.
    */
-  | { type: 'REHYDRATE' };
+  | { type: 'REHYDRATE' }
+  | { type: 'TOGGLE_SHOW_ARCHIVED' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

@@ -350,6 +350,21 @@ function renderSidebar(state: AppState): HTMLElement {
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
   }
 
+  // Show archived toggle (only when there are archived todos)
+  if (allEntries.some((e) => e.archetype === 'todo' && parseTodoBody(e.body).archived)) {
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.showArchived;
+    check.setAttribute('data-pkc-action', 'toggle-show-archived');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show archived';
+    toggle.appendChild(labelText);
+    sidebar.appendChild(toggle);
+  }
+
   // Active tag filter indicator
   if (state.tagFilter && state.container) {
     const tagEntry = state.container.entries.find((e) => e.lid === state.tagFilter);
@@ -371,10 +386,16 @@ function renderSidebar(state: AppState): HTMLElement {
     }
   }
 
-  // Pipeline: query → archetype → tag → sort
+  // Pipeline: query → archetype → tag → archive → sort
   let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
   if (state.tagFilter && state.container) {
     filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  }
+  if (!state.showArchived) {
+    filtered = filtered.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      return !parseTodoBody(e.body).archived;
+    });
   }
   const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
 
@@ -545,6 +566,12 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
     statusBadge.setAttribute('data-pkc-todo-status', todo.status);
     statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
     li.appendChild(statusBadge);
+    if (todo.archived) {
+      li.setAttribute('data-pkc-todo-archived', 'true');
+      const archivedBadge = createElement('span', 'pkc-todo-archived-sidebar');
+      archivedBadge.textContent = 'Archived';
+      li.appendChild(archivedBadge);
+    }
   }
 
   // History indicator

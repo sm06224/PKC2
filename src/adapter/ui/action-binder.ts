@@ -201,6 +201,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (panel) panel.remove();
         break;
       }
+      case 'toggle-show-archived': {
+        dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
+        break;
+      }
       case 'toggle-sidebar': {
         togglePane(root, 'sidebar');
         break;
