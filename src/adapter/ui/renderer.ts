@@ -498,16 +498,18 @@ function renderSidebar(state: AppState): HTMLElement {
     sidebar.appendChild(rootDrop);
   }
 
-  // Restore candidates (deleted entries with revisions)
+  // Restore candidates (deleted entries with revisions) — collapsible, closed by default
   if (state.container && state.phase === 'ready') {
     const candidates = getRestoreCandidates(state.container);
     if (candidates.length > 0) {
-      const section = createElement('div', 'pkc-restore-candidates');
-      section.setAttribute('data-pkc-region', 'restore-candidates');
+      const details = document.createElement('details');
+      details.className = 'pkc-restore-candidates';
+      details.setAttribute('data-pkc-region', 'restore-candidates');
 
-      const heading = createElement('div', 'pkc-restore-heading');
-      heading.textContent = `Deleted (${candidates.length} restorable)`;
-      section.appendChild(heading);
+      const summary = document.createElement('summary');
+      summary.className = 'pkc-restore-heading';
+      summary.textContent = `🗑️ Deleted (${candidates.length})`;
+      details.appendChild(summary);
 
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
@@ -533,17 +535,17 @@ function renderSidebar(state: AppState): HTMLElement {
 
         item.appendChild(info);
 
-        const btn = createElement('button', 'pkc-btn');
+        const btn = createElement('button', 'pkc-btn-small');
         btn.setAttribute('data-pkc-action', 'restore-entry');
         btn.setAttribute('data-pkc-lid', rev.entry_lid);
         btn.setAttribute('data-pkc-revision-id', rev.id);
-        btn.textContent = 'Restore deleted entry';
+        btn.textContent = 'Restore';
         item.appendChild(btn);
 
-        section.appendChild(item);
+        details.appendChild(item);
       }
 
-      sidebar.appendChild(section);
+      sidebar.appendChild(details);
     }
   }
 

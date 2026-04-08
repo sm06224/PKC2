@@ -432,21 +432,40 @@
   color: rgba(255,255,255,0.7);
 }
 
-/* ── Restore candidates ── */
+/* ── Restore candidates (collapsible) ── */
 .pkc-restore-candidates {
-  border-top: 2px solid var(--c-border);
-  padding: 0.5rem;
+  border-top: 1px solid var(--c-border);
 }
 
 .pkc-restore-heading {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--c-muted);
-  margin-bottom: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.pkc-restore-heading::-webkit-details-marker {
+  display: none;
+}
+
+.pkc-restore-heading::before {
+  content: '▸ ';
+}
+
+.pkc-restore-candidates[open] > .pkc-restore-heading::before {
+  content: '▾ ';
+}
+
+.pkc-restore-heading:hover {
+  color: var(--c-fg);
+  background: var(--c-hover);
 }
 
 .pkc-restore-item {
-  padding: 0.35rem 0;
+  padding: 0.25rem 0.5rem;
   border-bottom: 1px solid var(--c-border);
 }
 

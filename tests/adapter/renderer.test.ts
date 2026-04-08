@@ -490,7 +490,7 @@ describe('Renderer', () => {
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
     expect(section).not.toBeNull();
-    expect(section!.textContent).toContain('1 restorable');
+    expect(section!.textContent).toContain('Deleted');
     expect(section!.textContent).toContain('Deleted Entry');
     expect(section!.textContent).toContain('Note'); // archetype badge (label)
 
@@ -498,7 +498,7 @@ describe('Renderer', () => {
     expect(restoreBtn).not.toBeNull();
     expect(restoreBtn!.getAttribute('data-pkc-lid')).toBe('deleted-lid');
     expect(restoreBtn!.getAttribute('data-pkc-revision-id')).toBe('rev-del');
-    expect(restoreBtn!.textContent).toContain('Restore deleted entry');
+    expect(restoreBtn!.textContent).toContain('Restore');
   });
 
   it('shows data-pkc-has-history on entries with revisions', () => {
