@@ -1169,4 +1169,39 @@ describe('sort', () => {
     expect(state.container!.entries).toHaveLength(3);
     expect(state.container!.meta.title).toBe('Test');
   });
+
+  // ── editing forces viewMode to detail ──
+  it('BEGIN_EDIT switches viewMode to detail when in calendar', () => {
+    const cal: AppState = { ...readyState(), viewMode: 'calendar' };
+    const { state } = reduce(cal, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(state.phase).toBe('editing');
+    expect(state.viewMode).toBe('detail');
+  });
+
+  it('BEGIN_EDIT switches viewMode to detail when in kanban', () => {
+    const kanban: AppState = { ...readyState(), viewMode: 'kanban' };
+    const { state } = reduce(kanban, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(state.phase).toBe('editing');
+    expect(state.viewMode).toBe('detail');
+  });
+
+  it('CREATE_ENTRY switches viewMode to detail when in calendar', () => {
+    const cal: AppState = { ...readyState(), viewMode: 'calendar' };
+    const { state } = reduce(cal, { type: 'CREATE_ENTRY', archetype: 'text', title: 'New' });
+    expect(state.phase).toBe('editing');
+    expect(state.viewMode).toBe('detail');
+  });
+
+  it('CREATE_ENTRY switches viewMode to detail when in kanban', () => {
+    const kanban: AppState = { ...readyState(), viewMode: 'kanban' };
+    const { state } = reduce(kanban, { type: 'CREATE_ENTRY', archetype: 'folder', title: 'F' });
+    expect(state.phase).toBe('editing');
+    expect(state.viewMode).toBe('detail');
+  });
+
+  it('BEGIN_EDIT keeps viewMode detail if already detail', () => {
+    const detail: AppState = { ...readyState(), viewMode: 'detail' };
+    const { state } = reduce(detail, { type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(state.viewMode).toBe('detail');
+  });
 });
