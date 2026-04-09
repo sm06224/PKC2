@@ -18,6 +18,16 @@ import {
   formatShortDateTime,
   formatISO8601,
 } from '../../features/datetime/datetime-format';
+import {
+  isSlashEligible,
+  shouldOpenSlashMenu,
+  isSlashMenuOpen,
+  openSlashMenu,
+  closeSlashMenu,
+  filterSlashMenu,
+  handleSlashMenuKeydown,
+  getSlashTriggerStart,
+} from './slash-menu';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -332,6 +342,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    // Slash menu gets first shot at keyboard events when open
+    if (isSlashMenuOpen()) {
+      if (handleSlashMenuKeydown(e)) return;
+    }
+
     const state = dispatcher.getState();
     const mod = e.ctrlKey || e.metaKey;
 
@@ -361,6 +376,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
+      if (isSlashMenuOpen()) {
+        closeSlashMenu();
+        return;
+      }
       // Close shortcut help if open
       const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
       if (helpOverlay && helpOverlay.style.display !== 'none') {
@@ -396,6 +416,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (target.getAttribute('data-pkc-field') === 'search') {
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
+      return;
+    }
+
+    // Slash menu trigger detection for eligible textareas
+    if (target instanceof HTMLTextAreaElement && isSlashEligible(target)) {
+      const caretPos = target.selectionStart ?? 0;
+      const text = target.value;
+
+      if (isSlashMenuOpen()) {
+        // Menu is open — update filter based on text typed after `/`
+        const slashPos = getSlashTriggerStart(text, caretPos);
+        if (slashPos >= 0) {
+          const query = text.slice(slashPos + 1, caretPos);
+          filterSlashMenu(query);
+        } else {
+          // `/` was deleted or cursor moved — close menu
+          closeSlashMenu();
+        }
+      } else if (shouldOpenSlashMenu(text, caretPos)) {
+        openSlashMenu(target, caretPos - 1, root);
+      }
     }
   }
 
@@ -807,6 +848,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleDocumentClick(e: MouseEvent): void {
+    // Close slash menu on click outside
+    if (isSlashMenuOpen()) {
+      const slashMenu = root.querySelector('[data-pkc-region="slash-menu"]');
+      if (!slashMenu || !slashMenu.contains(e.target as Node)) {
+        closeSlashMenu();
+      }
+    }
+
     const menu = root.querySelector('[data-pkc-region="context-menu"]');
     if (!menu) return;
     // If clicking inside the menu, let the action handler fire first
@@ -1070,6 +1119,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
     clearAllDragState();
+    closeSlashMenu();
   };
 }
 

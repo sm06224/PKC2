@@ -5,7 +5,7 @@
  * All formatters accept an optional Date for testability (default: now).
  */
 
-const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const DAY_ABBR = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;

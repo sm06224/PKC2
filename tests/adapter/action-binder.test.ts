@@ -419,7 +419,7 @@ describe('Date/Time shortcuts', () => {
     }));
 
     // yy/MM/dd ddd
-    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} (Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/);
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} [日月火水木金土]$/);
   });
 
   it('Ctrl+Shift+D inserts short date+time', () => {
@@ -440,7 +440,7 @@ describe('Date/Time shortcuts', () => {
     }));
 
     // yy/MM/dd ddd HH:mm:ss
-    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2}:\d{2}$/);
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} [日月火水木金土] \d{2}:\d{2}:\d{2}$/);
   });
 
   it('Ctrl+Shift+Alt+D inserts ISO 8601', () => {

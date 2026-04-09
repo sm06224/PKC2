@@ -15,9 +15,9 @@ function makeDate(year: number, month: number, day: number, h: number, m: number
   return new Date(year, month - 1, day, h, m, s);
 }
 
-const THU = makeDate(2026, 4, 9, 14, 5, 9);   // Thursday
-const SUN = makeDate(2026, 1, 4, 0, 0, 0);    // Sunday
-const SAT = makeDate(2025, 12, 27, 23, 59, 59); // Saturday
+const THU = makeDate(2026, 4, 9, 14, 5, 9);   // Thursday = 木
+const SUN = makeDate(2026, 1, 4, 0, 0, 0);    // Sunday = 日
+const SAT = makeDate(2025, 12, 27, 23, 59, 59); // Saturday = 土
 
 describe('formatDate', () => {
   it('formats yyyy/MM/dd', () => {
@@ -50,22 +50,22 @@ describe('formatDateTime', () => {
 });
 
 describe('formatShortDate', () => {
-  it('formats yy/MM/dd ddd', () => {
-    expect(formatShortDate(THU)).toBe('26/04/09 Thu');
+  it('formats yy/MM/dd with Japanese day', () => {
+    expect(formatShortDate(THU)).toBe('26/04/09 木');
   });
 
-  it('shows Sun for Sunday', () => {
-    expect(formatShortDate(SUN)).toBe('26/01/04 Sun');
+  it('shows 日 for Sunday', () => {
+    expect(formatShortDate(SUN)).toBe('26/01/04 日');
   });
 
-  it('shows Sat for Saturday', () => {
-    expect(formatShortDate(SAT)).toBe('25/12/27 Sat');
+  it('shows 土 for Saturday', () => {
+    expect(formatShortDate(SAT)).toBe('25/12/27 土');
   });
 });
 
 describe('formatShortDateTime', () => {
-  it('formats yy/MM/dd ddd HH:mm:ss', () => {
-    expect(formatShortDateTime(THU)).toBe('26/04/09 Thu 14:05:09');
+  it('formats yy/MM/dd with Japanese day + HH:mm:ss', () => {
+    expect(formatShortDateTime(THU)).toBe('26/04/09 木 14:05:09');
   });
 });
 
