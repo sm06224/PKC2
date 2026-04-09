@@ -1052,7 +1052,11 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
 
   // Archetype-dispatched body rendering
   const presenter = getPresenter(entry.archetype);
-  view.appendChild(presenter.renderBody(entry));
+  if (entry.archetype === 'attachment' && container?.assets) {
+    view.appendChild(presenter.renderBody(entry, container.assets));
+  } else {
+    view.appendChild(presenter.renderBody(entry));
+  }
 
   // Folder contents section (show children for folder entries)
   if (entry.archetype === 'folder' && container) {

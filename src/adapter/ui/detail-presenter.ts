@@ -12,8 +12,8 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
  * so they belong in adapter/ui, not in core or features.
  */
 export interface DetailPresenter {
-  /** Render the entry body for view mode. */
-  renderBody(entry: Entry): HTMLElement;
+  /** Render the entry body for view mode. Assets context is passed for attachment entries. */
+  renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
   /** Collect the body string from the editor DOM. Called on commit. */

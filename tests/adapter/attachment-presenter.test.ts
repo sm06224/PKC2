@@ -241,6 +241,39 @@ describe('Attachment Presenter', () => {
       expect(btn).toBeNull();
     });
 
+    // ── new-format with assets context (critical regression fix) ──
+
+    it('shows download button when asset_key has data in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      const btn = el.querySelector('[data-pkc-action="download-attachment"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Download');
+    });
+
+    it('does not show stripped notice when data exists in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      expect(el.querySelector('.pkc-attachment-stripped')).toBeNull();
+    });
+
+    it('shows preview placeholder when data exists in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","asset_key":"ast-123","size":100}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview).not.toBeNull();
+    });
+
+    it('still shows stripped notice when asset_key has no data in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-other': 'irrelevant' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      expect(el.querySelector('.pkc-attachment-stripped')!.textContent).toBe('Data not included (Light export)');
+    });
+
     it('shows image preview placeholder for image types', () => {
       const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","data":"iVBOR","size":100}');
       const el = attachmentPresenter.renderBody(entry);

@@ -175,16 +175,17 @@ export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): 
 }
 
 export const attachmentPresenter: DetailPresenter = {
-  renderBody(entry: Entry): HTMLElement {
+  renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement {
     const att = parseAttachmentBody(entry.body);
     const root = document.createElement('div');
     root.className = 'pkc-attachment-view';
 
     const hasFile = !!att.name;
     const displaySize = resolveDisplaySize(att);
-    // Data availability: asset_key with no data means Light export (stripped)
-    const dataAvailable = !!(att.data || att.asset_key);
-    const dataStripped = !!att.asset_key && !att.data;
+    // Data availability: check container.assets for new-format entries
+    const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
+    const dataAvailable = !!(att.data || hasAssetData || att.asset_key);
+    const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
 
     if (!hasFile) {
       const empty = document.createElement('div');

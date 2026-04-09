@@ -3696,12 +3696,13 @@ describe('Todo Calendar Date Move Foundation', () => {
     });
 
     it('today marker still present on today cell', () => {
-      // April 8, 2026 is today
       render(calDndState(), root);
       const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
       const todayCell = cal.querySelector('[data-pkc-calendar-today="true"]');
       expect(todayCell).not.toBeNull();
-      expect(todayCell!.getAttribute('data-pkc-date')).toBe('2026-04-08');
+      // Verify the today cell has a date attribute matching today
+      const todayStr = new Date().toISOString().slice(0, 10);
+      expect(todayCell!.getAttribute('data-pkc-date')).toBe(todayStr);
     });
   });
 });
