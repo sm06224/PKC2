@@ -1201,8 +1201,8 @@ function populatePreviewElement(
       iframe.srcdoc = htmlString;
       iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
       el.appendChild(iframe);
-      // Open in new window button (uses blob URL for the separate window)
-      el.appendChild(createLazyOpenButton(resolved, '🌐 Open HTML in New Window'));
+      // Open in new window — write HTML directly (same reason as srcdoc: avoid blob: origin issues)
+      el.appendChild(createHtmlOpenButton(htmlString, resolved.name));
       // Sandbox status note
       const activePerms = ['allow-same-origin', ...sandboxAllow.filter((a) => a !== 'allow-same-origin')];
       const sandboxNote = document.createElement('div');
@@ -1224,6 +1224,27 @@ function createOpenButton(blobUrl: string, name: string, label: string): HTMLEle
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
     window.open(blobUrl, '_blank', 'noopener');
+  });
+  return btn;
+}
+
+/**
+ * Create an "Open in New Window" button for HTML/SVG content.
+ * Opens a new window and writes HTML directly via document.write(),
+ * avoiding blob: origin issues that prevent some single-file HTML from running.
+ */
+function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-attachment-open-btn';
+  btn.textContent = '🌐 Open HTML in New Window';
+  btn.setAttribute('title', `Open ${name} in a new browser window`);
+  btn.addEventListener('click', () => {
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.open();
+      win.document.write(htmlString);
+      win.document.close();
+    }
   });
   return btn;
 }
