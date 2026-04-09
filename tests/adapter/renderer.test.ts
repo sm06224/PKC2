@@ -4968,9 +4968,17 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     const menu = root.querySelector('[data-pkc-region="shell-menu"]');
     expect(menu).not.toBeNull();
     expect((menu as HTMLElement).style.display).toBe('none');
-    // Has theme toggle and shortcut button
-    expect(menu!.querySelector('[data-pkc-action="toggle-theme"]')).not.toBeNull();
+    // Overlay/card dialog structure
+    expect(menu!.classList.contains('pkc-shell-menu-overlay')).toBe(true);
+    expect(menu!.querySelector('.pkc-shell-menu-card')).not.toBeNull();
+    // Three explicit theme buttons (light / dark / system)
+    const themeBtns = menu!.querySelectorAll('[data-pkc-action="set-theme"]');
+    expect(themeBtns.length).toBe(3);
+    const modes = Array.from(themeBtns).map((b) => b.getAttribute('data-pkc-theme-mode'));
+    expect(modes).toEqual(['light', 'dark', 'system']);
+    // Shortcut button and close button
     expect(menu!.querySelector('[data-pkc-action="show-shortcut-help"]')).not.toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="close-shell-menu"]')).not.toBeNull();
     // Has version info
     expect(menu!.textContent).toContain('PKC2');
   });

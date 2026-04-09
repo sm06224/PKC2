@@ -143,8 +143,11 @@ function renderShell(state: AppState): HTMLElement {
     shell.appendChild(renderPendingOffers(state.pendingOffers));
   }
 
-  // Shell menu panel (hidden by default, toggled by action-binder)
-  shell.appendChild(renderShellMenu());
+  // Shell menu panel (hidden by default, toggled by action-binder).
+  // The current theme is read from the root element so the active
+  // theme button can be highlighted on every render.
+  const currentTheme = getCurrentThemeMode();
+  shell.appendChild(renderShellMenu(currentTheme));
 
   // Shortcut help overlay (hidden by default, toggled by ? key)
   shell.appendChild(renderShortcutHelp());
@@ -309,21 +312,58 @@ function renderHeader(state: AppState): HTMLElement {
   return header;
 }
 
-function renderShellMenu(): HTMLElement {
-  const panel = createElement('div', 'pkc-shell-menu');
-  panel.setAttribute('data-pkc-region', 'shell-menu');
-  panel.style.display = 'none';
+/**
+ * Read the currently effective theme mode from the root element.
+ * `data-pkc-theme="light" | "dark"` is an explicit override; absence
+ * means "follow the system `prefers-color-scheme`" (i.e. system mode).
+ */
+function getCurrentThemeMode(): 'light' | 'dark' | 'system' {
+  if (typeof document === 'undefined') return 'system';
+  const pkc = document.getElementById('pkc-root');
+  const attr = pkc?.getAttribute('data-pkc-theme');
+  if (attr === 'light' || attr === 'dark') return attr;
+  return 'system';
+}
 
-  // Theme toggle
+function renderShellMenu(currentTheme: 'light' | 'dark' | 'system'): HTMLElement {
+  // Dialog-style overlay (matches the shortcut-help pattern) so that the
+  // menu is always centered on the viewport, above all other panes, and
+  // never gets pushed below the right pane or clipped by the event log.
+  const overlay = createElement('div', 'pkc-shell-menu-overlay');
+  overlay.setAttribute('data-pkc-region', 'shell-menu');
+  overlay.style.display = 'none';
+
+  const card = createElement('div', 'pkc-shell-menu-card');
+
+  const heading = createElement('h2', 'pkc-shell-menu-heading');
+  heading.textContent = 'Menu';
+  card.appendChild(heading);
+
+  // Theme selector: three explicit modes (Light / Dark / System).
+  // The active mode is highlighted via `data-pkc-theme-active="true"`.
   const themeSection = createElement('div', 'pkc-shell-menu-section');
   const themeLabel = createElement('span', 'pkc-shell-menu-label');
   themeLabel.textContent = 'Theme';
   themeSection.appendChild(themeLabel);
-  const themeToggle = createElement('button', 'pkc-btn-small');
-  themeToggle.setAttribute('data-pkc-action', 'toggle-theme');
-  themeToggle.textContent = '🌓 Toggle Dark / Light';
-  themeSection.appendChild(themeToggle);
-  panel.appendChild(themeSection);
+
+  const themeButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const modes: { mode: 'light' | 'dark' | 'system'; label: string }[] = [
+    { mode: 'light', label: '☀ Light' },
+    { mode: 'dark', label: '🌙 Dark' },
+    { mode: 'system', label: '🖥 System' },
+  ];
+  for (const { mode, label } of modes) {
+    const btn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+    btn.setAttribute('data-pkc-action', 'set-theme');
+    btn.setAttribute('data-pkc-theme-mode', mode);
+    if (currentTheme === mode) {
+      btn.setAttribute('data-pkc-theme-active', 'true');
+    }
+    btn.textContent = label;
+    themeButtons.appendChild(btn);
+  }
+  themeSection.appendChild(themeButtons);
+  card.appendChild(themeSection);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
@@ -331,14 +371,21 @@ function renderShellMenu(): HTMLElement {
   shortcutBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
   shortcutBtn.textContent = '⌨ Keyboard Shortcuts';
   shortcutSection.appendChild(shortcutBtn);
-  panel.appendChild(shortcutSection);
+  card.appendChild(shortcutSection);
 
   // Version
   const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
   versionSection.textContent = `PKC2 v${VERSION}`;
-  panel.appendChild(versionSection);
+  card.appendChild(versionSection);
 
-  return panel;
+  // Close button
+  const closeBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-close');
+  closeBtn.setAttribute('data-pkc-action', 'close-shell-menu');
+  closeBtn.textContent = 'Close (Esc)';
+  card.appendChild(closeBtn);
+
+  overlay.appendChild(card);
+  return overlay;
 }
 
 function renderShortcutHelp(): HTMLElement {

@@ -2233,25 +2233,43 @@
   transform: scale(0.9);
 }
 
-/* ── Shell Menu ── */
-.pkc-shell-menu {
-  position: absolute;
-  top: 100%;
-  right: 0.5rem;
-  z-index: 100;
-  min-width: 200px;
+/* ── Shell Menu (dialog) ── */
+.pkc-shell-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-shell-menu-card {
   background: var(--c-surface);
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-accent);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 0.5rem;
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 360px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pkc-shell-menu-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
 }
 
 .pkc-shell-menu-section {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.35rem 0;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
   border-bottom: 1px solid var(--c-border);
 }
 
@@ -2266,10 +2284,30 @@
   letter-spacing: 0.05em;
 }
 
+.pkc-shell-menu-theme-buttons {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.pkc-shell-menu-theme-btn {
+  flex: 1;
+}
+
+.pkc-shell-menu-theme-btn[data-pkc-theme-active="true"] {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+  border-color: var(--c-accent);
+}
+
 .pkc-shell-menu-version {
   font-size: 0.6rem;
   color: var(--c-muted);
   text-align: center;
+}
+
+.pkc-shell-menu-close {
+  margin-top: 0.5rem;
+  align-self: flex-end;
 }
 
 /* ── Shortcut Help Overlay ── */

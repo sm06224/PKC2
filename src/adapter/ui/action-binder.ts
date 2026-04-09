@@ -48,6 +48,14 @@ import {
 
 export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
   function handleClick(e: Event): void {
+    // Shell menu backdrop click: close menu if user clicked outside the card.
+    const rawTarget = e.target as HTMLElement | null;
+    if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
+      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+      if (menu) menu.style.display = 'none';
+      return;
+    }
+
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
     if (!target) return;
 
@@ -328,11 +336,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
         break;
       }
-      case 'toggle-theme': {
-        toggleTheme(root);
-        // Close menu after toggle
-        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menuPanel) menuPanel.style.display = 'none';
+      case 'close-shell-menu': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = 'none';
+        break;
+      }
+      case 'set-theme': {
+        const mode = target.getAttribute('data-pkc-theme-mode') as
+          | 'light'
+          | 'dark'
+          | 'system'
+          | null;
+        if (mode) setTheme(root, mode);
+        // Stay open so the user can verify the new theme before closing.
         break;
       }
       case 'show-shortcut-help': {
@@ -1555,11 +1571,27 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   }
 }
 
-function toggleTheme(root: HTMLElement): void {
-  const pkc = root.closest('#pkc-root') ?? root;
-  const current = pkc.getAttribute('data-pkc-theme');
-  const next = current === 'light' ? 'dark' : 'light';
-  pkc.setAttribute('data-pkc-theme', next);
+/**
+ * Apply a theme mode. 'light' / 'dark' set an explicit override; 'system'
+ * removes the override so CSS falls back to the `prefers-color-scheme`
+ * media query. Also updates the active highlighting on the theme buttons
+ * inside the shell menu so the UI stays in sync without a full re-render.
+ */
+function setTheme(root: HTMLElement, mode: 'light' | 'dark' | 'system'): void {
+  const pkc = (root.closest('#pkc-root') ?? root) as HTMLElement;
+  if (mode === 'system') {
+    pkc.removeAttribute('data-pkc-theme');
+  } else {
+    pkc.setAttribute('data-pkc-theme', mode);
+  }
+  const buttons = pkc.querySelectorAll<HTMLElement>('.pkc-shell-menu-theme-btn');
+  for (const btn of buttons) {
+    if (btn.getAttribute('data-pkc-theme-mode') === mode) {
+      btn.setAttribute('data-pkc-theme-active', 'true');
+    } else {
+      btn.removeAttribute('data-pkc-theme-active');
+    }
+  }
 }
 
 /**
