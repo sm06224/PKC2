@@ -33,7 +33,7 @@ const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
 const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
-  text: 'Note',
+  text: 'Text',
   textlog: 'Log',
   todo: 'Todo',
   form: 'Form',
@@ -220,9 +220,8 @@ function renderHeader(state: AppState): HTMLElement {
     }
 
     const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
-      { arch: 'text', label: `${archetypeIcon('text')} Note`, tip: 'Create a new note entry' },
+      { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry' },
       { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
-      { arch: 'form', label: `${archetypeIcon('form')} Form`, tip: 'Create a new form entry' },
       { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
@@ -530,7 +529,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
         if (parsed) {
           const archetype = createElement('span', 'pkc-archetype-badge');
-          archetype.textContent = archetypeLabel(parsed.archetype as ArchetypeId);
+          archetype.textContent = `${archetypeIcon(parsed.archetype as ArchetypeId)} ${archetypeLabel(parsed.archetype as ArchetypeId)}`;
           info.appendChild(archetype);
         }
 
@@ -590,13 +589,8 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   }
 
   const title = createElement('span', 'pkc-entry-title');
-  title.textContent = entry.title || '(untitled)';
+  title.textContent = `${archetypeIcon(entry.archetype)} ${entry.title || '(untitled)'}`;
   li.appendChild(title);
-
-  const badge = createElement('span', 'pkc-archetype-badge');
-  badge.setAttribute('data-pkc-archetype', entry.archetype);
-  badge.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
-  li.appendChild(badge);
 
   // Todo status indicator
   if (entry.archetype === 'todo') {
@@ -620,9 +614,7 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       li.setAttribute('data-pkc-has-history', 'true');
       const revBadge = createElement('span', 'pkc-revision-badge');
       revBadge.setAttribute('data-pkc-revision-count', String(revCount));
-      revBadge.textContent = revCount === 1
-        ? '1 version'
-        : `${revCount} versions`;
+      revBadge.textContent = `r${revCount}`;
       li.appendChild(revBadge);
     }
   }
@@ -1601,7 +1593,7 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
 
       const badge = createElement('span', 'pkc-archetype-badge');
       badge.setAttribute('data-pkc-archetype', child.archetype);
-      badge.textContent = archetypeLabel(child.archetype);
+      badge.textContent = `${archetypeIcon(child.archetype)} ${archetypeLabel(child.archetype)}`;
       item.appendChild(badge);
 
       list.appendChild(item);

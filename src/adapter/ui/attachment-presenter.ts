@@ -231,6 +231,14 @@ export const attachmentPresenter: DetailPresenter = {
     nameText.className = 'pkc-attachment-filename';
     nameText.textContent = att.name;
     nameRow.appendChild(nameText);
+    // Rename button (only in non-readonly contexts — action-binder hides if readonly)
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-rename-btn';
+    renameBtn.setAttribute('data-pkc-action', 'rename-attachment');
+    renameBtn.setAttribute('data-pkc-lid', entry.lid);
+    renameBtn.textContent = 'Rename';
+    renameBtn.setAttribute('title', 'Rename this file');
+    nameRow.appendChild(renameBtn);
     card.appendChild(nameRow);
 
     // Meta row: type + size

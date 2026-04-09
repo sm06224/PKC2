@@ -364,7 +364,7 @@ describe('Renderer', () => {
 
     const badge = root.querySelector('[data-pkc-revision-count="2"]');
     expect(badge).not.toBeNull();
-    expect(badge!.textContent).toContain('2 versions');
+    expect(badge!.textContent).toBe('r2');
   });
 
   it('does not show revision badge on entries without revisions', () => {
@@ -488,7 +488,7 @@ describe('Renderer', () => {
     expect(section).not.toBeNull();
     expect(section!.textContent).toContain('Deleted');
     expect(section!.textContent).toContain('Deleted Entry');
-    expect(section!.textContent).toContain('Note'); // archetype badge (label)
+    expect(section!.textContent).toContain('Text'); // archetype badge (label)
 
     const restoreBtn = section!.querySelector('[data-pkc-action="restore-entry"]');
     expect(restoreBtn).not.toBeNull();
@@ -646,7 +646,7 @@ describe('Renderer', () => {
 
     const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
     expect(textBtn).not.toBeNull();
-    expect(textBtn!.textContent).toBe('Note');
+    expect(textBtn!.textContent).toBe('Text');
   });
 
   it('marks active archetype filter button', () => {
@@ -1311,15 +1311,15 @@ describe('Renderer', () => {
 
     const noteBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
     expect(noteBtn).not.toBeNull();
-    expect(noteBtn!.textContent).toContain('Note');
+    expect(noteBtn!.textContent).toContain('Text');
 
     const todoBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="todo"]');
     expect(todoBtn).not.toBeNull();
     expect(todoBtn!.textContent).toContain('Todo');
 
+    // FORM creation button removed (P1-A)
     const formBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="form"]');
-    expect(formBtn).not.toBeNull();
-    expect(formBtn!.textContent).toContain('Form');
+    expect(formBtn).toBeNull();
   });
 
   it('form entry uses form presenter when registered', () => {
@@ -1385,21 +1385,18 @@ describe('Renderer', () => {
     render(state, root);
 
     const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
-    for (const item of items) {
-      const badge = item.querySelector('.pkc-archetype-badge');
-      expect(badge).not.toBeNull();
-      expect(badge!.hasAttribute('data-pkc-archetype')).toBe(true);
-    }
-
+    // Sidebar entry titles now include archetype emoji prefix instead of separate badge
     const n1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'n1')!;
-    expect(n1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Note');
-    expect(n1.querySelector('.pkc-archetype-badge')!.getAttribute('data-pkc-archetype')).toBe('text');
+    const n1Title = n1.querySelector('.pkc-entry-title')!;
+    expect(n1Title.textContent).toContain('📝');
 
     const t1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 't1')!;
-    expect(t1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Todo');
+    const t1Title = t1.querySelector('.pkc-entry-title')!;
+    expect(t1Title.textContent).toContain('☑️');
 
     const f1 = Array.from(items).find((el) => el.getAttribute('data-pkc-lid') === 'f1')!;
-    expect(f1.querySelector('.pkc-archetype-badge')!.textContent).toContain('Form');
+    const f1Title = f1.querySelector('.pkc-entry-title')!;
+    expect(f1Title.textContent).toContain('📊');
   });
 
   it('detail view shows archetype label next to title', () => {
@@ -1411,7 +1408,7 @@ describe('Renderer', () => {
 
     const label = root.querySelector('.pkc-archetype-label');
     expect(label).not.toBeNull();
-    expect(label!.textContent).toContain('Note');
+    expect(label!.textContent).toContain('Text');
     expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
   });
 
@@ -1424,7 +1421,7 @@ describe('Renderer', () => {
 
     const label = root.querySelector('.pkc-archetype-label');
     expect(label).not.toBeNull();
-    expect(label!.textContent).toContain('Note');
+    expect(label!.textContent).toContain('Text');
     expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
   });
 
@@ -1440,7 +1437,7 @@ describe('Renderer', () => {
     const allBtn = bar!.querySelector('[data-pkc-archetype=""]');
     expect(allBtn!.textContent).toBe('All');
     const textBtn = bar!.querySelector('[data-pkc-archetype="text"]');
-    expect(textBtn!.textContent).toBe('Note');
+    expect(textBtn!.textContent).toBe('Text');
     const todoBtn = bar!.querySelector('[data-pkc-archetype="todo"]');
     expect(todoBtn!.textContent).toBe('Todo');
     const formBtn = bar!.querySelector('[data-pkc-archetype="form"]');
@@ -1793,10 +1790,12 @@ describe('Three-Pane Layout', () => {
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
     };
     render(state, root);
-    const badges = root.querySelectorAll('.pkc-archetype-badge');
-    expect(badges.length).toBeGreaterThan(0);
-    for (const badge of badges) {
-      expect(badge.textContent!.length).toBeGreaterThan(2);
+    // Sidebar entries now show archetype emoji in the title, not in separate badges
+    const titles = root.querySelectorAll('.pkc-entry-title');
+    expect(titles.length).toBeGreaterThan(0);
+    for (const title of titles) {
+      // Each title should contain an emoji prefix (at least 2 chars: emoji + space + name)
+      expect(title.textContent!.length).toBeGreaterThan(2);
     }
   });
 });

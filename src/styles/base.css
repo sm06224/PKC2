@@ -1498,6 +1498,15 @@
   font-size: 0.95rem;
   font-weight: 600;
   word-break: break-all;
+  flex: 1;
+}
+
+.pkc-attachment-rename-btn {
+  flex-shrink: 0;
+}
+
+[data-pkc-readonly="true"] .pkc-attachment-rename-btn {
+  display: none;
 }
 
 .pkc-attachment-meta {

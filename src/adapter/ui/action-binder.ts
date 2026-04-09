@@ -58,8 +58,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
-        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
-        const title = titleMap[arch] ?? 'New Entry';
+        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
+        const title = titleMap[arch] ?? 'New Text';
         // Determine context folder: if currently selected entry is a folder, or
         // if currently selected entry is inside a folder, use that as parent
         const contextFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
@@ -211,6 +211,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'rename-attachment': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(ent.body);
+        const newName = prompt('Enter new file name:', att.name);
+        if (!newName || newName === att.name) break;
+        const updated = JSON.stringify({ ...att, name: newName });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
       case 'ctx-move-to-root': {
         if (!lid) break;
         const state = dispatcher.getState();
@@ -290,7 +303,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Ctrl+N / Cmd+N: new entry in ready mode
     if (mod && e.key === 'n' && state.phase === 'ready') {
       e.preventDefault();
-      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Text' });
       return;
     }
   }
