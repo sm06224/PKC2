@@ -240,6 +240,84 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown('Visit https://example.com');
     expect(html).toContain('rel="noopener noreferrer"');
   });
+
+  // ── Office URI schemes ──
+  //
+  // Allow ms-word:, ms-excel:, ms-powerpoint:, ms-visio:, ms-access:,
+  // ms-project:, ms-publisher:, ms-officeapp:, ms-spd:, ms-infopath:,
+  // and onenote: so that Office deep links work from rendered notes.
+
+  it('allows ms-word: Office URI scheme', () => {
+    const html = renderMarkdown('[Edit](ms-word:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('href="ms-word:');
+    expect(html).toContain('>Edit</a>');
+  });
+
+  it('allows ms-excel: Office URI scheme', () => {
+    const html = renderMarkdown('[Open](ms-excel:ofv|u|https://example.com/a.xlsx)');
+    expect(html).toContain('href="ms-excel:');
+  });
+
+  it('allows ms-powerpoint: Office URI scheme', () => {
+    const html = renderMarkdown('[Slides](ms-powerpoint:ofe|u|https://example.com/a.pptx)');
+    expect(html).toContain('href="ms-powerpoint:');
+  });
+
+  it('allows ms-visio: Office URI scheme', () => {
+    const html = renderMarkdown('[Diagram](ms-visio:ofe|u|https://example.com/a.vsdx)');
+    expect(html).toContain('href="ms-visio:');
+  });
+
+  it('allows ms-access: Office URI scheme', () => {
+    const html = renderMarkdown('[DB](ms-access:ofe|u|https://example.com/a.accdb)');
+    expect(html).toContain('href="ms-access:');
+  });
+
+  it('allows ms-project: Office URI scheme', () => {
+    const html = renderMarkdown('[Plan](ms-project:ofe|u|https://example.com/a.mpp)');
+    expect(html).toContain('href="ms-project:');
+  });
+
+  it('allows ms-publisher: Office URI scheme', () => {
+    const html = renderMarkdown('[Pub](ms-publisher:ofe|u|https://example.com/a.pub)');
+    expect(html).toContain('href="ms-publisher:');
+  });
+
+  it('allows ms-officeapp: Office URI scheme', () => {
+    const html = renderMarkdown('[App](ms-officeapp:launch)');
+    expect(html).toContain('href="ms-officeapp:');
+  });
+
+  it('allows ms-spd: SharePoint Designer scheme', () => {
+    const html = renderMarkdown('[Site](ms-spd:edit|https://sp.example.com)');
+    expect(html).toContain('href="ms-spd:');
+  });
+
+  it('allows ms-infopath: Office URI scheme', () => {
+    const html = renderMarkdown('[Form](ms-infopath:ofe|u|https://example.com/a.xsn)');
+    expect(html).toContain('href="ms-infopath:');
+  });
+
+  it('allows onenote: scheme', () => {
+    const html = renderMarkdown('[Note](onenote:https://example.com/notebook.one)');
+    expect(html).toContain('href="onenote:');
+  });
+
+  it('Office scheme links still get target=_blank and hardened rel', () => {
+    const html = renderMarkdown('[Edit](ms-word:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it('blocks unknown ms-* schemes outside the Office allowlist', () => {
+    const html = renderMarkdown('[x](ms-evil:payload)');
+    expect(html).not.toContain('href="ms-evil:');
+  });
+
+  it('Office URI scheme matching is case-insensitive', () => {
+    const html = renderMarkdown('[Edit](MS-WORD:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('href="MS-WORD:');
+  });
 });
 
 describe('hasMarkdownSyntax', () => {

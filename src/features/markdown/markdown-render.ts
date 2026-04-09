@@ -39,13 +39,24 @@ const md = new MarkdownIt({
 // Only http(s), mailto, tel, relative paths, fragment anchors, and
 // safe image data URIs pass through. Everything else (javascript:,
 // vbscript:, file:, data:text/html, etc.) is rejected.
+//
+// Extended: Microsoft Office URI schemes are also allowed so that
+// [Edit](ms-word:ofe|u|https://…/file.docx) style links open the
+// corresponding Office desktop app (Word / Excel / PowerPoint /
+// OneNote etc.) via the OS URL handler. The allowlist is explicit —
+// only the schemes documented in the Office URI Schemes reference
+// pass through; arbitrary `ms-*:` schemes remain blocked.
+// https://learn.microsoft.com/office/client-developer/office-uri-schemes
 
 const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
+const SAFE_OFFICE_URI_RE =
+  /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
 
 md.validateLink = function (url: string): boolean {
   const trimmed = url.trim();
   if (SAFE_DATA_IMG_RE.test(trimmed)) return true;
+  if (SAFE_OFFICE_URI_RE.test(trimmed)) return true;
   return SAFE_URL_RE.test(trimmed);
 };
 

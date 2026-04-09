@@ -101,14 +101,45 @@ Fenced blocks without a language keep the original markup (no class).
 | `/absolute` / `./relative` | Yes |
 | No scheme (plain path) | Yes |
 | `data:image/*` | Yes (only `gif`, `png`, `jpeg`, `webp`, `svg+xml`) |
+| `ms-word:` / `ms-excel:` / `ms-powerpoint:` | Yes (Office URI schemes) |
+| `ms-visio:` / `ms-access:` / `ms-project:` | Yes (Office URI schemes) |
+| `ms-publisher:` / `ms-officeapp:` | Yes (Office URI schemes) |
+| `ms-spd:` / `ms-infopath:` | Yes (Office URI schemes) |
+| `onenote:` | Yes (OneNote deep link) |
 | `javascript:` | **Blocked** |
 | `vbscript:` | **Blocked** |
 | `file:` | **Blocked** |
 | `data:text/html` | **Blocked** |
+| Unknown `ms-*:` (e.g. `ms-evil:`) | **Blocked** |
 | Any other scheme | Blocked |
 
 Blocked URLs fall through markdown-it's default "drop the href" path —
 the link text is preserved but the `<a>` tag gets no `href` attribute.
+
+### Office URI scheme support
+
+Microsoft's [Office URI Schemes](https://learn.microsoft.com/office/client-developer/office-uri-schemes)
+allow a web page to hand-off a document to the Office desktop client:
+
+```markdown
+[Edit in Word](ms-word:ofe|u|https://example.com/path/doc.docx)
+[View in Excel](ms-excel:ofv|u|https://example.com/sheet.xlsx)
+[Open Notebook](onenote:https://example.com/notebook.one)
+```
+
+The allowlist is **explicit**: only the 10 documented schemes plus
+`onenote:` pass through. `ms-foo:` or any other undocumented
+`ms-*:` scheme is still blocked, so the allowlist cannot be used as a
+general escape hatch by an attacker-crafted link.
+
+Matching is case-insensitive (e.g. `MS-WORD:` also works) because
+URL schemes are case-insensitive per RFC 3986.
+
+These links still receive the same `target="_blank"` and
+`rel="noopener noreferrer"` hardening as `http(s)` links. The `|`
+characters inside the URL may be URL-encoded to `%7C` by markdown-it's
+URL normalizer — this is expected and the Office URI handler accepts
+both encoded and unencoded forms.
 
 ### Link rel attribute
 
