@@ -25,6 +25,11 @@ import {
   formatISO8601,
 } from '../../features/datetime/datetime-format';
 import {
+  evaluateCalcExpression,
+  detectInlineCalcRequest,
+  formatCalcResult,
+} from '../../features/math/inline-calc';
+import {
   isSlashEligible,
   shouldOpenSlashMenu,
   isSlashMenuOpen,
@@ -511,6 +516,44 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     const state = dispatcher.getState();
     const mod = e.ctrlKey || e.metaKey;
+
+    // ── Inline calc shortcut ──
+    // Plain Enter on an eligible TEXT / TEXTLOG textarea, where the
+    // current line ends with `=` and the caret sits at the end of
+    // that line, evaluates the expression and inserts
+    // `<result>\n` at the caret. Any failure (ineligible field,
+    // composition in progress, parse error, div/0, selection
+    // non-collapsed, etc.) is a silent no-op so the rest of the
+    // handler — and ultimately the browser's default Enter — keeps
+    // running unchanged.
+    //
+    // This block sits BEFORE the Ctrl+Enter TEXTLOG append so a
+    // plain Enter inside the append textarea can still fire inline
+    // calc, while Ctrl+Enter keeps appending the log entry.
+    if (
+      e.key === 'Enter'
+      && !mod
+      && !e.shiftKey
+      && !e.altKey
+      && !e.isComposing
+      && e.target instanceof HTMLTextAreaElement
+      && isInlineCalcTarget(e.target, state)
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      if (start === end) {
+        const req = detectInlineCalcRequest(ta.value, start);
+        if (req) {
+          const result = evaluateCalcExpression(req.expression);
+          if (result.ok) {
+            e.preventDefault();
+            applyInlineCalcResult(ta, start, formatCalcResult(result.value));
+            return;
+          }
+        }
+      }
+    }
 
     // Ctrl+Enter / Cmd+Enter in TEXTLOG append textarea: append log entry.
     // Plain Enter is intentionally left alone so multiline input still works.
@@ -1951,6 +1994,68 @@ function getDateTimeShortcutText(e: KeyboardEvent): string | null {
   }
 
   return null;
+}
+
+/**
+ * Returns `true` if the given textarea is a valid inline-calc
+ * target for the current `AppState`.
+ *
+ * Allowed fields:
+ *   - `textlog-append-text` / `textlog-entry-text` — always
+ *     TEXTLOG, always eligible.
+ *   - `body` — eligible only when the editing entry's archetype is
+ *     `text`. Folder entries also render a `body` textarea but are
+ *     explicitly excluded from inline calc so a numeric expression
+ *     inside a folder description doesn't unexpectedly evaluate.
+ *
+ * Phase check: `body` requires `phase === 'editing'` and a live
+ * `editingLid`. TEXTLOG append / entry textareas are rendered in
+ * `ready` phase too (the append textarea lives in the detail
+ * pane), so they don't need an editing-phase guard.
+ */
+function isInlineCalcTarget(ta: HTMLTextAreaElement, state: AppState): boolean {
+  const field = ta.getAttribute('data-pkc-field');
+  if (field === 'textlog-append-text' || field === 'textlog-entry-text') return true;
+  if (field === 'body') {
+    if (state.phase !== 'editing' || !state.editingLid) return false;
+    const ent = state.container?.entries.find((ee) => ee.lid === state.editingLid);
+    return ent?.archetype === 'text';
+  }
+  return false;
+}
+
+/**
+ * Splice `formatted + '\n'` into the textarea at `caret`.
+ *
+ * Equivalent to "append the result, then press Enter" from the
+ * user's point of view. Uses `execCommand('insertText')` where
+ * available so the browser's undo stack captures the insertion
+ * as a single step; falls back to direct value mutation +
+ * `input` event for happy-dom and other environments where
+ * `execCommand` is a no-op.
+ */
+function applyInlineCalcResult(
+  ta: HTMLTextAreaElement,
+  caret: number,
+  formatted: string,
+): void {
+  const insert = `${formatted}\n`;
+  ta.focus();
+  ta.setSelectionRange(caret, caret);
+  let inserted = false;
+  try {
+    inserted = document.execCommand('insertText', false, insert);
+  } catch {
+    /* execCommand not available (e.g. happy-dom) */
+  }
+  if (!inserted) {
+    const before = ta.value.slice(0, caret);
+    const after = ta.value.slice(caret);
+    ta.value = before + insert + after;
+    const newCaret = caret + insert.length;
+    ta.selectionStart = ta.selectionEnd = newCaret;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 /**

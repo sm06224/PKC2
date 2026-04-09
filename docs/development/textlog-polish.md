@@ -33,7 +33,12 @@ Explicitly out of scope for this pass:
 ### Keyboard
 
 `Ctrl+Enter` / `Cmd+Enter` on the append textarea now submits the entry.
-Plain `Enter` still inserts a newline, preserving multiline input.
+Plain `Enter` still inserts a newline, preserving multiline input, **unless
+the line ends with `=`** — in that case the
+[Inline calc shortcut (P3-C)](./input-assistance-foundation.md#p3-c-inline-calc-shortcut)
+fires first, rewriting `1+2=` to `1+2=3` and moving the caret to a fresh
+line. Ctrl+Enter still takes precedence over inline calc, so the append
+flow is unchanged.
 
 The handler lives in `action-binder.ts::handleKeydown` and short-circuits
 before other shortcuts when:
