@@ -13,7 +13,12 @@ import { resolveAssetReferences, hasAssetReferences } from '../../features/markd
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
 export const textlogPresenter: DetailPresenter = {
-  renderBody(entry: Entry, assets?: Record<string, string>, mimeByKey?: Record<string, string>): HTMLElement {
+  renderBody(
+    entry: Entry,
+    assets?: Record<string, string>,
+    mimeByKey?: Record<string, string>,
+    nameByKey?: Record<string, string>,
+  ): HTMLElement {
     const log = parseTextlogBody(entry.body);
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
@@ -61,12 +66,13 @@ export const textlogPresenter: DetailPresenter = {
         tsEl.setAttribute('title', logEntry.createdAt);
         row.appendChild(tsEl);
 
-        // Text content — resolve asset references first, then render markdown
+        // Text content — resolve asset references (image embeds and
+        // non-image chips) first, then render markdown.
         const textEl = document.createElement('div');
         textEl.className = 'pkc-textlog-text';
         let source = logEntry.text;
         if (assets && mimeByKey && hasAssetReferences(source)) {
-          source = resolveAssetReferences(source, { assets, mimeByKey });
+          source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
         }
         if (hasMarkdownSyntax(source)) {
           textEl.innerHTML = renderMarkdown(source);

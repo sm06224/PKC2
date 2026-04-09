@@ -18,7 +18,8 @@ top without revisiting the syntax or the storage contract.
 
 - **One reference syntax**: `![alt](asset:asset_key)`
 - **Image display only**: the reference must use the markdown image form
-  (`!`-prefixed). Plain link references `[text](asset:key)` are ignored.
+  (`!`-prefixed). Plain link references `[text](asset:key)` are routed
+  to the non-image chip resolver (see `non-image-asset-handling.md`).
 - **Raster image MIME allowlist**: `image/png`, `image/jpeg`,
   `image/gif`, `image/webp`.
 - **Visible fallback markers** when a reference cannot be resolved.
@@ -29,11 +30,14 @@ top without revisiting the syntax or the storage contract.
 
 ### Out of scope (intentionally deferred)
 
-- Asset picker / insert-from-pool UI
-- Editor autocomplete on `asset:`
+- Asset picker / insert-from-pool UI *(Resolved — see
+  `asset-picker-foundation.md`.)*
+- Editor autocomplete on `asset:` *(Resolved — see
+  `asset-autocomplete-foundation.md`.)*
 - `pkc://` or other namespaced URI schemes
 - SVG inline embedding (see "Why SVG is excluded" below)
-- Non-image assets (pdf, audio, video, zip …)
+- Non-image assets (pdf, audio, video, zip …) *(Resolved as a link-form
+  chip — see `non-image-asset-handling.md`.)*
 - Document-set export / cross-container asset federation
 - Interactive preview-on-hover
 - BLOB URL caching (all resolution produces inline `data:` URIs)
@@ -253,9 +257,12 @@ Captured here so the next iteration has a clear entry point.
 3. **Hover-over thumbnail in the editor.** For referenced keys in edit
    mode, show a resolved preview in a popover without switching to
    view mode.
-4. **Non-image asset handling.** `![label](asset:pdf-key)` could
-   render a download chip or an icon link for `application/pdf`,
-   `audio/*`, `video/*`. Each new MIME needs a safety review.
+4. **Non-image asset handling.** The link form
+   `[label](asset:pdf-key)` renders as a downloadable chip for
+   `application/pdf`, `audio/*`, `video/*`, archives, and generic
+   files. Each category has its own icon, and the chip delegates to
+   the existing `downloadAttachment` path on click. *(Resolved — see
+   `non-image-asset-handling.md`.)*
 5. **SVG safe-render.** Parse the SVG, strip scripts and external
    references, then embed inline. Or keep the sandboxed-iframe path
    and inject the iframe from the resolver.

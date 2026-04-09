@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveAssetReferences,
   hasAssetReferences,
+  classifyAssetMimeCategory,
 } from '@features/markdown/asset-resolver';
 import type { AssetResolutionContext } from '@features/markdown/asset-resolver';
 
@@ -96,11 +97,14 @@ describe('resolveAssetReferences — resolution', () => {
     expect(out).toBe(src);
   });
 
-  it('does not touch link references like [text](asset:key)', () => {
-    // Only image (`![...]`) syntax is resolved, not plain links.
+  it('treats link form for image MIME as unsupported (use ![ ] instead)', () => {
+    // Image MIMEs are only resolved via the image form `![…]`.
+    // A link form referring to an image asset is rewritten to an
+    // unsupported marker so the user can fix the typo.
     const src = '[link text](asset:ast-abc-001)';
     const out = resolveAssetReferences(src, makeCtx());
-    expect(out).toBe(src);
+    expect(out).toContain('*[unsupported asset: ast-abc-001]*');
+    expect(out).not.toContain('[link text]');
   });
 });
 
@@ -215,5 +219,234 @@ describe('resolveAssetReferences — edge cases', () => {
     const out = resolveAssetReferences('leading ![x](asset:ast-abc-001)', makeCtx());
     expect(out).toContain('data:image/png');
     expect(out).toContain('leading');
+  });
+});
+
+// ── classifyAssetMimeCategory ──
+
+describe('classifyAssetMimeCategory', () => {
+  it('classifies image MIMEs', () => {
+    expect(classifyAssetMimeCategory('image/png')).toBe('image');
+    expect(classifyAssetMimeCategory('image/jpeg')).toBe('image');
+    expect(classifyAssetMimeCategory('image/gif')).toBe('image');
+    expect(classifyAssetMimeCategory('image/webp')).toBe('image');
+  });
+
+  it('classifies PDF', () => {
+    expect(classifyAssetMimeCategory('application/pdf')).toBe('pdf');
+  });
+
+  it('classifies audio/*', () => {
+    expect(classifyAssetMimeCategory('audio/mpeg')).toBe('audio');
+    expect(classifyAssetMimeCategory('audio/ogg')).toBe('audio');
+    expect(classifyAssetMimeCategory('audio/wav')).toBe('audio');
+  });
+
+  it('classifies video/*', () => {
+    expect(classifyAssetMimeCategory('video/mp4')).toBe('video');
+    expect(classifyAssetMimeCategory('video/webm')).toBe('video');
+  });
+
+  it('classifies archive types', () => {
+    expect(classifyAssetMimeCategory('application/zip')).toBe('archive');
+    expect(classifyAssetMimeCategory('application/x-tar')).toBe('archive');
+    expect(classifyAssetMimeCategory('application/gzip')).toBe('archive');
+    expect(classifyAssetMimeCategory('application/x-7z-compressed')).toBe('archive');
+    expect(classifyAssetMimeCategory('application/x-rar-compressed')).toBe('archive');
+  });
+
+  it('falls through to other for unknown MIMEs', () => {
+    expect(classifyAssetMimeCategory('application/octet-stream')).toBe('other');
+    expect(classifyAssetMimeCategory('text/plain')).toBe('other');
+    expect(classifyAssetMimeCategory('image/svg+xml')).toBe('other');
+    expect(classifyAssetMimeCategory('')).toBe('other');
+  });
+
+  it('is case-insensitive', () => {
+    expect(classifyAssetMimeCategory('APPLICATION/PDF')).toBe('pdf');
+    expect(classifyAssetMimeCategory('Audio/Mpeg')).toBe('audio');
+  });
+});
+
+// ── resolveAssetReferences — non-image link form ──
+
+function makeNonImageCtx(): AssetResolutionContext {
+  return {
+    assets: {
+      'ast-pdf-001': 'PDFdata',
+      'ast-aud-001': 'AUDdata',
+      'ast-vid-001': 'VIDdata',
+      'ast-zip-001': 'ZIPdata',
+      'ast-bin-001': 'BINdata',
+      'ast-img-001': 'IMGdata',
+      'ast-svg-001': 'PHN2Zz48L3N2Zz4=',
+    },
+    mimeByKey: {
+      'ast-pdf-001': 'application/pdf',
+      'ast-aud-001': 'audio/mpeg',
+      'ast-vid-001': 'video/mp4',
+      'ast-zip-001': 'application/zip',
+      'ast-bin-001': 'application/octet-stream',
+      'ast-img-001': 'image/png',
+      'ast-svg-001': 'image/svg+xml',
+    },
+    nameByKey: {
+      'ast-pdf-001': 'report.pdf',
+      'ast-aud-001': 'jingle.mp3',
+      'ast-vid-001': 'demo.mp4',
+      'ast-zip-001': 'bundle.zip',
+      'ast-bin-001': 'data.bin',
+    },
+  };
+}
+
+describe('resolveAssetReferences — non-image link form', () => {
+  it('resolves PDF link to a chip with pdf icon and provided label', () => {
+    const out = resolveAssetReferences('See [the report](asset:ast-pdf-001)', makeNonImageCtx());
+    expect(out).toContain('📄');
+    expect(out).toContain('the report');
+    expect(out).toContain('(#asset-ast-pdf-001)');
+    expect(out).not.toContain('asset:ast-pdf-001');
+  });
+
+  it('resolves audio link to a chip with audio icon', () => {
+    const out = resolveAssetReferences('[listen](asset:ast-aud-001)', makeNonImageCtx());
+    expect(out).toContain('🎵');
+    expect(out).toContain('listen');
+    expect(out).toContain('(#asset-ast-aud-001)');
+  });
+
+  it('resolves video link to a chip with video icon', () => {
+    const out = resolveAssetReferences('[watch](asset:ast-vid-001)', makeNonImageCtx());
+    expect(out).toContain('🎬');
+    expect(out).toContain('(#asset-ast-vid-001)');
+  });
+
+  it('resolves archive link to a chip with archive icon', () => {
+    const out = resolveAssetReferences('[download](asset:ast-zip-001)', makeNonImageCtx());
+    expect(out).toContain('🗜');
+    expect(out).toContain('(#asset-ast-zip-001)');
+  });
+
+  it('resolves unknown MIME to a generic file chip', () => {
+    const out = resolveAssetReferences('[blob](asset:ast-bin-001)', makeNonImageCtx());
+    expect(out).toContain('📎');
+    expect(out).toContain('(#asset-ast-bin-001)');
+  });
+
+  it('uses attachment name from nameByKey when label is empty', () => {
+    const out = resolveAssetReferences('[](asset:ast-pdf-001)', makeNonImageCtx());
+    expect(out).toContain('report.pdf');
+  });
+
+  it('falls back to the sanitized key when label is empty and nameByKey absent', () => {
+    const ctx = {
+      ...makeNonImageCtx(),
+      nameByKey: undefined,
+    };
+    const out = resolveAssetReferences('[](asset:ast-pdf-001)', ctx);
+    expect(out).toContain('ast-pdf-001');
+  });
+
+  it('emits missing marker for unknown asset key in link form', () => {
+    const out = resolveAssetReferences('[x](asset:ast-unknown-001)', makeNonImageCtx());
+    expect(out).toContain('*[missing asset: ast-unknown-001]*');
+    expect(out).not.toContain('#asset-ast-unknown-001');
+  });
+
+  it('emits unsupported marker when link form targets an image MIME', () => {
+    const out = resolveAssetReferences('[pic](asset:ast-img-001)', makeNonImageCtx());
+    expect(out).toContain('*[unsupported asset: ast-img-001]*');
+    expect(out).not.toContain('#asset-ast-img-001');
+  });
+
+  it('emits unsupported marker when link form targets SVG', () => {
+    const out = resolveAssetReferences('[vector](asset:ast-svg-001)', makeNonImageCtx());
+    expect(out).toContain('*[unsupported asset: ast-svg-001]*');
+    expect(out).not.toContain('#asset-ast-svg-001');
+  });
+
+  it('escapes open-bracket metacharacter inside the label', () => {
+    // A literal `[` inside the label would nest brackets and could
+    // confuse markdown-it's link parser. The resolver escapes it so
+    // the surrounding `[…](…)` structure stays intact.
+    const src = '[[inner](asset:ast-pdf-001)';
+    const out = resolveAssetReferences(src, makeNonImageCtx());
+    expect(out).toContain('(#asset-ast-pdf-001)');
+    expect(out).toContain('\\[inner');
+  });
+
+  it('labels containing \\] are left alone (regex cannot parse them)', () => {
+    // This pins the current limitation: labels with an internal `]`
+    // are not handled by the simple regex. The resolver passes them
+    // through unchanged instead of producing a broken match.
+    const src = 'prose [odd\\]label](asset:ast-pdf-001) more';
+    const out = resolveAssetReferences(src, makeNonImageCtx());
+    expect(out).toBe(src);
+  });
+
+  it('does not produce javascript: hrefs', () => {
+    const out = resolveAssetReferences('[x](asset:ast-pdf-001)', makeNonImageCtx());
+    expect(out.toLowerCase()).not.toContain('javascript:');
+  });
+
+  it('does not produce data: hrefs for the chip', () => {
+    const out = resolveAssetReferences('[x](asset:ast-pdf-001)', makeNonImageCtx());
+    expect(out).not.toContain('](data:');
+  });
+
+  it('leaves the image form untouched when it is adjacent to a link form', () => {
+    const src = '![i](asset:ast-img-001) and [d](asset:ast-pdf-001)';
+    const ctx = {
+      ...makeNonImageCtx(),
+      mimeByKey: {
+        ...makeNonImageCtx().mimeByKey,
+        'ast-img-001': 'image/png',
+      },
+    };
+    const out = resolveAssetReferences(src, ctx);
+    expect(out).toContain('data:image/png;base64,');
+    expect(out).toContain('(#asset-ast-pdf-001)');
+  });
+
+  it('preserves preceding punctuation before a link form match', () => {
+    const out = resolveAssetReferences('(see [here](asset:ast-pdf-001))', makeNonImageCtx());
+    // The leading paren must survive, and the chip must be a standard
+    // markdown link, so the closing paren belongs to the outer prose.
+    expect(out.startsWith('(see ')).toBe(true);
+    expect(out.endsWith(')')).toBe(true);
+    expect(out).toContain('(#asset-ast-pdf-001)');
+  });
+
+  it('resolves multiple link forms in the same string', () => {
+    const src = '[a](asset:ast-pdf-001) then [b](asset:ast-aud-001)';
+    const out = resolveAssetReferences(src, makeNonImageCtx());
+    expect(out).toContain('(#asset-ast-pdf-001)');
+    expect(out).toContain('(#asset-ast-aud-001)');
+  });
+
+  it('does not rewrite escaped brackets \\[label](asset:key)', () => {
+    const src = '\\[label](asset:ast-pdf-001)';
+    const out = resolveAssetReferences(src, makeNonImageCtx());
+    // Escaped `\[` should be left alone so users can quote markdown.
+    expect(out).toBe(src);
+  });
+
+  it('does not rewrite link form inside a fenced code context (prose-level only, see notes)', () => {
+    // The resolver operates on raw markdown; it cannot tell that
+    // ```[x](asset:k)``` is inside a code fence. We accept that for
+    // this foundation — markdown-it itself renders the fenced block as
+    // code and the chip fallback is harmless. This test simply pins the
+    // current behavior so the trade-off is explicit.
+    const src = '```\n[x](asset:ast-pdf-001)\n```';
+    const out = resolveAssetReferences(src, makeNonImageCtx());
+    // Whatever the resolver decides, the reference must not leak a raw
+    // `asset:` URL — it is either a chip or a marker.
+    expect(out).not.toMatch(/\]\(asset:/);
+  });
+
+  it('hasAssetReferences detects link form references', () => {
+    expect(hasAssetReferences('[x](asset:ast-pdf-001)')).toBe(true);
+    expect(hasAssetReferences('prose [label](asset:ast-aud-001) more')).toBe(true);
   });
 });

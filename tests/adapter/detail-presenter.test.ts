@@ -166,7 +166,7 @@ describe('DetailPresenter', () => {
       expect(el.innerHTML).toContain('https://example.com/img.png');
     });
 
-    it('does not resolve asset: in link syntax (images only)', () => {
+    it('rewrites link form for image MIME to unsupported marker', () => {
       const presenter = getDefaultPresenter();
       const entry = makeTextEntry('[click](asset:ast-001)');
       const el = presenter.renderBody(
@@ -174,8 +174,10 @@ describe('DetailPresenter', () => {
         { 'ast-001': PNG_B64 },
         { 'ast-001': 'image/png' },
       );
-      // Link with asset: URL is blocked by markdown-it's validateLink allowlist
+      // Link form for an image is now rewritten to an unsupported
+      // marker so the user sees actionable feedback (use ![ ] instead).
       expect(el.innerHTML).not.toContain('href="asset:');
+      expect(el.innerHTML).toContain('unsupported asset');
     });
 
     it('preserves alt text through resolution', () => {
@@ -187,6 +189,86 @@ describe('DetailPresenter', () => {
         { 'ast-001': 'image/png' },
       );
       expect(el.innerHTML).toContain('alt="my photo"');
+    });
+  });
+
+  // ── Non-image asset chip rendering (link form) ──
+
+  describe('non-image asset chip rendering', () => {
+    function makeTextEntry(body: string): Entry {
+      return {
+        lid: 'e-chip', title: 'Chip Test', body,
+        archetype: 'text',
+        created_at: '2026-04-09T00:00:00Z', updated_at: '2026-04-09T00:00:00Z',
+      };
+    }
+
+    it('renders a PDF link form as a fragment-hrefed chip with icon', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('See [the report](asset:ast-pdf-001) please');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-pdf-001': 'PDFdata' },
+        { 'ast-pdf-001': 'application/pdf' },
+      );
+      expect(el.innerHTML).toContain('href="#asset-ast-pdf-001"');
+      expect(el.innerHTML).toContain('📄');
+      expect(el.innerHTML).toContain('the report');
+    });
+
+    it('uses nameByKey as label fallback for empty link text', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[](asset:ast-pdf-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-pdf-001': 'PDFdata' },
+        { 'ast-pdf-001': 'application/pdf' },
+        { 'ast-pdf-001': 'report.pdf' },
+      );
+      expect(el.innerHTML).toContain('href="#asset-ast-pdf-001"');
+      expect(el.innerHTML).toContain('report.pdf');
+    });
+
+    it('falls back to key when no name is provided and label is empty', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[](asset:ast-aud-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-aud-001': 'AUDdata' },
+        { 'ast-aud-001': 'audio/mpeg' },
+      );
+      expect(el.innerHTML).toContain('href="#asset-ast-aud-001"');
+      expect(el.innerHTML).toContain('ast-aud-001');
+    });
+
+    it('shows missing marker for link form with unknown key', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[gone](asset:ast-lost-001)');
+      const el = presenter.renderBody(entry, {}, {});
+      expect(el.innerHTML).toContain('missing asset');
+      expect(el.innerHTML).not.toContain('#asset-ast-lost-001');
+    });
+
+    it('never emits an asset: href in the output', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[x](asset:ast-pdf-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-pdf-001': 'PDFdata' },
+        { 'ast-pdf-001': 'application/pdf' },
+      );
+      expect(el.innerHTML).not.toContain('href="asset:');
+    });
+
+    it('does not emit a javascript: href for the chip', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[x](asset:ast-pdf-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-pdf-001': 'PDFdata' },
+        { 'ast-pdf-001': 'application/pdf' },
+      );
+      expect(el.innerHTML.toLowerCase()).not.toContain('javascript:');
     });
   });
 });

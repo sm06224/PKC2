@@ -1279,14 +1279,16 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   }
 
   // Archetype-dispatched body rendering.
-  // For text/textlog (markdown-capable) presenters, pass assets + MIME map
-  // so `![alt](asset:key)` references can be resolved inline.
+  // For text/textlog (markdown-capable) presenters, pass assets + MIME
+  // map + name map so both `![alt](asset:key)` image embeds and
+  // `[label](asset:key)` non-image chips can be resolved.
   const presenter = getPresenter(entry.archetype);
   if (entry.archetype === 'attachment' && container?.assets) {
     view.appendChild(presenter.renderBody(entry, container.assets));
   } else if (container?.assets) {
     const mimeByKey = buildAssetMimeMap(container);
-    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
+    const nameByKey = buildAssetNameMap(container);
+    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey));
   } else {
     view.appendChild(presenter.renderBody(entry));
   }
@@ -1821,6 +1823,24 @@ function buildAssetMimeMap(container: Container): Record<string, string> {
   return map;
 }
 
+/**
+ * Build a map of `asset_key → display name` from the container's
+ * attachment entries. Used by the markdown asset resolver to label
+ * non-image chips (`[label](asset:key)`) when the user omits an
+ * explicit link label.
+ */
+function buildAssetNameMap(container: Container): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key && att.name) {
+      map[att.asset_key] = att.name;
+    }
+  }
+  return map;
+}
+
 function renderFolderContents(folder: Entry, container: Container): HTMLElement {
   const section = createElement('div', 'pkc-folder-contents');
   section.setAttribute('data-pkc-region', 'folder-contents');
@@ -2045,11 +2065,13 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
     content.appendChild(renderDetachedAttachment(entry, container));
   } else {
     // Use presenter for body rendering (read-only).
-    // Pass assets + MIME map so asset references resolve in detached view too.
+    // Pass assets + MIME + name maps so asset references (images and
+    // non-image chips) resolve in detached view too.
     const presenter = getPresenter(entry.archetype);
     if (container?.assets) {
       const mimeByKey = buildAssetMimeMap(container);
-      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
+      const nameByKey = buildAssetNameMap(container);
+      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey));
     } else {
       content.appendChild(presenter.renderBody(entry));
     }
