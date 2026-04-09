@@ -21,7 +21,15 @@ export const textlogPresenter: DetailPresenter = {
     if (log.entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'pkc-textlog-empty';
-      empty.textContent = 'No log entries yet.';
+      empty.setAttribute('data-pkc-region', 'textlog-empty');
+      const emptyTitle = document.createElement('div');
+      emptyTitle.className = 'pkc-textlog-empty-title';
+      emptyTitle.textContent = 'No log entries yet.';
+      empty.appendChild(emptyTitle);
+      const emptyHint = document.createElement('div');
+      emptyHint.className = 'pkc-textlog-empty-hint';
+      emptyHint.textContent = 'Write your first log entry below ↓';
+      empty.appendChild(emptyHint);
       container.appendChild(empty);
     } else {
       const list = document.createElement('div');
@@ -46,10 +54,11 @@ export const textlogPresenter: DetailPresenter = {
         flagBtn.textContent = logEntry.flags.includes('important') ? '★' : '☆';
         row.appendChild(flagBtn);
 
-        // Timestamp
+        // Timestamp — display is short form; title shows full ISO for precision.
         const tsEl = document.createElement('span');
         tsEl.className = 'pkc-textlog-timestamp';
         tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
+        tsEl.setAttribute('title', logEntry.createdAt);
         row.appendChild(tsEl);
 
         // Text content — resolve asset references first, then render markdown
@@ -82,13 +91,14 @@ export const textlogPresenter: DetailPresenter = {
     appendInput.setAttribute('data-pkc-field', 'textlog-append-text');
     appendInput.setAttribute('data-pkc-lid', entry.lid);
     appendInput.rows = 2;
-    appendInput.placeholder = 'New log entry...';
+    appendInput.placeholder = 'New log entry… (Ctrl+Enter to add)';
     appendArea.appendChild(appendInput);
 
     const appendBtn = document.createElement('button');
     appendBtn.className = 'pkc-btn pkc-btn-create pkc-textlog-append-btn';
     appendBtn.setAttribute('data-pkc-action', 'append-log-entry');
     appendBtn.setAttribute('data-pkc-lid', entry.lid);
+    appendBtn.setAttribute('title', 'Append log entry (Ctrl+Enter)');
     appendBtn.textContent = '+ Add';
     appendArea.appendChild(appendBtn);
 

@@ -29,7 +29,15 @@ import {
   filterSlashMenu,
   handleSlashMenuKeydown,
   getSlashTriggerStart,
+  registerAssetPickerCallback,
 } from './slash-menu';
+import {
+  closeAssetPicker,
+  collectImageAssets,
+  handleAssetPickerKeydown,
+  isAssetPickerOpen,
+  openAssetPicker,
+} from './asset-picker';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -47,6 +55,20 @@ import {
  */
 
 export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
+  // Wire the slash-menu /asset command through to the asset picker.
+  // Kept as a callback so slash-menu does not have to know about the
+  // dispatcher or container access.
+  registerAssetPickerCallback((ctx) => {
+    const state = dispatcher.getState();
+    const candidates = collectImageAssets(state.container);
+    openAssetPicker(
+      ctx.textarea,
+      { start: ctx.replaceStart, end: ctx.replaceEnd },
+      candidates,
+      ctx.root,
+    );
+  });
+
   function handleClick(e: Event): void {
     // Shell menu backdrop click: close menu if user clicked outside the card.
     const rawTarget = e.target as HTMLElement | null;
@@ -79,6 +101,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
+        break;
+      }
+      case 'toggle-folder-collapse': {
+        if (!lid) break;
+        // Stop propagation so the surrounding <li data-pkc-action="select-entry">
+        // does not also toggle selection when the chevron is clicked.
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
       case 'begin-edit':
@@ -215,16 +245,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'append-log-entry': {
         if (!lid) break;
-        const st = dispatcher.getState();
-        if (st.readonly) break;
-        const ent = st.container?.entries.find((e) => e.lid === lid);
-        if (!ent || ent.archetype !== 'textlog') break;
-        const inputEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-append-text"]');
-        const text = inputEl?.value?.trim();
-        if (!text) break;
-        const log = parseTextlogBody(ent.body);
-        const updated = serializeTextlogBody(appendLogEntry(log, text));
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        performTextlogAppend(lid);
         break;
       }
       case 'toggle-log-flag': {
@@ -399,7 +420,47 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  /**
+   * Append a new log entry to a textlog from the inline append textarea,
+   * then refocus the fresh textarea so the user can continue writing.
+   *
+   * Shared by the append button (`append-log-entry` action) and the
+   * Ctrl/Cmd+Enter keyboard shortcut on the append textarea. Keeping the
+   * logic in one place ensures both paths behave identically — including
+   * focus retention across the synchronous re-render.
+   */
+  function performTextlogAppend(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'textlog') return;
+    const inputEl = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="textlog-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    const text = inputEl?.value?.trim();
+    if (!text) return;
+    const log = parseTextlogBody(ent.body);
+    const updated = serializeTextlogBody(appendLogEntry(log, text));
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+
+    // Restore focus on the new append textarea (the render listener has
+    // already replaced the DOM synchronously by this point). This preserves
+    // append-centric UX so the user can keep logging without re-clicking.
+    const newInput = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="textlog-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    if (newInput) {
+      newInput.value = '';
+      newInput.focus();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
+    // Asset picker takes priority over slash menu when open (it replaces the
+    // slash menu at the same trigger point).
+    if (isAssetPickerOpen()) {
+      if (handleAssetPickerKeydown(e)) return;
+    }
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
@@ -407,6 +468,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     const state = dispatcher.getState();
     const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl+Enter / Cmd+Enter in TEXTLOG append textarea: append log entry.
+    // Plain Enter is intentionally left alone so multiline input still works.
+    if (
+      mod
+      && e.key === 'Enter'
+      && e.target instanceof HTMLTextAreaElement
+      && e.target.getAttribute('data-pkc-field') === 'textlog-append-text'
+    ) {
+      const lid = e.target.getAttribute('data-pkc-lid');
+      if (lid) {
+        e.preventDefault();
+        performTextlogAppend(lid);
+        return;
+      }
+    }
 
     // Ctrl+S / Cmd+S: save in editing mode
     if (mod && e.key === 's' && state.phase === 'editing' && state.editingLid) {
@@ -434,6 +511,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Close asset picker if open (handled above via handleAssetPickerKeydown, safety net)
+      if (isAssetPickerOpen()) {
+        closeAssetPicker();
+        return;
+      }
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
       if (isSlashMenuOpen()) {
         closeSlashMenu();
@@ -913,6 +995,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeSlashMenu();
       }
     }
+    // Close asset picker on click outside
+    if (isAssetPickerOpen()) {
+      const picker = root.querySelector('[data-pkc-region="asset-picker"]');
+      if (!picker || !picker.contains(e.target as Node)) {
+        closeAssetPicker();
+      }
+    }
 
     const menu = root.querySelector('[data-pkc-region="context-menu"]');
     if (!menu) return;
@@ -1178,6 +1267,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('paste', handlePaste);
     clearAllDragState();
     closeSlashMenu();
+    closeAssetPicker();
+    registerAssetPickerCallback(null);
   };
 }
 

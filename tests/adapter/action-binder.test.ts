@@ -7,8 +7,14 @@ import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
+import { textlogPresenter } from '@adapter/ui/textlog-presenter';
+import { parseTextlogBody, serializeTextlogBody } from '@features/textlog/textlog-body';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
+
+// Register the textlog presenter once so the renderer can draw textlog entries
+// during these tests. Registration is idempotent.
+registerPresenter('textlog', textlogPresenter);
 
 const mockContainer: Container = {
   meta: {
@@ -144,6 +150,188 @@ describe('ActionBinder', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+  });
+
+  // ── TEXTLOG append polish ──
+
+  function setupWithTextlog() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const containerWithLog: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Work Log',
+          body: serializeTextlogBody({ entries: [] }),
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithLog });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+    return { dispatcher, events };
+  }
+
+  it('append button appends a new log entry and clears the input', () => {
+    const { dispatcher } = setupWithTextlog();
+
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    expect(input).not.toBeNull();
+    input!.value = 'First log line';
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="append-log-entry"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Body should now contain the appended entry
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('First log line');
+
+    // A fresh (empty) append textarea should be rendered and refocused
+    const newInput = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    expect(newInput).not.toBeNull();
+    expect(newInput!.value).toBe('');
+  });
+
+  it('append ignores whitespace-only input', () => {
+    const { dispatcher } = setupWithTextlog();
+
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    input!.value = '   \n  ';
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="append-log-entry"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(0);
+  });
+
+  it('Ctrl+Enter in append textarea appends a log entry', () => {
+    const { dispatcher } = setupWithTextlog();
+
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    input!.value = 'Quick note';
+    input!.focus();
+
+    // Simulate Ctrl+Enter; the keydown handler is attached to document.
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      ctrlKey: true,
+      bubbles: true,
+    });
+    // Dispatch from the textarea so e.target is the textarea
+    input!.dispatchEvent(ev);
+
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('Quick note');
+  });
+
+  it('plain Enter in append textarea does NOT append (preserves multiline input)', () => {
+    const { dispatcher } = setupWithTextlog();
+
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    input!.value = 'line one';
+    input!.focus();
+
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    input!.dispatchEvent(ev);
+
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(0);
+  });
+
+  it('Meta+Enter in append textarea appends (macOS convention)', () => {
+    const { dispatcher } = setupWithTextlog();
+
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    input!.value = 'mac path';
+    input!.focus();
+
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      metaKey: true,
+      bubbles: true,
+    });
+    input!.dispatchEvent(ev);
+
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('mac path');
+  });
+
+  it('append does nothing in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const readonlyContainer: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Work Log',
+          body: serializeTextlogBody({ entries: [] }),
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: readonlyContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+    // In readonly, the append area is hidden via CSS but still in DOM.
+    // The handler itself must reject the write.
+    const input = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    if (input) {
+      input.value = 'should not append';
+      const btn = root.querySelector<HTMLButtonElement>(
+        '[data-pkc-action="append-log-entry"]',
+      );
+      btn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(0);
   });
 
   it('cleanup removes event listeners', () => {

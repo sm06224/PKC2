@@ -35,11 +35,21 @@ describe('textlog renderBody', () => {
     expect(rows.length).toBe(3);
   });
 
-  it('shows empty state when no entries', () => {
+  it('shows empty state with guidance hint when no entries', () => {
     const el = textlogPresenter.renderBody(makeEntry({ entries: [] }));
     const empty = el.querySelector('.pkc-textlog-empty');
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toContain('No log entries');
+    // The hint should guide the user toward the append area below.
+    const hint = el.querySelector('.pkc-textlog-empty-hint');
+    expect(hint).not.toBeNull();
+    expect(hint!.textContent).toContain('below');
+  });
+
+  it('still renders append area when empty so the user has a place to write', () => {
+    const el = textlogPresenter.renderBody(makeEntry({ entries: [] }));
+    const appendInput = el.querySelector('[data-pkc-field="textlog-append-text"]');
+    expect(appendInput).not.toBeNull();
   });
 
   it('displays timestamp for each entry', () => {
@@ -48,6 +58,13 @@ describe('textlog renderBody', () => {
     expect(timestamps.length).toBe(3);
     // Should contain formatted time
     expect(timestamps[0]!.textContent).toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  });
+
+  it('exposes full ISO timestamp via tooltip title for precision', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
+    expect(timestamps[0]!.getAttribute('title')).toBe('2026-04-09T10:00:00Z');
+    expect(timestamps[1]!.getAttribute('title')).toBe('2026-04-09T11:00:00Z');
   });
 
   it('marks important entries with data attribute', () => {
@@ -71,6 +88,23 @@ describe('textlog renderBody', () => {
     expect(appendInput).not.toBeNull();
     const appendBtn = el.querySelector('[data-pkc-action="append-log-entry"]');
     expect(appendBtn).not.toBeNull();
+  });
+
+  it('append input placeholder advertises the Ctrl+Enter shortcut', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const appendInput = el.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    expect(appendInput).not.toBeNull();
+    expect(appendInput!.placeholder).toContain('Ctrl+Enter');
+  });
+
+  it('append input carries the owning entry lid for focus restoration', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-xyz'));
+    const appendInput = el.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    expect(appendInput!.getAttribute('data-pkc-lid')).toBe('tl-xyz');
   });
 
   it('renders markdown in log entries', () => {
@@ -126,6 +160,39 @@ describe('textlog renderBody', () => {
     const rows = el.querySelectorAll('.pkc-textlog-text');
     expect(rows[0]!.textContent).toBe('plain text entry');
     expect(rows[1]!.innerHTML).toContain('data:image/png');
+  });
+
+  it('renders markdown and asset references within the same log entry', () => {
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-mix',
+          text: '**Investigation**\n\n![shot](asset:ast-png-001)\n\n- Step one\n- Step two',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-png-001': PNG_B64 },
+      { 'ast-png-001': 'image/png' },
+    );
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.classList.contains('pkc-md-rendered')).toBe(true);
+    expect(row!.innerHTML).toContain('<strong>');
+    expect(row!.innerHTML).toContain('<ul>');
+    expect(row!.innerHTML).toContain('data:image/png;base64,');
+  });
+
+  it('marks important row with the data attribute used for visibility styling', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const important = el.querySelector('.pkc-textlog-row[data-pkc-log-important="true"]');
+    expect(important).not.toBeNull();
+    // The important row still has its normal flag button and text children.
+    expect(important!.querySelector('.pkc-textlog-flag-btn')).not.toBeNull();
+    expect(important!.querySelector('.pkc-textlog-text')).not.toBeNull();
   });
 });
 

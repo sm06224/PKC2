@@ -19,11 +19,49 @@ import {
 
 // ── Command definitions ──
 
+/**
+ * Context passed to `onSelect` callbacks.
+ * Lets a command hand off to a separate UI (e.g., the asset picker) that
+ * needs to know the textarea, replacement range, and render root.
+ */
+export interface SlashCommandContext {
+  textarea: HTMLTextAreaElement;
+  /** Start of the `/command` range (inclusive). */
+  replaceStart: number;
+  /** End of the `/command` range (exclusive; current caret position). */
+  replaceEnd: number;
+  /** Render parent — the `#pkc-root` element. */
+  root: HTMLElement;
+}
+
 export interface SlashCommand {
   id: string;
   label: string;
-  /** Text to insert (replaces the `/` trigger). May be a function for dynamic values. */
-  insert: string | (() => string);
+  /**
+   * Text to insert (replaces the `/` trigger). May be a function for dynamic
+   * values. Ignored when `onSelect` is set.
+   */
+  insert?: string | (() => string);
+  /**
+   * Custom handler invoked instead of text insertion. The handler is
+   * responsible for closing the slash menu (or not) and performing any
+   * follow-up UI. When set, `insert` is ignored.
+   */
+  onSelect?: (ctx: SlashCommandContext) => void;
+}
+
+/**
+ * Asset picker callback registered by the action-binder.
+ * The slash command `/asset` calls this instead of inserting text.
+ * Kept as an injected callback so slash-menu does not import from the
+ * action-binder (which would form a cycle).
+ */
+let assetPickerCallback: ((ctx: SlashCommandContext) => void) | null = null;
+
+export function registerAssetPickerCallback(
+  cb: ((ctx: SlashCommandContext) => void) | null,
+): void {
+  assetPickerCallback = cb;
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
@@ -35,12 +73,24 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'list', label: '/list — - Bullet list', insert: '- ' },
   { id: 'code', label: '/code — ``` Code block', insert: '```\n\n```' },
   { id: 'link', label: '/link — [text](url)', insert: '[text](url)' },
+  {
+    id: 'asset',
+    label: '/asset — Insert image asset',
+    onSelect: (ctx) => {
+      if (assetPickerCallback) assetPickerCallback(ctx);
+    },
+  },
 ];
 
 // ── Trigger detection ──
 
 /** Fields eligible for slash commands (validation-free textareas). */
-const SLASH_ELIGIBLE_FIELDS = new Set(['body', 'todo-description']);
+const SLASH_ELIGIBLE_FIELDS = new Set([
+  'body',
+  'todo-description',
+  'textlog-append-text',
+  'textlog-entry-text',
+]);
 
 /**
  * Returns true if the given textarea is eligible for slash commands.
@@ -82,6 +132,7 @@ export function getSlashTriggerStart(text: string, caretPos: number): number {
 let activeMenu: HTMLElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let activeSlashPos = -1;
+let activeRoot: HTMLElement | null = null;
 let selectedIndex = 0;
 let filteredCommands: SlashCommand[] = [];
 
@@ -96,6 +147,7 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
   closeSlashMenu();
   activeTextarea = textarea;
   activeSlashPos = slashPos;
+  activeRoot = root;
   selectedIndex = 0;
   filteredCommands = [...SLASH_COMMANDS];
 
@@ -212,9 +264,30 @@ export function handleSlashMenuKeydown(e: KeyboardEvent): boolean {
 function executeCommand(cmd: SlashCommand): void {
   if (!activeTextarea || activeSlashPos < 0) return;
 
-  const text = typeof cmd.insert === 'function' ? cmd.insert() : cmd.insert;
   const textarea = activeTextarea;
   const caretPos = textarea.selectionStart ?? textarea.value.length;
+
+  // Commands with a custom handler (e.g. /asset) hand off to another UI.
+  // Close the slash menu first, then invoke the callback. We preserve the
+  // textarea reference locally since closeSlashMenu clears module state.
+  if (cmd.onSelect) {
+    const ctx: SlashCommandContext = {
+      textarea,
+      replaceStart: activeSlashPos,
+      replaceEnd: caretPos,
+      root: activeRoot ?? textarea.ownerDocument.body,
+    };
+    closeSlashMenu();
+    cmd.onSelect(ctx);
+    return;
+  }
+
+  const insert = cmd.insert;
+  if (insert === undefined) {
+    closeSlashMenu();
+    return;
+  }
+  const text = typeof insert === 'function' ? insert() : insert;
 
   // Replace from slashPos to current caret (includes `/` and any typed filter)
   const before = textarea.value.slice(0, activeSlashPos);
@@ -246,6 +319,7 @@ export function closeSlashMenu(): void {
   }
   activeTextarea = null;
   activeSlashPos = -1;
+  activeRoot = null;
   selectedIndex = 0;
   filteredCommands = [];
 }

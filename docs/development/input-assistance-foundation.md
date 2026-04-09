@@ -44,6 +44,8 @@ Day abbreviations use Japanese kanji: 日, 月, 火, 水, 木, 金, 土
 |---|---|---|
 | `body` | TEXT, Folder | Main body textarea |
 | `todo-description` | Todo | Description textarea |
+| `textlog-append-text` | TEXTLOG append | Append log entry textarea |
+| `textlog-entry-text` | TEXTLOG edit | Edit existing log entry textarea |
 
 **NOT targeted:**
 - `form-note` (FORM — reserved for future validation)
@@ -71,6 +73,11 @@ This prevents false triggers when typing URLs or paths like `a/b/c`.
 | `list` | `/list` | `- ` |
 | `code` | `/code` | ``` fenced code block |
 | `link` | `/link` | `[text](url)` |
+| `asset` | `/asset` | Opens Asset Picker → `![name](asset:key)` |
+
+The `/asset` command uses the `onSelect` handler path instead of static
+text insertion — see
+[`asset-picker-foundation.md`](./asset-picker-foundation.md).
 
 ### Menu behavior
 
@@ -125,11 +132,14 @@ making them deterministic for testing.
 
 ## Not implemented (future work)
 
-- **Asset picker** — `/link` currently inserts placeholder `[text](url)`, not a real picker
 - **FORM validation integration** — FORM fields are intentionally excluded
 - **Fuzzy search** — filter is simple substring match
 - **Nested commands** — no sub-menus
 - **Full markdown toolbar** — only basic markdown snippets via slash
+
+Resolved since initial P3-B:
+- **Asset picker** — implemented as `/asset`; see
+  [`asset-picker-foundation.md`](./asset-picker-foundation.md)
 
 ## Keyboard layout considerations
 

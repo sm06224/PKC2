@@ -11,7 +11,9 @@ import {
   closeSlashMenu,
   filterSlashMenu,
   handleSlashMenuKeydown,
+  registerAssetPickerCallback,
   SLASH_COMMANDS,
+  type SlashCommandContext,
 } from '@adapter/ui/slash-menu';
 
 let root: HTMLElement;
@@ -24,6 +26,7 @@ beforeEach(() => {
 
 afterEach(() => {
   closeSlashMenu();
+  registerAssetPickerCallback(null);
   root.remove();
 });
 
@@ -39,6 +42,18 @@ describe('isSlashEligible', () => {
   it('returns true for todo-description textarea', () => {
     const ta = document.createElement('textarea');
     ta.setAttribute('data-pkc-field', 'todo-description');
+    expect(isSlashEligible(ta)).toBe(true);
+  });
+
+  it('returns true for textlog-append-text textarea', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    expect(isSlashEligible(ta)).toBe(true);
+  });
+
+  it('returns true for textlog-entry-text textarea', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-entry-text');
     expect(isSlashEligible(ta)).toBe(true);
   });
 
@@ -217,8 +232,8 @@ describe('slash menu keyboard', () => {
     openSlashMenu(ta, 0, root);
     handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
     const selected = root.querySelector('[data-pkc-selected="true"]');
-    // Should wrap to last command
-    expect(selected?.getAttribute('data-pkc-slash-id')).toBe('link');
+    // Should wrap to the last command (asset, with /asset being the newest)
+    expect(selected?.getAttribute('data-pkc-slash-id')).toBe('asset');
   });
 
   it('Enter executes selected command', () => {
@@ -336,15 +351,76 @@ describe('slash command insertion', () => {
 // ── Command count ──
 
 describe('SLASH_COMMANDS', () => {
-  it('has expected initial set of 8 commands', () => {
-    expect(SLASH_COMMANDS.length).toBe(8);
+  it('has expected initial set of 9 commands', () => {
+    expect(SLASH_COMMANDS.length).toBe(9);
   });
 
   it('all commands have id and label', () => {
     for (const cmd of SLASH_COMMANDS) {
       expect(cmd.id).toBeTruthy();
       expect(cmd.label).toBeTruthy();
-      expect(cmd.insert).toBeTruthy();
+      // A command must provide either a text-insert value or an onSelect handler.
+      expect(cmd.insert !== undefined || cmd.onSelect !== undefined).toBe(true);
     }
+  });
+
+  it('includes /asset command with onSelect handler', () => {
+    const asset = SLASH_COMMANDS.find((c) => c.id === 'asset');
+    expect(asset).toBeDefined();
+    expect(asset?.onSelect).toBeTypeOf('function');
+    expect(asset?.insert).toBeUndefined();
+  });
+});
+
+// ── onSelect callback dispatch ──
+
+describe('slash command onSelect', () => {
+  it('/asset invokes registered callback with context and does not insert text', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = 'before /asset';
+    ta.selectionStart = ta.selectionEnd = 13;
+
+    let captured: SlashCommandContext | null = null;
+    registerAssetPickerCallback((ctx) => {
+      captured = ctx;
+    });
+
+    openSlashMenu(ta, 7, root);
+    filterSlashMenu('asset');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    // Callback was invoked with accurate range and the same textarea
+    expect(captured).not.toBeNull();
+    const ctx = captured as unknown as SlashCommandContext;
+    expect(ctx.textarea).toBe(ta);
+    expect(ctx.replaceStart).toBe(7);
+    expect(ctx.replaceEnd).toBe(13);
+
+    // Text is unchanged — insertion is deferred to the asset picker
+    expect(ta.value).toBe('before /asset');
+
+    // Slash menu itself is closed after handing off
+    expect(isSlashMenuOpen()).toBe(false);
+  });
+
+  it('/asset is a no-op when no callback is registered', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/asset';
+    ta.selectionStart = ta.selectionEnd = 6;
+
+    // No callback
+    registerAssetPickerCallback(null);
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('asset');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    // Text unchanged, menu closed
+    expect(ta.value).toBe('/asset');
+    expect(isSlashMenuOpen()).toBe(false);
   });
 });
