@@ -262,6 +262,9 @@ all" defaults in PKC2.
 2. **Non-image asset insertion** — for PDFs / videos, insert a link
    `[filename](asset:key)` and extend the resolver to emit `<a>` /
    `<video>` elements.
+
+**Resolved since initial foundation**: editor autocomplete on
+free-typed `asset:` — see [`asset-autocomplete-foundation.md`](./asset-autocomplete-foundation.md).
 3. **Drag-drop upload inside the picker** — combine the picker with
    the existing file-drop zone for a one-step "drop → insert" flow.
 4. **Filter box** — once candidate counts grow, add an inline input to
