@@ -9,6 +9,7 @@ import {
   flashEntry,
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
+import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -115,6 +116,22 @@ async function boot(): Promise<void> {
   // built preview resolver context pushed into it. The child's
   // view-pane HTML and Source textarea are never touched.
   wireEntryWindowLiveRefresh(dispatcher);
+
+  // 2c. Entry-window view-body rerender wiring.
+  //
+  // Companion of the Preview wiring above. Same trigger
+  // (`prev.assets !== next.assets`), disjoint effect: for every
+  // open text / textlog child whose saved body contains at least
+  // one `asset:` reference, the parent re-resolves the body and
+  // calls `pushViewBodyUpdate`, which replaces only
+  // `#body-view.innerHTML`. The Source textarea and Preview tab
+  // are never touched by this wiring — Preview wiring handles the
+  // Preview tab, and dirty-state policy on the child side decides
+  // whether to apply the incoming view-body immediately or stash
+  // it for a later flush on cancelEdit. See
+  // `src/adapter/ui/entry-window-view-body-refresh.ts` for the
+  // full contract.
+  wireEntryWindowViewBodyRefresh(dispatcher);
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
