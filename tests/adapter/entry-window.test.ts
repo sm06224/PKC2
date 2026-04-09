@@ -1727,4 +1727,134 @@ describe('Entry Window', () => {
       }
     });
   });
+
+  describe('getOpenEntryWindowLids', () => {
+    function setupLiveMock() {
+      const childDoc = {
+        open: vi.fn(),
+        write: vi.fn((html: string) => {
+          capturedHtml = html;
+        }),
+        close: vi.fn(),
+      };
+      const childWindow = {
+        closed: false,
+        focus: vi.fn(),
+        document: childDoc,
+        postMessage: vi.fn(),
+      };
+      vi.spyOn(window, 'open').mockReturnValue(childWindow as unknown as Window);
+      return { childWindow };
+    }
+
+    it('exposes getOpenEntryWindowLids as a named export', async () => {
+      const mod = await import('../../src/adapter/ui/entry-window');
+      expect(typeof (mod as Record<string, unknown>).getOpenEntryWindowLids).toBe(
+        'function',
+      );
+    });
+
+    it('includes the lid of a freshly opened entry window', async () => {
+      const { openEntryWindow, getOpenEntryWindowLids } = await import(
+        '../../src/adapter/ui/entry-window'
+      );
+      setupLiveMock();
+      const entry = makeEntry({ archetype: 'text', body: 'x' });
+      openEntryWindow(entry as never, false, vi.fn(), false, {
+        previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} },
+      } as never);
+      expect(getOpenEntryWindowLids()).toContain(entry.lid);
+    });
+
+    it('filters out closed child windows that the poller has not yet cleaned up', async () => {
+      const { openEntryWindow, getOpenEntryWindowLids } = await import(
+        '../../src/adapter/ui/entry-window'
+      );
+      const { childWindow } = setupLiveMock();
+      const entry = makeEntry({ archetype: 'text', body: 'x' });
+      openEntryWindow(entry as never, false, vi.fn(), false, {
+        previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} },
+      } as never);
+
+      // Mark the child closed but do NOT run the close poller.
+      childWindow.closed = true;
+      expect(getOpenEntryWindowLids()).not.toContain(entry.lid);
+    });
+
+    it('returns multiple lids when several entry windows are open', async () => {
+      const { openEntryWindow, getOpenEntryWindowLids } = await import(
+        '../../src/adapter/ui/entry-window'
+      );
+      setupLiveMock();
+      const e1 = makeEntry({ archetype: 'text', body: 'a' });
+      openEntryWindow(e1 as never, false, vi.fn(), false, {
+        previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} },
+      } as never);
+      // Fresh mock for the second open so the spy returns a new child.
+      setupLiveMock();
+      const e2 = makeEntry({ archetype: 'text', body: 'b' });
+      openEntryWindow(e2 as never, false, vi.fn(), false, {
+        previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} },
+      } as never);
+
+      const lids = getOpenEntryWindowLids();
+      expect(lids).toContain(e1.lid);
+      expect(lids).toContain(e2.lid);
+    });
+  });
+
+  describe('Attachment preview Blob URL lifecycle (child-side script)', () => {
+    it('bootAttachmentPreview calls revokeAllBlobUrls at the start (idempotent boot)', async () => {
+      const html = await openAndCapture();
+      // The function revokeAllBlobUrls must exist and be invoked at the
+      // top of bootAttachmentPreview before any new URL is created.
+      expect(html).toContain('function revokeAllBlobUrls');
+      // Boot calls revokeAllBlobUrls before data guards.
+      expect(html).toMatch(/function bootAttachmentPreview\(\)[^}]*revokeAllBlobUrls\(\)/);
+    });
+
+    it('openAttachmentInNewTab tracks the blob URL via trackBlobUrl', async () => {
+      const html = await openAndCapture();
+      // The URL must be wrapped in trackBlobUrl so the unload handler
+      // catches it if the 1500ms timer is killed by a window close.
+      expect(html).toMatch(/openAttachmentInNewTab[\s\S]*?trackBlobUrl\(URL\.createObjectURL/);
+    });
+
+    it('downloadAttachmentFromChild tracks the blob URL via trackBlobUrl', async () => {
+      const html = await openAndCapture();
+      expect(html).toMatch(
+        /downloadAttachmentFromChild[\s\S]*?trackBlobUrl\(URL\.createObjectURL/,
+      );
+    });
+
+    it('openAttachmentInNewTab prunes the URL from pkcActiveBlobUrls after revoke', async () => {
+      const html = await openAndCapture();
+      // After the setTimeout revoke, the URL should be spliced out of
+      // pkcActiveBlobUrls so the unload handler does not double-revoke.
+      expect(html).toMatch(
+        /openAttachmentInNewTab[\s\S]*?pkcActiveBlobUrls\.splice\(idx, 1\)/,
+      );
+    });
+
+    it('downloadAttachmentFromChild prunes the URL from pkcActiveBlobUrls after revoke', async () => {
+      const html = await openAndCapture();
+      expect(html).toMatch(
+        /downloadAttachmentFromChild[\s\S]*?pkcActiveBlobUrls\.splice\(idx, 1\)/,
+      );
+    });
+
+    it('registers pagehide and unload listeners pointing at revokeAllBlobUrls', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain("addEventListener('pagehide', revokeAllBlobUrls)");
+      expect(html).toContain("addEventListener('unload', revokeAllBlobUrls)");
+    });
+
+    it('revokeAllBlobUrls resets pkcActiveBlobUrls to an empty array', async () => {
+      const html = await openAndCapture();
+      // The function must assign a fresh empty array to pkcActiveBlobUrls
+      // after revoking — otherwise a subsequent boot would re-process
+      // stale entries.
+      expect(html).toMatch(/function revokeAllBlobUrls[\s\S]*?pkcActiveBlobUrls = \[\]/);
+    });
+  });
 });

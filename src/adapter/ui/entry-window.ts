@@ -93,6 +93,29 @@ function renderEntryPreview(
 const openWindows = new Map<string, Window>();
 
 /**
+ * Return the set of lids for which an entry-window child is currently
+ * open. Used by the main-window state subscriber to decide which open
+ * children should receive a live preview-context refresh when the
+ * container's asset state changes (e.g. an attachment entry added or
+ * removed between the initial open and now).
+ *
+ * The returned array is a snapshot — callers iterating over it may
+ * safely dispatch `pushPreviewContextUpdate` or similar without
+ * worrying about concurrent mutation of the underlying map.
+ *
+ * Closed children that the close-poller has not yet cleaned up are
+ * filtered out here so callers never receive a stale lid that would
+ * make `pushPreviewContextUpdate` post to a dead child.
+ */
+export function getOpenEntryWindowLids(): string[] {
+  const lids: string[] = [];
+  for (const [lid, child] of openWindows) {
+    if (!child.closed) lids.push(lid);
+  }
+  return lids;
+}
+
+/**
  * Private message type name used for the parent → child live refresh
  * of the edit-mode Preview resolver context. Exported so the test
  * harness and adjacent adapter code can reference the exact string
@@ -942,7 +965,30 @@ function base64ToText(b64) {
   catch (_e) { return bin; }
 }
 function trackBlobUrl(url) { pkcActiveBlobUrls.push(url); return url; }
+function revokeAllBlobUrls() {
+  /*
+   * Revoke every URL currently tracked in pkcActiveBlobUrls and reset
+   * the array. Called from (a) bootAttachmentPreview at the start so
+   * any stale URLs from a previous boot invocation are torn down
+   * before new ones are created, and (b) the window unload handler as
+   * the last-chance cleanup. Wrapped in try/catch per entry because
+   * revoking an already-revoked URL throws in some engines.
+   */
+  for (var i = 0; i < pkcActiveBlobUrls.length; i++) {
+    try { URL.revokeObjectURL(pkcActiveBlobUrls[i]); } catch (_e) { /* ignore */ }
+  }
+  pkcActiveBlobUrls = [];
+}
 function bootAttachmentPreview() {
+  /*
+   * Eager revoke of any previously-tracked URLs. bootAttachmentPreview
+   * is normally called exactly once per child window, but this keeps
+   * the function idempotent: if a future change ever re-invokes boot
+   * (e.g. a hypothetical attachment-swap feature), the prior blob URLs
+   * are released before new ones are created, so the array can never
+   * grow past the set of URLs actually in use by the current preview.
+   */
+  revokeAllBlobUrls();
   if (!pkcAttachmentData) return;
   var el = document.querySelector('[data-pkc-ew-preview-type]');
   if (!el) return;
@@ -990,14 +1036,32 @@ function bootAttachmentPreview() {
 }
 function openAttachmentInNewTab() {
   if (!pkcAttachmentData) return;
-  var url = URL.createObjectURL(base64ToBlob(pkcAttachmentData, pkcAttachmentMime));
+  /*
+   * Track the URL in pkcActiveBlobUrls so the window unload handler
+   * revokes it if the child closes before the 1500ms setTimeout fires.
+   * The setTimeout still provides a best-effort early cleanup while
+   * the child is still open — ~1.5s is the standard window-open grace
+   * period for new tabs to finish loading the blob.
+   */
+  var url = trackBlobUrl(URL.createObjectURL(base64ToBlob(pkcAttachmentData, pkcAttachmentMime)));
   window.open(url, '_blank', 'noopener');
-  setTimeout(function() { URL.revokeObjectURL(url); }, 1500);
+  setTimeout(function() {
+    try { URL.revokeObjectURL(url); } catch (_e) { /* ignore */ }
+    /* Also prune the URL from pkcActiveBlobUrls so the unload handler
+     * doesn't try to double-revoke it. Linear scan is fine — the array
+     * is typically very small. */
+    var idx = pkcActiveBlobUrls.indexOf(url);
+    if (idx >= 0) pkcActiveBlobUrls.splice(idx, 1);
+  }, 1500);
 }
 function downloadAttachmentFromChild() {
   if (!pkcAttachmentData) return;
   var blob = base64ToBlob(pkcAttachmentData, pkcAttachmentMime);
-  var url = URL.createObjectURL(blob);
+  /*
+   * Track the URL the same way openAttachmentInNewTab does, so a close
+   * before the 500ms timer still frees it via the unload handler.
+   */
+  var url = trackBlobUrl(URL.createObjectURL(blob));
   var a = document.createElement('a');
   a.href = url;
   var name = (document.querySelector('[data-pkc-ew-preview-type]') || { getAttribute: function() { return ''; } }).getAttribute('data-pkc-ew-name');
@@ -1006,7 +1070,9 @@ function downloadAttachmentFromChild() {
   a.click();
   setTimeout(function() {
     if (a.parentNode) a.parentNode.removeChild(a);
-    URL.revokeObjectURL(url);
+    try { URL.revokeObjectURL(url); } catch (_e) { /* ignore */ }
+    var idx = pkcActiveBlobUrls.indexOf(url);
+    if (idx >= 0) pkcActiveBlobUrls.splice(idx, 1);
   }, 500);
 }
 document.addEventListener('click', function(e) {
@@ -1029,11 +1095,8 @@ document.addEventListener('click', function(e) {
     if (action === 'download-attachment') { e.preventDefault(); downloadAttachmentFromChild(); return; }
   }
 });
-window.addEventListener('unload', function() {
-  for (var i = 0; i < pkcActiveBlobUrls.length; i++) {
-    try { URL.revokeObjectURL(pkcActiveBlobUrls[i]); } catch (_e) { /* ignore */ }
-  }
-});
+window.addEventListener('pagehide', revokeAllBlobUrls);
+window.addEventListener('unload', revokeAllBlobUrls);
 bootAttachmentPreview();
 
 function enterEdit() {

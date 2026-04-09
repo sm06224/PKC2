@@ -1489,17 +1489,8 @@ function buildEntryWindowAssetContext(
   }
 
   if (entry.archetype === 'text' || entry.archetype === 'textlog') {
-    // Build the resolver context once. It is used twice: to produce
-    // the initial `resolvedBody` for the view pane, and to seed the
-    // `previewCtx` snapshot that powers the edit-mode Preview tab's
-    // live resolution of asset references while the user types.
-    const mimeByKey = collectAssetMimeMap(container);
-    const nameByKey = collectAssetNameMap(container);
-    const previewCtx = {
-      assets: container.assets ?? {},
-      mimeByKey,
-      nameByKey,
-    };
+    const previewCtx = buildEntryPreviewCtx(entry, container);
+    if (!previewCtx) return undefined;
     // Skip `resolvedBody` when the saved body has no reference at
     // open time — the view pane renders `entry.body` unchanged, which
     // is what Phase 4 already does. `previewCtx` is still registered
@@ -1512,6 +1503,33 @@ function buildEntryWindowAssetContext(
   }
 
   return undefined;
+}
+
+/**
+ * Build a preview resolver context (`AssetResolutionContext`) for a
+ * single entry from the given container.
+ *
+ * Exported so `main.ts` can rebuild a fresh snapshot on the fly when
+ * the container's asset state changes, and push it into already-open
+ * entry-window children via
+ * `pushPreviewContextUpdate(lid, previewCtx)` — see
+ * `wireEntryWindowLiveRefresh` in `main.ts`.
+ *
+ * Returns `undefined` for entries that do not participate in the
+ * edit-mode Preview resolver (anything other than `text` / `textlog`).
+ * The returned context is a plain object — callers may freely pass it
+ * across the parent/child postMessage boundary.
+ */
+export function buildEntryPreviewCtx(
+  entry: Entry,
+  container: Container,
+): import('../../features/markdown/asset-resolver').AssetResolutionContext | undefined {
+  if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return undefined;
+  return {
+    assets: container.assets ?? {},
+    mimeByKey: collectAssetMimeMap(container),
+    nameByKey: collectAssetNameMap(container),
+  };
 }
 
 /**

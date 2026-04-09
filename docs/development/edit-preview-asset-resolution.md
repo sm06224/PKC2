@@ -623,6 +623,303 @@ child window
 
 ---
 
+## Live refresh wiring + 状態 / リソースハードニング
+
+### 1. 変更点の要約
+
+`Live refresh foundation` で整えた `pushPreviewContextUpdate` を、
+ついに「実際に attachment の add/remove が起きたタイミングに接続」
+した。加えて、この作業と同時期に浮上していた 3 つの周辺品質問題
+（IDB debounce stale state、slash menu モジュールスコープ、
+attachment preview blob URL ライフサイクル）を同じ Issue 内で
+責務を分けて潰した。
+
+4 論点は **互いに依存しない** ため独立してレビュー・ロールバック
+可能になっている。
+
+### 2. Sub-item A: Entry-window preview live refresh wiring
+
+**責務 (scope)**:
+
+- `container.assets` のオブジェクトアイデンティティが変わった瞬間に、
+  開いている text / textlog の子ウィンドウへ新鮮な `previewCtx` を
+  `pushPreviewContextUpdate` 経由で配信する
+- 親ウィンドウの state 変化だけを購読する (adapter 層の glue)
+
+**責務外 (non-scope)**:
+
+- view-pane HTML の再描画（`body-view.innerHTML` は触らない）
+- Source textarea の value への介入
+- 汎用的な cross-window イベントバスとしての振る舞い
+- generic / opaque / folder / form / todo への拡張
+- orphaned asset cleanup on delete（reducer の `removeEntry` は
+  意図的に assets を残すため、DELETE_ENTRY 経路では本 wiring は
+  fire しない — 下記 "既知の挙動" 参照）
+
+**配線ポイント**: `src/adapter/ui/entry-window-live-refresh.ts`
+（新規ファイル）
+
+```ts
+export function wireEntryWindowLiveRefresh(
+  dispatcher: Dispatcher,
+): () => void {
+  return dispatcher.onState((state, prev) => {
+    const nextContainer = state.container;
+    const prevAssets = prev.container?.assets;
+    const nextAssets = nextContainer?.assets;
+    if (!nextContainer) return;
+    if (prevAssets === nextAssets) return;
+
+    const openLids = getOpenEntryWindowLids();
+    if (openLids.length === 0) return;
+
+    for (const lid of openLids) {
+      const entry = nextContainer.entries.find((e) => e.lid === lid);
+      if (!entry) continue;
+      const previewCtx = buildEntryPreviewCtx(entry, nextContainer);
+      if (!previewCtx) continue;
+      pushPreviewContextUpdate(lid, previewCtx);
+    }
+  });
+}
+```
+
+同じファイルを `main.ts` から `wireEntryWindowLiveRefresh(dispatcher)`
+で 1 回だけ呼び出し、wiring モジュールとして `render` / `persistence` /
+`event-log` と並列に mount する。
+
+**補助的な追加 API**:
+
+- `getOpenEntryWindowLids(): string[]` を `entry-window.ts` から export。
+  `openWindows` Map を iterate しつつ `child.closed` で sieve する
+  read-only helper（テストの安定化と wiring の責務削減の両方を兼ねる）。
+- `buildEntryPreviewCtx(entry, container)` を `action-binder.ts` に
+  追加。`buildEntryWindowAssetContext` が内部で呼んでいたロジックを
+  純粋関数として切り出し、wiring からも再利用できるようにした。
+  text / textlog 以外では `undefined` を返し、呼び出し側で自然に
+  no-op となる。
+
+**アイデンティティ比較で十分な理由**: reducer は `mergeAssets` で
+必ず `assets` オブジェクトを新規にスプレッドするため、内容の
+変更は常にオブジェクトアイデンティティの変化として現れる。
+deep diff は不要。
+
+**DELETE_ENTRY に関する既知の挙動**: `core/operations/container-ops.ts`
+の `removeEntry` は `{ ...container, entries, relations }` のみを
+返し、`assets` は同じリファレンスのままにしている。したがって
+attachment entry を削除しても `prev.assets === next.assets` が
+成り立ち、本 wiring は fire しない（= 子の Preview tab は古い
+resolver 入力を保持したままになる）。これは orphan-asset cleanup
+を Issue のスコープ外に置いた設計判断であり、テスト側にもこの
+挙動を pin するケースを追加してある。将来 orphan GC を入れた
+際には同じ wiring がそのまま効く。
+
+**テスト**（`tests/adapter/entry-window-live-refresh.test.ts`、
+全 7 件）:
+
+1. text entry を開いた状態で新しい attachment を COMMIT_EDIT すると
+   fresh な preview ctx が child へ push される
+2. 子ウィンドウが 1 枚も無いときは wiring は no-op（throw しない）
+3. assets identity が変わらない state 変化（`SELECT_ENTRY` など）は
+   スキップされる
+4. todo など非 text archetype の子ウィンドウは
+   `buildEntryPreviewCtx` が undefined を返すためスキップ
+5. 初期 assets が non-empty な状態に 2 つ目の attachment を
+   merge しても両方のキーが push 後の context に現れる
+6. DELETE_ENTRY では assets identity が変わらないため push が
+   fire しないこと（現状の reducer 挙動の pin）
+7. wiring は `child.document.open` / `write` / `close` を 1 度も
+   呼ばない（view-pane HTML 再描画禁止の pin）
+
+### 3. Sub-item B: Persistence debounce の stale state 懸念と unload flush
+
+**動機**: レビュー中に「`scheduleSave` の debounce closure が
+`QUICK_UPDATE_ENTRY` / `SELECT_ENTRY` などの高速連打中に stale な
+state を掴み続けているのでは」という懸念が上がった。
+
+**調査結果**: `scheduleSave` は **timer のみをキャプチャし、
+`doSave` が走るタイミングで `dispatcher.getState()` を読む** 設計
+になっていた。したがって debounce を挟んでも flush 時点の
+最新 state が必ず使われ、stale state を書き込むバグは存在しない。
+
+しかし、
+
+- レビューなしで読み取れる不変量ではない（誰かが後から closure
+  経由で `state` を取り込んだら壊れる）
+- タブを閉じた瞬間に timer が kill されて pending 分が消える
+  という実体のある問題は依然として存在する
+
+という 2 点は残るため、以下の 2 種類のハードニングを入れた。
+
+**ハードニング 1: 明示的な不変量コメント**
+
+`doSave` の冒頭に「state は debounce 当時ではなく flush 時点で
+読む」旨のコメントと、その invariants を future maintainer 向けに
+明示。
+
+**ハードニング 2: `flushPending` + `pagehide` 購読**
+
+`mountPersistence` の戻り値を `PersistenceHandle { dispose,
+flushPending }` に変更し、
+
+- `flushPending()`: 待ち timer をクリアして即座に `doSave` を実行
+  （pending が無いなら no-op）
+- `unloadTarget`（既定 = `window`）に `pagehide` listener を
+  張り、タブ close / bfcache 直前に `flushPending` を自動発火
+
+を追加した。`pagehide` を選んだ理由は、`unload` は bfcache
+（back/forward cache）に乗るブラウザで発火しないことがあるため。
+
+`dispose()` は既存の state unsubscribe に加えて、`pagehide`
+listener も外す。テスト側は `unloadTarget: null` で opt-out
+できる（既存 timer based テストを壊さないため）。
+
+**テスト**（`tests/adapter/persistence.test.ts` に 5 件追加）:
+
+1. `QUICK_UPDATE_ENTRY` → `SELECT_ENTRY` の連続で pending が
+   あったとき、flush 時点の **最新** state が save される
+2. `flushPending` が pending timer をキャンセルして即 save を実行
+3. pending が無いときの `flushPending` は no-op
+4. `pagehide` 発火で `flushPending` が自動呼び出しされる
+5. `dispose()` が `pagehide` listener を取り外す
+
+### 4. Sub-item C: Slash menu のモジュールスコープ state 問題
+
+**動機**: `src/adapter/ui/slash-menu.ts` は 6 つの module-level
+`let`（`activeMenu` / `activeTextarea` / `slashPos` /
+`selectedIndex` / `filteredCommands` / etc.）でメニュー state を
+持っていた。これは事実上グローバル単一インスタンスであり、
+
+- 同じモジュールが 2 つの render root に対して mount された
+  ときに state が混ざる
+- テストハーネスで多重 mount したときに前の root の menu
+  リファレンスが後の root に漏れる
+
+という cross-instance contamination のリスクがあった。ユーザー
+可視のバグは出ていないが、preview state / save state / slash menu
+state を **別モジュールで別インスタンス** に分離しておくという
+Issue の大方針（"preview と slash menu と save を混ぜない"）に
+合わせて、ここも per-instance state 化する。
+
+**責務 (scope)**:
+
+- module-level state を `ActiveSlashMenu` interface 1 個にまとめる
+- `WeakMap<HTMLElement, ActiveSlashMenu>` で root → state を分離
+- "at most one menu visible" 不変量は保持するため、module-level
+  には `activeRoot: HTMLElement | null` という単一ポインタだけ残す
+- 公開 API（`openSlashMenu` / `closeSlashMenu` / `filterSlashMenu` /
+  `handleSlashMenuKeydown` / `isSlashMenuOpen`）のシグネチャは
+  変えない
+
+**責務外 (non-scope)**:
+
+- 複数 menu の同時表示（挙動変更なし）
+- slash command 集合 / 挙動の変更
+- カーソル計算やポップオーバー位置の改善
+- 新しい archetype への拡張
+
+**キーポイント**: 内部関数は `ActiveSlashMenu` をパラメータで
+取る形に統一し、`closeSlashMenu` は "currently active instance
+だけを close する — dormant per-root state には触らない" という
+明示的な仕様に変えた（閉じていない別 root の state を誤って
+破壊しない）。
+
+**テスト**（`tests/adapter/slash-menu.test.ts` に describe
+`slash menu per-root isolation` として 7 件追加）:
+
+1. `rootB` に開く時点で `rootA` の既存メニューが閉じられる
+   （single-visible 不変量の pin）
+2. `closeSlashMenu` は現在 active な root のみクリアし、dormant
+   な root には触らない
+3. keyboard navigation は active root の state だけを進める
+4. `filterSlashMenu` も active root のみに適用される
+5. `Enter` で実行されるコマンドは active root の textarea にしか
+   挿入されず、他 root の textarea は無変化
+6. 同じ root を close → reopen したときに前回の filter state が
+   残らない（reopen 時は常に全コマンド表示）
+7. `isSlashMenuOpen()` は "現在表示中のメニューがあるか" だけを
+   反映し、dormant な per-root エントリをカウントしない
+
+### 5. Sub-item D: Attachment preview の Blob URL ライフサイクル
+
+**動機**: 子ウィンドウの attachment preview は、`decodeBase64ToBlob`
+→ `URL.createObjectURL` で得た blob URL を `<img src>` や
+download anchor に流していた。従来コードは:
+
+- `setTimeout(() => URL.revokeObjectURL(u), 1500)` で best-effort
+  に解放
+- unload 時は inline `window.addEventListener('unload', …)` で
+  local 配列 `pkcActiveBlobUrls` を revoke
+- ただし、preview を高速に切り替えると timeout が走る前に次の
+  URL が作られ、**timeout を上書きする前の URL リファレンスが
+  mutable array の中で行方不明になる**ケースが残る
+- さらに `unload` は bfcache 下で発火しないブラウザがあり、
+  close → bfcache 経路ではリークする
+
+という 3 つの弱点があった。
+
+**責務 (scope)**:
+
+- child script 側の blob URL lifecycle を "tracked → revoked"
+  の決定的な 2 状態モデルにする
+- 冪等な `revokeAllBlobUrls()` を用意して boot / 切替 /
+  unload の 3 箇所で同じ関数を呼ぶ
+- `pagehide` / `unload` を両方購読し、bfcache にも対応
+
+**責務外 (non-scope)**:
+
+- preview renderer 本体の書き換え
+- 大容量 image の lazy blob 生成や size cap
+- IndexedDB 側での asset 形式変更
+- WebP / AVIF / HEIC などへの preview pipeline 拡張
+
+**キーポイント**:
+
+- `trackBlobUrl(url)` で配列に追加してから `<img>` 等に渡す
+- 使い終わったら `revokeObjectURL` + `splice` で配列から除去
+- `bootAttachmentPreview` の先頭で `revokeAllBlobUrls()` を呼び、
+  連打で preview を切り替えても前の URL が必ず開放される冪等性
+  を保証
+- `addEventListener('pagehide', revokeAllBlobUrls)` と
+  `addEventListener('unload', revokeAllBlobUrls)` を併用
+
+**テスト**（`tests/adapter/entry-window.test.ts` の既存 describe
+に `Attachment preview Blob URL lifecycle (child-side script)` を
+追加、計 7 件）:
+
+1. `revokeAllBlobUrls` 関数が child HTML に定義されている
+2. `trackBlobUrl` 関数が child HTML に定義されている
+3. `bootAttachmentPreview` が先頭で `revokeAllBlobUrls` を呼ぶ
+4. `openAttachmentInNewTab` が `trackBlobUrl` で URL を登録し、
+   revoke 後に splice する
+5. `downloadAttachmentFromChild` も同じパターンを使う
+6. `pagehide` listener が `revokeAllBlobUrls` を呼ぶ
+7. 旧 inline unload handler が撤去されて listener ベースに
+   置き換わっている
+
+### 6. 4 論点の独立性
+
+A / B / C / D はそれぞれ別ファイル / 別責務で、相互に import は
+**していない**。テストもサブアイテムごとに別ファイル（または別
+describe）に分離しているため、1 つを revert しても残り 3 つは
+壊れない。この "単一 Issue 内で 4 論点を別々に直す" という
+境界線が、今後の review と rollback の両方で重要な不変量となる。
+
+### 7. 次スコープ
+
+- **orphan asset GC**: `removeEntry` と同じ reducer path で、残っている
+  参照を relations / entries から解析して未参照の `assets[key]` を
+  削除する。削除されれば本 wiring の identity 比較が自動的に効く。
+- **child view-pane rerender**: A wiring が触っているのは Preview
+  resolver 入力だけ。`body-view.innerHTML` の再描画は別 Issue。
+- **save compaction**: pending state を間引いて flush 1 回に集約
+  するなど persistence 側の高度な最適化。
+- **slash menu の同時表示**: 複数 root で同時に menu を開きたい
+  UI 要求が出てきた時点で `activeRoot` の single-pointer 制約を
+  外す。
+
+---
+
 ## 維持する不変量
 
 - 5 層構造：resolver は features、子ウィンドウ配信は adapter
