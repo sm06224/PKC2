@@ -32,6 +32,8 @@ PKC2 は、以下を1つにまとめたツールです:
 2. **Create** entries with `+ Note`, `+ Todo`, `+ Form`, or `+ File`
 3. **Export** via the Export panel — choose HTML or ZIP
 
+詳しい使い方は [ユーザーマニュアル（Markdown）](docs/manual/00_index.md) または [PKC2 マニュアル HTML](PKC2-Extensions/pkc2-manual.html) を参照してください。
+
 ## Which Export should I use?
 
 | Goal | Recommended |
@@ -61,13 +63,32 @@ Runtime has zero external npm dependencies.
 
 ## Documentation
 
+### ユーザー向け
+
+| Document | Purpose |
+|----------|---------|
+| [ユーザーマニュアル（目次）](docs/manual/00_index.md) | 全 10 章の Markdown マニュアル |
+| [PKC2 マニュアル HTML](PKC2-Extensions/pkc2-manual.html) | PKC2 形式の単一 HTML マニュアル（readonly） |
+| [運用ガイド](docs/planning/18_運用ガイド_export_import_rehydrate.md) | Export / Import / Rehydrate の詳細 |
+
+### 開発者向け
+
 | Document | Purpose |
 |----------|---------|
 | [Design Principles](docs/planning/05_設計原則.md) | Core values and constraints |
 | [Architecture](docs/planning/12_基盤方針追補_責務分離.md) | 5-layer structure and rules |
 | [Data Model](docs/planning/17_保存再水和可搬モデル.md) | Storage, export, compression |
-| [Operation Guide](docs/planning/18_運用ガイド_export_import_rehydrate.md) | How to use export/import/rehydrate |
 | [Pre-Release Notes](docs/planning/19_pre_release.md) | Current status, constraints, future |
+
+## PKC2 Extensions
+
+`PKC2-Extensions/` ディレクトリは、PKC2 の「拡張機能 HTML」の配布先です。拡張機能 HTML は PKC2 形式の単一 HTML ファイルで、次の 3 通りで利用できます。
+
+- **単体で開く** — ブラウザに HTML をドロップすると PKC2 UI で内容を閲覧
+- **Import / Rehydrate** — ご自身のワークスペースに取り込み
+- **iframe 埋め込み** — 別ページに組み込んで postMessage で連携
+
+現在は `pkc2-manual.html`（ユーザーマニュアル）が第 1 弾として配置されています。
 
 ## Development
 
@@ -75,8 +96,10 @@ Runtime has zero external npm dependencies.
 npm install          # Install dependencies
 npm run dev          # Start dev server
 npm run build        # Build (Stage 1 bundle + Stage 2 HTML)
+npm run build:manual # Build the PKC2-Extensions/pkc2-manual.html
+npm run build:all    # Build everything (bundle + release + manual)
 npm run typecheck    # TypeScript check
-npm test             # Run tests (702 tests)
+npm test             # Run tests
 ```
 
 ## Status
