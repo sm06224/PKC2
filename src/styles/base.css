@@ -1428,11 +1428,6 @@
 }
 
 /* ── Sidebar tree folder indicator ── */
-[data-pkc-folder="true"] .pkc-entry-title::before {
-  content: '📁 ';
-  font-size: 0.8rem;
-}
-
 .pkc-folder-count {
   font-size: 0.6rem;
   color: var(--c-muted);
