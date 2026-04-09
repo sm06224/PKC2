@@ -139,9 +139,27 @@ export function openEntryWindow(
   assetContext?: EntryWindowAssetContext,
   onDownloadAsset?: (assetKey: string) => void,
 ): void {
-  // Check for existing window
+  // ── Duplicate-open path ─────────────────────────────
+  // If a child window for this lid is already open, we do NOT create
+  // a second child. Instead, we refresh the preview resolver context
+  // so the next time the user switches to the Preview tab the edit-
+  // mode asset resolver works against the freshest container snapshot
+  // (attachments added / removed between the first open and now).
+  //
+  // Only `previewCtx` is refreshed here. The view-pane HTML was already
+  // written into the child document at the original open time and is
+  // not touched — re-rendering it would require a postMessage protocol
+  // round-trip, which is deliberately out of scope (see
+  // `edit-preview-asset-resolution.md`, "Duplicate-open refresh").
+  //
+  // If the caller did not pass a `previewCtx`, the existing context
+  // (if any) is preserved rather than cleared — the caller asked to
+  // focus an already-open window, not to downgrade its state.
   const existing = openWindows.get(entry.lid);
   if (existing && !existing.closed) {
+    if (assetContext?.previewCtx) {
+      previewResolverContexts.set(entry.lid, assetContext.previewCtx);
+    }
     existing.focus();
     return;
   }

@@ -955,4 +955,367 @@ describe('Entry Window', () => {
       expect(result).toContain('report');
     });
   });
+
+  describe('Duplicate-open context refresh', () => {
+    // 1 × 1 red PNG used as the "new" asset payload after refresh.
+    const RED_PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    /**
+     * Local helper: mocks `window.open` so that every call returns the
+     * same stub child window object. Returns both the stub child and the
+     * spy so tests can assert the call count — critical for verifying
+     * that the duplicate-open path does NOT create a second child.
+     */
+    function setupDupMock() {
+      const childDoc = {
+        open: vi.fn(),
+        write: vi.fn((html: string) => {
+          capturedHtml = html;
+        }),
+        close: vi.fn(),
+      };
+      const childWindow = {
+        closed: false,
+        focus: vi.fn(),
+        document: childDoc,
+        postMessage: vi.fn(),
+      };
+      const openSpy = vi
+        .spyOn(window, 'open')
+        .mockReturnValue(childWindow as unknown as Window);
+      return { childWindow, openSpy };
+    }
+
+    it('first open with no existing child registers previewCtx and creates a child', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      const { openSpy } = setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const ctx = {
+        assets: { 'ast-red': RED_PNG },
+        mimeByKey: { 'ast-red': 'image/png' },
+        nameByKey: { 'ast-red': 'red.png' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: ctx } as never,
+      );
+      // A brand-new open must actually create a child window.
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      // And the preview context must be live.
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      expect(render(entry.lid, '![red](asset:ast-red)')).toContain(
+        'data:image/png;base64,' + RED_PNG,
+      );
+    });
+
+    it('duplicate open does NOT create a second child window and calls focus()', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      const { childWindow, openSpy } = setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const ctx = { assets: {}, mimeByKey: {}, nameByKey: {} };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: ctx } as never,
+      );
+      // First open: create child, no focus yet.
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(childWindow.focus).not.toHaveBeenCalled();
+
+      // Second open (same lid): duplicate path — focus() but no new child.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: ctx } as never,
+      );
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(childWindow.focus).toHaveBeenCalledTimes(1);
+    });
+
+    it('duplicate open with a new previewCtx refreshes previewResolverContexts', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+      // First open: ctx has no asset — render yields the missing marker.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const before = render(entry.lid, '![red](asset:ast-red)');
+      expect(before).toContain('missing asset');
+      expect(before).not.toContain('data:image/png');
+
+      // Second open: fresh ctx WITH the asset — the duplicate-open path
+      // must replace the stale snapshot so the very next render resolves.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        {
+          previewCtx: {
+            assets: { 'ast-red': RED_PNG },
+            mimeByKey: { 'ast-red': 'image/png' },
+            nameByKey: { 'ast-red': 'red.png' },
+          },
+        } as never,
+      );
+      const after = render(entry.lid, '![red](asset:ast-red)');
+      expect(after).toContain('data:image/png;base64,' + RED_PNG);
+      expect(after).not.toContain('missing asset');
+    });
+
+    it('duplicate open WITHOUT previewCtx preserves the existing context (no downgrade)', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+      // First open: register a working context.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        {
+          previewCtx: {
+            assets: { 'ast-red': RED_PNG },
+            mimeByKey: { 'ast-red': 'image/png' },
+            nameByKey: { 'ast-red': 'red.png' },
+          },
+        } as never,
+      );
+
+      // Second open: caller passes no asset context at all (undefined).
+      // The existing snapshot must NOT be cleared — "focus, don't downgrade".
+      openEntryWindow(entry as never, false, vi.fn(), false, undefined);
+
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![red](asset:ast-red)');
+      expect(result).toContain('data:image/png;base64,' + RED_PNG);
+    });
+
+    it('after close poll cleanup, the NEXT open is treated as fresh (not duplicate)', async () => {
+      vi.useFakeTimers();
+      try {
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const { childWindow, openSpy } = setupDupMock();
+        const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+        );
+        expect(openSpy).toHaveBeenCalledTimes(1);
+
+        // Child closes → poll fires → context and Map entry released.
+        childWindow.closed = true;
+        vi.advanceTimersByTime(600);
+
+        const global = window as unknown as Record<string, unknown>;
+        const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+        // Context is gone — render falls back to plain markdown (no chip).
+        expect(render(entry.lid, '![red](asset:ast-red)')).not.toContain('data:image/png');
+
+        // Re-point the spy at a fresh child so the next open can be
+        // distinguished from the closed one.
+        const freshChild = {
+          closed: false,
+          focus: vi.fn(),
+          document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
+          postMessage: vi.fn(),
+        };
+        openSpy.mockReturnValue(freshChild as unknown as Window);
+
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          {
+            previewCtx: {
+              assets: { 'ast-red': RED_PNG },
+              mimeByKey: { 'ast-red': 'image/png' },
+              nameByKey: { 'ast-red': 'red.png' },
+            },
+          } as never,
+        );
+        // A fresh child MUST be created (not the duplicate-open branch).
+        expect(openSpy).toHaveBeenCalledTimes(2);
+        // And the new context should be live immediately.
+        expect(render(entry.lid, '![red](asset:ast-red)')).toContain(
+          'data:image/png;base64,' + RED_PNG,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('duplicate open never registers a context when none has ever been registered', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+      // Both opens without any previewCtx — the map entry must remain absent,
+      // and rendering falls back to the plain markdown path (no resolver).
+      openEntryWindow(entry as never, false, vi.fn(), false, undefined);
+      openEntryWindow(entry as never, false, vi.fn(), false, undefined);
+
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![x](asset:ast-red)');
+      // asset: scheme is not on markdown-it's allowlist so it is stripped,
+      // and nothing data:-URI–like should ever appear here.
+      expect(result).not.toContain('data:image/png');
+      expect(result).not.toContain('#asset-');
+    });
+
+    it('textlog archetype also benefits from duplicate-open context refresh', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({
+        archetype: 'textlog',
+        body: JSON.stringify({ entries: [] }),
+      });
+
+      // First open: empty ctx.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+      );
+
+      // Refresh with a ctx containing a non-image asset.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        {
+          previewCtx: {
+            assets: { 'ast-doc': 'ZHVtbXk=' },
+            mimeByKey: { 'ast-doc': 'application/pdf' },
+            nameByKey: { 'ast-doc': 'report.pdf' },
+          },
+        } as never,
+      );
+
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, 'See [the report](asset:ast-doc)');
+      expect(result).toContain('href="#asset-ast-doc"');
+      expect(result).toContain('report');
+    });
+
+    // ── Optional / extra coverage ───────────────────────────────────
+    it('optional: duplicate-open refresh does not leak unsafe href/src attributes', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+      // First open with empty ctx.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+      );
+
+      // Duplicate open with a working ctx.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        {
+          previewCtx: {
+            assets: { 'ast-red': RED_PNG },
+            mimeByKey: { 'ast-red': 'image/png' },
+            nameByKey: { 'ast-red': 'red.png' },
+          },
+        } as never,
+      );
+
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(
+        entry.lid,
+        '![x](asset:ast-red)\n\n[click](javascript:alert(1))\n\n<script>alert(1)</script>',
+      );
+      // The refreshed asset ref should resolve as before.
+      expect(result).toContain('data:image/png;base64,');
+      // No executable URL schemes may appear as href/src attributes, and
+      // raw <script> must remain escaped (html: false).
+      expect(result).not.toMatch(/href\s*=\s*["']javascript:/i);
+      expect(result).not.toMatch(/href\s*=\s*["']data:text\/html/i);
+      expect(result).not.toMatch(/src\s*=\s*["']javascript:/i);
+      expect(result).not.toMatch(/src\s*=\s*["']data:text\/html/i);
+      expect(result).not.toMatch(/<script[>\s]/i);
+    });
+
+    it('optional: three-way refresh chain A→B→C exposes only the latest context', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupDupMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+
+      // A: no assets.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+      );
+      // B: ast-red present.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        {
+          previewCtx: {
+            assets: { 'ast-red': RED_PNG },
+            mimeByKey: { 'ast-red': 'image/png' },
+            nameByKey: { 'ast-red': 'red.png' },
+          },
+        } as never,
+      );
+      // C: ast-red REMOVED again (simulates the user deleting an attachment
+      // between B and C). The refresh must propagate the removal too.
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx: { assets: {}, mimeByKey: {}, nameByKey: {} } } as never,
+      );
+
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![red](asset:ast-red)');
+      expect(result).toContain('missing asset');
+      expect(result).not.toContain('data:image/png');
+    });
+  });
 });

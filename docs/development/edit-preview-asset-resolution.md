@@ -223,9 +223,8 @@ child window (Source / Preview タブ)
    textarea なので、TEXTLOG の行単位 Preview は今回の対象外。
 3. **メインウィンドウ**: メインのエディタにそもそも Preview タブが
    存在しないため、今回の対応はメインの編集体験には影響しない。
-4. **複数ウィンドウの同一 lid 再 open**: Phase 4 と同じく
-   `openWindows` が既存ウィンドウに focus して二重 open を防ぐため、
-   同一 lid の context も上書きではなく最初の登録が生きる。
+4. ~~複数ウィンドウの同一 lid 再 open~~ — **Resolved**（下記
+   「重複 open 時の context refresh」節で解消済み）。
 5. **`window.opener` 不可時**: cross-origin や親クローズ時は plain
    escape にフォールバック（既存挙動の維持）。
 
@@ -254,18 +253,139 @@ child window (Source / Preview タブ)
 
 ## 次スコープ候補
 
-1. **重複 open 時の context refresh**: 同一 lid をすでに開いている
-   状態で親側が再 open した場合に、新しい snapshot へ差し替える。
-2. **メインウィンドウの Source/Preview タブ導入**: 現状 textarea
+1. **メインウィンドウの Source/Preview タブ導入**: 現状 textarea
    単体なので、メインでも編集中プレビューを出す案。
-3. **非 text archetype への previewCtx 拡張**: generic / opaque
+2. **非 text archetype への previewCtx 拡張**: generic / opaque
    など「textarea に markdown を書く可能性のある」アーキタイプにも
    同じ context を流す。
-4. **ライブ同期**: 親で attachment 追加・削除が起きたとき、開いて
+3. **ライブ同期**: 親で attachment 追加・削除が起きたとき、開いて
    いる子ウィンドウの `previewResolverContexts` を postMessage
-   経由で更新する。
-5. **Autocomplete hover thumbnail**: 編集中の `asset:` オート補完
+   経由で更新する（現状は再 open 契機でしか refresh されない）。
+4. **Autocomplete hover thumbnail**: 編集中の `asset:` オート補完
    ポップオーバーに resolver を通したサムネイル表示。
+
+## 重複 open 時の context refresh
+
+### 1. 変更点の要約
+
+`openEntryWindow` の「既にこの lid を開いている場合は `focus()` して
+早期 return する」パスに、`previewResolverContexts` の更新を 1 行だけ
+差し込んだ。view-pane 側の HTML は最初の open 時に `document.write`
+済みなので触らず、**編集 Preview 用 resolver の入力だけ**を新しい
+スナップショットで差し替える。
+
+### 2. 解決される問題
+
+初期実装では、親ウィンドウ側で attachment を足してから同じ entry を
+再 open しても、`openWindows.get(lid)` が既存の child を返した時点で
+早期 return していたため、`previewResolverContexts` は **最初の
+スナップショット** のまま据え置かれていた。結果として:
+
+- 親で追加した新しい attachment が Preview タブで `*[missing asset: …]*`
+  のままになる
+- 逆に親で attachment を削除しても、Preview ではまだ古いデータで
+  解決されてしまう
+- 「一度閉じて再 open すればいい」という回避手順が必要になる
+
+という違和感が残っていた。今回この経路を live に近い挙動にした。
+
+### 3. スコープ
+
+**In scope**
+
+- `openEntryWindow` 重複 open 判定分岐内での
+  `previewResolverContexts.set(entry.lid, assetContext.previewCtx)`
+- caller が `previewCtx` を渡さなかった場合は **既存 context を保持**
+  （clear しない "focus, don't downgrade" ポリシー）
+- 新 child window を作らず、既存 child の `focus()` を維持
+- テスト追加（後述）
+- ドキュメント更新（本節 + 既知の制限項の移動）
+
+**Out of scope**
+
+- view-pane HTML の再描画（postMessage ラウンドトリップが必要なため
+  別 Issue）
+- 親 → 子への逆方向メッセージング（`pkc-entry-update-asset-context` 等）
+- メインウィンドウの Preview タブ新設
+- `folder` / `generic` / `opaque` / `form` / `todo` への previewCtx 拡張
+- マルチインスタンス（複数タブ）間の同一 lid 競合
+
+### 4. アプローチ
+
+`src/adapter/ui/entry-window.ts` の冒頭（`openEntryWindow` 本体の
+最初のブロック）:
+
+```ts
+const existing = openWindows.get(entry.lid);
+if (existing && !existing.closed) {
+  if (assetContext?.previewCtx) {
+    previewResolverContexts.set(entry.lid, assetContext.previewCtx);
+  }
+  existing.focus();
+  return;
+}
+```
+
+設計上の三つのこだわり:
+
+1. **責務の限定**: 重複 open 分岐が触るのは `previewResolverContexts`
+   だけ。`openWindows`、`window.addEventListener('message', …)`、
+   `pollClose`（`setInterval`）には一切触らない。既存のクローズ
+   ポーラーが後で同じ lid を cleanup したときに、新しい context も
+   まとめて `.delete()` されるので、ライフサイクルのズレは発生しない。
+2. **スナップショット一貫性**: Phase 4 の `resolvedBody` および
+   初期 open 時の `previewResolverContexts.set` と同じ「親が渡した
+   瞬間の静的スナップショット」セマンティクスを維持する。live な
+   親 → 子 push ではない。
+3. **Downgrade しない**: `assetContext?.previewCtx` が undefined
+   （= caller は focus 目的でしか呼んでいない）のときは既存エントリを
+   **消さない**。保存→再 open の導線や、`EntryWindowAssetContext`
+   を渡さない legacy caller が壊れないようにするための防御。
+
+action-binder 側は変更なし。Phase 4 時点で `buildEntryWindowAssetContext`
+が text/textlog について常に `previewCtx` を返すように修正済みのため、
+二度目の dbl-click でも新鮮なスナップショットが自動的に供給される。
+
+### 5. テスト
+
+`tests/adapter/entry-window.test.ts` の
+`describe('Duplicate-open context refresh', …)` に 9 件追加:
+
+必須 7 件:
+
+1. 初回 open で child が生成され、`previewCtx` が登録される
+2. 重複 open 時に `window.open` は 2 度呼ばれず、`focus()` が走る
+3. 重複 open で新しい `previewCtx` を渡すと
+   `previewResolverContexts` が更新される（missing → data URI）
+4. 更新後 `pkcRenderEntryPreview(lid, text)` が新 asset を解決する
+5. close poll 経由で cleanup された後は、次の open が「重複」ではなく
+   新規として扱われる（`window.open` が 2 回呼ばれる）
+6. 一度も context を渡していない状態での重複 open は fallback を
+   維持（resolver は走らない）
+7. TEXTLOG archetype でも同じ refresh 経路が効く
+
+任意 2 件:
+
+- 重複 open 後の出力に `javascript:` / `data:text/html` が href/src と
+  して現れない、`<script>` が escape される
+- A → B → C 3 連続 refresh で、最後に asset を削除した C の状態が
+  優先される（B で追加したものが C で missing に戻る）
+
+`pkc-restricted-imports` lint と Phase 4 / Edit-preview テスト 82 件は
+無変更で全通過。合計 91 件（+9）。
+
+### 6. 次スコープ
+
+本節の解決はスナップショット方式の枠内での改善であり、以下は引き続き
+次スコープ候補として残る:
+
+- 親で attachment を add/remove した **瞬間に** 子の
+  `previewResolverContexts` を postMessage で push する live 同期
+- view-pane HTML も一緒に再描画する場合の `pkc-entry-rerender` 内部
+  メッセージ定義
+- 複数タブ（マルチインスタンス）間の同一 lid 競合解決
+
+---
 
 ## 維持する不変量
 
