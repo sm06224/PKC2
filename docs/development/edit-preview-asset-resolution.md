@@ -1293,6 +1293,238 @@ wiring Issue は本 policy を使って push するだけなので、policy
 
 ---
 
+## Text/textlog view rerender wiring
+
+### 1. 変更点の要約
+
+foundation と policy が揃ったので、最後のピースとして
+**dispatcher の state 変化を `pushViewBodyUpdate` 呼び出しに
+実際に繋げる wiring** を追加した。
+
+- 新規 module `src/adapter/ui/entry-window-view-body-refresh.ts`
+  に `wireEntryWindowViewBodyRefresh(dispatcher)` を実装
+- `main.ts` に Preview wiring (`wireEntryWindowLiveRefresh`) と
+  並列で呼び出し行を追加（section 2c）
+- テスト 11 ケース追加
+  (`tests/adapter/entry-window-view-body-refresh.test.ts`)
+- foundation helper (`pushViewBodyUpdate`) / policy 層 / message
+  type / child listener は **無変更**
+
+Preview wiring (`entry-window-live-refresh.ts`) と **同形** の
+subscriber module で、同一 trigger 上で別 helper を呼ぶ構造に
+なっている。
+
+### 2. Trigger: prev.assets !== next.assets
+
+Preview wiring と完全に同じ gate を採用:
+
+```ts
+dispatcher.onState((state, prev) => {
+  const nextContainer = state.container;
+  const prevAssets = prev.container?.assets;
+  const nextAssets = nextContainer?.assets;
+  if (!nextContainer) return;
+  if (prevAssets === nextAssets) return;
+  // …
+});
+```
+
+identity-level 比較で足りる理由:
+
+- reducer は `assets` を mutate するパスで毎回新しい object 参照に
+  差し替える（`COMMIT_EDIT` の `mergeAssets`、
+  `ENTRY_DELETED` の `asset_key` 削除、など）
+- 従って `prev.assets === next.assets` が成り立つ state cycle は
+  「assets は何も変わっていない」と同義
+- deep diff は不要 — 余計なコードはレバレッジにならない
+
+`prevAssets` と `nextAssets` はどちらも `undefined` 可能性があるが、
+`prev.container === undefined`（init 前）かつ `next.container !==
+undefined`（`SYS_INIT_COMPLETE`）のときは `prevAssets === undefined
+!== nextAssets` になり push パスに入る。ただし init cycle では
+通常 open window が一つもないので `getOpenEntryWindowLids().length
+=== 0` ガードで早期 return する。
+
+### 3. パイプライン
+
+trigger を通過したあと、**open lid ごとに** 以下を逐次処理する:
+
+```
+for (lid of getOpenEntryWindowLids()):
+  entry = nextContainer.entries.find(lid)
+  if !entry:              continue  # stale lid
+  if !entry.body:         continue  # 空 body
+  if !hasAssetReferences: continue  # 参照無し
+  previewCtx = buildEntryPreviewCtx(entry, nextContainer)
+  if !previewCtx:         continue  # non-text/textlog archetype
+  resolvedBody = resolveAssetReferences(entry.body, previewCtx)
+  pushViewBodyUpdate(lid, resolvedBody)
+```
+
+このパイプラインが守る rule:
+
+- **archetype filter**: `buildEntryPreviewCtx` が text / textlog
+  以外で `undefined` を返すので、そこで自然に切れる。attachment /
+  todo / form / folder child は push を受け取らない。
+- **reference filter**: 参照が 0 本の body は rerender しても
+  HTML が変わらないので push しない。余計な postMessage round-trip
+  を避けると同時に、dirty child で `#pending-view-notice` が無駄に
+  flash するのも防げる（policy 層は push が来れば notice を出す
+  ため、「内容は同じだが notice だけ光る」を避ける効果がある）。
+- **foundation を必ず経由**: `#body-view` に直接 `innerHTML` を
+  書くような bypass は行わない。常に `pushViewBodyUpdate` を呼ぶ。
+- **policy を必ず経由**: parent wiring は child の dirty 状態を
+  一切見ない。dirty / clean の判断は child script 側で
+  `pushViewBodyUpdate` の postMessage を受けたときに行われる。
+
+### 4. 採用した設計判断と代替案
+
+- **Preview wiring との module 分離**: 既存 module を拡張して
+  関数を 2 つ export する案もあったが、separate module にした。
+  理由:
+  - Preview wiring と View wiring は "どの helper を呼ぶか" の
+    違いだけでなく、**いつ追加 filter を挟むか**（参照有無 gate）
+    も異なる。責務を読みやすく保つため file を分ける方が素直。
+  - `main.ts` の bootstrap 側に 2 行並ぶことで、将来「Preview /
+    View の両輪で動いている」ことが grep で見えやすい。
+- **resolvedBody 計算の helper 抽出は見送り**: 初期 open 時の
+  `buildEntryWindowAssetContext` (`action-binder.ts`) と本 wiring
+  で同じ 3 ステップ（`buildEntryPreviewCtx` → `hasAssetReferences`
+  → `resolveAssetReferences`）を重複させている。現時点では抽出に
+  2 つの理由で踏み切らない:
+  1. 呼び出し側の必要物が異なる（初期 open は `previewCtx` も
+     bundle して返す必要があり、wiring は `resolvedBody` だけで
+     十分）
+  2. わずか 3 行の重複で、両者がほぼ独立に変化する可能性もある
+     （e.g. 初期 open 時だけ追加のメタを足す、等）。三度目の
+     重複が出てきた時点で抽出する。
+- **trigger を "entry 単位" ではなく "container-level" に限定**:
+  entry の body 変更や title 変更が起きても、assets identity が
+  同じなら wiring は push しない。これは意図的:
+  - body 変更は保存側フロー（`pkc-entry-saved`）が child の
+    `#body-view` を独自に更新する担当になっている
+  - title 変更は `#title-display` の話で `#body-view` と直交する
+  - 本 wiring の責務は **container 側の asset 状態に追従する**
+    点に絞る
+- **open lid のスナップショット取得**: `getOpenEntryWindowLids()`
+  は snapshot 配列を返す。これを iterate 中に新しい window が
+  開いても / 閉じてもこの cycle では影響を受けない。
+
+### 5. Preview wiring と View wiring の共存
+
+同じ dispatcher に両方の subscription が並んでぶら下がっている。
+同一の asset change で両方が同時に発火するが、互いに干渉しない:
+
+| wire                  | 呼ぶ helper                    | message type                     | 影響範囲              |
+|:----------------------|:-------------------------------|:---------------------------------|:----------------------|
+| `wireEntryWindowLiveRefresh`        | `pushPreviewContextUpdate` | `pkc-entry-update-preview-ctx`   | `#body-preview` のみ |
+| `wireEntryWindowViewBodyRefresh`    | `pushViewBodyUpdate`       | `pkc-entry-update-view-body`     | `#body-view` のみ    |
+
+Test で両 wire を同一 dispatcher に同時に bind し、1 回の asset
+変化で preview-ctx 1 件 / view-body 1 件の postMessage が各々
+ちょうど 1 件ずつ飛ぶことを検証している（coexistence test）。
+
+child script 側でも listener 分岐が完全に独立しているので、
+preview-ctx が来たときに `#body-view` が触られることは無く、
+view-body が来たときに `childPreviewCtx` が触られることも無い。
+
+### 6. 何を保証し、何を保証しないか
+
+**保証する:**
+
+- `prev.assets !== next.assets` の state cycle で、
+  open lid のうち text / textlog かつ `hasAssetReferences(body)`
+  が true の entry に対し、`pushViewBodyUpdate` が **ちょうど 1 回**
+  呼ばれる
+- pushed viewBody は `renderMarkdown(resolveAssetReferences(body))`
+  を適用済み（新しく追加された asset は `data:` URI として
+  inline される）
+- dirty child では policy 層により pending stash され、
+  `#body-view` は変化しない（wiring 層の保証 + policy 層の保証の
+  合算）
+- open window が 1 つも無い時は 0 push
+- non-text/textlog archetype の child には 0 push
+- body に `asset:` 参照が無い entry には 0 push
+- assets identity が変わらない dispatch（`SELECT_ENTRY`,
+  `SET_VIEW_MODE`, body のみ更新 等）では 0 push
+- `DELETE_ENTRY` は reducer が assets を touch しないので 0 push
+  （Preview wiring と同じ trade-off；orphan cleanup は out-of-scope）
+- `document.open` / `document.write` / `document.close` は絶対に
+  呼ばない
+
+**保証しない（out-of-scope）:**
+
+- main window 側の view rerender（既存 render cycle の責務）
+- dirty child の入力が clean に戻ったことのリアルタイム検知
+- multi-tab 同一 lid 間の衝突解決
+- orphan asset cleanup
+- `entry.body` が変わったが assets 側は不変のケースでの rerender
+  （save 側フローの責務）
+
+### 7. テスト
+
+`tests/adapter/entry-window-view-body-refresh.test.ts` に
+11 ケース追加。`entry-window-live-refresh.test.ts` と同形の
+dispatcher + openEntryWindow テストパターンで、`window.open`
+mock による child stub の `postMessage.mock.calls` を検査する。
+
+テストケース:
+
+1. text entry with references → asset 追加 → `pkc-entry-update-view-body`
+   が 1 件飛び、viewBody に `data:image/png;base64,<data>` が
+   inline されている
+2. open window が 0 件の状態で assets を mutate → throw しない /
+   副作用なし
+3. assets identity が変わらない dispatch (`SELECT_ENTRY`) では push
+   が飛ばない
+4. attachment archetype child は skip される
+5. todo archetype child は skip される
+6. text entry だが body に `asset:` 参照が 0 本 → skip される
+7. textlog archetype でも text と同様に push される
+8. Preview wiring と同時に bind した時、各々 1 件ずつ別 message type
+   で発火し、payload の shape が混線しない（coexistence）
+9. wiring は `document.open` / `write` / `close` を一切呼ばない
+10. `DELETE_ENTRY` では reducer が assets を touch しないので 0 push
+11. 1 回の asset 変化の後、続けて `SELECT_ENTRY` / `SET_VIEW_MODE`
+    を dispatch しても view-body push は累計 1 件のまま（identity
+    gate が追加 push を抑止する）
+
+全 11 ケース pass。既存 1621 → 1632 テスト全通過。
+
+### 8. foundation / policy / wiring の三段階の完成
+
+本 Issue でようやく三段階が揃った:
+
+- [x] **foundation**: message type + helper + child listener
+      (`Entry-window child view-pane rerender foundation` Issue)
+- [x] **policy**: clean / dirty gating + flush points + notice
+      (`Entry-window child dirty state policy for view rerender` Issue)
+- [x] **wiring**: dispatcher state → pushViewBodyUpdate
+      (本 Issue)
+
+この三段で、**container 側の asset 変化が text / textlog child
+window の view pane に自動で反映される** という end-to-end の
+機能が動くようになった。ユーザ視点では:
+
+- child window を開いたまま main window で attachment を追加する
+  → child window の view pane が（child が clean なら）即座に新しい
+  `data:` URI で更新される
+- 同時に edit-mode Preview tab も最新の asset で解決される
+- child window で編集中（dirty）なら view pane は保留され、
+  `#pending-view-notice` が出る。ユーザが `cancelEdit` すれば
+  pending が flush され view pane が最新化される。保存すれば
+  pending は破棄され save 自身の rerender 結果が勝つ。
+
+本 Issue 以降の自然な拡張候補（out-of-scope）:
+
+- main window 側 render cycle が open child に対しても entry.body
+  変化を push するか検討
+- notice を click したとき "今すぐ apply" する能動的 UI を足すか
+  検討
+- orphan asset cleanup と連動した assets identity 変化の扱い
+
+---
+
 ## 維持する不変量
 
 - 5 層構造：resolver は features、子ウィンドウ配信は adapter
