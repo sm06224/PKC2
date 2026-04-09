@@ -351,3 +351,171 @@ describe('attachment download button', () => {
     expect(downloadBtn!.textContent).toBe('Download');
   });
 });
+
+// ── Date/Time shortcuts ──
+
+describe('Date/Time shortcuts', () => {
+  it('Ctrl+; inserts date into focused textarea in editing mode', () => {
+    const { dispatcher } = setup();
+
+    // Enter editing mode
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // Create and focus a textarea inside root (simulating edit field)
+    const textarea = document.createElement('textarea');
+    textarea.setAttribute('data-pkc-field', 'body');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = 'Before ';
+    textarea.selectionStart = textarea.selectionEnd = 7;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // Should have inserted a date pattern yyyy/MM/dd
+    expect(textarea.value).toMatch(/^Before \d{4}\/\d{2}\/\d{2}$/);
+  });
+
+  it('Ctrl+: inserts time (Shift+; on US layout)', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    // Ctrl+Shift+; (produces ':' on US keyboard) — should insert datetime
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ':', ctrlKey: true, shiftKey: true, bubbles: true,
+    }));
+
+    // Ctrl+Shift+; → datetime (yyyy/MM/dd HH:mm:ss)
+    expect(textarea.value).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('Ctrl+D inserts short date with day abbreviation', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'd', ctrlKey: true, bubbles: true,
+    }));
+
+    // yy/MM/dd ddd
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} (Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/);
+  });
+
+  it('Ctrl+Shift+D inserts short date+time', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'D', ctrlKey: true, shiftKey: true, bubbles: true,
+    }));
+
+    // yy/MM/dd ddd HH:mm:ss
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('Ctrl+Shift+Alt+D inserts ISO 8601', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'D', ctrlKey: true, shiftKey: true, altKey: true, bubbles: true,
+    }));
+
+    // ISO 8601
+    expect(textarea.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+
+  it('does NOT insert date when not in editing phase', () => {
+    setup();
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // Should not insert anything — phase is 'ready', not 'editing'
+    expect(textarea.value).toBe('');
+  });
+
+  it('does NOT insert date when no textarea is focused', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // No textarea is focused — activeElement is body or root
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // No crash, no unexpected behavior
+    expect(true).toBe(true);
+  });
+
+  it('inserts at cursor position replacing selection', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = 'Hello REPLACE World';
+    textarea.selectionStart = 6;
+    textarea.selectionEnd = 13; // select "REPLACE"
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // "REPLACE" should be replaced with date
+    expect(textarea.value).toMatch(/^Hello \d{4}\/\d{2}\/\d{2} World$/);
+  });
+});

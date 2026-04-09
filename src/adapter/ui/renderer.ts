@@ -351,17 +351,30 @@ function renderShortcutHelp(): HTMLElement {
   heading.textContent = 'Keyboard Shortcuts';
   card.appendChild(heading);
 
-  const shortcuts: { key: string; desc: string }[] = [
+  const shortcuts: { key: string; desc: string; group?: string }[] = [
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
     { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
     { key: '?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
     { key: 'Shift+Click', desc: 'Range select' },
+    { key: '', desc: '', group: 'Date/Time (edit mode)' },
+    { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
+    { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
+    { key: 'Ctrl+Shift+;', desc: 'Insert date+time' },
+    { key: 'Ctrl+D', desc: 'Insert short date (yy/MM/dd ddd)' },
+    { key: 'Ctrl+Shift+D', desc: 'Insert short date+time' },
+    { key: 'Ctrl+Shift+Alt+D', desc: 'Insert ISO 8601' },
   ];
 
   const table = createElement('div', 'pkc-shortcut-table');
-  for (const { key, desc } of shortcuts) {
+  for (const { key, desc, group } of shortcuts) {
+    if (group) {
+      const groupRow = createElement('div', 'pkc-shortcut-group');
+      groupRow.textContent = group;
+      table.appendChild(groupRow);
+      continue;
+    }
     const row = createElement('div', 'pkc-shortcut-row');
     const keyEl = createElement('kbd', 'pkc-shortcut-key');
     keyEl.textContent = key;

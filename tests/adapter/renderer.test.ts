@@ -4989,6 +4989,14 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Escape');
     expect(overlay!.textContent).toContain('multi-select');
     expect(overlay!.textContent).toContain('Range select');
+    // Contains date/time shortcut group and entries
+    expect(overlay!.textContent).toContain('Date/Time (edit mode)');
+    expect(overlay!.textContent).toContain('Ctrl+;');
+    expect(overlay!.textContent).toContain('Ctrl+:');
+    expect(overlay!.textContent).toContain('Ctrl+D');
+    expect(overlay!.textContent).toContain('ISO 8601');
+    // Has group separator element
+    expect(overlay!.querySelector('.pkc-shortcut-group')).not.toBeNull();
     // Has close button
     expect(overlay!.querySelector('[data-pkc-action="close-shortcut-help"]')).not.toBeNull();
   });

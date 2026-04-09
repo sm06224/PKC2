@@ -10,6 +10,14 @@ import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu } from './renderer';
 import { openEntryWindow } from './entry-window';
+import {
+  formatDate,
+  formatTime,
+  formatDateTime,
+  formatShortDate,
+  formatShortDateTime,
+  formatISO8601,
+} from '../../features/datetime/datetime-format';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -332,6 +340,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       e.preventDefault();
       dispatchCommitEdit(root, state.editingLid, dispatcher);
       return;
+    }
+
+    // ── Date/Time shortcuts (editing phase, textarea/input focus) ──
+    if (mod && state.phase === 'editing') {
+      const text = getDateTimeShortcutText(e);
+      if (text) {
+        e.preventDefault();
+        insertTextAtCursor(text);
+        return;
+      }
     }
 
     // ? key: toggle shortcut help (only when not editing text)
@@ -1450,4 +1468,76 @@ function toggleTheme(root: HTMLElement): void {
   const current = pkc.getAttribute('data-pkc-theme');
   const next = current === 'light' ? 'dark' : 'light';
   pkc.setAttribute('data-pkc-theme', next);
+}
+
+/**
+ * Maps a KeyboardEvent to a date/time formatted string, or null if not a match.
+ *
+ * Shortcuts (all require Ctrl/Cmd):
+ *   Ctrl+;             → yyyy/MM/dd
+ *   Ctrl+:             → HH:mm:ss
+ *   Ctrl+Shift+;       → yyyy/MM/dd HH:mm:ss  (Shift+; = : on US layout, so also Ctrl+Shift+:)
+ *   Ctrl+D             → yy/MM/dd ddd
+ *   Ctrl+Shift+D       → yy/MM/dd ddd HH:mm:ss
+ *   Ctrl+Shift+Alt+D   → ISO 8601
+ */
+function getDateTimeShortcutText(e: KeyboardEvent): string | null {
+  const now = new Date();
+
+  // Ctrl+; or Ctrl+: (semicolon / colon key)
+  if (e.key === ';' && !e.shiftKey && !e.altKey) {
+    return formatDate(now);
+  }
+  if ((e.key === ':' || (e.key === ';' && e.shiftKey)) && !e.altKey) {
+    // Ctrl+: → time, but Ctrl+Shift+; on some layouts = Ctrl+Shift+: = datetime
+    // We differentiate: if Shift is held, it's datetime; raw ':' without explicit shift = time
+    if (e.shiftKey) {
+      return formatDateTime(now);
+    }
+    return formatTime(now);
+  }
+
+  // Ctrl+D variants
+  if (e.key === 'd' || e.key === 'D') {
+    if (e.shiftKey && e.altKey) {
+      return formatISO8601(now);
+    }
+    if (e.shiftKey) {
+      return formatShortDateTime(now);
+    }
+    if (!e.altKey) {
+      return formatShortDate(now);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Inserts text at the current cursor position in the focused textarea/input.
+ * No-op if the active element is not a text input.
+ */
+function insertTextAtCursor(text: string): void {
+  const el = document.activeElement;
+  if (!el) return;
+
+  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text')) {
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    // Use execCommand for undo-stack integration where supported
+    // Fall back to manual insertion
+    el.focus();
+    el.setSelectionRange(start, end);
+    let inserted = false;
+    try {
+      inserted = document.execCommand('insertText', false, text);
+    } catch {
+      // execCommand not available (e.g. happy-dom)
+    }
+    if (!inserted) {
+      el.value = el.value.slice(0, start) + text + el.value.slice(end);
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
 }

@@ -2290,6 +2290,16 @@
   color: var(--c-fg);
 }
 
+.pkc-shortcut-group {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-accent);
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--c-border);
+  margin-top: 0.25rem;
+}
+
 /* Collapsed pane states */
 .pkc-sidebar[data-pkc-collapsed="true"] {
   width: 0 !important;
