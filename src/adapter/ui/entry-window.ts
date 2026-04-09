@@ -910,6 +910,20 @@ body {
   border-radius: var(--radius);
 }
 
+/* ── Pending view-refresh notice ──
+   Shown when a parent → child view-body rerender was received while
+   the child was dirty (body-edit or title-input differs from the
+   saved originals). The actual DOM replacement is deferred until the
+   user cancels or saves — see the "Dirty state policy for view
+   rerender" Issue and docs/development/edit-preview-asset-resolution.md.
+   Hidden by default via the inline style attribute on the element. */
+.pkc-pending-view-notice {
+  background: var(--c-surface); color: var(--c-muted);
+  border-left: 3px solid var(--c-accent-dim);
+  padding: 0.35rem 0.6rem; font-size: 0.75rem; margin: 0.5rem 0;
+  border-radius: var(--radius);
+}
+
 /* ── Status message ── */
 .pkc-status-msg {
   font-size: 0.75rem; color: var(--c-muted); padding: 0.25rem 0;
@@ -1001,6 +1015,8 @@ body {
 <body>
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
+  <!-- Pending view-refresh notice (hidden by default) -->
+  <div class="pkc-pending-view-notice" id="pending-view-notice" style="display:none">View refresh pending &mdash; will apply on save or cancel.</div>
 ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-notice" data-pkc-region="light-notice">This is a Light export — attachment file data is not available.</div>' : ''}
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
@@ -1065,6 +1081,31 @@ var pkcActiveBlobUrls = [];
  * pane HTML, and the save/conflict paths do NOT touch it.
  */
 var childPreviewCtx = null;
+
+/*
+ * Pending view-body HTML, stashed when a parent → child
+ * 'pkc-entry-update-view-body' message arrives while the child is
+ * dirty (body-edit differs from originalBody OR title-input differs
+ * from originalTitle). Dirty state policy:
+ *
+ *   clean: apply immediately to #body-view.innerHTML, clear stash.
+ *   dirty: stash here, show #pending-view-notice, do NOT touch any
+ *          DOM other than the notice element.
+ *
+ * Flushed on dirty → clean transitions:
+ *   - cancelEdit(): user discarded the edit — apply the latest
+ *     stashed HTML as the now-authoritative view.
+ *   - 'pkc-entry-saved' message: the save handler runs its own
+ *     body-view rerender from the current textarea contents against
+ *     the parent's latest container state, so the pending stash is
+ *     DISCARDED (not applied) because the save path is more
+ *     authoritative than any earlier snapshot.
+ *
+ * Holding only the MOST RECENT pending HTML is intentional: if
+ * multiple updates arrive while the child is dirty, only the newest
+ * one is applied on flush. Older snapshots are unreachable.
+ */
+var pendingViewBody = null;
 
 document.getElementById('body-edit').value = originalBody;
 if (document.getElementById('title-input')) {
@@ -1221,6 +1262,60 @@ window.addEventListener('pagehide', revokeAllBlobUrls);
 window.addEventListener('unload', revokeAllBlobUrls);
 bootAttachmentPreview();
 
+/*
+ * Returns true if the current edit-pane state differs from the saved
+ * originals captured at window-open time (or refreshed by the most
+ * recent 'pkc-entry-saved' message). Used exclusively by the view-
+ * body rerender policy below to decide whether a parent-pushed
+ * rerender should apply immediately or stash as pending.
+ *
+ * Intentionally a snapshot comparison: we only check at message-
+ * arrival time and at cancel/save transitions. We do not install an
+ * 'input' listener to track dirtiness continuously, so a user who
+ * manually undoes their edit back to the original and then waits
+ * will only see the pending update applied on the next explicit
+ * cancel or save. This is acceptable and keeps the policy simple.
+ */
+function isEntryDirty() {
+  var bodyEl = document.getElementById('body-edit');
+  var titleEl = document.getElementById('title-input');
+  if (!bodyEl || !titleEl) return false;
+  return bodyEl.value !== originalBody || titleEl.value !== originalTitle;
+}
+
+/*
+ * Show / hide the pending-view-refresh notice element. The element's
+ * initial hidden state is set via the inline style="display:none"
+ * attribute in the HTML, so toggling to '' (auto-inherit) is enough
+ * to reveal it. Both helpers are null-safe so that unit tests that
+ * build a minimal DOM fragment without the notice element don't
+ * throw when exercising the listener path.
+ */
+function showPendingViewNotice() {
+  var el = document.getElementById('pending-view-notice');
+  if (el) el.style.display = '';
+}
+function hidePendingViewNotice() {
+  var el = document.getElementById('pending-view-notice');
+  if (el) el.style.display = 'none';
+}
+
+/*
+ * Apply any stashed pendingViewBody to #body-view.innerHTML and
+ * clear the stash. No-op when nothing is pending. This is the
+ * canonical dirty → clean transition point invoked by cancelEdit()
+ * below. The 'pkc-entry-saved' branch does NOT call this helper —
+ * see pendingViewBody's JSDoc for why save discards pending instead
+ * of applying it.
+ */
+function flushPendingViewBody() {
+  if (pendingViewBody == null) return;
+  var viewBodyEl = document.getElementById('body-view');
+  if (viewBodyEl) viewBodyEl.innerHTML = pendingViewBody;
+  pendingViewBody = null;
+  hidePendingViewNotice();
+}
+
 function enterEdit() {
   currentMode = 'edit';
   document.getElementById('view-pane').style.display = 'none';
@@ -1244,6 +1339,14 @@ function cancelEdit() {
   document.getElementById('bar-status').textContent = '';
   document.getElementById('body-edit').value = originalBody;
   document.getElementById('title-input').value = originalTitle;
+  /*
+   * The user just discarded in-progress edits — body-edit and
+   * title-input are now back in sync with originalBody / originalTitle,
+   * so isEntryDirty() would return false. If a pending view-body
+   * rerender was stashed while the child was dirty, apply it now so
+   * the view pane shows the freshest parent-side state.
+   */
+  flushPendingViewBody();
 }
 
 function showTab(tab) {
@@ -1312,6 +1415,17 @@ window.addEventListener('message', function(e) {
     document.getElementById('body-view').innerHTML = renderMd(originalBody);
     document.getElementById('status').textContent = 'Saved.';
     setTimeout(function() { document.getElementById('status').textContent = ''; }, 2000);
+    /*
+     * Dirty state policy: save's own rerender (just above) is the
+     * authoritative view — it reflects the exact text the user just
+     * persisted, resolved through the parent's current container
+     * state via renderMd → opener.pkcRenderEntryPreview. Any stale
+     * pendingViewBody captured from an earlier parent push is
+     * deliberately DISCARDED here, not applied. See pendingViewBody's
+     * JSDoc at the top of this script.
+     */
+    pendingViewBody = null;
+    hidePendingViewNotice();
   }
   if (e.data && e.data.type === 'pkc-entry-conflict') {
     var banner = document.getElementById('conflict-banner');
@@ -1344,32 +1458,46 @@ window.addEventListener('message', function(e) {
   }
   if (e.data && e.data.type === 'pkc-entry-update-view-body') {
     /*
-     * View-pane rerender foundation: the parent has computed a fresh
-     * HTML string for the view-mode body (e.g. because container
-     * assets changed and the resolvedBody needs to be re-rendered)
-     * and pushed it here via postMessage. We replace ONLY
-     * #body-view.innerHTML and touch nothing else.
+     * View-pane rerender: the parent has computed a fresh HTML
+     * string for the view-mode body (e.g. because container assets
+     * changed and the resolvedBody needs to be re-rendered) and
+     * pushed it here via postMessage.
      *
-     * Explicitly not touched by this branch:
-     *   - #body-edit (the Source textarea): the user's in-progress
-     *     edit is preserved bit-for-bit.
-     *   - #body-preview (the edit-mode Preview tab): that pane is
-     *     owned by 'pkc-entry-update-preview-ctx' and runs its own
-     *     resolver independently.
-     *   - #title-display / #title-input: title is not part of the
-     *     view-body rerender contract.
-     *   - originalBody / originalTitle dirty-state trackers: the
-     *     rerender is a display refresh, not a save, so the
-     *     unsaved-changes state is deliberately preserved.
+     * Dirty state policy (see pendingViewBody JSDoc above):
+     *   - Clean: apply immediately to #body-view.innerHTML and drop
+     *     any stale pending stash.
+     *   - Dirty: stash into pendingViewBody and surface the
+     *     #pending-view-notice element. Do NOT touch #body-view,
+     *     do NOT touch #body-edit, do NOT touch #body-preview,
+     *     do NOT touch the title elements, do NOT touch the
+     *     originalBody / originalTitle trackers.
+     *
+     * The dirty branch guarantees the user's in-progress edit is
+     * preserved bit-for-bit. The pending stash will be applied on
+     * the next cancelEdit() (see flushPendingViewBody), or
+     * discarded on the next 'pkc-entry-saved' (save's own rerender
+     * is authoritative).
+     *
+     * Note: Preview live refresh ('pkc-entry-update-preview-ctx',
+     * the branch above) runs independently of this policy — the
+     * edit-mode Preview tab stays fresh even while the view pane
+     * is held stale by a dirty stash.
      *
      * Trust: the payload is rendered HTML produced by the parent's
      * markdown renderer, which runs in the same origin as the
      * initial document.write that built this child. No additional
      * sanitization is applied here.
      */
-    var viewBodyEl = document.getElementById('body-view');
-    if (viewBodyEl && typeof e.data.viewBody === 'string') {
-      viewBodyEl.innerHTML = e.data.viewBody;
+    if (typeof e.data.viewBody === 'string') {
+      if (isEntryDirty()) {
+        pendingViewBody = e.data.viewBody;
+        showPendingViewNotice();
+      } else {
+        var viewBodyEl = document.getElementById('body-view');
+        if (viewBodyEl) viewBodyEl.innerHTML = e.data.viewBody;
+        pendingViewBody = null;
+        hidePendingViewNotice();
+      }
     }
   }
 });
