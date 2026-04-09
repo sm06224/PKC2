@@ -132,11 +132,56 @@ export function getOpenEntryWindowLids(): string[] {
  *   affects ONLY the child's edit-mode Preview tab resolver. The
  *   child's view-pane HTML (already written at open time) is not
  *   redrawn, the Source textarea is not touched, and no other state
- *   is changed. A separate message type would be introduced later
- *   for view-pane rerender — see `edit-preview-asset-resolution.md`,
- *   "Live refresh foundation".
+ *   is changed. A separate message type is introduced below
+ *   (`ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG`) for view-pane rerender —
+ *   see `edit-preview-asset-resolution.md`, "Child view-pane rerender
+ *   foundation".
  */
 export const ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG = 'pkc-entry-update-preview-ctx';
+
+/**
+ * Private message type name used for the parent → child rerender of
+ * the view-pane body (`#body-view`). Exported so the test harness and
+ * future wiring code can reference the exact string without
+ * re-hard-coding it.
+ *
+ * Payload shape:
+ *   { type: 'pkc-entry-update-view-body', viewBody: string }
+ *
+ * The `viewBody` field is a **fully rendered HTML string** produced by
+ * the parent (markdown render + asset resolution already applied). The
+ * child treats the payload as trusted HTML — same trust domain as the
+ * initial `document.write` at window-open time — and writes it
+ * directly into `#body-view.innerHTML`.
+ *
+ * Direction:
+ *   parent → child (the child listens for this message; the parent
+ *   never receives it).
+ *
+ * Scope — what this rerender touches:
+ *   - ONLY `#body-view.innerHTML`
+ *
+ * Scope — what this rerender does NOT touch:
+ *   - `#body-edit` (Source textarea) — user's in-progress edit is
+ *     preserved verbatim
+ *   - `#body-preview` (edit-mode Preview tab's scratch div) — that
+ *     path is owned by `ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG` and runs
+ *     independently
+ *   - `#title-display` / `#title-input` — title sync is a separate
+ *     concern (if needed) and not part of this foundation
+ *   - any other DOM, CSS, scroll, or tab state
+ *
+ * Intentionally out of scope for this foundation Issue:
+ *   - automatic wiring into the dispatcher state stream (callers must
+ *     invoke `pushViewBodyUpdate` explicitly; no auto-subscriber
+ *     exists yet)
+ *   - dirty state / conflict resolution with in-progress edits
+ *   - non-text / non-textlog archetypes — attachment / todo / form
+ *     have different `#body-view` contents (preview card, kanban
+ *     card, etc.) and would be destroyed by innerHTML replacement
+ *   - main-window Source/Preview tab introduction
+ */
+export const ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG = 'pkc-entry-update-view-body';
 
 /**
  * Push a fresh preview resolver context snapshot to an already-open
@@ -184,6 +229,83 @@ export function pushPreviewContextUpdate(
     return true;
   }
   return false;
+}
+
+/**
+ * Push a rerender of the child's view-pane body (`#body-view`).
+ *
+ * This is the view-pane rerender **foundation** — counterpart to
+ * `pushPreviewContextUpdate`, but targeting the view-mode body HTML
+ * instead of the edit-mode Preview resolver context. Callers that
+ * already know the parent-side resolved-body string has changed
+ * (e.g. because container assets were mutated and the caller re-ran
+ * `resolveAssetReferences` for this entry) can invoke this helper to
+ * replace the child's `#body-view.innerHTML` on the spot, without
+ * closing and reopening the window.
+ *
+ * Contract:
+ *   - Parent runs `renderMarkdown(resolvedBody || '')` using the same
+ *     safe markdown settings as the initial `renderViewBody` default
+ *     branch, with the same `(empty)` fallback when the render result
+ *     is an empty string. The caller therefore does not need to worry
+ *     about renderer configuration drift.
+ *   - The rendered HTML string is sent to the child as
+ *     `{ type: 'pkc-entry-update-view-body', viewBody }` via
+ *     postMessage.
+ *   - The child listener replaces ONLY `#body-view.innerHTML`. No
+ *     other DOM in the child is touched (see
+ *     `ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG` JSDoc for the full scope /
+ *     non-scope list).
+ *
+ * Caller responsibility:
+ *   - Only invoke this for `text` / `textlog` archetypes. Other
+ *     archetypes (`attachment`, `todo`, `form`, `folder`) use
+ *     dedicated card renderers whose HTML would be destroyed by a
+ *     markdown-rendered replacement. The helper itself is archetype-
+ *     agnostic and does no gating; archetype filtering lives at the
+ *     call site.
+ *   - Pass a `resolvedBody` string that has already been through
+ *     `resolveAssetReferences` (or the caller's equivalent). Passing
+ *     a raw `entry.body` without resolving `asset:` references is
+ *     valid but will produce a view that lacks inline data-URI
+ *     embeds / chip anchors for referenced assets.
+ *
+ * Intentionally out of scope:
+ *   - Does NOT auto-subscribe to dispatcher state changes. Unlike
+ *     `pushPreviewContextUpdate`, which has an
+ *     `entry-window-live-refresh.ts` wiring layer on top of it, this
+ *     helper has no live-wiring counterpart yet — it is foundation
+ *     only. Wiring (and the associated dirty-state policy for
+ *     unsaved edits in the Source textarea) is a separate Issue.
+ *   - Does NOT touch the child's `#body-edit` textarea. The user's
+ *     in-progress edit is never replaced, moved, or cleared by this
+ *     helper.
+ *   - Does NOT touch the child's `#body-preview`, `#title-display`,
+ *     `#title-input`, or any other DOM node.
+ *   - Does NOT update the parent-side `previewResolverContexts` map
+ *     (that is the `pushPreviewContextUpdate` responsibility; the
+ *     two helpers are deliberately independent).
+ *   - Does NOT perform any dirty-state / conflict-resolution
+ *     protocol handshake with the child.
+ *
+ * Returns `true` when a postMessage was dispatched to a live child,
+ * `false` when no open window exists for the lid (or the child has
+ * been closed).
+ */
+export function pushViewBodyUpdate(
+  lid: string,
+  resolvedBody: string,
+): boolean {
+  const child = openWindows.get(lid);
+  if (!child || child.closed) return false;
+  const html =
+    renderMarkdown(resolvedBody || '') ||
+    '<em style="color:var(--c-muted)">(empty)</em>';
+  child.postMessage(
+    { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
+    '*',
+  );
+  return true;
 }
 
 /**
@@ -1218,6 +1340,36 @@ window.addEventListener('message', function(e) {
        */
       var src = document.getElementById('body-edit').value;
       document.getElementById('body-preview').innerHTML = renderMd(src);
+    }
+  }
+  if (e.data && e.data.type === 'pkc-entry-update-view-body') {
+    /*
+     * View-pane rerender foundation: the parent has computed a fresh
+     * HTML string for the view-mode body (e.g. because container
+     * assets changed and the resolvedBody needs to be re-rendered)
+     * and pushed it here via postMessage. We replace ONLY
+     * #body-view.innerHTML and touch nothing else.
+     *
+     * Explicitly not touched by this branch:
+     *   - #body-edit (the Source textarea): the user's in-progress
+     *     edit is preserved bit-for-bit.
+     *   - #body-preview (the edit-mode Preview tab): that pane is
+     *     owned by 'pkc-entry-update-preview-ctx' and runs its own
+     *     resolver independently.
+     *   - #title-display / #title-input: title is not part of the
+     *     view-body rerender contract.
+     *   - originalBody / originalTitle dirty-state trackers: the
+     *     rerender is a display refresh, not a save, so the
+     *     unsaved-changes state is deliberately preserved.
+     *
+     * Trust: the payload is rendered HTML produced by the parent's
+     * markdown renderer, which runs in the same origin as the
+     * initial document.write that built this child. No additional
+     * sanitization is applied here.
+     */
+    var viewBodyEl = document.getElementById('body-view');
+    if (viewBodyEl && typeof e.data.viewBody === 'string') {
+      viewBodyEl.innerHTML = e.data.viewBody;
     }
   }
 });
