@@ -1082,6 +1082,20 @@ export function cleanupBlobUrls(root: HTMLElement): void {
 }
 
 /**
+ * Decode base64 to text string (UTF-8).
+ * Used for HTML/SVG content that goes into iframe.srcdoc.
+ */
+function decodeBase64ToText(base64: string): string {
+  const bytes = atob(base64);
+  // Handle UTF-8: decode byte string via TextDecoder
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    arr[i] = bytes.charCodeAt(i);
+  }
+  return new TextDecoder().decode(arr);
+}
+
+/**
  * Create a Blob URL from resolved base64 attachment data.
  */
 function createBlobUrl(resolved: { data: string; mime: string }): string {
@@ -1171,8 +1185,11 @@ function populatePreviewElement(
     }
 
     case 'html': {
-      // Sandboxed iframe for HTML preview
-      const blobUrl = createBlobUrl(resolved);
+      // Sandboxed iframe using srcdoc (not blob: URL).
+      // blob: origin causes CSP / same-origin issues in some single-file HTML.
+      // srcdoc writes content directly into the iframe document (about:srcdoc origin),
+      // which lets the sandbox attributes control execution properly.
+      const htmlString = decodeBase64ToText(resolved.data);
       const iframe = document.createElement('iframe');
       iframe.className = 'pkc-attachment-html-preview';
       // Apply user-configured sandbox permissions
@@ -1181,12 +1198,11 @@ function populatePreviewElement(
       for (const attr of sandboxAllow) {
         iframe.sandbox.add(attr);
       }
-      iframe.src = blobUrl;
-      iframe.setAttribute('data-pkc-blob-url', blobUrl);
+      iframe.srcdoc = htmlString;
       iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
       el.appendChild(iframe);
-      // Open in new window button
-      el.appendChild(createOpenButton(blobUrl, resolved.name, '🌐 Open HTML in New Window'));
+      // Open in new window button (uses blob URL for the separate window)
+      el.appendChild(createLazyOpenButton(resolved, '🌐 Open HTML in New Window'));
       // Sandbox status note
       const activePerms = ['allow-same-origin', ...sandboxAllow.filter((a) => a !== 'allow-same-origin')];
       const sandboxNote = document.createElement('div');
