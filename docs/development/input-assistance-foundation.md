@@ -1,13 +1,17 @@
-# Input Assistance Foundation (P3-A / P3-B)
+# Input Assistance Foundation (P3-A / P3-B / P3-C)
 
 ## Overview
 
-Two input assistance systems for editing mode:
+Three input assistance systems for editing mode:
 
 1. **Date/Time shortcut keys** (P3-A) — Ctrl+key combinations for timestamp insertion
 2. **Slash commands** (P3-B) — `/` trigger for input assist menu
+3. **Inline calc shortcut** (P3-C) — `<expr>=` + Enter → `<expr>=<result>` inside TEXT / TEXTLOG textareas
 
-Both are active only in editing phase (`phase === 'editing'`).
+P3-A and P3-B are active only in editing phase (`phase === 'editing'`).
+P3-C is also active in ready phase for TEXTLOG append / edit textareas,
+since the TEXTLOG append textarea renders in the detail pane without
+entering edit mode.
 
 ---
 
@@ -95,14 +99,170 @@ text insertion — see
 
 ---
 
+## P3-C: Inline calc shortcut
+
+### Intent
+
+Let a user type a throwaway calculation inside a note without leaving
+the textarea:
+
+```
+2026/04/09 progress
+budget: 1200+350+80=
+```
+
+Pressing **Enter** at the end of the `budget: 1200+350+80=` line
+rewrites that line to `budget: 1200+350+80=1630` and moves the caret
+to a fresh line below, exactly as if the user had pressed Enter after
+manually typing `1630`. The shortcut is opt-in by the `=` suffix — no
+floating popover, no interruption to normal typing.
+
+### Target fields
+
+| `data-pkc-field` | Archetype | Phase | Eligibility |
+|---|---|---|---|
+| `body` | **TEXT** only | `editing` + matching `editingLid` | fires |
+| `body` | Folder | any | **NOT** eligible |
+| `textlog-append-text` | TEXTLOG | any (renders in `ready`) | fires |
+| `textlog-entry-text` | TEXTLOG (edit-in-place) | any | fires |
+| anywhere else | any | any | ignored |
+
+TEXT and Folder both render a `body` textarea, so the adapter
+additionally filters by the editing entry's archetype. Todo
+descriptions, form fields, attachment fields, and the search input
+are all intentionally excluded — they are either structured or
+single-line.
+
+### Trigger condition
+
+Inline calc fires **only** when every one of the following is true:
+
+- Key = `Enter`, no modifier (no Ctrl / Cmd / Shift / Alt).
+- `isComposing === false` (ignored during IME composition so Enter
+  still confirms a Japanese conversion).
+- Selection is collapsed (`selectionStart === selectionEnd`).
+- Caret is at the end of the current line (anywhere else → no-op).
+- The current line ends with `=`.
+- The text before the `=` on that line, trimmed, parses as a valid
+  expression and evaluates to a finite number.
+
+Any failure — wrong key combo, wrong field, caret mid-line,
+composition, parse error, div/0, etc. — is a **silent no-op**. The
+event is not `preventDefault`ed, so the normal Enter behaviour
+(insert newline, or other shortcuts like TEXTLOG Ctrl+Enter append)
+keeps running unchanged.
+
+### Insertion semantics
+
+On success the adapter inserts `<formatted-result>\n` at the caret,
+equivalent to "append the result, then press Enter". The caret lands
+at the start of a fresh line below the result. `execCommand('insertText')`
+is used where available so the browser's undo stack captures the
+insertion as a single step; a direct `value` + `input` event fallback
+covers happy-dom / sandboxed environments.
+
+### Supported syntax (first pass)
+
+| Category | Examples |
+|---|---|
+| Binary operators | `+  -  *  /  %` |
+| Unary operators | `-5`, `-(2+3)`, `--5` (double minus), `+7` |
+| Grouping | `(2+3)*4`, `((1+2)*3-4)/5` |
+| Literals | `0`, `42`, `0.1`, `3.14`, `100.25` |
+| Whitespace | Allowed anywhere between tokens |
+
+**Operator semantics:**
+
+- `%` is **modulo**, not percent. `10%3 = 1`.
+- `/` is floating-point division. Division by zero → silent no-op.
+- `%` by zero → silent no-op.
+- Unary `+` / `-` only allowed at the start of a factor.
+- `12.` (decimal point with no fractional digits) is rejected.
+
+### Formatting rules
+
+`formatCalcResult(value)` decides what gets inserted:
+
+| Input | Output |
+|---|---|
+| Integer (incl. `-0`) | `"3"`, `"0"`, `"-42"` |
+| Decimal | `"0.3"` (noise stripped via `toPrecision(12)`) |
+| Non-finite | `""` (guard — shouldn't reach here) |
+
+### Intentionally NOT supported
+
+- **No functions**: `sum`, `min`, `max`, `avg`, `sqrt`, etc.
+- **No variables**: no `x = 5`, no `$ref`, no spreadsheet cells.
+- **No units**: `10px`, `1kg`, `5m` all reject.
+- **No dates**: date arithmetic is out of scope.
+- **No multi-line expressions**: the line containing the caret is
+  the entire input.
+- **No comma thousands separators**: `1,000` rejects.
+- **No percent-as-percent**: `%` is strictly modulo. A possible
+  future refinement is a distinct `pct` suffix, but that requires
+  grammar + tokenizer changes.
+- **No fancy error UI**: failure is silent, not toast / inline.
+- **No auto-complete mid-expression**: the menu only opens on `=`
+  + Enter; there is no live preview.
+- **No reducer / state involvement**: the shortcut mutates the
+  textarea directly through the adapter and relies on the existing
+  `input` event to update runtime state. No new `UserAction` or
+  `DomainEvent` is introduced.
+
+### Error policy
+
+Every pure helper returns a discriminated union
+(`{ ok: true; value: number } | { ok: false }`) and never throws.
+The adapter only calls `preventDefault()` when the evaluator
+returns `{ ok: true }`, so failures leave the event alone.
+Corrupting the body on a typo is impossible by construction.
+
+### Keydown priority chain (where this fits)
+
+`handleKeydown` in `adapter/ui/action-binder.ts` runs the following
+checks in order. Inline calc sits **between** the overlay handlers
+and the TEXTLOG Ctrl+Enter append so plain Enter stays available
+for inline calc while Ctrl+Enter keeps its append meaning.
+
+1. Asset picker → asset autocomplete → slash menu (all overlay
+   handlers get first shot at navigation keys).
+2. **Inline calc** (plain Enter, eligible textarea, caret at line
+   end, line ends with `=`).
+3. Ctrl+Enter in `textlog-append-text` → log entry append.
+4. Ctrl+S save.
+5. Date/time shortcuts.
+6. `?` / Escape / Ctrl+N global shortcuts.
+
+### Future extension candidates
+
+These are **explicit deferrals**, not implicit TODOs:
+
+- **Reduction functions**: `sum(1,2,3)`, `max(10,4,7)`. Would
+  require adding a call-expression rule to the grammar and a
+  whitelist of function names.
+- **Main window / command bar**: the same evaluator could power a
+  global "quick calculator" surface (e.g. `?calc 1+2`), reusing
+  `evaluateCalcExpression` verbatim.
+- **Other domains**: form number-field validation could reuse the
+  evaluator to sanity-check user input.
+- **Decimal precision control**: currently hard-coded at 12
+  significant digits. A per-archetype setting is possible but not
+  necessary today.
+- **Percent as percent**: a dedicated `<expr> %p` syntax (e.g.
+  `1200*30%p=360`) would let `%` remain modulo while adding a
+  distinct percent operator.
+
+---
+
 ## Architecture
 
 ### Layer placement
 
 ```
 features/datetime/datetime-format.ts   ← Pure format functions (no browser APIs)
+features/math/inline-calc.ts           ← Pure expression evaluator + line detection
 adapter/ui/slash-menu.ts               ← Command defs, trigger detection, menu UI, insertion
-adapter/ui/action-binder.ts            ← Keydown/input wiring for both systems
+adapter/ui/action-binder.ts            ← Keydown/input wiring for all three systems
 adapter/ui/renderer.ts                 ← Shortcut help overlay
 ```
 
@@ -127,6 +287,25 @@ making them deterministic for testing.
 - `filterSlashMenu(query)` — narrows visible commands
 - `handleSlashMenuKeydown(e)` — Arrow/Enter/Tab/Escape handling
 - `closeSlashMenu()` — removes popover, resets state
+
+### Inline calc (`features/math/inline-calc.ts`)
+
+Pure, no browser APIs, no throws:
+
+- `evaluateCalcExpression(src): CalcResult` — recursive-descent
+  parser over `[0-9+\-*/%().\s]`. Whitelist gate, no `eval`.
+- `detectInlineCalcRequest(fullText, caretPos): InlineCalcRequest | null`
+  — returns the current line bounds + stripped expression when the
+  trigger condition is met.
+- `formatCalcResult(value): string` — integer / decimal / -0
+  normalisation.
+
+The adapter glue lives in `action-binder.ts`:
+
+- `isInlineCalcTarget(ta, state)` — `data-pkc-field` allow-list
+  plus TEXT archetype check for `body`.
+- `applyInlineCalcResult(ta, caret, formatted)` —
+  `execCommand('insertText')` with fallback mutation.
 
 ---
 

@@ -926,3 +926,271 @@ describe('ActionBinder — orphan asset cleanup (manual UI)', () => {
     expect(assets['ast-drop-b']).toBe('BB');
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// Inline calc shortcut (TEXT / TEXTLOG textarea Enter key)
+// ─────────────────────────────────────────────────────────────
+//
+// These tests pin the keydown → evaluator → textarea insertion
+// flow for the "1+2=" + Enter shortcut. They cover:
+//   - TEXT body field (editing phase + text archetype filter)
+//   - TEXTLOG append textarea (Enter fires calc, Ctrl+Enter still
+//     appends — the two paths are deliberately layered so plain
+//     Enter stays available for inline calc while Ctrl+Enter
+//     keeps its append meaning)
+//   - Folder body textareas are NOT eligible (same field name,
+//     different archetype)
+//   - Failures (bad expression, non-end caret, no `=`, text
+//     selection) fall through to the browser's default Enter
+//     behaviour rather than corrupting the body.
+//   - TEXTLOG append behavioural regression: plain-Enter
+//     preservation and Ctrl+Enter append still work end-to-end.
+
+describe('ActionBinder — inline calc shortcut', () => {
+  function bootstrapEditingText(initialBody = ''): {
+    dispatcher: ReturnType<typeof createDispatcher>;
+    events: DomainEvent[];
+  } {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'e1',
+          title: 'Note',
+          body: initialBody,
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+    return { dispatcher, events };
+  }
+
+  function bootstrapEditingFolder(): {
+    dispatcher: ReturnType<typeof createDispatcher>;
+  } {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'f1',
+          title: 'My Folder',
+          body: '',
+          archetype: 'folder',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    return { dispatcher };
+  }
+
+  function bootstrapTextlog(): {
+    dispatcher: ReturnType<typeof createDispatcher>;
+  } {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Work Log',
+          body: serializeTextlogBody({ entries: [] }),
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+    return { dispatcher };
+  }
+
+  it('TEXT body: plain Enter on "2+3=" inserts "5\\n" at caret', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(ta).not.toBeNull();
+    ta!.value = '2+3=';
+    ta!.selectionStart = ta!.selectionEnd = 4;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('2+3=5\n');
+    expect(ev.defaultPrevented).toBe(true);
+    expect(ta!.selectionStart).toBe(6);
+    expect(ta!.selectionEnd).toBe(6);
+  });
+
+  it('TEXT body: operator precedence is respected through the full chain', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '2+3*4=';
+    ta!.selectionStart = ta!.selectionEnd = 6;
+    ta!.focus();
+    ta!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(ta!.value).toBe('2+3*4=14\n');
+  });
+
+  it('TEXT body: multi-line — only the current line ending with = triggers', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = 'intro line\n10-4=';
+    ta!.selectionStart = ta!.selectionEnd = ta!.value.length;
+    ta!.focus();
+    ta!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(ta!.value).toBe('intro line\n10-4=6\n');
+  });
+
+  it('TEXT body: invalid expression is a silent no-op (browser default Enter runs)', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '1+abc=';
+    ta!.selectionStart = ta!.selectionEnd = 6;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    // Nothing was inserted and preventDefault was NOT called — the
+    // browser / happy-dom is free to apply its normal Enter behaviour.
+    expect(ta!.value).toBe('1+abc=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('TEXT body: division by zero is a silent no-op', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '1/0=';
+    ta!.selectionStart = ta!.selectionEnd = 4;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('1/0=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('TEXT body: does NOT fire when caret is not at the end of the line', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '1+2=';
+    ta!.selectionStart = ta!.selectionEnd = 2; // inside the expression
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('1+2=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('TEXT body: does NOT fire when a selection range is active', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '1+2=';
+    ta!.selectionStart = 0;
+    ta!.selectionEnd = 4; // entire text selected
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('1+2=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('TEXT body: Shift+Enter does NOT trigger inline calc', () => {
+    bootstrapEditingText();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    ta!.value = '1+2=';
+    ta!.selectionStart = ta!.selectionEnd = 4;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter', shiftKey: true, bubbles: true, cancelable: true,
+    });
+    ta!.dispatchEvent(ev);
+    // Shift+Enter is reserved for soft line breaks — we must not intercept.
+    expect(ta!.value).toBe('1+2=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('FOLDER body: inline calc is NOT eligible (same field name, different archetype)', () => {
+    bootstrapEditingFolder();
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(ta).not.toBeNull();
+    ta!.value = '1+2=';
+    ta!.selectionStart = ta!.selectionEnd = 4;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('1+2=');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('TEXTLOG append: plain Enter on "10%3=" inserts "1\\n"', () => {
+    bootstrapTextlog();
+    const ta = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    expect(ta).not.toBeNull();
+    ta!.value = '10%3=';
+    ta!.selectionStart = ta!.selectionEnd = 5;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    expect(ta!.value).toBe('10%3=1\n');
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('TEXTLOG append: Ctrl+Enter still appends the log entry (regression)', () => {
+    const { dispatcher } = bootstrapTextlog();
+    const ta = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    ta!.value = 'Quick note';
+    ta!.selectionStart = ta!.selectionEnd = ta!.value.length;
+    ta!.focus();
+    ta!.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true,
+    }));
+    const ent = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(ent.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('Quick note');
+  });
+
+  it('TEXTLOG append: plain Enter without a trailing `=` stays a pure no-op (multiline preserved)', () => {
+    const { dispatcher } = bootstrapTextlog();
+    const ta = root.querySelector<HTMLTextAreaElement>(
+      '[data-pkc-field="textlog-append-text"]',
+    );
+    ta!.value = 'plain line';
+    ta!.selectionStart = ta!.selectionEnd = ta!.value.length;
+    ta!.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    ta!.dispatchEvent(ev);
+    // Value unchanged at the DOM level, and no log entry got
+    // appended (that would require Ctrl+Enter). preventDefault was
+    // not called, so the browser keeps its normal multiline Enter.
+    expect(ta!.value).toBe('plain line');
+    expect(ev.defaultPrevented).toBe(false);
+    const ent = dispatcher.getState().container!.entries[0]!;
+    expect(parseTextlogBody(ent.body).entries).toHaveLength(0);
+  });
+});
