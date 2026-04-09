@@ -381,9 +381,245 @@ action-binder 側は変更なし。Phase 4 時点で `buildEntryWindowAssetConte
 
 - 親で attachment を add/remove した **瞬間に** 子の
   `previewResolverContexts` を postMessage で push する live 同期
+  （→ 次節「Live refresh foundation」で実装済み）
 - view-pane HTML も一緒に再描画する場合の `pkc-entry-rerender` 内部
   メッセージ定義
 - 複数タブ（マルチインスタンス）間の同一 lid 競合解決
+
+---
+
+## Live refresh foundation
+
+### 1. 変更点の要約
+
+親ウィンドウ側に `pushPreviewContextUpdate(lid, previewCtx)` を追加し、
+同じ `previewCtx` の更新を **親マップと child window の両方** に
+配信する単一エントリポイントを用意した。child 側は `message` listener
+で `pkc-entry-update-preview-ctx` を受け取り、**local 変数
+`childPreviewCtx`** に保存。`renderMd(text)` が
+`window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx)` に
+override 引数として渡すため、live 更新後に Preview タブを再描画した
+時点で新 snapshot が反映される。
+
+view-pane HTML は触らない。textarea の値も触らない。
+
+### 2. なぜ再 open refresh だけでは不十分か
+
+`Duplicate-open` 節で解消したのは **親が再 open を呼んだとき** の
+snapshot 更新だけだった。つまりユーザーが子ウィンドウを開いたまま:
+
+- 親側で attachment を追加・削除する
+- それでも子の Preview タブは古い snapshot のまま
+
+という状況は依然として再 open が唯一の回復手段だった。親が
+attachment 追加・削除を検知した時点で child を能動的に更新する経路が
+必要、というのが本節の動機。
+
+### 3. live refresh の責務
+
+**責務 (scope)**
+- 親で変化した `previewCtx` を即時に child へ push
+- 親マップ `previewResolverContexts` を単一ソースに近い状態に保つ
+- child の Preview resolver 入力だけを差し替える
+
+**責務外 (non-scope)**
+- view-pane HTML の再描画（= `body-view` の再 `innerHTML`）
+- Source textarea `body-edit` の value への介入
+- 子 → 親 への逆同期
+- save / conflict / download 系の既存プロトコルへの干渉
+- マルチタブ（複数インスタンス）間の同期
+- generic / opaque / form / todo archetype への拡張
+
+「preview context live refresh」と「view rerender」を **別 Issue** と
+して責務分離しているのがポイント。
+
+### 4. なぜ view-pane rerender は out of scope か
+
+view-pane HTML の再描画には、以下の追加機構が必要になる:
+
+- child 側が「いま編集中かどうか」「Preview タブがアクティブかどうか」
+  を ack する仕組み
+- 親が `resolvedBody` を再計算して送り直す経路
+- markdown renderer / asset resolver の child 側実行か、もしくは
+  resolved HTML を送る protocol
+- child 側編集中の dirty state との競合解決
+
+これらはいずれも foundation の範囲を超えて entry-window の
+state machine に踏み込むため、本節では **Preview タブのみ** に
+制限した。view-pane rerender は次の独立 Issue として扱う。
+
+### 5. textarea state には触らない
+
+`pkc-entry-update-preview-ctx` の受信時にやることは次の 1 個だけ:
+
+```js
+childPreviewCtx = e.data.previewCtx || null;
+```
+
+`body-edit`（Source textarea）の `value` には一切代入しない。ユーザー
+が編集中のテキストは完全に保護される。唯一の追加副作用は、**もし現在
+Preview タブが表示されている** なら、その場で `body-preview` の
+`innerHTML` だけを再生成して見えている表示を最新化することだけ
+（`body-view` / `body-edit` は触らない）。
+
+### 6. アプローチ
+
+**親側**:
+
+```ts
+export const ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG =
+  'pkc-entry-update-preview-ctx';
+
+export function pushPreviewContextUpdate(
+  lid: string,
+  previewCtx: AssetResolutionContext,
+): boolean {
+  previewResolverContexts.set(lid, previewCtx);
+  const child = openWindows.get(lid);
+  if (child && !child.closed) {
+    child.postMessage(
+      { type: ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG, previewCtx },
+      '*',
+    );
+    return true;
+  }
+  return false;
+}
+```
+
+加えて `renderEntryPreview` に 3 番目の引数 `overrideCtx` を追加し、
+override が指定されていればそれを優先。child の local snapshot を
+parent helper に渡せるようにする:
+
+```ts
+function renderEntryPreview(
+  lid: string,
+  text: string,
+  overrideCtx?: AssetResolutionContext | null,
+): string {
+  const ctx = overrideCtx ?? previewResolverContexts.get(lid);
+  // ...
+}
+```
+
+重複 open 分岐もこの helper 経由に切り替え、map の更新と child への
+postMessage push を 1 関数にまとめた:
+
+```ts
+if (existing && !existing.closed) {
+  if (assetContext?.previewCtx) {
+    pushPreviewContextUpdate(entry.lid, assetContext.previewCtx);
+  }
+  existing.focus();
+  return;
+}
+```
+
+**子側**（inline script 内）:
+
+```js
+var childPreviewCtx = null;
+
+function renderMd(text) {
+  // ...
+  return window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx);
+  // ...
+}
+
+window.addEventListener('message', function (e) {
+  // ...
+  if (e.data && e.data.type === 'pkc-entry-update-preview-ctx') {
+    childPreviewCtx = e.data.previewCtx || null;
+    if (currentMode === 'edit' &&
+        document.getElementById('body-preview').style.display !== 'none') {
+      var src = document.getElementById('body-edit').value;
+      document.getElementById('body-preview').innerHTML = renderMd(src);
+    }
+  }
+});
+```
+
+### 7. データフロー
+
+```
+parent window
+  attachment add/remove
+    └─ (caller code) → pushPreviewContextUpdate(lid, freshCtx)
+         ├─ previewResolverContexts.set(lid, freshCtx)
+         └─ if (openWindows.get(lid) open)
+              └─ child.postMessage({ type: 'pkc-entry-update-preview-ctx',
+                                     previewCtx: freshCtx }, '*')
+
+child window
+  message listener
+    └─ childPreviewCtx = e.data.previewCtx
+    └─ (if Preview tab visible) body-preview.innerHTML = renderMd(...)
+
+child window
+  Preview tab switch / typing
+    └─ renderMd(text)
+         └─ window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx)
+              ├─ ctx = childPreviewCtx ?? previewResolverContexts.get(lid)
+              ├─ hasAssetReferences(text)?
+              │    yes → resolveAssetReferences(text, ctx) → renderMarkdown
+              │    no  → renderMarkdown(text)
+              └─ 戻り値 HTML を body-preview へ挿入
+```
+
+### 8. テスト
+
+`tests/adapter/entry-window.test.ts` の
+`describe('Preview context live refresh foundation', …)` に 15 件追加:
+
+必須 7 件:
+
+1. `pushPreviewContextUpdate` が open child に
+   `pkc-entry-update-preview-ctx` を送る
+2. Preview タブ再描画で新 asset が解決される（overrideCtx 経路）
+3. 削除相当の empty ctx push で `*[missing asset: …]*` に戻る
+4. duplicate-open refresh と live refresh が両方 postMessage し、
+   最後の更新が parent map に勝つ
+5. Source textarea state が壊れない（`document.write` / `close` /
+   `open` の呼び出し回数が初期 open 時と変わらない）
+6. 一度も context を登録していないときの fallback を維持
+7. push 後も `javascript:` / `data:text/html` / `<script>` が escape
+   される
+
+追加 8 件（foundation 品質のための補強）:
+
+- `pushPreviewContextUpdate` と message type 定数が export されている
+- child が open していない lid への push は `false` を返す
+- 親マップは child がいなくても live push で更新される（seed 経路）
+- `overrideCtx` 引数が parent map よりも優先される
+- child HTML に `var childPreviewCtx = null;` 宣言がある
+- child HTML の message listener が `pkc-entry-update-preview-ctx`
+  を処理している
+- child HTML の `renderMd` が `childPreviewCtx` を 3 番目の引数として
+  渡している
+- close poll 経由 cleanup 後の push は false を返し postMessage を
+  送らない
+- textlog archetype も同じ push / render 経路で動く
+
+全テスト 1570 件 pass、typecheck clean、build 成功。entry-window.test
+単体で 106 件（+15）。
+
+### 9. 次スコープ
+
+本 foundation は「Preview タブ resolver の入力を live で差し替える」
+までを扱う。以下は次以降の独立 Issue として残る:
+
+1. **Child view-pane rerender** — `body-view` の `innerHTML` を新しい
+   `resolvedBody` で差し替える専用メッセージ型の追加。
+2. **editor dirty state との競合解決** — child 側が編集中のときに親
+   から送られてくる更新をどう扱うか（現状は Preview resolver 入力
+   だけしか触らないので competence issue は発生しない）。
+3. **autocomplete hover thumbnail** — `asset:` 補完ポップオーバーへの
+   resolver 経由サムネイル表示。
+4. **非 text archetype への拡張** — generic / opaque / folder など
+   textarea で markdown を書ける archetype にも同じ context を流す。
+5. **メインウィンドウの Source/Preview タブ導入** — 現状 textarea 単体。
+6. **マルチタブ間の同一 lid 競合解決** — `window.opener` が異なる
+   インスタンスで同じ entry を開いたときの調停。
 
 ---
 

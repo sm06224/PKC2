@@ -47,11 +47,11 @@ import { parseFormBody } from './form-presenter';
  * contents before handing the string to `renderMarkdown()`.
  *
  * Snapshot semantics: the context is taken once at window-open time
- * and cleared on close, matching the Phase-4 `resolvedBody` behavior.
- * Changes to `container.assets` or attachment metadata made in the
- * parent window while the child is open are NOT reflected — that is
- * a deliberate trade-off for rendering consistency between the child's
- * view-mode body (which uses `resolvedBody`) and its edit-mode preview.
+ * and then pushed to the child via `pushPreviewContextUpdate` on
+ * subsequent updates (duplicate-open, attachment add/remove). The
+ * child keeps its own local copy, so the parent map is primarily the
+ * initial seed and a fallback for the first render before any push
+ * has arrived. It is cleared on child close.
  */
 const previewResolverContexts = new Map<string, AssetResolutionContext>();
 
@@ -60,18 +60,27 @@ const previewResolverContexts = new Map<string, AssetResolutionContext>();
  * asset reference resolution against the captured per-lid context
  * first when the text contains any `asset:` references. Exposed on
  * the parent `window` so the child window's inline `<script>` can
- * call it via `window.opener.pkcRenderEntryPreview(lid, text)`.
+ * call it via `window.opener.pkcRenderEntryPreview(lid, text, ctx?)`.
  *
- * - If no context is registered for the given lid (non-text archetype
- *   or no references at open time), the function is a plain wrapper
- *   around `renderMarkdown()` — identical to the legacy
- *   `pkcRenderMarkdown` path.
+ * - The third argument `overrideCtx` is supplied by the child window
+ *   when it has a locally-stored preview context from an earlier
+ *   `pkc-entry-update-preview-ctx` live-refresh push. When present,
+ *   it takes precedence over the parent's per-lid map so a freshly
+ *   pushed snapshot wins over the stale initial one.
+ * - If no override is given and no context is registered for the
+ *   given lid (non-text archetype or no references at open time),
+ *   the function is a plain wrapper around `renderMarkdown()` —
+ *   identical to the legacy `pkcRenderMarkdown` path.
  * - If the current text has no `asset:` reference, the resolver is
  *   skipped and `renderMarkdown()` is called directly. This keeps the
  *   common typing path cheap.
  */
-function renderEntryPreview(lid: string, text: string): string {
-  const ctx = previewResolverContexts.get(lid);
+function renderEntryPreview(
+  lid: string,
+  text: string,
+  overrideCtx?: AssetResolutionContext | null,
+): string {
+  const ctx = overrideCtx ?? previewResolverContexts.get(lid);
   if (ctx && text && hasAssetReferences(text)) {
     const resolved = resolveAssetReferences(text, ctx);
     return renderMarkdown(resolved);
@@ -82,6 +91,77 @@ function renderEntryPreview(lid: string, text: string): string {
 
 /** Track open child windows to prevent duplicates. */
 const openWindows = new Map<string, Window>();
+
+/**
+ * Private message type name used for the parent → child live refresh
+ * of the edit-mode Preview resolver context. Exported so the test
+ * harness and adjacent adapter code can reference the exact string
+ * without re-hard-coding it.
+ *
+ * Payload shape:
+ *   { type: 'pkc-entry-update-preview-ctx', previewCtx: AssetResolutionContext }
+ *
+ * Direction:
+ *   parent → child (the child listens for this message; the parent
+ *   never receives it).
+ *
+ * Scope:
+ *   affects ONLY the child's edit-mode Preview tab resolver. The
+ *   child's view-pane HTML (already written at open time) is not
+ *   redrawn, the Source textarea is not touched, and no other state
+ *   is changed. A separate message type would be introduced later
+ *   for view-pane rerender — see `edit-preview-asset-resolution.md`,
+ *   "Live refresh foundation".
+ */
+export const ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG = 'pkc-entry-update-preview-ctx';
+
+/**
+ * Push a fresh preview resolver context snapshot to an already-open
+ * child window, updating both the parent-side map and the child's
+ * local copy via postMessage.
+ *
+ * This is the live-refresh foundation: callers that know the parent
+ * container's asset state has changed (e.g. an attachment was added
+ * or removed) can invoke this helper to make the child's Preview tab
+ * see the new state on its next render, without the user having to
+ * close and re-open the entry window.
+ *
+ * Behavior:
+ *   - Always updates `previewResolverContexts[lid]` so the parent-side
+ *     fallback stays in sync with the latest snapshot.
+ *   - If a child window is open for this lid, sends a
+ *     `pkc-entry-update-preview-ctx` postMessage carrying the new
+ *     context. The child stores it locally and uses it as the
+ *     override argument to `pkcRenderEntryPreview` on the next render.
+ *   - If no child is open, this is effectively a parent-side map
+ *     update only (which still matters for the duplicate-open path
+ *     and for any future child reopen).
+ *
+ * Intentionally out of scope:
+ *   - Does NOT redraw the child's view-pane HTML.
+ *   - Does NOT touch the child's Source textarea.
+ *   - Does NOT participate in the save/conflict/download protocols.
+ *   - Does NOT synchronize state across multiple windows for the same
+ *     lid (duplicate-open is handled separately in `openEntryWindow`).
+ *
+ * Returns `true` when a postMessage was dispatched to a live child,
+ * `false` when only the parent-side map was updated.
+ */
+export function pushPreviewContextUpdate(
+  lid: string,
+  previewCtx: AssetResolutionContext,
+): boolean {
+  previewResolverContexts.set(lid, previewCtx);
+  const child = openWindows.get(lid);
+  if (child && !child.closed) {
+    child.postMessage(
+      { type: ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG, previewCtx },
+      '*',
+    );
+    return true;
+  }
+  return false;
+}
 
 /**
  * Asset context threaded from the parent window into the child window
@@ -146,11 +226,13 @@ export function openEntryWindow(
   // mode asset resolver works against the freshest container snapshot
   // (attachments added / removed between the first open and now).
   //
-  // Only `previewCtx` is refreshed here. The view-pane HTML was already
-  // written into the child document at the original open time and is
-  // not touched — re-rendering it would require a postMessage protocol
-  // round-trip, which is deliberately out of scope (see
-  // `edit-preview-asset-resolution.md`, "Duplicate-open refresh").
+  // The refresh routes through `pushPreviewContextUpdate`, which both
+  // updates the parent-side map AND live-pushes the new snapshot to
+  // the child via `pkc-entry-update-preview-ctx` postMessage. The
+  // child's view-pane HTML (already written at open time) is NOT
+  // touched — redrawing it would require a separate rerender protocol
+  // which is deliberately out of scope (see
+  // `edit-preview-asset-resolution.md`, "Live refresh foundation").
   //
   // If the caller did not pass a `previewCtx`, the existing context
   // (if any) is preserved rather than cleared — the caller asked to
@@ -158,7 +240,7 @@ export function openEntryWindow(
   const existing = openWindows.get(entry.lid);
   if (existing && !existing.closed) {
     if (assetContext?.previewCtx) {
-      previewResolverContexts.set(entry.lid, assetContext.previewCtx);
+      pushPreviewContextUpdate(entry.lid, assetContext.previewCtx);
     }
     existing.focus();
     return;
@@ -824,6 +906,21 @@ var pkcAttachmentMime = ${escapeForScript(attachmentMime)};
 var pkcSandboxAllow = ${JSON.stringify(sandboxAllow)};
 var pkcActiveBlobUrls = [];
 
+/*
+ * Child-local edit-mode Preview resolver context.
+ *
+ * Starts null and is populated by 'pkc-entry-update-preview-ctx'
+ * messages from the parent (see the message listener at the bottom
+ * of this script). When populated, it is passed as the third arg to
+ * window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx) so
+ * the live-refreshed snapshot takes precedence over the parent's
+ * initial per-lid map.
+ *
+ * Only the Preview tab reads this. The Source textarea, the view-
+ * pane HTML, and the save/conflict paths do NOT touch it.
+ */
+var childPreviewCtx = null;
+
 document.getElementById('body-edit').value = originalBody;
 if (document.getElementById('title-input')) {
   document.getElementById('title-input').value = originalTitle;
@@ -996,7 +1093,14 @@ function renderMd(text) {
   if (!text) return '<em style="color:var(--c-muted)">(empty)</em>';
   try {
     if (window.opener && typeof window.opener.pkcRenderEntryPreview === 'function') {
-      return window.opener.pkcRenderEntryPreview(lid, text);
+      /*
+       * Pass childPreviewCtx as the override so any live-refreshed
+       * snapshot (pushed after open) wins over the parent's initial
+       * per-lid map. When childPreviewCtx is still null (no push has
+       * arrived yet), the opener falls back to the initial map — so
+       * the first Preview tab switch after open keeps working.
+       */
+      return window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx);
     }
     if (window.opener && typeof window.opener.pkcRenderMarkdown === 'function') {
       return window.opener.pkcRenderMarkdown(text);
@@ -1028,6 +1132,30 @@ window.addEventListener('message', function(e) {
     var banner = document.getElementById('conflict-banner');
     banner.textContent = e.data.message;
     banner.style.display = '';
+  }
+  if (e.data && e.data.type === 'pkc-entry-update-preview-ctx') {
+    /*
+     * Live refresh of the edit-mode Preview resolver context. We only
+     * update the local variable; we do NOT re-render anything. The
+     * next time the user switches to the Preview tab (or the already-
+     * visible preview is re-invoked via showTab('preview')) the new
+     * snapshot will be passed to opener.pkcRenderEntryPreview.
+     *
+     * The Source textarea and the view-pane body are deliberately
+     * untouched — this message only affects the preview resolver.
+     */
+    childPreviewCtx = e.data.previewCtx || null;
+    if (currentMode === 'edit' && document.getElementById('body-preview').style.display !== 'none') {
+      /*
+       * If the Preview tab is currently visible, re-render it in place
+       * so the user sees the effect immediately. This does NOT touch
+       * body-edit (the Source textarea) and does NOT touch body-view
+       * (the view-pane HTML) — only body-preview (the Preview tab's
+       * scratch div) is updated.
+       */
+      var src = document.getElementById('body-edit').value;
+      document.getElementById('body-preview').innerHTML = renderMd(src);
+    }
   }
 });
 </script>
