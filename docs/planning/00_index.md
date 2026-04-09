@@ -29,7 +29,7 @@
 | `15_基盤方針追補_type_dispatch_adapter.md` | discriminated union、Archetype dispatch、dependency governance、ESLint規約 | ★★ |
 | `16_基盤方針追補_versioning_UX_Issues.md` | semver+kind+timestamp、AppPhase状態機械、操作契約 | ★★ |
 | `17_保存再水和可搬モデル.md` | 4系統モデル、HTML mode行列、body-assets分離、IDB進化、export形式、圧縮方針 | ★★ |
-| `18_運用ガイド_export_import_rehydrate.md` | Export/Import/Rehydrate の利用手順・判断基準・操作シナリオ（利用ガイド） | ★★ |
+| `18_運用ガイド_export_import_rehydrate.md` | Export/Import/Rehydrate の利用手順・判断基準・操作シナリオ（利用ガイド）※ユーザーマニュアル `docs/manual/08_...` にもビルド時に自動取り込みされる | ★★ |
 | `19_pre_release.md` | プレリリース文書 — 到達点・制約・future・バージョニング・技術仕様サマリ | ★★ |
 | `20_UI_usability_audit.md` | UI実用性監査 — エントリ編集・フォルダ・CSS/レイアウト・blocker一覧・次Issue推薦 | ★★ |
 
@@ -73,6 +73,7 @@
 Issue #11〜#42 は個別設計文書なし（基盤方針の延長として実装）。
 到達点は `HANDOVER.md` に集約。feature 層パターンは `12_基盤方針追補_責務分離.md` に反映済み。
 Issue #43 の運用ガイドは `18_運用ガイド_export_import_rehydrate.md` として直下に配置。
+ユーザー向けマニュアル（`docs/manual/`）および PKC2 形式 HTML マニュアル（`PKC2-Extensions/pkc2-manual.html`）は、この 18 番文書の内容をビルド時に取り込んで利用する（二重管理回避のため）。
 
 ## 前提文書
 
