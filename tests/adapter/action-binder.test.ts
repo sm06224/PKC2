@@ -785,3 +785,144 @@ describe('Date/Time shortcuts', () => {
     expect(textarea.value).toMatch(/^Hello \d{4}\/\d{2}\/\d{2} World$/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// Orphan asset cleanup wiring (manual cleanup UI)
+// ─────────────────────────────────────────────────────────────
+//
+// These tests pin the shell-menu → dispatcher plumbing for the
+// orphan asset cleanup button. They cover the click → dispatch
+// handshake, the "disabled button is a no-op" guard, the reducer
+// result, and the "no auto-GC on DELETE_ENTRY" guarantee.
+
+describe('ActionBinder — orphan asset cleanup (manual UI)', () => {
+  function containerWithOrphans(): Container {
+    const attachmentBody = JSON.stringify({
+      name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-keep',
+    });
+    return {
+      meta: {
+        container_id: 'c-orphan', title: 'Orphan',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+      },
+      entries: [
+        {
+          lid: 'a1', title: 'keep.png', body: attachmentBody, archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-keep': 'KK', 'ast-drop-a': 'AA', 'ast-drop-b': 'BB' },
+    };
+  }
+
+  function containerNoOrphans(): Container {
+    const attachmentBody = JSON.stringify({
+      name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-keep',
+    });
+    return {
+      meta: {
+        container_id: 'c-clean', title: 'Clean',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+      },
+      entries: [
+        {
+          lid: 'a1', title: 'keep.png', body: attachmentBody, archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-keep': 'KK' },
+    };
+  }
+
+  function bootstrap(initial: Container): {
+    dispatcher: ReturnType<typeof createDispatcher>;
+    events: DomainEvent[];
+  } {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: initial });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  it('clicking the enabled cleanup button dispatches PURGE_ORPHAN_ASSETS', () => {
+    const { dispatcher, events } = bootstrap(containerWithOrphans());
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="purge-orphan-assets"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-disabled')).toBeNull();
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // ORPHAN_ASSETS_PURGED is emitted with the correct count.
+    const purged = events.find((e) => e.type === 'ORPHAN_ASSETS_PURGED');
+    expect(purged).toBeDefined();
+    expect(purged && 'count' in purged ? purged.count : -1).toBe(2);
+    // The orphan keys are gone, the referenced one remains.
+    const assets = dispatcher.getState().container!.assets;
+    expect(assets['ast-keep']).toBe('KK');
+    expect(assets['ast-drop-a']).toBeUndefined();
+    expect(assets['ast-drop-b']).toBeUndefined();
+  });
+
+  it('clicking the disabled cleanup button (0 orphans) is a no-op', () => {
+    const { dispatcher, events } = bootstrap(containerNoOrphans());
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="purge-orphan-assets"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-disabled')).toBe('true');
+    // Prior state snapshot.
+    const beforeContainer = dispatcher.getState().container;
+    const beforeEventCount = events.length;
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // No ORPHAN_ASSETS_PURGED event was emitted — the binder swallowed
+    // the click before it reached the dispatcher.
+    expect(events.some((e) => e.type === 'ORPHAN_ASSETS_PURGED')).toBe(false);
+    expect(events.length).toBe(beforeEventCount);
+    // Container reference is unchanged.
+    expect(dispatcher.getState().container).toBe(beforeContainer);
+  });
+
+  it('cleanup flips the container.assets identity (Preview/View wiring compat)', () => {
+    // Preview/View refresh wiring uses `prev.assets !== next.assets`
+    // as its gate. A successful cleanup MUST produce a new assets
+    // object so the gate fires; this test pins that contract at the
+    // dispatcher level (the reducer + foundation already pin it at
+    // the unit level, but clicking through the UI is where the
+    // contract would actually break first).
+    const { dispatcher } = bootstrap(containerWithOrphans());
+    const before = dispatcher.getState().container!.assets;
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="purge-orphan-assets"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const after = dispatcher.getState().container!.assets;
+    expect(after).not.toBe(before);
+  });
+
+  it('DELETE_ENTRY does NOT silently run orphan cleanup', () => {
+    // Regression pin: dispatching DELETE_ENTRY must NOT auto-emit
+    // ORPHAN_ASSETS_PURGED. The only legitimate code path that
+    // emits that event is the manual cleanup button. This test
+    // will fail loudly if a future commit adds auto-GC to the
+    // DELETE_ENTRY reducer path.
+    const { dispatcher, events } = bootstrap(containerWithOrphans());
+    dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: 'a1' });
+    const autoPurged = events.some((e) => e.type === 'ORPHAN_ASSETS_PURGED');
+    expect(autoPurged).toBe(false);
+    // The orphan (and the freshly-orphaned ast-keep) all survive.
+    const assets = dispatcher.getState().container!.assets;
+    expect(assets['ast-keep']).toBe('KK');
+    expect(assets['ast-drop-a']).toBe('AA');
+    expect(assets['ast-drop-b']).toBe('BB');
+  });
+});

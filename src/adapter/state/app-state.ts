@@ -19,6 +19,7 @@ import {
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
+import { removeOrphanAssets } from '../../features/asset/asset-scan';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -483,6 +484,28 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (result.purgedCount === 0) return blocked(state, action);
       const next: AppState = { ...state, container: result.container };
       return { state: next, events: [{ type: 'TRASH_PURGED', count: result.purgedCount }] };
+    }
+    case 'PURGE_ORPHAN_ASSETS': {
+      // Manual orphan asset cleanup. This is the ONE and only place
+      // where `removeOrphanAssets` is wired — no other reducer path
+      // invokes it (no auto-GC on DELETE_ENTRY / COMMIT_EDIT / export).
+      //
+      // The helper's identity contract does all the bookkeeping:
+      //   - zero orphans → returns the SAME container reference, which
+      //     we detect via `===` and turn into a `blocked` no-op. This
+      //     keeps the "cleanup button while nothing to do" case from
+      //     polluting the event log or flipping identity spuriously.
+      //   - some orphans → returns a fresh container with a fresh
+      //     `assets` map. We count the delta by comparing the two key
+      //     sets so the emitted event carries an accurate `count`.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const prev = state.container;
+      const pruned = removeOrphanAssets(prev);
+      if (pruned === prev) return blocked(state, action);
+      const count = Object.keys(prev.assets).length - Object.keys(pruned.assets).length;
+      const next: AppState = { ...state, container: pruned };
+      return { state: next, events: [{ type: 'ORPHAN_ASSETS_PURGED', count }] };
     }
     case 'TOGGLE_MULTI_SELECT': {
       const lids = [...state.multiSelectedLids];

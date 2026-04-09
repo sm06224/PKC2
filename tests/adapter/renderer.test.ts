@@ -9,6 +9,7 @@ import { formPresenter } from '@adapter/ui/form-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
+import type { Entry } from '@core/model/record';
 
 const mockContainer: Container = {
   meta: {
@@ -5068,5 +5069,206 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('input assist menu');
     // Has close button
     expect(overlay!.querySelector('[data-pkc-action="close-shortcut-help"]')).not.toBeNull();
+  });
+});
+
+describe('Shell Menu Data Maintenance (orphan asset cleanup UI)', () => {
+  // These tests pin the shell-menu rendering of the orphan asset
+  // maintenance section. The underlying scan is already tested in
+  // `tests/features/asset/asset-scan.test.ts` — here we only check
+  // that the renderer surfaces the count, list, and button
+  // correctly and that the disabled / hidden rules hold.
+
+  const baseState = (container: Container | null, overrides: Partial<AppState> = {}): AppState => ({
+    phase: 'ready',
+    container,
+    selectedLid: null,
+    editingLid: null,
+    error: null,
+    embedded: false,
+    pendingOffers: [],
+    importPreview: null,
+    searchQuery: '',
+    archetypeFilter: null,
+    tagFilter: null,
+    sortKey: 'created_at',
+    sortDirection: 'desc',
+    exportMode: null,
+    exportMutability: null,
+    readonly: false,
+    lightSource: false,
+    showArchived: false,
+    viewMode: 'detail' as const,
+    calendarYear: 2026,
+    calendarMonth: 4,
+    multiSelectedLids: [],
+    collapsedFolders: [],
+    ...overrides,
+  });
+
+  function makeContainer(partial: Partial<Container> = {}): Container {
+    return {
+      meta: {
+        container_id: 'c-1', title: 'Test',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+      },
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets: {},
+      ...partial,
+    };
+  }
+
+  function attachmentEntry(lid: string, key: string): Entry {
+    return {
+      lid,
+      title: `${key}.png`,
+      body: JSON.stringify({ name: `${key}.png`, mime: 'image/png', size: 4, asset_key: key }),
+      archetype: 'attachment',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  it('shows maintenance section with 0/0 summary when container.assets is empty', () => {
+    const state = baseState(makeContainer({ assets: {} }));
+    render(state, root);
+    const section = root.querySelector('[data-pkc-region="shell-menu-maintenance"]');
+    expect(section).not.toBeNull();
+    expect(section!.textContent).toContain('Data Maintenance');
+    const summary = section!.querySelector('[data-pkc-region="orphan-asset-summary"]');
+    expect(summary).not.toBeNull();
+    expect(summary!.getAttribute('data-pkc-orphan-count')).toBe('0');
+    expect(summary!.getAttribute('data-pkc-asset-total')).toBe('0');
+    expect(summary!.textContent).toContain('0 / 0');
+  });
+
+  it('shows the accurate orphan/total counts when some assets are orphan', () => {
+    const container = makeContainer({
+      entries: [attachmentEntry('a1', 'ast-keep')],
+      assets: { 'ast-keep': 'KK', 'ast-drop': 'DD', 'ast-also': 'XX' },
+    });
+    const state = baseState(container);
+    render(state, root);
+    const summary = root.querySelector('[data-pkc-region="orphan-asset-summary"]');
+    expect(summary).not.toBeNull();
+    expect(summary!.getAttribute('data-pkc-orphan-count')).toBe('2');
+    expect(summary!.getAttribute('data-pkc-asset-total')).toBe('3');
+    expect(summary!.textContent).toContain('2 / 3');
+  });
+
+  it('renders a preview list of representative orphan keys when > 0 orphans', () => {
+    const container = makeContainer({
+      entries: [],
+      assets: { 'ast-a': 'A', 'ast-b': 'B', 'ast-c': 'C' },
+    });
+    const state = baseState(container);
+    render(state, root);
+    const preview = root.querySelector('[data-pkc-region="orphan-asset-preview"]');
+    expect(preview).not.toBeNull();
+    const items = preview!.querySelectorAll('.pkc-shell-menu-maintenance-item');
+    expect(items.length).toBe(3);
+    const texts = Array.from(items).map((el) => el.textContent);
+    expect(texts).toContain('ast-a');
+    expect(texts).toContain('ast-b');
+    expect(texts).toContain('ast-c');
+  });
+
+  it('caps the preview at 3 and shows a "+N more" hint for the remainder', () => {
+    const assets: Record<string, string> = {};
+    for (let i = 0; i < 7; i++) assets[`ast-${i}`] = 'X';
+    const state = baseState(makeContainer({ entries: [], assets }));
+    render(state, root);
+    const preview = root.querySelector('[data-pkc-region="orphan-asset-preview"]');
+    expect(preview).not.toBeNull();
+    expect(preview!.querySelectorAll('.pkc-shell-menu-maintenance-item').length).toBe(3);
+    const more = preview!.querySelector('.pkc-shell-menu-maintenance-more');
+    expect(more).not.toBeNull();
+    expect(more!.textContent).toContain('+4 more');
+  });
+
+  it('renders cleanup button disabled with "No orphans" text when count is 0', () => {
+    const container = makeContainer({
+      entries: [attachmentEntry('a1', 'ast-keep')],
+      assets: { 'ast-keep': 'KK' },
+    });
+    const state = baseState(container);
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="purge-orphan-assets"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-disabled')).toBe('true');
+    expect(btn!.hasAttribute('disabled')).toBe(true);
+    expect(btn!.textContent).toContain('No orphans');
+    // No preview list when count is 0.
+    expect(root.querySelector('[data-pkc-region="orphan-asset-preview"]')).toBeNull();
+  });
+
+  it('renders cleanup button enabled with the orphan count when > 0', () => {
+    const container = makeContainer({
+      entries: [],
+      assets: { 'ast-a': 'A', 'ast-b': 'B' },
+    });
+    const state = baseState(container);
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="purge-orphan-assets"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-disabled')).toBeNull();
+    expect(btn!.hasAttribute('disabled')).toBe(false);
+    expect(btn!.textContent).toContain('2');
+    expect(btn!.textContent).toContain('orphan assets');
+  });
+
+  it('renders singular label "1 orphan asset" (not plural) when count is 1', () => {
+    const container = makeContainer({ entries: [], assets: { 'ast-solo': 'S' } });
+    const state = baseState(container);
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="purge-orphan-assets"]');
+    expect(btn!.textContent).toContain('1 orphan asset');
+    // Must not accidentally pluralise.
+    expect(btn!.textContent).not.toContain('1 orphan assets');
+  });
+
+  it('includes an irreversibility note on the maintenance section', () => {
+    const container = makeContainer({ entries: [], assets: { 'ast-x': 'X' } });
+    const state = baseState(container);
+    render(state, root);
+    const section = root.querySelector('[data-pkc-region="shell-menu-maintenance"]');
+    expect(section).not.toBeNull();
+    expect(section!.textContent).toContain('Cannot be undone');
+  });
+
+  it('hides the maintenance section entirely in readonly mode', () => {
+    const container = makeContainer({ entries: [], assets: { 'ast-x': 'X' } });
+    const state = baseState(container, { readonly: true });
+    render(state, root);
+    expect(root.querySelector('[data-pkc-region="shell-menu-maintenance"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="purge-orphan-assets"]')).toBeNull();
+  });
+
+  it('counts textlog per-log markdown references when computing orphans', () => {
+    // Regression pin: the renderer must use the same reference scan
+    // as the reducer. If this drifts, users will see "orphan" assets
+    // that would then be blocked by the reducer — confusing UX.
+    const textlogBody = JSON.stringify({
+      entries: [
+        { id: 'log-1', text: 'see ![pic](asset:ast-log1)', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+      ],
+    });
+    const container = makeContainer({
+      entries: [
+        {
+          lid: 'tl1', title: 'Log', body: textlogBody, archetype: 'textlog',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-log1': 'KK', 'ast-orphan': 'OO' },
+    });
+    const state = baseState(container);
+    render(state, root);
+    const summary = root.querySelector('[data-pkc-region="orphan-asset-summary"]');
+    expect(summary!.getAttribute('data-pkc-orphan-count')).toBe('1');
+    expect(summary!.getAttribute('data-pkc-asset-total')).toBe('2');
   });
 });

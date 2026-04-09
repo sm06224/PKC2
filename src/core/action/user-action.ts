@@ -68,6 +68,27 @@ export type UserAction =
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }
+  /**
+   * PURGE_ORPHAN_ASSETS — manual orphan asset cleanup.
+   *
+   * Contract:
+   * - Allowed in ready phase only.
+   * - Blocked when state.readonly or when container is absent.
+   * - Blocked (no-op) when the orphan scan returns zero keys — callers
+   *   can check `state === prevState` to detect this.
+   * - Uses the pure `removeOrphanAssets` foundation; mutates ONLY
+   *   `container.assets`. Entries / relations / revisions / meta are
+   *   all reused by reference (see `features/asset/asset-scan.ts`).
+   * - Does NOT touch `meta.updated_at` — orphan cleanup is a
+   *   maintenance operation, not a user-visible content change.
+   * - Does NOT change phase, selectedLid, editingLid, or viewMode.
+   * - Emits `ORPHAN_ASSETS_PURGED { count }` on success.
+   *
+   * Foundation vs policy: this is the FIRST and only caller of the
+   * orphan GC foundation. Reducer path auto-GC (on DELETE_ENTRY etc.)
+   * is intentionally NOT wired — see the docs for rationale.
+   */
+  | { type: 'PURGE_ORPHAN_ASSETS' }
   | { type: 'TOGGLE_MULTI_SELECT'; lid: string }
   | { type: 'SELECT_RANGE'; lid: string }
   | { type: 'CLEAR_MULTI_SELECT' }

@@ -25,6 +25,7 @@ import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
+import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -147,7 +148,7 @@ function renderShell(state: AppState): HTMLElement {
   // The current theme is read from the root element so the active
   // theme button can be highlighted on every render.
   const currentTheme = getCurrentThemeMode();
-  shell.appendChild(renderShellMenu(currentTheme));
+  shell.appendChild(renderShellMenu(currentTheme, state));
 
   // Shortcut help overlay (hidden by default, toggled by ? key)
   shell.appendChild(renderShortcutHelp());
@@ -325,7 +326,10 @@ function getCurrentThemeMode(): 'light' | 'dark' | 'system' {
   return 'system';
 }
 
-function renderShellMenu(currentTheme: 'light' | 'dark' | 'system'): HTMLElement {
+function renderShellMenu(
+  currentTheme: 'light' | 'dark' | 'system',
+  state: AppState,
+): HTMLElement {
   // Dialog-style overlay (matches the shortcut-help pattern) so that the
   // menu is always centered on the viewport, above all other panes, and
   // never gets pushed below the right pane or clipped by the event log.
@@ -373,6 +377,20 @@ function renderShellMenu(currentTheme: 'light' | 'dark' | 'system'): HTMLElement
   shortcutSection.appendChild(shortcutBtn);
   card.appendChild(shortcutSection);
 
+  // Data Maintenance — manual orphan asset cleanup.
+  //
+  // This section is intentionally passive until the user clicks:
+  // the orphan count is just a read-only scan of the current
+  // container, the cleanup button disables itself when there is
+  // nothing to do, and the whole surface is hidden in readonly /
+  // container-absent modes where mutation is not allowed.
+  //
+  // No auto-GC is wired anywhere — this button is the ONLY way an
+  // orphan asset gets removed from the container today.
+  if (state.container && !state.readonly) {
+    card.appendChild(renderShellMenuMaintenance(state.container));
+  }
+
   // Version
   const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
   versionSection.textContent = `PKC2 v${VERSION}`;
@@ -386,6 +404,96 @@ function renderShellMenu(currentTheme: 'light' | 'dark' | 'system'): HTMLElement
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Shell menu Data Maintenance section — manual orphan asset cleanup.
+ *
+ * Rendered inside the shell menu card when the container is editable
+ * (non-readonly) and present. Purely a DOM projection of the current
+ * container's asset-scan result; it performs no mutations and holds
+ * no runtime state. The state comes from `collectOrphanAssetKeys`,
+ * which is a pure read-only scan.
+ *
+ * Contract:
+ *   - Always shows the total asset count and the orphan count, so
+ *     users can verify "nothing to clean" without guessing.
+ *   - When `orphanCount === 0`, the cleanup button is rendered but
+ *     disabled (`data-pkc-disabled="true"`). ActionBinder skips
+ *     disabled buttons, so accidental clicks are no-ops.
+ *   - When `orphanCount > 0`, a preview of up to 3 representative
+ *     orphan keys is shown below the count, mirroring the
+ *     "observe-before-delete" principle in the Issue spec.
+ *   - The button text explicitly states the irreversibility
+ *     ("cannot be undone"); we do not hook undo/redo into this path.
+ *
+ * Rendering is O(entries + assets) — no caching, no memoisation.
+ * The whole shell menu is re-rendered on every state change anyway,
+ * and the orphan scan is cheap enough that this is not worth
+ * optimising today.
+ */
+function renderShellMenuMaintenance(container: Container): HTMLElement {
+  const section = createElement('div', 'pkc-shell-menu-section');
+  section.setAttribute('data-pkc-region', 'shell-menu-maintenance');
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Data Maintenance';
+  section.appendChild(label);
+
+  const orphanKeys = collectOrphanAssetKeys(container);
+  const orphanCount = orphanKeys.size;
+  const totalCount = Object.keys(container.assets).length;
+
+  const summary = createElement('div', 'pkc-shell-menu-maintenance-summary');
+  summary.setAttribute('data-pkc-region', 'orphan-asset-summary');
+  summary.setAttribute('data-pkc-orphan-count', String(orphanCount));
+  summary.setAttribute('data-pkc-asset-total', String(totalCount));
+  if (orphanCount === 0) {
+    summary.textContent = `Orphan assets: 0 / ${totalCount}`;
+  } else {
+    summary.textContent = `Orphan assets: ${orphanCount} / ${totalCount}`;
+  }
+  section.appendChild(summary);
+
+  // Representative orphan keys — show up to 3 so the user can see
+  // WHAT will be removed before committing. Beyond 3 we collapse the
+  // remainder into a "+N more" hint to keep the card compact.
+  if (orphanCount > 0) {
+    const preview = createElement('ul', 'pkc-shell-menu-maintenance-list');
+    preview.setAttribute('data-pkc-region', 'orphan-asset-preview');
+    const keys = Array.from(orphanKeys);
+    const shown = keys.slice(0, 3);
+    for (const key of shown) {
+      const li = createElement('li', 'pkc-shell-menu-maintenance-item');
+      li.textContent = key;
+      preview.appendChild(li);
+    }
+    if (keys.length > shown.length) {
+      const more = createElement('li', 'pkc-shell-menu-maintenance-more');
+      more.textContent = `+${keys.length - shown.length} more`;
+      preview.appendChild(more);
+    }
+    section.appendChild(preview);
+  }
+
+  const actionRow = createElement('div', 'pkc-shell-menu-maintenance-actions');
+  const cleanupBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-maintenance-btn');
+  cleanupBtn.setAttribute('data-pkc-action', 'purge-orphan-assets');
+  if (orphanCount === 0) {
+    cleanupBtn.setAttribute('data-pkc-disabled', 'true');
+    cleanupBtn.setAttribute('disabled', 'true');
+    cleanupBtn.textContent = '🧹 No orphans to clean';
+  } else {
+    cleanupBtn.textContent = `🧹 Clean ${orphanCount} orphan asset${orphanCount === 1 ? '' : 's'}`;
+  }
+  actionRow.appendChild(cleanupBtn);
+  section.appendChild(actionRow);
+
+  const note = createElement('div', 'pkc-shell-menu-maintenance-note');
+  note.textContent = 'Removes assets not referenced by any entry. Cannot be undone.';
+  section.appendChild(note);
+
+  return section;
 }
 
 function renderShortcutHelp(): HTMLElement {
