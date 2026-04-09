@@ -8,11 +8,12 @@ import {
 } from '../../features/textlog/textlog-body';
 import type { TextlogFlag } from '../../features/textlog/textlog-body';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
 export const textlogPresenter: DetailPresenter = {
-  renderBody(entry: Entry): HTMLElement {
+  renderBody(entry: Entry, assets?: Record<string, string>, mimeByKey?: Record<string, string>): HTMLElement {
     const log = parseTextlogBody(entry.body);
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
@@ -51,11 +52,15 @@ export const textlogPresenter: DetailPresenter = {
         tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
         row.appendChild(tsEl);
 
-        // Text content
+        // Text content — resolve asset references first, then render markdown
         const textEl = document.createElement('div');
         textEl.className = 'pkc-textlog-text';
-        if (hasMarkdownSyntax(logEntry.text)) {
-          textEl.innerHTML = renderMarkdown(logEntry.text);
+        let source = logEntry.text;
+        if (assets && mimeByKey && hasAssetReferences(source)) {
+          source = resolveAssetReferences(source, { assets, mimeByKey });
+        }
+        if (hasMarkdownSyntax(source)) {
+          textEl.innerHTML = renderMarkdown(source);
           textEl.classList.add('pkc-md-rendered');
         } else {
           textEl.textContent = logEntry.text;

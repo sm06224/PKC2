@@ -1,5 +1,6 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 
 /**
  * DetailPresenter: archetype-specific rendering for the detail view.
@@ -10,10 +11,24 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
  *
  * This is an adapter-layer concern — presenters produce DOM elements,
  * so they belong in adapter/ui, not in core or features.
+ *
+ * The optional `mimeByKey` parameter is used by text-like presenters
+ * (text, textlog) to resolve `![alt](asset:key)` references against the
+ * container's attachment metadata. Presenters that don't render markdown
+ * (todo, form, folder, attachment itself) can ignore it.
  */
 export interface DetailPresenter {
-  /** Render the entry body for view mode. Assets context is passed for attachment entries. */
-  renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement;
+  /**
+   * Render the entry body for view mode.
+   * @param entry       The entry to render.
+   * @param assets      Container asset store (asset_key → base64). Used by attachment presenter and by markdown asset resolution.
+   * @param mimeByKey   Map of asset_key → MIME, built from attachment entries. Used by markdown asset resolution.
+   */
+  renderBody(
+    entry: Entry,
+    assets?: Record<string, string>,
+    mimeByKey?: Record<string, string>
+  ): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
   /** Collect the body string from the editor DOM. Called on commit. */
@@ -23,7 +38,7 @@ export interface DetailPresenter {
 // ── Default presenter (text) ──────────────────────────
 
 const textPresenter: DetailPresenter = {
-  renderBody(entry: Entry): HTMLElement {
+  renderBody(entry: Entry, assets?: Record<string, string>, mimeByKey?: Record<string, string>): HTMLElement {
     if (!entry.body) {
       const body = document.createElement('pre');
       body.className = 'pkc-view-body';
@@ -31,11 +46,17 @@ const textPresenter: DetailPresenter = {
       return body;
     }
 
+    // Resolve `asset:` image references before markdown rendering.
+    let source = entry.body;
+    if (assets && mimeByKey && hasAssetReferences(source)) {
+      source = resolveAssetReferences(source, { assets, mimeByKey });
+    }
+
     // Render as markdown if the body contains markdown syntax
-    if (hasMarkdownSyntax(entry.body)) {
+    if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(entry.body);
+      body.innerHTML = renderMarkdown(source);
       return body;
     }
 

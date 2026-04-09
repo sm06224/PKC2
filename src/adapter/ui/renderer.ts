@@ -1207,10 +1207,15 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     }
   }
 
-  // Archetype-dispatched body rendering
+  // Archetype-dispatched body rendering.
+  // For text/textlog (markdown-capable) presenters, pass assets + MIME map
+  // so `![alt](asset:key)` references can be resolved inline.
   const presenter = getPresenter(entry.archetype);
   if (entry.archetype === 'attachment' && container?.assets) {
     view.appendChild(presenter.renderBody(entry, container.assets));
+  } else if (container?.assets) {
+    const mimeByKey = buildAssetMimeMap(container);
+    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
   } else {
     view.appendChild(presenter.renderBody(entry));
   }
@@ -1725,6 +1730,26 @@ function createElement(tag: string, className: string): HTMLElement {
   return el;
 }
 
+/**
+ * Build a map of `asset_key → mime` from the container's attachment
+ * entries. Used by the markdown asset resolver so that text / textlog
+ * bodies can embed `![alt](asset:key)` references inline.
+ *
+ * Attachment entries store their metadata (name, mime, asset_key) in
+ * the body JSON; the raw base64 data lives in `container.assets[key]`.
+ */
+function buildAssetMimeMap(container: Container): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key && att.mime) {
+      map[att.asset_key] = att.mime;
+    }
+  }
+  return map;
+}
+
 function renderFolderContents(folder: Entry, container: Container): HTMLElement {
   const section = createElement('div', 'pkc-folder-contents');
   section.setAttribute('data-pkc-region', 'folder-contents');
@@ -1948,9 +1973,15 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
   if (entry.archetype === 'attachment') {
     content.appendChild(renderDetachedAttachment(entry, container));
   } else {
-    // Use presenter for body rendering (read-only)
+    // Use presenter for body rendering (read-only).
+    // Pass assets + MIME map so asset references resolve in detached view too.
     const presenter = getPresenter(entry.archetype);
-    content.appendChild(presenter.renderBody(entry));
+    if (container?.assets) {
+      const mimeByKey = buildAssetMimeMap(container);
+      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
+    } else {
+      content.appendChild(presenter.renderBody(entry));
+    }
 
     // Folder contents
     if (entry.archetype === 'folder' && container) {

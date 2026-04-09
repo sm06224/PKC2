@@ -103,4 +103,90 @@ describe('DetailPresenter', () => {
     const container = document.createElement('div');
     expect(presenter.collectBody(container)).toBe('');
   });
+
+  // ── Asset reference resolution (Foundation) ──
+
+  describe('asset reference resolution', () => {
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+
+    function makeTextEntry(body: string): Entry {
+      return {
+        lid: 'e-asset', title: 'Asset Test', body,
+        archetype: 'text',
+        created_at: '2026-04-09T00:00:00Z', updated_at: '2026-04-09T00:00:00Z',
+      };
+    }
+
+    it('resolves asset: image reference to data URI in text body', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('![cat](asset:ast-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-001': PNG_B64 },
+        { 'ast-001': 'image/png' },
+      );
+      expect(el.innerHTML).toContain('data:image/png;base64,');
+      expect(el.innerHTML).not.toContain('asset:ast-001');
+      expect(el.className).toContain('pkc-md-rendered');
+    });
+
+    it('falls back to visible marker when asset key is missing', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('![x](asset:ast-missing)');
+      const el = presenter.renderBody(entry, {}, {});
+      expect(el.innerHTML).toContain('missing asset');
+      expect(el.innerHTML).toContain('ast-missing');
+      expect(el.innerHTML).not.toContain('<img');
+    });
+
+    it('falls back to visible marker for unsupported MIME', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('![x](asset:ast-bad)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-bad': 'binarydata' },
+        { 'ast-bad': 'application/zip' },
+      );
+      expect(el.innerHTML).toContain('unsupported asset');
+    });
+
+    it('leaves plain-text bodies alone when no markdown and no asset refs', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('plain text');
+      const el = presenter.renderBody(entry, {}, {});
+      expect(el.tagName).toBe('PRE');
+      expect(el.textContent).toBe('plain text');
+    });
+
+    it('works without asset context (backward compatible)', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('![x](https://example.com/img.png)');
+      const el = presenter.renderBody(entry);
+      expect(el.innerHTML).toContain('img');
+      expect(el.innerHTML).toContain('https://example.com/img.png');
+    });
+
+    it('does not resolve asset: in link syntax (images only)', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('[click](asset:ast-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-001': PNG_B64 },
+        { 'ast-001': 'image/png' },
+      );
+      // Link with asset: URL is blocked by markdown-it's validateLink allowlist
+      expect(el.innerHTML).not.toContain('href="asset:');
+    });
+
+    it('preserves alt text through resolution', () => {
+      const presenter = getDefaultPresenter();
+      const entry = makeTextEntry('![my photo](asset:ast-001)');
+      const el = presenter.renderBody(
+        entry,
+        { 'ast-001': PNG_B64 },
+        { 'ast-001': 'image/png' },
+      );
+      expect(el.innerHTML).toContain('alt="my photo"');
+    });
+  });
 });

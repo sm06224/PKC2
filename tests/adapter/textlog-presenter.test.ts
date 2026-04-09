@@ -79,6 +79,54 @@ describe('textlog renderBody', () => {
     expect(mdRow!.classList.contains('pkc-md-rendered')).toBe(true);
     expect(mdRow!.innerHTML).toContain('<h1>');
   });
+
+  // ── Asset reference resolution ──
+
+  it('resolves asset: image references in log entries', () => {
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-img', text: '![screenshot](asset:ast-png-001)', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-png-001': PNG_B64 },
+      { 'ast-png-001': 'image/png' },
+    );
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.innerHTML).toContain('data:image/png;base64,');
+    expect(row!.innerHTML).not.toContain('asset:ast-png-001');
+  });
+
+  it('shows missing marker for unresolved asset in log entries', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-bad', text: '![x](asset:ast-missing)', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(makeEntry(body), {}, {});
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.innerHTML).toContain('missing asset');
+  });
+
+  it('resolves assets without disturbing other log entries', () => {
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-1', text: 'plain text entry', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-2', text: '![img](asset:ast-png-001)', createdAt: '2026-04-09T11:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-png-001': PNG_B64 },
+      { 'ast-png-001': 'image/png' },
+    );
+    const rows = el.querySelectorAll('.pkc-textlog-text');
+    expect(rows[0]!.textContent).toBe('plain text entry');
+    expect(rows[1]!.innerHTML).toContain('data:image/png');
+  });
 });
 
 // ── renderEditorBody ──
