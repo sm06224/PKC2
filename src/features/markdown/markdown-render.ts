@@ -14,28 +14,96 @@
  *   - Typographer: enabled (smart quotes, dashes)
  *   - Breaks: enabled (newline → <br>)
  *   - Tables, strikethrough: enabled via base config
+ *
+ * Phase 2 additions:
+ *   - GFM-style task lists (`- [ ]` / `- [x]`)
+ *   - Hardened link safety (`rel="noopener noreferrer"`)
+ *   - Explicit safe URL scheme allowlist
+ *   - Language class hint on fenced code blocks
  */
 
 import MarkdownIt from 'markdown-it';
+import type Token from 'markdown-it/lib/token.mjs';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
   linkify: true,        // Auto-convert URL-like text to links
   typographer: true,    // Smart quotes, em-dash, etc.
   breaks: true,         // Convert \n to <br> for easier editing
+  langPrefix: 'language-', // Code block language class prefix (for future highlighting)
 });
 
-// Add target="_blank" and rel="noopener" to all links
-const defaultRender = md.renderer.rules.link_open ??
+// ── Link hardening ────────────────────────────────────
+//
+// Phase 2: tighten the default validateLink to an explicit allowlist.
+// Only http(s), mailto, tel, relative paths, fragment anchors, and
+// safe image data URIs pass through. Everything else (javascript:,
+// vbscript:, file:, data:text/html, etc.) is rejected.
+
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
+
+md.validateLink = function (url: string): boolean {
+  const trimmed = url.trim();
+  if (SAFE_DATA_IMG_RE.test(trimmed)) return true;
+  return SAFE_URL_RE.test(trimmed);
+};
+
+// Add target="_blank" and rel="noopener noreferrer" to all links.
+// noreferrer prevents the destination from seeing the document URL,
+// which matters when the bundle is opened from a local file path.
+const defaultLinkOpen = md.renderer.rules.link_open ??
   function (tokens, idx, options, _env, self) {
     return self.renderToken(tokens, idx, options);
   };
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   tokens[idx]!.attrSet('target', '_blank');
-  tokens[idx]!.attrSet('rel', 'noopener');
-  return defaultRender(tokens, idx, options, env, self);
+  tokens[idx]!.attrSet('rel', 'noopener noreferrer');
+  return defaultLinkOpen(tokens, idx, options, env, self);
 };
+
+// ── Task list support (GFM-style) ─────────────────────
+//
+// Phase 2: transform list items whose inline content begins with
+// `[ ]` or `[x]` into task list items with a disabled checkbox.
+// The `pkc-task-item` class is added to the <li> so CSS can
+// remove the bullet marker.
+
+md.core.ruler.after('inline', 'pkc-task-list', function (state) {
+  const tokens = state.tokens;
+  for (let i = 2; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.type !== 'inline') continue;
+    if (tokens[i - 1]!.type !== 'paragraph_open') continue;
+    if (tokens[i - 2]!.type !== 'list_item_open') continue;
+
+    const match = /^\[([ xX])\](?:\s+|$)/.exec(token.content);
+    if (!match) continue;
+
+    const checked = match[1]!.toLowerCase() === 'x';
+
+    // Mark the <li> for CSS styling
+    tokens[i - 2]!.attrJoin('class', 'pkc-task-item');
+
+    // Strip the marker from the inline content
+    token.content = token.content.slice(match[0].length);
+
+    // Update children: remove marker from first text token, prepend checkbox
+    const children = token.children ?? [];
+    for (const child of children) {
+      if (child.type === 'text') {
+        child.content = child.content.replace(/^\[[ xX]\](?:\s+|$)/, '');
+        break;
+      }
+    }
+
+    const checkbox = new state.Token('html_inline', '', 0);
+    checkbox.content = `<input type="checkbox" class="pkc-task-checkbox" disabled${checked ? ' checked' : ''}> `;
+    children.unshift(checkbox);
+    token.children = children as Token[];
+  }
+});
 
 /**
  * Render markdown text to an HTML string.
@@ -53,11 +121,11 @@ export function renderMarkdown(text: string): string {
  * Used to decide whether to show rendered markdown or plain text.
  *
  * Detects: headings, emphasis, code, lists, blockquotes, links,
- * tables, horizontal rules, fenced code blocks.
+ * tables, horizontal rules, fenced code blocks, task lists.
  */
 export function hasMarkdownSyntax(text: string): boolean {
   if (!text) return false;
-  return /^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\|/m.test(text);
+  return /^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text);
 }
 
 /**

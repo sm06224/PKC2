@@ -72,11 +72,11 @@ describe('renderMarkdown (markdown-it)', () => {
     expect(renderMarkdown('---')).toContain('<hr>');
   });
 
-  it('renders links with target=_blank', () => {
+  it('renders links with target=_blank and hardened rel', () => {
     const html = renderMarkdown('[Click here](https://example.com)');
     expect(html).toContain('href="https://example.com"');
     expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noopener"');
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('>Click here</a>');
   });
 
@@ -143,6 +143,103 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown('line1\nline2');
     expect(html).toContain('<br>');
   });
+
+  // ── Phase 2: fenced code block language class ──
+  it('adds language- class to fenced code blocks', () => {
+    const html = renderMarkdown('```js\nconst x = 1;\n```');
+    expect(html).toContain('class="language-js"');
+  });
+
+  it('does not add language class when no language specified', () => {
+    const html = renderMarkdown('```\nplain\n```');
+    expect(html).not.toContain('class="language-');
+  });
+
+  // ── Phase 2: task lists ──
+  it('renders unchecked task list items', () => {
+    const html = renderMarkdown('- [ ] todo item');
+    expect(html).toContain('class="pkc-task-item"');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('disabled');
+    expect(html).not.toContain('checked>');
+    expect(html).toContain('todo item');
+  });
+
+  it('renders checked task list items', () => {
+    const html = renderMarkdown('- [x] done item');
+    expect(html).toContain('class="pkc-task-item"');
+    expect(html).toContain('checked');
+    expect(html).toContain('done item');
+  });
+
+  it('supports uppercase X in task markers', () => {
+    const html = renderMarkdown('- [X] done');
+    expect(html).toContain('checked');
+  });
+
+  it('renders mixed task and regular list items', () => {
+    const md = '- [ ] task 1\n- regular item\n- [x] task 2';
+    const html = renderMarkdown(md);
+    // Three <li> tags; only the task items get the class
+    const taskItems = html.match(/class="pkc-task-item"/g) ?? [];
+    expect(taskItems.length).toBe(2);
+    expect(html).toContain('regular item');
+  });
+
+  it('does not treat plain brackets as task marker', () => {
+    const html = renderMarkdown('- [not a task]');
+    expect(html).not.toContain('pkc-task-item');
+    expect(html).not.toContain('type="checkbox"');
+  });
+
+  it('strips task marker from rendered text', () => {
+    const html = renderMarkdown('- [ ] buy milk');
+    expect(html).not.toContain('[ ] buy milk');
+    expect(html).toContain('buy milk');
+  });
+
+  // ── Phase 2: link safety ──
+  it('blocks javascript: URIs', () => {
+    const html = renderMarkdown('[click](javascript:alert(1))');
+    expect(html).not.toContain('href="javascript:');
+  });
+
+  it('blocks vbscript: URIs', () => {
+    const html = renderMarkdown('[click](vbscript:msgbox)');
+    expect(html).not.toContain('href="vbscript:');
+  });
+
+  it('blocks file: URIs', () => {
+    const html = renderMarkdown('[click](file:///etc/passwd)');
+    expect(html).not.toContain('href="file:');
+  });
+
+  it('blocks data:text/html URIs', () => {
+    const html = renderMarkdown('[click](data:text/html,<script>alert(1)</script>)');
+    expect(html).not.toContain('href="data:text/html');
+  });
+
+  it('allows data:image/png URIs for images', () => {
+    const html = renderMarkdown('![img](data:image/png;base64,iVBORw0KGgo=)');
+    expect(html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+  });
+
+  it('allows https, http, mailto, tel URIs', () => {
+    expect(renderMarkdown('[a](https://example.com)')).toContain('href="https://example.com"');
+    expect(renderMarkdown('[a](http://example.com)')).toContain('href="http://example.com"');
+    expect(renderMarkdown('[a](mailto:a@b.com)')).toContain('href="mailto:a@b.com"');
+    expect(renderMarkdown('[a](tel:+1234)')).toContain('href="tel:+1234"');
+  });
+
+  it('allows relative paths and fragments', () => {
+    expect(renderMarkdown('[a](./page.html)')).toContain('href="./page.html"');
+    expect(renderMarkdown('[a](#section)')).toContain('href="#section"');
+  });
+
+  it('auto-linked URLs also get noopener noreferrer', () => {
+    const html = renderMarkdown('Visit https://example.com');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
 });
 
 describe('hasMarkdownSyntax', () => {
@@ -188,6 +285,11 @@ describe('hasMarkdownSyntax', () => {
 
   it('detects tables', () => {
     expect(hasMarkdownSyntax('| a | b |')).toBe(true);
+  });
+
+  it('detects task lists', () => {
+    expect(hasMarkdownSyntax('- [ ] todo')).toBe(true);
+    expect(hasMarkdownSyntax('- [x] done')).toBe(true);
   });
 });
 

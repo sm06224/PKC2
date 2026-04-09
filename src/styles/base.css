@@ -765,6 +765,48 @@
 .pkc-md-rendered a {
   color: var(--c-accent);
   text-decoration: underline;
+  word-break: break-word;
+}
+.pkc-md-rendered a:hover {
+  opacity: 0.85;
+}
+
+/* ── Phase 2: task lists ── */
+.pkc-md-rendered li.pkc-task-item {
+  list-style: none;
+  margin-left: -1.2em;
+  padding-left: 0;
+}
+.pkc-md-rendered li.pkc-task-item::marker {
+  content: '';
+}
+.pkc-md-rendered .pkc-task-checkbox {
+  margin-right: 0.35em;
+  vertical-align: -0.08em;
+  cursor: default;
+  accent-color: var(--c-accent);
+}
+
+/* ── Phase 2: table polish ── */
+.pkc-md-rendered table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.pkc-md-rendered th,
+.pkc-md-rendered td {
+  border: 1px solid var(--c-border);
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+.pkc-md-rendered th {
+  background: var(--c-bg);
+  font-weight: 600;
+}
+
+/* ── Phase 2: fenced code block language hint ── */
+.pkc-md-rendered pre code[class*="language-"] {
+  display: block;
 }
 
 /* ── Editor mode ── */
