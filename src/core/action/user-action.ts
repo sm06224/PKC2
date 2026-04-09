@@ -73,7 +73,14 @@ export type UserAction =
   | { type: 'CLEAR_MULTI_SELECT' }
   | { type: 'BULK_DELETE' }
   | { type: 'BULK_MOVE_TO_FOLDER'; folderLid: string }
-  | { type: 'BULK_MOVE_TO_ROOT' };
+  | { type: 'BULK_MOVE_TO_ROOT' }
+  /**
+   * TOGGLE_FOLDER_COLLAPSE — collapse or expand a sidebar folder node.
+   *
+   * Runtime-only UI state. Toggles the presence of `lid` in
+   * `state.collapsedFolders`. Does NOT mutate the container.
+   */
+  | { type: 'TOGGLE_FOLDER_COLLAPSE'; lid: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

@@ -77,6 +77,11 @@ export interface AppState {
   calendarMonth: number;
   /** Multi-selection: additional selected entry lids (Ctrl/Shift+click). Runtime-only. */
   multiSelectedLids: string[];
+  /**
+   * Sidebar folder collapse state: lids of folders that are collapsed.
+   * Folders default to expanded. Runtime-only, not persisted.
+   */
+  collapsedFolders: string[];
 }
 
 /**
@@ -112,6 +117,7 @@ export function createInitialState(): AppState {
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth() + 1,
     multiSelectedLids: [],
+    collapsedFolders: [],
   };
 }
 
@@ -559,6 +565,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         }
       }
       const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_FOLDER_COLLAPSE': {
+      const lids = state.collapsedFolders.includes(action.lid)
+        ? state.collapsedFolders.filter((l) => l !== action.lid)
+        : [...state.collapsedFolders, action.lid];
+      const next: AppState = { ...state, collapsedFolders: lids };
       return { state: next, events: [] };
     }
     case 'SYS_ERROR': {

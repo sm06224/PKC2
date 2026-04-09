@@ -29,7 +29,15 @@ import {
   filterSlashMenu,
   handleSlashMenuKeydown,
   getSlashTriggerStart,
+  registerAssetPickerCallback,
 } from './slash-menu';
+import {
+  closeAssetPicker,
+  collectImageAssets,
+  handleAssetPickerKeydown,
+  isAssetPickerOpen,
+  openAssetPicker,
+} from './asset-picker';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -47,6 +55,20 @@ import {
  */
 
 export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
+  // Wire the slash-menu /asset command through to the asset picker.
+  // Kept as a callback so slash-menu does not have to know about the
+  // dispatcher or container access.
+  registerAssetPickerCallback((ctx) => {
+    const state = dispatcher.getState();
+    const candidates = collectImageAssets(state.container);
+    openAssetPicker(
+      ctx.textarea,
+      { start: ctx.replaceStart, end: ctx.replaceEnd },
+      candidates,
+      ctx.root,
+    );
+  });
+
   function handleClick(e: Event): void {
     // Shell menu backdrop click: close menu if user clicked outside the card.
     const rawTarget = e.target as HTMLElement | null;
@@ -79,6 +101,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
+        break;
+      }
+      case 'toggle-folder-collapse': {
+        if (!lid) break;
+        // Stop propagation so the surrounding <li data-pkc-action="select-entry">
+        // does not also toggle selection when the chevron is clicked.
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
       case 'begin-edit':
@@ -400,6 +430,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    // Asset picker takes priority over slash menu when open (it replaces the
+    // slash menu at the same trigger point).
+    if (isAssetPickerOpen()) {
+      if (handleAssetPickerKeydown(e)) return;
+    }
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
@@ -434,6 +469,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Close asset picker if open (handled above via handleAssetPickerKeydown, safety net)
+      if (isAssetPickerOpen()) {
+        closeAssetPicker();
+        return;
+      }
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
       if (isSlashMenuOpen()) {
         closeSlashMenu();
@@ -913,6 +953,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeSlashMenu();
       }
     }
+    // Close asset picker on click outside
+    if (isAssetPickerOpen()) {
+      const picker = root.querySelector('[data-pkc-region="asset-picker"]');
+      if (!picker || !picker.contains(e.target as Node)) {
+        closeAssetPicker();
+      }
+    }
 
     const menu = root.querySelector('[data-pkc-region="context-menu"]');
     if (!menu) return;
@@ -1178,6 +1225,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('paste', handlePaste);
     clearAllDragState();
     closeSlashMenu();
+    closeAssetPicker();
+    registerAssetPickerCallback(null);
   };
 }
 

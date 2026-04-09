@@ -774,15 +774,39 @@ function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): v
   // All tree items are draggable
   li.setAttribute('draggable', 'true');
   li.setAttribute('data-pkc-draggable', 'true');
+  let isCollapsed = false;
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
     li.setAttribute('data-pkc-drop-target', 'true');
+
+    // Expand/collapse toggle — shown only when folder has children.
+    isCollapsed = state.collapsedFolders.includes(node.entry.lid);
+    if (node.children.length > 0) {
+      const toggle = createElement('button', 'pkc-folder-toggle');
+      toggle.setAttribute('data-pkc-action', 'toggle-folder-collapse');
+      toggle.setAttribute('data-pkc-lid', node.entry.lid);
+      toggle.setAttribute(
+        'title',
+        isCollapsed ? 'Expand folder' : 'Collapse folder',
+      );
+      toggle.setAttribute('aria-label', isCollapsed ? 'Expand folder' : 'Collapse folder');
+      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      toggle.textContent = isCollapsed ? '▶' : '▼';
+      // Prepend so the chevron sits before the icon/title
+      li.insertBefore(toggle, li.firstChild);
+      if (isCollapsed) {
+        li.setAttribute('data-pkc-folder-collapsed', 'true');
+      }
+    }
+
     // Show child count for folders
     const childCount = createElement('span', 'pkc-folder-count');
     childCount.textContent = `(${node.children.length})`;
     li.appendChild(childCount);
   }
   parent.appendChild(li);
+  // Skip rendering children when the folder is collapsed.
+  if (isCollapsed) return;
   for (const child of node.children) {
     renderTreeNode(child, parent, state);
   }

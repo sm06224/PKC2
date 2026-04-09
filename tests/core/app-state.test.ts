@@ -1307,4 +1307,29 @@ describe('sort', () => {
     const { state } = reduce(s, { type: 'PURGE_TRASH' });
     expect(state).toBe(s); // no change
   });
+
+  // ── Folder Collapse ───────────────────────
+
+  it('initial state has empty collapsedFolders', () => {
+    const state = createInitialState();
+    expect(state.collapsedFolders).toEqual([]);
+  });
+
+  it('TOGGLE_FOLDER_COLLAPSE adds lid when not collapsed', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    expect(state.collapsedFolders).toEqual(['f1']);
+  });
+
+  it('TOGGLE_FOLDER_COLLAPSE removes lid when already collapsed', () => {
+    const s: AppState = { ...readyState(), collapsedFolders: ['f1', 'f2'] };
+    const { state } = reduce(s, { type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    expect(state.collapsedFolders).toEqual(['f2']);
+  });
+
+  it('TOGGLE_FOLDER_COLLAPSE does not change container or selection', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1' };
+    const { state } = reduce(s, { type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    expect(state.container).toBe(s.container);
+    expect(state.selectedLid).toBe('e1');
+  });
 });
