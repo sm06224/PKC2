@@ -263,6 +263,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (panel) panel.remove();
         break;
       }
+      case 'toggle-shell-menu': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        break;
+      }
+      case 'toggle-theme': {
+        toggleTheme(root);
+        // Close menu after toggle
+        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menuPanel) menuPanel.style.display = 'none';
+        break;
+      }
+      case 'show-shortcut-help': {
+        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+        if (helpOverlay) helpOverlay.style.display = '';
+        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menuPanel) menuPanel.style.display = 'none';
+        break;
+      }
+      case 'close-shortcut-help': {
+        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+        if (helpOverlay) helpOverlay.style.display = 'none';
+        break;
+      }
       case 'toggle-show-archived': {
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
@@ -310,8 +334,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Escape: cancel import preview, cancel edit, or deselect
+    // ? key: toggle shortcut help (only when not editing text)
+    if (e.key === '?' && state.phase !== 'editing') {
+      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+      if (helpOverlay) helpOverlay.style.display = helpOverlay.style.display === 'none' ? '' : 'none';
+      return;
+    }
+
+    // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Close shortcut help if open
+      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+      if (helpOverlay && helpOverlay.style.display !== 'none') {
+        helpOverlay.style.display = 'none';
+        return;
+      }
+      // Close shell menu if open
+      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+      if (menu && menu.style.display !== 'none') {
+        menu.style.display = 'none';
+        return;
+      }
       if (state.importPreview) {
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
       } else if (state.phase === 'editing') {
@@ -1400,4 +1443,11 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
     if (trayEl) trayEl.style.display = '';
     if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
   }
+}
+
+function toggleTheme(root: HTMLElement): void {
+  const pkc = root.closest('#pkc-root') ?? root;
+  const current = pkc.getAttribute('data-pkc-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  pkc.setAttribute('data-pkc-theme', next);
 }

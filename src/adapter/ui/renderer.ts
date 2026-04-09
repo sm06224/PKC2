@@ -3,7 +3,7 @@ import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef } from '../../core/action/system-command';
-import { CAPABILITIES } from '../../runtime/release-meta';
+import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
   getLatestRevision,
@@ -142,6 +142,12 @@ function renderShell(state: AppState): HTMLElement {
   if (state.pendingOffers.length > 0) {
     shell.appendChild(renderPendingOffers(state.pendingOffers));
   }
+
+  // Shell menu panel (hidden by default, toggled by action-binder)
+  shell.appendChild(renderShellMenu());
+
+  // Shortcut help overlay (hidden by default, toggled by ? key)
+  shell.appendChild(renderShortcutHelp());
 
   // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
@@ -292,7 +298,88 @@ function renderHeader(state: AppState): HTMLElement {
   metaToggle.textContent = '◨';
   header.appendChild(metaToggle);
 
+  // Shell menu button
+  const menuBtn = createElement('button', 'pkc-tray-toggle pkc-shell-menu-btn');
+  menuBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
+  menuBtn.setAttribute('title', 'Menu (?)');
+  menuBtn.textContent = '⚙';
+  header.appendChild(menuBtn);
+
   return header;
+}
+
+function renderShellMenu(): HTMLElement {
+  const panel = createElement('div', 'pkc-shell-menu');
+  panel.setAttribute('data-pkc-region', 'shell-menu');
+  panel.style.display = 'none';
+
+  // Theme toggle
+  const themeSection = createElement('div', 'pkc-shell-menu-section');
+  const themeLabel = createElement('span', 'pkc-shell-menu-label');
+  themeLabel.textContent = 'Theme';
+  themeSection.appendChild(themeLabel);
+  const themeToggle = createElement('button', 'pkc-btn-small');
+  themeToggle.setAttribute('data-pkc-action', 'toggle-theme');
+  themeToggle.textContent = '🌓 Toggle Dark / Light';
+  themeSection.appendChild(themeToggle);
+  panel.appendChild(themeSection);
+
+  // Shortcuts
+  const shortcutSection = createElement('div', 'pkc-shell-menu-section');
+  const shortcutBtn = createElement('button', 'pkc-btn-small');
+  shortcutBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
+  shortcutBtn.textContent = '⌨ Keyboard Shortcuts';
+  shortcutSection.appendChild(shortcutBtn);
+  panel.appendChild(shortcutSection);
+
+  // Version
+  const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
+  versionSection.textContent = `PKC2 v${VERSION}`;
+  panel.appendChild(versionSection);
+
+  return panel;
+}
+
+function renderShortcutHelp(): HTMLElement {
+  const overlay = createElement('div', 'pkc-shortcut-overlay');
+  overlay.setAttribute('data-pkc-region', 'shortcut-help');
+  overlay.style.display = 'none';
+
+  const card = createElement('div', 'pkc-shortcut-card');
+
+  const heading = createElement('h2', 'pkc-shortcut-heading');
+  heading.textContent = 'Keyboard Shortcuts';
+  card.appendChild(heading);
+
+  const shortcuts: { key: string; desc: string }[] = [
+    { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
+    { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
+    { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
+    { key: '?', desc: 'Toggle this help' },
+    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
+    { key: 'Shift+Click', desc: 'Range select' },
+  ];
+
+  const table = createElement('div', 'pkc-shortcut-table');
+  for (const { key, desc } of shortcuts) {
+    const row = createElement('div', 'pkc-shortcut-row');
+    const keyEl = createElement('kbd', 'pkc-shortcut-key');
+    keyEl.textContent = key;
+    row.appendChild(keyEl);
+    const descEl = createElement('span', 'pkc-shortcut-desc');
+    descEl.textContent = desc;
+    row.appendChild(descEl);
+    table.appendChild(row);
+  }
+  card.appendChild(table);
+
+  const closeBtn = createElement('button', 'pkc-btn-small');
+  closeBtn.setAttribute('data-pkc-action', 'close-shortcut-help');
+  closeBtn.textContent = 'Close (Esc / ?)';
+  card.appendChild(closeBtn);
+
+  overlay.appendChild(card);
+  return overlay;
 }
 
 function renderExportImportInline(_state: AppState): HTMLElement {

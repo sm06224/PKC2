@@ -4926,3 +4926,70 @@ describe('Pane resize DOM selectors', () => {
     expect(root.querySelector('[data-pkc-region="tray-right"]')).not.toBeNull();
   });
 });
+
+describe('Shell Menu & Help Foundation (P2)', () => {
+  const mockContainer: Container = {
+    meta: { container_id: 'test-id', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'e1', title: 'Entry', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  it('renders shell menu button in header', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
+    };
+    render(state, root);
+    const menuBtn = root.querySelector('[data-pkc-action="toggle-shell-menu"]');
+    expect(menuBtn).not.toBeNull();
+    expect(menuBtn!.textContent).toBe('⚙');
+  });
+
+  it('renders shell menu panel (hidden by default)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
+    };
+    render(state, root);
+    const menu = root.querySelector('[data-pkc-region="shell-menu"]');
+    expect(menu).not.toBeNull();
+    expect((menu as HTMLElement).style.display).toBe('none');
+    // Has theme toggle and shortcut button
+    expect(menu!.querySelector('[data-pkc-action="toggle-theme"]')).not.toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="show-shortcut-help"]')).not.toBeNull();
+    // Has version info
+    expect(menu!.textContent).toContain('PKC2');
+  });
+
+  it('renders shortcut help overlay (hidden by default)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
+    };
+    render(state, root);
+    const overlay = root.querySelector('[data-pkc-region="shortcut-help"]');
+    expect(overlay).not.toBeNull();
+    expect((overlay as HTMLElement).style.display).toBe('none');
+    // Contains shortcut descriptions
+    expect(overlay!.textContent).toContain('Ctrl+N');
+    expect(overlay!.textContent).toContain('Ctrl+S');
+    expect(overlay!.textContent).toContain('Escape');
+    expect(overlay!.textContent).toContain('multi-select');
+    expect(overlay!.textContent).toContain('Range select');
+    // Has close button
+    expect(overlay!.querySelector('[data-pkc-action="close-shortcut-help"]')).not.toBeNull();
+  });
+});

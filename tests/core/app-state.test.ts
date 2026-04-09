@@ -1273,8 +1273,8 @@ describe('sort', () => {
     const withRels: Container = {
       ...mockContainer,
       relations: [
-        { id: 'r1', from: 'f1', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z' },
-        { id: 'r2', from: 'f1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'r1', from: 'f1', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'f1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
       ],
     };
     const s: AppState = { ...readyState(), container: withRels, selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };

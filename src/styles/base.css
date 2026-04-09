@@ -54,6 +54,49 @@
   }
 }
 
+/* ── Manual theme override via data-pkc-theme attribute ── */
+#pkc-root[data-pkc-theme="light"] {
+  --c-bg: #f0ebe0;
+  --c-fg: #1a1a14;
+  --c-accent: #1a6b35;
+  --c-accent-dim: #aed5b8;
+  --c-accent-fg: #ffffff;
+  --c-border: #c5bfac;
+  --c-hover: #e3ddd0;
+  --c-danger: #b91c1c;
+  --c-muted: #6b6558;
+  --c-surface: #e6e0d3;
+  --c-success: #1a6b35;
+  --c-warn: #c07000;
+  --c-warn-fg: #ffffff;
+  --c-info: #2563eb;
+  --c-info-fg: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+  --glow: none;
+  color-scheme: light;
+}
+
+#pkc-root[data-pkc-theme="dark"] {
+  --c-bg: #0d0f0a;
+  --c-fg: #c8d8b0;
+  --c-accent: #33ff66;
+  --c-accent-dim: #1a7a33;
+  --c-accent-fg: #050a03;
+  --c-border: #1e2a16;
+  --c-hover: #162010;
+  --c-danger: #ff4444;
+  --c-muted: #5a6e4a;
+  --c-surface: #111510;
+  --c-success: #33ff66;
+  --c-warn: #ffaa22;
+  --c-warn-fg: #1a0e00;
+  --c-info: #3b82f6;
+  --c-info-fg: #ffffff;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
+  --glow: 0 0 6px rgba(51,255,102,0.15);
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 #pkc-root {
@@ -133,6 +176,7 @@
   flex-wrap: wrap;
   flex-shrink: 0;
   box-shadow: 0 1px 4px rgba(51,255,102,0.06);
+  position: relative;
 }
 
 .pkc-header-title {
@@ -2145,6 +2189,105 @@
 
 .pkc-tray-toggle:active {
   transform: scale(0.9);
+}
+
+/* ── Shell Menu ── */
+.pkc-shell-menu {
+  position: absolute;
+  top: 100%;
+  right: 0.5rem;
+  z-index: 100;
+  min-width: 200px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.5rem;
+}
+
+.pkc-shell-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-shell-menu-section:last-child {
+  border-bottom: none;
+}
+
+.pkc-shell-menu-label {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pkc-shell-menu-version {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  text-align: center;
+}
+
+/* ── Shortcut Help Overlay ── */
+.pkc-shortcut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-shortcut-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 90%;
+}
+
+.pkc-shortcut-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.pkc-shortcut-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.pkc-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pkc-shortcut-key {
+  display: inline-block;
+  min-width: 120px;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-accent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.pkc-shortcut-desc {
+  font-size: 0.75rem;
+  color: var(--c-fg);
 }
 
 /* Collapsed pane states */
