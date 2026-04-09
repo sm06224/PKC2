@@ -5,6 +5,8 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
+import { toggleLogFlag, deleteLogEntry } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
@@ -82,7 +84,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
-        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
+        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Text';
         // Determine context folder: if currently selected entry is a folder, or
         // if currently selected entry is inside a folder, use that as parent
@@ -201,6 +203,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           status: todo.status === 'done' ? 'open' : 'done',
         });
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        break;
+      }
+      case 'append-log-entry': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const inputEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-append-text"]');
+        const text = inputEl?.value?.trim();
+        if (!text) break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(appendLogEntry(log, text));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
+      case 'toggle-log-flag': {
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(toggleLogFlag(log, logId, 'important'));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
+      case 'delete-log-entry': {
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(deleteLogEntry(log, logId));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
         break;
       }
       case 'toggle-sandbox-attr': {

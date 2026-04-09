@@ -1376,6 +1376,10 @@ describe('Renderer', () => {
     expect(todoBtn).not.toBeNull();
     expect(todoBtn!.textContent).toContain('Todo');
 
+    const logBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="textlog"]');
+    expect(logBtn).not.toBeNull();
+    expect(logBtn!.textContent).toContain('Log');
+
     // FORM creation button removed (P1-A)
     const formBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="form"]');
     expect(formBtn).toBeNull();

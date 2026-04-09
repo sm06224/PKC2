@@ -2785,3 +2785,138 @@
   color: var(--c-muted);
   font-style: italic;
 }
+
+/* ── TEXTLOG ── */
+
+.pkc-textlog-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-textlog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pkc-textlog-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.4rem;
+  align-items: start;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid var(--c-border);
+  font-size: 0.85rem;
+}
+
+.pkc-textlog-row[data-pkc-log-important="true"] {
+  border-left-color: #f5a623;
+  background: rgba(245,166,35,0.06);
+}
+
+.pkc-textlog-flag-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+  color: var(--c-muted);
+}
+
+.pkc-textlog-row[data-pkc-log-important="true"] .pkc-textlog-flag-btn {
+  color: #f5a623;
+}
+
+.pkc-textlog-timestamp {
+  color: var(--c-muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-top: 0.1rem;
+}
+
+.pkc-textlog-text {
+  color: var(--c-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pkc-textlog-empty {
+  color: var(--c-muted);
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.pkc-textlog-append {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.pkc-textlog-append-input {
+  flex: 1;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.pkc-textlog-append-btn {
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+/* TEXTLOG readonly: hide append area */
+[data-pkc-readonly="true"] .pkc-textlog-append {
+  display: none;
+}
+
+/* TEXTLOG editor */
+
+.pkc-textlog-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-textlog-edit-row {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 0.4rem;
+  align-items: start;
+  padding: 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+
+.pkc-textlog-flag-label {
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pkc-textlog-delete-btn {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  color: var(--c-danger, #ff4444);
+}
+
+.pkc-textlog-edit-text {
+  grid-column: 1 / -1;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}

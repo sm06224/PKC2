@@ -23,6 +23,7 @@ import { todoPresenter } from './adapter/ui/todo-presenter';
 import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
+import { textlogPresenter } from './adapter/ui/textlog-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
@@ -48,6 +49,7 @@ async function boot(): Promise<void> {
   registerPresenter('form', formPresenter);
   registerPresenter('attachment', attachmentPresenter);
   registerPresenter('folder', folderPresenter);
+  registerPresenter('textlog', textlogPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();

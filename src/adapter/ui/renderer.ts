@@ -227,6 +227,7 @@ function renderHeader(state: AppState): HTMLElement {
 
     const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
       { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry' },
+      { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry' },
       { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
       { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
