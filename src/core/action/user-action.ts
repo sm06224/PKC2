@@ -66,7 +66,14 @@ export type UserAction =
   | { type: 'REHYDRATE' }
   | { type: 'TOGGLE_SHOW_ARCHIVED' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
-  | { type: 'SET_CALENDAR_MONTH'; year: number; month: number };
+  | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
+  | { type: 'PURGE_TRASH' }
+  | { type: 'TOGGLE_MULTI_SELECT'; lid: string }
+  | { type: 'SELECT_RANGE'; lid: string }
+  | { type: 'CLEAR_MULTI_SELECT' }
+  | { type: 'BULK_DELETE' }
+  | { type: 'BULK_MOVE_TO_FOLDER'; folderLid: string }
+  | { type: 'BULK_MOVE_TO_ROOT' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

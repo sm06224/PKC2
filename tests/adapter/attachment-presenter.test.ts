@@ -19,6 +19,7 @@ import {
   isSvg,
   previewModeLabel,
   SANDBOX_ATTRIBUTES,
+  SANDBOX_DESCRIPTIONS,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
@@ -239,6 +240,39 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(entry);
       const btn = el.querySelector('[data-pkc-action="download-attachment"]');
       expect(btn).toBeNull();
+    });
+
+    // ── new-format with assets context (critical regression fix) ──
+
+    it('shows download button when asset_key has data in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      const btn = el.querySelector('[data-pkc-action="download-attachment"]');
+      expect(btn).not.toBeNull();
+      expect(btn!.textContent).toBe('Download');
+    });
+
+    it('does not show stripped notice when data exists in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      expect(el.querySelector('.pkc-attachment-stripped')).toBeNull();
+    });
+
+    it('shows preview placeholder when data exists in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.png","mime":"image/png","asset_key":"ast-123","size":100}');
+      const assets = { 'ast-123': 'base64data' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview).not.toBeNull();
+    });
+
+    it('still shows stripped notice when asset_key has no data in container.assets', () => {
+      const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
+      const assets = { 'ast-other': 'irrelevant' };
+      const el = attachmentPresenter.renderBody(entry, assets);
+      expect(el.querySelector('.pkc-attachment-stripped')!.textContent).toBe('Data not included (Light export)');
     });
 
     it('shows image preview placeholder for image types', () => {
@@ -678,7 +712,18 @@ describe('MIME type classification', () => {
       expect(SANDBOX_ATTRIBUTES).toContain('allow-popups');
       expect(SANDBOX_ATTRIBUTES).toContain('allow-modals');
       expect(SANDBOX_ATTRIBUTES).toContain('allow-same-origin');
-      expect(SANDBOX_ATTRIBUTES.length).toBe(5);
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation-by-user-activation');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation-to-custom-protocols');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-pointer-lock');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-presentation');
+      expect(SANDBOX_ATTRIBUTES.length).toBe(10);
+    });
+
+    it('SANDBOX_DESCRIPTIONS has a description for every attribute', () => {
+      for (const attr of SANDBOX_ATTRIBUTES) {
+        expect(SANDBOX_DESCRIPTIONS[attr]).toBeTruthy();
+      }
     });
 
     it('sandbox_allow round-trips through parse/serialize', () => {

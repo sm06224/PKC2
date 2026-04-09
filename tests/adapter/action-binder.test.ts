@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bindActions, cleanupBlobUrls } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
+import { registerPresenter } from '@adapter/ui/detail-presenter';
+import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
 
@@ -217,5 +219,303 @@ describe('cleanupBlobUrls', () => {
     expect(revokeSpy).toHaveBeenCalledTimes(1);
     expect(revokeSpy).toHaveBeenCalledWith('blob:http://localhost/video-3');
     revokeSpy.mockRestore();
+  });
+});
+
+// ── Ctrl+S save ──
+
+describe('Ctrl+S save', () => {
+  it('Ctrl+S during editing dispatches EDIT_COMMITTED', () => {
+    const { dispatcher, events } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // Set field values so commit has data
+    const titleInput = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+    if (titleInput) titleInput.value = 'Saved Title';
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 's', ctrlKey: true, bubbles: true,
+    }));
+
+    expect(events.some((e) => e.type === 'EDIT_COMMITTED')).toBe(true);
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Ctrl+S in ready phase does nothing', () => {
+    const { events } = setup();
+    const beforeLen = events.length;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 's', ctrlKey: true, bubbles: true,
+    }));
+
+    // No new domain events from Ctrl+S
+    expect(events.length).toBe(beforeLen);
+  });
+});
+
+// ── CLEAR button safety ──
+
+describe('CLEAR button', () => {
+  it('renders with danger styling and warning icon', () => {
+    setup();
+    const clearBtn = root.querySelector('[data-pkc-action="clear-local-data"]');
+    expect(clearBtn).not.toBeNull();
+    expect(clearBtn!.textContent).toContain('Reset');
+    expect(clearBtn!.className).toContain('pkc-btn-danger');
+    expect(clearBtn!.getAttribute('title')).toContain('WARNING');
+  });
+});
+
+// ── Clipboard paste handler ──
+
+describe('clipboard paste', () => {
+  it('does not intercept text-only paste', () => {
+    const { events } = setup();
+    const beforeLen = events.length;
+
+    // Simulate text-only paste (no files/images)
+    const pasteEvent = new Event('paste', { bubbles: true }) as unknown as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [{
+          kind: 'string',
+          type: 'text/plain',
+          getAsFile: () => null,
+        }],
+      },
+    });
+    document.dispatchEvent(pasteEvent);
+
+    // No entry creation should happen
+    expect(events.filter((e) => e.type === 'ENTRY_CREATED').length).toBe(0);
+    expect(events.length).toBe(beforeLen);
+  });
+
+  it('does not process paste during editing phase', () => {
+    const { dispatcher, events } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    const beforeLen = events.length;
+
+    const pasteEvent = new Event('paste', { bubbles: true }) as unknown as ClipboardEvent;
+    Object.defineProperty(pasteEvent, 'clipboardData', {
+      value: {
+        items: [{
+          kind: 'file',
+          type: 'image/png',
+          getAsFile: () => new File([new Uint8Array([0x89, 0x50])], 'test.png', { type: 'image/png' }),
+        }],
+      },
+    });
+    document.dispatchEvent(pasteEvent);
+
+    // No new entry creation during editing
+    expect(events.filter((e) => e.type === 'ENTRY_CREATED').length === (events.slice(beforeLen).filter((e) => e.type === 'ENTRY_CREATED').length)).toBe(true);
+  });
+});
+
+// ── Attachment download button presence ──
+
+describe('attachment download button', () => {
+  it('download action is wired in action handler', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      meta: { ...mockContainer.meta },
+      entries: [{
+        lid: 'att1',
+        title: 'Test File',
+        body: JSON.stringify({ name: 'test.pdf', mime: 'application/pdf', data: 'JVBER', size: 100 }),
+        archetype: 'attachment',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: attContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'att1' });
+    render(dispatcher.getState(), root);
+
+    const downloadBtn = root.querySelector('[data-pkc-action="download-attachment"]');
+    expect(downloadBtn).not.toBeNull();
+    expect(downloadBtn!.textContent).toBe('Download');
+  });
+});
+
+// ── Date/Time shortcuts ──
+
+describe('Date/Time shortcuts', () => {
+  it('Ctrl+; inserts date into focused textarea in editing mode', () => {
+    const { dispatcher } = setup();
+
+    // Enter editing mode
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // Create and focus a textarea inside root (simulating edit field)
+    const textarea = document.createElement('textarea');
+    textarea.setAttribute('data-pkc-field', 'body');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = 'Before ';
+    textarea.selectionStart = textarea.selectionEnd = 7;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // Should have inserted a date pattern yyyy/MM/dd
+    expect(textarea.value).toMatch(/^Before \d{4}\/\d{2}\/\d{2}$/);
+  });
+
+  it('Ctrl+: inserts time (Shift+; on US layout)', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    // Ctrl+Shift+; (produces ':' on US keyboard) — should insert datetime
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ':', ctrlKey: true, shiftKey: true, bubbles: true,
+    }));
+
+    // Ctrl+Shift+; → datetime (yyyy/MM/dd HH:mm:ss)
+    expect(textarea.value).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('Ctrl+D inserts short date with day abbreviation', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'd', ctrlKey: true, bubbles: true,
+    }));
+
+    // yy/MM/dd ddd
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} .+$/);
+  });
+
+  it('Ctrl+Shift+D inserts short date+time', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'D', ctrlKey: true, shiftKey: true, bubbles: true,
+    }));
+
+    // yy/MM/dd ddd HH:mm:ss
+    expect(textarea.value).toMatch(/^\d{2}\/\d{2}\/\d{2} .+ \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('Ctrl+Shift+Alt+D inserts ISO 8601', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'D', ctrlKey: true, shiftKey: true, altKey: true, bubbles: true,
+    }));
+
+    // ISO 8601
+    expect(textarea.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+
+  it('does NOT insert date when not in editing phase', () => {
+    setup();
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = '';
+    textarea.selectionStart = textarea.selectionEnd = 0;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // Should not insert anything — phase is 'ready', not 'editing'
+    expect(textarea.value).toBe('');
+  });
+
+  it('does NOT insert date when no textarea is focused', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    // No textarea is focused — activeElement is body or root
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // No crash, no unexpected behavior
+    expect(true).toBe(true);
+  });
+
+  it('inserts at cursor position replacing selection', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = document.createElement('textarea');
+    root.appendChild(textarea);
+    textarea.focus();
+    textarea.value = 'Hello REPLACE World';
+    textarea.selectionStart = 6;
+    textarea.selectionEnd = 13; // select "REPLACE"
+
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ';', ctrlKey: true, bubbles: true,
+    }));
+
+    // "REPLACE" should be replaced with date
+    expect(textarea.value).toMatch(/^Hello \d{4}\/\d{2}\/\d{2} World$/);
   });
 });

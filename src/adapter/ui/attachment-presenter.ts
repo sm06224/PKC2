@@ -64,9 +64,30 @@ export const SANDBOX_ATTRIBUTES = [
   'allow-popups',
   'allow-modals',
   'allow-same-origin',
+  'allow-top-navigation',
+  'allow-top-navigation-by-user-activation',
+  'allow-top-navigation-to-custom-protocols',
+  'allow-pointer-lock',
+  'allow-presentation',
 ] as const;
 
 export type SandboxAttribute = typeof SANDBOX_ATTRIBUTES[number];
+
+/**
+ * Short description for each sandbox attribute, shown in the UI.
+ */
+export const SANDBOX_DESCRIPTIONS: Record<SandboxAttribute, string> = {
+  'allow-scripts': 'JavaScript execution',
+  'allow-forms': 'Form submission',
+  'allow-popups': 'Open popups / new windows',
+  'allow-modals': 'alert() / confirm() / prompt()',
+  'allow-same-origin': 'Same-origin access (cookies, storage)',
+  'allow-top-navigation': 'Navigate top-level window',
+  'allow-top-navigation-by-user-activation': 'Navigate top on user click',
+  'allow-top-navigation-to-custom-protocols': 'Navigate to custom protocols',
+  'allow-pointer-lock': 'Pointer Lock API',
+  'allow-presentation': 'Presentation API',
+};
 
 /** Estimate decoded byte size from base64 string length. */
 export function estimateSize(base64: string): number {
@@ -175,16 +196,17 @@ export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): 
 }
 
 export const attachmentPresenter: DetailPresenter = {
-  renderBody(entry: Entry): HTMLElement {
+  renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement {
     const att = parseAttachmentBody(entry.body);
     const root = document.createElement('div');
     root.className = 'pkc-attachment-view';
 
     const hasFile = !!att.name;
     const displaySize = resolveDisplaySize(att);
-    // Data availability: asset_key with no data means Light export (stripped)
-    const dataAvailable = !!(att.data || att.asset_key);
-    const dataStripped = !!att.asset_key && !att.data;
+    // Data availability: check container.assets for new-format entries
+    const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
+    const dataAvailable = !!(att.data || hasAssetData || att.asset_key);
+    const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
 
     if (!hasFile) {
       const empty = document.createElement('div');
@@ -209,6 +231,14 @@ export const attachmentPresenter: DetailPresenter = {
     nameText.className = 'pkc-attachment-filename';
     nameText.textContent = att.name;
     nameRow.appendChild(nameText);
+    // Rename button (only in non-readonly contexts — action-binder hides if readonly)
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-rename-btn';
+    renameBtn.setAttribute('data-pkc-action', 'rename-attachment');
+    renameBtn.setAttribute('data-pkc-lid', entry.lid);
+    renameBtn.textContent = 'Rename';
+    renameBtn.setAttribute('title', 'Rename this file');
+    nameRow.appendChild(renameBtn);
     card.appendChild(nameRow);
 
     // Meta row: type + size

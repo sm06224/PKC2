@@ -72,11 +72,11 @@ describe('renderMarkdown (markdown-it)', () => {
     expect(renderMarkdown('---')).toContain('<hr>');
   });
 
-  it('renders links with target=_blank', () => {
+  it('renders links with target=_blank and hardened rel', () => {
     const html = renderMarkdown('[Click here](https://example.com)');
     expect(html).toContain('href="https://example.com"');
     expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noopener"');
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('>Click here</a>');
   });
 
@@ -143,6 +143,181 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown('line1\nline2');
     expect(html).toContain('<br>');
   });
+
+  // ── Phase 2: fenced code block language class ──
+  it('adds language- class to fenced code blocks', () => {
+    const html = renderMarkdown('```js\nconst x = 1;\n```');
+    expect(html).toContain('class="language-js"');
+  });
+
+  it('does not add language class when no language specified', () => {
+    const html = renderMarkdown('```\nplain\n```');
+    expect(html).not.toContain('class="language-');
+  });
+
+  // ── Phase 2: task lists ──
+  it('renders unchecked task list items', () => {
+    const html = renderMarkdown('- [ ] todo item');
+    expect(html).toContain('class="pkc-task-item"');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('disabled');
+    expect(html).not.toContain('checked>');
+    expect(html).toContain('todo item');
+  });
+
+  it('renders checked task list items', () => {
+    const html = renderMarkdown('- [x] done item');
+    expect(html).toContain('class="pkc-task-item"');
+    expect(html).toContain('checked');
+    expect(html).toContain('done item');
+  });
+
+  it('supports uppercase X in task markers', () => {
+    const html = renderMarkdown('- [X] done');
+    expect(html).toContain('checked');
+  });
+
+  it('renders mixed task and regular list items', () => {
+    const md = '- [ ] task 1\n- regular item\n- [x] task 2';
+    const html = renderMarkdown(md);
+    // Three <li> tags; only the task items get the class
+    const taskItems = html.match(/class="pkc-task-item"/g) ?? [];
+    expect(taskItems.length).toBe(2);
+    expect(html).toContain('regular item');
+  });
+
+  it('does not treat plain brackets as task marker', () => {
+    const html = renderMarkdown('- [not a task]');
+    expect(html).not.toContain('pkc-task-item');
+    expect(html).not.toContain('type="checkbox"');
+  });
+
+  it('strips task marker from rendered text', () => {
+    const html = renderMarkdown('- [ ] buy milk');
+    expect(html).not.toContain('[ ] buy milk');
+    expect(html).toContain('buy milk');
+  });
+
+  // ── Phase 2: link safety ──
+  it('blocks javascript: URIs', () => {
+    const html = renderMarkdown('[click](javascript:alert(1))');
+    expect(html).not.toContain('href="javascript:');
+  });
+
+  it('blocks vbscript: URIs', () => {
+    const html = renderMarkdown('[click](vbscript:msgbox)');
+    expect(html).not.toContain('href="vbscript:');
+  });
+
+  it('blocks file: URIs', () => {
+    const html = renderMarkdown('[click](file:///etc/passwd)');
+    expect(html).not.toContain('href="file:');
+  });
+
+  it('blocks data:text/html URIs', () => {
+    const html = renderMarkdown('[click](data:text/html,<script>alert(1)</script>)');
+    expect(html).not.toContain('href="data:text/html');
+  });
+
+  it('allows data:image/png URIs for images', () => {
+    const html = renderMarkdown('![img](data:image/png;base64,iVBORw0KGgo=)');
+    expect(html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+  });
+
+  it('allows https, http, mailto, tel URIs', () => {
+    expect(renderMarkdown('[a](https://example.com)')).toContain('href="https://example.com"');
+    expect(renderMarkdown('[a](http://example.com)')).toContain('href="http://example.com"');
+    expect(renderMarkdown('[a](mailto:a@b.com)')).toContain('href="mailto:a@b.com"');
+    expect(renderMarkdown('[a](tel:+1234)')).toContain('href="tel:+1234"');
+  });
+
+  it('allows relative paths and fragments', () => {
+    expect(renderMarkdown('[a](./page.html)')).toContain('href="./page.html"');
+    expect(renderMarkdown('[a](#section)')).toContain('href="#section"');
+  });
+
+  it('auto-linked URLs also get noopener noreferrer', () => {
+    const html = renderMarkdown('Visit https://example.com');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  // ── Office URI schemes ──
+  //
+  // Allow ms-word:, ms-excel:, ms-powerpoint:, ms-visio:, ms-access:,
+  // ms-project:, ms-publisher:, ms-officeapp:, ms-spd:, ms-infopath:,
+  // and onenote: so that Office deep links work from rendered notes.
+
+  it('allows ms-word: Office URI scheme', () => {
+    const html = renderMarkdown('[Edit](ms-word:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('href="ms-word:');
+    expect(html).toContain('>Edit</a>');
+  });
+
+  it('allows ms-excel: Office URI scheme', () => {
+    const html = renderMarkdown('[Open](ms-excel:ofv|u|https://example.com/a.xlsx)');
+    expect(html).toContain('href="ms-excel:');
+  });
+
+  it('allows ms-powerpoint: Office URI scheme', () => {
+    const html = renderMarkdown('[Slides](ms-powerpoint:ofe|u|https://example.com/a.pptx)');
+    expect(html).toContain('href="ms-powerpoint:');
+  });
+
+  it('allows ms-visio: Office URI scheme', () => {
+    const html = renderMarkdown('[Diagram](ms-visio:ofe|u|https://example.com/a.vsdx)');
+    expect(html).toContain('href="ms-visio:');
+  });
+
+  it('allows ms-access: Office URI scheme', () => {
+    const html = renderMarkdown('[DB](ms-access:ofe|u|https://example.com/a.accdb)');
+    expect(html).toContain('href="ms-access:');
+  });
+
+  it('allows ms-project: Office URI scheme', () => {
+    const html = renderMarkdown('[Plan](ms-project:ofe|u|https://example.com/a.mpp)');
+    expect(html).toContain('href="ms-project:');
+  });
+
+  it('allows ms-publisher: Office URI scheme', () => {
+    const html = renderMarkdown('[Pub](ms-publisher:ofe|u|https://example.com/a.pub)');
+    expect(html).toContain('href="ms-publisher:');
+  });
+
+  it('allows ms-officeapp: Office URI scheme', () => {
+    const html = renderMarkdown('[App](ms-officeapp:launch)');
+    expect(html).toContain('href="ms-officeapp:');
+  });
+
+  it('allows ms-spd: SharePoint Designer scheme', () => {
+    const html = renderMarkdown('[Site](ms-spd:edit|https://sp.example.com)');
+    expect(html).toContain('href="ms-spd:');
+  });
+
+  it('allows ms-infopath: Office URI scheme', () => {
+    const html = renderMarkdown('[Form](ms-infopath:ofe|u|https://example.com/a.xsn)');
+    expect(html).toContain('href="ms-infopath:');
+  });
+
+  it('allows onenote: scheme', () => {
+    const html = renderMarkdown('[Note](onenote:https://example.com/notebook.one)');
+    expect(html).toContain('href="onenote:');
+  });
+
+  it('Office scheme links still get target=_blank and hardened rel', () => {
+    const html = renderMarkdown('[Edit](ms-word:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it('blocks unknown ms-* schemes outside the Office allowlist', () => {
+    const html = renderMarkdown('[x](ms-evil:payload)');
+    expect(html).not.toContain('href="ms-evil:');
+  });
+
+  it('Office URI scheme matching is case-insensitive', () => {
+    const html = renderMarkdown('[Edit](MS-WORD:ofe|u|https://example.com/a.docx)');
+    expect(html).toContain('href="MS-WORD:');
+  });
 });
 
 describe('hasMarkdownSyntax', () => {
@@ -188,6 +363,11 @@ describe('hasMarkdownSyntax', () => {
 
   it('detects tables', () => {
     expect(hasMarkdownSyntax('| a | b |')).toBe(true);
+  });
+
+  it('detects task lists', () => {
+    expect(hasMarkdownSyntax('- [ ] todo')).toBe(true);
+    expect(hasMarkdownSyntax('- [x] done')).toBe(true);
   });
 });
 

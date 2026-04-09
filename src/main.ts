@@ -23,6 +23,7 @@ import { todoPresenter } from './adapter/ui/todo-presenter';
 import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
+import { textlogPresenter } from './adapter/ui/textlog-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
@@ -48,6 +49,7 @@ async function boot(): Promise<void> {
   registerPresenter('form', formPresenter);
   registerPresenter('attachment', attachmentPresenter);
   registerPresenter('folder', folderPresenter);
+  registerPresenter('textlog', textlogPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();
@@ -384,12 +386,24 @@ function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): v
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');
     if (!target) return;
 
-    const confirmed = confirm(
-      'ブラウザに保存されたローカルデータを削除します。\n'
-      + 'HTML に埋め込まれたデータから再読み込みされます。\n\n'
-      + '本当に実行しますか？',
+    // Stage 1: explain what will happen
+    const stage1 = confirm(
+      '⚠ ワークスペースリセット ⚠\n\n'
+      + '以下のデータがすべて削除されます:\n'
+      + '• ブラウザに保存されたローカルデータ (IndexedDB)\n'
+      + '• 未エクスポートの変更内容\n\n'
+      + 'HTML に埋め込まれた元データから再読み込みされます。\n'
+      + 'この操作は取り消せません。\n\n'
+      + '続行しますか？',
     );
-    if (!confirmed) return;
+    if (!stage1) return;
+
+    // Stage 2: require typed confirmation
+    const typed = prompt(
+      '本当に削除しますか？\n'
+      + '確認のため「RESET」と入力してください:',
+    );
+    if (typed !== 'RESET') return;
 
     try {
       await store.clearAll();

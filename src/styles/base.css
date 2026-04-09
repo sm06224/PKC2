@@ -54,6 +54,49 @@
   }
 }
 
+/* ── Manual theme override via data-pkc-theme attribute ── */
+#pkc-root[data-pkc-theme="light"] {
+  --c-bg: #f0ebe0;
+  --c-fg: #1a1a14;
+  --c-accent: #1a6b35;
+  --c-accent-dim: #aed5b8;
+  --c-accent-fg: #ffffff;
+  --c-border: #c5bfac;
+  --c-hover: #e3ddd0;
+  --c-danger: #b91c1c;
+  --c-muted: #6b6558;
+  --c-surface: #e6e0d3;
+  --c-success: #1a6b35;
+  --c-warn: #c07000;
+  --c-warn-fg: #ffffff;
+  --c-info: #2563eb;
+  --c-info-fg: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+  --glow: none;
+  color-scheme: light;
+}
+
+#pkc-root[data-pkc-theme="dark"] {
+  --c-bg: #0d0f0a;
+  --c-fg: #c8d8b0;
+  --c-accent: #33ff66;
+  --c-accent-dim: #1a7a33;
+  --c-accent-fg: #050a03;
+  --c-border: #1e2a16;
+  --c-hover: #162010;
+  --c-danger: #ff4444;
+  --c-muted: #5a6e4a;
+  --c-surface: #111510;
+  --c-success: #33ff66;
+  --c-warn: #ffaa22;
+  --c-warn-fg: #1a0e00;
+  --c-info: #3b82f6;
+  --c-info-fg: #ffffff;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
+  --glow: 0 0 6px rgba(51,255,102,0.15);
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 #pkc-root {
@@ -133,6 +176,7 @@
   flex-wrap: wrap;
   flex-shrink: 0;
   box-shadow: 0 1px 4px rgba(51,255,102,0.06);
+  position: relative;
 }
 
 .pkc-header-title {
@@ -405,6 +449,42 @@
   background: var(--c-accent);
   color: var(--c-accent-fg);
   box-shadow: var(--glow);
+}
+
+[data-pkc-multi-selected="true"] {
+  background: color-mix(in srgb, var(--c-accent) 40%, transparent);
+  box-shadow: inset 0 0 0 1px var(--c-accent);
+}
+
+.pkc-multi-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--c-accent) 10%, var(--c-bg));
+  margin-top: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.pkc-multi-action-info {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-accent-fg);
+  background: var(--c-accent);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius);
+}
+
+.pkc-multi-action-move {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  cursor: pointer;
 }
 
 /* Flash animation for newly created/moved entries */
@@ -685,6 +765,48 @@
 .pkc-md-rendered a {
   color: var(--c-accent);
   text-decoration: underline;
+  word-break: break-word;
+}
+.pkc-md-rendered a:hover {
+  opacity: 0.85;
+}
+
+/* ── Phase 2: task lists ── */
+.pkc-md-rendered li.pkc-task-item {
+  list-style: none;
+  margin-left: -1.2em;
+  padding-left: 0;
+}
+.pkc-md-rendered li.pkc-task-item::marker {
+  content: '';
+}
+.pkc-md-rendered .pkc-task-checkbox {
+  margin-right: 0.35em;
+  vertical-align: -0.08em;
+  cursor: default;
+  accent-color: var(--c-accent);
+}
+
+/* ── Phase 2: table polish ── */
+.pkc-md-rendered table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.pkc-md-rendered th,
+.pkc-md-rendered td {
+  border: 1px solid var(--c-border);
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+.pkc-md-rendered th {
+  background: var(--c-bg);
+  font-weight: 600;
+}
+
+/* ── Phase 2: fenced code block language hint ── */
+.pkc-md-rendered pre code[class*="language-"] {
+  display: block;
 }
 
 /* ── Editor mode ── */
@@ -1428,11 +1550,6 @@
 }
 
 /* ── Sidebar tree folder indicator ── */
-[data-pkc-folder="true"] .pkc-entry-title::before {
-  content: '📁 ';
-  font-size: 0.8rem;
-}
-
 .pkc-folder-count {
   font-size: 0.6rem;
   color: var(--c-muted);
@@ -1498,6 +1615,15 @@
   font-size: 0.95rem;
   font-weight: 600;
   word-break: break-all;
+  flex: 1;
+}
+
+.pkc-attachment-rename-btn {
+  flex-shrink: 0;
+}
+
+[data-pkc-readonly="true"] .pkc-attachment-rename-btn {
+  display: none;
 }
 
 .pkc-attachment-meta {
@@ -1554,6 +1680,10 @@
 }
 .pkc-attachment-preview {
   margin-top: 0.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .pkc-attachment-preview-placeholder {
@@ -1564,7 +1694,7 @@
 
 .pkc-attachment-preview-img {
   max-width: 100%;
-  max-height: 400px;
+  max-height: calc(100vh - 16rem);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
   object-fit: contain;
@@ -1573,7 +1703,8 @@
 /* ── PDF preview ── */
 .pkc-attachment-pdf-preview {
   width: 100%;
-  min-height: 400px;
+  height: calc(100vh - 16rem);
+  min-height: 300px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
 }
@@ -1581,7 +1712,7 @@
 /* ── Video / Audio preview ── */
 .pkc-attachment-video-preview {
   max-width: 100%;
-  max-height: 400px;
+  max-height: calc(100vh - 16rem);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
 }
@@ -1593,6 +1724,7 @@
 /* ── HTML sandbox preview ── */
 .pkc-attachment-html-preview {
   width: 100%;
+  height: calc(100vh - 16rem);
   min-height: 300px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
@@ -1628,10 +1760,20 @@
   accent-color: var(--c-accent);
   cursor: pointer;
 }
+.pkc-sandbox-label-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 .pkc-sandbox-label {
   color: var(--c-fg);
   font-family: var(--font-mono);
   font-size: 0.7rem;
+}
+.pkc-sandbox-desc {
+  color: var(--c-muted);
+  font-size: 0.6rem;
+  font-style: italic;
 }
 
 .pkc-attachment-open-btn {
@@ -2091,6 +2233,153 @@
   transform: scale(0.9);
 }
 
+/* ── Shell Menu (dialog) ── */
+.pkc-shell-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-shell-menu-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 360px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pkc-shell-menu-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+
+.pkc-shell-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-shell-menu-section:last-child {
+  border-bottom: none;
+}
+
+.pkc-shell-menu-label {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pkc-shell-menu-theme-buttons {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.pkc-shell-menu-theme-btn {
+  flex: 1;
+}
+
+.pkc-shell-menu-theme-btn[data-pkc-theme-active="true"] {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+  border-color: var(--c-accent);
+}
+
+.pkc-shell-menu-version {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  text-align: center;
+}
+
+.pkc-shell-menu-close {
+  margin-top: 0.5rem;
+  align-self: flex-end;
+}
+
+/* ── Shortcut Help Overlay ── */
+.pkc-shortcut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-shortcut-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 90%;
+}
+
+.pkc-shortcut-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.pkc-shortcut-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.pkc-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pkc-shortcut-key {
+  display: inline-block;
+  min-width: 120px;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-accent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.pkc-shortcut-desc {
+  font-size: 0.75rem;
+  color: var(--c-fg);
+}
+
+.pkc-shortcut-group {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-accent);
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--c-border);
+  margin-top: 0.25rem;
+}
+
 /* Collapsed pane states */
 .pkc-sidebar[data-pkc-collapsed="true"] {
   width: 0 !important;
@@ -2539,4 +2828,175 @@
   border-radius: var(--radius);
   outline: 2px dashed var(--c-accent);
   outline-offset: -2px;
+}
+
+/* ── Slash Command Menu ── */
+
+.pkc-slash-menu {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.pkc-slash-menu-item {
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  color: var(--c-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-slash-menu-item:hover,
+.pkc-slash-menu-item[data-pkc-selected="true"] {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
+.pkc-slash-menu-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--c-muted);
+  font-style: italic;
+}
+
+/* ── TEXTLOG ── */
+
+.pkc-textlog-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-textlog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pkc-textlog-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.4rem;
+  align-items: start;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid var(--c-border);
+  font-size: 0.85rem;
+}
+
+.pkc-textlog-row[data-pkc-log-important="true"] {
+  border-left-color: #f5a623;
+  background: rgba(245,166,35,0.06);
+}
+
+.pkc-textlog-flag-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+  color: var(--c-muted);
+}
+
+.pkc-textlog-row[data-pkc-log-important="true"] .pkc-textlog-flag-btn {
+  color: #f5a623;
+}
+
+.pkc-textlog-timestamp {
+  color: var(--c-muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-top: 0.1rem;
+}
+
+.pkc-textlog-text {
+  color: var(--c-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pkc-textlog-empty {
+  color: var(--c-muted);
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.pkc-textlog-append {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.pkc-textlog-append-input {
+  flex: 1;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.pkc-textlog-append-btn {
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+/* TEXTLOG readonly: hide append area */
+[data-pkc-readonly="true"] .pkc-textlog-append {
+  display: none;
+}
+
+/* TEXTLOG editor */
+
+.pkc-textlog-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-textlog-edit-row {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 0.4rem;
+  align-items: start;
+  padding: 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+
+.pkc-textlog-flag-label {
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pkc-textlog-delete-btn {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  color: var(--c-danger, #ff4444);
+}
+
+.pkc-textlog-edit-text {
+  grid-column: 1 / -1;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
 }

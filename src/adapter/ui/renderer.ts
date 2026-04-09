@@ -3,7 +3,7 @@ import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef } from '../../core/action/system-command';
-import { CAPABILITIES } from '../../runtime/release-meta';
+import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
   getLatestRevision,
@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -33,7 +33,7 @@ const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
 const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
-  text: 'Note',
+  text: 'Text',
   textlog: 'Log',
   todo: 'Todo',
   form: 'Form',
@@ -143,6 +143,15 @@ function renderShell(state: AppState): HTMLElement {
     shell.appendChild(renderPendingOffers(state.pendingOffers));
   }
 
+  // Shell menu panel (hidden by default, toggled by action-binder).
+  // The current theme is read from the root element so the active
+  // theme button can be highlighted on every render.
+  const currentTheme = getCurrentThemeMode();
+  shell.appendChild(renderShellMenu(currentTheme));
+
+  // Shortcut help overlay (hidden by default, toggled by ? key)
+  shell.appendChild(renderShortcutHelp());
+
   // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
 
@@ -220,9 +229,9 @@ function renderHeader(state: AppState): HTMLElement {
     }
 
     const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
-      { arch: 'text', label: `${archetypeIcon('text')} Note`, tip: 'Create a new note entry' },
+      { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry' },
+      { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry' },
       { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
-      { arch: 'form', label: `${archetypeIcon('form')} Form`, tip: 'Create a new form entry' },
       { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
@@ -293,7 +302,147 @@ function renderHeader(state: AppState): HTMLElement {
   metaToggle.textContent = '◨';
   header.appendChild(metaToggle);
 
+  // Shell menu button
+  const menuBtn = createElement('button', 'pkc-tray-toggle pkc-shell-menu-btn');
+  menuBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
+  menuBtn.setAttribute('title', 'Menu (?)');
+  menuBtn.textContent = '⚙';
+  header.appendChild(menuBtn);
+
   return header;
+}
+
+/**
+ * Read the currently effective theme mode from the root element.
+ * `data-pkc-theme="light" | "dark"` is an explicit override; absence
+ * means "follow the system `prefers-color-scheme`" (i.e. system mode).
+ */
+function getCurrentThemeMode(): 'light' | 'dark' | 'system' {
+  if (typeof document === 'undefined') return 'system';
+  const pkc = document.getElementById('pkc-root');
+  const attr = pkc?.getAttribute('data-pkc-theme');
+  if (attr === 'light' || attr === 'dark') return attr;
+  return 'system';
+}
+
+function renderShellMenu(currentTheme: 'light' | 'dark' | 'system'): HTMLElement {
+  // Dialog-style overlay (matches the shortcut-help pattern) so that the
+  // menu is always centered on the viewport, above all other panes, and
+  // never gets pushed below the right pane or clipped by the event log.
+  const overlay = createElement('div', 'pkc-shell-menu-overlay');
+  overlay.setAttribute('data-pkc-region', 'shell-menu');
+  overlay.style.display = 'none';
+
+  const card = createElement('div', 'pkc-shell-menu-card');
+
+  const heading = createElement('h2', 'pkc-shell-menu-heading');
+  heading.textContent = 'Menu';
+  card.appendChild(heading);
+
+  // Theme selector: three explicit modes (Light / Dark / System).
+  // The active mode is highlighted via `data-pkc-theme-active="true"`.
+  const themeSection = createElement('div', 'pkc-shell-menu-section');
+  const themeLabel = createElement('span', 'pkc-shell-menu-label');
+  themeLabel.textContent = 'Theme';
+  themeSection.appendChild(themeLabel);
+
+  const themeButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const modes: { mode: 'light' | 'dark' | 'system'; label: string }[] = [
+    { mode: 'light', label: '☀ Light' },
+    { mode: 'dark', label: '🌙 Dark' },
+    { mode: 'system', label: '🖥 System' },
+  ];
+  for (const { mode, label } of modes) {
+    const btn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+    btn.setAttribute('data-pkc-action', 'set-theme');
+    btn.setAttribute('data-pkc-theme-mode', mode);
+    if (currentTheme === mode) {
+      btn.setAttribute('data-pkc-theme-active', 'true');
+    }
+    btn.textContent = label;
+    themeButtons.appendChild(btn);
+  }
+  themeSection.appendChild(themeButtons);
+  card.appendChild(themeSection);
+
+  // Shortcuts
+  const shortcutSection = createElement('div', 'pkc-shell-menu-section');
+  const shortcutBtn = createElement('button', 'pkc-btn-small');
+  shortcutBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
+  shortcutBtn.textContent = '⌨ Keyboard Shortcuts';
+  shortcutSection.appendChild(shortcutBtn);
+  card.appendChild(shortcutSection);
+
+  // Version
+  const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
+  versionSection.textContent = `PKC2 v${VERSION}`;
+  card.appendChild(versionSection);
+
+  // Close button
+  const closeBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-close');
+  closeBtn.setAttribute('data-pkc-action', 'close-shell-menu');
+  closeBtn.textContent = 'Close (Esc)';
+  card.appendChild(closeBtn);
+
+  overlay.appendChild(card);
+  return overlay;
+}
+
+function renderShortcutHelp(): HTMLElement {
+  const overlay = createElement('div', 'pkc-shortcut-overlay');
+  overlay.setAttribute('data-pkc-region', 'shortcut-help');
+  overlay.style.display = 'none';
+
+  const card = createElement('div', 'pkc-shortcut-card');
+
+  const heading = createElement('h2', 'pkc-shortcut-heading');
+  heading.textContent = 'Keyboard Shortcuts';
+  card.appendChild(heading);
+
+  const shortcuts: { key: string; desc: string; group?: string }[] = [
+    { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
+    { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
+    { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
+    { key: '?', desc: 'Toggle this help' },
+    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
+    { key: 'Shift+Click', desc: 'Range select' },
+    { key: '', desc: '', group: 'Date/Time (edit mode)' },
+    { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
+    { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
+    { key: 'Ctrl+Shift+;', desc: 'Insert date+time' },
+    { key: 'Ctrl+D', desc: 'Insert short date + day of week' },
+    { key: 'Ctrl+Shift+D', desc: 'Insert short date+time' },
+    { key: 'Ctrl+Shift+Alt+D', desc: 'Insert ISO 8601' },
+    { key: '', desc: '', group: 'Slash Commands (edit mode)' },
+    { key: '/', desc: 'Open input assist menu (line start)' },
+  ];
+
+  const table = createElement('div', 'pkc-shortcut-table');
+  for (const { key, desc, group } of shortcuts) {
+    if (group) {
+      const groupRow = createElement('div', 'pkc-shortcut-group');
+      groupRow.textContent = group;
+      table.appendChild(groupRow);
+      continue;
+    }
+    const row = createElement('div', 'pkc-shortcut-row');
+    const keyEl = createElement('kbd', 'pkc-shortcut-key');
+    keyEl.textContent = key;
+    row.appendChild(keyEl);
+    const descEl = createElement('span', 'pkc-shortcut-desc');
+    descEl.textContent = desc;
+    row.appendChild(descEl);
+    table.appendChild(row);
+  }
+  card.appendChild(table);
+
+  const closeBtn = createElement('button', 'pkc-btn-small');
+  closeBtn.setAttribute('data-pkc-action', 'close-shortcut-help');
+  closeBtn.textContent = 'Close (Esc / ?)';
+  card.appendChild(closeBtn);
+
+  overlay.appendChild(card);
+  return overlay;
 }
 
 function renderExportImportInline(_state: AppState): HTMLElement {
@@ -344,11 +493,11 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   sep3.textContent = '|';
   group.appendChild(sep3);
 
-  // Clear local data (workspace reset)
-  const clearBtn = createElement('button', 'pkc-btn pkc-btn-create pkc-btn-danger');
+  // Clear local data (workspace reset) — destructive, positioned after separator
+  const clearBtn = createElement('button', 'pkc-btn pkc-btn-danger');
   clearBtn.setAttribute('data-pkc-action', 'clear-local-data');
-  clearBtn.setAttribute('title', 'Clear browser storage and reload from HTML');
-  clearBtn.textContent = 'Reset';
+  clearBtn.setAttribute('title', 'WARNING: Clears all locally saved data (IndexedDB). This cannot be undone.');
+  clearBtn.textContent = '⚠ Reset';
   group.appendChild(clearBtn);
 
   return group;
@@ -499,8 +648,58 @@ function renderSidebar(state: AppState): HTMLElement {
       '<span>Drag to move</span>',
       '<span>Double-click to open</span>',
       '<span>Right-click for menu</span>',
+      '<span>Ctrl+click to multi-select</span>',
     ].join(' · ');
     sidebar.appendChild(hints);
+  }
+
+  // Multi-selection action bar
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    const bar = createElement('div', 'pkc-multi-action-bar');
+    bar.setAttribute('data-pkc-region', 'multi-action-bar');
+
+    const info = createElement('span', 'pkc-multi-action-info');
+    info.textContent = `${state.multiSelectedLids.length} selected`;
+    bar.appendChild(info);
+
+    const deleteBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+    deleteBtn.setAttribute('data-pkc-action', 'bulk-delete');
+    deleteBtn.textContent = 'Delete';
+    bar.appendChild(deleteBtn);
+
+    // Folder move targets
+    if (state.container) {
+      const folders = state.container.entries.filter((e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid));
+      if (folders.length > 0) {
+        const moveSelect = document.createElement('select');
+        moveSelect.className = 'pkc-multi-action-move';
+        moveSelect.setAttribute('data-pkc-action', 'bulk-move-select');
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Move to...';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        moveSelect.appendChild(placeholder);
+        const rootOpt = document.createElement('option');
+        rootOpt.value = '__root__';
+        rootOpt.textContent = '/ (Root)';
+        moveSelect.appendChild(rootOpt);
+        for (const f of folders) {
+          const opt = document.createElement('option');
+          opt.value = f.lid;
+          opt.textContent = `📁 ${f.title || '(untitled)'}`;
+          moveSelect.appendChild(opt);
+        }
+        bar.appendChild(moveSelect);
+      }
+    }
+
+    const clearBtn = createElement('button', 'pkc-btn-small');
+    clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
+    clearBtn.textContent = 'Clear';
+    bar.appendChild(clearBtn);
+
+    sidebar.appendChild(bar);
   }
 
   // Restore candidates (deleted entries with revisions) — collapsible, closed by default
@@ -516,6 +715,15 @@ function renderSidebar(state: AppState): HTMLElement {
       summary.textContent = `🗑️ Deleted (${candidates.length})`;
       details.appendChild(summary);
 
+      // Empty Trash button
+      if (!state.readonly) {
+        const purgeBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+        purgeBtn.setAttribute('data-pkc-action', 'purge-trash');
+        purgeBtn.setAttribute('title', 'Permanently delete all items in trash');
+        purgeBtn.textContent = 'Empty Trash';
+        details.appendChild(purgeBtn);
+      }
+
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
         const item = createElement('div', 'pkc-restore-item');
@@ -530,7 +738,7 @@ function renderSidebar(state: AppState): HTMLElement {
 
         if (parsed) {
           const archetype = createElement('span', 'pkc-archetype-badge');
-          archetype.textContent = archetypeLabel(parsed.archetype as ArchetypeId);
+          archetype.textContent = `${archetypeIcon(parsed.archetype as ArchetypeId)} ${archetypeLabel(parsed.archetype as ArchetypeId)}`;
           info.appendChild(archetype);
         }
 
@@ -588,15 +796,13 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   if (entry.lid === state.selectedLid) {
     li.setAttribute('data-pkc-selected', 'true');
   }
+  if (state.multiSelectedLids.includes(entry.lid)) {
+    li.setAttribute('data-pkc-multi-selected', 'true');
+  }
 
   const title = createElement('span', 'pkc-entry-title');
-  title.textContent = entry.title || '(untitled)';
+  title.textContent = `${archetypeIcon(entry.archetype)} ${entry.title || '(untitled)'}`;
   li.appendChild(title);
-
-  const badge = createElement('span', 'pkc-archetype-badge');
-  badge.setAttribute('data-pkc-archetype', entry.archetype);
-  badge.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
-  li.appendChild(badge);
 
   // Todo status indicator
   if (entry.archetype === 'todo') {
@@ -620,9 +826,7 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       li.setAttribute('data-pkc-has-history', 'true');
       const revBadge = createElement('span', 'pkc-revision-badge');
       revBadge.setAttribute('data-pkc-revision-count', String(revCount));
-      revBadge.textContent = revCount === 1
-        ? '1 version'
-        : `${revCount} versions`;
+      revBadge.textContent = `r${revCount}`;
       li.appendChild(revBadge);
     }
   }
@@ -1050,9 +1254,18 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     }
   }
 
-  // Archetype-dispatched body rendering
+  // Archetype-dispatched body rendering.
+  // For text/textlog (markdown-capable) presenters, pass assets + MIME map
+  // so `![alt](asset:key)` references can be resolved inline.
   const presenter = getPresenter(entry.archetype);
-  view.appendChild(presenter.renderBody(entry));
+  if (entry.archetype === 'attachment' && container?.assets) {
+    view.appendChild(presenter.renderBody(entry, container.assets));
+  } else if (container?.assets) {
+    const mimeByKey = buildAssetMimeMap(container);
+    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
+  } else {
+    view.appendChild(presenter.renderBody(entry));
+  }
 
   // Folder contents section (show children for folder entries)
   if (entry.archetype === 'folder' && container) {
@@ -1293,9 +1506,14 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
         if (!canEdit) checkbox.disabled = true;
         row.appendChild(checkbox);
 
+        const labelWrap = createElement('span', 'pkc-sandbox-label-wrap');
         const label = createElement('span', 'pkc-sandbox-label');
         label.textContent = attr;
-        row.appendChild(label);
+        labelWrap.appendChild(label);
+        const desc = createElement('span', 'pkc-sandbox-desc');
+        desc.textContent = SANDBOX_DESCRIPTIONS[attr as keyof typeof SANDBOX_DESCRIPTIONS] ?? '';
+        labelWrap.appendChild(desc);
+        row.appendChild(labelWrap);
 
         sandboxSection.appendChild(row);
       }
@@ -1559,6 +1777,26 @@ function createElement(tag: string, className: string): HTMLElement {
   return el;
 }
 
+/**
+ * Build a map of `asset_key → mime` from the container's attachment
+ * entries. Used by the markdown asset resolver so that text / textlog
+ * bodies can embed `![alt](asset:key)` references inline.
+ *
+ * Attachment entries store their metadata (name, mime, asset_key) in
+ * the body JSON; the raw base64 data lives in `container.assets[key]`.
+ */
+function buildAssetMimeMap(container: Container): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key && att.mime) {
+      map[att.asset_key] = att.mime;
+    }
+  }
+  return map;
+}
+
 function renderFolderContents(folder: Entry, container: Container): HTMLElement {
   const section = createElement('div', 'pkc-folder-contents');
   section.setAttribute('data-pkc-region', 'folder-contents');
@@ -1592,7 +1830,7 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
 
       const badge = createElement('span', 'pkc-archetype-badge');
       badge.setAttribute('data-pkc-archetype', child.archetype);
-      badge.textContent = archetypeLabel(child.archetype);
+      badge.textContent = `${archetypeIcon(child.archetype)} ${archetypeLabel(child.archetype)}`;
       item.appendChild(badge);
 
       list.appendChild(item);
@@ -1782,9 +2020,15 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
   if (entry.archetype === 'attachment') {
     content.appendChild(renderDetachedAttachment(entry, container));
   } else {
-    // Use presenter for body rendering (read-only)
+    // Use presenter for body rendering (read-only).
+    // Pass assets + MIME map so asset references resolve in detached view too.
     const presenter = getPresenter(entry.archetype);
-    content.appendChild(presenter.renderBody(entry));
+    if (container?.assets) {
+      const mimeByKey = buildAssetMimeMap(container);
+      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey));
+    } else {
+      content.appendChild(presenter.renderBody(entry));
+    }
 
     // Folder contents
     if (entry.archetype === 'folder' && container) {

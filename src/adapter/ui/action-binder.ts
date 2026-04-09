@@ -5,11 +5,31 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
+import { toggleLogFlag, deleteLogEntry } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu } from './renderer';
 import { openEntryWindow } from './entry-window';
+import {
+  formatDate,
+  formatTime,
+  formatDateTime,
+  formatShortDate,
+  formatShortDateTime,
+  formatISO8601,
+} from '../../features/datetime/datetime-format';
+import {
+  isSlashEligible,
+  shouldOpenSlashMenu,
+  isSlashMenuOpen,
+  openSlashMenu,
+  closeSlashMenu,
+  filterSlashMenu,
+  handleSlashMenuKeydown,
+  getSlashTriggerStart,
+} from './slash-menu';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -28,6 +48,14 @@ import { openEntryWindow } from './entry-window';
 
 export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
   function handleClick(e: Event): void {
+    // Shell menu backdrop click: close menu if user clicked outside the card.
+    const rawTarget = e.target as HTMLElement | null;
+    if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
+      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+      if (menu) menu.style.display = 'none';
+      return;
+    }
+
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
     if (!target) return;
 
@@ -35,18 +63,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const lid = target.getAttribute('data-pkc-lid') ?? undefined;
 
     switch (action) {
-      case 'select-entry':
+      case 'select-entry': {
         if (!lid) break;
+        const me = e as MouseEvent;
         // Double-click detection via MouseEvent.detail.
         // Normal dblclick event is unreliable because SELECT_ENTRY triggers
         // synchronous re-render, removing the target element from DOM before
         // the dblclick event can bubble to the delegated listener on root.
-        if ((e as MouseEvent).detail >= 2) {
+        if (me.detail >= 2) {
           handleDblClickAction(target, lid);
+        } else if (me.ctrlKey || me.metaKey) {
+          dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
+        } else if (me.shiftKey) {
+          dispatcher.dispatch({ type: 'SELECT_RANGE', lid });
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
+      }
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
         break;
@@ -58,8 +92,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
-        const titleMap: Partial<Record<ArchetypeId, string>> = { todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
-        const title = titleMap[arch] ?? 'New Entry';
+        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
+        const title = titleMap[arch] ?? 'New Text';
         // Determine context folder: if currently selected entry is a folder, or
         // if currently selected entry is inside a folder, use that as parent
         const contextFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
@@ -104,6 +138,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'purge-trash': {
+        if (!confirm('ゴミ箱を空にしますか？\n削除済みエントリの全履歴が完全に削除され、復元できなくなります。')) break;
+        dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        break;
+      }
+      case 'bulk-delete': {
+        const st = dispatcher.getState();
+        const count = st.multiSelectedLids.length;
+        if (count === 0) break;
+        if (!confirm(`${count}件のエントリを削除しますか？`)) break;
+        dispatcher.dispatch({ type: 'BULK_DELETE' });
+        break;
+      }
+      case 'clear-multi-select':
+        dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+        break;
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
         break;
@@ -163,6 +213,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
         break;
       }
+      case 'append-log-entry': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const inputEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-append-text"]');
+        const text = inputEl?.value?.trim();
+        if (!text) break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(appendLogEntry(log, text));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
+      case 'toggle-log-flag': {
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(toggleLogFlag(log, logId, 'important'));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
+      case 'delete-log-entry': {
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const log = parseTextlogBody(ent.body);
+        const updated = serializeTextlogBody(deleteLogEntry(log, logId));
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
       case 'toggle-sandbox-attr': {
         if (!lid) break;
         const sandboxAttr = target.getAttribute('data-pkc-sandbox-attr');
@@ -211,6 +301,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'rename-attachment': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const ent = st.container?.entries.find((e) => e.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(ent.body);
+        const newName = prompt('Enter new file name:', att.name);
+        if (!newName || newName === att.name) break;
+        const updated = JSON.stringify({ ...att, name: newName });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
       case 'ctx-move-to-root': {
         if (!lid) break;
         const state = dispatcher.getState();
@@ -226,6 +329,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'close-detached': {
         const panel = target.closest('[data-pkc-region="detached-panel"]');
         if (panel) panel.remove();
+        break;
+      }
+      case 'toggle-shell-menu': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        break;
+      }
+      case 'close-shell-menu': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = 'none';
+        break;
+      }
+      case 'set-theme': {
+        const mode = target.getAttribute('data-pkc-theme-mode') as
+          | 'light'
+          | 'dark'
+          | 'system'
+          | null;
+        if (mode) setTheme(root, mode);
+        // Stay open so the user can verify the new theme before closing.
+        break;
+      }
+      case 'show-shortcut-help': {
+        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+        if (helpOverlay) helpOverlay.style.display = '';
+        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menuPanel) menuPanel.style.display = 'none';
+        break;
+      }
+      case 'close-shortcut-help': {
+        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+        if (helpOverlay) helpOverlay.style.display = 'none';
         break;
       }
       case 'toggle-show-archived': {
@@ -265,6 +400,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    // Slash menu gets first shot at keyboard events when open
+    if (isSlashMenuOpen()) {
+      if (handleSlashMenuKeydown(e)) return;
+    }
+
     const state = dispatcher.getState();
     const mod = e.ctrlKey || e.metaKey;
 
@@ -275,8 +415,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Escape: cancel import preview, cancel edit, or deselect
+    // ── Date/Time shortcuts (editing phase, textarea/input focus) ──
+    if (mod && state.phase === 'editing') {
+      const text = getDateTimeShortcutText(e);
+      if (text) {
+        e.preventDefault();
+        insertTextAtCursor(text);
+        return;
+      }
+    }
+
+    // ? key: toggle shortcut help (only when not editing text)
+    if (e.key === '?' && state.phase !== 'editing') {
+      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+      if (helpOverlay) helpOverlay.style.display = helpOverlay.style.display === 'none' ? '' : 'none';
+      return;
+    }
+
+    // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
+      if (isSlashMenuOpen()) {
+        closeSlashMenu();
+        return;
+      }
+      // Close shortcut help if open
+      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+      if (helpOverlay && helpOverlay.style.display !== 'none') {
+        helpOverlay.style.display = 'none';
+        return;
+      }
+      // Close shell menu if open
+      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+      if (menu && menu.style.display !== 'none') {
+        menu.style.display = 'none';
+        return;
+      }
       if (state.importPreview) {
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
       } else if (state.phase === 'editing') {
@@ -290,7 +464,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Ctrl+N / Cmd+N: new entry in ready mode
     if (mod && e.key === 'n' && state.phase === 'ready') {
       e.preventDefault();
-      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Entry' });
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Text' });
       return;
     }
   }
@@ -300,6 +474,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (target.getAttribute('data-pkc-field') === 'search') {
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
+      return;
+    }
+
+    // Slash menu trigger detection for eligible textareas
+    if (target instanceof HTMLTextAreaElement && isSlashEligible(target)) {
+      const caretPos = target.selectionStart ?? 0;
+      const text = target.value;
+
+      if (isSlashMenuOpen()) {
+        // Menu is open — update filter based on text typed after `/`
+        const slashPos = getSlashTriggerStart(text, caretPos);
+        if (slashPos >= 0) {
+          const query = text.slice(slashPos + 1, caretPos);
+          filterSlashMenu(query);
+        } else {
+          // `/` was deleted or cursor moved — close menu
+          closeSlashMenu();
+        }
+      } else if (shouldOpenSlashMenu(text, caretPos)) {
+        openSlashMenu(target, caretPos - 1, root);
+      }
     }
   }
 
@@ -314,6 +509,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const key = (keyEl?.value ?? state.sortKey) as SortKey;
       const direction = (dirEl?.value ?? state.sortDirection) as SortDirection;
       dispatcher.dispatch({ type: 'SET_SORT', key, direction });
+    }
+
+    // Bulk move via select dropdown
+    const action = target.getAttribute('data-pkc-action');
+    if (action === 'bulk-move-select') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      if (val === '__root__') {
+        dispatcher.dispatch({ type: 'BULK_MOVE_TO_ROOT' });
+      } else {
+        dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
+      }
     }
   }
 
@@ -699,6 +906,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleDocumentClick(e: MouseEvent): void {
+    // Close slash menu on click outside
+    if (isSlashMenuOpen()) {
+      const slashMenu = root.querySelector('[data-pkc-region="slash-menu"]');
+      if (!slashMenu || !slashMenu.contains(e.target as Node)) {
+        closeSlashMenu();
+      }
+    }
+
     const menu = root.querySelector('[data-pkc-region="context-menu"]');
     if (!menu) return;
     // If clicking inside the menu, let the action handler fire first
@@ -757,6 +972,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Visual feedback: flash the drop zone
     dropZone.setAttribute('data-pkc-drop-success', 'true');
     setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
+  }
+
+  // ── Clipboard paste handler (screenshot / image → attachment entry) ──
+
+  function handlePaste(e: ClipboardEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Look for image items in clipboard
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        e.preventDefault();
+
+        // Generate a descriptive filename for screenshots
+        const ext = file.type.split('/')[1] ?? 'png';
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const name = `screenshot-${ts}.${ext}`;
+        const namedFile = new File([file], name, { type: file.type });
+
+        // Determine context folder from current selection
+        const selectedEntry = state.selectedLid
+          ? state.container?.entries.find((ent) => ent.lid === state.selectedLid)
+          : undefined;
+        const contextFolder = selectedEntry?.archetype === 'folder' ? state.selectedLid ?? undefined : undefined;
+
+        processFileAttachment(namedFile, contextFolder, dispatcher);
+        return; // Process only the first image
+      }
+    }
   }
 
   // ── Double-click action handler ──
@@ -889,6 +1140,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
+  document.addEventListener('paste', handlePaste);
 
   // Return cleanup function
   return () => {
@@ -923,7 +1175,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
+    document.removeEventListener('paste', handlePaste);
     clearAllDragState();
+    closeSlashMenu();
   };
 }
 
@@ -1044,6 +1298,20 @@ export function cleanupBlobUrls(root: HTMLElement): void {
 }
 
 /**
+ * Decode base64 to text string (UTF-8).
+ * Used for HTML/SVG content that goes into iframe.srcdoc.
+ */
+function decodeBase64ToText(base64: string): string {
+  const bytes = atob(base64);
+  // Handle UTF-8: decode byte string via TextDecoder
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    arr[i] = bytes.charCodeAt(i);
+  }
+  return new TextDecoder().decode(arr);
+}
+
+/**
  * Create a Blob URL from resolved base64 attachment data.
  */
 function createBlobUrl(resolved: { data: string; mime: string }): string {
@@ -1133,8 +1401,11 @@ function populatePreviewElement(
     }
 
     case 'html': {
-      // Sandboxed iframe for HTML preview
-      const blobUrl = createBlobUrl(resolved);
+      // Sandboxed iframe using srcdoc (not blob: URL).
+      // blob: origin causes CSP / same-origin issues in some single-file HTML.
+      // srcdoc writes content directly into the iframe document (about:srcdoc origin),
+      // which lets the sandbox attributes control execution properly.
+      const htmlString = decodeBase64ToText(resolved.data);
       const iframe = document.createElement('iframe');
       iframe.className = 'pkc-attachment-html-preview';
       // Apply user-configured sandbox permissions
@@ -1143,12 +1414,11 @@ function populatePreviewElement(
       for (const attr of sandboxAllow) {
         iframe.sandbox.add(attr);
       }
-      iframe.src = blobUrl;
-      iframe.setAttribute('data-pkc-blob-url', blobUrl);
+      iframe.srcdoc = htmlString;
       iframe.setAttribute('title', `HTML Preview: ${resolved.name}`);
       el.appendChild(iframe);
-      // Open in new window button
-      el.appendChild(createOpenButton(blobUrl, resolved.name, '🌐 Open HTML in New Window'));
+      // Open in new window — write HTML directly (same reason as srcdoc: avoid blob: origin issues)
+      el.appendChild(createHtmlOpenButton(htmlString, resolved.name));
       // Sandbox status note
       const activePerms = ['allow-same-origin', ...sandboxAllow.filter((a) => a !== 'allow-same-origin')];
       const sandboxNote = document.createElement('div');
@@ -1170,6 +1440,27 @@ function createOpenButton(blobUrl: string, name: string, label: string): HTMLEle
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
     window.open(blobUrl, '_blank', 'noopener');
+  });
+  return btn;
+}
+
+/**
+ * Create an "Open in New Window" button for HTML/SVG content.
+ * Opens a new window and writes HTML directly via document.write(),
+ * avoiding blob: origin issues that prevent some single-file HTML from running.
+ */
+function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-attachment-open-btn';
+  btn.textContent = '🌐 Open HTML in New Window';
+  btn.setAttribute('title', `Open ${name} in a new browser window`);
+  btn.addEventListener('click', () => {
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.open();
+      win.document.write(htmlString);
+      win.document.close();
+    }
   });
   return btn;
 }
@@ -1277,5 +1568,100 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
     paneEl.setAttribute('data-pkc-collapsed', 'true');
     if (trayEl) trayEl.style.display = '';
     if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
+  }
+}
+
+/**
+ * Apply a theme mode. 'light' / 'dark' set an explicit override; 'system'
+ * removes the override so CSS falls back to the `prefers-color-scheme`
+ * media query. Also updates the active highlighting on the theme buttons
+ * inside the shell menu so the UI stays in sync without a full re-render.
+ */
+function setTheme(root: HTMLElement, mode: 'light' | 'dark' | 'system'): void {
+  const pkc = (root.closest('#pkc-root') ?? root) as HTMLElement;
+  if (mode === 'system') {
+    pkc.removeAttribute('data-pkc-theme');
+  } else {
+    pkc.setAttribute('data-pkc-theme', mode);
+  }
+  const buttons = pkc.querySelectorAll<HTMLElement>('.pkc-shell-menu-theme-btn');
+  for (const btn of buttons) {
+    if (btn.getAttribute('data-pkc-theme-mode') === mode) {
+      btn.setAttribute('data-pkc-theme-active', 'true');
+    } else {
+      btn.removeAttribute('data-pkc-theme-active');
+    }
+  }
+}
+
+/**
+ * Maps a KeyboardEvent to a date/time formatted string, or null if not a match.
+ *
+ * Shortcuts (all require Ctrl/Cmd):
+ *   Ctrl+;             → yyyy/MM/dd
+ *   Ctrl+:             → HH:mm:ss
+ *   Ctrl+Shift+;       → yyyy/MM/dd HH:mm:ss  (Shift+; = : on US layout, so also Ctrl+Shift+:)
+ *   Ctrl+D             → yy/MM/dd ddd
+ *   Ctrl+Shift+D       → yy/MM/dd ddd HH:mm:ss
+ *   Ctrl+Shift+Alt+D   → ISO 8601
+ */
+function getDateTimeShortcutText(e: KeyboardEvent): string | null {
+  const now = new Date();
+
+  // Ctrl+; or Ctrl+: (semicolon / colon key)
+  if (e.key === ';' && !e.shiftKey && !e.altKey) {
+    return formatDate(now);
+  }
+  if ((e.key === ':' || (e.key === ';' && e.shiftKey)) && !e.altKey) {
+    // Ctrl+: → time, but Ctrl+Shift+; on some layouts = Ctrl+Shift+: = datetime
+    // We differentiate: if Shift is held, it's datetime; raw ':' without explicit shift = time
+    if (e.shiftKey) {
+      return formatDateTime(now);
+    }
+    return formatTime(now);
+  }
+
+  // Ctrl+D variants
+  if (e.key === 'd' || e.key === 'D') {
+    if (e.shiftKey && e.altKey) {
+      return formatISO8601(now);
+    }
+    if (e.shiftKey) {
+      return formatShortDateTime(now);
+    }
+    if (!e.altKey) {
+      return formatShortDate(now);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Inserts text at the current cursor position in the focused textarea/input.
+ * No-op if the active element is not a text input.
+ */
+function insertTextAtCursor(text: string): void {
+  const el = document.activeElement;
+  if (!el) return;
+
+  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text')) {
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    // Use execCommand for undo-stack integration where supported
+    // Fall back to manual insertion
+    el.focus();
+    el.setSelectionRange(start, end);
+    let inserted = false;
+    try {
+      inserted = document.execCommand('insertText', false, text);
+    } catch {
+      // execCommand not available (e.g. happy-dom)
+    }
+    if (!inserted) {
+      el.value = el.value.slice(0, start) + text + el.value.slice(end);
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
 }

@@ -21,3 +21,12 @@ export { getTagsForEntry, getAvailableTagTargets } from './relation/tag-selector
 export type { Tag } from './relation/tag-selector';
 
 export { entryHasTag, filterByTag } from './relation/tag-filter';
+
+export {
+  formatDate,
+  formatTime,
+  formatDateTime,
+  formatShortDate,
+  formatShortDateTime,
+  formatISO8601,
+} from './datetime/datetime-format';

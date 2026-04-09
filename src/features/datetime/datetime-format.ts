@@ -1,0 +1,56 @@
+/**
+ * Date/Time format helpers for input-assistance shortcuts.
+ *
+ * Pure functions. Uses Intl.DateTimeFormat (ECMA-402 standard) for
+ * locale-aware day-of-week abbreviation.
+ * All formatters accept an optional Date for testability (default: now).
+ */
+
+/** Returns locale-aware short weekday name via Intl.DateTimeFormat. */
+function localizedDay(d: Date): string {
+  return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function pad4(n: number): string {
+  return String(n).padStart(4, '0');
+}
+
+/** yyyy/MM/dd */
+export function formatDate(d: Date = new Date()): string {
+  return `${pad4(d.getFullYear())}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+}
+
+/** HH:mm:ss */
+export function formatTime(d: Date = new Date()): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/** yyyy/MM/dd HH:mm:ss */
+export function formatDateTime(d: Date = new Date()): string {
+  return `${formatDate(d)} ${formatTime(d)}`;
+}
+
+/** yy/MM/dd ddd */
+export function formatShortDate(d: Date = new Date()): string {
+  const yy = pad2(d.getFullYear() % 100);
+  return `${yy}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${localizedDay(d)}`;
+}
+
+/** yy/MM/dd ddd HH:mm:ss */
+export function formatShortDateTime(d: Date = new Date()): string {
+  return `${formatShortDate(d)} ${formatTime(d)}`;
+}
+
+/** ISO 8601: yyyy-MM-ddTHH:mm:ss±HH:mm */
+export function formatISO8601(d: Date = new Date()): string {
+  const offset = -d.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const oh = pad2(Math.floor(absOffset / 60));
+  const om = pad2(absOffset % 60);
+  return `${pad4(d.getFullYear())}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${formatTime(d)}${sign}${oh}:${om}`;
+}

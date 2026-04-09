@@ -16,6 +16,7 @@ import {
   restoreDeletedEntry,
   setAsset,
   mergeAssets,
+  purgeTrash,
 } from '@core/operations/container-ops';
 import type { Container } from '@core/model/container';
 
@@ -319,6 +320,41 @@ describe('getRestoreCandidates', () => {
     // Sorted by created_at descending
     expect(candidates[0]!.entry_lid).toBe('e2');
     expect(candidates[1]!.entry_lid).toBe('e1');
+  });
+});
+
+describe('purgeTrash', () => {
+  it('removes revisions for deleted entries only', () => {
+    let c = containerWith3Entries();
+    // Snapshot e1 (active) and e2 (will be deleted)
+    c = snapshotEntry(c, 'e1', 'rev-active', T);
+    c = snapshotEntry(c, 'e2', 'rev-before-del', T);
+    c = removeEntry(c, 'e2');
+    expect(c.revisions).toHaveLength(2);
+    const result = purgeTrash(c);
+    // Only e2's revision should be purged (e1's kept)
+    expect(result.purgedCount).toBe(1);
+    expect(result.container.revisions).toHaveLength(1);
+    expect(result.container.revisions[0]!.entry_lid).toBe('e1');
+  });
+
+  it('returns 0 when no deleted entries exist', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    const result = purgeTrash(c);
+    expect(result.purgedCount).toBe(0);
+    expect(result.container).toBe(c); // same reference
+  });
+
+  it('purges all revisions when all entries are deleted', () => {
+    let c = containerWith3Entries();
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = snapshotEntry(c, 'e2', 'rev-2', T);
+    c = removeEntry(c, 'e1');
+    c = removeEntry(c, 'e2');
+    const result = purgeTrash(c);
+    expect(result.purgedCount).toBe(2);
+    expect(result.container.revisions).toHaveLength(0);
   });
 });
 
