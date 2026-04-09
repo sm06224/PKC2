@@ -11,24 +11,44 @@
 
 | 項目 | 報告 | 調査結果 | 対応 |
 |------|------|---------|------|
-| P0-A: attachment download/preview | 動作しない | **正常動作** — 全経路が接続済み | 誤認として確認 |
+| P0-A: attachment download/preview | 動作しない | **バグ発見** — 新フォーマットが全て Light と誤判定 | 修正済み |
 | P0-B: CLEAR ボタン | 劇薬すぎる | confirm あったが **不十分** | 二段階確認に強化 |
 | P0-C: Ctrl+S 保存 | 効かない | **既に実装済み**（action-binder L272-276） | テスト追加で保証 |
 | P0-D: スクショ貼付 | できない | **未実装** — paste ハンドラなし | 新規実装 |
 
-### P0-A 詳細: attachment download/preview
+### P0-A 詳細: attachment download/preview — バグ修正
 
-コード調査の結果、以下のすべてが正常に接続されていた:
+**原因:**
+`attachment-presenter.ts` の `renderBody()` で `dataStripped` の判定が誤っていた:
 
-- Download ボタン: `attachment-presenter.ts` で生成 → `action-binder.ts` の click handler で処理
-- Preview: `populateAttachmentPreviews()` が render 後に毎回呼び出し → `populatePreviewElement()` で MIME 別に描画
-- 全 MIME 分類: image (Data URI), PDF (Blob+object), video/audio (Blob+controls), HTML/SVG (Blob+sandbox iframe)
-- メモリ管理: `cleanupBlobUrls()` で render 前に revoke
+```typescript
+// 旧コード（バグ）
+const dataStripped = !!att.asset_key && !att.data;
+```
 
-**考えられるユーザー体験の問題:**
-- Light mode では「Data not included」と表示されダウンロード不可（仕様通り）
-- asset_key があっても container.assets にデータがない場合サイレントに失敗する
-- 初期状態（空 container）ではそもそも attachment がない
+新フォーマットの attachment は body に `data` フィールドを持たない（データは `container.assets[asset_key]` に分離保存）。
+しかし presenter は `container.assets` にアクセスできなかったため、**すべての新フォーマットエントリを Light export と誤判定**していた。
+
+結果:
+- Download ボタン非表示
+- Preview 非表示
+- 「Data not included (Light export)」メッセージが全 attachment に表示
+
+**修正:**
+```typescript
+// 新コード（修正済み）
+const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
+const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
+```
+
+- `DetailPresenter.renderBody()` に optional `assets` パラメータを追加
+- renderer が attachment エントリに対して `container.assets` を渡す
+- `container.assets` にデータがある場合は `dataStripped = false`
+
+**影響範囲:**
+- 全 MIME 分類（image/pdf/video/audio/html/none）に影響
+- Download ボタン、Preview 表示、fallback メッセージの表示が正しくなった
+- detached view は元から `container.assets` を直接チェックしており、このバグの影響を受けていなかった
 
 ### P0-C 詳細: Ctrl+S
 
