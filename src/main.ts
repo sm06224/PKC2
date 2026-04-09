@@ -2,7 +2,13 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
-import { bindActions, populateAttachmentPreviews, cleanupBlobUrls, flashEntry } from './adapter/ui/action-binder';
+import {
+  bindActions,
+  populateAttachmentPreviews,
+  cleanupBlobUrls,
+  flashEntry,
+} from './adapter/ui/action-binder';
+import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore } from './adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
@@ -99,6 +105,16 @@ async function boot(): Promise<void> {
     // Populate attachment image previews (needs container.assets data)
     populateAttachmentPreviews(root, dispatcher);
   });
+
+  // 2b. Entry-window live refresh wiring.
+  //
+  // See `src/adapter/ui/entry-window-live-refresh.ts` for the
+  // full contract. In brief: when the container's `assets` object
+  // identity changes (attachment added / removed), every currently-
+  // open entry-window child for a text / textlog entry gets a freshly
+  // built preview resolver context pushed into it. The child's
+  // view-pane HTML and Source textarea are never touched.
+  wireEntryWindowLiveRefresh(dispatcher);
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);

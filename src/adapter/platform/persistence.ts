@@ -17,6 +17,24 @@ import type { DomainEvent, DomainEventType } from '../../core/action/domain-even
  * - Dispatch actions (it's a passive listener)
  * - Save runtime state (phase, selectedLid, etc.)
  * - Define its own events (no SAVE_SUCCEEDED/FAILED in DomainEvent)
+ *
+ * ── Debounce safety note ────────────────────────────────────────────
+ *
+ * The scheduled save reads the CURRENT state via
+ * `dispatcher.getState()` at flush time, NOT at schedule time. So the
+ * pattern
+ *
+ *     dispatch(QUICK_UPDATE_ENTRY);
+ *     dispatch(SELECT_ENTRY);   // no save trigger
+ *     // …debounce fires 300 ms later…
+ *
+ * does NOT produce a stale save: by the time `doSave()` runs, the
+ * state already reflects both actions. There is no closure-captured
+ * state snapshot to go stale.
+ *
+ * What can still go wrong is that the tab closes *before* the 300 ms
+ * timer fires, in which case the pending change is lost. `flushPending`
+ * + the `pagehide` handler below is the real hardening for that case.
  */
 
 /** Events that indicate a Container mutation requiring save. */
@@ -37,13 +55,38 @@ export interface PersistenceOptions {
   store: ContainerStore;
   debounceMs?: number;
   onError?: (error: unknown) => void;
+  /**
+   * When set, `mountPersistence` will attach a `pagehide` listener on
+   * this target to call `flushPending()` automatically when the tab is
+   * backgrounded or closed. Tests pass `null` to opt out; main.ts
+   * passes `window`.
+   *
+   * Defaults to `window` in browser environments — see
+   * `mountPersistence` for the resolution logic.
+   */
+  unloadTarget?: EventTarget | null;
+}
+
+/**
+ * Handle returned by `mountPersistence`. `dispose` tears down the
+ * subscription and cancels any pending timer. `flushPending` cancels
+ * the debounce and runs a save immediately using the latest
+ * `dispatcher.getState()` — callable at any time, safe to call when
+ * there is nothing pending (it becomes a no-op).
+ */
+export interface PersistenceHandle {
+  dispose(): void;
+  flushPending(): Promise<void>;
 }
 
 export function mountPersistence(
   dispatcher: Dispatcher,
   options: PersistenceOptions,
-): () => void {
+): PersistenceHandle {
   const { store, debounceMs = DEBOUNCE_MS, onError } = options;
+  const unloadTarget = options.unloadTarget === undefined
+    ? (typeof window !== 'undefined' ? window : null)
+    : options.unloadTarget;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let saving = false;
 
@@ -51,7 +94,7 @@ export function mountPersistence(
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      doSave();
+      void doSave();
     }, debounceMs);
   }
 
@@ -81,6 +124,24 @@ export function mountPersistence(
     }
   }
 
+  /**
+   * Flush any pending debounced save immediately. Cancels the running
+   * timer and runs `doSave()` synchronously from the caller's view
+   * (the returned promise resolves once the IDB put completes).
+   *
+   * No-op when there is nothing pending AND no save in flight.
+   * When a save is already in flight, the inner `doSave` reschedules —
+   * so callers must await the returned promise and accept that some
+   * very-close-together writes may land in the *next* save batch.
+   */
+  async function flushPending(): Promise<void> {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    await doSave();
+  }
+
   function handleEvent(event: DomainEvent): void {
     if (SAVE_TRIGGERS.has(event.type)) {
       scheduleSave();
@@ -89,14 +150,35 @@ export function mountPersistence(
 
   const unsubEvent = dispatcher.onEvent(handleEvent);
 
+  // Install pagehide handler so pending saves are attempted on tab
+  // close / navigation away. `pagehide` is preferred over `unload`
+  // because modern browsers (esp. mobile) do not fire `unload`
+  // reliably, and bfcache-friendly pages observe `pagehide` instead.
+  const pagehideHandler = (): void => {
+    // Fire-and-forget: the browser will not wait for the promise, so
+    // the best we can do is kick off the IDB write synchronously. If
+    // IDB isn't fast enough to complete before the tab dies, the
+    // in-flight put is still useful — it survives into the next
+    // session so long as the transaction committed.
+    void flushPending();
+  };
+  if (unloadTarget) {
+    unloadTarget.addEventListener('pagehide', pagehideHandler);
+  }
+
   // Cleanup
-  return () => {
+  function dispose(): void {
     unsubEvent();
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
     }
-  };
+    if (unloadTarget) {
+      unloadTarget.removeEventListener('pagehide', pagehideHandler);
+    }
+  }
+
+  return { dispose, flushPending };
 }
 
 /**

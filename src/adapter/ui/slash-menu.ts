@@ -128,83 +128,154 @@ export function getSlashTriggerStart(text: string, caretPos: number): number {
 }
 
 // ── Menu UI ──
+//
+// Per-root instance state.
+//
+// Originally the 6 pieces of slash-menu runtime state lived as
+// module-level `let` variables, which meant the whole module behaved
+// as a single global. That's fine for a single-mount app but risks
+// cross-instance contamination if the same module is ever loaded
+// against two different render roots (test harnesses, multi-mount
+// embeds) and leaks the `activeMenu` / `activeTextarea` references
+// across boundaries.
+//
+// The new model:
+//   - State is an `ActiveSlashMenu` object scoped to a single root.
+//   - Roots are tracked in a WeakMap — each root has its own state
+//     and gets garbage-collected along with the root element.
+//   - A single module-level `activeRoot` pointer identifies which
+//     root's menu is currently visible. Only one menu may be visible
+//     globally at a time, matching the pre-refactor behavior.
+//   - `closeSlashMenu` closes only the currently-active menu, so a
+//     dormant instance on another root is never stomped.
+//
+// Exported function signatures are unchanged. Internally every
+// function looks up its state via `getActiveInstance()` or
+// `getOrCreateInstance(root)`.
 
-let activeMenu: HTMLElement | null = null;
-let activeTextarea: HTMLTextAreaElement | null = null;
-let activeSlashPos = -1;
+interface ActiveSlashMenu {
+  /** Popover element. Null when the menu is closed for this root. */
+  menu: HTMLElement | null;
+  /** Textarea the menu is attached to for the current open. */
+  textarea: HTMLTextAreaElement | null;
+  /** Start position of the `/` trigger in the textarea. */
+  slashPos: number;
+  /** Currently highlighted item's index in `filteredCommands`. */
+  selectedIndex: number;
+  /** Commands passing the current filter query. */
+  filteredCommands: SlashCommand[];
+}
+
+function createInstance(): ActiveSlashMenu {
+  return {
+    menu: null,
+    textarea: null,
+    slashPos: -1,
+    selectedIndex: 0,
+    filteredCommands: [],
+  };
+}
+
+/** Per-root state map. Keyed by render root element. */
+const instances = new WeakMap<HTMLElement, ActiveSlashMenu>();
+
+/**
+ * The root whose menu is currently open. At most one at a time — when
+ * openSlashMenu is called against a different root, any menu on a
+ * previously active root is first closed via `closeSlashMenu()`. This
+ * preserves the pre-refactor "only one menu visible" guarantee.
+ */
 let activeRoot: HTMLElement | null = null;
-let selectedIndex = 0;
-let filteredCommands: SlashCommand[] = [];
+
+function getOrCreateInstance(root: HTMLElement): ActiveSlashMenu {
+  let inst = instances.get(root);
+  if (!inst) {
+    inst = createInstance();
+    instances.set(root, inst);
+  }
+  return inst;
+}
+
+function getActiveInstance(): ActiveSlashMenu | null {
+  if (!activeRoot) return null;
+  return instances.get(activeRoot) ?? null;
+}
 
 export function isSlashMenuOpen(): boolean {
-  return activeMenu !== null;
+  const inst = getActiveInstance();
+  return inst?.menu != null;
 }
 
 /**
  * Opens the slash menu near the given textarea.
  */
 export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, root: HTMLElement): void {
+  // Close any menu currently open (possibly on a different root).
   closeSlashMenu();
-  activeTextarea = textarea;
-  activeSlashPos = slashPos;
+
+  const inst = getOrCreateInstance(root);
+  inst.textarea = textarea;
+  inst.slashPos = slashPos;
+  inst.selectedIndex = 0;
+  inst.filteredCommands = [...SLASH_COMMANDS];
+
+  const menu = document.createElement('div');
+  menu.className = 'pkc-slash-menu';
+  menu.setAttribute('data-pkc-region', 'slash-menu');
+  inst.menu = menu;
   activeRoot = root;
-  selectedIndex = 0;
-  filteredCommands = [...SLASH_COMMANDS];
 
-  activeMenu = document.createElement('div');
-  activeMenu.className = 'pkc-slash-menu';
-  activeMenu.setAttribute('data-pkc-region', 'slash-menu');
-
-  renderMenuItems();
+  renderMenuItems(inst);
 
   // Position near the textarea
   const rect = textarea.getBoundingClientRect();
   const rootRect = root.getBoundingClientRect();
-  activeMenu.style.position = 'absolute';
-  activeMenu.style.left = `${rect.left - rootRect.left}px`;
+  menu.style.position = 'absolute';
+  menu.style.left = `${rect.left - rootRect.left}px`;
   // Place below the textarea's current line or at bottom of textarea
-  activeMenu.style.top = `${rect.bottom - rootRect.top + 4}px`;
-  activeMenu.style.zIndex = '100';
+  menu.style.top = `${rect.bottom - rootRect.top + 4}px`;
+  menu.style.zIndex = '100';
 
-  root.appendChild(activeMenu);
+  root.appendChild(menu);
 }
 
-function renderMenuItems(): void {
-  if (!activeMenu) return;
-  activeMenu.innerHTML = '';
+function renderMenuItems(inst: ActiveSlashMenu): void {
+  if (!inst.menu) return;
+  inst.menu.innerHTML = '';
 
-  if (filteredCommands.length === 0) {
+  if (inst.filteredCommands.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'pkc-slash-menu-empty';
     empty.textContent = 'No matching commands';
-    activeMenu.appendChild(empty);
+    inst.menu.appendChild(empty);
     return;
   }
 
-  for (let i = 0; i < filteredCommands.length; i++) {
-    const cmd = filteredCommands[i]!;
+  for (let i = 0; i < inst.filteredCommands.length; i++) {
+    const cmd = inst.filteredCommands[i]!;
     const item = document.createElement('div');
     item.className = 'pkc-slash-menu-item';
-    if (i === selectedIndex) item.setAttribute('data-pkc-selected', 'true');
+    if (i === inst.selectedIndex) item.setAttribute('data-pkc-selected', 'true');
     item.setAttribute('data-pkc-slash-id', cmd.id);
     item.textContent = cmd.label;
+    const itemIndex = i;
     item.addEventListener('mousedown', (e) => {
       e.preventDefault(); // Prevent textarea blur
-      executeCommand(cmd);
+      executeCommand(inst, cmd);
     });
     item.addEventListener('mouseenter', () => {
-      selectedIndex = i;
-      updateSelection();
+      inst.selectedIndex = itemIndex;
+      updateSelection(inst);
     });
-    activeMenu.appendChild(item);
+    inst.menu.appendChild(item);
   }
 }
 
-function updateSelection(): void {
-  if (!activeMenu) return;
-  const items = activeMenu.querySelectorAll('.pkc-slash-menu-item');
+function updateSelection(inst: ActiveSlashMenu): void {
+  if (!inst.menu) return;
+  const items = inst.menu.querySelectorAll('.pkc-slash-menu-item');
   for (let i = 0; i < items.length; i++) {
-    if (i === selectedIndex) {
+    if (i === inst.selectedIndex) {
       items[i]!.setAttribute('data-pkc-selected', 'true');
     } else {
       items[i]!.removeAttribute('data-pkc-selected');
@@ -216,11 +287,12 @@ function updateSelection(): void {
  * Filters commands based on text typed after `/`.
  */
 export function filterSlashMenu(query: string): void {
-  if (!activeMenu) return;
+  const inst = getActiveInstance();
+  if (!inst || !inst.menu) return;
   const q = query.toLowerCase();
-  filteredCommands = SLASH_COMMANDS.filter((cmd) => cmd.id.includes(q) || cmd.label.toLowerCase().includes(q));
-  selectedIndex = 0;
-  renderMenuItems();
+  inst.filteredCommands = SLASH_COMMANDS.filter((cmd) => cmd.id.includes(q) || cmd.label.toLowerCase().includes(q));
+  inst.selectedIndex = 0;
+  renderMenuItems(inst);
 }
 
 /**
@@ -228,7 +300,8 @@ export function filterSlashMenu(query: string): void {
  * Returns true if the event was consumed.
  */
 export function handleSlashMenuKeydown(e: KeyboardEvent): boolean {
-  if (!activeMenu || filteredCommands.length === 0) {
+  const inst = getActiveInstance();
+  if (!inst || !inst.menu || inst.filteredCommands.length === 0) {
     if (e.key === 'Escape') {
       closeSlashMenu();
       return true;
@@ -239,18 +312,18 @@ export function handleSlashMenuKeydown(e: KeyboardEvent): boolean {
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault();
-      selectedIndex = (selectedIndex + 1) % filteredCommands.length;
-      updateSelection();
+      inst.selectedIndex = (inst.selectedIndex + 1) % inst.filteredCommands.length;
+      updateSelection(inst);
       return true;
     case 'ArrowUp':
       e.preventDefault();
-      selectedIndex = (selectedIndex - 1 + filteredCommands.length) % filteredCommands.length;
-      updateSelection();
+      inst.selectedIndex = (inst.selectedIndex - 1 + inst.filteredCommands.length) % inst.filteredCommands.length;
+      updateSelection(inst);
       return true;
     case 'Enter':
     case 'Tab':
       e.preventDefault();
-      executeCommand(filteredCommands[selectedIndex]!);
+      executeCommand(inst, inst.filteredCommands[inst.selectedIndex]!);
       return true;
     case 'Escape':
       e.preventDefault();
@@ -261,21 +334,25 @@ export function handleSlashMenuKeydown(e: KeyboardEvent): boolean {
   }
 }
 
-function executeCommand(cmd: SlashCommand): void {
-  if (!activeTextarea || activeSlashPos < 0) return;
+function executeCommand(inst: ActiveSlashMenu, cmd: SlashCommand): void {
+  if (!inst.textarea || inst.slashPos < 0) return;
 
-  const textarea = activeTextarea;
+  const textarea = inst.textarea;
   const caretPos = textarea.selectionStart ?? textarea.value.length;
+  const slashPos = inst.slashPos;
+  // Preserve the root reference locally because closeSlashMenu clears
+  // the active instance below and `activeRoot` goes to null.
+  const root = activeRoot;
 
   // Commands with a custom handler (e.g. /asset) hand off to another UI.
   // Close the slash menu first, then invoke the callback. We preserve the
-  // textarea reference locally since closeSlashMenu clears module state.
+  // textarea reference locally since closeSlashMenu clears instance state.
   if (cmd.onSelect) {
     const ctx: SlashCommandContext = {
       textarea,
-      replaceStart: activeSlashPos,
+      replaceStart: slashPos,
       replaceEnd: caretPos,
-      root: activeRoot ?? textarea.ownerDocument.body,
+      root: root ?? textarea.ownerDocument.body,
     };
     closeSlashMenu();
     cmd.onSelect(ctx);
@@ -290,17 +367,17 @@ function executeCommand(cmd: SlashCommand): void {
   const text = typeof insert === 'function' ? insert() : insert;
 
   // Replace from slashPos to current caret (includes `/` and any typed filter)
-  const before = textarea.value.slice(0, activeSlashPos);
+  const before = textarea.value.slice(0, slashPos);
   const after = textarea.value.slice(caretPos);
   textarea.value = before + text + after;
 
   // Place cursor after inserted text
-  const newPos = activeSlashPos + text.length;
+  const newPos = slashPos + text.length;
   textarea.selectionStart = textarea.selectionEnd = newPos;
 
   // For code block, place cursor between the fences
   if (cmd.id === 'code') {
-    textarea.selectionStart = textarea.selectionEnd = activeSlashPos + 4; // after "```\n"
+    textarea.selectionStart = textarea.selectionEnd = slashPos + 4; // after "```\n"
   }
 
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -311,15 +388,23 @@ function executeCommand(cmd: SlashCommand): void {
 
 /**
  * Closes the slash menu if open.
+ *
+ * Only the currently-active instance is closed. Per-root instances
+ * that are not currently visible (because their menu was never opened
+ * or was closed earlier) are left alone — their state is already
+ * idle, and touching them would be a no-op anyway.
  */
 export function closeSlashMenu(): void {
-  if (activeMenu) {
-    activeMenu.remove();
-    activeMenu = null;
+  const inst = getActiveInstance();
+  if (inst) {
+    if (inst.menu) {
+      inst.menu.remove();
+      inst.menu = null;
+    }
+    inst.textarea = null;
+    inst.slashPos = -1;
+    inst.selectedIndex = 0;
+    inst.filteredCommands = [];
   }
-  activeTextarea = null;
-  activeSlashPos = -1;
   activeRoot = null;
-  selectedIndex = 0;
-  filteredCommands = [];
 }

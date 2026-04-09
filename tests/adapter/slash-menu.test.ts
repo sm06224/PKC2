@@ -424,3 +424,155 @@ describe('slash command onSelect', () => {
     expect(isSlashMenuOpen()).toBe(false);
   });
 });
+
+// ── Per-root isolation (WeakMap-scoped state) ──
+//
+// The slash menu used to stash its runtime state (`menu`, `textarea`,
+// `slashPos`, `selectedIndex`, `filteredCommands`) as module-level
+// `let`s — effectively a single global. Under a multi-root mount
+// (test harness, multi-embed) that global would leak across roots
+// and corrupt each other's open-state. The refactor introduced a
+// per-root WeakMap<HTMLElement, ActiveSlashMenu> + a single
+// `activeRoot` pointer, preserving the "at most one visible menu"
+// guarantee while fully isolating dormant state. These tests lock
+// that contract in.
+
+describe('slash menu per-root isolation', () => {
+  let rootA: HTMLElement;
+  let rootB: HTMLElement;
+  let taA: HTMLTextAreaElement;
+  let taB: HTMLTextAreaElement;
+
+  beforeEach(() => {
+    rootA = document.createElement('div');
+    rootA.id = 'pkc-root-a';
+    document.body.appendChild(rootA);
+
+    rootB = document.createElement('div');
+    rootB.id = 'pkc-root-b';
+    document.body.appendChild(rootB);
+
+    taA = document.createElement('textarea');
+    taA.setAttribute('data-pkc-field', 'body');
+    taA.value = '/';
+    taA.selectionStart = taA.selectionEnd = 1;
+    rootA.appendChild(taA);
+
+    taB = document.createElement('textarea');
+    taB.setAttribute('data-pkc-field', 'body');
+    taB.value = '/';
+    taB.selectionStart = taB.selectionEnd = 1;
+    rootB.appendChild(taB);
+  });
+
+  afterEach(() => {
+    closeSlashMenu();
+    rootA.remove();
+    rootB.remove();
+  });
+
+  it('opening the menu on rootB closes an open menu on rootA (single-visible invariant)', () => {
+    openSlashMenu(taA, 0, rootA);
+    expect(rootA.querySelector('[data-pkc-region="slash-menu"]')).not.toBeNull();
+
+    openSlashMenu(taB, 0, rootB);
+
+    // The prior menu on rootA must have been removed from the DOM.
+    expect(rootA.querySelector('[data-pkc-region="slash-menu"]')).toBeNull();
+    // The new menu on rootB is now visible.
+    expect(rootB.querySelector('[data-pkc-region="slash-menu"]')).not.toBeNull();
+    expect(isSlashMenuOpen()).toBe(true);
+  });
+
+  it('closeSlashMenu only clears the currently-active root, leaving dormant per-root state alone', () => {
+    // Open on rootA first, then close — this exercises rootA's
+    // per-root slot but leaves it dormant.
+    openSlashMenu(taA, 0, rootA);
+    closeSlashMenu();
+    expect(rootA.querySelector('[data-pkc-region="slash-menu"]')).toBeNull();
+    expect(isSlashMenuOpen()).toBe(false);
+
+    // Opening on rootB must not throw, and must not touch rootA.
+    openSlashMenu(taB, 0, rootB);
+    expect(rootB.querySelector('[data-pkc-region="slash-menu"]')).not.toBeNull();
+    expect(rootA.querySelector('[data-pkc-region="slash-menu"]')).toBeNull();
+  });
+
+  it('keyboard navigation operates on the currently-active root only', () => {
+    // Open on rootA, advance selection with ArrowDown.
+    openSlashMenu(taA, 0, rootA);
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    const aSelected = rootA.querySelector('[data-pkc-selected="true"]');
+    expect(aSelected?.getAttribute('data-pkc-slash-id')).toBe('time');
+
+    // Switch focus to rootB — now only rootB's selection should move.
+    openSlashMenu(taB, 0, rootB);
+    // Fresh open → selection is back at the first item.
+    let bSelected = rootB.querySelector('[data-pkc-selected="true"]');
+    expect(bSelected?.getAttribute('data-pkc-slash-id')).toBe('date');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    bSelected = rootB.querySelector('[data-pkc-selected="true"]');
+    expect(bSelected?.getAttribute('data-pkc-slash-id')).toBe('time');
+
+    // rootA is no longer the active root; its DOM menu is gone.
+    expect(rootA.querySelector('[data-pkc-region="slash-menu"]')).toBeNull();
+  });
+
+  it('filterSlashMenu targets the active root, not a previously-opened one', () => {
+    openSlashMenu(taA, 0, rootA);
+    // Close, then open a new menu on rootB.
+    closeSlashMenu();
+    openSlashMenu(taB, 0, rootB);
+
+    filterSlashMenu('da');
+    // Filter applied to rootB (2 matches: date, datetime).
+    const bItems = rootB.querySelectorAll('.pkc-slash-menu-item');
+    expect(bItems.length).toBe(2);
+    // rootA is empty.
+    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(0);
+  });
+
+  it('executing Enter on the rootB menu inserts into taB and leaves taA untouched', () => {
+    // Open on rootA, then switch to rootB (closes A).
+    openSlashMenu(taA, 0, rootA);
+    openSlashMenu(taB, 0, rootB);
+    filterSlashMenu('list');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    // taB got the insertion.
+    expect(taB.value).toBe('- ');
+    // taA is untouched.
+    expect(taA.value).toBe('/');
+    // Menu closed.
+    expect(isSlashMenuOpen()).toBe(false);
+  });
+
+  it('opens again on the same root after a close without leaking prior filter state', () => {
+    // Open → filter → close on rootA. A bug in the old global model
+    // could leave `filteredCommands` stale on reopen.
+    openSlashMenu(taA, 0, rootA);
+    filterSlashMenu('da');
+    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(2);
+    closeSlashMenu();
+
+    // Reopen — must show the full command list.
+    openSlashMenu(taA, 0, rootA);
+    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(SLASH_COMMANDS.length);
+  });
+
+  it('isSlashMenuOpen reflects only the currently-visible menu, not any dormant per-root state', () => {
+    expect(isSlashMenuOpen()).toBe(false);
+
+    openSlashMenu(taA, 0, rootA);
+    expect(isSlashMenuOpen()).toBe(true);
+
+    // Switching active root does not double-count — still "one menu visible".
+    openSlashMenu(taB, 0, rootB);
+    expect(isSlashMenuOpen()).toBe(true);
+    expect(document.querySelectorAll('[data-pkc-region="slash-menu"]').length).toBe(1);
+
+    closeSlashMenu();
+    expect(isSlashMenuOpen()).toBe(false);
+    expect(document.querySelectorAll('[data-pkc-region="slash-menu"]').length).toBe(0);
+  });
+});
