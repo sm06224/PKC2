@@ -17,6 +17,7 @@ import {
   restoreEntry,
   restoreDeletedEntry,
   mergeAssets,
+  purgeTrash,
 } from '../../core/operations/container-ops';
 
 /**
@@ -74,6 +75,8 @@ export interface AppState {
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */
   calendarMonth: number;
+  /** Multi-selection: additional selected entry lids (Ctrl/Shift+click). Runtime-only. */
+  multiSelectedLids: string[];
 }
 
 /**
@@ -108,7 +111,15 @@ export function createInitialState(): AppState {
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth() + 1,
+    multiSelectedLids: [],
   };
+}
+
+/** Get all selected lids (primary + multi). */
+export function getAllSelected(state: AppState): string[] {
+  const set = new Set(state.multiSelectedLids);
+  if (state.selectedLid) set.add(state.selectedLid);
+  return Array.from(set);
 }
 
 /**
@@ -169,7 +180,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
 function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SELECT_ENTRY': {
-      const next: AppState = { ...state, selectedLid: action.lid };
+      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: [] };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
     }
     case 'DESELECT_ENTRY': {
@@ -458,6 +469,97 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: next,
         events: [{ type: 'CONTAINER_REHYDRATED', old_cid: oldCid, new_cid: newCid }],
       };
+    }
+    case 'PURGE_TRASH': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const result = purgeTrash(state.container);
+      if (result.purgedCount === 0) return blocked(state, action);
+      const next: AppState = { ...state, container: result.container };
+      return { state: next, events: [{ type: 'TRASH_PURGED', count: result.purgedCount }] };
+    }
+    case 'TOGGLE_MULTI_SELECT': {
+      const lids = [...state.multiSelectedLids];
+      const idx = lids.indexOf(action.lid);
+      if (idx >= 0) {
+        lids.splice(idx, 1);
+      } else {
+        lids.push(action.lid);
+      }
+      // Also include current selectedLid if not already
+      if (state.selectedLid && !lids.includes(state.selectedLid)) {
+        lids.unshift(state.selectedLid);
+      }
+      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: lids };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids }] };
+    }
+    case 'SELECT_RANGE': {
+      if (!state.container) return blocked(state, action);
+      const entries = state.container.entries;
+      const anchorIdx = entries.findIndex((e) => e.lid === state.selectedLid);
+      const targetIdx = entries.findIndex((e) => e.lid === action.lid);
+      if (anchorIdx < 0 || targetIdx < 0) return blocked(state, action);
+      const from = Math.min(anchorIdx, targetIdx);
+      const to = Math.max(anchorIdx, targetIdx);
+      const lids = entries.slice(from, to + 1).map((e) => e.lid);
+      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: lids };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids }] };
+    }
+    case 'CLEAR_MULTI_SELECT': {
+      const next: AppState = { ...state, multiSelectedLids: [] };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: [] }] };
+    }
+    case 'BULK_DELETE': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const allSelected = getAllSelected(state);
+      if (allSelected.length === 0) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      for (const lid of allSelected) {
+        const revId = generateLid();
+        container = snapshotEntry(container, lid, revId, ts);
+        container = removeEntry(container, lid);
+      }
+      const next: AppState = { ...state, container, selectedLid: null, multiSelectedLids: [] };
+      return { state: next, events: [{ type: 'BULK_DELETED', lids: allSelected }] };
+    }
+    case 'BULK_MOVE_TO_FOLDER': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const selected = getAllSelected(state);
+      if (selected.length === 0) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      for (const lid of selected) {
+        // Remove existing structural parent relations
+        for (const r of container.relations) {
+          if (r.kind === 'structural' && r.to === lid) {
+            container = removeRelation(container, r.id);
+          }
+        }
+        // Add new structural relation to target folder
+        const relId = generateLid();
+        container = addRelation(container, relId, action.folderLid, lid, 'structural', ts);
+      }
+      const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
+    }
+    case 'BULK_MOVE_TO_ROOT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const selected = getAllSelected(state);
+      if (selected.length === 0) return blocked(state, action);
+      let container = state.container;
+      for (const lid of selected) {
+        for (const r of container.relations) {
+          if (r.kind === 'structural' && r.to === lid) {
+            container = removeRelation(container, r.id);
+          }
+        }
+      }
+      const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
     }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };

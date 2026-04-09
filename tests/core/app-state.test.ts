@@ -1204,4 +1204,107 @@ describe('sort', () => {
     const { state } = reduce(detail, { type: 'BEGIN_EDIT', lid: 'e1' });
     expect(state.viewMode).toBe('detail');
   });
+
+  // ── Multi-select ──────────────────────────
+
+  it('SELECT_ENTRY clears multiSelectedLids', () => {
+    const ms: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };
+    const { state } = reduce(ms, { type: 'SELECT_ENTRY', lid: 'e2' });
+    expect(state.selectedLid).toBe('e2');
+    expect(state.multiSelectedLids).toEqual([]);
+  });
+
+  it('TOGGLE_MULTI_SELECT adds lid and includes anchor', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: [] };
+    const { state } = reduce(s, { type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    expect(state.selectedLid).toBe('e2');
+    expect(state.multiSelectedLids).toContain('e1');
+    expect(state.multiSelectedLids).toContain('e2');
+  });
+
+  it('TOGGLE_MULTI_SELECT removes lid when already selected', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };
+    const { state } = reduce(s, { type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    expect(state.multiSelectedLids).not.toContain('e2');
+    expect(state.multiSelectedLids).toContain('e1');
+  });
+
+  it('SELECT_RANGE selects contiguous range', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: [] };
+    const { state } = reduce(s, { type: 'SELECT_RANGE', lid: 'e3' });
+    expect(state.multiSelectedLids).toEqual(['e1', 'e2', 'e3']);
+    expect(state.selectedLid).toBe('e3');
+  });
+
+  it('CLEAR_MULTI_SELECT empties multiSelectedLids', () => {
+    const s: AppState = { ...readyState(), multiSelectedLids: ['e1', 'e2'] };
+    const { state } = reduce(s, { type: 'CLEAR_MULTI_SELECT' });
+    expect(state.multiSelectedLids).toEqual([]);
+  });
+
+  it('BULK_DELETE removes all selected entries', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };
+    const { state, events } = reduce(s, { type: 'BULK_DELETE' });
+    expect(state.container!.entries.map(e => e.lid)).toEqual(['e3']);
+    expect(state.selectedLid).toBeNull();
+    expect(state.multiSelectedLids).toEqual([]);
+    expect(events[0]!.type).toBe('BULK_DELETED');
+  });
+
+  it('BULK_MOVE_TO_FOLDER creates structural relations', () => {
+    // Add a folder
+    const withFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'f1', title: 'Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: withFolder, selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };
+    const { state } = reduce(s, { type: 'BULK_MOVE_TO_FOLDER', folderLid: 'f1' });
+    const structRels = state.container!.relations.filter(r => r.kind === 'structural');
+    expect(structRels).toHaveLength(2);
+    expect(structRels.map(r => r.to).sort()).toEqual(['e1', 'e2']);
+    expect(structRels.every(r => r.from === 'f1')).toBe(true);
+    expect(state.multiSelectedLids).toEqual([]);
+  });
+
+  it('BULK_MOVE_TO_ROOT removes structural relations', () => {
+    const withRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'f1', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'f1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: withRels, selectedLid: 'e1', multiSelectedLids: ['e1', 'e2'] };
+    const { state } = reduce(s, { type: 'BULK_MOVE_TO_ROOT' });
+    expect(state.container!.relations).toHaveLength(0);
+    expect(state.multiSelectedLids).toEqual([]);
+  });
+
+  // ── Purge Trash ───────────────────────────
+
+  it('PURGE_TRASH removes revisions for deleted entries', () => {
+    const withDeleted: Container = {
+      ...mockContainer,
+      entries: [mockContainer.entries[0]!], // only e1 remains
+      revisions: [
+        { id: 'rev-1', entry_lid: 'e1', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'rev-2', entry_lid: 'e2', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' }, // deleted
+        { id: 'rev-3', entry_lid: 'e3', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' }, // deleted
+      ],
+    };
+    const s: AppState = { ...readyState(), container: withDeleted };
+    const { state, events } = reduce(s, { type: 'PURGE_TRASH' });
+    expect(state.container!.revisions).toHaveLength(1);
+    expect(state.container!.revisions[0]!.entry_lid).toBe('e1');
+    expect(events[0]!.type).toBe('TRASH_PURGED');
+  });
+
+  it('PURGE_TRASH is blocked when no deleted entries', () => {
+    const s = readyState();
+    const { state } = reduce(s, { type: 'PURGE_TRASH' });
+    expect(state).toBe(s); // no change
+  });
 });

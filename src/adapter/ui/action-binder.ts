@@ -35,18 +35,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const lid = target.getAttribute('data-pkc-lid') ?? undefined;
 
     switch (action) {
-      case 'select-entry':
+      case 'select-entry': {
         if (!lid) break;
+        const me = e as MouseEvent;
         // Double-click detection via MouseEvent.detail.
         // Normal dblclick event is unreliable because SELECT_ENTRY triggers
         // synchronous re-render, removing the target element from DOM before
         // the dblclick event can bubble to the delegated listener on root.
-        if ((e as MouseEvent).detail >= 2) {
+        if (me.detail >= 2) {
           handleDblClickAction(target, lid);
+        } else if (me.ctrlKey || me.metaKey) {
+          dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
+        } else if (me.shiftKey) {
+          dispatcher.dispatch({ type: 'SELECT_RANGE', lid });
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
+      }
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
         break;
@@ -104,6 +110,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'purge-trash': {
+        if (!confirm('ゴミ箱を空にしますか？\n削除済みエントリの全履歴が完全に削除され、復元できなくなります。')) break;
+        dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        break;
+      }
+      case 'bulk-delete': {
+        const st = dispatcher.getState();
+        const count = st.multiSelectedLids.length;
+        if (count === 0) break;
+        if (!confirm(`${count}件のエントリを削除しますか？`)) break;
+        dispatcher.dispatch({ type: 'BULK_DELETE' });
+        break;
+      }
+      case 'clear-multi-select':
+        dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+        break;
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
         break;
@@ -327,6 +349,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const key = (keyEl?.value ?? state.sortKey) as SortKey;
       const direction = (dirEl?.value ?? state.sortDirection) as SortDirection;
       dispatcher.dispatch({ type: 'SET_SORT', key, direction });
+    }
+
+    // Bulk move via select dropdown
+    const action = target.getAttribute('data-pkc-action');
+    if (action === 'bulk-move-select') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      if (val === '__root__') {
+        dispatcher.dispatch({ type: 'BULK_MOVE_TO_ROOT' });
+      } else {
+        dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
+      }
     }
   }
 

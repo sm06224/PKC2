@@ -303,6 +303,28 @@ export function getRestoreCandidates(container: Container): Revision[] {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+/**
+ * Purge trash: permanently remove all revisions for deleted entries.
+ * Returns the new container and the count of purged revision records.
+ */
+export function purgeTrash(container: Container): { container: Container; purgedCount: number } {
+  const activeLids = new Set(container.entries.map((e) => e.lid));
+  const kept: typeof container.revisions = [];
+  let purgedCount = 0;
+  for (const rev of container.revisions) {
+    if (activeLids.has(rev.entry_lid)) {
+      kept.push(rev);
+    } else {
+      purgedCount++;
+    }
+  }
+  if (purgedCount === 0) return { container, purgedCount: 0 };
+  return {
+    container: { ...container, revisions: kept },
+    purgedCount,
+  };
+}
+
 // ── Restore operations ─────────────────────────
 
 /**

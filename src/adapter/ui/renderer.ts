@@ -498,8 +498,58 @@ function renderSidebar(state: AppState): HTMLElement {
       '<span>Drag to move</span>',
       '<span>Double-click to open</span>',
       '<span>Right-click for menu</span>',
+      '<span>Ctrl+click to multi-select</span>',
     ].join(' · ');
     sidebar.appendChild(hints);
+  }
+
+  // Multi-selection action bar
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    const bar = createElement('div', 'pkc-multi-action-bar');
+    bar.setAttribute('data-pkc-region', 'multi-action-bar');
+
+    const info = createElement('span', 'pkc-multi-action-info');
+    info.textContent = `${state.multiSelectedLids.length} selected`;
+    bar.appendChild(info);
+
+    const deleteBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+    deleteBtn.setAttribute('data-pkc-action', 'bulk-delete');
+    deleteBtn.textContent = 'Delete';
+    bar.appendChild(deleteBtn);
+
+    // Folder move targets
+    if (state.container) {
+      const folders = state.container.entries.filter((e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid));
+      if (folders.length > 0) {
+        const moveSelect = document.createElement('select');
+        moveSelect.className = 'pkc-multi-action-move';
+        moveSelect.setAttribute('data-pkc-action', 'bulk-move-select');
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Move to...';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        moveSelect.appendChild(placeholder);
+        const rootOpt = document.createElement('option');
+        rootOpt.value = '__root__';
+        rootOpt.textContent = '/ (Root)';
+        moveSelect.appendChild(rootOpt);
+        for (const f of folders) {
+          const opt = document.createElement('option');
+          opt.value = f.lid;
+          opt.textContent = `📁 ${f.title || '(untitled)'}`;
+          moveSelect.appendChild(opt);
+        }
+        bar.appendChild(moveSelect);
+      }
+    }
+
+    const clearBtn = createElement('button', 'pkc-btn-small');
+    clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
+    clearBtn.textContent = 'Clear';
+    bar.appendChild(clearBtn);
+
+    sidebar.appendChild(bar);
   }
 
   // Restore candidates (deleted entries with revisions) — collapsible, closed by default
@@ -514,6 +564,15 @@ function renderSidebar(state: AppState): HTMLElement {
       summary.className = 'pkc-restore-heading';
       summary.textContent = `🗑️ Deleted (${candidates.length})`;
       details.appendChild(summary);
+
+      // Empty Trash button
+      if (!state.readonly) {
+        const purgeBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+        purgeBtn.setAttribute('data-pkc-action', 'purge-trash');
+        purgeBtn.setAttribute('title', 'Permanently delete all items in trash');
+        purgeBtn.textContent = 'Empty Trash';
+        details.appendChild(purgeBtn);
+      }
 
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
@@ -586,6 +645,9 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
 
   if (entry.lid === state.selectedLid) {
     li.setAttribute('data-pkc-selected', 'true');
+  }
+  if (state.multiSelectedLids.includes(entry.lid)) {
+    li.setAttribute('data-pkc-multi-selected', 'true');
   }
 
   const title = createElement('span', 'pkc-entry-title');
