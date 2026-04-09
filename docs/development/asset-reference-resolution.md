@@ -244,10 +244,12 @@ Captured here so the next iteration has a clear entry point.
 
 1. **Asset picker from the editor.** A small toolbar or slash command
    that lists attachment entries in the current container and inserts
-   `![filename](asset:key)` at the cursor.
+   `![filename](asset:key)` at the cursor. *(Resolved — see
+   `asset-picker-foundation.md`.)*
 2. **Editor autocomplete on `asset:`.** Typing `asset:` inside an
    editor should suggest known keys (by filename) using the same
-   `mimeByKey` index.
+   `mimeByKey` index. *(Resolved — see
+   `asset-autocomplete-foundation.md`.)*
 3. **Hover-over thumbnail in the editor.** For referenced keys in edit
    mode, show a resolved preview in a popover without switching to
    view mode.

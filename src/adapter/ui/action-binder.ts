@@ -38,6 +38,14 @@ import {
   isAssetPickerOpen,
   openAssetPicker,
 } from './asset-picker';
+import {
+  closeAssetAutocomplete,
+  findAssetCompletionContext,
+  handleAssetAutocompleteKeydown,
+  isAssetAutocompleteOpen,
+  openAssetAutocomplete,
+  updateAssetAutocompleteQuery,
+} from './asset-autocomplete';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -461,6 +469,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (isAssetPickerOpen()) {
       if (handleAssetPickerKeydown(e)) return;
     }
+    // Asset autocomplete (free-typing `asset:` completion) intercepts
+    // navigation keys before slash menu / global shortcuts.
+    if (isAssetAutocompleteOpen()) {
+      if (handleAssetAutocompleteKeydown(e)) return;
+    }
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
@@ -514,6 +527,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Close asset picker if open (handled above via handleAssetPickerKeydown, safety net)
       if (isAssetPickerOpen()) {
         closeAssetPicker();
+        return;
+      }
+      // Close asset autocomplete if open (handled above, safety net)
+      if (isAssetAutocompleteOpen()) {
+        closeAssetAutocomplete();
         return;
       }
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
@@ -576,6 +594,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
       } else if (shouldOpenSlashMenu(text, caretPos)) {
         openSlashMenu(target, caretPos - 1, root);
+      }
+
+      // Asset autocomplete — fires when the caret is inside `(asset:<query>`.
+      // Skipped while the slash menu is open so `/asset` keeps working
+      // through the explicit picker hand-off path.
+      if (!isSlashMenuOpen()) {
+        const ctx = findAssetCompletionContext(text, caretPos);
+        if (ctx) {
+          if (isAssetAutocompleteOpen()) {
+            updateAssetAutocompleteQuery(ctx.query);
+          } else {
+            const candidates = collectImageAssets(dispatcher.getState().container);
+            openAssetAutocomplete(target, ctx.queryStart, ctx.query, candidates, root);
+          }
+        } else if (isAssetAutocompleteOpen()) {
+          closeAssetAutocomplete();
+        }
       }
     }
   }
@@ -1002,6 +1037,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeAssetPicker();
       }
     }
+    // Close asset autocomplete on click outside
+    if (isAssetAutocompleteOpen()) {
+      const ac = root.querySelector('[data-pkc-region="asset-autocomplete"]');
+      if (!ac || !ac.contains(e.target as Node)) {
+        closeAssetAutocomplete();
+      }
+    }
 
     const menu = root.querySelector('[data-pkc-region="context-menu"]');
     if (!menu) return;
@@ -1268,6 +1310,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     clearAllDragState();
     closeSlashMenu();
     closeAssetPicker();
+    closeAssetAutocomplete();
     registerAssetPickerCallback(null);
   };
 }
