@@ -809,6 +809,40 @@
   display: block;
 }
 
+/* ── Non-image asset chips ──
+   Rendered by the asset resolver when the markdown source contains a
+   `[label](asset:key)` reference to a PDF / audio / video / archive /
+   other attachment. The resolver rewrites the href to `#asset-<key>`
+   which the action-binder intercepts to trigger a download. Styled as
+   a compact pill so it stands out from inline prose links without
+   needing extra HTML. */
+.pkc-md-rendered a[href^="#asset-"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.1em 0.55em;
+  margin: 0 0.15em;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  color: var(--c-text);
+  text-decoration: none;
+  font-size: 0.9em;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pkc-md-rendered a[href^="#asset-"]:hover {
+  background: var(--c-bg-hover, var(--c-bg));
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+  opacity: 1;
+}
+.pkc-md-rendered a[href^="#asset-"]:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
 /* ── Editor mode ── */
 .pkc-editor {
   max-width: 720px;

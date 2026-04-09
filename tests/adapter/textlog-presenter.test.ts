@@ -194,6 +194,97 @@ describe('textlog renderBody', () => {
     expect(important!.querySelector('.pkc-textlog-flag-btn')).not.toBeNull();
     expect(important!.querySelector('.pkc-textlog-text')).not.toBeNull();
   });
+
+  // ── Non-image asset chip rendering in log entries ──
+
+  it('renders a non-image asset link form as a chip inside a log entry', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-pdf',
+          text: 'attached [the report](asset:ast-pdf-001)',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-pdf-001': 'PDFdata' },
+      { 'ast-pdf-001': 'application/pdf' },
+      { 'ast-pdf-001': 'report.pdf' },
+    );
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.innerHTML).toContain('href="#asset-ast-pdf-001"');
+    expect(row!.innerHTML).toContain('📄');
+    expect(row!.innerHTML).toContain('the report');
+  });
+
+  it('uses attachment name as label fallback when link text is empty', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-empty',
+          text: '[](asset:ast-aud-001)',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-aud-001': 'AUDdata' },
+      { 'ast-aud-001': 'audio/mpeg' },
+      { 'ast-aud-001': 'jingle.mp3' },
+    );
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.innerHTML).toContain('href="#asset-ast-aud-001"');
+    expect(row!.innerHTML).toContain('jingle.mp3');
+  });
+
+  it('shows missing marker for unknown asset link in a log entry', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-miss',
+          text: 'see [gone](asset:ast-lost-001)',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderBody(makeEntry(body), {}, {});
+    const row = el.querySelector('.pkc-textlog-text');
+    expect(row!.innerHTML).toContain('missing asset');
+    expect(row!.innerHTML).not.toContain('#asset-ast-lost-001');
+  });
+
+  it('only rewrites the log entry that contains an asset link', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-plain',
+          text: 'just plain text',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+        {
+          id: 'log-asset',
+          text: '[bundle](asset:ast-zip-001)',
+          createdAt: '2026-04-09T11:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderBody(
+      makeEntry(body),
+      { 'ast-zip-001': 'ZIPdata' },
+      { 'ast-zip-001': 'application/zip' },
+    );
+    const rows = el.querySelectorAll('.pkc-textlog-text');
+    expect(rows[0]!.textContent).toBe('just plain text');
+    expect(rows[1]!.innerHTML).toContain('#asset-ast-zip-001');
+  });
 });
 
 // ── renderEditorBody ──

@@ -13,9 +13,12 @@ import { resolveAssetReferences, hasAssetReferences } from '../../features/markd
  * so they belong in adapter/ui, not in core or features.
  *
  * The optional `mimeByKey` parameter is used by text-like presenters
- * (text, textlog) to resolve `![alt](asset:key)` references against the
- * container's attachment metadata. Presenters that don't render markdown
- * (todo, form, folder, attachment itself) can ignore it.
+ * (text, textlog) to resolve `![alt](asset:key)` image embeds against
+ * the container's attachment metadata. The optional `nameByKey`
+ * parameter is used by the same presenters to give non-image asset
+ * chips (`[label](asset:key)`) a human-readable fallback label when
+ * the user-supplied label is empty. Presenters that don't render
+ * markdown (todo, form, folder, attachment itself) can ignore them.
  */
 export interface DetailPresenter {
   /**
@@ -23,11 +26,13 @@ export interface DetailPresenter {
    * @param entry       The entry to render.
    * @param assets      Container asset store (asset_key → base64). Used by attachment presenter and by markdown asset resolution.
    * @param mimeByKey   Map of asset_key → MIME, built from attachment entries. Used by markdown asset resolution.
+   * @param nameByKey   Map of asset_key → attachment name. Used by markdown asset resolution to label non-image chips when the user omits a link label.
    */
   renderBody(
     entry: Entry,
     assets?: Record<string, string>,
-    mimeByKey?: Record<string, string>
+    mimeByKey?: Record<string, string>,
+    nameByKey?: Record<string, string>
   ): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
@@ -38,7 +43,12 @@ export interface DetailPresenter {
 // ── Default presenter (text) ──────────────────────────
 
 const textPresenter: DetailPresenter = {
-  renderBody(entry: Entry, assets?: Record<string, string>, mimeByKey?: Record<string, string>): HTMLElement {
+  renderBody(
+    entry: Entry,
+    assets?: Record<string, string>,
+    mimeByKey?: Record<string, string>,
+    nameByKey?: Record<string, string>,
+  ): HTMLElement {
     if (!entry.body) {
       const body = document.createElement('pre');
       body.className = 'pkc-view-body';
@@ -46,10 +56,11 @@ const textPresenter: DetailPresenter = {
       return body;
     }
 
-    // Resolve `asset:` image references before markdown rendering.
+    // Resolve `asset:` references (both image embeds and non-image chips)
+    // before markdown rendering.
     let source = entry.body;
     if (assets && mimeByKey && hasAssetReferences(source)) {
-      source = resolveAssetReferences(source, { assets, mimeByKey });
+      source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
     }
 
     // Render as markdown if the body contains markdown syntax

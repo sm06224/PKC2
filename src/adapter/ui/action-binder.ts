@@ -86,6 +86,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Non-image asset chip: markdown `[label](asset:key)` is rewritten
+    // to a `<a href="#asset-KEY">` link by the asset resolver. Intercept
+    // the click here and trigger a download of the underlying asset
+    // instead of navigating to the fragment. Done before the generic
+    // `[data-pkc-action]` dispatch so the anchor does not need a
+    // special attribute.
+    const assetLink = rawTarget?.closest<HTMLAnchorElement>('a[href^="#asset-"]');
+    if (assetLink && root.contains(assetLink)) {
+      e.preventDefault();
+      const href = assetLink.getAttribute('href') ?? '';
+      const key = href.slice('#asset-'.length);
+      if (key) downloadAttachmentByAssetKey(key, dispatcher);
+      return;
+    }
+
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
     if (!target) return;
 
@@ -1389,6 +1404,31 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 100);
+}
+
+/**
+ * Download the attachment whose `asset_key` matches the given key.
+ *
+ * Used by the non-image asset chip click handler. The chip's anchor
+ * carries `href="#asset-<asset_key>"`; on click, we look up the
+ * attachment entry that produced that key and delegate to the regular
+ * `downloadAttachment` path so Blob URL lifecycle stays identical.
+ *
+ * No-op if no attachment entry with that key exists (e.g. the chip
+ * was left over from a container where the asset was removed).
+ */
+function downloadAttachmentByAssetKey(assetKey: string, dispatcher: Dispatcher): void {
+  const state = dispatcher.getState();
+  const container = state.container;
+  if (!container) return;
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key === assetKey) {
+      downloadAttachment(entry.lid, dispatcher);
+      return;
+    }
+  }
 }
 
 /**

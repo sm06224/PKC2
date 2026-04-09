@@ -540,6 +540,84 @@ describe('attachment download button', () => {
   });
 });
 
+// ── Non-image asset chip click interception ──
+
+describe('non-image asset chip clicks', () => {
+  it('intercepts click on [href^="#asset-"] and triggers attachment download', () => {
+    registerPresenter('attachment', attachmentPresenter);
+
+    const attContainer: Container = {
+      meta: { ...mockContainer.meta },
+      entries: [{
+        lid: 'att-pdf',
+        title: 'Report',
+        body: JSON.stringify({
+          name: 'report.pdf',
+          mime: 'application/pdf',
+          size: 1234,
+          asset_key: 'ast-pdf-chip-001',
+        }),
+        archetype: 'attachment',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }],
+      relations: [],
+      revisions: [],
+      assets: { 'ast-pdf-chip-001': 'JVBERi0xLjQK' },
+    };
+
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: attContainer });
+    render(dispatcher.getState(), root);
+
+    // Spy on Blob URL creation so we can see that the download path ran.
+    const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+    cleanup = bindActions(root, dispatcher);
+
+    // Stand up a chip anchor inside `root` — the shape the resolver emits.
+    const chip = document.createElement('a');
+    chip.setAttribute('href', '#asset-ast-pdf-chip-001');
+    chip.textContent = '📄 report.pdf';
+    root.appendChild(chip);
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    chip.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(createSpy).toHaveBeenCalledTimes(1);
+
+    createSpy.mockRestore();
+    revokeSpy.mockRestore();
+  });
+
+  it('no-ops gracefully when the referenced asset key does not exist', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+
+    const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+
+    cleanup = bindActions(root, dispatcher);
+
+    const chip = document.createElement('a');
+    chip.setAttribute('href', '#asset-ast-nope-001');
+    chip.textContent = '📎 nope';
+    root.appendChild(chip);
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    chip.dispatchEvent(clickEvent);
+
+    // Click is still consumed (we own the fragment URL scheme), but no
+    // download is triggered because there is no matching attachment.
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(createSpy).not.toHaveBeenCalled();
+
+    createSpy.mockRestore();
+  });
+});
+
 // ── Date/Time shortcuts ──
 
 describe('Date/Time shortcuts', () => {
