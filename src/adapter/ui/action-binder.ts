@@ -245,16 +245,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'append-log-entry': {
         if (!lid) break;
-        const st = dispatcher.getState();
-        if (st.readonly) break;
-        const ent = st.container?.entries.find((e) => e.lid === lid);
-        if (!ent || ent.archetype !== 'textlog') break;
-        const inputEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-append-text"]');
-        const text = inputEl?.value?.trim();
-        if (!text) break;
-        const log = parseTextlogBody(ent.body);
-        const updated = serializeTextlogBody(appendLogEntry(log, text));
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        performTextlogAppend(lid);
         break;
       }
       case 'toggle-log-flag': {
@@ -429,6 +420,41 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  /**
+   * Append a new log entry to a textlog from the inline append textarea,
+   * then refocus the fresh textarea so the user can continue writing.
+   *
+   * Shared by the append button (`append-log-entry` action) and the
+   * Ctrl/Cmd+Enter keyboard shortcut on the append textarea. Keeping the
+   * logic in one place ensures both paths behave identically — including
+   * focus retention across the synchronous re-render.
+   */
+  function performTextlogAppend(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'textlog') return;
+    const inputEl = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="textlog-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    const text = inputEl?.value?.trim();
+    if (!text) return;
+    const log = parseTextlogBody(ent.body);
+    const updated = serializeTextlogBody(appendLogEntry(log, text));
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+
+    // Restore focus on the new append textarea (the render listener has
+    // already replaced the DOM synchronously by this point). This preserves
+    // append-centric UX so the user can keep logging without re-clicking.
+    const newInput = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="textlog-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    if (newInput) {
+      newInput.value = '';
+      newInput.focus();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     // Asset picker takes priority over slash menu when open (it replaces the
     // slash menu at the same trigger point).
@@ -442,6 +468,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     const state = dispatcher.getState();
     const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl+Enter / Cmd+Enter in TEXTLOG append textarea: append log entry.
+    // Plain Enter is intentionally left alone so multiline input still works.
+    if (
+      mod
+      && e.key === 'Enter'
+      && e.target instanceof HTMLTextAreaElement
+      && e.target.getAttribute('data-pkc-field') === 'textlog-append-text'
+    ) {
+      const lid = e.target.getAttribute('data-pkc-lid');
+      if (lid) {
+        e.preventDefault();
+        performTextlogAppend(lid);
+        return;
+      }
+    }
 
     // Ctrl+S / Cmd+S: save in editing mode
     if (mod && e.key === 's' && state.phase === 'editing' && state.editingLid) {

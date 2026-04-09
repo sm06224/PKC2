@@ -96,10 +96,16 @@ that supports multiple block types. However:
 
 ## Not implemented (future scope)
 
-- Attachment embedding within log entries
+- Attachment embedding within log entries beyond `asset:` references
 - Rich block editor
 - Entry reordering / drag
 - Advanced filtering (by flag, date range)
 - Export as standalone timeline
 - Nested/threaded entries
 - COMPLEX archetype integration
+
+## See also
+
+- `textlog-polish.md` — first polish pass: `Ctrl+Enter` append, focus
+  retention, stronger important visibility, empty-state guidance,
+  timestamp tooltip, and markdown/asset compatibility tests.

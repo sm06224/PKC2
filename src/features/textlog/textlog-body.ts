@@ -7,6 +7,8 @@
  * No browser APIs — features layer.
  */
 
+import { formatDate } from '../datetime/datetime-format';
+
 export type TextlogFlag = 'important';
 
 export interface TextlogEntry {
@@ -102,14 +104,16 @@ export function deleteLogEntry(body: TextlogBody, entryId: string): TextlogBody 
 
 /**
  * Format a timestamp for display.
- * Shows date + time in a compact form.
+ * Shows date + localized weekday + HH:mm. The date portion is produced
+ * by the shared `formatDate` helper so log timestamps match the rest of
+ * the app's date formatting conventions.
  */
 export function formatLogTimestamp(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const day = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 let logIdCounter = 0;
