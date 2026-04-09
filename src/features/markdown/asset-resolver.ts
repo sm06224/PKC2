@@ -229,6 +229,53 @@ export function hasAssetReferences(markdown: string): boolean {
 }
 
 /**
+ * Extract the deduplicated set of asset keys referenced by a
+ * markdown source. Recognises both reference forms:
+ *
+ *   - `![alt](asset:key)`        — image embed
+ *   - `[label](asset:key)`       — non-image chip / link
+ *
+ * Returns an empty `Set` when the input is empty or contains no
+ * references. The returned set is deduplicated — a key that appears
+ * in multiple references shows up exactly once.
+ *
+ * Unlike `hasAssetReferences` (a boolean presence check), this
+ * helper walks the source and materialises the full key set. It is
+ * the right primitive for callers that need to know WHICH assets
+ * are referenced — e.g. the orphan asset scanner in
+ * `features/asset/asset-scan.ts`.
+ *
+ * Note on missing / unsupported keys: every syntactically valid
+ * `asset:` reference is collected, regardless of whether the key
+ * exists in the caller's `container.assets` or whether the MIME is
+ * in the image allowlist. This helper answers "what did the user
+ * WRITE" — downstream consumers can decide whether to treat a
+ * referenced-but-absent key as a broken reference, an orphan
+ * filter miss, or neither.
+ *
+ * Pure function — no mutation, no shared state. Uses `matchAll`
+ * which internally clones the source regex, so it is safe to reuse
+ * the module-level `ASSET_IMAGE_RE` / `ASSET_LINK_RE` constants.
+ */
+export function extractAssetReferences(markdown: string): Set<string> {
+  const refs = new Set<string>();
+  if (!markdown) return refs;
+  // Image form: `![alt](asset:key)`. Group 2 is the key.
+  for (const m of markdown.matchAll(ASSET_IMAGE_RE)) {
+    const key = m[2];
+    if (typeof key === 'string' && key.length > 0) refs.add(key);
+  }
+  // Link form: `[label](asset:key)` (not preceded by `!`). Group 3
+  // is the key in `ASSET_LINK_RE` because group 1 captures the
+  // leading non-`!` character and group 2 captures the label.
+  for (const m of markdown.matchAll(ASSET_LINK_RE)) {
+    const key = m[3];
+    if (typeof key === 'string' && key.length > 0) refs.add(key);
+  }
+  return refs;
+}
+
+/**
  * Pick the label to show inside a non-image chip. Preference order:
  *
  *   1. The markdown link's own label text (user-authored).

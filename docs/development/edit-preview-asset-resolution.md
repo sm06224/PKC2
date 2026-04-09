@@ -1525,6 +1525,262 @@ window の view pane に自動で反映される** という end-to-end の
 
 ---
 
+## Orphan asset GC foundation
+
+### 1. 変更点の要約
+
+entry-window の preview / view wiring は `container.assets`
+identity 変化を trigger にしている一方で、`DELETE_ENTRY` の
+reducer は assets を touch しないため、**参照が外れた asset が
+`container.assets` に残り続ける** 仕様になっている（既存
+`entry-window-live-refresh.test.ts` / `entry-window-view-body-refresh.test.ts`
+でこの挙動を pin してある）。
+
+本 Issue では自動 GC には踏み込まず、次の 3 つの pure helper を
+features 層に追加して **orphan 検出と cleanup を可能にする
+foundation** だけを整えた。
+
+- 新規 module: `src/features/asset/asset-scan.ts`
+  - `collectReferencedAssetKeys(container): Set<string>`
+  - `collectOrphanAssetKeys(container): Set<string>`
+  - `removeOrphanAssets(container): Container`
+- `src/features/markdown/asset-resolver.ts` に
+  `extractAssetReferences(markdown): Set<string>` を追加
+  （既存 `hasAssetReferences` の full-scan 版）
+- テスト 30 ケース追加
+  - `tests/features/asset/asset-scan.test.ts` (23 ケース)
+  - `tests/features/markdown/asset-resolver.test.ts` に
+    `extractAssetReferences` 7 ケース追加
+- reducer / dispatcher / wiring / UI には **一切手を入れていない**
+
+### 2. Orphan asset の定義
+
+**orphan asset** = `container.assets` に存在するが、
+`container.entries` のどれからも参照されていない asset key。
+
+"参照されている" とは次のいずれかを満たすこと:
+
+1. **attachment entry の `asset_key`**
+   `entry.archetype === 'attachment'` で、body を JSON parse した
+   結果に非空文字列の `asset_key` field がある → その値を参照と
+   して数える。attachment は asset の "所有者" で、container に
+   新しい asset が入ってくる唯一のルートなので、まず最優先で
+   参照元として数える。
+
+2. **text entry の markdown body**
+   `entry.archetype === 'text'` の body を `extractAssetReferences`
+   に通し、得られた全 key を参照として数える。image form
+   `![alt](asset:K)` と link form `[label](asset:K)` の両方が
+   対象。
+
+3. **textlog entry の各 log の `text` field**
+   `entry.archetype === 'textlog'` の body を `parseTextlogBody`
+   で parse し、各 log entry の `text` field を個別に
+   `extractAssetReferences` に通す。image / link form の両方が
+   対象。textlog schema の変更に wiring が追随するよう、parser
+   は features 層の既存 helper を再利用する。
+
+### 3. 参照元として数えないもの
+
+以下は意図的に参照元に含めていない。将来必要になれば明示的に
+拡張する設計（silent fallthrough はしない）。
+
+- **他 archetype の body**: `todo` / `form` / `folder` / `generic`
+  / `opaque` は現時点で asset pointer を持たないため skip。たと
+  え body の中にたまたま `asset:` substring が入っていても無視
+  する。テストでこの挙動を pin してある。
+- **`container.revisions`**: 過去 snapshot は "body 文字列を
+  凍結してある" だけで、asset data の所有権を持たない。revisions
+  を参照元に含めると、一度でも asset を参照したことのある entry
+  が revision に残っている限り asset を掃除できなくなり、GC の
+  目的そのものが失われる。将来 revision retention policy が
+  整った段階で再検討する。
+- **`container.relations`**: entry 間のリンクであり asset は
+  指していない。
+- **`container.meta`**: asset pointer を持たない。
+
+### 4. Missing-reference の仕様
+
+body 中で `![x](asset:K)` と書かれているが `container.assets[K]`
+が存在しないケースを **missing reference**（broken reference）と
+呼ぶ。resolver はこれを `*[missing asset: K]*` に置換するが、
+orphan 検出上の扱いは次のとおり:
+
+- `collectReferencedAssetKeys` は **missing reference も参照集合
+  に含める**。これは「ユーザが意図的に書いた reference」である
+  ことを反映する spec 判断。
+- ただし orphan filter は `keys(container.assets) ∩ referenced`
+  なので、missing key は `container.assets` に無い以上 orphan
+  候補にもならない。**結果として missing reference は orphan 集合
+  に影響を与えない**。
+- つまり「書かれているが存在しない key」を GC の side effect で
+  silent に意味論変化させることはない。
+
+この仕様はテストで明示的に pin してある（`collectReferencedAssetKeys`
+側 / `collectOrphanAssetKeys` 側それぞれに一本ずつ）。
+
+### 5. API と immutability 契約
+
+```ts
+collectReferencedAssetKeys(container: Container): Set<string>
+collectOrphanAssetKeys(container: Container): Set<string>
+removeOrphanAssets(container: Container): Container
+```
+
+全て pure function で副作用なし。
+
+**`removeOrphanAssets` の identity 契約:**
+
+- **何も prune しない場合**: 入力と同一の `Container` 参照を返す。
+  callers は `prev === next` の identity check で「cleanup で
+  実際に何か変わったか」を cheap に判定できる。
+- **何かを prune する場合**: shallow copy を返す。`assets` field
+  のみ新しい object identity に置き換わる。`entries` / `relations`
+  / `revisions` / `meta` は元の参照をそのまま再利用。Preview /
+  View wiring が使っている `prev.assets !== next.assets` gate が
+  正しく発火するよう、pruning 時は必ず assets identity が flip
+  する。
+- **元の container / assets を mutate しない**: テストで
+  `JSON.stringify(container)` の前後比較で pin してある。
+
+### 6. 何を保証し、何を保証しないか
+
+**保証する:**
+
+- attachment entry の `asset_key` は参照として数えられる
+- text entry body の image-form / link-form markdown reference
+  は参照として数えられる
+- textlog entry の各 log `text` field 内の image-form / link-form
+  reference は参照として数えられる
+- 重複参照（同じ key が複数 entry / 複数箇所で出てきた）は Set で
+  dedupe される
+- legacy attachment（inline `data`, `asset_key` なし）は参照と
+  して数えない（`container.assets` を指していないため）
+- 壊れた attachment JSON は throw せず、参照 0 件として扱う
+- todo / form / folder / generic / opaque archetype は参照元と
+  して scan しない
+- missing reference は参照集合に含まれるが orphan 集合には現れない
+- `removeOrphanAssets` は 0 件 prune の場合に元 container 参照を
+  そのまま返す（identity stability）
+- `removeOrphanAssets` は 1 件以上 prune する場合に新しい
+  `assets` object identity を生成する（wiring gate 互換性）
+- `removeOrphanAssets` は元 container を mutate しない
+
+**保証しない（out-of-scope）:**
+
+- 自動 GC（reducer path / export path / timer いずれも wiring
+  していない）
+- DELETE_ENTRY 時の orphan 自動掃除（reducer は未変更）
+- export 時の強制 compaction（exporter は未変更）
+- UI からの manual cleanup 導線（action / button 未実装）
+- multi-tab coordination
+- revisions 内 snapshot の参照追跡
+- main window Preview / View 体系全体の整理
+
+### 7. 今は自動 GC を入れない理由
+
+foundation と policy を分ける原則に従い、本 Issue では
+「検出 helper を追加する」ところまでに止めた。理由は 4 点:
+
+1. **trigger 選択は個別の policy 判断**。
+   - reducer path で全 action 後に掃除するのか
+   - DELETE_ENTRY / UPDATE_ENTRY の特定 path だけ掃除するのか
+   - export 時にだけ掃除するのか
+   - ユーザが明示ボタンを押したときにだけ掃除するのか
+   - これらは UX / パフォーマンス / 互換性の trade-off がそれぞれ
+     違い、一緒には決められない。
+2. **間違って消した場合の影響が大きい**。
+   未参照判定の bug で実使用中の asset が削除されると user data
+   loss になる。まず純粋な helper と豊富な test を独立 layer に
+   揃え、次段階で wiring を別 Issue として検証付きで乗せる方が
+   安全。
+3. **Revisions 扱いが未決**。
+   revisions 内 snapshot が asset を参照しているケースが存在
+   しうる。foundation 時点ではこれを「数えない」と spec 化して
+   いるが、将来 retention policy と合わせて再検討する必要が
+   あり、そこまで決めてから auto GC を配線したい。
+4. **Preview / View wiring との相互作用**。
+   本 foundation が `removeOrphanAssets` で assets identity を
+   flip させると、今の Preview / View wiring は `prev !== next`
+   gate を通って push を行う。自動実行するなら child への push
+   が "user 操作なしに" 発生することになるので、UX 含めた設計
+   判断が必要。
+
+### 8. 次 Issue 候補（自然な順序）
+
+foundation が揃ったので、次は以下のいずれかを policy として
+独立 Issue 化するのが自然:
+
+- **Reducer path GC**:
+  `DELETE_ENTRY` や attachment body edit の reducer path で
+  `removeOrphanAssets` を呼ぶ policy。assets identity が毎回
+  flip するので Preview / View wiring が自動で child に push
+  される。最も invasive だが最も "自動的に整った状態" になる。
+- **Manual cleanup UI**:
+  "Clean up unused attachments" ボタンを UI に足し、押した
+  ときだけ `removeOrphanAssets` を reducer / event 経由で反映
+  する policy。user 主導なので data loss risk が低い。検出結果
+  のプレビューと組み合わせるのが自然。
+- **Export-time compaction**:
+  HTML / ZIP export 時に container を `removeOrphanAssets` で
+  prune してから書き出す policy。live state は触らないので
+  戻し道がある（元ファイルは残る）。export size 削減にも効く。
+
+これらは orthogonal なので、どれか 1 つで進んでも、順番に複数を
+重ねても設計は成立する。
+
+### 9. テスト
+
+#### `tests/features/asset/asset-scan.test.ts`（23 ケース）
+
+`collectReferencedAssetKeys` (11):
+
+1. 空 container → 空 set
+2. attachment `asset_key` を参照として数える
+3. text body の image form reference を数える
+4. text body の link form reference を数える
+5. 同一 body 内の image + link mix を両方数える
+6. textlog body 内の複数 log entry から参照を集める
+7. 複数 entry をまたいで重複 reference は dedupe される
+8. missing reference は参照集合に **含まれる**（spec 明示）
+9. legacy attachment (inline data, no asset_key) は数えない
+10. 壊れた attachment JSON は throw せず 0 件として扱う
+11. todo / form / folder / generic / opaque は scan しない
+
+`collectOrphanAssetKeys` (5):
+
+12. 全 asset が参照されている → 空 set
+13. 未参照 asset が orphan として列挙される
+14. missing reference は orphan に **含まれない**（spec 明示）
+15. entries 0 件なら全 asset が orphan
+16. assets 空なら orphan 0 件
+
+`removeOrphanAssets` (7):
+
+17. orphan を除去し referenced を保持する
+18. prune 0 件なら元 container 参照をそのまま返す (identity stability)
+19. prune あれば assets object identity が flip する (wiring 互換)
+20. 元 container / assets を mutate しない
+21. entries / relations / revisions / meta は参照ごと再利用される
+22. entries 0 件 + 複数 asset → 全 prune
+23. dispatcher / DOM に依存しない pure helper として動作する
+
+#### `tests/features/markdown/asset-resolver.test.ts`（新規 7 ケース）
+
+`extractAssetReferences`:
+
+24. 空 / 参照無し入力 → 空 set
+25. image form reference の抽出
+26. link form reference の抽出
+27. 同一 source 内の image + link を両方抽出 dedupe
+28. 繰返し同一 key の dedupe
+29. 同じ入力に対する繰返し呼び出しが安定（regex state leak なし）
+30. missing / unsupported key も抽出される（author intent 反映）
+
+既存 1632 → **1662 tests pass**。
+
+---
+
 ## 維持する不変量
 
 - 5 層構造：resolver は features、子ウィンドウ配信は adapter

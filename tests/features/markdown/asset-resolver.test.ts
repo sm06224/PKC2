@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveAssetReferences,
   hasAssetReferences,
+  extractAssetReferences,
   classifyAssetMimeCategory,
 } from '@features/markdown/asset-resolver';
 import type { AssetResolutionContext } from '@features/markdown/asset-resolver';
@@ -50,6 +51,57 @@ describe('hasAssetReferences', () => {
     expect(hasAssetReferences(text)).toBe(true);
     expect(hasAssetReferences(text)).toBe(true);
     expect(hasAssetReferences(text)).toBe(true);
+  });
+});
+
+// ── extractAssetReferences ──
+
+describe('extractAssetReferences', () => {
+  it('returns an empty set for empty / refless input', () => {
+    expect(extractAssetReferences('').size).toBe(0);
+    expect(extractAssetReferences('just prose, nothing here').size).toBe(0);
+    expect(extractAssetReferences('![regular](https://example.com/img.png)').size).toBe(0);
+  });
+
+  it('extracts an image-form reference', () => {
+    const refs = extractAssetReferences('![alt](asset:ast-001)');
+    expect(refs.has('ast-001')).toBe(true);
+    expect(refs.size).toBe(1);
+  });
+
+  it('extracts a link-form reference', () => {
+    const refs = extractAssetReferences('see [doc](asset:ast-002) now');
+    expect(refs.has('ast-002')).toBe(true);
+    expect(refs.size).toBe(1);
+  });
+
+  it('extracts image + link in the same source and does not double-count', () => {
+    const refs = extractAssetReferences('![x](asset:ast-img) and [y](asset:ast-link)');
+    expect(refs.has('ast-img')).toBe(true);
+    expect(refs.has('ast-link')).toBe(true);
+    expect(refs.size).toBe(2);
+  });
+
+  it('deduplicates repeated references', () => {
+    const refs = extractAssetReferences(
+      '![a](asset:ast-dup) and [b](asset:ast-dup) and ![c](asset:ast-dup)',
+    );
+    expect(refs.size).toBe(1);
+    expect(refs.has('ast-dup')).toBe(true);
+  });
+
+  it('is stable across repeated calls (regex state does not leak)', () => {
+    const src = '![a](asset:ast-stable)';
+    for (let i = 0; i < 5; i++) {
+      const refs = extractAssetReferences(src);
+      expect(refs.size).toBe(1);
+      expect(refs.has('ast-stable')).toBe(true);
+    }
+  });
+
+  it('includes missing / unsupported keys (reflects author intent, not resolver success)', () => {
+    const refs = extractAssetReferences('![ghost](asset:ast-nowhere)');
+    expect(refs.has('ast-nowhere')).toBe(true);
   });
 });
 
