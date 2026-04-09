@@ -1,11 +1,15 @@
 /**
  * Date/Time format helpers for input-assistance shortcuts.
  *
- * Pure functions — no browser APIs.
+ * Pure functions. Uses Intl.DateTimeFormat (ECMA-402 standard) for
+ * locale-aware day-of-week abbreviation.
  * All formatters accept an optional Date for testability (default: now).
  */
 
-const DAY_ABBR = ['日', '月', '火', '水', '木', '金', '土'] as const;
+/** Returns locale-aware short weekday name via Intl.DateTimeFormat. */
+function localizedDay(d: Date): string {
+  return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+}
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
@@ -33,7 +37,7 @@ export function formatDateTime(d: Date = new Date()): string {
 /** yy/MM/dd ddd */
 export function formatShortDate(d: Date = new Date()): string {
   const yy = pad2(d.getFullYear() % 100);
-  return `${yy}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${DAY_ABBR[d.getDay()]}`;
+  return `${yy}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${localizedDay(d)}`;
 }
 
 /** yy/MM/dd ddd HH:mm:ss */

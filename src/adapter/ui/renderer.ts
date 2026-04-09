@@ -362,7 +362,7 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
     { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
     { key: 'Ctrl+Shift+;', desc: 'Insert date+time' },
-    { key: 'Ctrl+D', desc: 'Insert short date (yy/MM/dd 曜)' },
+    { key: 'Ctrl+D', desc: 'Insert short date + day of week' },
     { key: 'Ctrl+Shift+D', desc: 'Insert short date+time' },
     { key: 'Ctrl+Shift+Alt+D', desc: 'Insert ISO 8601' },
     { key: '', desc: '', group: 'Slash Commands (edit mode)' },
