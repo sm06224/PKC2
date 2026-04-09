@@ -16,7 +16,11 @@
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from '../../features/todo/todo-body';
-import { parseAttachmentBody } from './attachment-presenter';
+import {
+  parseAttachmentBody,
+  classifyPreviewType,
+  isSvg,
+} from './attachment-presenter';
 import { parseFormBody } from './form-presenter';
 
 /**
@@ -31,14 +35,51 @@ import { parseFormBody } from './form-presenter';
 const openWindows = new Map<string, Window>();
 
 /**
+ * Asset context threaded from the parent window into the child window
+ * at open time so the child can preview attachments and show resolved
+ * asset references without having live access to `container.assets`.
+ *
+ * All fields are optional — an absent field means "data not available
+ * for this reason" and the child renders the corresponding fallback.
+ */
+export interface EntryWindowAssetContext {
+  /**
+   * For attachment archetype entries only: the base64 bytes of the
+   * attached file. Undefined means either Light export (no data) or
+   * the asset key is no longer present in the container.
+   */
+  attachmentData?: string;
+  /**
+   * For attachment archetype entries with HTML/SVG MIME: the sandbox
+   * permissions to apply to the iframe. `allow-same-origin` is always
+   * added as a baseline.
+   */
+  sandboxAllow?: string[];
+  /**
+   * For text / textlog archetype entries: the entry body with
+   * `![alt](asset:key)` and `[label](asset:key)` references already
+   * resolved by the parent's asset resolver. When provided, the child
+   * uses this instead of `entry.body` for the initial view-mode
+   * markdown render.
+   */
+  resolvedBody?: string;
+}
+
+/**
  * Open an entry in a separate browser window.
  * If a window for the same lid is already open, focus it.
+ *
+ * `assetContext` and `onDownloadAsset` are optional: when absent, the
+ * child window falls back to the pre-Phase-4 behavior (no attachment
+ * preview, no non-image chip download).
  */
 export function openEntryWindow(
   entry: Entry,
   readonly: boolean,
   onSave: (lid: string, title: string, body: string, openedAt: string) => void,
   lightSource = false,
+  assetContext?: EntryWindowAssetContext,
+  onDownloadAsset?: (assetKey: string) => void,
 ): void {
   // Check for existing window
   const existing = openWindows.get(entry.lid);
@@ -55,15 +96,24 @@ export function openEntryWindow(
   const openedAt = entry.updated_at;
 
   child.document.open();
-  child.document.write(buildWindowHtml(entry, readonly, lightSource));
+  child.document.write(buildWindowHtml(entry, readonly, lightSource, assetContext));
   child.document.close();
 
   // Listen for messages from child
   function handleMessage(e: MessageEvent): void {
     if (e.source !== child) return;
-    if (!e.data || e.data.type !== 'pkc-entry-save') return;
-    onSave(e.data.lid, e.data.title, e.data.body, openedAt);
-    child!.postMessage({ type: 'pkc-entry-saved' }, '*');
+    if (!e.data) return;
+    if (e.data.type === 'pkc-entry-save') {
+      onSave(e.data.lid, e.data.title, e.data.body, openedAt);
+      child!.postMessage({ type: 'pkc-entry-saved' }, '*');
+      return;
+    }
+    if (e.data.type === 'pkc-entry-download-asset') {
+      if (typeof e.data.assetKey === 'string' && onDownloadAsset) {
+        onDownloadAsset(e.data.assetKey);
+      }
+      return;
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -123,42 +173,164 @@ function getParentCssVars(): string {
 
 /**
  * Render the view body HTML based on entry archetype.
- * - text/textlog/generic/opaque: markdown render
- * - attachment: file info card
+ * - text/textlog/generic/opaque: markdown render (using resolved body when available)
+ * - attachment: MIME-aware preview card
  * - todo: status/date/description card
  * - form: key-value card
  * - folder: markdown render (has no special body)
  */
-function renderViewBody(entry: Entry): string {
+function renderViewBody(
+  entry: Entry,
+  lightSource: boolean,
+  ctx?: EntryWindowAssetContext,
+): string {
   switch (entry.archetype) {
     case 'attachment':
-      return renderAttachmentCard(entry.body);
+      return renderAttachmentCard(entry.body, lightSource, ctx);
     case 'todo':
       return renderTodoCard(entry.body);
     case 'form':
       return renderFormCard(entry.body);
-    default:
-      return renderMarkdown(entry.body || '') || '<em style="color:var(--c-muted)">(empty)</em>';
+    default: {
+      // Text / textlog / generic: use the pre-resolved body when the
+      // parent provided one, so that `![](asset:…)` embeds and
+      // `[](asset:…)` chips already appear as inline data URIs /
+      // fragment-href chips by the time markdown-it sees them.
+      const source = ctx?.resolvedBody != null ? ctx.resolvedBody : entry.body;
+      return renderMarkdown(source || '') || '<em style="color:var(--c-muted)">(empty)</em>';
+    }
   }
 }
 
-function renderAttachmentCard(body: string): string {
+/**
+ * Render the attachment view pane.
+ *
+ * The returned HTML contains the file info card, a MIME-specific
+ * preview placeholder, an action row (Open / Download), and explicit
+ * fallback messages for Light mode, missing data and unsupported MIME.
+ *
+ * Actual preview wiring — blob URL creation, iframe srcdoc, `<img>`
+ * data URI, chip click interception — runs from the child window's
+ * inline `<script>`, which reads the base64 data that `buildWindowHtml`
+ * embeds via `pkcAttachmentData` (see bottom of the generated HTML).
+ */
+function renderAttachmentCard(
+  body: string,
+  lightSource: boolean,
+  ctx?: EntryWindowAssetContext,
+): string {
   const att = parseAttachmentBody(body);
   const sizeStr = att.size != null ? formatFileSize(att.size) : 'unknown';
   const ext = att.name.includes('.') ? att.name.split('.').pop() : '—';
-  return `<div class="pkc-ew-card" data-pkc-ew-card="attachment">
+
+  if (!att.name) {
+    return `<div class="pkc-ew-card" data-pkc-ew-card="attachment">
+  <div class="pkc-ew-empty" data-pkc-region="attachment-empty">No file attached.</div>
+</div>`;
+  }
+
+  // Resolve data availability. `ctx?.attachmentData` is the only way
+  // the child ever sees the bytes — we do NOT trust `att.data` from
+  // the body because the new format stores data in container.assets.
+  const hasData = !!ctx?.attachmentData && ctx.attachmentData.length > 0;
+  const previewType = classifyPreviewType(att.mime);
+  const svg = isSvg(att.mime);
+
+  // ── Info card ──
+  const infoCard = `<div class="pkc-ew-card" data-pkc-ew-card="attachment">
   <div class="pkc-ew-card-icon">📎</div>
   <div class="pkc-ew-card-fields">
-    <div class="pkc-ew-field"><strong>File:</strong> <span>${escapeForHtml(att.name || '(unnamed)')}</span></div>
+    <div class="pkc-ew-field"><strong>File:</strong> <span>${escapeForHtml(att.name)}</span></div>
     <div class="pkc-ew-field"><strong>Type:</strong> <span>${escapeForHtml(att.mime)}</span></div>
     <div class="pkc-ew-field"><strong>Size:</strong> <span>${escapeForHtml(sizeStr)}</span></div>
     <div class="pkc-ew-field"><strong>Ext:</strong> <span>${escapeForHtml(ext ?? '—')}</span></div>
     ${att.asset_key ? `<div class="pkc-ew-field"><strong>Asset:</strong> <span>${escapeForHtml(att.asset_key)}</span></div>` : ''}
   </div>
-  <div class="pkc-ew-card-note" style="color:var(--c-muted);font-size:0.75rem;margin-top:0.4rem">
-    Preview is available in the main window.
-  </div>
 </div>`;
+
+  // ── Fallback reason (data unavailable) ──
+  if (!hasData) {
+    const reason = lightSource
+      ? 'This is a Light export — attachment file data is not included. Re-export without Light mode to preview or download this file.'
+      : att.asset_key
+        ? 'File data is not available in this container. The asset may have been removed.'
+        : 'File data is not available.';
+    return `${infoCard}
+<div class="pkc-ew-preview-reason" data-pkc-region="attachment-preview-reason">${escapeForHtml(reason)}</div>`;
+  }
+
+  // ── Preview area (populated by child-side script) ──
+  const previewHtml = renderPreviewShell(previewType, att.mime, att.name, svg);
+
+  // ── Action row ──
+  const openBtnHtml = (previewType === 'image' || previewType === 'pdf' || previewType === 'video')
+    ? `<button type="button" class="pkc-btn" data-pkc-ew-action="open-attachment">${previewTypeOpenLabel(previewType)}</button>`
+    : '';
+  const downloadBtnHtml = `<button type="button" class="pkc-btn" data-pkc-ew-action="download-attachment">📥 Download</button>`;
+  const actionRow = `<div class="pkc-ew-action-row" data-pkc-region="attachment-actions">${openBtnHtml}${downloadBtnHtml}</div>`;
+
+  return `${infoCard}
+${previewHtml}
+${actionRow}`;
+}
+
+/**
+ * Build the preview shell DOM. Base64 data injection and blob URL
+ * wiring happen in the child-side script (`pkcAttachmentData` + the
+ * inline `bootAttachmentPreview()` function). The shell carries the
+ * MIME category on `data-pkc-ew-preview-type` so the script can
+ * dispatch without re-classifying.
+ */
+function renderPreviewShell(
+  previewType: ReturnType<typeof classifyPreviewType>,
+  mime: string,
+  name: string,
+  svg: boolean,
+): string {
+  const safeName = escapeForHtml(name);
+  const safeMime = escapeForAttr(mime);
+  const base = `class="pkc-ew-preview" data-pkc-region="attachment-preview" data-pkc-ew-preview-type="${svg ? 'svg' : previewType}" data-pkc-ew-mime="${safeMime}" data-pkc-ew-name="${escapeForAttr(name)}"`;
+
+  switch (previewType) {
+    case 'image':
+      return `<div ${base}>
+  <img class="pkc-ew-preview-img" alt="${escapeForAttr(name)}" data-pkc-ew-slot="img" />
+</div>`;
+    case 'pdf':
+      return `<div ${base}>
+  <iframe class="pkc-ew-preview-pdf" title="PDF preview: ${safeName}" data-pkc-ew-slot="iframe"></iframe>
+</div>`;
+    case 'video':
+      return `<div ${base}>
+  <video class="pkc-ew-preview-video" controls preload="metadata" data-pkc-ew-slot="video"></video>
+</div>`;
+    case 'audio':
+      return `<div ${base}>
+  <audio class="pkc-ew-preview-audio" controls preload="metadata" data-pkc-ew-slot="audio"></audio>
+</div>`;
+    case 'html':
+      // HTML and SVG are both sandboxed. `pkc-ew-preview-type` uses
+      // `svg` vs `html` so the child script can decide whether to
+      // hand the bytes to `srcdoc` as UTF-8 text.
+      return `<div ${base}>
+  <iframe class="pkc-ew-preview-html" title="${svg ? 'SVG' : 'HTML'} preview: ${safeName}" data-pkc-ew-slot="iframe"></iframe>
+  <div class="pkc-ew-sandbox-note" data-pkc-ew-slot="sandbox-note"></div>
+</div>`;
+    case 'none':
+    default:
+      return `<div ${base}>
+  <div class="pkc-ew-preview-none">No inline preview for this file type.</div>
+</div>`;
+  }
+}
+
+function previewTypeOpenLabel(previewType: ReturnType<typeof classifyPreviewType>): string {
+  switch (previewType) {
+    case 'image': return '🖼 Open image in new tab';
+    case 'pdf':   return '📄 Open PDF in new tab';
+    case 'video': return '🎬 Open video in new tab';
+    default:      return 'Open in new tab';
+  }
 }
 
 function renderTodoCard(body: string): string {
@@ -213,10 +385,22 @@ function buildWindowHtml(
   entry: Entry,
   readonly: boolean,
   lightSource = false,
+  assetContext?: EntryWindowAssetContext,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
-  const renderedBody = renderViewBody(entry);
+  const renderedBody = renderViewBody(entry, lightSource, assetContext);
   const parentVars = getParentCssVars();
+
+  // Attachment-preview boot data. Only attachment archetype entries
+  // carry per-entry bytes (`attachmentData`); everything else leaves
+  // this as an empty object and the boot script becomes a no-op.
+  const attachmentData = entry.archetype === 'attachment' && assetContext?.attachmentData
+    ? assetContext.attachmentData
+    : '';
+  const attachmentMime = entry.archetype === 'attachment'
+    ? parseAttachmentBody(entry.body).mime
+    : '';
+  const sandboxAllow = (entry.archetype === 'attachment' && assetContext?.sandboxAllow) ?? [];
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -442,6 +626,65 @@ body {
   border-radius: var(--radius); border-left: 3px solid var(--c-accent-dim);
   background: var(--c-surface); color: var(--c-muted);
 }
+
+/* ── Attachment preview (Phase 4) ── */
+.pkc-ew-empty {
+  font-size: 0.8rem; color: var(--c-muted); padding: 0.4rem 0;
+}
+.pkc-ew-preview {
+  margin: 0.5rem 0; padding: 0.5rem; border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg, 4px); background: var(--c-bg);
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.pkc-ew-preview-img {
+  max-width: 100%; max-height: 60vh; height: auto; display: block;
+  object-fit: contain; background: var(--c-surface);
+  border-radius: var(--radius);
+}
+.pkc-ew-preview-pdf {
+  width: 100%; height: 60vh; border: 1px solid var(--c-border);
+  border-radius: var(--radius); background: var(--c-surface);
+}
+.pkc-ew-preview-video {
+  max-width: 100%; max-height: 60vh; display: block;
+  border-radius: var(--radius); background: #000;
+}
+.pkc-ew-preview-audio {
+  width: 100%; display: block;
+}
+.pkc-ew-preview-html {
+  width: 100%; height: 60vh; border: 1px solid var(--c-border);
+  border-radius: var(--radius); background: var(--c-surface);
+}
+.pkc-ew-preview-none {
+  font-size: 0.8rem; color: var(--c-muted); padding: 0.4rem 0.2rem;
+  font-style: italic;
+}
+.pkc-ew-sandbox-note {
+  font-size: 0.7rem; color: var(--c-muted); font-family: var(--font-mono);
+}
+.pkc-ew-preview-reason {
+  margin: 0.5rem 0; padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--c-border); border-radius: var(--radius);
+  background: var(--c-surface); color: var(--c-muted);
+  font-size: 0.75rem; line-height: 1.5;
+}
+.pkc-ew-action-row {
+  display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.25rem;
+}
+
+/* ── Non-image asset chip in resolved text bodies ── */
+.pkc-md-rendered a[href^="#asset-"] {
+  display: inline-flex; align-items: center; gap: 0.35em;
+  padding: 0.1em 0.55em; margin: 0 0.15em;
+  border: 1px solid var(--c-border); border-radius: 999px;
+  background: var(--c-bg); color: var(--c-fg);
+  text-decoration: none; font-size: 0.9em; line-height: 1.35;
+  cursor: pointer;
+}
+.pkc-md-rendered a[href^="#asset-"]:hover {
+  background: var(--c-hover); border-color: var(--c-accent-dim);
+}
 </style>
 </head>
 <body>
@@ -491,10 +734,126 @@ var lid = ${escapeForScript(entry.lid)};
 var originalTitle = ${escapeForScript(entry.title)};
 var originalBody = ${escapeForScript(entry.body)};
 
+/* Phase 4 attachment preview data (empty string when no data is available). */
+var pkcAttachmentData = ${escapeForScript(attachmentData)};
+var pkcAttachmentMime = ${escapeForScript(attachmentMime)};
+var pkcSandboxAllow = ${JSON.stringify(sandboxAllow)};
+var pkcActiveBlobUrls = [];
+
 document.getElementById('body-edit').value = originalBody;
 if (document.getElementById('title-input')) {
   document.getElementById('title-input').value = originalTitle;
 }
+
+/* ── Attachment preview boot ── */
+function base64ToBlob(b64, mime) {
+  var bin = atob(b64);
+  var len = bin.length;
+  var bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) { bytes[i] = bin.charCodeAt(i); }
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+function base64ToText(b64) {
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+  try { return new TextDecoder().decode(bytes); }
+  catch (_e) { return bin; }
+}
+function trackBlobUrl(url) { pkcActiveBlobUrls.push(url); return url; }
+function bootAttachmentPreview() {
+  if (!pkcAttachmentData) return;
+  var el = document.querySelector('[data-pkc-ew-preview-type]');
+  if (!el) return;
+  var type = el.getAttribute('data-pkc-ew-preview-type');
+  var mime = el.getAttribute('data-pkc-ew-mime') || pkcAttachmentMime;
+  var name = el.getAttribute('data-pkc-ew-name') || '';
+  try {
+    if (type === 'image') {
+      var img = el.querySelector('[data-pkc-ew-slot="img"]');
+      if (img) img.src = 'data:' + mime + ';base64,' + pkcAttachmentData;
+    } else if (type === 'pdf') {
+      var iframe = el.querySelector('[data-pkc-ew-slot="iframe"]');
+      if (iframe) {
+        var url = trackBlobUrl(URL.createObjectURL(base64ToBlob(pkcAttachmentData, mime)));
+        iframe.src = url;
+      }
+    } else if (type === 'video') {
+      var video = el.querySelector('[data-pkc-ew-slot="video"]');
+      if (video) {
+        var vurl = trackBlobUrl(URL.createObjectURL(base64ToBlob(pkcAttachmentData, mime)));
+        video.src = vurl;
+      }
+    } else if (type === 'audio') {
+      var audio = el.querySelector('[data-pkc-ew-slot="audio"]');
+      if (audio) {
+        var aurl = trackBlobUrl(URL.createObjectURL(base64ToBlob(pkcAttachmentData, mime)));
+        audio.src = aurl;
+      }
+    } else if (type === 'html' || type === 'svg') {
+      var htmlIframe = el.querySelector('[data-pkc-ew-slot="iframe"]');
+      if (htmlIframe) {
+        var allow = ['allow-same-origin'];
+        for (var i = 0; i < pkcSandboxAllow.length; i++) {
+          if (pkcSandboxAllow[i] !== 'allow-same-origin') allow.push(pkcSandboxAllow[i]);
+        }
+        htmlIframe.setAttribute('sandbox', allow.join(' '));
+        htmlIframe.srcdoc = base64ToText(pkcAttachmentData);
+        var note = el.querySelector('[data-pkc-ew-slot="sandbox-note"]');
+        if (note) note.textContent = 'Sandbox: ' + allow.join(', ');
+      }
+    }
+  } catch (_e) {
+    /* Preview boot errors fall back silently — the info card + action row remain visible. */
+  }
+}
+function openAttachmentInNewTab() {
+  if (!pkcAttachmentData) return;
+  var url = URL.createObjectURL(base64ToBlob(pkcAttachmentData, pkcAttachmentMime));
+  window.open(url, '_blank', 'noopener');
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1500);
+}
+function downloadAttachmentFromChild() {
+  if (!pkcAttachmentData) return;
+  var blob = base64ToBlob(pkcAttachmentData, pkcAttachmentMime);
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  var name = (document.querySelector('[data-pkc-ew-preview-type]') || { getAttribute: function() { return ''; } }).getAttribute('data-pkc-ew-name');
+  a.download = name || 'attachment';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    if (a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 500);
+}
+document.addEventListener('click', function(e) {
+  var target = e.target;
+  /* Non-image asset chip click: route download through the parent window. */
+  var chip = target && target.closest ? target.closest('a[href^="#asset-"]') : null;
+  if (chip) {
+    e.preventDefault();
+    var key = chip.getAttribute('href').slice('#asset-'.length);
+    if (key && window.opener) {
+      try { window.opener.postMessage({ type: 'pkc-entry-download-asset', assetKey: key }, '*'); }
+      catch (_e) { /* parent closed or cross-origin */ }
+    }
+    return;
+  }
+  var actionBtn = target && target.closest ? target.closest('[data-pkc-ew-action]') : null;
+  if (actionBtn) {
+    var action = actionBtn.getAttribute('data-pkc-ew-action');
+    if (action === 'open-attachment') { e.preventDefault(); openAttachmentInNewTab(); return; }
+    if (action === 'download-attachment') { e.preventDefault(); downloadAttachmentFromChild(); return; }
+  }
+});
+window.addEventListener('unload', function() {
+  for (var i = 0; i < pkcActiveBlobUrls.length; i++) {
+    try { URL.revokeObjectURL(pkcActiveBlobUrls[i]); } catch (_e) { /* ignore */ }
+  }
+});
+bootAttachmentPreview();
 
 function enterEdit() {
   currentMode = 'edit';

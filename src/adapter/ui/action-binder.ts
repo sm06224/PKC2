@@ -3,6 +3,9 @@ import type { RelationKind } from '../../core/model/relation';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
+import type { AppState } from '../state/app-state';
+import type { Container } from '../../core/model/container';
+import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
@@ -11,7 +14,8 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu } from './renderer';
-import { openEntryWindow } from './entry-window';
+import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
+import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import {
   formatDate,
   formatTime,
@@ -1172,24 +1176,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Select the entry first
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
+    // Build the Phase-4 asset context threaded into the entry window.
+    // Attachment entries carry the file bytes so the child can render
+    // an inline preview; text / textlog entries carry a pre-resolved
+    // body so `![alt](asset:key)` embeds and `[label](asset:key)`
+    // chips appear rendered when the child first loads.
+    const assetContext = buildEntryWindowAssetContext(entry, state);
+
     // Open in a separate browser window with markdown rendering + edit capability
-    openEntryWindow(entry, !!state.readonly, (saveLid, title, body, openedAt) => {
-      const currentState = dispatcher.getState();
-      if (!currentState.container) return;
+    openEntryWindow(
+      entry,
+      !!state.readonly,
+      (saveLid, title, body, openedAt) => {
+        const currentState = dispatcher.getState();
+        if (!currentState.container) return;
 
-      // Conflict detection: check if entry was modified after the window opened
-      const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
-      if (currentEntry && currentEntry.updated_at !== openedAt) {
-        // Entry was modified in the parent window after the child window opened
-        import('./entry-window').then(({ notifyConflict }) => {
-          notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
-        });
-      }
+        // Conflict detection: check if entry was modified after the window opened
+        const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
+        if (currentEntry && currentEntry.updated_at !== openedAt) {
+          // Entry was modified in the parent window after the child window opened
+          import('./entry-window').then(({ notifyConflict }) => {
+            notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
+          });
+        }
 
-      // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
-      dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
-    }, !!state.lightSource);
+        // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
+        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
+        dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
+      },
+      !!state.lightSource,
+      assetContext,
+      (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+    );
   }
 
   // ── dblclick fallback (secondary path) ──
@@ -1429,6 +1447,90 @@ function downloadAttachmentByAssetKey(assetKey: string, dispatcher: Dispatcher):
       return;
     }
   }
+}
+
+/**
+ * Build the asset context for opening an entry in a separate browser
+ * window (Phase 4).
+ *
+ * - For attachment entries: look up the resolved base64 data (and
+ *   sandbox_allow for HTML/SVG previews) so the child window can
+ *   render an inline preview without cross-window container access.
+ *   Returns `{ attachmentData: undefined, sandboxAllow }` when the
+ *   data is not available (Light export, asset removed, or the entry
+ *   has no asset key).
+ * - For text / textlog entries: pre-resolve asset references against
+ *   the current container. `![alt](asset:key)` image embeds become
+ *   inline `data:` URIs in the resolved body; `[label](asset:key)`
+ *   non-image chips become `#asset-<key>` fragment links that the
+ *   child intercepts and forwards back to the parent for download.
+ * - For other archetypes: returns `undefined` (no preview / resolution
+ *   is relevant).
+ */
+function buildEntryWindowAssetContext(
+  entry: Entry,
+  state: AppState,
+): EntryWindowAssetContext | undefined {
+  const container = state.container;
+  if (!container) return undefined;
+
+  if (entry.archetype === 'attachment') {
+    const att = parseAttachmentBody(entry.body);
+    let attachmentData: string | undefined;
+    if (att.asset_key && container.assets?.[att.asset_key]) {
+      attachmentData = container.assets[att.asset_key];
+    } else if (att.data) {
+      attachmentData = att.data;
+    }
+    return {
+      attachmentData,
+      sandboxAllow: att.sandbox_allow ?? [],
+    };
+  }
+
+  if (entry.archetype === 'text' || entry.archetype === 'textlog') {
+    if (!entry.body || !hasAssetReferences(entry.body)) return undefined;
+    const mimeByKey = collectAssetMimeMap(container);
+    const nameByKey = collectAssetNameMap(container);
+    const resolvedBody = resolveAssetReferences(entry.body, {
+      assets: container.assets ?? {},
+      mimeByKey,
+      nameByKey,
+    });
+    return { resolvedBody };
+  }
+
+  return undefined;
+}
+
+/**
+ * Build `asset_key → MIME` map from the attachment entries in the
+ * given container. Mirrors `buildAssetMimeMap` in `renderer.ts` — we
+ * duplicate the few lines here rather than exporting from renderer
+ * to avoid cycle risk with the existing adapter layering.
+ */
+function collectAssetMimeMap(container: Container): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key && att.mime) map[att.asset_key] = att.mime;
+  }
+  return map;
+}
+
+/**
+ * Build `asset_key → display name` map for non-image chip label
+ * fallback, mirroring `buildAssetNameMap` in `renderer.ts`.
+ */
+function collectAssetNameMap(container: Container): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.asset_key && att.name) map[att.asset_key] = att.name;
+  }
+  return map;
 }
 
 /**

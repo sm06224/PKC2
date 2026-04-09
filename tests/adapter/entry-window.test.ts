@@ -42,12 +42,38 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Extract the view-pane (rendered body) from the captured HTML.
+ * Scoping to the view pane avoids false positives from the child's
+ * inline `<script>` block, which also references DOM attribute names
+ * like `data-pkc-ew-preview-type` as literal strings.
+ */
+function extractBodyView(html: string): string {
+  const start = html.indexOf('<div id="view-pane">');
+  if (start < 0) return html;
+  const end = html.indexOf('<div id="edit-pane"', start);
+  return html.slice(start, end < 0 ? html.length : end);
+}
+
 /** Helper: open an entry window and return the captured HTML. */
-async function openAndCapture(readonly = false, overrides: Record<string, unknown> = {}, lightSource = false) {
+async function openAndCapture(
+  readonly = false,
+  overrides: Record<string, unknown> = {},
+  lightSource = false,
+  assetContext?: unknown,
+  onDownloadAsset?: (key: string) => void,
+) {
   capturedHtml = '';
   setupWindowOpenMock();
   const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
-  openEntryWindow(makeEntry(overrides) as never, readonly, vi.fn(), lightSource);
+  openEntryWindow(
+    makeEntry(overrides) as never,
+    readonly,
+    vi.fn(),
+    lightSource,
+    assetContext as never,
+    onDownloadAsset,
+  );
   return capturedHtml;
 }
 
@@ -251,9 +277,9 @@ describe('Entry Window', () => {
       expect(viewBody).toContain('data-pkc-ew-card="attachment"');
     });
 
-    it('shows download note', async () => {
+    it('no longer shows the Phase 3 "Preview is available in the main window" dead end', async () => {
       const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
-      expect(html).toContain('Preview is available in the main window');
+      expect(html).not.toContain('Preview is available in the main window');
     });
   });
 
@@ -366,6 +392,264 @@ describe('Entry Window', () => {
     it('includes Light notice CSS', async () => {
       const html = await openAndCapture(false, { archetype: 'attachment', body: '{"name":"a.txt","mime":"text/plain"}' }, true);
       expect(html).toContain('.pkc-light-notice');
+    });
+  });
+
+  // ── Phase 4: MIME-aware attachment preview ──
+
+  describe('Phase 4 — attachment preview', () => {
+    const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+    const PNG_BODY = JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 123, asset_key: 'a1' });
+    const PDF_BODY = JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 456, asset_key: 'a1' });
+    const MP4_BODY = JSON.stringify({ name: 'clip.mp4', mime: 'video/mp4', size: 789, asset_key: 'a1' });
+    const MP3_BODY = JSON.stringify({ name: 'jingle.mp3', mime: 'audio/mpeg', size: 321, asset_key: 'a1' });
+    const HTML_BODY = JSON.stringify({ name: 'page.html', mime: 'text/html', size: 100, asset_key: 'a1' });
+    const SVG_BODY = JSON.stringify({ name: 'icon.svg', mime: 'image/svg+xml', size: 50, asset_key: 'a1' });
+    const UNK_BODY = JSON.stringify({ name: 'data.bin', mime: 'application/octet-stream', size: 10, asset_key: 'a1' });
+    const NO_KEY_BODY = JSON.stringify({ name: 'empty.txt', mime: 'text/plain' });
+
+    it('image preview emits an <img> slot with data-pkc-ew-preview-type="image"', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PNG_BODY }, false, {
+        attachmentData: PNG_B64,
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="image"');
+      expect(html).toContain('data-pkc-ew-slot="img"');
+      // The script boots inline data URI rendering for images.
+      expect(html).toContain("'data:' + mime + ';base64,' + pkcAttachmentData");
+    });
+
+    it('image preview embeds the base64 data in the script block', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PNG_BODY }, false, {
+        attachmentData: PNG_B64,
+      });
+      expect(html).toContain(PNG_B64);
+      expect(html).toContain('var pkcAttachmentData');
+      expect(html).toContain('var pkcAttachmentMime');
+    });
+
+    it('PDF preview emits an iframe slot + blob URL boot', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PDF_BODY }, false, {
+        attachmentData: 'UERGZGF0YQ==',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="pdf"');
+      expect(html).toContain('data-pkc-ew-slot="iframe"');
+      // Boot path uses URL.createObjectURL with base64ToBlob
+      expect(html).toContain('URL.createObjectURL(base64ToBlob');
+    });
+
+    it('PDF preview shows an "Open in new tab" action button', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PDF_BODY }, false, {
+        attachmentData: 'UERGZGF0YQ==',
+      });
+      expect(html).toContain('data-pkc-ew-action="open-attachment"');
+      expect(html).toContain('Open PDF in new tab');
+    });
+
+    it('video preview emits a <video> slot', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: MP4_BODY }, false, {
+        attachmentData: 'VklEZGF0YQ==',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="video"');
+      expect(html).toContain('data-pkc-ew-slot="video"');
+    });
+
+    it('audio preview emits an <audio> slot', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: MP3_BODY }, false, {
+        attachmentData: 'QVVEZGF0YQ==',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="audio"');
+      expect(html).toContain('data-pkc-ew-slot="audio"');
+    });
+
+    it('HTML preview uses sandboxed iframe with allow-same-origin baseline', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: HTML_BODY }, false, {
+        attachmentData: 'SFRNTCBib2R5',
+        sandboxAllow: ['allow-scripts'],
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="html"');
+      // The boot script joins allow-same-origin into the sandbox attribute
+      expect(html).toContain("setAttribute('sandbox', allow.join(' '))");
+      // sandboxAllow makes it into the inline JSON
+      expect(html).toContain('allow-scripts');
+      // srcdoc is used (not blob:) so the sandbox applies with about:srcdoc origin
+      expect(html).toContain('htmlIframe.srcdoc = base64ToText');
+    });
+
+    it('SVG preview uses sandboxed iframe (never an <img>)', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: SVG_BODY }, false, {
+        attachmentData: 'PHN2Zy8+',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="svg"');
+      expect(html).not.toContain('data-pkc-ew-preview-type="image"');
+      expect(html).toContain('data-pkc-ew-slot="iframe"');
+    });
+
+    it('unknown MIME shows info card + download button + "No inline preview"', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: UNK_BODY }, false, {
+        attachmentData: 'YmluYXJ5',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="none"');
+      expect(html).toContain('No inline preview for this file type.');
+      expect(html).toContain('data-pkc-ew-action="download-attachment"');
+      // No "open" button for unknown types
+      expect(html).not.toContain('data-pkc-ew-action="open-attachment"');
+    });
+
+    it('Light mode with no data shows explicit reason, no preview, no action row', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PDF_BODY }, true, {
+        attachmentData: undefined,
+      });
+      expect(html).toContain('Light export');
+      expect(html).toContain('attachment-preview-reason');
+      expect(html).not.toContain('data-pkc-ew-preview-type="pdf"');
+      expect(html).not.toContain('data-pkc-ew-action="download-attachment"');
+    });
+
+    it('missing data (asset key present, bytes gone) shows "not available" reason', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PDF_BODY }, false, {
+        attachmentData: undefined,
+      });
+      expect(html).toContain('File data is not available in this container');
+      expect(html).not.toContain('data-pkc-ew-preview-type="pdf"');
+      expect(html).not.toContain('data-pkc-ew-action="download-attachment"');
+    });
+
+    it('empty attachment (no name) shows a short empty-state message', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: '{}' }, false);
+      const viewBody = extractBodyView(html);
+      expect(viewBody).toContain('No file attached');
+      // No preview placeholders / action row in the empty state
+      expect(viewBody).not.toContain('data-pkc-ew-preview-type');
+      expect(viewBody).not.toContain('data-pkc-ew-action');
+    });
+
+    it('falls back to the pre-Phase-4 info card when no assetContext is given', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: PDF_BODY });
+      const viewBody = extractBodyView(html);
+      // Info card still there, but preview region and action row absent
+      expect(viewBody).toContain('data-pkc-ew-card="attachment"');
+      expect(viewBody).not.toContain('data-pkc-ew-preview-type="pdf"');
+      expect(viewBody).not.toContain('data-pkc-ew-action');
+    });
+
+    it('legacy body-data attachments (no asset_key) cannot preview without context', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: NO_KEY_BODY });
+      // empty.txt has no asset_key and no explicit attachmentData → reason is generic
+      expect(html).toContain('File data is not available');
+      expect(html).not.toContain('Light export');
+    });
+
+    it('never emits javascript: or data:text/html in the preview HTML', async () => {
+      const html = await openAndCapture(false, { archetype: 'attachment', body: HTML_BODY }, false, {
+        attachmentData: 'SFRNTCBib2R5',
+        sandboxAllow: [],
+      });
+      expect(html.toLowerCase()).not.toContain('javascript:');
+      expect(html.toLowerCase()).not.toContain('data:text/html');
+    });
+  });
+
+  // ── Phase 4: Text body asset resolution ──
+
+  describe('Phase 4 — text body asset resolution via resolvedBody', () => {
+    it('uses resolvedBody when provided', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: '![cat](asset:ast-001)',
+      }, false, {
+        resolvedBody: '![cat](data:image/png;base64,FAKEB64==)',
+      });
+      const viewBody = extractBodyView(html);
+      expect(viewBody).toContain('data:image/png;base64,FAKEB64==');
+      // The raw asset reference never reaches markdown-it in the rendered view
+      expect(viewBody).not.toContain('asset:ast-001');
+    });
+
+    it('renders non-image chip fragment links from resolvedBody', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: '[file](asset:ast-pdf-1)',
+      }, false, {
+        resolvedBody: '[📄 file](#asset-ast-pdf-1)',
+      });
+      expect(html).toContain('href="#asset-ast-pdf-1"');
+      expect(html).toContain('📄');
+    });
+
+    it('falls back to entry.body when resolvedBody is omitted', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: '# Hello',
+      });
+      expect(html).toContain('<h1>');
+    });
+  });
+
+  // ── Phase 4: Chip click interception in the child window ──
+
+  describe('Phase 4 — chip click and action-bar interception', () => {
+    it('child script intercepts a[href^="#asset-"] clicks and posts to parent', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain("target.closest('a[href^=\"#asset-\"]')");
+      expect(html).toContain("type: 'pkc-entry-download-asset'");
+      expect(html).toContain('window.opener.postMessage');
+    });
+
+    it('child script intercepts data-pkc-ew-action buttons', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain("target.closest('[data-pkc-ew-action]')");
+      expect(html).toContain("action === 'download-attachment'");
+      expect(html).toContain("action === 'open-attachment'");
+    });
+
+    it('boot script tracks and revokes blob URLs on unload', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain("window.addEventListener('unload'");
+      expect(html).toContain('URL.revokeObjectURL');
+    });
+  });
+
+  // ── Phase 4: pkc-entry-download-asset parent message handling ──
+
+  describe('Phase 4 — parent message handling', () => {
+    it('routes pkc-entry-download-asset messages to onDownloadAsset callback', async () => {
+      const onDownloadAsset = vi.fn();
+      const { childWindow } = setupWindowOpenMock();
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      openEntryWindow(
+        makeEntry() as never,
+        false,
+        vi.fn(),
+        false,
+        undefined,
+        onDownloadAsset,
+      );
+
+      // Simulate the child posting a download request
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'pkc-entry-download-asset', assetKey: 'ast-xyz' },
+          source: childWindow as unknown as Window,
+        }),
+      );
+
+      expect(onDownloadAsset).toHaveBeenCalledWith('ast-xyz');
+    });
+
+    it('ignores pkc-entry-download-asset messages when onDownloadAsset is omitted', async () => {
+      const { childWindow } = setupWindowOpenMock();
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      openEntryWindow(makeEntry() as never, false, vi.fn(), false);
+
+      // Should not throw
+      expect(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-download-asset', assetKey: 'ast-xyz' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+      }).not.toThrow();
     });
   });
 });
