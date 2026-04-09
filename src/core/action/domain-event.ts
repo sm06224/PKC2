@@ -33,6 +33,7 @@ export type DomainEvent =
   | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null }
   | { type: 'CONTAINER_REHYDRATED'; old_cid: string; new_cid: string }
   | { type: 'TRASH_PURGED'; count: number }
+  | { type: 'ORPHAN_ASSETS_PURGED'; count: number }
   | { type: 'BULK_DELETED'; lids: string[] }
   | { type: 'MULTI_SELECT_CHANGED'; lids: string[] }
   | { type: 'ERROR_OCCURRED'; error: string };

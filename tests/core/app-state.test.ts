@@ -1308,6 +1308,145 @@ describe('sort', () => {
     expect(state).toBe(s); // no change
   });
 
+  // ── Purge Orphan Assets ───────────────────
+  //
+  // These tests pin the reducer contract for the manual orphan
+  // asset cleanup path. The feature-layer foundation is already
+  // tested in `tests/features/asset/asset-scan.test.ts`; these
+  // tests focus on the dispatcher / reducer / event emission
+  // integration and the "no auto-GC" guarantee.
+
+  it('PURGE_ORPHAN_ASSETS removes unreferenced assets and emits ORPHAN_ASSETS_PURGED', () => {
+    // Mixed container: one attachment entry points at `ast-keep`,
+    // a second asset `ast-drop` has no referencer.
+    const attachmentBody = JSON.stringify({
+      name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-keep',
+    });
+    const withOrphans: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'a1', title: 'keep.png', body: attachmentBody, archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-keep': 'AAAA', 'ast-drop': 'BBBB', 'ast-also-drop': 'CCCC' },
+    };
+    const s: AppState = { ...readyState(), container: withOrphans };
+    const { state, events } = reduce(s, { type: 'PURGE_ORPHAN_ASSETS' });
+    // Referenced asset survives, orphans removed.
+    expect(state.container!.assets['ast-keep']).toBe('AAAA');
+    expect(state.container!.assets['ast-drop']).toBeUndefined();
+    expect(state.container!.assets['ast-also-drop']).toBeUndefined();
+    expect(Object.keys(state.container!.assets).length).toBe(1);
+    // Event carries the accurate purged count.
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({ type: 'ORPHAN_ASSETS_PURGED', count: 2 });
+    // The assets identity flipped — Preview/View wiring requires this.
+    expect(state.container!.assets).not.toBe(withOrphans.assets);
+    // Everything else is reused by reference (shallow immutable update).
+    expect(state.container!.entries).toBe(withOrphans.entries);
+    expect(state.container!.relations).toBe(withOrphans.relations);
+    expect(state.container!.revisions).toBe(withOrphans.revisions);
+    expect(state.container!.meta).toBe(withOrphans.meta);
+  });
+
+  it('PURGE_ORPHAN_ASSETS is a no-op (blocked) when there are no orphans', () => {
+    // Every asset is referenced, so nothing to prune. The reducer
+    // must return the SAME state reference and emit no events so
+    // the event log does not get polluted by idle cleanup clicks.
+    const attachmentBody = JSON.stringify({
+      name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-1',
+    });
+    const clean: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'a1', title: 'keep.png', body: attachmentBody, archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-1': 'DATA' },
+    };
+    const s: AppState = { ...readyState(), container: clean };
+    const { state, events } = reduce(s, { type: 'PURGE_ORPHAN_ASSETS' });
+    expect(state).toBe(s);
+    expect(events).toHaveLength(0);
+  });
+
+  it('PURGE_ORPHAN_ASSETS is blocked when container.assets is empty', () => {
+    // Empty assets map means there is nothing to scan, nothing to
+    // prune, and nothing to report — must be a no-op no matter
+    // what entries are present.
+    const s = readyState();
+    const { state, events } = reduce(s, { type: 'PURGE_ORPHAN_ASSETS' });
+    expect(state).toBe(s);
+    expect(events).toHaveLength(0);
+  });
+
+  it('PURGE_ORPHAN_ASSETS is blocked in readonly mode', () => {
+    // Readonly artifact view must never mutate the container — the
+    // cleanup button is already hidden in the renderer for this
+    // state (see the shell menu tests) but the reducer enforces
+    // the guarantee too, so even a spoofed dispatch is safe.
+    const withOrphans: Container = {
+      ...mockContainer,
+      assets: { 'ast-drop': 'BBBB' },
+    };
+    const s: AppState = { ...readyState(), container: withOrphans, readonly: true };
+    const { state, events } = reduce(s, { type: 'PURGE_ORPHAN_ASSETS' });
+    expect(state).toBe(s);
+    expect(state.container!.assets['ast-drop']).toBe('BBBB');
+    expect(events).toHaveLength(0);
+  });
+
+  it('PURGE_ORPHAN_ASSETS preserves selection and phase (pure maintenance)', () => {
+    // Cleanup must NOT change selectedLid, editingLid, viewMode, or
+    // phase — it is a maintenance operation, not a content edit.
+    const withOrphans: Container = {
+      ...mockContainer,
+      assets: { 'ast-drop': 'BBBB' },
+    };
+    const s: AppState = {
+      ...readyState(),
+      container: withOrphans,
+      selectedLid: 'e1',
+      viewMode: 'kanban',
+    };
+    const { state } = reduce(s, { type: 'PURGE_ORPHAN_ASSETS' });
+    expect(state.phase).toBe('ready');
+    expect(state.selectedLid).toBe('e1');
+    expect(state.editingLid).toBeNull();
+    expect(state.viewMode).toBe('kanban');
+  });
+
+  it('DELETE_ENTRY does NOT auto-purge orphan assets (foundation-only)', () => {
+    // Regression pin for the "no auto-GC" guarantee. Deleting an
+    // attachment entry must leave its asset in `container.assets`
+    // — the manual cleanup button is the only code path that
+    // removes orphans today. This test will fail loudly if a
+    // future commit adds auto-GC to the reducer.
+    const attachmentBody = JSON.stringify({
+      name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-bound',
+    });
+    const withAttachment: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'a1', title: 'keep.png', body: attachmentBody, archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-bound': 'ZZZZ' },
+    };
+    const s: AppState = { ...readyState(), container: withAttachment };
+    const { state } = reduce(s, { type: 'DELETE_ENTRY', lid: 'a1' });
+    // Entry gone, but the asset is still there — will become an
+    // orphan candidate on the next manual scan.
+    expect(state.container!.entries.find((e) => e.lid === 'a1')).toBeUndefined();
+    expect(state.container!.assets['ast-bound']).toBe('ZZZZ');
+  });
+
   // ── Folder Collapse ───────────────────────
 
   it('initial state has empty collapsedFolders', () => {

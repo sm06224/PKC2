@@ -1781,6 +1781,245 @@ foundation が揃ったので、次は以下のいずれかを policy として
 
 ---
 
+## Orphan asset manual cleanup UI
+
+### 1. 変更点の要約
+
+Orphan asset GC foundation（`src/features/asset/asset-scan.ts`）の
+**初の caller** として、shell menu の Data Maintenance セクション
+に手動クリーンアップ UI を追加した。
+
+- `PURGE_ORPHAN_ASSETS` UserAction / `ORPHAN_ASSETS_PURGED`
+  DomainEvent を新設
+- reducer の `reduceReady` に manual cleanup の一本道を実装
+- shell menu renderer に orphan 件数・プレビュー・クリーンアップ
+  ボタンを描画
+- action-binder に `purge-orphan-assets` の click handler を配線
+- reducer / renderer / action-binder にテストを追加
+- docs に本節を追記
+
+**自動 GC は一切配線していない**。`DELETE_ENTRY` / `COMMIT_EDIT`
+/ `BULK_DELETE` / export path の reducer / 転送層のいずれも未変更
+で、唯一の cleanup 経路は shell menu のボタンだけになる。これは
+foundation 節の「なぜ今は自動 GC を入れないか」で挙げた 4 つの懸念
+（trigger は policy / data loss リスク / revisions との兼ね合い /
+Preview-View wiring 相互作用）を manual UI に踏み越えずに守るため
+の意図的な制約である。
+
+### 2. UI の位置
+
+shell menu card の中、Shortcuts の下・Version の上に Data
+Maintenance セクションとして配置する。既存の「Theme / Shortcuts /
+Version」という maintenance 寄りの一覧に自然に同居する位置で、
+editor 操作・ナビゲーション UI とは完全に分離されている。
+
+readonly モード（`state.readonly === true`）および container が
+未ロードのときはセクション全体を描画しない。「存在するが押せない」
+ではなく「そもそも見えない」とするのは、「readonly はデータ変更の
+エントリポイント自体を持たない」という PKC2 の既存ポリシーに
+合わせたもの。
+
+### 3. 表示内容
+
+`collectOrphanAssetKeys(container)` の結果を毎 render 実行して
+次を提示する:
+
+- **カウント行** — `Orphan assets: N / M`（N=orphan 件数、M=
+  `container.assets` 全体件数）。`data-pkc-orphan-count` と
+  `data-pkc-asset-total` 属性にも同じ値を入れて test 側から
+  確認しやすくしている。
+- **プレビューリスト** — orphan が 1 件以上あれば、最大 3 件の
+  代表 key を `<ul>` で表示。4 件以上あるときは `+N more` ヒント
+  を末尾に足す。観察→確認→実行のフローを短絡させないため。
+- **クリーンアップボタン** — orphan が 0 件なら
+  `data-pkc-disabled="true"` + `disabled` 属性 + `🧹 No orphans
+  to clean` 表示。1 件以上なら `🧹 Clean N orphan asset(s)`
+  （単複を切替）。押下は必ず手動操作のみ。
+- **不可逆性ノート** — `Removes assets not referenced by any
+  entry. Cannot be undone.` を常時表示。undo/redo は未対応で
+  あることを明示する。
+
+scan は render 毎に回るが、`collectOrphanAssetKeys` は
+O(entries + assets) の純粋関数で、shell menu 自体も state change
+毎の full re-render なので追加コストは実質ゼロ。memoise しない
+のは意図的。
+
+### 4. 操作フロー（1 クリックで cleanup）
+
+1. ユーザが header の `⚙` をクリック → shell menu が開く
+2. Data Maintenance セクションに件数とプレビューが表示される
+3. orphan があればボタンが enabled（無ければ disabled）
+4. ボタンをクリック → action-binder が
+   `{ type: 'PURGE_ORPHAN_ASSETS' }` を dispatch
+5. reducer が `removeOrphanAssets` を呼ぶ
+   - 0 件 → `state === prev` な no-op として block
+   - 1 件以上 → 新 container を作り、
+     `{ type: 'ORPHAN_ASSETS_PURGED', count }` を emit
+6. dispatcher の state listener が full re-render をトリガー
+   → shell menu は display: none の初期状態に戻り閉じる
+7. ユーザが menu を再度開くと、件数が 0 になり、ボタンが
+   disabled に落ちているのが見える → cleanup 完了を確認できる
+
+shell menu を開いたまま残すための state を追加することも検討
+したが、既存の menu 開閉は DOM-only の `style.display` toggle
+のみで state に昇格していない。この Issue のために shell-menu
+open state を AppState に持ち上げるのは policy drift なので
+避け、「dispatch 後に閉じるのが副次的な完了フィードバック」
+として扱う。
+
+### 5. 生値 `prev === next` ガード（2 段防御）
+
+orphan 0 件時の cleanup は 2 箇所で弾く:
+
+- **action-binder 側**: ボタンが `data-pkc-disabled="true"` を
+  持つなら dispatch しない。これは event log を「空の
+  ORPHAN_ASSETS_PURGED 試行」で汚染しないための UX 配慮。
+- **reducer 側**: `removeOrphanAssets` が同一参照を返したら
+  `blocked(state, action)` にフォールバック。こちらは、DOM を
+  経由せず直接 dispatch した場合（テスト、将来の自動化、外部
+  スクリプト）でも no-op を保証するための defense-in-depth。
+
+2 段にしたのは UX（event log のノイズ防止）とモデル整合性
+（reducer の契約）を別々に守るため。片方が将来外れても破綻
+しない。
+
+### 6. identity contract と Preview/View wiring 互換性
+
+`removeOrphanAssets` は foundation 節の通り
+
+- 差分なし → 元 container 同一参照
+- 差分あり → 新 container + **新 `assets` object**
+
+を返す。reducer の case はこの contract をそのまま踏襲して
+`next.container = pruned` を作る。結果として
+
+- 0 件 cleanup → `state === prev` → listener は何もしない
+- 1 件以上 → `state.container.assets !== prev.container.assets`
+
+となり、Preview/View wiring 側の `prev.assets !== next.assets`
+ゲートが自然に発火する。entry-window を開いた状態で cleanup
+を実行すれば、開いている子ウィンドウの asset context も既存
+wiring を通じて自動で refresh される。この refresh は cleanup
+path のための特別配線ではなく、既存 Preview/View wiring の
+副次効果である。
+
+### 7. count の算出
+
+`ORPHAN_ASSETS_PURGED` event の `count` は次の差分で取る:
+
+```
+count = Object.keys(prev.assets).length
+      - Object.keys(pruned.assets).length
+```
+
+`collectOrphanAssetKeys(prev).size` を使わなかったのは:
+
+- foundation 側の scan を 2 回回す無駄を避けるため
+- 「reducer が実際に削除した件数」を直接数える方が意味が
+  ずれず、foundation の `Set` と assets map の実装差分
+  （例: 将来 collectOrphan 側が filter を増やすなど）に耐える
+
+ため。これは "reducer が起こした delta を event に書く" という
+既存パターン（`TRASH_PURGED.count = result.purgedCount`）と
+同じ哲学。
+
+### 8. 何を保証し、何を保証しないか
+
+**保証する**:
+
+- `PURGE_ORPHAN_ASSETS` は `ready` phase の editable container
+  でのみ成功する
+- 0 件 cleanup は `state === prev` な no-op、event 非発火
+- cleanup は `container.assets` 以外を触らない
+  （entries / relations / revisions / meta / selectedLid /
+  editingLid / viewMode / phase すべて不変）
+- cleanup 成功時は `ORPHAN_ASSETS_PURGED { count: number }` が
+  emit される
+- `DELETE_ENTRY` / `COMMIT_EDIT` / `BULK_DELETE` / export は
+  orphan cleanup を走らせない（regression test 済み）
+- readonly モード・container 未ロード・0 件のいずれでも破壊的
+  操作は発生しない
+
+**保証しない**:
+
+- `meta.updated_at` の更新（maintenance は user-visible content
+  change ではないため意図的に触らない）
+- undo / redo（cleanup は irreversible。note で明示）
+- 自動実行（今後も policy 次第、ここでは一切行わない）
+- multi-tab 間の調整（別 Issue）
+- export 時の追加 prune（別 Issue）
+
+### 9. テスト
+
+#### `tests/core/app-state.test.ts`（追加 6 ケース）
+
+1. `PURGE_ORPHAN_ASSETS` が orphan を除去し
+   `ORPHAN_ASSETS_PURGED { count }` を emit する（参照 1 /
+   orphan 2 → count === 2、assets identity flip 確認、
+   entries / relations / revisions / meta は reference reuse）
+2. orphan 0 件なら `state === prev` の no-op、event 0 件
+3. `container.assets` 空なら no-op、event 0 件
+4. readonly モードでは cleanup が block される
+5. cleanup は selectedLid / editingLid / viewMode / phase を
+   変更しない（maintenance 性の pin）
+6. **regression pin**: `DELETE_ENTRY` は auto cleanup を走らせない
+   （attachment entry を消しても asset は残る）
+
+#### `tests/adapter/renderer.test.ts`（追加 10 ケース: Shell Menu Data Maintenance）
+
+1. 空 assets → `0 / 0` summary の表示
+2. 参照 1 / 全 3 → orphan count 2, total 3 の summary
+3. orphan > 0 ならプレビューリストに 3 件までの代表 key 表示
+4. orphan 7 件 → プレビュー 3 件 + `+4 more` ヒント
+5. orphan 0 → ボタン disabled + `No orphans` ラベル + プレビュー
+   リスト非描画
+6. orphan > 0 → ボタン enabled + orphan 件数を含むラベル
+7. orphan 1 件 → `1 orphan asset` （単数形、`assets` と誤植しない）
+8. 不可逆性ノート `Cannot be undone` が常時表示
+9. readonly モードでは maintenance セクションごと非描画
+10. textlog body の per-log markdown 参照も orphan scan に反映
+    される（renderer と reducer の scan 規則 drift 防止 pin）
+
+#### `tests/adapter/action-binder.test.ts`（追加 4 ケース: Orphan asset cleanup）
+
+1. enabled button click → `PURGE_ORPHAN_ASSETS` dispatch →
+   `ORPHAN_ASSETS_PURGED { count: 2 }` emit、実 container で
+   orphan のみ消えて referenced は残る
+2. disabled button click → dispatch されない、event 0 件、
+   container 参照不変
+3. cleanup 成功 → `state.container.assets` identity が flip
+   する（Preview/View wiring 互換 pin）
+4. `DELETE_ENTRY` dispatch → `ORPHAN_ASSETS_PURGED` は emit
+   されず、asset は残る（auto GC 非配線 regression pin）
+
+既存 1662 → **1682 tests pass**（+20）。
+
+### 10. 次 Issue 候補
+
+foundation が成立し、manual cleanup の導線も生まれたので、
+次段の policy 候補は foundation 節で挙げた 3 案のまま自然な
+順序で並ぶ:
+
+1. **Export-time compaction**（次候補、安全性最高）
+   export / save-as 時だけ `removeOrphanAssets` を適用する。
+   live state は触らないので undo/redo 問題なし、compression
+   ratio 改善の副次効果あり。manual UI と orthogonal。
+2. **Reducer path auto GC**（要 policy 決定）
+   `DELETE_ENTRY` や `COMMIT_EDIT` の末尾で GC を走らせる案。
+   revisions 扱い・undo/redo・Preview/View 自動 push の UX
+   評価が先。manual UI の使用ログ（どれくらいの頻度で orphan
+   が溜まっているか）が参考になる。
+3. **Multi-tab coordination**（さらに先）
+   複数タブで同じ container を開いているときの cleanup の
+   衝突回避。現時点では PKC2 全体がまだ multi-tab を語って
+   いないので一番後ろ。
+
+今回の manual UI は「ユーザが状況を観察してから cleanup する」
+入口を提供することで、自動 policy を急がずに運用経験を積む
+ための保守的な踏み台になっている。
+
+---
+
 ## 維持する不変量
 
 - 5 層構造：resolver は features、子ウィンドウ配信は adapter

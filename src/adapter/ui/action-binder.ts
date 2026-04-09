@@ -399,6 +399,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Stay open so the user can verify the new theme before closing.
         break;
       }
+      case 'purge-orphan-assets': {
+        // Guard: respect the disabled flag the renderer sets when
+        // `orphanCount === 0`. Clicking a disabled button must be a
+        // no-op so we never dispatch an action that the reducer will
+        // just block anyway — the reducer blocks too (defense in
+        // depth), but silencing the dispatch here avoids churn in
+        // the event log.
+        if (target.getAttribute('data-pkc-disabled') === 'true') break;
+        dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
+        break;
+      }
       case 'show-shortcut-help': {
         const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
         if (helpOverlay) helpOverlay.style.display = '';
