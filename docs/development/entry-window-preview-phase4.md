@@ -36,7 +36,7 @@ Light mode / データ欠落 / 未対応 MIME の各理由を明示する
 ### Out of scope（意図的に次フェーズへ）
 
 - edit モードの Preview タブでの asset reference 解決
-  （現状は textarea の生テキストがそのまま markdown-it に渡る）
+  *（Resolved — see `edit-preview-asset-resolution.md`.）*
 - PDF ビューワー内ナビゲーションや注釈
 - video/audio のサムネイル生成・タイムライン取得
 - HTML / SVG のサンドボックス許可 UI（常にエントリの

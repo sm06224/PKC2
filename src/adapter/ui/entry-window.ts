@@ -15,6 +15,11 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import {
+  resolveAssetReferences,
+  hasAssetReferences,
+  type AssetResolutionContext,
+} from '../../features/markdown/asset-resolver';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from '../../features/todo/todo-body';
 import {
   parseAttachmentBody,
@@ -30,6 +35,50 @@ import { parseFormBody } from './form-presenter';
  * exact same markdown-it instance as the parent.
  */
 (window as unknown as Record<string, unknown>).pkcRenderMarkdown = renderMarkdown;
+
+/**
+ * Per-lid preview resolver contexts.
+ *
+ * Captured at `openEntryWindow` time from the current container and
+ * used by `pkcRenderEntryPreview(lid, text)` (exposed on the parent
+ * `window` below) so that the child window's edit-mode Preview tab
+ * can resolve `![alt](asset:key)` image embeds and
+ * `[label](asset:key)` non-image chips in the textarea's current
+ * contents before handing the string to `renderMarkdown()`.
+ *
+ * Snapshot semantics: the context is taken once at window-open time
+ * and cleared on close, matching the Phase-4 `resolvedBody` behavior.
+ * Changes to `container.assets` or attachment metadata made in the
+ * parent window while the child is open are NOT reflected — that is
+ * a deliberate trade-off for rendering consistency between the child's
+ * view-mode body (which uses `resolvedBody`) and its edit-mode preview.
+ */
+const previewResolverContexts = new Map<string, AssetResolutionContext>();
+
+/**
+ * Render a textarea body string as the entry-window preview, running
+ * asset reference resolution against the captured per-lid context
+ * first when the text contains any `asset:` references. Exposed on
+ * the parent `window` so the child window's inline `<script>` can
+ * call it via `window.opener.pkcRenderEntryPreview(lid, text)`.
+ *
+ * - If no context is registered for the given lid (non-text archetype
+ *   or no references at open time), the function is a plain wrapper
+ *   around `renderMarkdown()` — identical to the legacy
+ *   `pkcRenderMarkdown` path.
+ * - If the current text has no `asset:` reference, the resolver is
+ *   skipped and `renderMarkdown()` is called directly. This keeps the
+ *   common typing path cheap.
+ */
+function renderEntryPreview(lid: string, text: string): string {
+  const ctx = previewResolverContexts.get(lid);
+  if (ctx && text && hasAssetReferences(text)) {
+    const resolved = resolveAssetReferences(text, ctx);
+    return renderMarkdown(resolved);
+  }
+  return renderMarkdown(text ?? '');
+}
+(window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
 /** Track open child windows to prevent duplicates. */
 const openWindows = new Map<string, Window>();
@@ -63,6 +112,15 @@ export interface EntryWindowAssetContext {
    * markdown render.
    */
   resolvedBody?: string;
+  /**
+   * For text / textlog archetype entries: snapshot of the resolver
+   * input context (assets + mimeByKey + nameByKey) captured at window
+   * open time. When present, `openEntryWindow` registers it under
+   * `previewResolverContexts[entry.lid]` so the edit-mode Preview tab
+   * can resolve asset references against the same container state
+   * that produced `resolvedBody`. Cleared when the child closes.
+   */
+  previewCtx?: AssetResolutionContext;
 }
 
 /**
@@ -93,6 +151,13 @@ export function openEntryWindow(
 
   openWindows.set(entry.lid, child);
 
+  // Register the edit-mode Preview resolver context so the child's
+  // `pkcRenderEntryPreview(lid, text)` call can resolve asset
+  // references as the user types in the Source textarea.
+  if (assetContext?.previewCtx) {
+    previewResolverContexts.set(entry.lid, assetContext.previewCtx);
+  }
+
   const openedAt = entry.updated_at;
 
   child.document.open();
@@ -122,6 +187,7 @@ export function openEntryWindow(
     if (child!.closed) {
       clearInterval(pollClose);
       openWindows.delete(entry.lid);
+      previewResolverContexts.delete(entry.lid);
       window.removeEventListener('message', handleMessage);
     }
   }, 500);
@@ -897,14 +963,23 @@ function showTab(tab) {
   }
 }
 
-/**
+/*
  * Render markdown using the parent window's markdown-it instance.
- * This ensures the child window preview matches the parent's rendering exactly.
- * Falls back to plain-text display if the parent is unavailable.
+ * Preference order:
+ *   1. pkcRenderEntryPreview(lid, text) — resolves image embeds and
+ *      non-image chips against the per-lid context captured at window
+ *      open time, then renders. Used for TEXT / TEXTLOG entries.
+ *   2. pkcRenderMarkdown(text) — legacy raw-markdown path, kept for
+ *      non-text archetypes and parents without the new helper.
+ *   3. Plain-text HTML escape — last-resort fallback if the parent is
+ *      unavailable (cross-origin or closed).
  */
 function renderMd(text) {
   if (!text) return '<em style="color:var(--c-muted)">(empty)</em>';
   try {
+    if (window.opener && typeof window.opener.pkcRenderEntryPreview === 'function') {
+      return window.opener.pkcRenderEntryPreview(lid, text);
+    }
     if (window.opener && typeof window.opener.pkcRenderMarkdown === 'function') {
       return window.opener.pkcRenderMarkdown(text);
     }

@@ -1489,15 +1489,26 @@ function buildEntryWindowAssetContext(
   }
 
   if (entry.archetype === 'text' || entry.archetype === 'textlog') {
-    if (!entry.body || !hasAssetReferences(entry.body)) return undefined;
+    // Build the resolver context once. It is used twice: to produce
+    // the initial `resolvedBody` for the view pane, and to seed the
+    // `previewCtx` snapshot that powers the edit-mode Preview tab's
+    // live resolution of asset references while the user types.
     const mimeByKey = collectAssetMimeMap(container);
     const nameByKey = collectAssetNameMap(container);
-    const resolvedBody = resolveAssetReferences(entry.body, {
+    const previewCtx = {
       assets: container.assets ?? {},
       mimeByKey,
       nameByKey,
-    });
-    return { resolvedBody };
+    };
+    // Skip `resolvedBody` when the saved body has no reference at
+    // open time — the view pane renders `entry.body` unchanged, which
+    // is what Phase 4 already does. `previewCtx` is still registered
+    // because the user may TYPE a reference inside the Source textarea
+    // even when the saved body has none.
+    const resolvedBody = entry.body && hasAssetReferences(entry.body)
+      ? resolveAssetReferences(entry.body, previewCtx)
+      : undefined;
+    return { resolvedBody, previewCtx };
   }
 
   return undefined;

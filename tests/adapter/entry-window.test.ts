@@ -652,4 +652,307 @@ describe('Entry Window', () => {
       }).not.toThrow();
     });
   });
+
+  // ── Edit-mode Preview Asset Resolution ──
+
+  describe('Edit-preview asset resolution', () => {
+    // 1 × 1 red PNG used for image embed resolution assertions
+    const RED_PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    it('exposes pkcRenderEntryPreview on the parent window', async () => {
+      await import('../../src/adapter/ui/entry-window');
+      const global = window as unknown as Record<string, unknown>;
+      expect(typeof global.pkcRenderEntryPreview).toBe('function');
+    });
+
+    it('child renderMd script calls pkcRenderEntryPreview with the current lid first', async () => {
+      const html = await openAndCapture();
+      // The child should prefer the new per-lid helper over the
+      // legacy parent helper.
+      expect(html).toContain('pkcRenderEntryPreview');
+      expect(html).toContain('window.opener.pkcRenderEntryPreview(lid, text)');
+      // Legacy fallback chain must remain so non-text archetypes keep
+      // working even when no previewCtx is registered.
+      expect(html).toContain('window.opener.pkcRenderMarkdown(text)');
+    });
+
+    it('pkcRenderEntryPreview without context falls back to plain markdown', async () => {
+      await import('../../src/adapter/ui/entry-window');
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render('unknown-lid', '# Title');
+      expect(result).toContain('<h1>');
+      expect(result).toContain('Title');
+    });
+
+    it('pkcRenderEntryPreview without context does NOT resolve asset references', async () => {
+      await import('../../src/adapter/ui/entry-window');
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render('not-registered', '![alt](asset:ast-abc)');
+      // Without a context the resolver does not run — markdown-it sees
+      // the raw `asset:` URL and (because asset: is not on the scheme
+      // allowlist) strips the href. No data: URI or fragment chip.
+      expect(result).not.toContain('data:image/png');
+      expect(result).not.toContain('#asset-');
+    });
+
+    it('pkcRenderEntryPreview with registered ctx resolves image embeds', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-red': RED_PNG },
+        mimeByKey: { 'ast-red': 'image/png' },
+        nameByKey: { 'ast-red': 'red.png' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![red](asset:ast-red)');
+      expect(result).toContain('<img');
+      expect(result).toContain('data:image/png;base64,' + RED_PNG);
+    });
+
+    it('pkcRenderEntryPreview resolves non-image chips to #asset- fragment links', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-doc': 'ZHVtbXk=' }, // base64 for "dummy"
+        mimeByKey: { 'ast-doc': 'application/pdf' },
+        nameByKey: { 'ast-doc': 'report.pdf' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '[the report](asset:ast-doc)');
+      expect(result).toContain('href="#asset-ast-doc"');
+      expect(result).toContain('📄');
+      expect(result).toContain('the report');
+    });
+
+    it('pkcRenderEntryPreview uses nameByKey fallback for empty chip labels', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-doc': 'ZHVtbXk=' },
+        mimeByKey: { 'ast-doc': 'application/pdf' },
+        nameByKey: { 'ast-doc': 'report.pdf' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '[](asset:ast-doc)');
+      expect(result).toContain('report.pdf');
+    });
+
+    it('pkcRenderEntryPreview emits missing marker for unknown key', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: {},
+        mimeByKey: {},
+        nameByKey: {},
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![alt](asset:ast-missing)');
+      expect(result).toContain('missing asset');
+      expect(result).toContain('ast-missing');
+      expect(result).not.toContain('data:image/png');
+    });
+
+    it('pkcRenderEntryPreview emits unsupported marker for disallowed MIME', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-svg': 'PHN2Zy8+' },
+        mimeByKey: { 'ast-svg': 'image/svg+xml' },
+        nameByKey: { 'ast-svg': 'logo.svg' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(entry.lid, '![logo](asset:ast-svg)');
+      expect(result).toContain('unsupported asset');
+      expect(result).not.toContain('data:image/svg');
+    });
+
+    it('pkcRenderEntryPreview skips resolver when text has no asset references', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-red': RED_PNG },
+        mimeByKey: { 'ast-red': 'image/png' },
+        nameByKey: {},
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      // Plain markdown — no asset refs at all
+      const result = render(entry.lid, '# Heading\n\nSome text with **bold**.');
+      expect(result).toContain('<h1>');
+      expect(result).toContain('<strong>');
+      // Must not accidentally embed the image
+      expect(result).not.toContain('data:image/png');
+    });
+
+    it('pkcRenderEntryPreview handles empty text without throwing', async () => {
+      await import('../../src/adapter/ui/entry-window');
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      expect(() => render('any', '')).not.toThrow();
+      expect(() => render('any', undefined as unknown as string)).not.toThrow();
+    });
+
+    it('pkcRenderEntryPreview never emits javascript: or data:text/html as href/src', async () => {
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+      const previewCtx = {
+        assets: { 'ast-red': RED_PNG },
+        mimeByKey: { 'ast-red': 'image/png' },
+        nameByKey: { 'ast-red': 'red.png' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      const result = render(
+        entry.lid,
+        '![x](asset:ast-red)\n\n[click](javascript:alert(1))\n\n<script>alert(1)</script>',
+      );
+      // The asset embed should still produce a safe data:image/png href.
+      expect(result).toContain('data:image/png;base64,');
+      // The javascript: link and script tag must NOT become executable
+      // HTML attributes. They may appear as escaped plain text (which
+      // markdown-it does when a URL is rejected by the scheme allowlist)
+      // but never as href="javascript:…" or src="data:text/html…".
+      expect(result).not.toMatch(/href\s*=\s*["']javascript:/i);
+      expect(result).not.toMatch(/href\s*=\s*["']data:text\/html/i);
+      expect(result).not.toMatch(/src\s*=\s*["']javascript:/i);
+      expect(result).not.toMatch(/src\s*=\s*["']data:text\/html/i);
+      // Raw <script> must be escaped (html: false)
+      expect(result).not.toMatch(/<script[>\s]/i);
+    });
+
+    it('resolver context is cleared when the child window closes', async () => {
+      vi.useFakeTimers();
+      try {
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const { childWindow } = setupWindowOpenMock();
+        const entry = makeEntry({ archetype: 'text', body: 'placeholder' });
+        const previewCtx = {
+          assets: { 'ast-red': RED_PNG },
+          mimeByKey: { 'ast-red': 'image/png' },
+          nameByKey: {},
+        };
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          { previewCtx } as never,
+        );
+        const global = window as unknown as Record<string, unknown>;
+        const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+
+        // While open, the context resolves the reference.
+        const openResult = render(entry.lid, '![red](asset:ast-red)');
+        expect(openResult).toContain('data:image/png;base64,' + RED_PNG);
+
+        // Simulate child closing
+        childWindow.closed = true;
+        vi.advanceTimersByTime(600); // close poll runs every 500ms
+
+        // After cleanup, the context should be gone — re-rendering
+        // falls back to the raw markdown path with no data: URI.
+        const closedResult = render(entry.lid, '![red](asset:ast-red)');
+        expect(closedResult).not.toContain('data:image/png');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('text archetype with TEXTLOG archetype also benefits from the same context', async () => {
+      // TEXTLOG bodies are JSON; the child window's raw-body textarea
+      // still sees the JSON, and an asset reference embedded inside a
+      // textlog log-entry text IS resolvable via the same context.
+      const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+      setupWindowOpenMock();
+      const entry = makeEntry({
+        archetype: 'textlog',
+        body: JSON.stringify({
+          entries: [{ id: '1', text: 'note', createdAt: '2026-01-01T00:00:00Z', flags: [] }],
+        }),
+      });
+      const previewCtx = {
+        assets: { 'ast-doc': 'ZHVtbXk=' },
+        mimeByKey: { 'ast-doc': 'application/pdf' },
+        nameByKey: { 'ast-doc': 'report.pdf' },
+      };
+      openEntryWindow(
+        entry as never,
+        false,
+        vi.fn(),
+        false,
+        { previewCtx } as never,
+      );
+      const global = window as unknown as Record<string, unknown>;
+      const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
+      // Simulate what the user would type into the Source textarea
+      // (a flat markdown render, not a JSON-formatted log)
+      const result = render(entry.lid, 'See [the report](asset:ast-doc)');
+      expect(result).toContain('href="#asset-ast-doc"');
+      expect(result).toContain('report');
+    });
+  });
 });
