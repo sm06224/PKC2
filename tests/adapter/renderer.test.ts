@@ -4594,11 +4594,11 @@ describe('Sandbox Control UI in Meta Pane', () => {
     expect(section).not.toBeNull();
   });
 
-  it('renders 5 sandbox checkboxes', () => {
+  it('renders 10 sandbox checkboxes', () => {
     const c = htmlAttachmentContainer();
     render(baseState({ container: c, selectedLid: 'html1' }), root);
     const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
-    expect(checkboxes.length).toBe(5);
+    expect(checkboxes.length).toBe(10);
   });
 
   it('checkboxes reflect sandbox_allow state', () => {
@@ -4660,7 +4660,17 @@ describe('Sandbox Control UI in Meta Pane', () => {
     const section = root.querySelector('[data-pkc-region="sandbox-control"]');
     expect(section).not.toBeNull();
     const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-sandbox-attr"]');
-    expect(checkboxes.length).toBe(5);
+    expect(checkboxes.length).toBe(10);
+  });
+
+  it('renders description text for each sandbox attribute', () => {
+    const c = htmlAttachmentContainer();
+    render(baseState({ container: c, selectedLid: 'html1' }), root);
+    const descs = root.querySelectorAll('.pkc-sandbox-desc');
+    expect(descs.length).toBe(10);
+    // Verify at least one description is populated
+    const scriptDesc = Array.from(descs).find((d) => d.textContent?.includes('JavaScript'));
+    expect(scriptDesc).not.toBeNull();
   });
 });
 

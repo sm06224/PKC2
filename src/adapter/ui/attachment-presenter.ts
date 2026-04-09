@@ -64,9 +64,30 @@ export const SANDBOX_ATTRIBUTES = [
   'allow-popups',
   'allow-modals',
   'allow-same-origin',
+  'allow-top-navigation',
+  'allow-top-navigation-by-user-activation',
+  'allow-top-navigation-to-custom-protocols',
+  'allow-pointer-lock',
+  'allow-presentation',
 ] as const;
 
 export type SandboxAttribute = typeof SANDBOX_ATTRIBUTES[number];
+
+/**
+ * Short description for each sandbox attribute, shown in the UI.
+ */
+export const SANDBOX_DESCRIPTIONS: Record<SandboxAttribute, string> = {
+  'allow-scripts': 'JavaScript execution',
+  'allow-forms': 'Form submission',
+  'allow-popups': 'Open popups / new windows',
+  'allow-modals': 'alert() / confirm() / prompt()',
+  'allow-same-origin': 'Same-origin access (cookies, storage)',
+  'allow-top-navigation': 'Navigate top-level window',
+  'allow-top-navigation-by-user-activation': 'Navigate top on user click',
+  'allow-top-navigation-to-custom-protocols': 'Navigate to custom protocols',
+  'allow-pointer-lock': 'Pointer Lock API',
+  'allow-presentation': 'Presentation API',
+};
 
 /** Estimate decoded byte size from base64 string length. */
 export function estimateSize(base64: string): number {

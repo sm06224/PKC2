@@ -19,6 +19,7 @@ import {
   isSvg,
   previewModeLabel,
   SANDBOX_ATTRIBUTES,
+  SANDBOX_DESCRIPTIONS,
 } from '@adapter/ui/attachment-presenter';
 import type { Entry } from '@core/model/record';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
@@ -711,7 +712,18 @@ describe('MIME type classification', () => {
       expect(SANDBOX_ATTRIBUTES).toContain('allow-popups');
       expect(SANDBOX_ATTRIBUTES).toContain('allow-modals');
       expect(SANDBOX_ATTRIBUTES).toContain('allow-same-origin');
-      expect(SANDBOX_ATTRIBUTES.length).toBe(5);
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation-by-user-activation');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-top-navigation-to-custom-protocols');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-pointer-lock');
+      expect(SANDBOX_ATTRIBUTES).toContain('allow-presentation');
+      expect(SANDBOX_ATTRIBUTES.length).toBe(10);
+    });
+
+    it('SANDBOX_DESCRIPTIONS has a description for every attribute', () => {
+      for (const attr of SANDBOX_ATTRIBUTES) {
+        expect(SANDBOX_DESCRIPTIONS[attr]).toBeTruthy();
+      }
     });
 
     it('sandbox_allow round-trips through parse/serialize', () => {

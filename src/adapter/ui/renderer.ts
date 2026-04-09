@@ -22,7 +22,7 @@ import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES } from './attachment-presenter';
+import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 
@@ -1297,9 +1297,14 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
         if (!canEdit) checkbox.disabled = true;
         row.appendChild(checkbox);
 
+        const labelWrap = createElement('span', 'pkc-sandbox-label-wrap');
         const label = createElement('span', 'pkc-sandbox-label');
         label.textContent = attr;
-        row.appendChild(label);
+        labelWrap.appendChild(label);
+        const desc = createElement('span', 'pkc-sandbox-desc');
+        desc.textContent = SANDBOX_DESCRIPTIONS[attr as keyof typeof SANDBOX_DESCRIPTIONS] ?? '';
+        labelWrap.appendChild(desc);
+        row.appendChild(labelWrap);
 
         sandboxSection.appendChild(row);
       }
