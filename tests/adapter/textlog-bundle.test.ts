@@ -1246,4 +1246,35 @@ describe('buildTextlogsContainerBundle', () => {
     expect(container.entries.length).toBe(entriesBefore);
     expect(JSON.stringify(container.assets)).toBe(assetsBefore);
   });
+
+  it('single-entry buildTextlogBundle still works after container-wide addition (regression)', async () => {
+    const entry = makeTextlogEntry('e1', 'Solo Log', [
+      { id: 'log-1', text: 'hello world' },
+      { id: 'log-2', text: '![pic](asset:ast-001)' },
+    ]);
+    const att = makeAttachmentEntry('a1', 'pic.png', 'image/png', 'ast-001');
+    const container = makeContainer({
+      entries: [entry, att],
+      assets: { 'ast-001': btoa('PNG') },
+    });
+    const now = new Date('2026-04-10T00:00:00Z');
+
+    // Single-entry export must remain fully functional
+    const built = buildTextlogBundle(entry, container, { now });
+    expect(built.blob).toBeInstanceOf(Blob);
+    expect(built.zipBytes).toBeInstanceOf(Uint8Array);
+    expect(built.zipBytes.length).toBe(built.blob.size);
+    expect(built.manifest.format).toBe('pkc2-textlog-bundle');
+    expect(built.manifest.entry_count).toBe(2);
+    expect(built.manifest.asset_count).toBe(1);
+    expect(built.filename).toMatch(/\.textlog\.zip$/);
+
+    // Round-trip: the bundle can still be re-imported
+    const buf = await built.blob.arrayBuffer();
+    const reimported = importTextlogBundleFromBuffer(buf, 'regression.textlog.zip');
+    expect(reimported.ok).toBe(true);
+    if (!reimported.ok) return;
+    expect(reimported.entryCount).toBe(2);
+    expect(reimported.attachments).toHaveLength(1);
+  });
 });
