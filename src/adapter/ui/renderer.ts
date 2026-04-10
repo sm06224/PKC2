@@ -2289,20 +2289,26 @@ function renderBatchImportResult(summary: BatchImportResultSummary): HTMLElement
   parts.push(countText + ' imported');
 
   // Destination
-  if (summary.destination === '/ (Root)') {
+  if (summary.actualDestination === '/ (Root)') {
     parts.push('to / (Root)');
   } else {
-    parts.push(`to \u{1F4C1} ${summary.destination}`);
+    parts.push(`to \u{1F4C1} ${summary.actualDestination}`);
   }
 
-  // Restore / flat
+  // Restore / flat — always explicit
   if (summary.restoreStructure && summary.folderCount > 0) {
     parts.push(`\u2014 folder structure restored (${summary.folderCount} folders)`);
+  } else {
+    parts.push('\u2014 flat import');
   }
 
-  // Fallback warning
+  // Fallback warning with intended destination
   if (summary.fallbackToRoot) {
-    parts.push('\u2014 selected destination was unavailable');
+    if (summary.intendedDestination) {
+      parts.push(`\u2014 selected destination \u{1F4C1} ${summary.intendedDestination} was unavailable`);
+    } else {
+      parts.push('\u2014 selected destination was unavailable');
+    }
   }
 
   const message = createElement('span', 'pkc-import-result-message');

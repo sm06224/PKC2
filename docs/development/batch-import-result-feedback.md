@@ -1,6 +1,6 @@
 # Batch Import Result Feedback
 
-Status: spec-complete
+Status: spec-complete (rev 2)
 Parent: `batch-import-target-folder-selection.md`
 
 ## §1 User-Visible Completion Contract
@@ -12,32 +12,40 @@ After batch import completes, the user must be able to tell:
 | Imported entry count | "3 entries" |
 | Attachment count | "2 attachments" |
 | Restore vs flat | "folder structure restored" / "flat import" |
-| Destination | "/ (Root)" or folder title |
-| Fallback occurred | "selected destination was unavailable" |
+| Actual destination | "/ (Root)" or folder title |
+| Intended destination (on fallback) | "📁 Project Alpha" |
+| Fallback occurred | "selected destination 📁 Project Alpha was unavailable" |
 
-## §2 Target Folder Fallback Visibility
+## §2 Actual vs Intended Destination
 
-If the user selected a target folder in preview, but apply had to fall back
-to root because the target was missing or invalid:
+Two destination concepts exist:
 
-- The result message MUST explicitly state that fallback occurred.
-- The message should name the original intended destination.
-- No silent fallback in user-visible messaging.
+- **Actual destination** (`actualDestination`): where entries were actually placed.
+  Always set. Either `"/ (Root)"` or the folder title.
+- **Intended destination** (`intendedDestination`): the folder the user selected
+  in the preview picker, if a fallback to root occurred. Only set when
+  `fallbackToRoot` is true. `null` otherwise.
+
+When `fallbackToRoot` is true, both `actualDestination` (always `"/ (Root)"`)
+and `intendedDestination` (the originally selected folder title) are available
+for the result message.
 
 ## §3 Terminology
 
 | Situation | Message pattern |
 |-----------|----------------|
-| Root import | "N entries imported to / (Root)" |
-| Folder import | "N entries imported to 📁 <title>" |
+| Root + flat | "N entries imported to / (Root) — flat import" |
 | Root + restore | "N entries imported to / (Root) — folder structure restored (M folders)" |
-| Folder + restore | "N entries imported to 📁 <title> — folder structure restored (M folders)" |
-| Target missing fallback | "N entries imported to / (Root) — selected destination was unavailable" |
-| Flat + attachments | "N entries (K attachments) imported to ..." |
+| Folder + flat | "N entries imported to 📁 \<title\> — flat import" |
+| Folder + restore | "N entries imported to 📁 \<title\> — folder structure restored (M folders)" |
+| Fallback | "... — selected destination 📁 \<intended\> was unavailable" |
+| With attachments | "N entries (K attachments) imported to ..." |
+
+The restore/flat distinction is always stated explicitly.
 
 ## §4 Data Model
 
-### BatchImportResultSummary (new type in system-command.ts)
+### BatchImportResultSummary (system-command.ts)
 
 ```typescript
 export interface BatchImportResultSummary {
@@ -45,7 +53,11 @@ export interface BatchImportResultSummary {
   attachmentCount: number;
   folderCount: number;
   restoreStructure: boolean;
-  destination: string;       // "/ (Root)" or folder title
+  /** Actual destination used: "/ (Root)" or folder title. */
+  actualDestination: string;
+  /** Intended destination if fallback occurred: folder title. null if no fallback. */
+  intendedDestination: string | null;
+  /** True when the user chose a target folder but it was unavailable at apply time. */
   fallbackToRoot: boolean;
   source: string;
 }
@@ -89,15 +101,24 @@ Set by `SYS_APPLY_BATCH_IMPORT` reducer. Cleared by `DISMISS_BATCH_IMPORT_RESULT
 - Banner uses `data-pkc-region="batch-import-result"`.
 - Banner includes a dismiss button with `data-pkc-action="dismiss-batch-import-result"`.
 - Banner text follows §3 terminology.
+- Restore/flat mode is always explicitly stated.
+- When `fallbackToRoot` is true, the message names the `intendedDestination`.
 
-## §7 Constraints
+## §7 Empty Plan Behavior
+
+An empty plan (zero entries, zero folders) still emits `BATCH_IMPORT_APPLIED`
+with a zero-count summary and stores `batchImportResult`. This is intentional:
+the user initiated the import action and deserves feedback even if the result
+was trivially empty. The banner renders normally with "0 entries imported".
+
+## §8 Constraints
 
 1. No new dialogs or modals.
 2. Result banner is purely informational — dismissible, not blocking.
 3. Reducer remains side-effect free.
 4. Result summary computation happens inside the reducer using data already available.
 
-## §8 Non-Goals
+## §9 Non-Goals
 
 - Import history / log viewer
 - Undo UI

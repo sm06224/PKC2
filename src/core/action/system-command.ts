@@ -137,8 +137,10 @@ export interface BatchImportResultSummary {
   attachmentCount: number;
   folderCount: number;
   restoreStructure: boolean;
-  /** Human-readable destination: "/ (Root)" or folder title. */
-  destination: string;
+  /** Actual destination used: "/ (Root)" or folder title. */
+  actualDestination: string;
+  /** Intended destination if fallback occurred: folder title. null if no fallback. */
+  intendedDestination: string | null;
   /** True when the user chose a target folder but it was unavailable at apply time. */
   fallbackToRoot: boolean;
   source: string;

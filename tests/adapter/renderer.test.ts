@@ -952,14 +952,14 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-region="batch-import-preview"]')).toBeNull();
   });
 
-  it('renders batch import result banner when batchImportResult is set', () => {
+  it('renders batch import result banner with flat import to root', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
       batchImportResult: {
         entryCount: 3, attachmentCount: 1, folderCount: 0,
-        restoreStructure: false, destination: '/ (Root)',
-        fallbackToRoot: false, source: 'test.zip',
+        restoreStructure: false, actualDestination: '/ (Root)',
+        intendedDestination: null, fallbackToRoot: false, source: 'test.zip',
       },
       collapsedFolders: [],
     };
@@ -971,6 +971,7 @@ describe('Renderer', () => {
     expect(msg!.textContent).toContain('3 entries');
     expect(msg!.textContent).toContain('1 attachments');
     expect(msg!.textContent).toContain('/ (Root)');
+    expect(msg!.textContent).toContain('flat import');
     // Dismiss button present
     const dismissBtn = banner!.querySelector('[data-pkc-action="dismiss-batch-import-result"]');
     expect(dismissBtn).not.toBeNull();
@@ -982,8 +983,8 @@ describe('Renderer', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
       batchImportResult: {
         entryCount: 5, attachmentCount: 0, folderCount: 2,
-        restoreStructure: true, destination: 'My Folder',
-        fallbackToRoot: false, source: 'archive.zip',
+        restoreStructure: true, actualDestination: 'My Folder',
+        intendedDestination: null, fallbackToRoot: false, source: 'archive.zip',
       },
       collapsedFolders: [],
     };
@@ -992,22 +993,26 @@ describe('Renderer', () => {
     expect(msg.textContent).toContain('My Folder');
     expect(msg.textContent).toContain('folder structure restored');
     expect(msg.textContent).toContain('2 folders');
+    expect(msg.textContent).not.toContain('flat import');
   });
 
-  it('result banner shows fallback warning when target was unavailable', () => {
+  it('result banner shows fallback warning with intended folder name', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
       batchImportResult: {
         entryCount: 2, attachmentCount: 0, folderCount: 0,
-        restoreStructure: false, destination: '/ (Root)',
-        fallbackToRoot: true, source: 'import.zip',
+        restoreStructure: false, actualDestination: '/ (Root)',
+        intendedDestination: 'Project Alpha', fallbackToRoot: true, source: 'import.zip',
       },
       collapsedFolders: [],
     };
     render(state, root);
     const msg = root.querySelector('[data-pkc-role="import-result-message"]')!;
-    expect(msg.textContent).toContain('selected destination was unavailable');
+    expect(msg.textContent).toContain('Project Alpha');
+    expect(msg.textContent).toContain('was unavailable');
+    expect(msg.textContent).toContain('/ (Root)');
+    expect(msg.textContent).toContain('flat import');
   });
 
   it('does not render result banner when batchImportResult is null', () => {
@@ -1028,16 +1033,15 @@ describe('Renderer', () => {
         textCount: 1, textlogCount: 0, totalEntries: 1,
         compacted: false, missingAssetCount: 0, isFolderExport: false,
         sourceFolderTitle: null, canRestoreFolderStructure: false,
-        entries: [{ index: 0, title: 'A', archetype: 'text' as const, bodySnippet: '', charCount: 0, assetCount: 0, attachmentCount: 0 }],
+        folderCount: 0, source: 'old.zip',
+        entries: [{ index: 0, title: 'A', archetype: 'text' as const, bodySnippet: '' }],
         selectedIndices: [0],
         targetFolderLid: null,
-        folderRestoreMode: 'flat' as const, restoredFolderCount: 0, flatReason: null,
-        rawData: null,
       }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [],
       batchImportResult: {
         entryCount: 1, attachmentCount: 0, folderCount: 0,
-        restoreStructure: false, destination: '/ (Root)',
-        fallbackToRoot: false, source: 'old.zip',
+        restoreStructure: false, actualDestination: '/ (Root)',
+        intendedDestination: null, fallbackToRoot: false, source: 'old.zip',
       },
       collapsedFolders: [],
     };

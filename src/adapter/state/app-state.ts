@@ -581,15 +581,22 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const targetEntry = targetExists
         ? container.entries.find((e) => e.lid === targetLid)
         : null;
-      const destination = targetExists && targetEntry
+      const actualDestination = targetExists && targetEntry
         ? targetEntry.title || '(untitled)'
         : '/ (Root)';
+      // When fallback occurred, look up the intended folder title from original container
+      let intendedDestination: string | null = null;
+      if (fallbackToRoot && targetLid !== null) {
+        const intendedEntry = state.container!.entries.find((e) => e.lid === targetLid);
+        intendedDestination = intendedEntry ? intendedEntry.title || '(untitled)' : null;
+      }
       const summary: BatchImportResultSummary = {
         entryCount: plan.entries.length,
         attachmentCount: totalAttachments,
         folderCount: plan.folders.length,
         restoreStructure: plan.restoreStructure,
-        destination,
+        actualDestination,
+        intendedDestination,
         fallbackToRoot,
         source: plan.source,
       };

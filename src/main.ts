@@ -744,12 +744,14 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     const summary = dispatcher.getState().batchImportResult;
     if (summary) {
       const attNote = summary.attachmentCount > 0 ? ` (${summary.attachmentCount} attachments)` : '';
-      const restoreNote = summary.restoreStructure ? ` — ${summary.folderCount} folders restored` : '';
-      const fallbackNote = summary.fallbackToRoot ? ' — target folder was unavailable, imported to root' : '';
+      const modeNote = summary.restoreStructure ? ` — ${summary.folderCount} folders restored` : ' — flat import';
+      const fallbackNote = summary.fallbackToRoot
+        ? ` — target folder${summary.intendedDestination ? ` "${summary.intendedDestination}"` : ''} was unavailable, imported to root`
+        : '';
       const planWarning = !planResult.ok ? ' — malformed folder metadata, flat fallback' : '';
       console.log(
         `[PKC2] Batch import complete: ${summary.entryCount}${attNote}`
-        + ` to "${summary.destination}" from "${summary.source}"${restoreNote}${fallbackNote}${planWarning}`,
+        + ` to "${summary.actualDestination}" from "${summary.source}"${modeNote}${fallbackNote}${planWarning}`,
       );
     }
   });

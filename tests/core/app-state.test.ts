@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createInitialState, reduce } from '@adapter/state/app-state';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
+import type { BatchImportPreviewInfo } from '@core/action/system-command';
 
 const mockContainer: Container = {
   meta: {
@@ -2197,7 +2198,7 @@ describe('SYS_APPLY_BATCH_IMPORT', () => {
     expect(state.container!.entries.length).toBe(before.container!.entries.length);
     // Even an empty plan emits BATCH_IMPORT_APPLIED with a zero-count summary
     expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('BATCH_IMPORT_APPLIED');
+    expect(events[0]!.type).toBe('BATCH_IMPORT_APPLIED');
   });
 });
 
@@ -2224,7 +2225,8 @@ describe('SYS_APPLY_BATCH_IMPORT result summary', () => {
     expect(r.attachmentCount).toBe(0);
     expect(r.folderCount).toBe(0);
     expect(r.restoreStructure).toBe(false);
-    expect(r.destination).toBe('/ (Root)');
+    expect(r.actualDestination).toBe('/ (Root)');
+    expect(r.intendedDestination).toBeNull();
     expect(r.fallbackToRoot).toBe(false);
     expect(r.source).toBe('test.zip');
 
@@ -2263,7 +2265,8 @@ describe('SYS_APPLY_BATCH_IMPORT result summary', () => {
     expect(r.attachmentCount).toBe(1);
     expect(r.folderCount).toBe(1);
     expect(r.restoreStructure).toBe(true);
-    expect(r.destination).toBe('/ (Root)');
+    expect(r.actualDestination).toBe('/ (Root)');
+    expect(r.intendedDestination).toBeNull();
     expect(r.source).toBe('archive.zip');
   });
 
@@ -2291,11 +2294,42 @@ describe('SYS_APPLY_BATCH_IMPORT result summary', () => {
     };
     const { state } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
     const r = state.batchImportResult!;
-    expect(r.destination).toBe('My Folder');
+    expect(r.actualDestination).toBe('My Folder');
+    expect(r.intendedDestination).toBeNull();
     expect(r.fallbackToRoot).toBe(false);
   });
 
-  it('missing target folder triggers fallback with root destination', () => {
+  it('missing target folder triggers fallback with intended destination', () => {
+    // Create a container with an entry that has the target LID but is NOT a folder
+    const container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'text-not-folder', title: 'Not A Folder', body: '',
+          archetype: 'text' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const before: AppState = { ...createInitialState(), phase: 'ready', container };
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'X', body: '', assets: {}, attachments: [] },
+      ],
+      source: 'import.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+      targetFolderLid: 'text-not-folder',
+    };
+    const { state } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const r = state.batchImportResult!;
+    expect(r.actualDestination).toBe('/ (Root)');
+    expect(r.intendedDestination).toBe('Not A Folder');
+    expect(r.fallbackToRoot).toBe(true);
+  });
+
+  it('fallback with completely nonexistent LID sets intendedDestination to null', () => {
     const plan = {
       folders: [],
       entries: [
@@ -2308,7 +2342,8 @@ describe('SYS_APPLY_BATCH_IMPORT result summary', () => {
     };
     const { state } = reduce(readyState(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
     const r = state.batchImportResult!;
-    expect(r.destination).toBe('/ (Root)');
+    expect(r.actualDestination).toBe('/ (Root)');
+    expect(r.intendedDestination).toBeNull();
     expect(r.fallbackToRoot).toBe(true);
   });
 
@@ -2317,22 +2352,30 @@ describe('SYS_APPLY_BATCH_IMPORT result summary', () => {
       ...readyState(),
       batchImportResult: {
         entryCount: 3, attachmentCount: 0, folderCount: 0,
-        restoreStructure: false, destination: '/ (Root)',
-        fallbackToRoot: false, source: 'old.zip',
+        restoreStructure: false, actualDestination: '/ (Root)',
+        intendedDestination: null, fallbackToRoot: false, source: 'old.zip',
       },
     };
-    const preview = {
+    const preview: BatchImportPreviewInfo = {
       format: 'pkc2-texts-container-bundle',
-      source: 'new.zip',
+      formatLabel: 'TEXT container bundle',
+      textCount: 1,
+      textlogCount: 0,
       totalEntries: 1,
+      compacted: false,
+      missingAssetCount: 0,
+      isFolderExport: false,
+      sourceFolderTitle: null,
+      canRestoreFolderStructure: false,
+      source: 'new.zip',
       entries: [],
+      selectedIndices: [],
+      targetFolderLid: null,
       folderRestoreMode: 'flat' as const,
       restoredFolderCount: 0,
       flatReason: null,
       rawData: null,
-      selectedIndices: [] as number[],
-      targetFolderLid: null,
-    };
+    } as unknown as BatchImportPreviewInfo;
     const { state } = reduce(before, { type: 'SYS_BATCH_IMPORT_PREVIEW', preview });
     expect(state.batchImportResult).toBeNull();
   });
@@ -2346,8 +2389,8 @@ describe('DISMISS_BATCH_IMPORT_RESULT', () => {
       ...readyState(),
       batchImportResult: {
         entryCount: 5, attachmentCount: 2, folderCount: 1,
-        restoreStructure: true, destination: 'My Folder',
-        fallbackToRoot: false, source: 'test.zip',
+        restoreStructure: true, actualDestination: 'My Folder',
+        intendedDestination: null, fallbackToRoot: false, source: 'test.zip',
       },
     };
     const { state, events } = reduce(before, { type: 'DISMISS_BATCH_IMPORT_RESULT' });
