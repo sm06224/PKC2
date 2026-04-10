@@ -1371,7 +1371,25 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
     // and its referenced assets. Format spec is pinned in
     // docs/development/textlog-csv-zip-export.md. Always visible
     // (including readonly) — export does not mutate state.
+    //
+    // Issue G: the export button is paired with a "compact" checkbox
+    // that, when checked, tells the bundle builder to strip broken
+    // asset references from the CSV output. The checkbox is scoped
+    // per-entry by data-pkc-lid so multiple open detail views don't
+    // leak state between each other.
     if (entry.archetype === 'textlog') {
+      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+      compactLabel.setAttribute('title',
+        'Compact mode: strip broken asset references from the exported CSV.' +
+        ' The live textlog is never modified.');
+      const compactInput = createElement('input', 'pkc-action-export-compact-input');
+      (compactInput as HTMLInputElement).type = 'checkbox';
+      compactInput.setAttribute('data-pkc-control', 'textlog-export-compact');
+      compactInput.setAttribute('data-pkc-lid', entry.lid);
+      compactLabel.appendChild(compactInput);
+      compactLabel.appendChild(document.createTextNode(' compact'));
+      bar.appendChild(compactLabel);
+
       const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
       exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
       exportBtn.setAttribute('data-pkc-lid', entry.lid);

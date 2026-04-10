@@ -97,6 +97,7 @@ version; they MUST NOT assume the list is closed.
 | `missing_asset_count` | integer | How many referenced keys had no data. |
 | `missing_asset_keys` | string[] | Deduplicated list of referenced-but-missing keys. |
 | `assets` | object | `asset_key` → `{ name, mime }` for every file under `assets/`. Lets a consumer recover the original filename without re-reading the textlog. |
+| `compacted` | boolean | `true` if the export was produced in *compact mode*: broken asset references in `text_markdown` / `asset_keys` were stripped from the output. `false` for plain exports. See §13. Additive field; consumers from §1 MUST ignore it if unknown. |
 
 Unknown fields MUST be ignored by consumers. New fields added in
 `version: 1` are additive and do not bump the version.
@@ -278,11 +279,140 @@ against future wiring mistakes.
 - The new ZIP uses a distinct `format` token in its manifest, so a
   consumer looking for `pkc2-package` will correctly ignore it.
 
-## 12. Future scope (not this issue)
+## 12. Missing-asset export warning (Issue G)
+
+Before the download is triggered, `buildTextlogBundle` is called first
+and its `manifest.missing_asset_keys` is inspected. Two paths:
+
+- **No missing keys** → silent fast path. The bundle downloads
+  immediately, exactly as it did before Issue G. No confirm, no
+  modal, no friction.
+- **At least one missing key** → a `window.confirm()` dialog is shown
+  with the missing count and a clear description of what is and isn't
+  in the bundle. The user can **continue** (the download proceeds
+  with the same blob, unchanged) or **cancel** (no download, no state
+  change, no `URL.createObjectURL`).
+
+### Why a browser-native confirm, not a custom modal
+
+Consistent with `delete-entry` and `purge-trash` in
+`src/adapter/ui/action-binder.ts`, which already use `confirm()` for
+destructive / irreversible intent. A custom modal would need its own
+focus management, keyboard dismissal, and accessibility story — none
+of which adds value for a warning that appears only when the user is
+already aware they're exporting.
+
+### Message template (literal)
+
+```
+このテキストログには、参照先が見つからないアセットが N 件あります。
+このまま ZIP を出力しますか？
+
+- CSV の asset_keys カラムには欠損キーが残ります
+- assets/ フォルダには欠損キーは含まれません
+- manifest.json の missing_asset_keys に記録されます
+```
+
+The message is intentionally long enough to describe the consequence
+in one glance. "N" is interpolated with `manifest.missing_asset_count`.
+
+### Guarantees
+
+- The warning is computed from `manifest.missing_asset_keys` — the
+  same data that ends up in the ZIP. There is no second source of
+  truth, so the count shown to the user is always exact.
+- Cancelling the confirm guarantees **zero** side effects: no Blob
+  URL is created, no anchor is clicked, no state mutation, no
+  downstream `URL.revokeObjectURL`.
+- The ZIP blob that is downloaded after a confirm is *byte-identical*
+  to the one that would have been built without the warning. The
+  warning is purely a UI gate; it never alters the output.
+
+## 13. Compact mode (Issue G)
+
+Compact mode is an **opt-in, output-only** rewrite. It never touches
+live container state and never modifies any entry. When the user
+exports in compact mode, the resulting CSV is "cleaned" by removing
+references to assets that would have been flagged as missing anyway.
+
+### Surface
+
+A checkbox in the action bar, next to the `📦 Export CSV+ZIP`
+button, **visible only for textlog entries** (same visibility rule
+as the button itself):
+
+| Control | DOM hook | Default | Behaviour |
+|---|---|---|---|
+| Compact export checkbox | `data-pkc-control="textlog-export-compact"` | unchecked | When checked at click time, the bundle is built with `compact: true`. |
+
+The compact checkbox is scoped per-entry by `data-pkc-lid`. It is
+visible in readonly mode for the same reason the button is: compact
+mode is an output transform, never a state mutation.
+
+### Semantics
+
+With `compact: true`, the bundle builder walks each log row and
+produces a **new** `TextlogBody` (the old one is never mutated) in
+which:
+
+1. `![alt](asset:<missing-key>)` is replaced with the literal `alt`
+   text (same flattening rule as `stripMarkdownForCsvPlain`).
+2. `[label](asset:<missing-key>)` is replaced with the literal `label`
+   text.
+3. References whose key IS present in `container.assets` are left
+   untouched — compact mode only removes *broken* references, not
+   valid ones.
+
+The compacted body is then handed to the same `serializeTextlogAsCsv`
+function as always. Because the missing references are gone from the
+source text, they also disappear from the `asset_keys` column on
+those rows — no special-case code in the serializer is needed.
+
+### Manifest reporting under compact
+
+Even in compact mode, `manifest.missing_asset_keys` continues to
+report which keys **were** referenced but missing at export time. The
+difference is that the `text_markdown` column no longer contains any
+reference to them. This preserves an audit trail: "these broken
+references existed and were stripped" is still discoverable from
+`manifest.json`.
+
+`manifest.compacted` is:
+- `true` when the user checked the box and the export was rewritten;
+- `false` for plain exports (the default).
+
+### Live state invariance
+
+This is the most important invariant of compact mode:
+
+> **Compact mode never mutates the live container, the live entry,
+> `container.assets`, or any other in-memory state.**
+
+The implementation enforces this by:
+- Making the compaction a **pure function** in
+  `features/textlog/textlog-csv.ts` that returns a new `TextlogBody`.
+- Never calling `dispatcher.dispatch` from the compact path.
+- Never writing to `entry.body` or any object in `state.container`.
+
+Tests assert this by comparing a structural snapshot of the container
+before and after a compact export.
+
+### Why not just ship compact as the default
+
+Because "compact" is a **lossy** operation from the perspective of
+CSV consumers who WANT to know a reference existed. The plain export
+is the honest, truth-preserving default. Compact is a convenience
+for users who have already accepted the warning and just want a
+clean spreadsheet.
+
+## 14. Future scope (not this issue)
 
 - **Importing a textlog bundle** back into a PKC2 container, with asset
   keys remapped to avoid collision. Would need a matching reader in
-  `adapter/platform/textlog-bundle.ts`.
+  `adapter/platform/textlog-bundle.ts`. This is the **next candidate
+  issue** after Issue G (missing-asset warning + compact mode): with
+  the warning + compact surfaces in place, the round-trip shape of the
+  bundle is now tight enough to reason about.
 - **TEXT entry bundle** with a similar spec (`.md` + `assets/` +
   `manifest.json`). Same shape, different CSV-vs-markdown split.
 - **Batch export** — one bundle per selected textlog, or a master ZIP

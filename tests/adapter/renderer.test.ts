@@ -1973,6 +1973,74 @@ describe('Three-Pane Layout', () => {
     expect(actionBar!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).not.toBeNull();
   });
 
+  it('Issue G — compact checkbox is rendered next to Export CSV+ZIP for textlog entries only', () => {
+    const containerWithBoth: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'e3',
+          title: 'Daily Log',
+          body: '{"entries":[]}',
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    // textlog: checkbox visible, scoped to its lid, default unchecked
+    const stateTextlog: AppState = {
+      phase: 'ready', container: containerWithBoth,
+      selectedLid: 'e3', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(stateTextlog, root);
+    const cb = root.querySelector<HTMLInputElement>(
+      '[data-pkc-region="action-bar"] input[data-pkc-control="textlog-export-compact"]',
+    );
+    expect(cb).not.toBeNull();
+    expect(cb!.type).toBe('checkbox');
+    expect(cb!.checked).toBe(false);
+    expect(cb!.getAttribute('data-pkc-lid')).toBe('e3');
+
+    // text entry: checkbox absent
+    const stateText: AppState = { ...stateTextlog, selectedLid: 'e1' };
+    render(stateText, root);
+    expect(
+      root.querySelector('[data-pkc-region="action-bar"] input[data-pkc-control="textlog-export-compact"]'),
+    ).toBeNull();
+  });
+
+  it('Issue G — compact checkbox stays visible in readonly mode (export-only transform)', () => {
+    const containerWithTextlog: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'e3',
+          title: 'RO log',
+          body: '{"entries":[]}',
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTextlog,
+      selectedLid: 'e3', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    expect(
+      root.querySelector('[data-pkc-region="action-bar"] input[data-pkc-control="textlog-export-compact"]'),
+    ).not.toBeNull();
+  });
+
   it('meta pane shows tags and timestamps', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

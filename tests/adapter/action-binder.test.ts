@@ -2027,3 +2027,350 @@ describe('Issue F — TEXTLOG CSV+ZIP export action', () => {
     }
   });
 });
+
+// ── G. TEXTLOG export UX polish: missing-asset warning + compact ──
+
+describe('Issue G — missing-asset warning + compact export', () => {
+  /**
+   * installDownloadCapture and installConfirmStub are separate so each
+   * test can opt into exactly what it needs. installConfirmStub lets
+   * the test decide whether confirm() returns true (user continues)
+   * or false (user cancels), and records how many times and with
+   * what message it was called.
+   */
+  function installDownloadCapture(): {
+    captures: Array<{ filename: string; blob: Blob | null }>;
+    restore: () => void;
+  } {
+    const captures: Array<{ filename: string; blob: Blob | null }> = [];
+    const originalCreate = (URL as unknown as { createObjectURL?: (b: Blob) => string }).createObjectURL;
+    const originalRevoke = (URL as unknown as { revokeObjectURL?: (u: string) => void }).revokeObjectURL;
+    let lastBlob: Blob | null = null;
+    (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = (b: Blob) => {
+      lastBlob = b;
+      return 'blob:mock';
+    };
+    (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = () => {};
+    const handler = (e: Event): void => {
+      const a = e.target as HTMLAnchorElement | null;
+      if (a && a.tagName === 'A' && a.download) {
+        e.preventDefault();
+        captures.push({ filename: a.download, blob: lastBlob });
+      }
+    };
+    document.body.addEventListener('click', handler, true);
+    return {
+      captures,
+      restore: () => {
+        document.body.removeEventListener('click', handler, true);
+        if (originalCreate) {
+          (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+        } else {
+          delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+        }
+        if (originalRevoke) {
+          (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = originalRevoke;
+        } else {
+          delete (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL;
+        }
+      },
+    };
+  }
+
+  interface ConfirmStub {
+    calls: string[];
+    restore: () => void;
+  }
+  function installConfirmStub(answer: boolean): ConfirmStub {
+    const calls: string[] = [];
+    const original = (globalThis as unknown as { confirm?: (m: string) => boolean }).confirm;
+    (globalThis as unknown as { confirm: (m: string) => boolean }).confirm = (m: string) => {
+      calls.push(m);
+      return answer;
+    };
+    return {
+      calls,
+      restore: () => {
+        if (original) {
+          (globalThis as unknown as { confirm: (m: string) => boolean }).confirm = original;
+        } else {
+          delete (globalThis as unknown as { confirm?: unknown }).confirm;
+        }
+      },
+    };
+  }
+
+  /**
+   * Mount a textlog container whose single row references `ast-missing`,
+   * which is intentionally NOT present in container.assets. This
+   * guarantees `manifest.missing_asset_count > 0` and therefore that
+   * the warning flow engages.
+   */
+  function mountTextlogWithMissingRef(): void {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      assets: {},
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Work Log',
+          body: serializeTextlogBody({
+            entries: [
+              {
+                id: 'log-1',
+                text: 'See ![chart](asset:ast-missing) please',
+                createdAt: '2026-04-09T10:00:00Z',
+                flags: [],
+              },
+            ],
+          }),
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+  }
+
+  it('compact checkbox is rendered next to the export button on textlog entries', () => {
+    mountTextlogContainer([
+      { id: 'log-1', text: 'a', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const cb = root.querySelector<HTMLInputElement>(
+      '[data-pkc-region="action-bar"] input[data-pkc-control="textlog-export-compact"]',
+    );
+    expect(cb).not.toBeNull();
+    expect(cb!.type).toBe('checkbox');
+    expect(cb!.checked).toBe(false);
+    expect(cb!.getAttribute('data-pkc-lid')).toBe('tl1');
+  });
+
+  it('no warning confirm is shown when no references are missing', async () => {
+    const cap = installDownloadCapture();
+    const cf = installConfirmStub(false);
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'no refs', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      // No confirm call because nothing is missing.
+      expect(cf.calls.length).toBe(0);
+      // Download proceeds.
+      expect(cap.captures.length).toBe(1);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+
+  it('shows a warning confirm when a referenced asset is missing and reports the count', async () => {
+    const cap = installDownloadCapture();
+    const cf = installConfirmStub(true); // user continues
+    try {
+      mountTextlogWithMissingRef();
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(cf.calls.length).toBe(1);
+      // The warning message must mention the exact count.
+      expect(cf.calls[0]).toContain('1 件');
+      expect(cap.captures.length).toBe(1);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+
+  it('cancelling the warning prevents any download (and never creates a blob URL)', async () => {
+    const cap = installDownloadCapture();
+    const cf = installConfirmStub(false); // user cancels
+    try {
+      mountTextlogWithMissingRef();
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(cf.calls.length).toBe(1);
+      expect(cap.captures.length).toBe(0);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+
+  it('cancelling the warning does not mutate container state', async () => {
+    const cap = installDownloadCapture();
+    const cf = installConfirmStub(false); // user cancels
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      const container: Container = {
+        ...mockContainer,
+        assets: {},
+        entries: [
+          {
+            lid: 'tl1',
+            title: 'Work Log',
+            body: serializeTextlogBody({
+              entries: [
+                {
+                  id: 'log-1',
+                  text: 'See ![chart](asset:ast-missing)',
+                  createdAt: '2026-04-09T10:00:00Z',
+                  flags: [],
+                },
+              ],
+            }),
+            archetype: 'textlog',
+            created_at: '2026-04-09T00:00:00Z',
+            updated_at: '2026-04-09T00:00:00Z',
+          },
+        ],
+      };
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+      const before = JSON.stringify(dispatcher.getState().container);
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(JSON.stringify(dispatcher.getState().container)).toBe(before);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+
+  it('compact checkbox checked → manifest.compacted = true on the downloaded bundle', async () => {
+    const cap = installDownloadCapture();
+    // No missing refs in this variant, so no confirm will fire.
+    const cf = installConfirmStub(true);
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'hello', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      const cb = root.querySelector<HTMLInputElement>(
+        'input[data-pkc-control="textlog-export-compact"]',
+      )!;
+      cb.checked = true;
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(cap.captures.length).toBe(1);
+      const blob = cap.captures[0]!.blob!;
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+      // Find EOCD + central directory to locate manifest.json.
+      let eocd = -1;
+      for (let i = buf.length - 22; i >= 0; i--) {
+        if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      expect(eocd).toBeGreaterThanOrEqual(0);
+      const total = view.getUint16(eocd + 10, true);
+      const cdOffset = view.getUint32(eocd + 16, true);
+      const decoder = new TextDecoder();
+      let p = cdOffset;
+      let manifestBytes: Uint8Array | null = null;
+      for (let i = 0; i < total; i++) {
+        const compressed = view.getUint32(p + 20, true);
+        const nameLen = view.getUint16(p + 28, true);
+        const extraLen = view.getUint16(p + 30, true);
+        const commentLen = view.getUint16(p + 32, true);
+        const localOff = view.getUint32(p + 42, true);
+        const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+        if (name === 'manifest.json') {
+          const localNameLen = view.getUint16(localOff + 26, true);
+          const localExtraLen = view.getUint16(localOff + 28, true);
+          const dataStart = localOff + 30 + localNameLen + localExtraLen;
+          manifestBytes = buf.slice(dataStart, dataStart + compressed);
+        }
+        p += 46 + nameLen + extraLen + commentLen;
+      }
+      expect(manifestBytes).not.toBeNull();
+      const manifest = JSON.parse(decoder.decode(manifestBytes!)) as { compacted: boolean };
+      expect(manifest.compacted).toBe(true);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+
+  it('compact checkbox unchecked → manifest.compacted = false on the downloaded bundle', async () => {
+    const cap = installDownloadCapture();
+    const cf = installConfirmStub(true);
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'hello', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      // Leave the checkbox unchecked (the default).
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(cap.captures.length).toBe(1);
+      const blob = cap.captures[0]!.blob!;
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+      let eocd = -1;
+      for (let i = buf.length - 22; i >= 0; i--) {
+        if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      const total = view.getUint16(eocd + 10, true);
+      const cdOffset = view.getUint32(eocd + 16, true);
+      const decoder = new TextDecoder();
+      let p = cdOffset;
+      let manifestBytes: Uint8Array | null = null;
+      for (let i = 0; i < total; i++) {
+        const compressed = view.getUint32(p + 20, true);
+        const nameLen = view.getUint16(p + 28, true);
+        const extraLen = view.getUint16(p + 30, true);
+        const commentLen = view.getUint16(p + 32, true);
+        const localOff = view.getUint32(p + 42, true);
+        const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+        if (name === 'manifest.json') {
+          const localNameLen = view.getUint16(localOff + 26, true);
+          const localExtraLen = view.getUint16(localOff + 28, true);
+          const dataStart = localOff + 30 + localNameLen + localExtraLen;
+          manifestBytes = buf.slice(dataStart, dataStart + compressed);
+        }
+        p += 46 + nameLen + extraLen + commentLen;
+      }
+      expect(manifestBytes).not.toBeNull();
+      const manifest = JSON.parse(decoder.decode(manifestBytes!)) as { compacted: boolean };
+      expect(manifest.compacted).toBe(false);
+    } finally {
+      cf.restore();
+      cap.restore();
+    }
+  });
+});

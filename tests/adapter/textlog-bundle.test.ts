@@ -449,3 +449,235 @@ describe('exportTextlogAsBundle', () => {
     expect(downloadFn).not.toHaveBeenCalled();
   });
 });
+
+// ── Issue G: manifest.compacted default ────────────────────────
+
+describe('buildTextlogBundle – manifest.compacted default', () => {
+  it('marks manifest.compacted = false when compact option is not passed', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'a' }]);
+    const container = makeContainer({ entries: [entry] });
+    const manifest = await readManifest(buildTextlogBundle(entry, container).blob);
+    expect(manifest.compacted).toBe(false);
+  });
+
+  it('marks manifest.compacted = false when compact: false is explicit', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'a' }]);
+    const container = makeContainer({ entries: [entry] });
+    const manifest = await readManifest(
+      buildTextlogBundle(entry, container, { compact: false }).blob,
+    );
+    expect(manifest.compacted).toBe(false);
+  });
+
+  it('marks manifest.compacted = true when compact: true is passed', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'a' }]);
+    const container = makeContainer({ entries: [entry] });
+    const manifest = await readManifest(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    expect(manifest.compacted).toBe(true);
+  });
+});
+
+// ── Issue G: compact mode strips broken refs from the output CSV ──────
+
+describe('buildTextlogBundle – compact mode', () => {
+  it('strips ![alt](asset:<missing>) down to alt text in text_markdown', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'See ![chart](asset:ast-gone) now' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const csv = await readCsv(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    expect(csv).toContain('See chart now');
+    expect(csv).not.toContain('asset:ast-gone');
+  });
+
+  it('strips [label](asset:<missing>) down to label text in text_markdown', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'Open [budget](asset:ast-missing)' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const csv = await readCsv(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    expect(csv).toContain('Open budget');
+    expect(csv).not.toContain('asset:ast-missing');
+  });
+
+  it('removes missing keys from the asset_keys column under compact mode', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-present) and ![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'p.png', 'image/png', 'ast-present')],
+      assets: { 'ast-present': btoa('P') },
+    });
+    const csv = await readCsv(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    // The row's asset_keys column should now only list the present key.
+    expect(csv).toContain('"ast-present"');
+    expect(csv).not.toContain('ast-gone');
+  });
+
+  it('leaves present (valid) references untouched under compact mode', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'See ![chart](asset:ast-ok)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'chart.png', 'image/png', 'ast-ok')],
+      assets: { 'ast-ok': btoa('OK') },
+    });
+    const csv = await readCsv(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    // The original reference form must survive — compact mode only
+    // strips BROKEN references.
+    expect(csv).toContain('![chart](asset:ast-ok)');
+  });
+
+  it('still reports missing_asset_keys in manifest under compact mode (audit trail)', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const manifest = await readManifest(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    // Even though the ref was stripped from text_markdown, the manifest
+    // MUST still report what was stripped. This is the audit trail —
+    // compact mode is lossy to the CSV but not to the manifest.
+    expect(manifest.missing_asset_count).toBe(1);
+    expect(manifest.missing_asset_keys).toEqual(['ast-gone']);
+    expect(manifest.compacted).toBe(true);
+  });
+
+  it('handles a row with mixed present and missing references correctly', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      {
+        id: 'log-1',
+        text:
+          'Start ![chart](asset:ast-ok) then [doc](asset:ast-gone) and' +
+          ' ![photo](asset:ast-photo) end.',
+      },
+    ]);
+    const container = makeContainer({
+      entries: [
+        entry,
+        makeAttachmentEntry('a1', 'chart.png', 'image/png', 'ast-ok'),
+        makeAttachmentEntry('a2', 'photo.jpg', 'image/jpeg', 'ast-photo'),
+      ],
+      assets: {
+        'ast-ok': btoa('OK'),
+        'ast-photo': btoa('PHOTO'),
+      },
+    });
+    const csv = await readCsv(
+      buildTextlogBundle(entry, container, { compact: true }).blob,
+    );
+    // Valid refs kept verbatim.
+    expect(csv).toContain('![chart](asset:ast-ok)');
+    expect(csv).toContain('![photo](asset:ast-photo)');
+    // Broken ref flattened to its label.
+    expect(csv).toContain(' doc ');
+    expect(csv).not.toContain('ast-gone');
+  });
+});
+
+// ── Issue G: live state invariance under compact mode ─────────────────
+
+describe('buildTextlogBundle – live state invariance', () => {
+  /**
+   * Compact mode is the most likely culprit for accidental state
+   * mutation. These tests pin down the invariant that the live entry
+   * body and live container assets are never touched by export,
+   * regardless of compact flag.
+   */
+  it('does not mutate the entry body even when compact mode strips refs', () => {
+    const originalText = 'See ![chart](asset:ast-gone) here';
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: originalText }]);
+    const bodyBefore = entry.body;
+    const container = makeContainer({ entries: [entry] });
+    buildTextlogBundle(entry, container, { compact: true });
+    // Body string must be identical — same reference + same content.
+    expect(entry.body).toBe(bodyBefore);
+    // Parse it and confirm the text is still the original text.
+    const parsed = JSON.parse(entry.body) as { entries: Array<{ text: string }> };
+    expect(parsed.entries[0]!.text).toBe(originalText);
+  });
+
+  it('does not mutate container.assets even when missing keys are reported', () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const assets = { 'ast-here': btoa('X') };
+    const container = makeContainer({ entries: [entry], assets });
+    const keysBefore = Object.keys(container.assets ?? {}).sort();
+    const snapshot = JSON.stringify(container.assets);
+    buildTextlogBundle(entry, container, { compact: true });
+    expect(Object.keys(container.assets ?? {}).sort()).toEqual(keysBefore);
+    expect(JSON.stringify(container.assets)).toBe(snapshot);
+  });
+
+  it('does not mutate other entries in the container', () => {
+    const textlogEntry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const sibling = makeTextlogEntry('e2', 'Other', [{ id: 'log-2', text: 'untouched' }]);
+    const container = makeContainer({ entries: [textlogEntry, sibling] });
+    const siblingBodyBefore = sibling.body;
+    buildTextlogBundle(textlogEntry, container, { compact: true });
+    expect(sibling.body).toBe(siblingBodyBefore);
+  });
+
+  it('plain (non-compact) export is byte-deterministic for the same container', async () => {
+    // Sanity: two successive exports of the same entry produce
+    // identical CSV bodies. This catches accidental hidden state.
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'hello' },
+      { id: 'log-2', text: '![img](asset:ast-ok)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'img.png', 'image/png', 'ast-ok')],
+      assets: { 'ast-ok': btoa('OK') },
+    });
+    const now = new Date('2026-04-10T00:00:00Z');
+    const csv1 = await readCsv(buildTextlogBundle(entry, container, { now }).blob);
+    const csv2 = await readCsv(buildTextlogBundle(entry, container, { now }).blob);
+    expect(csv1).toBe(csv2);
+  });
+});
+
+// ── Issue G: exportTextlogAsBundle forwards compact ───────────────────
+
+describe('exportTextlogAsBundle – compact passthrough', () => {
+  it('forwards compact: true to the bundle builder', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    let captured: Blob | null = null;
+    await exportTextlogAsBundle(entry, container, {
+      downloadFn: (b) => { captured = b; },
+      compact: true,
+    });
+    expect(captured).not.toBeNull();
+    const manifest = await readManifest(captured!);
+    expect(manifest.compacted).toBe(true);
+  });
+
+  it('defaults to compact: false when the option is omitted', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    let captured: Blob | null = null;
+    await exportTextlogAsBundle(entry, container, {
+      downloadFn: (b) => { captured = b; },
+    });
+    const manifest = await readManifest(captured!);
+    expect(manifest.compacted).toBe(false);
+  });
+});

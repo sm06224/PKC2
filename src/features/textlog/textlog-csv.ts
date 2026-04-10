@@ -51,6 +51,40 @@ export function serializeTextlogAsCsv(body: TextlogBody): string {
 }
 
 /**
+ * Produce a new `TextlogBody` with broken asset references stripped
+ * from every entry's `text` field — "compact mode" from the export
+ * spec (§13 of `docs/development/textlog-csv-zip-export.md`).
+ *
+ * A reference is **broken** when its asset key is NOT in the
+ * `presentKeys` set. Broken references are rewritten as follows:
+ *
+ *   - `![alt](asset:<missing>)`  → `alt`
+ *   - `[label](asset:<missing>)` → `label`
+ *
+ * References whose key IS in `presentKeys` are left untouched. This
+ * is intentional — compact mode only removes references that would
+ * render as broken placeholders; it never touches valid references.
+ *
+ * The function is **pure**: the input `body` and its entries are
+ * not mutated. A new `TextlogBody` with new `entries` is returned,
+ * so it is safe to use on live state — the caller can compact a
+ * snapshot without any risk of the live container drifting.
+ *
+ * Non-`asset:` URLs (plain https links, etc.) are never touched.
+ */
+export function compactTextlogBodyAgainst(
+  body: TextlogBody,
+  presentKeys: ReadonlySet<string>,
+): TextlogBody {
+  return {
+    entries: body.entries.map((entry) => ({
+      ...entry,
+      text: stripBrokenAssetRefs(entry.text ?? '', presentKeys),
+    })),
+  };
+}
+
+/**
  * Collect the deduplicated, first-occurrence-ordered list of asset
  * keys referenced across all log rows. Recognises both `![alt](asset:k)`
  * (image embed) and `[label](asset:k)` (non-image chip) forms.
@@ -141,6 +175,37 @@ function serializeRow(entry: TextlogEntry): string {
     csvField(textPlain),
     csvField(assetKeys),
   ].join(',');
+}
+
+/**
+ * Rewrite a single entry's text, replacing `![alt](asset:<missing>)`
+ * and `[label](asset:<missing>)` with their alt / label text when
+ * `<missing>` is NOT in `presentKeys`. References whose key IS in
+ * `presentKeys` are left untouched, and any non-`asset:` URLs are
+ * ignored entirely.
+ *
+ * Pure — returns a new string.
+ */
+function stripBrokenAssetRefs(
+  text: string,
+  presentKeys: ReadonlySet<string>,
+): string {
+  if (!text) return '';
+  // Unified image-or-link regex. `(!?)` captures the optional bang so
+  // we can tell the two forms apart, `([^\]]*)` captures alt / label,
+  // and `([^\s)"]+)` captures the asset key. The optional title match
+  // `(?:\s+"[^"]*")?` mirrors the collector so the two stay in sync
+  // on edge cases.
+  const re = /(!?)\[([^\]]*)\]\(asset:([^\s)"]+)(?:\s+"[^"]*")?\)/g;
+  return text.replace(re, (match, _bang: string, label: string, key: string) => {
+    // Keep valid (present) references as-is — compact mode only
+    // strips broken ones.
+    if (presentKeys.has(key)) return match;
+    // Strip the whole construct down to the alt / label text. This
+    // matches the `stripMarkdownForCsvPlain` flattening rule, which
+    // keeps the two paths visually consistent.
+    return label;
+  });
 }
 
 /**
