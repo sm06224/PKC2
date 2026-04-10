@@ -740,9 +740,11 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     const totalAttachments = plan.entries.reduce((sum, e) => sum + e.attachments.length, 0);
     const folderNote = plan.restoreStructure
       ? ` (folder-export: ${plan.folders.length} folders restored)`
-      : result.format === 'pkc2-folder-export-bundle'
-        ? ' (folder-export: フォルダ構造は復元されません)'
-        : '';
+      : !planResult.ok
+        ? ` (folder-export: malformed metadata — flat fallback)`
+        : result.format === 'pkc2-folder-export-bundle'
+          ? ' (folder-export: フォルダ構造は復元されません)'
+          : '';
     console.log(
       `[PKC2] Batch import complete: ${selectedCount}/${result.entries.length} entries`
       + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,

@@ -75,6 +75,10 @@ export interface BatchImportPreviewInfo {
   canRestoreFolderStructure: boolean;
   /** Number of folders in the hierarchy (0 if no restore). */
   folderCount: number;
+  /** Folder graph validation failed → will fall back to flat import. */
+  malformedFolderMetadata?: boolean;
+  /** Human-readable reason (from validateFolderGraph warnings). */
+  folderGraphWarning?: string;
   source: string;
   /** Per-entry metadata (title + archetype). */
   entries: BatchImportPreviewEntry[];

@@ -229,7 +229,7 @@ type BatchImportPlanResult =
 | undo UI | scope 外 |
 | DRY 共通化 | scope 外 |
 | asset preview | scope 外 |
-| preview 時の folder graph validation | confirm 時で十分 |
+| preview 時の folder graph validation | ~~confirm 時で十分~~ → §15 で実装済 |
 | partial success | failure-atomic contract に反する |
 
 ---
@@ -265,3 +265,66 @@ type BatchImportPlanResult =
 - import 先 folder 指定
 - DRY 共通化 (export builder / import planner のパターン統一)
 - lint / CLAUDE.md 整理
+
+---
+
+## 15. Preview-time folder graph validation
+
+### 15.1 動機
+
+§12 では「preview 時の folder graph validation は confirm 時で十分」としていたが、
+これでは preview が「復元されます」と表示した後に confirm で flat fallback する
+**surprise fallback** が発生しうる。
+
+UX contract として、preview 表示と confirm 結果は一致しなければならない。
+
+### 15.2 Preview-time validation contract
+
+preview 段階で folder graph の構造妥当性を検査し、bundle を 3 つに分類する:
+
+| 分類 | 条件 | preview 表示 |
+|---|---|---|
+| **restore-available** | folder-export + folders 存在 + graph valid | `フォルダ構造: N folders — 復元されます` |
+| **malformed-fallback** | folder-export + folders 存在 + graph invalid | `フォルダ構造に問題があります — フラットにインポートされます` |
+| **no-metadata** | folder-export + folders 不在 / 非 folder-export | `フォルダ構造は復元されません — エントリはフラットに追加されます` (folder-export 時のみ) |
+
+### 15.3 Validation の再利用
+
+`validateFolderGraph()` (features layer) を preview path でも呼ぶ。
+validation ロジックは複製しない。
+
+preview path では:
+1. `manifest.folders` を `PlannerFolderInfo[]` に変換
+2. `validateFolderGraph(folders, [])` を呼ぶ (entry reference は preview 段階では不検査)
+3. valid なら `canRestoreFolderStructure: true`
+4. invalid なら `canRestoreFolderStructure: false` + `folderGraphWarning` を設定
+
+### 15.4 Preview data model の拡張
+
+`BatchImportPreviewInfo` に以下を追加:
+
+```typescript
+/** Folder graph validation failed → will fall back to flat import. */
+malformedFolderMetadata?: boolean;
+/** Human-readable reason (from validateFolderGraph warnings). */
+folderGraphWarning?: string;
+```
+
+### 15.5 Consistency contract
+
+| Phase | Classification | 動作 |
+|---|---|---|
+| preview: restore-available | confirm: restore | 一致 |
+| preview: malformed-fallback | confirm: flat fallback | 一致 |
+| preview: no-metadata | confirm: flat import | 一致 |
+
+confirm が preview と異なるモードになるのは、parse/runtime failure (ZIP 破損等) のみ。
+folder graph の malformed 判定は preview と confirm で同じ関数を使うため、不整合は構造的に発生しない。
+
+### 15.6 テスト追加要件
+
+15. preview: valid folder metadata → restore classification
+16. preview: malformed metadata → flat fallback classification with warning
+17. preview: no folder metadata → flat classification (no malformed warning)
+18. renderer: restore / malformed / no-metadata の各メッセージが正しく表示される
+19. preview classification と confirm apply mode の一致
