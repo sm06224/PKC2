@@ -640,8 +640,8 @@ describe('previewBatchBundleFromBuffer — entry list', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.info.entries).toHaveLength(2);
-    expect(result.info.entries[0]).toEqual({ index: 0, title: 'Doc A', archetype: 'text' });
-    expect(result.info.entries[1]).toEqual({ index: 1, title: 'Doc B', archetype: 'text' });
+    expect(result.info.entries[0]).toMatchObject({ index: 0, title: 'Doc A', archetype: 'text' });
+    expect(result.info.entries[1]).toMatchObject({ index: 1, title: 'Doc B', archetype: 'text' });
   });
 
   it('selectedIndices defaults to all entries', async () => {
@@ -725,5 +725,161 @@ describe('previewBatchBundleFromBuffer — error cases', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain('Unsupported batch version');
+  });
+});
+
+// ── deep preview tests ────────────────────────
+
+describe('previewBatchBundleFromBuffer — deep preview (entry-level)', () => {
+  it('includes bodySnippet and bodyLength for TEXT entries', async () => {
+    const t1 = makeEntry('t1', 'Doc', 'text', 'Hello **world** this is markdown');
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.info.entries[0]!;
+    expect(entry.bodySnippet).toBe('Hello **world** this is markdown');
+    expect(entry.bodyLength).toBe(32);
+  });
+
+  it('truncates bodySnippet at 200 chars', async () => {
+    const longBody = 'A'.repeat(300);
+    const t1 = makeEntry('t1', 'Long Doc', 'text', longBody);
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.info.entries[0]!;
+    expect(entry.bodySnippet).toHaveLength(201); // 200 + '…'
+    expect(entry.bodySnippet!.endsWith('…')).toBe(true);
+    expect(entry.bodyLength).toBe(300);
+  });
+
+  it('includes logEntryCount and logSnippets for TEXTLOG entries', async () => {
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([
+      { id: 'a', text: 'First entry' },
+      { id: 'b', text: 'Second entry' },
+      { id: 'c', text: 'Third entry' },
+      { id: 'd', text: 'Fourth entry' },
+    ]));
+    const container = makeContainer({ entries: [l1] });
+    const exported = buildTextlogsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.info.entries[0]!;
+    expect(entry.logEntryCount).toBe(4);
+    expect(entry.logSnippets).toHaveLength(3); // max 3
+    expect(entry.logSnippets![0]).toBe('First entry');
+    expect(entry.logSnippets![1]).toBe('Second entry');
+    expect(entry.logSnippets![2]).toBe('Third entry');
+  });
+
+  it('truncates individual log snippets at 80 chars', async () => {
+    const longText = 'B'.repeat(120);
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([
+      { id: 'a', text: longText },
+    ]));
+    const container = makeContainer({ entries: [l1] });
+    const exported = buildTextlogsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.info.entries[0]!;
+    expect(entry.logSnippets).toHaveLength(1);
+    expect(entry.logSnippets![0]).toHaveLength(81); // 80 + '…'
+    expect(entry.logSnippets![0]!.endsWith('…')).toBe(true);
+  });
+
+  it('includes assetCount and missingAssetCount in deep preview', async () => {
+    const t1 = makeEntry('t1', 'With Asset', 'text', '![pic](asset:ast-001) ![gone](asset:ast-missing)');
+    const att = makeAttachmentEntry('a1', 'pic.png', 'image/png', 'ast-001');
+    const container = makeContainer({
+      entries: [t1, att],
+      assets: { 'ast-001': btoa('PNG_DATA') },
+    });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.info.entries[0]!;
+    expect(entry.assetCount).toBe(1);
+    expect(entry.missingAssetCount).toBe(1);
+  });
+
+  it('deep preview works for mixed bundle', async () => {
+    const { buildMixedContainerBundle } = await import('@adapter/platform/mixed-bundle');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'text content');
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'log content' }]));
+    const container = makeContainer({ entries: [t1, l1] });
+    const exported = buildMixedContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const textEntry = result.info.entries.find((e) => e.archetype === 'text')!;
+    const logEntry = result.info.entries.find((e) => e.archetype === 'textlog')!;
+    expect(textEntry.bodySnippet).toBe('text content');
+    expect(logEntry.logEntryCount).toBe(1);
+    expect(logEntry.logSnippets).toEqual(['log content']);
+  });
+
+  it('deep preview works for folder export bundle', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'folder text');
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'folder log' }]));
+    const container = makeContainer({
+      entries: [folder, t1, l1],
+      relations: [makeRelation('r1', 'f1', 't1'), makeRelation('r2', 'f1', 'l1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const textEntry = result.info.entries.find((e) => e.archetype === 'text')!;
+    expect(textEntry.bodySnippet).toBe('folder text');
+  });
+
+  it('summary preview still works when deep preview data is unavailable', async () => {
+    // Build a fake batch with a valid outer manifest but corrupted inner data
+    // The deep peek should fail silently, leaving summary preview intact
+    const validManifest = {
+      format: 'pkc2-texts-container-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_title: 'Test',
+      entry_count: 1,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Broken', filename: 'broken.text.zip', body_length: 100, asset_count: 0, missing_asset_count: 0 }],
+    };
+    // Provide corrupted nested ZIP bytes
+    const corruptedNested = new Uint8Array([0x50, 0x4b, 0x00, 0x00]);
+    const buf = buildFakeZip(validManifest, [{ name: 'broken.text.zip', data: corruptedNested }]);
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Summary fields intact
+    expect(result.info.format).toBe('pkc2-texts-container-bundle');
+    expect(result.info.totalEntries).toBe(1);
+    expect(result.info.entries[0]!.title).toBe('Broken');
+    // Deep preview fields absent (peek failed silently)
+    expect(result.info.entries[0]!.bodySnippet).toBeUndefined();
   });
 });

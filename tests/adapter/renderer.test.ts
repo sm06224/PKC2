@@ -645,6 +645,136 @@ describe('Renderer', () => {
     expect(continueBtn.disabled).toBe(true);
   });
 
+  it('renders deep preview disclosure for TEXT entry with bodySnippet', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [{
+          index: 0, title: 'Note', archetype: 'text',
+          bodySnippet: 'Hello **world**',
+          bodyLength: 15,
+          assetCount: 2,
+        }],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const details = root.querySelector('[data-pkc-role="entry-deep-preview"]') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    // Default collapsed
+    expect(details.open).toBe(false);
+    // Contains body snippet
+    expect(details.textContent).toContain('Hello **world**');
+    // Contains metadata
+    expect(details.textContent).toContain('15 文字');
+    expect(details.textContent).toContain('2 assets');
+  });
+
+  it('renders deep preview disclosure for TEXTLOG entry with logSnippets', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-textlogs-container-bundle',
+        formatLabel: 'TEXTLOG container bundle',
+        textCount: 0,
+        textlogCount: 1,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [{
+          index: 0, title: 'Daily Log', archetype: 'textlog',
+          logEntryCount: 42,
+          logSnippets: ['Meeting notes', 'Bug fix deployed', 'Code review'],
+          assetCount: 1,
+          missingAssetCount: 1,
+        }],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const details = root.querySelector('[data-pkc-role="entry-deep-preview"]') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain('42 log entries');
+    expect(details.textContent).toContain('Meeting notes');
+    expect(details.textContent).toContain('Bug fix deployed');
+    expect(details.textContent).toContain('Code review');
+    expect(details.textContent).toContain('1 missing');
+  });
+
+  it('does not render deep preview when no preview fields are present', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [{ index: 0, title: 'Note', archetype: 'text' }],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const details = root.querySelector('[data-pkc-role="entry-deep-preview"]');
+    expect(details).toBeNull();
+  });
+
+  it('deep preview coexists with selective import checkboxes', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 2,
+        textlogCount: 0,
+        totalEntries: 2,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [
+          { index: 0, title: 'A', archetype: 'text', bodySnippet: 'snippet A', bodyLength: 100 },
+          { index: 1, title: 'B', archetype: 'text', bodySnippet: 'snippet B', bodyLength: 200 },
+        ],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    // Checkboxes present and correct
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-batch-import-entry"]');
+    expect(checkboxes).toHaveLength(2);
+    expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
+    expect((checkboxes[1] as HTMLInputElement).checked).toBe(false);
+
+    // Deep preview disclosures present
+    const details = root.querySelectorAll('[data-pkc-role="entry-deep-preview"]');
+    expect(details).toHaveLength(2);
+  });
+
   it('does not render batch preview when batchImportPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
