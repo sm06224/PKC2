@@ -1320,20 +1320,52 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
     cancelBtn.setAttribute('title', 'Discard changes (Esc)');
     cancelBtn.textContent = 'Cancel';
     bar.appendChild(cancelBtn);
-  } else if (canEdit) {
-    const editBtn = createElement('button', 'pkc-btn');
-    editBtn.setAttribute('data-pkc-action', 'begin-edit');
-    editBtn.setAttribute('data-pkc-lid', entry.lid);
-    editBtn.setAttribute('title', 'Edit this entry');
-    editBtn.textContent = '✏️ Edit';
-    bar.appendChild(editBtn);
+  } else {
+    if (canEdit) {
+      const editBtn = createElement('button', 'pkc-btn');
+      editBtn.setAttribute('data-pkc-action', 'begin-edit');
+      editBtn.setAttribute('data-pkc-lid', entry.lid);
+      editBtn.setAttribute('title', 'Edit this entry');
+      editBtn.textContent = '✏️ Edit';
+      bar.appendChild(editBtn);
 
-    const deleteBtn = createElement('button', 'pkc-btn-danger');
-    deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
-    deleteBtn.setAttribute('data-pkc-lid', entry.lid);
-    deleteBtn.setAttribute('title', 'Delete this entry permanently');
-    deleteBtn.textContent = '🗑️ Delete';
-    bar.appendChild(deleteBtn);
+      const deleteBtn = createElement('button', 'pkc-btn-danger');
+      deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
+      deleteBtn.setAttribute('data-pkc-lid', entry.lid);
+      deleteBtn.setAttribute('title', 'Delete this entry permanently');
+      deleteBtn.textContent = '🗑️ Delete';
+      bar.appendChild(deleteBtn);
+    }
+
+    // Markdown / rich copy + rendered viewer actions for TEXT / TEXTLOG.
+    // Always visible in the `ready` phase (including readonly) since
+    // none of these buttons mutate state — they only read the current
+    // entry body and hand it off to the clipboard or to a new window.
+    if (entry.archetype === 'text' || entry.archetype === 'textlog') {
+      const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
+      copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
+      copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
+      copyMdBtn.setAttribute('title', 'Copy the raw markdown source to the clipboard');
+      copyMdBtn.textContent = '📋 Copy MD';
+      bar.appendChild(copyMdBtn);
+
+      const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
+      copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
+      copyRichBtn.setAttribute('data-pkc-lid', entry.lid);
+      copyRichBtn.setAttribute(
+        'title',
+        'Copy both the markdown source and the rendered HTML (paste into rich editors)',
+      );
+      copyRichBtn.textContent = '🎨 Copy Rendered';
+      bar.appendChild(copyRichBtn);
+
+      const viewerBtn = createElement('button', 'pkc-btn pkc-action-rendered-viewer');
+      viewerBtn.setAttribute('data-pkc-action', 'open-rendered-viewer');
+      viewerBtn.setAttribute('data-pkc-lid', entry.lid);
+      viewerBtn.setAttribute('title', 'Open a rendered, print-friendly view in a new window');
+      viewerBtn.textContent = '📖 Open Viewer';
+      bar.appendChild(viewerBtn);
+    }
   }
 
   // Entry info badge
@@ -2043,23 +2075,85 @@ function truncate(s: string, maxLen: number): string {
 /**
  * Render a context menu at the given position for an entry.
  * Returns the menu element to be appended to the DOM.
+ *
+ * Extra context (archetype, logId, source region) unlocks extra menu
+ * items beyond the default Edit / Delete / Move-to-root triplet:
+ *
+ * - `copy-entry-ref` is always shown — works in readonly and in
+ *   every source region (sidebar, detail pane, textlog rows).
+ * - `copy-asset-ref` is shown for ATTACHMENT entries.
+ * - `copy-log-line-ref` is shown when a TEXTLOG row supplied its
+ *   log-id through the menu origin.
+ * - Mutating actions (Edit / Delete / Move to Root) are shown only
+ *   when `canEdit === true`. In a readonly container or when the
+ *   menu is opened from a textlog row (where the user is operating
+ *   on a sub-entry, not the whole entry), mutating actions are
+ *   hidden so the menu degrades gracefully.
  */
+export interface ContextMenuOptions {
+  archetype?: string;
+  logId?: string;
+  canEdit?: boolean;
+  hasParent?: boolean;
+}
+
 export function renderContextMenu(
   lid: string,
   x: number,
   y: number,
-  hasParent: boolean,
+  hasParentOrOptions: boolean | ContextMenuOptions = false,
 ): HTMLElement {
+  const opts: ContextMenuOptions =
+    typeof hasParentOrOptions === 'boolean'
+      ? { hasParent: hasParentOrOptions, canEdit: true }
+      : hasParentOrOptions;
+  const canEdit = opts.canEdit !== false;
+  const hasParent = !!opts.hasParent;
+
   const menu = createElement('div', 'pkc-context-menu');
   menu.setAttribute('data-pkc-region', 'context-menu');
   menu.setAttribute('data-pkc-lid', lid);
+  if (opts.logId) menu.setAttribute('data-pkc-log-id', opts.logId);
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
-  const items: { action: string; label: string; tip: string; lid?: string; show: boolean }[] = [
-    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: true },
-    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: true },
-    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: hasParent },
+  type Item = {
+    action: string;
+    label: string;
+    tip: string;
+    lid?: string;
+    logId?: string;
+    show: boolean;
+  };
+
+  const items: Item[] = [
+    // Mutating actions — gated on canEdit.
+    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: canEdit },
+    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
+    // Reference-string actions — never mutate, always shown.
+    {
+      action: 'copy-entry-ref',
+      label: '🔗 Copy entry reference',
+      tip: 'Copy a markdown link pointing at this entry',
+      lid,
+      show: true,
+    },
+    {
+      action: 'copy-asset-ref',
+      label: '📎 Copy asset reference',
+      tip: 'Copy a markdown image / chip reference pointing at this attachment',
+      lid,
+      show: opts.archetype === 'attachment',
+    },
+    {
+      action: 'copy-log-line-ref',
+      label: '📝 Copy log line reference',
+      tip: 'Copy a markdown link pointing at this specific log entry',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+    },
   ];
 
   for (const item of items) {
@@ -2068,6 +2162,7 @@ export function renderContextMenu(
     btn.setAttribute('data-pkc-action', item.action);
     btn.setAttribute('title', item.tip);
     if (item.lid) btn.setAttribute('data-pkc-lid', item.lid);
+    if (item.logId) btn.setAttribute('data-pkc-log-id', item.logId);
     btn.textContent = item.label;
     menu.appendChild(btn);
   }

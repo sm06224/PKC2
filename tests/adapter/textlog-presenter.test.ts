@@ -74,6 +74,16 @@ describe('textlog renderBody', () => {
     expect(rows[1]!.getAttribute('data-pkc-log-important')).toBe('true');
   });
 
+  it('each row carries data-pkc-lid so dblclick → BEGIN_EDIT can resolve the owning entry', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-owner'));
+    const rows = el.querySelectorAll<HTMLElement>('.pkc-textlog-row');
+    expect(rows.length).toBe(3);
+    for (const r of rows) {
+      expect(r.getAttribute('data-pkc-lid')).toBe('tl-owner');
+      expect(r.getAttribute('data-pkc-log-id')).toBeTruthy();
+    }
+  });
+
   it('renders flag toggle buttons', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const flagBtns = el.querySelectorAll('[data-pkc-action="toggle-log-flag"]');

@@ -116,6 +116,49 @@ export function formatLogTimestamp(iso: string): string {
   return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * Serialize a textlog body as a single Markdown document.
+ *
+ * Used by the copy-to-clipboard and "open rendered viewer" paths so
+ * TEXTLOG entries can be round-tripped as a plain document:
+ *
+ *   ## 2026/04/09 Thu 10:00
+ *
+ *   First log entry text (possibly markdown)
+ *
+ *   ## 2026/04/09 Thu 10:05 ★
+ *
+ *   Second log entry — important flag exposes a gold star suffix
+ *   on the heading so the "important" signal survives the flattening.
+ *
+ * Rules (pinned by tests):
+ * - Entries are emitted in **original order** (the container already
+ *   keeps them in append order; we intentionally do not re-sort by
+ *   timestamp, matching the on-screen view's "append-order wins"
+ *   semantics established in `textlog-foundation.md`).
+ * - Each entry is framed by a `## <timestamp>` heading. The heading
+ *   uses `formatLogTimestamp` so copy output matches the row label
+ *   visible in the UI.
+ * - `important` entries get a trailing ` ★` marker on the heading so
+ *   the flag is not silently lost.
+ * - The body text is emitted verbatim; it may contain markdown.
+ * - Entries are joined by a blank line.
+ * - An empty log yields an empty string (the caller decides whether
+ *   that is "nothing to copy" or a placeholder).
+ */
+export function serializeTextlogAsMarkdown(body: TextlogBody): string {
+  if (body.entries.length === 0) return '';
+  const blocks: string[] = [];
+  for (const entry of body.entries) {
+    const important = entry.flags.includes('important');
+    const heading = important
+      ? `## ${formatLogTimestamp(entry.createdAt)} ★`
+      : `## ${formatLogTimestamp(entry.createdAt)}`;
+    blocks.push(`${heading}\n\n${entry.text}`);
+  }
+  return blocks.join('\n\n');
+}
+
 let logIdCounter = 0;
 
 function generateLogId(): string {

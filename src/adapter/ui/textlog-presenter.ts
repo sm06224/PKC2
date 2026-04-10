@@ -44,6 +44,11 @@ export const textlogPresenter: DetailPresenter = {
         const row = document.createElement('div');
         row.className = 'pkc-textlog-row';
         row.setAttribute('data-pkc-log-id', logEntry.id);
+        // Owning entry's lid — used by dblclick→BEGIN_EDIT and by the
+        // center-pane context menu to produce a log-line reference
+        // string (`[title › ts](entry:lid#log-id)`) without having to
+        // walk the DOM back to the selected entry.
+        row.setAttribute('data-pkc-lid', entry.lid);
 
         if (logEntry.flags.includes('important')) {
           row.setAttribute('data-pkc-log-important', 'true');

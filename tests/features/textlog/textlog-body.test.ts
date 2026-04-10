@@ -7,6 +7,7 @@ import {
   toggleLogFlag,
   deleteLogEntry,
   formatLogTimestamp,
+  serializeTextlogAsMarkdown,
 } from '@features/textlog/textlog-body';
 import type { TextlogBody } from '@features/textlog/textlog-body';
 
@@ -207,5 +208,90 @@ describe('formatLogTimestamp', () => {
 
   it('returns input for invalid timestamp', () => {
     expect(formatLogTimestamp('not a date')).toBe('not a date');
+  });
+});
+
+// ── serializeTextlogAsMarkdown ──
+
+describe('serializeTextlogAsMarkdown', () => {
+  it('returns empty string for empty log', () => {
+    expect(serializeTextlogAsMarkdown({ entries: [] })).toBe('');
+  });
+
+  it('emits one `## timestamp` heading per entry followed by its text', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-1', text: 'First line', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    // Heading is emitted with the same timestamp format used on screen.
+    const expectedTs = formatLogTimestamp('2026-04-09T10:00:00Z');
+    expect(md).toBe(`## ${expectedTs}\n\nFirst line`);
+  });
+
+  it('preserves original order (no timestamp re-sort)', () => {
+    // Later timestamp appears FIRST in entries[] — the serializer must
+    // keep the append order as-is, matching textlog-foundation rules.
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-a', text: 'Appended first (later time)', createdAt: '2026-04-09T12:00:00Z', flags: [] },
+        { id: 'log-b', text: 'Appended second (earlier time)', createdAt: '2026-04-09T08:00:00Z', flags: [] },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    const idxFirst = md.indexOf('Appended first');
+    const idxSecond = md.indexOf('Appended second');
+    expect(idxFirst).toBeGreaterThanOrEqual(0);
+    expect(idxSecond).toBeGreaterThan(idxFirst);
+  });
+
+  it('adds a trailing ★ marker to headings whose entry has the important flag', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-1', text: 'Regular', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-2', text: 'Starred', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    const lines = md.split('\n');
+    const headings = lines.filter((l) => l.startsWith('## '));
+    expect(headings).toHaveLength(2);
+    expect(headings[0]!.endsWith('★')).toBe(false);
+    expect(headings[1]!.endsWith('★')).toBe(true);
+  });
+
+  it('joins multiple entries with blank-line separators', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-2', text: 'beta', createdAt: '2026-04-09T10:05:00Z', flags: [] },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    // Two entries means two `## ` headings, with a blank line between the
+    // first body text and the second heading.
+    expect(md.match(/## /g)?.length).toBe(2);
+    expect(md).toContain('\n\nalpha\n\n## ');
+    expect(md).toContain('\n\nbeta');
+  });
+
+  it('emits markdown text verbatim (does not escape)', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-1',
+          text: '**bold** and `code` and [link](https://example.com)',
+          createdAt: '2026-04-09T10:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    // Markdown syntax must survive — the serializer is not supposed to
+    // escape the body, only frame it with a heading.
+    expect(md).toContain('**bold**');
+    expect(md).toContain('`code`');
+    expect(md).toContain('[link](https://example.com)');
   });
 });
