@@ -555,7 +555,7 @@ function renderShortcutHelp(): HTMLElement {
   return overlay;
 }
 
-function renderExportImportInline(_state: AppState): HTMLElement {
+function renderExportImportInline(state: AppState): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
@@ -587,6 +587,18 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   zipBtn.setAttribute('title', 'Export as ZIP package (.pkc2.zip)');
   zipBtn.textContent = 'ZIP';
   group.appendChild(zipBtn);
+
+  // Container-wide TEXTLOG export — only shown when the container
+  // has at least one textlog entry. Bundles all textlogs into a
+  // single .textlogs.zip containing individual .textlog.zip files.
+  const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+  if (hasTextlogs) {
+    const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
+    textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
+    textlogsBtn.textContent = 'TEXTLOGs';
+    group.appendChild(textlogsBtn);
+  }
 
   const sep2 = createElement('span', 'pkc-eip-sep');
   sep2.textContent = '|';

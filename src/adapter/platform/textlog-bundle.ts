@@ -31,6 +31,7 @@ import {
 } from '../../features/textlog/textlog-csv';
 import {
   createZipBlob,
+  createZipBytes,
   textToBytes,
   base64ToBytes,
   bytesToText,
@@ -73,6 +74,10 @@ export interface TextlogBundleManifest {
 
 export interface TextlogBundleResult {
   blob: Blob;
+  /** Raw ZIP bytes — same content as `blob` but as a Uint8Array.
+   *  Available so callers that nest this bundle inside another ZIP
+   *  can avoid a Blob→ArrayBuffer async round-trip. */
+  zipBytes: Uint8Array;
   filename: string;
   manifest: TextlogBundleManifest;
 }
@@ -167,9 +172,10 @@ export function buildTextlogBundle(
     ...assetEntries,
   ];
 
-  const blob = createZipBlob(zipEntries);
+  const zipBytes = createZipBytes(zipEntries);
+  const blob = new Blob([zipBytes as BlobPart], { type: 'application/zip' });
   const filename = buildBundleFilename(entry, now);
-  return { blob, manifest, filename };
+  return { blob, zipBytes, manifest, filename };
 }
 
 /**
@@ -220,6 +226,119 @@ export function buildBundleFilename(entry: Entry, now: Date = new Date()): strin
   const slug = slugify(entry.title || entry.lid);
   const date = formatDateCompact(now);
   return `${slug}-${date}.textlog.zip`;
+}
+
+// ── Container-wide export ────────────────────────
+
+/**
+ * Top-level manifest for a container-wide TEXTLOG export bundle.
+ */
+export interface TextlogsContainerManifest {
+  format: 'pkc2-textlogs-container-bundle';
+  version: 1;
+  exported_at: string;
+  source_cid: string;
+  source_title: string;
+  entry_count: number;
+  compact: boolean;
+  entries: {
+    lid: string;
+    title: string;
+    filename: string;
+    log_entry_count: number;
+    asset_count: number;
+    missing_asset_count: number;
+  }[];
+}
+
+export interface TextlogsContainerResult {
+  blob: Blob;
+  filename: string;
+  manifest: TextlogsContainerManifest;
+  /** Total missing asset count across all bundles. */
+  totalMissingAssetCount: number;
+}
+
+/**
+ * Build a container-wide TEXTLOG export: a ZIP containing individual
+ * `.textlog.zip` bundles for every textlog entry in the container,
+ * plus a top-level `manifest.json`.
+ *
+ * Each inner bundle is produced by `buildTextlogBundle()` — the exact
+ * same format as a single-entry export. The outer ZIP nests them as
+ * stored byte arrays (ZIP-in-ZIP), so unzipping the outer archive
+ * gives individual bundles that can be imported independently.
+ *
+ * Live state is never mutated.
+ */
+export function buildTextlogsContainerBundle(
+  container: Container,
+  options?: { now?: Date; compact?: boolean },
+): TextlogsContainerResult {
+  const now = options?.now ?? new Date();
+  const compact = options?.compact === true;
+
+  const textlogEntries = container.entries.filter((e) => e.archetype === 'textlog');
+
+  // Track filenames for dedup
+  const usedFilenames = new Set<string>();
+  const manifestEntries: TextlogsContainerManifest['entries'] = [];
+  const zipEntries: ZipEntry[] = [];
+  let totalMissing = 0;
+
+  for (const entry of textlogEntries) {
+    const built = buildTextlogBundle(entry, container, { now, compact });
+
+    // Deduplicate filenames with -2, -3, ... suffixes
+    let filename = built.filename;
+    if (usedFilenames.has(filename)) {
+      const base = filename.replace(/\.textlog\.zip$/, '');
+      let suffix = 2;
+      while (usedFilenames.has(`${base}-${suffix}.textlog.zip`)) suffix++;
+      filename = `${base}-${suffix}.textlog.zip`;
+    }
+    usedFilenames.add(filename);
+
+    // Get the inner bundle as raw bytes for nesting in the outer ZIP.
+    // We rebuild the ZIP from the same entries that buildTextlogBundle
+    // used, via createZipBytes, to avoid a Blob→ArrayBuffer async
+    // round-trip (FileReaderSync is Web Workers-only).
+    const innerBytes = built.zipBytes;
+
+    zipEntries.push({ name: filename, data: innerBytes });
+    manifestEntries.push({
+      lid: entry.lid,
+      title: entry.title ?? '',
+      filename,
+      log_entry_count: built.manifest.entry_count,
+      asset_count: built.manifest.asset_count,
+      missing_asset_count: built.manifest.missing_asset_count,
+    });
+    totalMissing += built.manifest.missing_asset_count;
+  }
+
+  const manifest: TextlogsContainerManifest = {
+    format: 'pkc2-textlogs-container-bundle',
+    version: 1,
+    exported_at: now.toISOString(),
+    source_cid: container.meta.container_id,
+    source_title: container.meta.title ?? '',
+    entry_count: textlogEntries.length,
+    compact,
+    entries: manifestEntries,
+  };
+
+  zipEntries.unshift({
+    name: 'manifest.json',
+    data: textToBytes(JSON.stringify(manifest, null, 2)),
+  });
+
+  const blob = createZipBlob(zipEntries);
+  const containerSlug = slugify(container.meta.title || container.meta.container_id);
+  const date = formatDateCompact(now);
+  const filename = `textlogs-${containerSlug}-${date}.textlogs.zip`;
+
+  return { blob, filename, manifest, totalMissingAssetCount: totalMissing };
 }
 
 // ── Import (Issue H) ────────────────────────

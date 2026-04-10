@@ -2,11 +2,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   buildTextlogBundle,
+  buildTextlogsContainerBundle,
   exportTextlogAsBundle,
   buildBundleFilename,
   chooseExtension,
   importTextlogBundleFromBuffer,
   type TextlogBundleManifest,
+  type TextlogsContainerManifest,
 } from '@adapter/platform/textlog-bundle';
 import { parseTextlogBody } from '@features/textlog/textlog-body';
 import type { Container } from '@core/model/container';
@@ -1029,5 +1031,219 @@ describe('importTextlogBundleFromBuffer – failure atomicity', () => {
       dispatchedCount = result.attachments.length + 1;
     }
     expect(dispatchedCount).toBe(0);
+  });
+});
+
+// ── Container-wide TEXTLOG export ────────────────────────
+
+/**
+ * Parse ZIP entries from a Uint8Array (inline helper replicating the
+ * minimal ZIP walker from the test-level readZipEntries, but taking
+ * bytes directly instead of Blob).
+ */
+function parseZipBytes(buf: Uint8Array): Map<string, Uint8Array> {
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd === -1) throw new Error('EOCD not found');
+  const total = view.getUint16(eocd + 10, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder();
+  const out = new Map<string, Uint8Array>();
+  let p = cdOffset;
+  for (let i = 0; i < total; i++) {
+    const compressed = view.getUint32(p + 20, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const localOff = view.getUint32(p + 42, true);
+    const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    const localNameLen = view.getUint16(localOff + 26, true);
+    const localExtraLen = view.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + localNameLen + localExtraLen;
+    out.set(name, buf.slice(dataStart, dataStart + compressed));
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+describe('buildTextlogsContainerBundle', () => {
+  it('produces a valid outer ZIP with manifest + nested .textlog.zip bundles', async () => {
+    const e1 = makeTextlogEntry('e1', 'Log A', [{ id: 'log-1', text: 'hello' }]);
+    const e2 = makeTextlogEntry('e2', 'Log B', [{ id: 'log-2', text: 'world' }]);
+    const container = makeContainer({ entries: [e1, e2] });
+    const now = new Date('2026-04-10T00:00:00Z');
+
+    const result = buildTextlogsContainerBundle(container, { now });
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(result.blob.size).toBeGreaterThan(0);
+    expect(result.filename).toMatch(/^textlogs-.*\.textlogs\.zip$/);
+
+    // Parse the outer ZIP
+    const outerBytes = new Uint8Array(await result.blob.arrayBuffer());
+    const outerEntries = parseZipBytes(outerBytes);
+
+    // Should have: manifest.json + 2 inner .textlog.zip
+    expect(outerEntries.size).toBe(3);
+    expect(outerEntries.has('manifest.json')).toBe(true);
+
+    // Verify manifest
+    const manifest = JSON.parse(
+      new TextDecoder().decode(outerEntries.get('manifest.json')!),
+    ) as TextlogsContainerManifest;
+    expect(manifest.format).toBe('pkc2-textlogs-container-bundle');
+    expect(manifest.version).toBe(1);
+    expect(manifest.entry_count).toBe(2);
+    expect(manifest.entries).toHaveLength(2);
+    expect(manifest.entries[0]!.lid).toBe('e1');
+    expect(manifest.entries[1]!.lid).toBe('e2');
+  });
+
+  it('nested ZIPs are valid and can be parsed individually', async () => {
+    const e1 = makeTextlogEntry('e1', 'Log A', [{ id: 'log-1', text: 'first' }]);
+    const container = makeContainer({ entries: [e1] });
+    const now = new Date('2026-04-10T00:00:00Z');
+
+    const result = buildTextlogsContainerBundle(container, { now });
+    const outerBytes = new Uint8Array(await result.blob.arrayBuffer());
+    const outerEntries = parseZipBytes(outerBytes);
+
+    // Find the inner .textlog.zip
+    const innerName = result.manifest.entries[0]!.filename;
+    expect(outerEntries.has(innerName)).toBe(true);
+
+    // Parse the inner ZIP
+    const innerBytes = outerEntries.get(innerName)!;
+    const innerEntries = parseZipBytes(innerBytes);
+    expect(innerEntries.has('manifest.json')).toBe(true);
+    expect(innerEntries.has('textlog.csv')).toBe(true);
+
+    // Inner manifest should be a single-entry textlog bundle
+    const innerManifest = JSON.parse(
+      new TextDecoder().decode(innerEntries.get('manifest.json')!),
+    ) as TextlogBundleManifest;
+    expect(innerManifest.format).toBe('pkc2-textlog-bundle');
+    expect(innerManifest.source_lid).toBe('e1');
+  });
+
+  it('skips non-textlog entries', () => {
+    const textEntry: Entry = {
+      lid: 'e-text', title: 'Text', body: 'hello',
+      archetype: 'text', created_at: T, updated_at: T,
+    };
+    const textlogEntry = makeTextlogEntry('e-log', 'Log', [{ id: 'log-1', text: 'x' }]);
+    const container = makeContainer({ entries: [textEntry, textlogEntry] });
+
+    const result = buildTextlogsContainerBundle(container);
+    expect(result.manifest.entry_count).toBe(1);
+    expect(result.manifest.entries).toHaveLength(1);
+    expect(result.manifest.entries[0]!.lid).toBe('e-log');
+  });
+
+  it('deduplicates filenames with -2, -3 suffixes', () => {
+    // Two entries with the same title produce the same default filename
+    const e1 = makeTextlogEntry('e1', 'Same Title', [{ id: 'log-1', text: 'a' }]);
+    const e2 = makeTextlogEntry('e2', 'Same Title', [{ id: 'log-2', text: 'b' }]);
+    const e3 = makeTextlogEntry('e3', 'Same Title', [{ id: 'log-3', text: 'c' }]);
+    const container = makeContainer({ entries: [e1, e2, e3] });
+    const now = new Date('2026-04-10T00:00:00Z');
+
+    const result = buildTextlogsContainerBundle(container, { now });
+    const filenames = result.manifest.entries.map((e) => e.filename);
+    // All filenames must be unique
+    expect(new Set(filenames).size).toBe(3);
+    // First keeps original, rest get -2, -3 suffixes
+    expect(filenames[0]).toBe('same-title-20260410.textlog.zip');
+    expect(filenames[1]).toBe('same-title-20260410-2.textlog.zip');
+    expect(filenames[2]).toBe('same-title-20260410-3.textlog.zip');
+  });
+
+  it('reports totalMissingAssetCount across all bundles', () => {
+    const e1 = makeTextlogEntry('e1', 'Log A', [
+      { id: 'log-1', text: '![](asset:ast-gone-1)' },
+    ]);
+    const e2 = makeTextlogEntry('e2', 'Log B', [
+      { id: 'log-2', text: '![](asset:ast-gone-2) and ![](asset:ast-gone-3)' },
+    ]);
+    const container = makeContainer({ entries: [e1, e2] });
+
+    const result = buildTextlogsContainerBundle(container);
+    expect(result.totalMissingAssetCount).toBe(3);
+    expect(result.manifest.entries[0]!.missing_asset_count).toBe(1);
+    expect(result.manifest.entries[1]!.missing_asset_count).toBe(2);
+  });
+
+  it('handles container with zero textlog entries gracefully', () => {
+    const textEntry: Entry = {
+      lid: 'e-text', title: 'A Text', body: 'hello',
+      archetype: 'text', created_at: T, updated_at: T,
+    };
+    const container = makeContainer({ entries: [textEntry] });
+
+    const result = buildTextlogsContainerBundle(container);
+    expect(result.manifest.entry_count).toBe(0);
+    expect(result.manifest.entries).toEqual([]);
+    expect(result.totalMissingAssetCount).toBe(0);
+    expect(result.blob.size).toBeGreaterThan(0); // still a valid ZIP (manifest only)
+  });
+
+  it('passes compact flag through to inner bundles and records in manifest', () => {
+    const e1 = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [e1] });
+
+    const resultPlain = buildTextlogsContainerBundle(container, { compact: false });
+    expect(resultPlain.manifest.compact).toBe(false);
+
+    const resultCompact = buildTextlogsContainerBundle(container, { compact: true });
+    expect(resultCompact.manifest.compact).toBe(true);
+  });
+
+  it('records correct log_entry_count and asset_count per entry', () => {
+    const e1 = makeTextlogEntry('e1', 'Log A', [
+      { id: 'log-1', text: '![](asset:ast-ok)' },
+      { id: 'log-2', text: 'plain' },
+    ]);
+    const att = makeAttachmentEntry('a1', 'pic.png', 'image/png', 'ast-ok');
+    const container = makeContainer({
+      entries: [e1, att],
+      assets: { 'ast-ok': btoa('PNG') },
+    });
+
+    const result = buildTextlogsContainerBundle(container);
+    expect(result.manifest.entries[0]!.log_entry_count).toBe(2);
+    expect(result.manifest.entries[0]!.asset_count).toBe(1);
+    expect(result.manifest.entries[0]!.missing_asset_count).toBe(0);
+  });
+
+  it('outer filename follows textlogs-<slug>-<yyyymmdd>.textlogs.zip convention', () => {
+    const container = makeContainer({ entries: [] });
+    container.meta.title = 'My Project';
+    const now = new Date('2026-04-10T00:00:00Z');
+
+    const result = buildTextlogsContainerBundle(container, { now });
+    expect(result.filename).toBe('textlogs-my-project-20260410.textlogs.zip');
+  });
+
+  it('does not mutate container or entries', () => {
+    const e1 = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [e1] });
+    const bodyBefore = e1.body;
+    const entriesBefore = container.entries.length;
+    const assetsBefore = JSON.stringify(container.assets);
+
+    buildTextlogsContainerBundle(container, { compact: true });
+
+    expect(e1.body).toBe(bodyBefore);
+    expect(container.entries.length).toBe(entriesBefore);
+    expect(JSON.stringify(container.assets)).toBe(assetsBefore);
   });
 });

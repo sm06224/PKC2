@@ -18,7 +18,7 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
-import { buildTextlogBundle } from '../platform/textlog-bundle';
+import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle } from '../platform/text-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -535,6 +535,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
               : '- body.md には欠損参照が verbatim で残ります',
             '- assets/ フォルダには欠損キーは含まれません',
             '- manifest.json の missing_asset_keys に記録されます',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-textlogs-container': {
+        // Container-wide TEXTLOG export. Bundles all textlog entries
+        // in the container into a single ZIP containing individual
+        // .textlog.zip bundles + a top-level manifest.json.
+        // Read-only safe (no mutation). Same confirm() pattern as
+        // single-entry export for missing assets.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const built = buildTextlogsContainerBundle(st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `全 TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
           ].join('\n');
           if (!confirm(msg)) break;
         }
