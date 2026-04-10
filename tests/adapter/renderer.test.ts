@@ -438,6 +438,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'export.texts.zip',
         entries: [
           { index: 0, title: 'Note A', archetype: 'text' },
@@ -487,6 +489,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
@@ -511,6 +515,8 @@ describe('Renderer', () => {
         missingAssetCount: 3,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{ index: 0, title: 'A', archetype: 'text' }, { index: 1, title: 'B', archetype: 'text' }],
         selectedIndices: [0, 1],
@@ -536,6 +542,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: true,
         sourceFolderTitle: 'Project',
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'folder-project.folder-export.zip',
         entries: [{ index: 0, title: 'Doc', archetype: 'text' }, { index: 1, title: 'Log', archetype: 'textlog' }],
         selectedIndices: [0, 1],
@@ -547,6 +555,39 @@ describe('Renderer', () => {
     const caveat = panel!.querySelector('[data-pkc-role="folder-caveat"]');
     expect(caveat).not.toBeNull();
     expect(caveat!.textContent).toContain('フォルダ構造は復元されません');
+  });
+
+  it('batch preview shows folder restore info when canRestoreFolderStructure is true', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-folder-export-bundle',
+        formatLabel: 'Folder export bundle',
+        textCount: 2,
+        textlogCount: 0,
+        totalEntries: 2,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: true,
+        sourceFolderTitle: 'Project',
+        canRestoreFolderStructure: true,
+        folderCount: 3,
+        source: 'folder-project.folder-export.zip',
+        entries: [{ index: 0, title: 'Doc A', archetype: 'text' }, { index: 1, title: 'Doc B', archetype: 'text' }],
+        selectedIndices: [0, 1],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const panel = root.querySelector('[data-pkc-region="batch-import-preview"]');
+    // Should NOT show the old caveat
+    const caveat = panel!.querySelector('[data-pkc-role="folder-caveat"]');
+    expect(caveat).toBeNull();
+    // Should show folder restore info
+    const restoreInfo = panel!.querySelector('[data-pkc-role="folder-restore-info"]');
+    expect(restoreInfo).not.toBeNull();
+    expect(restoreInfo!.textContent).toContain('3 folders');
+    expect(restoreInfo!.textContent).toContain('復元されます');
   });
 
   it('renders entry list with checkboxes in batch preview', () => {
@@ -562,6 +603,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [
           { index: 0, title: 'Note A', archetype: 'text' },
@@ -605,6 +648,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [
           { index: 0, title: 'Note A', archetype: 'text' },
@@ -633,6 +678,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [], // none selected
@@ -658,6 +705,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{
           index: 0, title: 'Note', archetype: 'text',
@@ -694,6 +743,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{
           index: 0, title: 'Daily Log', archetype: 'textlog',
@@ -730,6 +781,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
@@ -754,6 +807,8 @@ describe('Renderer', () => {
         missingAssetCount: 0,
         isFolderExport: false,
         sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
         source: 'test.zip',
         entries: [
           { index: 0, title: 'A', archetype: 'text', bodySnippet: 'snippet A', bodyLength: 100 },
@@ -2252,8 +2307,8 @@ describe('Action surface consolidation', () => {
     expect(importLine).not.toBeNull();
     // Must mention Batch (the entry point for folder-export import)
     expect(importLine!.textContent).toContain('Batch');
-    // Must warn that folder structure is not restored
-    expect(importLine!.textContent).toContain('フォルダ構造は復元されません');
+    // Must mention folder structure auto-restore
+    expect(importLine!.textContent).toContain('フォルダ構造は自動復元');
   });
 
   it('Batch import button tooltip mentions folder-export.zip', () => {

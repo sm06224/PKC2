@@ -43,6 +43,18 @@ export interface BatchImportPreviewEntry {
   index: number;
   title: string;
   archetype: 'text' | 'textlog';
+  /** First ~200 chars of body (TEXT). Optional — absent if peek fails. */
+  bodySnippet?: string;
+  /** TEXT: body.md char count. */
+  bodyLength?: number;
+  /** TEXTLOG: number of log entries. */
+  logEntryCount?: number;
+  /** TEXTLOG: first 3 log entry texts, each truncated to ~80 chars. */
+  logSnippets?: string[];
+  /** Number of resolved assets in the nested bundle. */
+  assetCount?: number;
+  /** Number of missing assets in the nested bundle. */
+  missingAssetCount?: number;
 }
 
 /**
@@ -59,6 +71,10 @@ export interface BatchImportPreviewInfo {
   missingAssetCount: number;
   isFolderExport: boolean;
   sourceFolderTitle: string | null;
+  /** Whether folder structure can be restored on import. */
+  canRestoreFolderStructure: boolean;
+  /** Number of folders in the hierarchy (0 if no restore). */
+  folderCount: number;
   source: string;
   /** Per-entry metadata (title + archetype). */
   entries: BatchImportPreviewEntry[];

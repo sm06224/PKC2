@@ -585,6 +585,8 @@ describe('batch import preview', () => {
     missingAssetCount: 0,
     isFolderExport: false,
     sourceFolderTitle: null,
+    canRestoreFolderStructure: false,
+    folderCount: 0,
     source: 'test.texts.zip',
     entries: [
       { index: 0, title: 'Note A', archetype: 'text' as const },

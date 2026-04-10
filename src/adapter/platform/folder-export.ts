@@ -36,6 +36,16 @@ export interface FolderExportManifestEntry {
   log_entry_count?: number;
   asset_count: number;
   missing_asset_count: number;
+  /** Original parent folder LID (references a folder in the `folders` array). */
+  parent_folder_lid?: string;
+}
+
+/** Folder hierarchy entry in the manifest. */
+export interface FolderExportManifestFolder {
+  lid: string;
+  title: string;
+  /** Parent folder LID, or `null` for the export root folder. */
+  parent_lid: string | null;
 }
 
 export interface FolderExportManifest {
@@ -50,6 +60,8 @@ export interface FolderExportManifest {
   textlog_count: number;
   compact: boolean;
   entries: FolderExportManifestEntry[];
+  /** Folder hierarchy metadata for structure restore on import. */
+  folders?: FolderExportManifestFolder[];
 }
 
 export interface FolderExportResult {
@@ -91,6 +103,31 @@ export function buildFolderExportBundle(
       (e.archetype === 'text' || e.archetype === 'textlog'),
   );
 
+  // 2b. Build parent map from structural relations (child → parent).
+  // For each descendant, record its structural parent.
+  // Direct children of the export root folder have r.from === folderEntry.lid.
+  const parentOf = new Map<string, string>();
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && descendantLids.has(r.to)) {
+      parentOf.set(r.to, r.from);
+    }
+  }
+
+  // 2c. Collect folder hierarchy: export root + all descendant folders
+  const folderEntries: FolderExportManifestFolder[] = [
+    { lid: folderEntry.lid, title: folderEntry.title ?? '', parent_lid: null },
+  ];
+  for (const e of container.entries) {
+    if (e.archetype === 'folder' && descendantLids.has(e.lid)) {
+      const parent = parentOf.get(e.lid) ?? folderEntry.lid;
+      folderEntries.push({
+        lid: e.lid,
+        title: e.title ?? '',
+        parent_lid: parent,
+      });
+    }
+  }
+
   // 3. Build individual bundles
   const usedFilenames = new Set<string>();
   const manifestEntries: FolderExportManifestEntry[] = [];
@@ -121,6 +158,7 @@ export function buildFolderExportBundle(
         body_length: built.manifest.body_length,
         asset_count: built.manifest.asset_count,
         missing_asset_count: built.manifest.missing_asset_count,
+        parent_folder_lid: parentOf.get(entry.lid),
       });
       totalMissing += built.manifest.missing_asset_count;
       textCount++;
@@ -145,6 +183,7 @@ export function buildFolderExportBundle(
         log_entry_count: built.manifest.entry_count,
         asset_count: built.manifest.asset_count,
         missing_asset_count: built.manifest.missing_asset_count,
+        parent_folder_lid: parentOf.get(entry.lid),
       });
       totalMissing += built.manifest.missing_asset_count;
       textlogCount++;
@@ -164,6 +203,7 @@ export function buildFolderExportBundle(
     textlog_count: textlogCount,
     compact,
     entries: manifestEntries,
+    folders: folderEntries,
   };
 
   zipEntries.unshift({

@@ -30,11 +30,20 @@ import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
 /** Unified attachment shape (TEXT and TEXTLOG share the same fields). */
 export type BatchAttachment = ImportedTextAttachment | ImportedAttachment;
 
+/** Folder hierarchy info from the manifest (for structure restore). */
+export interface BatchFolderInfo {
+  lid: string;
+  title: string;
+  parentLid: string | null;
+}
+
 export interface BatchImportEntry {
   archetype: 'text' | 'textlog';
   title: string;
   body: string;
   attachments: BatchAttachment[];
+  /** Original parent folder LID (references a folder in `folders`). */
+  parentFolderLid?: string;
 }
 
 export interface BatchImportSuccess {
@@ -44,6 +53,8 @@ export interface BatchImportSuccess {
   source: string;
   /** The batch manifest format string. */
   format: string;
+  /** Folder hierarchy for structure restore (folder-export bundles only). */
+  folders?: BatchFolderInfo[];
 }
 
 export interface BatchImportFailure {
@@ -87,6 +98,10 @@ export interface BatchImportPreviewInfo {
   missingAssetCount: number;
   isFolderExport: boolean;
   sourceFolderTitle: string | null;
+  /** Whether folder structure can be restored on import. */
+  canRestoreFolderStructure: boolean;
+  /** Number of folders in the hierarchy (0 if no restore). */
+  folderCount: number;
   source: string;
   /** Per-entry metadata (title + archetype). */
   entries: BatchImportPreviewEntry[];
@@ -215,6 +230,14 @@ export function previewBatchBundleFromBuffer(
 
     const isFolderExport = format === 'pkc2-folder-export-bundle';
 
+    // Folder hierarchy for structure restore
+    const rawFolders = manifest.folders as
+      | { lid: string; title: string; parent_lid: string | null }[]
+      | undefined;
+    const canRestoreFolderStructure =
+      isFolderExport && Array.isArray(rawFolders) && rawFolders.length > 0;
+    const folderCount = canRestoreFolderStructure ? rawFolders!.length : 0;
+
     return {
       ok: true,
       info: {
@@ -229,6 +252,8 @@ export function previewBatchBundleFromBuffer(
         sourceFolderTitle: isFolderExport
           ? (manifest.source_folder_title as string | null) ?? null
           : null,
+        canRestoreFolderStructure,
+        folderCount,
         source,
         entries: previewEntries,
         selectedIndices: previewEntries.map((e) => e.index),
@@ -295,7 +320,7 @@ export function importBatchBundleFromBuffer(
 
     // 2. Extract the entries list from the manifest
     const manifestEntries = manifest.entries as
-      | { filename: string; archetype?: string }[]
+      | { filename: string; archetype?: string; parent_folder_lid?: string }[]
       | undefined;
     if (!Array.isArray(manifestEntries)) {
       return { ok: false, error: 'Missing or invalid entries array in manifest' };
@@ -349,6 +374,7 @@ export function importBatchBundleFromBuffer(
           title: result.text.title,
           body: result.text.body,
           attachments: result.attachments,
+          parentFolderLid: me.parent_folder_lid,
         });
       } else {
         const result = importTextlogBundleFromBuffer(nestedBuf, me.filename);
@@ -363,15 +389,30 @@ export function importBatchBundleFromBuffer(
           title: result.textlog.title,
           body: result.textlog.body,
           attachments: result.attachments,
+          parentFolderLid: me.parent_folder_lid,
         });
       }
     }
+
+    // 4. Extract folder hierarchy (folder-export bundles only)
+    const rawFolders = manifest.folders as
+      | { lid: string; title: string; parent_lid: string | null }[]
+      | undefined;
+    const folders: BatchFolderInfo[] | undefined =
+      Array.isArray(rawFolders) && rawFolders.length > 0
+        ? rawFolders.map((f) => ({
+            lid: f.lid,
+            title: f.title ?? '',
+            parentLid: f.parent_lid ?? null,
+          }))
+        : undefined;
 
     return {
       ok: true,
       entries: importedEntries,
       source,
       format,
+      folders,
     };
   } catch (e) {
     return { ok: false, error: `Batch import failed: ${String(e)}` };
