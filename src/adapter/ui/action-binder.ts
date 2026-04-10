@@ -122,7 +122,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
-    if (!target) return;
+
+    // ── TEXTLOG edit-mode: delete button (✕) marks row for removal ──
+    // The delete button uses data-pkc-field (not data-pkc-action) because
+    // the deletion is a DOM-only operation: the row is hidden and marked
+    // with data-pkc-deleted="true" so collectBody skips it on save.
+    if (!target) {
+      const delBtn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-field="textlog-delete"]');
+      if (delBtn) {
+        const row = delBtn.closest<HTMLElement>('.pkc-textlog-edit-row');
+        if (row) {
+          row.setAttribute('data-pkc-deleted', 'true');
+          row.style.display = 'none';
+        }
+        return;
+      }
+      return;
+    }
 
     const action = target.getAttribute('data-pkc-action');
     const lid = target.getAttribute('data-pkc-lid') ?? undefined;
