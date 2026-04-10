@@ -75,11 +75,52 @@ export interface BatchImportPreviewInfo {
   canRestoreFolderStructure: boolean;
   /** Number of folders in the hierarchy (0 if no restore). */
   folderCount: number;
+  /** Folder graph validation failed → will fall back to flat import. */
+  malformedFolderMetadata?: boolean;
+  /** Human-readable reason (from validateFolderGraph warnings). */
+  folderGraphWarning?: string;
   source: string;
   /** Per-entry metadata (title + archetype). */
   entries: BatchImportPreviewEntry[];
   /** Indices of entries selected for import (default: all). */
   selectedIndices: number[];
+}
+
+// ── Batch import plan types ─────────────────────────
+
+export interface BatchImportPlanFolder {
+  originalLid: string;
+  title: string;
+  parentOriginalLid: string | null;
+}
+
+export interface BatchImportPlanAttachment {
+  name: string;
+  body: string;
+  assetKey: string;
+  assetData: string;
+}
+
+export interface BatchImportPlanEntry {
+  archetype: 'text' | 'textlog';
+  title: string;
+  body: string;
+  parentFolderOriginalLid?: string;
+  assets: Record<string, string>;
+  attachments: BatchImportPlanAttachment[];
+}
+
+export interface BatchImportPlan {
+  /** Folders to create, in topological order (parent first). */
+  folders: BatchImportPlanFolder[];
+  /** Content entries to create. */
+  entries: BatchImportPlanEntry[];
+  /** Source filename. */
+  source: string;
+  /** Format string. */
+  format: string;
+  /** Whether folder structure is being restored. */
+  restoreStructure: boolean;
 }
 
 /**
@@ -98,6 +139,7 @@ export type SystemCommand =
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }
   | { type: 'SYS_BATCH_IMPORT_PREVIEW'; preview: BatchImportPreviewInfo }
+  | { type: 'SYS_APPLY_BATCH_IMPORT'; plan: BatchImportPlan }
   | { type: 'SYS_RECORD_OFFERED'; offer: PendingOfferRef }
   | { type: 'SYS_ERROR'; error: string };
 

@@ -24,6 +24,8 @@ import {
 import { importTextBundleFromBuffer, type ImportedTextAttachment } from './text-bundle';
 import { importTextlogBundleFromBuffer, type ImportedAttachment } from './textlog-bundle';
 import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
+import { validateFolderGraph } from '../../features/batch-import/import-planner';
+import type { PlannerFolderInfo } from '../../features/batch-import/import-planner';
 
 // ── Types ────────────────────────────────────────────
 
@@ -102,6 +104,10 @@ export interface BatchImportPreviewInfo {
   canRestoreFolderStructure: boolean;
   /** Number of folders in the hierarchy (0 if no restore). */
   folderCount: number;
+  /** Folder graph validation failed → will fall back to flat import. */
+  malformedFolderMetadata?: boolean;
+  /** Human-readable reason (from validateFolderGraph warnings). */
+  folderGraphWarning?: string;
   source: string;
   /** Per-entry metadata (title + archetype). */
   entries: BatchImportPreviewEntry[];
@@ -234,8 +240,26 @@ export function previewBatchBundleFromBuffer(
     const rawFolders = manifest.folders as
       | { lid: string; title: string; parent_lid: string | null }[]
       | undefined;
-    const canRestoreFolderStructure =
-      isFolderExport && Array.isArray(rawFolders) && rawFolders.length > 0;
+    const hasFolders = isFolderExport && Array.isArray(rawFolders) && rawFolders.length > 0;
+    let canRestoreFolderStructure = hasFolders;
+    let malformedFolderMetadata: boolean | undefined;
+    let folderGraphWarning: string | undefined;
+
+    // Validate folder graph at preview time so UI can classify correctly
+    if (hasFolders) {
+      const plannerFolders: PlannerFolderInfo[] = rawFolders!.map((f: { lid: string; title: string; parent_lid: string | null }) => ({
+        lid: f.lid,
+        title: f.title ?? '',
+        parentLid: f.parent_lid ?? null,
+      }));
+      const validation = validateFolderGraph(plannerFolders, []);
+      if (!validation.valid) {
+        canRestoreFolderStructure = false;
+        malformedFolderMetadata = true;
+        folderGraphWarning = validation.warnings.join('; ');
+      }
+    }
+
     const folderCount = canRestoreFolderStructure ? rawFolders!.length : 0;
 
     return {
@@ -254,6 +278,8 @@ export function previewBatchBundleFromBuffer(
           : null,
         canRestoreFolderStructure,
         folderCount,
+        malformedFolderMetadata,
+        folderGraphWarning,
         source,
         entries: previewEntries,
         selectedIndices: previewEntries.map((e) => e.index),

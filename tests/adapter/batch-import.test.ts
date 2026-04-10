@@ -1032,3 +1032,135 @@ describe('folder structure restore', () => {
     expect(result.entries[1]!.parentFolderLid).toBeUndefined();
   });
 });
+
+// ── Preview-time folder graph validation ──────────────
+
+describe('preview-time folder graph validation', () => {
+  const dummyNestedZip = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+  it('valid folder metadata → canRestoreFolderStructure true, no malformed flag', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', parent_folder_lid: 'f1', asset_count: 0, missing_asset_count: 0 }],
+      folders: [{ lid: 'f1', title: 'Root', parent_lid: null }],
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(true);
+    expect(result.info.malformedFolderMetadata).toBeFalsy();
+    expect(result.info.folderGraphWarning).toBeUndefined();
+  });
+
+  it('malformed folder metadata (self-parent) → canRestoreFolderStructure false + malformed flag', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', parent_folder_lid: 'f1', asset_count: 0, missing_asset_count: 0 }],
+      folders: [{ lid: 'f1', title: 'Root', parent_lid: 'f1' }],  // self-parent
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.malformedFolderMetadata).toBe(true);
+    expect(result.info.folderGraphWarning).toContain('Self-parent');
+  });
+
+  it('malformed folder metadata (cycle) → canRestoreFolderStructure false + malformed flag', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', parent_folder_lid: 'f1', asset_count: 0, missing_asset_count: 0 }],
+      folders: [
+        { lid: 'f1', title: 'A', parent_lid: 'f2' },
+        { lid: 'f2', title: 'B', parent_lid: 'f1' },
+      ],
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.malformedFolderMetadata).toBe(true);
+    expect(result.info.folderGraphWarning).toContain('Cycle');
+  });
+
+  it('malformed folder metadata (duplicate LID) → canRestoreFolderStructure false + malformed flag', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', parent_folder_lid: 'dup', asset_count: 0, missing_asset_count: 0 }],
+      folders: [
+        { lid: 'dup', title: 'A', parent_lid: null },
+        { lid: 'dup', title: 'B', parent_lid: null },
+      ],
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.malformedFolderMetadata).toBe(true);
+    expect(result.info.folderGraphWarning).toContain('Duplicate');
+  });
+
+  it('no folder metadata (old bundle) → no malformed flag, just flat', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', asset_count: 0, missing_asset_count: 0 }],
+      // No folders array
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.malformedFolderMetadata).toBeFalsy();
+    expect(result.info.folderGraphWarning).toBeUndefined();
+  });
+});

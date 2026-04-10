@@ -24,6 +24,8 @@ import {
   importBatchBundleFromBuffer,
 } from './adapter/platform/batch-import';
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
+import { buildBatchImportPlan } from './features/batch-import/import-planner';
+import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/batch-import/import-planner';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
@@ -697,121 +699,54 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       return;
     }
 
-    // Folder structure restore: create necessary folders first
-    const oldToNewLid = new Map<string, string>();
-    let folderCount = 0;
-    if (result.folders && result.folders.length > 0) {
-      // Compute which folders are needed: ancestors of selected entries
-      const neededFolderLids = new Set<string>();
-      const folderByLid = new Map(result.folders.map((f) => [f.lid, f]));
-      for (let i = 0; i < result.entries.length; i++) {
-        if (!selectedSet.has(i)) continue;
-        let cur = result.entries[i]!.parentFolderLid;
-        while (cur && !neededFolderLids.has(cur)) {
-          neededFolderLids.add(cur);
-          const folder = folderByLid.get(cur);
-          cur = folder?.parentLid ?? undefined;
-        }
-      }
+    // Map adapter types → planner input (boundary mapping)
+    const plannerFolders: PlannerFolderInfo[] | undefined = result.folders?.map((f) => ({
+      lid: f.lid,
+      title: f.title,
+      parentLid: f.parentLid,
+    }));
+    const plannerEntries: PlannerEntry[] = result.entries.map((e) => ({
+      archetype: e.archetype,
+      title: e.title,
+      body: e.body,
+      parentFolderLid: e.parentFolderLid,
+      attachments: e.attachments.map((att) => ({
+        assetKey: att.assetKey,
+        data: att.data,
+        name: att.name,
+        mime: att.mime,
+        size: att.size ?? 0,
+      })),
+    }));
+    const plannerInput: PlannerInput = {
+      entries: plannerEntries,
+      folders: plannerFolders,
+      source,
+      format: result.format,
+    };
 
-      // Topological sort: create root folders first, then children.
-      // Process folders in order where parent always comes before child.
-      const sorted: typeof result.folders = [];
-      const placed = new Set<string>();
-      const remaining = result.folders.filter((f) => neededFolderLids.has(f.lid));
-      while (remaining.length > sorted.length) {
-        let progress = false;
-        for (const f of remaining) {
-          if (placed.has(f.lid)) continue;
-          if (f.parentLid === null || placed.has(f.parentLid)) {
-            sorted.push(f);
-            placed.add(f.lid);
-            progress = true;
-          }
-        }
-        if (!progress) break; // Prevent infinite loop on cycle
-      }
+    // Pure planning: validate folder graph + build plan
+    const planResult = buildBatchImportPlan(plannerInput, selectedSet);
 
-      // Create folder entries
-      for (const folder of sorted) {
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'folder', title: folder.title });
-        const newLid = dispatcher.getState().editingLid;
-        if (newLid) {
-          dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: newLid, title: folder.title, body: '' });
-          oldToNewLid.set(folder.lid, newLid);
-          folderCount++;
-        }
-      }
-
-      // Create structural relations between folders (parent → child)
-      for (const folder of sorted) {
-        if (folder.parentLid !== null) {
-          const newParent = oldToNewLid.get(folder.parentLid);
-          const newChild = oldToNewLid.get(folder.lid);
-          if (newParent && newChild) {
-            dispatcher.dispatch({
-              type: 'CREATE_RELATION', from: newParent, to: newChild, kind: 'structural',
-            });
-          }
-        }
-      }
+    if (!planResult.ok) {
+      console.warn(`[PKC2] Folder graph invalid, falling back to flat import: ${planResult.error}`);
     }
 
-    let totalAttachments = 0;
-    let importedCount = 0;
-    for (let i = 0; i < result.entries.length; i++) {
-      if (!selectedSet.has(i)) continue;
-      const entry = result.entries[i]!;
-      // N+1 dispatch: attachments first, then main entry
-      for (const att of entry.attachments) {
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
-        const lid = dispatcher.getState().editingLid;
-        if (!lid) continue;
-        const body = serializeAttachmentBody({
-          name: att.name,
-          mime: att.mime,
-          size: att.size,
-          asset_key: att.assetKey,
-        });
-        dispatcher.dispatch({
-          type: 'COMMIT_EDIT',
-          lid,
-          title: att.name,
-          body,
-          assets: { [att.assetKey]: att.data },
-        });
-        totalAttachments++;
-      }
+    // Atomic apply: single dispatch for the entire import
+    const plan = planResult.ok ? planResult.plan : planResult.fallbackPlan;
+    dispatcher.dispatch({ type: 'SYS_APPLY_BATCH_IMPORT', plan });
 
-      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: entry.archetype, title: entry.title });
-      const lid = dispatcher.getState().editingLid;
-      if (lid) {
-        dispatcher.dispatch({
-          type: 'COMMIT_EDIT',
-          lid,
-          title: entry.title,
-          body: entry.body,
-        });
-        // Create structural relation to parent folder if applicable
-        if (entry.parentFolderLid) {
-          const newParent = oldToNewLid.get(entry.parentFolderLid);
-          if (newParent) {
-            dispatcher.dispatch({
-              type: 'CREATE_RELATION', from: newParent, to: lid, kind: 'structural',
-            });
-          }
-        }
-      }
-      importedCount++;
-    }
-
-    const folderNote = result.folders && result.folders.length > 0
-      ? ` (folder-export: ${folderCount} folders restored)`
-      : result.format === 'pkc2-folder-export-bundle'
-        ? ' (folder-export: フォルダ構造は復元されません)'
-        : '';
+    const selectedCount = selectedSet.size;
+    const totalAttachments = plan.entries.reduce((sum, e) => sum + e.attachments.length, 0);
+    const folderNote = plan.restoreStructure
+      ? ` (folder-export: ${plan.folders.length} folders restored)`
+      : !planResult.ok
+        ? ` (folder-export: malformed metadata — flat fallback)`
+        : result.format === 'pkc2-folder-export-bundle'
+          ? ' (folder-export: フォルダ構造は復元されません)'
+          : '';
     console.log(
-      `[PKC2] Batch import complete: ${importedCount}/${result.entries.length} entries`
+      `[PKC2] Batch import complete: ${selectedCount}/${result.entries.length} entries`
       + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,
     );
   });

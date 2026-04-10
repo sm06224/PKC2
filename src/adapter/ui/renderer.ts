@@ -2111,13 +2111,18 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
   }
   panel.appendChild(summary);
 
-  // Folder-export: restore info or caveat
+  // Folder-export: restore info, malformed warning, or no-metadata caveat
   if (info.isFolderExport) {
     if (info.canRestoreFolderStructure) {
       const restoreInfo = createElement('div', 'pkc-import-info');
       restoreInfo.setAttribute('data-pkc-role', 'folder-restore-info');
       restoreInfo.textContent = `フォルダ構造: ${info.folderCount} folders — 復元されます`;
       panel.appendChild(restoreInfo);
+    } else if (info.malformedFolderMetadata) {
+      const warning = createElement('div', 'pkc-import-warning');
+      warning.setAttribute('data-pkc-role', 'folder-malformed-warning');
+      warning.textContent = 'フォルダ構造に問題があります — フラットにインポートされます';
+      panel.appendChild(warning);
     } else {
       const caveat = createElement('div', 'pkc-import-warning');
       caveat.setAttribute('data-pkc-role', 'folder-caveat');

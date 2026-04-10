@@ -457,6 +457,74 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         events: [{ type: 'BATCH_IMPORT_CANCELLED' }],
       };
     }
+    case 'SYS_APPLY_BATCH_IMPORT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const plan = action.plan;
+      const ts = now();
+      let container = state.container;
+      const events: DomainEvent[] = [];
+      const oldToNewLid = new Map<string, string>();
+
+      // 1. Create folders in topological order
+      for (const folder of plan.folders) {
+        const lid = generateLid();
+        container = addEntry(container, lid, 'folder', folder.title, ts);
+        container = updateEntry(container, lid, folder.title, '', ts);
+        oldToNewLid.set(folder.originalLid, lid);
+        events.push({ type: 'ENTRY_CREATED', lid, archetype: 'folder' });
+      }
+
+      // 2. Create structural relations between folders
+      for (const folder of plan.folders) {
+        if (folder.parentOriginalLid !== null) {
+          const newParent = oldToNewLid.get(folder.parentOriginalLid);
+          const newChild = oldToNewLid.get(folder.originalLid);
+          if (newParent && newChild) {
+            const relId = generateLid();
+            container = addRelation(container, relId, newParent, newChild, 'structural', ts);
+            events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: newChild, kind: 'structural' });
+          }
+        }
+      }
+
+      // 3. Create content entries with attachments and assets
+      for (const entry of plan.entries) {
+        // Merge assets first
+        if (Object.keys(entry.assets).length > 0) {
+          container = mergeAssets(container, entry.assets);
+        }
+
+        // Create attachment entries before the main entry
+        for (const att of entry.attachments) {
+          const attLid = generateLid();
+          container = addEntry(container, attLid, 'attachment', att.name, ts);
+          container = updateEntry(container, attLid, att.name, att.body, ts);
+          if (att.assetData) {
+            container = mergeAssets(container, { [att.assetKey]: att.assetData });
+          }
+          events.push({ type: 'ENTRY_CREATED', lid: attLid, archetype: 'attachment' });
+        }
+
+        const lid = generateLid();
+        container = addEntry(container, lid, entry.archetype, entry.title, ts);
+        container = updateEntry(container, lid, entry.title, entry.body, ts);
+        events.push({ type: 'ENTRY_CREATED', lid, archetype: entry.archetype });
+
+        // Create structural relation to parent folder if applicable
+        if (entry.parentFolderOriginalLid) {
+          const newParent = oldToNewLid.get(entry.parentFolderOriginalLid);
+          if (newParent) {
+            const relId = generateLid();
+            container = addRelation(container, relId, newParent, lid, 'structural', ts);
+            events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: lid, kind: 'structural' });
+          }
+        }
+      }
+
+      const next: AppState = { ...state, container };
+      return { state: next, events };
+    }
     case 'SET_SEARCH_QUERY': {
       const next: AppState = { ...state, searchQuery: action.query };
       return { state: next, events: [] };

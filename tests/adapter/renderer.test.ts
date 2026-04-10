@@ -590,6 +590,41 @@ describe('Renderer', () => {
     expect(restoreInfo!.textContent).toContain('復元されます');
   });
 
+  it('batch preview shows malformed metadata warning when folder graph is invalid', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-folder-export-bundle',
+        formatLabel: 'Folder export bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: true,
+        sourceFolderTitle: 'Root',
+        canRestoreFolderStructure: false,
+        folderCount: 0,
+        malformedFolderMetadata: true,
+        folderGraphWarning: 'Self-parent folder: "f1"',
+        source: 'bad.folder-export.zip',
+        entries: [{ index: 0, title: 'Doc', archetype: 'text' }],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const panel = root.querySelector('[data-pkc-region="batch-import-preview"]');
+    // Should NOT show restore info or old caveat
+    expect(panel!.querySelector('[data-pkc-role="folder-restore-info"]')).toBeNull();
+    expect(panel!.querySelector('[data-pkc-role="folder-caveat"]')).toBeNull();
+    // Should show malformed warning
+    const warning = panel!.querySelector('[data-pkc-role="folder-malformed-warning"]');
+    expect(warning).not.toBeNull();
+    expect(warning!.textContent).toContain('フォルダ構造に問題があります');
+    expect(warning!.textContent).toContain('フラットにインポート');
+  });
+
   it('renders entry list with checkboxes in batch preview', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
