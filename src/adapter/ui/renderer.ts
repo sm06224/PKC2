@@ -2224,6 +2224,7 @@ export function renderContextMenu(
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'Open rendered preview in new window', lid, show: isPreviewable || isSandboxable },
     { action: 'ctx-sandbox-run', label: '🔒 Sandbox Run', tip: 'Open in sandboxed window', lid, show: isSandboxable },
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
+    { action: 'delete-log-entry', label: '✕ Delete log entry', tip: 'Remove this log entry', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
     { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
     // Reference-string actions — never mutate, always shown.
     {
