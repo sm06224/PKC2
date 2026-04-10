@@ -295,9 +295,14 @@ validation ロジックは複製しない。
 
 preview path では:
 1. `manifest.folders` を `PlannerFolderInfo[]` に変換
-2. `validateFolderGraph(folders, [])` を呼ぶ (entry reference は preview 段階では不検査)
-3. valid なら `canRestoreFolderStructure: true`
-4. invalid なら `canRestoreFolderStructure: false` + `folderGraphWarning` を設定
+2. `manifest.entries[].parent_folder_lid` を entry reference として抽出
+3. `validateFolderGraph(folders, entryRefs)` を呼ぶ (folder graph + entry reference を検査)
+4. valid なら `canRestoreFolderStructure: true`
+5. invalid なら `canRestoreFolderStructure: false` + `folderGraphWarning` を設定
+
+**重要**: preview と confirm は `validateFolderGraph` に同じ検査粒度の入力を渡す。
+folder graph のみの検査では entry reference 不整合を preview で見落とし、
+confirm で flat fallback する surprise が残る。
 
 ### 15.4 Preview data model の拡張
 
@@ -310,6 +315,10 @@ malformedFolderMetadata?: boolean;
 folderGraphWarning?: string;
 ```
 
+**型統一**: `BatchImportPreviewInfo` と `BatchImportPreviewEntry` は
+`core/action/system-command.ts` で定義し、adapter layer は core から import する。
+adapter 内のローカル重複定義は削除する。
+
 ### 15.5 Consistency contract
 
 | Phase | Classification | 動作 |
@@ -319,12 +328,100 @@ folderGraphWarning?: string;
 | preview: no-metadata | confirm: flat import | 一致 |
 
 confirm が preview と異なるモードになるのは、parse/runtime failure (ZIP 破損等) のみ。
-folder graph の malformed 判定は preview と confirm で同じ関数を使うため、不整合は構造的に発生しない。
+
+**保証の根拠**:
+- preview と confirm の両方が `validateFolderGraph(folders, entryRefs)` を呼ぶ
+- 入力は同一 manifest から派生 → 同一 folder graph + 同一 entry reference
+- `validateFolderGraph` は pure function → 同一入力に対して同一結果
+
+entry reference 検査で不整合が発覚するケースも preview 段階で検出される。
 
 ### 15.6 テスト追加要件
 
 15. preview: valid folder metadata → restore classification
 16. preview: malformed metadata → flat fallback classification with warning
 17. preview: no folder metadata → flat classification (no malformed warning)
-18. renderer: restore / malformed / no-metadata の各メッセージが正しく表示される
-19. preview classification と confirm apply mode の一致
+18. preview: entry referencing unknown folder → flat fallback (preview/confirm 一致)
+19. renderer: restore / malformed / no-metadata の各メッセージが正しく表示される
+20. preview classification と confirm apply mode の一致
+21. `BatchImportPreviewInfo` が core に一本化されている (adapter に重複定義なし)
+
+---
+
+## 16. Selection-aware preview classification
+
+### 16.1 動機
+
+§15 で preview と confirm の validation 入力粒度を統一したが、
+検査対象の entry set にまだ差が残っていた:
+- preview: 全 manifest entry を検査 (保守的)
+- confirm: selectedIndices で絞った entry のみを検査
+
+このため、「非選択 entry だけが壊れている」場合に preview が malformed と判定するが、
+実際の selected subset は restore 可能 — という false positive が発生しうる。
+
+### 16.2 Selection-aware classification contract
+
+- preview classification は現在の `selectedIndices` に基づいて計算する
+- entry 選択を変更したら、classification を即座に再計算する
+- confirm は同じ `selectedIndices` ベースの classification を使用する
+
+### 16.3 Pure classification helper
+
+`features/batch-import/import-planner.ts` に以下を追加:
+
+```typescript
+export interface FolderRestoreClassification {
+  canRestoreFolderStructure: boolean;
+  folderCount: number;
+  malformedFolderMetadata?: boolean;
+  folderGraphWarning?: string;
+}
+
+export function classifyFolderRestore(
+  folders: PlannerFolderInfo[],
+  entryRefs: { parentFolderLid?: string }[],
+  selectedIndices: number[],
+): FolderRestoreClassification;
+```
+
+この関数は:
+1. selectedIndices で entryRefs をフィルタ
+2. `validateFolderGraph(folders, selectedEntryRefs)` で検査
+3. valid なら ancestor folder 数を計算
+4. classification object を返却
+
+### 16.4 Preview data model の拡張
+
+`BatchImportPreviewInfo` に再計算用データを追加:
+
+```typescript
+/** Raw folder metadata for selection-aware classification recomputation. */
+folderMetadata?: { lid: string; title: string; parentLid: string | null }[];
+/** Per-entry parent folder LID for classification. Indexed by entry index. */
+entryFolderRefs?: (string | undefined)[];
+```
+
+これにより reducer が selection 変更時に `classifyFolderRestore()` を呼べる。
+
+### 16.5 Reducer の変更
+
+`TOGGLE_BATCH_IMPORT_ENTRY` / `TOGGLE_ALL_BATCH_IMPORT_ENTRIES` で:
+1. selectedIndices を更新
+2. `folderMetadata` が存在する場合、`classifyFolderRestore()` を呼ぶ
+3. classification fields を更新
+
+### 16.6 Operation sequence
+
+1. ユーザが bundle を選択 → preview 生成 (全 entry 対象の初期分類)
+2. preview panel 表示 (classification + entry list)
+3. ユーザが entry を選択/解除 → reducer が classification を再計算
+4. renderer が更新された classification を表示
+5. Continue → confirm は同じ selectedIndices ベースの classification を使用
+
+### 16.7 テスト追加要件
+
+22. 全体 malformed でも valid subset 選択時は restore available
+23. malformed entry を含む subset 選択時は malformed fallback
+24. selection 変更で folderCount が変化
+25. confirm と preview の classification 一致 (selection-aware)

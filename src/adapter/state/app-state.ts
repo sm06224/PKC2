@@ -6,6 +6,7 @@ import type { DomainEvent } from '../../core/action/domain-event';
 import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { classifyFolderRestore } from '../../features/batch-import/import-planner';
 import {
   addEntry,
   updateEntry,
@@ -130,6 +131,29 @@ export function getAllSelected(state: AppState): string[] {
   const set = new Set(state.multiSelectedLids);
   if (state.selectedLid) set.add(state.selectedLid);
   return Array.from(set);
+}
+
+/**
+ * Recompute folder restore classification when selection changes.
+ * Pure helper — returns updated preview info with new selectedIndices + classification.
+ */
+function reclassifyPreview(
+  preview: BatchImportPreviewInfo,
+  selectedIndices: number[],
+): BatchImportPreviewInfo {
+  if (!preview.folderMetadata || !preview.entryFolderRefs) {
+    return { ...preview, selectedIndices };
+  }
+  const entryRefs = preview.entryFolderRefs.map((ref) => ({ parentFolderLid: ref }));
+  const classification = classifyFolderRestore(preview.folderMetadata, entryRefs, selectedIndices);
+  return {
+    ...preview,
+    selectedIndices,
+    canRestoreFolderStructure: classification.canRestoreFolderStructure,
+    folderCount: classification.folderCount,
+    malformedFolderMetadata: classification.malformedFolderMetadata,
+    folderGraphWarning: classification.folderGraphWarning,
+  };
 }
 
 /**
@@ -426,7 +450,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         : [...prev, idx];
       const next: AppState = {
         ...state,
-        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+        batchImportPreview: reclassifyPreview(state.batchImportPreview, selectedIndices),
       };
       return { state: next, events: [] };
     }
@@ -437,7 +461,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const selectedIndices = allSelected ? [] : all;
       const next: AppState = {
         ...state,
-        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+        batchImportPreview: reclassifyPreview(state.batchImportPreview, selectedIndices),
       };
       return { state: next, events: [] };
     }

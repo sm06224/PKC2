@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
+import { buildBatchImportPlan } from '@features/batch-import/import-planner';
 import {
   importBatchBundleFromBuffer,
   previewBatchBundleFromBuffer,
@@ -1162,5 +1163,106 @@ describe('preview-time folder graph validation', () => {
     expect(result.info.canRestoreFolderStructure).toBe(false);
     expect(result.info.malformedFolderMetadata).toBeFalsy();
     expect(result.info.folderGraphWarning).toBeUndefined();
+  });
+
+  it('stores folderMetadata and entryFolderRefs for selection-aware reclassification', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 2,
+      textlog_count: 0,
+      compact: false,
+      entries: [
+        { lid: 't1', title: 'Doc A', archetype: 'text', filename: 'a.text.zip', parent_folder_lid: 'f1', asset_count: 0, missing_asset_count: 0 },
+        { lid: 't2', title: 'Doc B', archetype: 'text', filename: 'b.text.zip', parent_folder_lid: 'f2', asset_count: 0, missing_asset_count: 0 },
+      ],
+      folders: [
+        { lid: 'f1', title: 'Root', parent_lid: null },
+        { lid: 'f2', title: 'Sub', parent_lid: 'f1' },
+      ],
+    };
+    const buf = buildFakeZip(manifest, [
+      { name: 'a.text.zip', data: dummyNestedZip },
+      { name: 'b.text.zip', data: dummyNestedZip },
+    ]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Raw folder metadata stored for reclassification
+    expect(result.info.folderMetadata).toEqual([
+      { lid: 'f1', title: 'Root', parentLid: null },
+      { lid: 'f2', title: 'Sub', parentLid: 'f1' },
+    ]);
+    // Entry folder refs indexed by entry index
+    expect(result.info.entryFolderRefs).toEqual(['f1', 'f2']);
+  });
+
+  it('no folderMetadata/entryFolderRefs when no folders in manifest', () => {
+    const manifest = {
+      format: 'pkc2-texts-container-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [
+        { lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', asset_count: 0, missing_asset_count: 0 },
+      ],
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.folderMetadata).toBeUndefined();
+    expect(result.info.entryFolderRefs).toBeUndefined();
+  });
+
+  it('entry referencing unknown folder → malformed at preview time (parity with confirm)', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', parent_folder_lid: 'nonexistent', asset_count: 0, missing_asset_count: 0 }],
+      folders: [{ lid: 'f1', title: 'Root', parent_lid: null }],
+    };
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummyNestedZip }]);
+
+    // Preview should detect the unknown reference
+    const preview = previewBatchBundleFromBuffer(buf);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.info.canRestoreFolderStructure).toBe(false);
+    expect(preview.info.malformedFolderMetadata).toBe(true);
+    expect(preview.info.folderGraphWarning).toContain('unknown folder');
+
+    // Verify confirm-path parity: planner uses same validateFolderGraph and rejects too
+    const plannerInput = {
+      entries: [{
+        archetype: 'text' as const,
+        title: 'Doc',
+        body: '',
+        parentFolderLid: 'nonexistent',
+        attachments: [],
+      }],
+      folders: [{ lid: 'f1', title: 'Root', parentLid: null }],
+      source: 'test.zip',
+      format: 'pkc2-folder-export-bundle',
+    };
+    const planResult = buildBatchImportPlan(plannerInput, new Set([0]));
+    // Confirm must also classify as fallback — no surprise restore
+    expect(planResult.ok).toBe(false);
   });
 });
