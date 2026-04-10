@@ -2181,6 +2181,8 @@ export interface ContextMenuOptions {
   logId?: string;
   canEdit?: boolean;
   hasParent?: boolean;
+  /** Available folders for "move to folder" sub-menu. */
+  folders?: { lid: string; title: string }[];
 }
 
 export function renderContextMenu(
@@ -2212,9 +2214,15 @@ export function renderContextMenu(
     show: boolean;
   };
 
+  const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
+  const isSandboxable = opts.archetype === 'attachment';
+  const hasFolders = !!(opts.folders && opts.folders.length > 0);
+
   const items: Item[] = [
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: canEdit },
+    { action: 'ctx-preview', label: '👁️ Preview', tip: 'Open rendered preview in new window', lid, show: isPreviewable || isSandboxable },
+    { action: 'ctx-sandbox-run', label: '🔒 Sandbox Run', tip: 'Open in sandboxed window', lid, show: isSandboxable },
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
     { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
     // Reference-string actions — never mutate, always shown.
@@ -2222,6 +2230,13 @@ export function renderContextMenu(
       action: 'copy-entry-ref',
       label: '🔗 Copy entry reference',
       tip: 'Copy a markdown link pointing at this entry',
+      lid,
+      show: true,
+    },
+    {
+      action: 'copy-entry-embed-ref',
+      label: '🖼️ Copy entry embed',
+      tip: 'Copy an embed reference for this entry',
       lid,
       show: true,
     },
@@ -2251,6 +2266,27 @@ export function renderContextMenu(
     if (item.logId) btn.setAttribute('data-pkc-log-id', item.logId);
     btn.textContent = item.label;
     menu.appendChild(btn);
+  }
+
+  // "Move to Folder" sub-menu — only shown when folders exist and entry is editable
+  if (canEdit && hasFolders) {
+    const sep = createElement('div', 'pkc-context-menu-separator');
+    menu.appendChild(sep);
+
+    const folderLabel = createElement('div', 'pkc-context-menu-label');
+    folderLabel.textContent = '📁 Move to Folder';
+    menu.appendChild(folderLabel);
+
+    for (const folder of opts.folders!) {
+      if (folder.lid === lid) continue; // Skip self
+      const btn = createElement('button', 'pkc-context-menu-item pkc-context-menu-folder-item');
+      btn.setAttribute('data-pkc-action', 'ctx-move-to-folder');
+      btn.setAttribute('data-pkc-lid', lid);
+      btn.setAttribute('data-pkc-folder-lid', folder.lid);
+      btn.setAttribute('title', `Move into ${folder.title || '(untitled)'}`);
+      btn.textContent = `  → ${folder.title || '(untitled)'}`;
+      menu.appendChild(btn);
+    }
   }
 
   return menu;

@@ -40,10 +40,10 @@ describe('textlog renderBody', () => {
     const empty = el.querySelector('.pkc-textlog-empty');
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toContain('No log entries');
-    // The hint should guide the user toward the append area below.
+    // The hint should guide the user toward the append area above (pinned to top).
     const hint = el.querySelector('.pkc-textlog-empty-hint');
     expect(hint).not.toBeNull();
-    expect(hint!.textContent).toContain('below');
+    expect(hint!.textContent).toContain('above');
   });
 
   it('still renders append area when empty so the user has a place to write', () => {
@@ -63,8 +63,10 @@ describe('textlog renderBody', () => {
   it('exposes full ISO timestamp via tooltip title for precision', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
-    expect(timestamps[0]!.getAttribute('title')).toBe('2026-04-09T10:00:00Z');
+    // Displayed in descending order (newest first)
+    expect(timestamps[0]!.getAttribute('title')).toBe('2026-04-09T12:00:00Z');
     expect(timestamps[1]!.getAttribute('title')).toBe('2026-04-09T11:00:00Z');
+    expect(timestamps[2]!.getAttribute('title')).toBe('2026-04-09T10:00:00Z');
   });
 
   it('marks important entries with data attribute', () => {
@@ -119,7 +121,8 @@ describe('textlog renderBody', () => {
 
   it('renders markdown in log entries', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const mdRow = el.querySelectorAll('.pkc-textlog-text')[2];
+    // log-3 (markdown heading) is now first due to descending order
+    const mdRow = el.querySelectorAll('.pkc-textlog-text')[0];
     expect(mdRow!.classList.contains('pkc-md-rendered')).toBe(true);
     expect(mdRow!.innerHTML).toContain('<h1>');
   });
@@ -168,8 +171,9 @@ describe('textlog renderBody', () => {
       { 'ast-png-001': 'image/png' },
     );
     const rows = el.querySelectorAll('.pkc-textlog-text');
-    expect(rows[0]!.textContent).toBe('plain text entry');
-    expect(rows[1]!.innerHTML).toContain('data:image/png');
+    // Reversed order: log-2 (image) first, log-1 (plain) second
+    expect(rows[0]!.innerHTML).toContain('data:image/png');
+    expect(rows[1]!.textContent).toBe('plain text entry');
   });
 
   it('renders markdown and asset references within the same log entry', () => {
@@ -292,8 +296,9 @@ describe('textlog renderBody', () => {
       { 'ast-zip-001': 'application/zip' },
     );
     const rows = el.querySelectorAll('.pkc-textlog-text');
-    expect(rows[0]!.textContent).toBe('just plain text');
-    expect(rows[1]!.innerHTML).toContain('#asset-ast-zip-001');
+    // Reversed order: log-asset first, log-plain second
+    expect(rows[0]!.innerHTML).toContain('#asset-ast-zip-001');
+    expect(rows[1]!.textContent).toBe('just plain text');
   });
 });
 

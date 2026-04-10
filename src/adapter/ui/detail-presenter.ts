@@ -78,12 +78,33 @@ const textPresenter: DetailPresenter = {
     return body;
   },
   renderEditorBody(entry: Entry): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pkc-text-split-editor';
+
+    // Left: editor textarea
     const bodyArea = document.createElement('textarea');
     bodyArea.value = entry.body;
     bodyArea.setAttribute('data-pkc-field', 'body');
     bodyArea.className = 'pkc-editor-body';
     bodyArea.rows = 10;
-    return bodyArea;
+    wrapper.appendChild(bodyArea);
+
+    // Right: live preview pane
+    const preview = document.createElement('div');
+    preview.className = 'pkc-text-edit-preview pkc-md-rendered';
+    preview.setAttribute('data-pkc-region', 'text-edit-preview');
+    // Initial preview
+    const initialSource = entry.body;
+    if (initialSource && hasMarkdownSyntax(initialSource)) {
+      preview.innerHTML = renderMarkdown(initialSource);
+    } else if (initialSource) {
+      preview.textContent = initialSource;
+    } else {
+      preview.textContent = '(preview)';
+    }
+    wrapper.appendChild(preview);
+
+    return wrapper;
   },
   collectBody(root: HTMLElement): string {
     const bodyEl = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');

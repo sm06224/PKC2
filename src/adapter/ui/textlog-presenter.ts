@@ -23,6 +23,29 @@ export const textlogPresenter: DetailPresenter = {
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
 
+    // Append area pinned to top of center pane
+    const appendArea = document.createElement('div');
+    appendArea.className = 'pkc-textlog-append';
+    appendArea.setAttribute('data-pkc-region', 'textlog-append');
+
+    const appendInput = document.createElement('textarea');
+    appendInput.className = 'pkc-textlog-append-input';
+    appendInput.setAttribute('data-pkc-field', 'textlog-append-text');
+    appendInput.setAttribute('data-pkc-lid', entry.lid);
+    appendInput.rows = 6;
+    appendInput.placeholder = 'New log entry… (Ctrl+Enter to add)';
+    appendArea.appendChild(appendInput);
+
+    const appendBtn = document.createElement('button');
+    appendBtn.className = 'pkc-btn pkc-btn-create pkc-textlog-append-btn';
+    appendBtn.setAttribute('data-pkc-action', 'append-log-entry');
+    appendBtn.setAttribute('data-pkc-lid', entry.lid);
+    appendBtn.setAttribute('title', 'Append log entry (Ctrl+Enter)');
+    appendBtn.textContent = '+ Add';
+    appendArea.appendChild(appendBtn);
+
+    container.appendChild(appendArea);
+
     if (log.entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'pkc-textlog-empty';
@@ -33,14 +56,16 @@ export const textlogPresenter: DetailPresenter = {
       empty.appendChild(emptyTitle);
       const emptyHint = document.createElement('div');
       emptyHint.className = 'pkc-textlog-empty-hint';
-      emptyHint.textContent = 'Write your first log entry below ↓';
+      emptyHint.textContent = 'Write your first log entry above ↑';
       empty.appendChild(emptyHint);
       container.appendChild(empty);
     } else {
       const list = document.createElement('div');
       list.className = 'pkc-textlog-list';
 
-      for (const logEntry of log.entries) {
+      // Display in descending chronological order (newest first)
+      const reversed = [...log.entries].reverse();
+      for (const logEntry of reversed) {
         const row = document.createElement('div');
         row.className = 'pkc-textlog-row';
         row.setAttribute('data-pkc-log-id', logEntry.id);
@@ -91,29 +116,6 @@ export const textlogPresenter: DetailPresenter = {
       }
       container.appendChild(list);
     }
-
-    // Append area (shown in view mode, hidden in readonly)
-    const appendArea = document.createElement('div');
-    appendArea.className = 'pkc-textlog-append';
-    appendArea.setAttribute('data-pkc-region', 'textlog-append');
-
-    const appendInput = document.createElement('textarea');
-    appendInput.className = 'pkc-textlog-append-input';
-    appendInput.setAttribute('data-pkc-field', 'textlog-append-text');
-    appendInput.setAttribute('data-pkc-lid', entry.lid);
-    appendInput.rows = 2;
-    appendInput.placeholder = 'New log entry… (Ctrl+Enter to add)';
-    appendArea.appendChild(appendInput);
-
-    const appendBtn = document.createElement('button');
-    appendBtn.className = 'pkc-btn pkc-btn-create pkc-textlog-append-btn';
-    appendBtn.setAttribute('data-pkc-action', 'append-log-entry');
-    appendBtn.setAttribute('data-pkc-lid', entry.lid);
-    appendBtn.setAttribute('title', 'Append log entry (Ctrl+Enter)');
-    appendBtn.textContent = '+ Add';
-    appendArea.appendChild(appendBtn);
-
-    container.appendChild(appendArea);
 
     return container;
   },

@@ -836,10 +836,10 @@ describe('show archived', () => {
 // ── Sort ────────────────────────
 
 describe('sort', () => {
-  it('createInitialState has default sort (created_at desc)', () => {
+  it('createInitialState has default sort (title asc)', () => {
     const state = createInitialState();
-    expect(state.sortKey).toBe('created_at');
-    expect(state.sortDirection).toBe('desc');
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
   });
 
   it('SET_SORT updates sort key and direction in ready phase', () => {

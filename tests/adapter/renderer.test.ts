@@ -2204,19 +2204,20 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true), Copy entry reference.
-    expect(items.length).toBe(4);
+    // Edit, Delete, Move to Root (shown because hasParent=true), Copy entry reference, Copy entry embed.
+    expect(items.length).toBe(5);
     expect(items[0]!.textContent).toContain('Edit');
     expect(items[1]!.textContent).toContain('Delete');
     expect(items[2]!.textContent).toContain('Root');
     expect(items[3]!.textContent).toContain('entry reference');
+    expect(items[4]!.textContent).toContain('entry embed');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Copy entry reference (Move to Root hidden, hasParent=false).
-    expect(items.length).toBe(3);
+    // Edit, Delete, Copy entry reference, Copy entry embed (Move to Root hidden, hasParent=false).
+    expect(items.length).toBe(4);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
     expect(texts.some(t => t!.includes('entry reference'))).toBe(true);
