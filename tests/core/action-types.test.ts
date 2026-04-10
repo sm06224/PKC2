@@ -31,6 +31,7 @@ describe('Action type boundaries', () => {
       { type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' },
       { type: 'CREATE_RELATION', from: '', to: '', kind: 'structural' },
       { type: 'DELETE_RELATION', id: '' },
+      { type: 'PASTE_ATTACHMENT', name: '', mime: '', size: 0, assetKey: '', assetData: '', contextLid: '' },
     ];
     const types = typeSet(...actions);
     expect(types.size).toBe(actions.length);

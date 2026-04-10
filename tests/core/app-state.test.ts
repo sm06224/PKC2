@@ -572,6 +572,124 @@ describe('import confirmation', () => {
   });
 });
 
+// ── Batch import preview ────────────────────────
+
+describe('batch import preview', () => {
+  const batchPreview = {
+    format: 'pkc2-texts-container-bundle',
+    formatLabel: 'TEXT container bundle',
+    textCount: 3,
+    textlogCount: 0,
+    totalEntries: 3,
+    compacted: false,
+    missingAssetCount: 0,
+    isFolderExport: false,
+    sourceFolderTitle: null,
+    canRestoreFolderStructure: false,
+    folderCount: 0,
+    source: 'test.texts.zip',
+    entries: [
+      { index: 0, title: 'Note A', archetype: 'text' as const },
+      { index: 1, title: 'Note B', archetype: 'text' as const },
+      { index: 2, title: 'Note C', archetype: 'text' as const },
+    ],
+    selectedIndices: [0, 1, 2],
+  };
+
+  it('SYS_BATCH_IMPORT_PREVIEW sets batchImportPreview on state', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    });
+    expect(state.batchImportPreview).toBe(batchPreview);
+    expect(state.phase).toBe('ready');
+    expect(events).toEqual([{
+      type: 'BATCH_IMPORT_PREVIEWED',
+      source: 'test.texts.zip',
+      totalEntries: 3,
+    }]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT clears batchImportPreview', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(state.container).toBe(mockContainer); // unchanged
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CONFIRMED' }]);
+  });
+
+  it('CANCEL_BATCH_IMPORT clears batchImportPreview and keeps state', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CANCEL_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(state.container).toBe(mockContainer); // unchanged
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CANCELLED' }]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT without preview is blocked', () => {
+    const { state } = reduce(readyState(), { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state).toEqual(readyState()); // unchanged
+  });
+
+  it('CANCEL_BATCH_IMPORT without preview is a no-op', () => {
+    const { state, events } = reduce(readyState(), { type: 'CANCEL_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CANCELLED' }]);
+  });
+
+  it('TOGGLE_BATCH_IMPORT_ENTRY flips index in selectedIndices', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    expect(withPreview.batchImportPreview!.selectedIndices).toEqual([0, 1, 2]);
+
+    // Deselect index 1
+    const { state } = reduce(withPreview, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state.batchImportPreview!.selectedIndices).toEqual([0, 2]);
+
+    // Re-select index 1
+    const { state: state2 } = reduce(state, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state2.batchImportPreview!.selectedIndices).toContain(1);
+  });
+
+  it('TOGGLE_BATCH_IMPORT_ENTRY without preview is blocked', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 0 });
+    expect(state).toEqual(readyState());
+  });
+
+  it('TOGGLE_ALL_BATCH_IMPORT_ENTRIES toggles all on/off', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    // All selected → toggle all → none selected
+    const { state: allOff } = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOff.batchImportPreview!.selectedIndices).toEqual([]);
+
+    // None selected → toggle all → all selected
+    const { state: allOn } = reduce(allOff, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOn.batchImportPreview!.selectedIndices).toEqual([0, 1, 2]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT is blocked when selectedIndices is empty', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    // Deselect all
+    const allOff = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' }).state;
+    expect(allOff.batchImportPreview!.selectedIndices).toEqual([]);
+
+    // Confirm should be blocked
+    const { state, events } = reduce(allOff, { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state.batchImportPreview).not.toBeNull(); // still set — not cleared
+    expect(events).toEqual([]); // blocked = no events
+  });
+});
+
 // ── Restore ────────────────────────
 
 describe('restore', () => {
@@ -836,10 +954,10 @@ describe('show archived', () => {
 // ── Sort ────────────────────────
 
 describe('sort', () => {
-  it('createInitialState has default sort (created_at desc)', () => {
+  it('createInitialState has default sort (title asc)', () => {
     const state = createInitialState();
-    expect(state.sortKey).toBe('created_at');
-    expect(state.sortDirection).toBe('desc');
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
   });
 
   it('SET_SORT updates sort key and direction in ready phase', () => {
@@ -1470,5 +1588,283 @@ describe('sort', () => {
     const { state } = reduce(s, { type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
     expect(state.container).toBe(s.container);
     expect(state.selectedLid).toBe('e1');
+  });
+});
+
+// ── PASTE_ATTACHMENT ────────────────────────
+
+describe('PASTE_ATTACHMENT', () => {
+  const pasteAction = {
+    type: 'PASTE_ATTACHMENT' as const,
+    name: 'screenshot.png',
+    mime: 'image/png',
+    size: 1234,
+    assetKey: 'att-test-001',
+    assetData: 'base64data',
+    contextLid: 'e1',
+  };
+
+  it('creates attachment entry and merges asset without changing phase', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    expect(state.phase).toBe('ready');
+    expect(state.editingLid).toBeNull();
+    expect(state.selectedLid).toBe(s.selectedLid);
+    // Asset merged
+    expect(state.container!.assets['att-test-001']).toBe('base64data');
+    // Attachment entry created
+    const att = state.container!.entries.find((e) => e.title === 'screenshot.png' && e.archetype === 'attachment');
+    expect(att).not.toBeUndefined();
+    expect(JSON.parse(att!.body).asset_key).toBe('att-test-001');
+  });
+
+  it('auto-creates ASSETS folder at root when context entry is at root', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    // ASSETS folder should have no structural parent (root level)
+    const hasParent = state.container!.relations.some(
+      (r) => r.kind === 'structural' && r.to === assetsFolder!.lid,
+    );
+    expect(hasParent).toBe(false);
+  });
+
+  it('places attachment inside ASSETS folder', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    const att = state.container!.entries.find(
+      (e) => e.title === 'screenshot.png' && e.archetype === 'attachment',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    expect(att).not.toBeUndefined();
+    const rel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === assetsFolder!.lid && r.to === att!.lid,
+    );
+    expect(rel).not.toBeUndefined();
+  });
+
+  it('reuses existing ASSETS folder at root level', () => {
+    const containerWithFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'af1', title: 'ASSETS', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerWithFolder };
+    const { state } = reduce(s, pasteAction);
+    // Should NOT create a second ASSETS folder
+    const assetsFolders = state.container!.entries.filter(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolders.length).toBe(1);
+    expect(assetsFolders[0]!.lid).toBe('af1');
+  });
+
+  it('creates ASSETS folder inside parent when context entry is in a folder', () => {
+    const containerInFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'parent-f', title: 'Project', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'parent-f', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerInFolder };
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    // ASSETS folder should be a child of parent-f
+    const parentRel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'parent-f' && r.to === assetsFolder!.lid,
+    );
+    expect(parentRel).not.toBeUndefined();
+  });
+
+  it('works during editing phase without disrupting edit state', () => {
+    const s: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+      selectedLid: 'e1',
+    };
+    const { state } = reduce(s, pasteAction);
+    expect(state.phase).toBe('editing');
+    expect(state.editingLid).toBe('e1');
+    expect(state.selectedLid).toBe('e1');
+    expect(state.container!.assets['att-test-001']).toBe('base64data');
+  });
+
+  it('emits ENTRY_CREATED and RELATION_CREATED events', () => {
+    const s = readyState();
+    const { events } = reduce(s, pasteAction);
+    const entryCreated = events.filter((e) => e.type === 'ENTRY_CREATED');
+    const relCreated = events.filter((e) => e.type === 'RELATION_CREATED');
+    // At minimum: ASSETS folder creation + attachment creation
+    expect(entryCreated.length).toBeGreaterThanOrEqual(2);
+    // At minimum: attachment → ASSETS folder relation
+    expect(relCreated.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('is blocked when readonly', () => {
+    const s: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(s, pasteAction);
+    expect(state.container!.assets['att-test-001']).toBeUndefined();
+  });
+});
+
+// ── SYS_APPLY_BATCH_IMPORT (atomic batch import) ──────
+
+describe('SYS_APPLY_BATCH_IMPORT', () => {
+  it('creates entries atomically from a flat plan', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body-a', assets: {}, attachments: [] },
+        { archetype: 'textlog' as const, title: 'B', body: 'body-b', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const before = readyState();
+    const entryCountBefore = before.container!.entries.length;
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(entryCountBefore + 2);
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    expect(created).toHaveLength(2);
+  });
+
+  it('creates folders and structural relations for restore plan', () => {
+    const plan = {
+      folders: [
+        { originalLid: 'f-root', title: 'Root', parentOriginalLid: null },
+        { originalLid: 'f-sub', title: 'Sub', parentOriginalLid: 'f-root' },
+      ],
+      entries: [
+        { archetype: 'text' as const, title: 'Note', body: 'hello', parentFolderOriginalLid: 'f-sub', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-folder-export-bundle',
+      restoreStructure: true,
+    };
+    const before = readyState();
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+
+    // 2 folders + 1 content entry created
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    expect(created).toHaveLength(3);
+    const folderCreated = created.filter((e) => 'archetype' in e && e.archetype === 'folder');
+    expect(folderCreated).toHaveLength(2);
+
+    // Structural relations: f-root→f-sub, f-sub→Note
+    const rels = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(rels).toHaveLength(2);
+
+    // Container has new entries
+    const entryTitles = state.container!.entries.map((e) => e.title);
+    expect(entryTitles).toContain('Root');
+    expect(entryTitles).toContain('Sub');
+    expect(entryTitles).toContain('Note');
+  });
+
+  it('merges assets from plan entries', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: { 'k1': 'data1' }, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const { state } = reduce(readyState(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.assets['k1']).toBe('data1');
+  });
+
+  it('creates attachment entries from plan', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        {
+          archetype: 'text' as const,
+          title: 'WithAtt',
+          body: 'body',
+          assets: {},
+          attachments: [{
+            name: 'pic.png',
+            body: '{"name":"pic.png","mime":"image/png","size":100,"asset_key":"att-k1"}',
+            assetKey: 'att-k1',
+            assetData: 'base64pic',
+          }],
+        },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const { state, events } = reduce(readyState(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    // 1 attachment + 1 content entry
+    expect(created).toHaveLength(2);
+    const attCreated = created.filter((e) => 'archetype' in e && e.archetype === 'attachment');
+    expect(attCreated).toHaveLength(1);
+    // Asset data merged
+    expect(state.container!.assets['att-k1']).toBe('base64pic');
+  });
+
+  it('is blocked when readonly', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const s: AppState = { ...readyState(), readonly: true };
+    const entryCountBefore = s.container!.entries.length;
+    const { state } = reduce(s, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(entryCountBefore);
+  });
+
+  it('is blocked when container is null', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const s: AppState = { ...createInitialState(), phase: 'ready' };
+    const { state } = reduce(s, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container).toBeNull();
+  });
+
+  it('does not mutate state on empty plan', () => {
+    const plan = {
+      folders: [],
+      entries: [],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const before = readyState();
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(before.container!.entries.length);
+    expect(events).toHaveLength(0);
   });
 });

@@ -259,12 +259,39 @@
   color: var(--c-fg);
 }
 
-/* ── Export / Import inline buttons ── */
+/* ── Export / Import inline buttons (collapsed behind <details>) ── */
 .pkc-eip-inline {
   display: flex;
   align-items: center;
   gap: 0.15rem;
   margin-left: auto;
+}
+
+.pkc-eip-details {
+  position: relative;
+}
+
+.pkc-eip-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.pkc-eip-summary::-webkit-details-marker { display: none; }
+
+.pkc-eip-content {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 200;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: max-content;
 }
 
 .pkc-eip-sep {
@@ -666,6 +693,37 @@
   color: var(--c-muted);
 }
 
+/* Action bar "More…" collapsed section */
+.pkc-action-bar-more {
+  position: relative;
+}
+
+.pkc-action-bar-more-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 0.75rem;
+}
+.pkc-action-bar-more-summary::-webkit-details-marker { display: none; }
+
+.pkc-action-bar-more-content {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 200;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  min-width: max-content;
+  margin-bottom: 0.25rem;
+}
+
 .pkc-empty {
   color: var(--c-muted);
   padding: 1.5rem;
@@ -845,7 +903,7 @@
 
 /* ── Editor mode ── */
 .pkc-editor {
-  max-width: 720px;
+  /* fill full center pane width */
 }
 
 .pkc-editor-title-row {
@@ -892,6 +950,45 @@
 .pkc-editor-body:focus {
   border-color: var(--c-accent);
   box-shadow: 0 0 0 1px var(--c-accent), var(--glow);
+}
+
+/* ── TEXT split editor/preview ── */
+.pkc-text-split-editor {
+  display: grid;
+  grid-template-columns: 1fr 6px 1fr;
+  gap: 0;
+  min-height: 200px;
+  flex: 1;
+}
+
+.pkc-text-split-editor .pkc-editor-body {
+  margin-bottom: 0;
+  min-height: 200px;
+  height: 100%;
+}
+
+.pkc-text-split-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: var(--c-border);
+  border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+.pkc-text-split-resize-handle:hover,
+.pkc-text-split-resize-handle[data-pkc-resizing="true"] {
+  background: var(--c-accent);
+}
+
+.pkc-text-edit-preview {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  overflow-y: auto;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  min-height: 200px;
 }
 
 /* ── Buttons ── */
@@ -2078,6 +2175,25 @@
   opacity: 0.8;
 }
 
+.pkc-context-menu-separator {
+  height: 1px;
+  background: var(--c-border);
+  margin: 0.2rem 0;
+}
+
+.pkc-context-menu-label {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pkc-context-menu-folder-item {
+  font-size: 0.75rem;
+}
+
 /* ── Persistent File Drop Zone ── */
 .pkc-drop-zone {
   border: 2px dashed var(--c-border);
@@ -2368,6 +2484,19 @@
   font-size: 0.6rem;
   color: var(--c-muted);
   text-align: center;
+}
+
+.pkc-shell-menu-help-list {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  font-size: 0.7rem;
+  color: var(--c-fg);
+  line-height: 1.6;
+  list-style: disc;
+}
+
+.pkc-shell-menu-help-item {
+  padding: 0;
 }
 
 .pkc-shell-menu-close {
@@ -3168,8 +3297,8 @@
   display: flex;
   gap: 0.4rem;
   align-items: flex-end;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--c-border);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .pkc-textlog-append-input {
@@ -3182,6 +3311,7 @@
   font-family: var(--font-mono);
   font-size: 0.85rem;
   resize: vertical;
+  min-height: 6rem;
 }
 
 .pkc-textlog-append-btn {

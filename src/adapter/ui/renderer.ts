@@ -2,7 +2,7 @@ import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
-import type { ImportPreviewRef } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
@@ -17,7 +17,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
-import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
+import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -26,6 +26,8 @@ import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIB
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
+import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -137,6 +139,11 @@ function renderShell(state: AppState): HTMLElement {
   // Import confirmation panel
   if (state.importPreview) {
     shell.appendChild(renderImportConfirmation(state.importPreview));
+  }
+
+  // Batch import preview panel
+  if (state.batchImportPreview) {
+    shell.appendChild(renderBatchImportPreview(state.batchImportPreview));
   }
 
   // Pending offers bar
@@ -273,6 +280,37 @@ function renderHeader(state: AppState): HTMLElement {
     rehydrateBtn.setAttribute('title', 'Copy this container to your browser storage for editing');
     rehydrateBtn.textContent = 'Rehydrate to Workspace';
     header.appendChild(rehydrateBtn);
+
+    // Container-wide TEXTLOG export — available in readonly mode
+    // because export is a read-only operation (spec §7).
+    const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+    if (hasTextlogs) {
+      const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
+      textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
+      textlogsBtn.textContent = 'TEXTLOGs';
+      header.appendChild(textlogsBtn);
+    }
+
+    // Container-wide TEXT export — available in readonly mode
+    // because export is a read-only operation (spec §7).
+    const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+    if (hasTexts) {
+      const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
+      textsBtn.setAttribute('title', 'Export all TEXTs as a single ZIP bundle (.texts.zip)');
+      textsBtn.textContent = 'TEXTs';
+      header.appendChild(textsBtn);
+    }
+
+    // Mixed container export — available in readonly mode.
+    if (hasTextlogs || hasTexts) {
+      const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+      mixedBtn.setAttribute('title', 'Export all TEXTs + TEXTLOGs as a single ZIP bundle (.mixed.zip)');
+      mixedBtn.textContent = 'Mixed';
+      header.appendChild(mixedBtn);
+    }
   }
 
   // Light mode: show light badge (assets stripped)
@@ -377,7 +415,7 @@ function renderShellMenu(
   shortcutSection.appendChild(shortcutBtn);
   card.appendChild(shortcutSection);
 
-  // Data Maintenance — manual orphan asset cleanup.
+  // Data Maintenance — manual orphan asset cleanup + workspace reset.
   //
   // This section is intentionally passive until the user clicks:
   // the orphan count is just a read-only scan of the current
@@ -385,11 +423,40 @@ function renderShellMenu(
   // nothing to do, and the whole surface is hidden in readonly /
   // container-absent modes where mutation is not allowed.
   //
-  // No auto-GC is wired anywhere — this button is the ONLY way an
-  // orphan asset gets removed from the container today.
+  // The ⚠ Reset button was moved here from the header export/import
+  // panel to separate destructive maintenance actions from daily
+  // export/import operations (action surface consolidation).
   if (state.container && !state.readonly) {
     card.appendChild(renderShellMenuMaintenance(state.container));
   }
+
+  // Quick Help — lightweight usage guide inside the shell menu.
+  // Usage-oriented, not a full manual. Each line answers "what can
+  // I do?" for a category of actions.
+  const helpSection = createElement('div', 'pkc-shell-menu-section');
+  helpSection.setAttribute('data-pkc-region', 'shell-menu-help');
+  const helpLabel = createElement('span', 'pkc-shell-menu-label');
+  helpLabel.textContent = 'Quick Help';
+  helpSection.appendChild(helpLabel);
+
+  const helpList = createElement('ul', 'pkc-shell-menu-help-list');
+  const helpItems = [
+    '作成: ヘッダーの Text / Log / Todo / File / Folder ボタン',
+    '編集: エントリ選択 → Edit ボタン、または右クリック → Edit',
+    'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
+    '表示: More… → Viewer（印刷可能なレンダリング表示）',
+    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs / フォルダ選択 → Export',
+    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加、フォルダ構造は自動復元）',
+    '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
+    'ショートカット: ? キーで一覧表示',
+  ];
+  for (const text of helpItems) {
+    const li = createElement('li', 'pkc-shell-menu-help-item');
+    li.textContent = text;
+    helpList.appendChild(li);
+  }
+  helpSection.appendChild(helpList);
+  card.appendChild(helpSection);
 
   // Version
   const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
@@ -493,6 +560,21 @@ function renderShellMenuMaintenance(container: Container): HTMLElement {
   note.textContent = 'Removes assets not referenced by any entry. Cannot be undone.';
   section.appendChild(note);
 
+  // Workspace Reset — destructive action moved here from the header
+  // export/import panel. Separated from daily export/import buttons
+  // to reduce accidental clicks.
+  const resetRow = createElement('div', 'pkc-shell-menu-maintenance-actions');
+  const resetBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+  resetBtn.setAttribute('data-pkc-action', 'clear-local-data');
+  resetBtn.setAttribute('title', 'ローカル保存データ (IndexedDB) を全て削除します。元に戻せません。');
+  resetBtn.textContent = '⚠ Reset Workspace';
+  resetRow.appendChild(resetBtn);
+  section.appendChild(resetRow);
+
+  const resetNote = createElement('div', 'pkc-shell-menu-maintenance-note');
+  resetNote.textContent = 'Clears all locally saved data (IndexedDB). Cannot be undone.';
+  section.appendChild(resetNote);
+
   return section;
 }
 
@@ -553,72 +635,117 @@ function renderShortcutHelp(): HTMLElement {
   return overlay;
 }
 
-function renderExportImportInline(_state: AppState): HTMLElement {
+function renderExportImportInline(state: AppState): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
-  const sep1 = createElement('span', 'pkc-eip-sep');
-  sep1.textContent = '|';
-  group.appendChild(sep1);
+  // Wrap all export/import buttons in a <details> element to reduce
+  // header noise. The summary acts as a single toggle button; the
+  // full panel is hidden until the user explicitly opens it.
+  const details = document.createElement('details');
+  details.className = 'pkc-eip-details';
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
+  summary.setAttribute('title', 'エクスポート・インポート操作');
+  summary.textContent = 'Data…';
+  details.appendChild(summary);
+
+  const content = createElement('div', 'pkc-eip-content');
 
   // Export Full (editable) — most common
   const exportBtn = createElement('button', 'pkc-btn pkc-btn-create');
   exportBtn.setAttribute('data-pkc-action', 'begin-export');
   exportBtn.setAttribute('data-pkc-export-mode', 'full');
   exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  exportBtn.setAttribute('title', 'Export complete HTML (editable, all data)');
+  exportBtn.setAttribute('title', '全データを HTML でエクスポート（編集可能）');
   exportBtn.textContent = 'Export';
-  group.appendChild(exportBtn);
+  content.appendChild(exportBtn);
 
   // Export Light (editable)
   const lightBtn = createElement('button', 'pkc-btn pkc-btn-create');
   lightBtn.setAttribute('data-pkc-action', 'begin-export');
   lightBtn.setAttribute('data-pkc-export-mode', 'light');
   lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  lightBtn.setAttribute('title', 'Export text-only HTML (no attachments)');
+  lightBtn.setAttribute('title', 'アセットなし HTML エクスポート（軽量版）');
   lightBtn.textContent = 'Light';
-  group.appendChild(lightBtn);
+  content.appendChild(lightBtn);
 
   // ZIP Export
   const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
   zipBtn.setAttribute('data-pkc-action', 'export-zip');
-  zipBtn.setAttribute('title', 'Export as ZIP package (.pkc2.zip)');
+  zipBtn.setAttribute('title', '.pkc2.zip パッケージとしてエクスポート');
   zipBtn.textContent = 'ZIP';
-  group.appendChild(zipBtn);
+  content.appendChild(zipBtn);
 
-  const sep2 = createElement('span', 'pkc-eip-sep');
-  sep2.textContent = '|';
-  group.appendChild(sep2);
+  // Container-wide TEXTLOG export — only shown when the container
+  // has at least one textlog entry. Bundles all textlogs into a
+  // single .textlogs.zip containing individual .textlog.zip files.
+  const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+  if (hasTextlogs) {
+    const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
+    textlogsBtn.setAttribute('title', '全テキストログをまとめて ZIP エクスポート');
+    textlogsBtn.textContent = 'TEXTLOGs';
+    content.appendChild(textlogsBtn);
+  }
+
+  // Container-wide TEXT export — only shown when the container
+  // has at least one text entry. Bundles all texts into a
+  // single .texts.zip containing individual .text.zip files.
+  const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+  if (hasTexts) {
+    const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
+    textsBtn.setAttribute('title', '全テキストをまとめて ZIP エクスポート');
+    textsBtn.textContent = 'TEXTs';
+    content.appendChild(textsBtn);
+  }
+
+  // Container-wide mixed export — shown when the container has at
+  // least one TEXT or TEXTLOG entry. Bundles both archetypes into
+  // a single .mixed.zip.
+  if (hasTextlogs || hasTexts) {
+    const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+    mixedBtn.setAttribute('title', '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip)');
+    mixedBtn.textContent = 'Mixed';
+    content.appendChild(mixedBtn);
+  }
+
+  const sep = createElement('span', 'pkc-eip-sep');
+  sep.textContent = '|';
+  content.appendChild(sep);
 
   // Import
   const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');
-  importBtn.setAttribute('title', 'Import from HTML or ZIP');
+  importBtn.setAttribute('title', 'HTML または ZIP からインポート（上書き）');
   importBtn.textContent = 'Import';
-  group.appendChild(importBtn);
+  content.appendChild(importBtn);
 
-  // Import textlog bundle (Issue H) — additive: adds one new
-  // textlog entry plus its attachments to the current container.
-  // Distinct from `begin-import` (which replaces the whole
-  // container). Hidden in readonly mode by the action handler;
-  // the button itself is always rendered to keep the toolbar
-  // shape stable.
+  // Import textlog bundle
   const importTextlogBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importTextlogBtn.setAttribute('data-pkc-action', 'import-textlog-bundle');
-  importTextlogBtn.setAttribute('title', 'Import a textlog bundle (.textlog.zip) as a new entry');
-  importTextlogBtn.textContent = '📥 Import Textlog';
-  group.appendChild(importTextlogBtn);
+  importTextlogBtn.setAttribute('title', '.textlog.zip を新規エントリとしてインポート');
+  importTextlogBtn.textContent = '📥 Textlog';
+  content.appendChild(importTextlogBtn);
 
-  const sep3 = createElement('span', 'pkc-eip-sep');
-  sep3.textContent = '|';
-  group.appendChild(sep3);
+  // Import text bundle
+  const importTextBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importTextBtn.setAttribute('data-pkc-action', 'import-text-bundle');
+  importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
+  importTextBtn.textContent = '📥 Text';
+  content.appendChild(importTextBtn);
 
-  // Clear local data (workspace reset) — destructive, positioned after separator
-  const clearBtn = createElement('button', 'pkc-btn pkc-btn-danger');
-  clearBtn.setAttribute('data-pkc-action', 'clear-local-data');
-  clearBtn.setAttribute('title', 'WARNING: Clears all locally saved data (IndexedDB). This cannot be undone.');
-  clearBtn.textContent = '⚠ Reset';
-  group.appendChild(clearBtn);
+  // Import batch bundle (container-wide / folder-scoped)
+  const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importBatchBtn.setAttribute('data-pkc-action', 'import-batch-bundle');
+  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .mixed.zip / .folder-export.zip) をまとめてインポート');
+  importBatchBtn.textContent = '📥 Batch';
+  content.appendChild(importBatchBtn);
+
+  details.appendChild(content);
+  group.appendChild(details);
 
   return group;
 }
@@ -1044,7 +1171,7 @@ function renderCenter(state: AppState): HTMLElement {
       editWarn.textContent = 'Light mode: changes to this entry will not be saved. File uploads are unavailable.';
       content.appendChild(editWarn);
     }
-    content.appendChild(renderEditor(selected));
+    content.appendChild(renderEditor(selected, state.container));
   } else {
     content.appendChild(renderView(selected, canEdit, state.container));
   }
@@ -1057,7 +1184,7 @@ function renderCenter(state: AppState): HTMLElement {
   center.appendChild(content);
 
   // Fixed action bar at bottom
-  center.appendChild(renderActionBar(selected, state.phase, canEdit));
+  center.appendChild(renderActionBar(selected, state.phase, canEdit, state.container));
 
   return center;
 }
@@ -1309,7 +1436,7 @@ function renderKanbanView(state: AppState): HTMLElement {
 }
 
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */
-function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLElement {
+function renderActionBar(entry: Entry, phase: string, canEdit: boolean, container?: Container | null): HTMLElement {
   const bar = createElement('div', 'pkc-action-bar');
   bar.setAttribute('data-pkc-region', 'action-bar');
 
@@ -1349,68 +1476,106 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
       bar.appendChild(deleteBtn);
     }
 
-    // Markdown / rich copy + rendered viewer actions for TEXT / TEXTLOG.
-    // Always visible in the `ready` phase (including readonly) since
-    // none of these buttons mutate state — they only read the current
-    // entry body and hand it off to the clipboard or to a new window.
+    // Folder export: show when the selected folder has TEXT/TEXTLOG
+    // descendants. Export is a read-only operation, so always shown
+    // (including readonly). Lives on the action bar because it's
+    // folder-specific (not a global Data… panel action).
+    if (entry.archetype === 'folder' && container) {
+      const descendantLids = collectDescendantLids(container.relations, entry.lid);
+      const hasExportable = container.entries.some(
+        (e) => descendantLids.has(e.lid) && (e.archetype === 'text' || e.archetype === 'textlog'),
+      );
+      if (hasExportable) {
+        const exportBtn = createElement('button', 'pkc-btn');
+        exportBtn.setAttribute('data-pkc-action', 'export-folder');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'フォルダ配下の TEXT / TEXTLOG をまとめて ZIP エクスポート');
+        exportBtn.textContent = '📦 Export';
+        bar.appendChild(exportBtn);
+      }
+    }
+
+    // Secondary actions for TEXT / TEXTLOG: copy, viewer, export.
+    // Collapsed behind a <details> "More…" toggle to keep the action
+    // bar compact. Always rendered (including readonly) since none
+    // of these buttons mutate state.
     if (entry.archetype === 'text' || entry.archetype === 'textlog') {
+      const more = document.createElement('details');
+      more.className = 'pkc-action-bar-more';
+      more.setAttribute('data-pkc-region', 'action-bar-more');
+      const moreSummary = document.createElement('summary');
+      moreSummary.className = 'pkc-btn pkc-action-bar-more-summary';
+      moreSummary.setAttribute('title', 'コピー・表示・エクスポート');
+      moreSummary.textContent = 'More…';
+      more.appendChild(moreSummary);
+
+      const moreContent = createElement('div', 'pkc-action-bar-more-content');
+
       const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
       copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
       copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyMdBtn.setAttribute('title', 'Copy the raw markdown source to the clipboard');
-      copyMdBtn.textContent = '📋 Copy MD';
-      bar.appendChild(copyMdBtn);
+      copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
+      copyMdBtn.textContent = '📋 MD';
+      moreContent.appendChild(copyMdBtn);
 
       const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
       copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
       copyRichBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyRichBtn.setAttribute(
-        'title',
-        'Copy both the markdown source and the rendered HTML (paste into rich editors)',
-      );
-      copyRichBtn.textContent = '🎨 Copy Rendered';
-      bar.appendChild(copyRichBtn);
+      copyRichBtn.setAttribute('title', 'Markdown + HTML をリッチコピー（リッチエディタに貼り付け可能）');
+      copyRichBtn.textContent = '🎨 Rich';
+      moreContent.appendChild(copyRichBtn);
 
       const viewerBtn = createElement('button', 'pkc-btn pkc-action-rendered-viewer');
       viewerBtn.setAttribute('data-pkc-action', 'open-rendered-viewer');
       viewerBtn.setAttribute('data-pkc-lid', entry.lid);
-      viewerBtn.setAttribute('title', 'Open a rendered, print-friendly view in a new window');
-      viewerBtn.textContent = '📖 Open Viewer';
-      bar.appendChild(viewerBtn);
-    }
+      viewerBtn.setAttribute('title', '印刷可能なビューを新しいウィンドウで開く');
+      viewerBtn.textContent = '📖 Viewer';
+      moreContent.appendChild(viewerBtn);
 
-    // TEXTLOG-only: download a portable CSV+ZIP bundle of the log
-    // and its referenced assets. Format spec is pinned in
-    // docs/development/textlog-csv-zip-export.md. Always visible
-    // (including readonly) — export does not mutate state.
-    //
-    // Issue G: the export button is paired with a "compact" checkbox
-    // that, when checked, tells the bundle builder to strip broken
-    // asset references from the CSV output. The checkbox is scoped
-    // per-entry by data-pkc-lid so multiple open detail views don't
-    // leak state between each other.
-    if (entry.archetype === 'textlog') {
-      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
-      compactLabel.setAttribute('title',
-        'Compact mode: strip broken asset references from the exported CSV.' +
-        ' The live textlog is never modified.');
-      const compactInput = createElement('input', 'pkc-action-export-compact-input');
-      (compactInput as HTMLInputElement).type = 'checkbox';
-      compactInput.setAttribute('data-pkc-control', 'textlog-export-compact');
-      compactInput.setAttribute('data-pkc-lid', entry.lid);
-      compactLabel.appendChild(compactInput);
-      compactLabel.appendChild(document.createTextNode(' compact'));
-      bar.appendChild(compactLabel);
+      // TEXTLOG-only: download a portable CSV+ZIP bundle.
+      if (entry.archetype === 'textlog') {
+        const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+        compactLabel.setAttribute('title',
+          'Compact モード: 欠損アセット参照を CSV から除去します。元データは変更されません。');
+        const compactInput = createElement('input', 'pkc-action-export-compact-input');
+        (compactInput as HTMLInputElement).type = 'checkbox';
+        compactInput.setAttribute('data-pkc-control', 'textlog-export-compact');
+        compactInput.setAttribute('data-pkc-lid', entry.lid);
+        compactLabel.appendChild(compactInput);
+        compactLabel.appendChild(document.createTextNode(' compact'));
+        moreContent.appendChild(compactLabel);
 
-      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
-      exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
-      exportBtn.setAttribute('data-pkc-lid', entry.lid);
-      exportBtn.setAttribute(
-        'title',
-        'Download this textlog as a CSV + assets ZIP bundle for sharing outside PKC2',
-      );
-      exportBtn.textContent = '📦 Export CSV+ZIP';
-      bar.appendChild(exportBtn);
+        const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
+        exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'CSV + アセット ZIP バンドルをダウンロード');
+        exportBtn.textContent = '📦 Export';
+        moreContent.appendChild(exportBtn);
+      }
+
+      // TEXT-only: download a markdown + assets bundle.
+      if (entry.archetype === 'text') {
+        const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+        compactLabel.setAttribute('title',
+          'Compact モード: 欠損アセット参照を body.md から除去します。元データは変更されません。');
+        const compactInput = createElement('input', 'pkc-action-export-compact-input');
+        (compactInput as HTMLInputElement).type = 'checkbox';
+        compactInput.setAttribute('data-pkc-control', 'text-export-compact');
+        compactInput.setAttribute('data-pkc-lid', entry.lid);
+        compactLabel.appendChild(compactInput);
+        compactLabel.appendChild(document.createTextNode(' compact'));
+        moreContent.appendChild(compactLabel);
+
+        const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
+        exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'Markdown + アセット ZIP バンドルをダウンロード');
+        exportBtn.textContent = '📦 Export';
+        moreContent.appendChild(exportBtn);
+      }
+
+      more.appendChild(moreContent);
+      bar.appendChild(more);
     }
   }
 
@@ -1820,7 +1985,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   return form;
 }
 
-function renderEditor(entry: Entry): HTMLElement {
+function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   const editor = createElement('div', 'pkc-editor');
   editor.setAttribute('data-pkc-mode', 'edit');
   editor.setAttribute('data-pkc-archetype', entry.archetype);
@@ -1841,7 +2006,23 @@ function renderEditor(entry: Entry): HTMLElement {
 
   // Archetype-dispatched editor body
   const presenter = getPresenter(entry.archetype);
-  editor.appendChild(presenter.renderEditorBody(entry));
+  const editorBody = presenter.renderEditorBody(entry);
+  editor.appendChild(editorBody);
+
+  // Resolve asset references in the TEXT split editor's initial preview
+  // so that `![alt](asset:key)` and `[label](asset:key)` render inline
+  // from the moment the editor opens. Source body is never mutated.
+  if (entry.archetype === 'text' && container?.assets && entry.body) {
+    const preview = editorBody.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (preview && hasAssetReferences(entry.body)) {
+      const mimeByKey = buildAssetMimeMap(container);
+      const nameByKey = buildAssetNameMap(container);
+      const resolved = resolveAssetReferences(entry.body, { assets: container.assets, mimeByKey, nameByKey });
+      if (hasMarkdownSyntax(resolved)) {
+        preview.innerHTML = renderMarkdown(resolved);
+      }
+    }
+  }
 
   // Actions moved to fixed action bar (renderActionBar)
   return editor;
@@ -1887,6 +2068,175 @@ function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
 
   const cancelBtn = createElement('button', 'pkc-btn');
   cancelBtn.setAttribute('data-pkc-action', 'cancel-import');
+  cancelBtn.textContent = 'Cancel';
+  actions.appendChild(cancelBtn);
+
+  panel.appendChild(actions);
+  return panel;
+}
+
+function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
+  const panel = createElement('div', 'pkc-import-confirm');
+  panel.setAttribute('data-pkc-region', 'batch-import-preview');
+
+  const heading = createElement('div', 'pkc-import-warning');
+  heading.textContent = 'Batch Import Preview — 以下の内容をインポートします（追加のみ）';
+  panel.appendChild(heading);
+
+  const summary = createElement('div', 'pkc-import-summary');
+  summary.setAttribute('data-pkc-region', 'batch-import-summary');
+
+  const items: [string, string][] = [
+    ['Source', info.source],
+    ['Format', info.formatLabel],
+    ['Entries', `${info.totalEntries} 件 (TEXT: ${info.textCount}, TEXTLOG: ${info.textlogCount})`],
+  ];
+
+  if (info.compacted) {
+    items.push(['Compacted', 'はい — 欠損アセット参照は除去済み']);
+  }
+  if (info.missingAssetCount > 0) {
+    items.push(['Missing assets', `${info.missingAssetCount} 件`]);
+  }
+
+  for (const [label, value] of items) {
+    const row = createElement('div', 'pkc-import-row');
+    const labelEl = createElement('span', 'pkc-import-label');
+    labelEl.textContent = `${label}:`;
+    row.appendChild(labelEl);
+    const valueEl = createElement('span', 'pkc-import-value');
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    summary.appendChild(row);
+  }
+  panel.appendChild(summary);
+
+  // Folder-export: restore info, malformed warning, or no-metadata caveat
+  if (info.isFolderExport) {
+    if (info.canRestoreFolderStructure) {
+      const restoreInfo = createElement('div', 'pkc-import-info');
+      restoreInfo.setAttribute('data-pkc-role', 'folder-restore-info');
+      restoreInfo.textContent = `フォルダ構造: ${info.folderCount} folders — 復元されます`;
+      panel.appendChild(restoreInfo);
+    } else if (info.malformedFolderMetadata) {
+      const warning = createElement('div', 'pkc-import-warning');
+      warning.setAttribute('data-pkc-role', 'folder-malformed-warning');
+      warning.textContent = 'フォルダ構造に問題があります — フラットにインポートされます';
+      panel.appendChild(warning);
+    } else {
+      const caveat = createElement('div', 'pkc-import-warning');
+      caveat.setAttribute('data-pkc-role', 'folder-caveat');
+      caveat.textContent = 'フォルダ構造は復元されません — エントリはフラットに追加されます';
+      panel.appendChild(caveat);
+    }
+  }
+
+  // Entry list with checkboxes
+  if (info.entries.length > 0) {
+    const entryList = createElement('div', 'pkc-batch-entry-list');
+    entryList.setAttribute('data-pkc-region', 'batch-entry-list');
+
+    const selectedSet = new Set(info.selectedIndices);
+
+    // Toggle-all header
+    const toggleAllRow = createElement('label', 'pkc-batch-entry-toggle-all');
+    const toggleAllCb = document.createElement('input');
+    toggleAllCb.type = 'checkbox';
+    toggleAllCb.checked = selectedSet.size === info.entries.length;
+    toggleAllCb.indeterminate = selectedSet.size > 0 && selectedSet.size < info.entries.length;
+    toggleAllCb.setAttribute('data-pkc-action', 'toggle-all-batch-import-entries');
+    toggleAllRow.appendChild(toggleAllCb);
+    const toggleAllLabel = createElement('span', '');
+    toggleAllLabel.textContent = `全選択 (${selectedSet.size}/${info.entries.length})`;
+    toggleAllRow.appendChild(toggleAllLabel);
+    entryList.appendChild(toggleAllRow);
+
+    for (const entry of info.entries) {
+      const wrapper = createElement('div', 'pkc-batch-entry-wrapper');
+      wrapper.setAttribute('data-pkc-entry-index', String(entry.index));
+
+      const row = createElement('label', 'pkc-batch-entry-row');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = selectedSet.has(entry.index);
+      cb.setAttribute('data-pkc-action', 'toggle-batch-import-entry');
+      cb.setAttribute('data-pkc-entry-index', String(entry.index));
+      row.appendChild(cb);
+      const titleSpan = createElement('span', 'pkc-batch-entry-title');
+      titleSpan.textContent = entry.title || '(untitled)';
+      row.appendChild(titleSpan);
+      const archBadge = createElement('span', 'pkc-batch-entry-archetype');
+      archBadge.textContent = entry.archetype.toUpperCase();
+      row.appendChild(archBadge);
+      wrapper.appendChild(row);
+
+      // Deep preview disclosure (default collapsed)
+      const hasDeepPreview = entry.bodySnippet != null || entry.logSnippets != null || entry.logEntryCount != null;
+      if (hasDeepPreview) {
+        const details = document.createElement('details');
+        details.className = 'pkc-batch-entry-details';
+        details.setAttribute('data-pkc-role', 'entry-deep-preview');
+        const summaryEl = document.createElement('summary');
+        summaryEl.textContent = 'Preview';
+        details.appendChild(summaryEl);
+
+        const content = createElement('div', 'pkc-batch-entry-preview');
+
+        if (entry.archetype === 'text' && entry.bodySnippet != null) {
+          const pre = createElement('pre', 'pkc-batch-snippet');
+          pre.textContent = entry.bodySnippet;
+          content.appendChild(pre);
+        }
+
+        if (entry.archetype === 'textlog') {
+          if (entry.logEntryCount != null) {
+            const countLine = createElement('div', 'pkc-batch-meta-line');
+            countLine.textContent = `${entry.logEntryCount} log entries`;
+            content.appendChild(countLine);
+          }
+          if (entry.logSnippets && entry.logSnippets.length > 0) {
+            const ol = createElement('ol', 'pkc-batch-log-snippets');
+            for (const snippet of entry.logSnippets) {
+              const li = document.createElement('li');
+              li.textContent = snippet;
+              ol.appendChild(li);
+            }
+            content.appendChild(ol);
+          }
+        }
+
+        // Metadata line: body length / asset count / missing
+        const metaParts: string[] = [];
+        if (entry.bodyLength != null) metaParts.push(`${entry.bodyLength} 文字`);
+        if (entry.assetCount != null && entry.assetCount > 0) metaParts.push(`${entry.assetCount} assets`);
+        if (entry.missingAssetCount != null && entry.missingAssetCount > 0) metaParts.push(`${entry.missingAssetCount} missing`);
+        if (metaParts.length > 0) {
+          const metaLine = createElement('div', 'pkc-batch-meta-line');
+          metaLine.textContent = metaParts.join(' | ');
+          content.appendChild(metaLine);
+        }
+
+        details.appendChild(content);
+        wrapper.appendChild(details);
+      }
+
+      entryList.appendChild(wrapper);
+    }
+    panel.appendChild(entryList);
+  }
+
+  const actions = createElement('div', 'pkc-import-actions');
+
+  const confirmBtn = createElement('button', 'pkc-btn pkc-btn-create') as HTMLButtonElement;
+  confirmBtn.setAttribute('data-pkc-action', 'confirm-batch-import');
+  confirmBtn.textContent = 'Continue';
+  if (info.selectedIndices.length === 0) {
+    confirmBtn.disabled = true;
+  }
+  actions.appendChild(confirmBtn);
+
+  const cancelBtn = createElement('button', 'pkc-btn');
+  cancelBtn.setAttribute('data-pkc-action', 'cancel-batch-import');
   cancelBtn.textContent = 'Cancel';
   actions.appendChild(cancelBtn);
 
@@ -1997,7 +2347,7 @@ function createElement(tag: string, className: string): HTMLElement {
  * Attachment entries store their metadata (name, mime, asset_key) in
  * the body JSON; the raw base64 data lives in `container.assets[key]`.
  */
-function buildAssetMimeMap(container: Container): Record<string, string> {
+export function buildAssetMimeMap(container: Container): Record<string, string> {
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
@@ -2015,7 +2365,7 @@ function buildAssetMimeMap(container: Container): Record<string, string> {
  * non-image chips (`[label](asset:key)`) when the user omits an
  * explicit link label.
  */
-function buildAssetNameMap(container: Container): Record<string, string> {
+export function buildAssetNameMap(container: Container): Record<string, string> {
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
@@ -2141,6 +2491,8 @@ export interface ContextMenuOptions {
   logId?: string;
   canEdit?: boolean;
   hasParent?: boolean;
+  /** Available folders for "move to folder" sub-menu. */
+  folders?: { lid: string; title: string }[];
 }
 
 export function renderContextMenu(
@@ -2172,30 +2524,44 @@ export function renderContextMenu(
     show: boolean;
   };
 
+  const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
+  const isSandboxable = opts.archetype === 'attachment';
+  const hasFolders = !!(opts.folders && opts.folders.length > 0);
+
   const items: Item[] = [
     // Mutating actions — gated on canEdit.
-    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: canEdit },
-    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
-    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
+    { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
+    { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },
+    { action: 'ctx-sandbox-run', label: '🔒 Sandbox', tip: 'サンドボックス環境で安全に開く（HTML/SVG）', lid, show: isSandboxable },
+    { action: 'delete-entry', label: '🗑️ Delete', tip: 'このエントリを完全に削除（元に戻せません）', lid, show: canEdit },
+    { action: 'delete-log-entry', label: '✕ Delete log', tip: 'このログ行を削除', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: '現在のフォルダから取り出してルートに移動', lid, show: canEdit && hasParent },
     // Reference-string actions — never mutate, always shown.
     {
       action: 'copy-entry-ref',
-      label: '🔗 Copy entry reference',
-      tip: 'Copy a markdown link pointing at this entry',
+      label: '🔗 Entry ref',
+      tip: 'このエントリへの Markdown リンクをコピー [title](entry:lid)',
+      lid,
+      show: true,
+    },
+    {
+      action: 'copy-entry-embed-ref',
+      label: '🖼️ Embed ref',
+      tip: 'このエントリの埋め込み参照をコピー',
       lid,
       show: true,
     },
     {
       action: 'copy-asset-ref',
-      label: '📎 Copy asset reference',
-      tip: 'Copy a markdown image / chip reference pointing at this attachment',
+      label: '📎 Asset ref',
+      tip: 'この添付ファイルへの Markdown 参照をコピー ![name](asset:key)',
       lid,
       show: opts.archetype === 'attachment',
     },
     {
       action: 'copy-log-line-ref',
-      label: '📝 Copy log line reference',
-      tip: 'Copy a markdown link pointing at this specific log entry',
+      label: '📝 Log ref',
+      tip: 'このログ行への Markdown リンクをコピー',
       lid,
       logId: opts.logId,
       show: !!(opts.archetype === 'textlog' && opts.logId),
@@ -2211,6 +2577,27 @@ export function renderContextMenu(
     if (item.logId) btn.setAttribute('data-pkc-log-id', item.logId);
     btn.textContent = item.label;
     menu.appendChild(btn);
+  }
+
+  // "Move to Folder" sub-menu — only shown when folders exist and entry is editable
+  if (canEdit && hasFolders) {
+    const sep = createElement('div', 'pkc-context-menu-separator');
+    menu.appendChild(sep);
+
+    const folderLabel = createElement('div', 'pkc-context-menu-label');
+    folderLabel.textContent = '📁 Move to Folder';
+    menu.appendChild(folderLabel);
+
+    for (const folder of opts.folders!) {
+      if (folder.lid === lid) continue; // Skip self
+      const btn = createElement('button', 'pkc-context-menu-item pkc-context-menu-folder-item');
+      btn.setAttribute('data-pkc-action', 'ctx-move-to-folder');
+      btn.setAttribute('data-pkc-lid', lid);
+      btn.setAttribute('data-pkc-folder-lid', folder.lid);
+      btn.setAttribute('title', `Move into ${folder.title || '(untitled)'}`);
+      btn.textContent = `  → ${folder.title || '(untitled)'}`;
+      menu.appendChild(btn);
+    }
   }
 
   return menu;

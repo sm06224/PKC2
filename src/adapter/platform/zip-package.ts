@@ -258,7 +258,14 @@ type ParsedZipEntry = ZipEntry;
  * markdown bundle …) can reuse the writer without duplicating the
  * CRC-32 / EOCD logic.
  */
-export function createZipBlob(entries: ZipEntry[]): Blob {
+/**
+ * Create a ZIP file as a Uint8Array using stored mode (no compression).
+ *
+ * This is the byte-level workhorse behind `createZipBlob`. Exported so
+ * callers that need raw bytes (e.g. nesting a ZIP inside another ZIP)
+ * can skip the Blob round-trip entirely.
+ */
+export function createZipBytes(entries: ZipEntry[]): Uint8Array {
   const parts: Uint8Array[] = [];
   const centralDirectory: Uint8Array[] = [];
   let offset = 0;
@@ -272,7 +279,7 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
     const lv = new DataView(localHeader.buffer);
     lv.setUint32(0, 0x04034b50, true);   // signature
     lv.setUint16(4, 20, true);            // version needed
-    lv.setUint16(6, 0, true);             // flags
+    lv.setUint16(6, 0x0800, true);        // flags: UTF-8 filenames (bit 11)
     lv.setUint16(8, 0, true);             // method: stored
     lv.setUint16(10, 0, true);            // mod time
     lv.setUint16(12, 0, true);            // mod date
@@ -289,7 +296,7 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
     cv.setUint32(0, 0x02014b50, true);    // signature
     cv.setUint16(4, 20, true);            // version made by
     cv.setUint16(6, 20, true);            // version needed
-    cv.setUint16(8, 0, true);             // flags
+    cv.setUint16(8, 0x0800, true);        // flags: UTF-8 filenames (bit 11)
     cv.setUint16(10, 0, true);            // method: stored
     cv.setUint16(12, 0, true);            // mod time
     cv.setUint16(14, 0, true);            // mod date
@@ -331,7 +338,20 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
   ev.setUint16(20, 0, true);             // comment length
   parts.push(eocd);
 
-  return new Blob(parts as BlobPart[], { type: 'application/zip' });
+  // Concatenate all parts into a single Uint8Array
+  let totalLen = 0;
+  for (const p of parts) totalLen += p.length;
+  const result = new Uint8Array(totalLen);
+  let pos = 0;
+  for (const p of parts) {
+    result.set(p, pos);
+    pos += p.length;
+  }
+  return result;
+}
+
+export function createZipBlob(entries: ZipEntry[]): Blob {
+  return new Blob([createZipBytes(entries) as BlobPart], { type: 'application/zip' });
 }
 
 /**

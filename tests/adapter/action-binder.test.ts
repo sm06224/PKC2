@@ -454,7 +454,7 @@ describe('CLEAR button', () => {
     expect(clearBtn).not.toBeNull();
     expect(clearBtn!.textContent).toContain('Reset');
     expect(clearBtn!.className).toContain('pkc-btn-danger');
-    expect(clearBtn!.getAttribute('title')).toContain('WARNING');
+    expect(clearBtn!.getAttribute('title')).toContain('IndexedDB');
   });
 });
 

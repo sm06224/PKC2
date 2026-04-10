@@ -36,6 +36,94 @@ export interface ImportPreviewRef {
 }
 
 /**
+ * Per-entry metadata from the batch bundle manifest.
+ * Used by the preview UI to show a selectable entry list.
+ */
+export interface BatchImportPreviewEntry {
+  index: number;
+  title: string;
+  archetype: 'text' | 'textlog';
+  /** First ~200 chars of body (TEXT). Optional — absent if peek fails. */
+  bodySnippet?: string;
+  /** TEXT: body.md char count. */
+  bodyLength?: number;
+  /** TEXTLOG: number of log entries. */
+  logEntryCount?: number;
+  /** TEXTLOG: first 3 log entry texts, each truncated to ~80 chars. */
+  logSnippets?: string[];
+  /** Number of resolved assets in the nested bundle. */
+  assetCount?: number;
+  /** Number of missing assets in the nested bundle. */
+  missingAssetCount?: number;
+}
+
+/**
+ * BatchImportPreviewInfo: lightweight metadata from the batch bundle manifest.
+ * All primitives — no adapter types needed.
+ */
+export interface BatchImportPreviewInfo {
+  format: string;
+  formatLabel: string;
+  textCount: number;
+  textlogCount: number;
+  totalEntries: number;
+  compacted: boolean;
+  missingAssetCount: number;
+  isFolderExport: boolean;
+  sourceFolderTitle: string | null;
+  /** Whether folder structure can be restored on import. */
+  canRestoreFolderStructure: boolean;
+  /** Number of folders in the hierarchy (0 if no restore). */
+  folderCount: number;
+  /** Folder graph validation failed → will fall back to flat import. */
+  malformedFolderMetadata?: boolean;
+  /** Human-readable reason (from validateFolderGraph warnings). */
+  folderGraphWarning?: string;
+  source: string;
+  /** Per-entry metadata (title + archetype). */
+  entries: BatchImportPreviewEntry[];
+  /** Indices of entries selected for import (default: all). */
+  selectedIndices: number[];
+}
+
+// ── Batch import plan types ─────────────────────────
+
+export interface BatchImportPlanFolder {
+  originalLid: string;
+  title: string;
+  parentOriginalLid: string | null;
+}
+
+export interface BatchImportPlanAttachment {
+  name: string;
+  body: string;
+  assetKey: string;
+  assetData: string;
+}
+
+export interface BatchImportPlanEntry {
+  archetype: 'text' | 'textlog';
+  title: string;
+  body: string;
+  parentFolderOriginalLid?: string;
+  assets: Record<string, string>;
+  attachments: BatchImportPlanAttachment[];
+}
+
+export interface BatchImportPlan {
+  /** Folders to create, in topological order (parent first). */
+  folders: BatchImportPlanFolder[];
+  /** Content entries to create. */
+  entries: BatchImportPlanEntry[];
+  /** Source filename. */
+  source: string;
+  /** Format string. */
+  format: string;
+  /** Whether folder structure is being restored. */
+  restoreStructure: boolean;
+}
+
+/**
  * SystemCommand: commands issued by the runtime or infrastructure,
  * not directly by the user.
  *
@@ -50,6 +138,8 @@ export type SystemCommand =
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }
+  | { type: 'SYS_BATCH_IMPORT_PREVIEW'; preview: BatchImportPreviewInfo }
+  | { type: 'SYS_APPLY_BATCH_IMPORT'; plan: BatchImportPlan }
   | { type: 'SYS_RECORD_OFFERED'; offer: PendingOfferRef }
   | { type: 'SYS_ERROR'; error: string };
 

@@ -18,12 +18,15 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
-import { buildTextlogBundle } from '../platform/textlog-bundle';
+import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
+import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
+import { buildFolderExportBundle } from '../platform/folder-export';
+import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
-import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
-import { renderContextMenu } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import {
@@ -121,7 +124,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
-    if (!target) return;
+
+    // ── TEXTLOG edit-mode: delete button (✕) marks row for removal ──
+    // The delete button uses data-pkc-field (not data-pkc-action) because
+    // the deletion is a DOM-only operation: the row is hidden and marked
+    // with data-pkc-deleted="true" so collectBody skips it on save.
+    if (!target) {
+      const delBtn = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-field="textlog-delete"]');
+      if (delBtn) {
+        const row = delBtn.closest<HTMLElement>('.pkc-textlog-edit-row');
+        if (row) {
+          row.setAttribute('data-pkc-deleted', 'true');
+          row.style.display = 'none';
+        }
+        return;
+      }
+      return;
+    }
 
     const action = target.getAttribute('data-pkc-action');
     const lid = target.getAttribute('data-pkc-lid') ?? undefined;
@@ -486,6 +505,133 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         triggerZipDownload(built.blob, built.filename);
         break;
       }
+      case 'export-text-zip': {
+        // TEXT-only export. Sister format to export-textlog-csv-zip.
+        // Bundles a single text entry as
+        //   <slug>-<yyyymmdd>.text.zip
+        //     ├── manifest.json
+        //     ├── body.md
+        //     └── assets/<asset-key><ext>
+        // Format spec is pinned in
+        // docs/development/text-markdown-zip-export.md.
+        //
+        // Same compact checkbox + missing-asset confirm() pattern as
+        // the textlog export — reuses the UI shape so users don't have
+        // to learn a second one.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'text' || !st.container) break;
+        const compactToggle = root.querySelector<HTMLInputElement>(
+          `input[data-pkc-control="text-export-compact"][data-pkc-lid="${lid}"]`,
+        );
+        const compact = compactToggle?.checked === true;
+        const built = buildTextBundle(ent, st.container, { compact });
+        if (built.manifest.missing_asset_count > 0) {
+          const msg = [
+            `このテキストには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            compact
+              ? '- compact モードが ON です: 欠損参照は body.md から除去されます'
+              : '- body.md には欠損参照が verbatim で残ります',
+            '- assets/ フォルダには欠損キーは含まれません',
+            '- manifest.json の missing_asset_keys に記録されます',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-textlogs-container': {
+        // Container-wide TEXTLOG export. Bundles all textlog entries
+        // in the container into a single ZIP containing individual
+        // .textlog.zip bundles + a top-level manifest.json.
+        // Read-only safe (no mutation). Same confirm() pattern as
+        // single-entry export for missing assets.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const built = buildTextlogsContainerBundle(st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `全 TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-texts-container': {
+        // Container-wide TEXT export. Bundles all text entries in
+        // the container into a single ZIP containing individual
+        // .text.zip bundles + a top-level manifest.json.
+        // Read-only safe (no mutation). Same confirm() pattern as
+        // the TEXTLOG container export for missing assets.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const built = buildTextsContainerBundle(st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `全 TEXT のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-mixed-container': {
+        // Container-wide mixed export. Bundles all TEXT + TEXTLOG
+        // entries in the container into a single ZIP containing
+        // individual .text.zip / .textlog.zip bundles + a top-level
+        // manifest.json. Read-only safe (no mutation). Same
+        // confirm() pattern for missing assets.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const built = buildMixedContainerBundle(st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `全 TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-folder': {
+        // Folder-scoped export. Bundles all TEXT / TEXTLOG entries
+        // under the selected folder (recursive) into a single ZIP.
+        // Read-only safe (no mutation).
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const folder = st.container.entries.find((e) => e.lid === lid);
+        if (!folder || folder.archetype !== 'folder') break;
+        const built = buildFolderExportBundle(folder, st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `フォルダ配下の TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
       case 'rename-attachment': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -509,6 +655,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             break;
           }
         }
+        break;
+      }
+      case 'ctx-preview': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        if (ent.archetype === 'text' || ent.archetype === 'textlog') {
+          openRenderedViewer(ent, st.container);
+        } else if (ent.archetype === 'attachment') {
+          openEntryWindow(ent, true, () => {}, st.lightSource);
+        }
+        break;
+      }
+      case 'ctx-sandbox-run': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(ent.body);
+        const attachmentData = att.asset_key ? st.container?.assets[att.asset_key] : undefined;
+        if (!attachmentData) break;
+        openEntryWindow(ent, true, () => {}, st.lightSource, {
+          attachmentData,
+          sandboxAllow: ['allow-scripts'],
+        });
+        break;
+      }
+      case 'copy-entry-embed-ref': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        void copyPlainText(formatEntryEmbedReference(ent));
+        break;
+      }
+      case 'ctx-move-to-folder': {
+        if (!lid) break;
+        const folderLid = target.getAttribute('data-pkc-folder-lid');
+        if (!folderLid) break;
+        // Ensure the entry is selected, then dispatch BULK_MOVE_TO_FOLDER
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid });
         break;
       }
       case 'close-detached': {
@@ -703,10 +892,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
-    // Ctrl+S / Cmd+S: save in editing mode
-    if (mod && e.key === 's' && state.phase === 'editing' && state.editingLid) {
+    // Ctrl+S / Cmd+S: save in editing mode, or suppress browser save in ready phase
+    if (mod && e.key === 's') {
       e.preventDefault();
-      dispatchCommitEdit(root, state.editingLid, dispatcher);
+      if (state.phase === 'editing' && state.editingLid) {
+        dispatchCommitEdit(root, state.editingLid, dispatcher);
+      }
       return;
     }
 
@@ -1277,18 +1468,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((en) => en.lid === lid);
     const hasParent =
       getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+    // Collect folders for "Move to Folder" sub-menu
+    const folders = state.container.entries
+      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+      .map((en) => ({ lid: en.lid, title: en.title }));
     const menu = renderContextMenu(lid, e.clientX, e.clientY, {
       archetype: entry?.archetype,
       canEdit,
       hasParent,
+      folders,
     });
     root.appendChild(menu);
-
-    // Select the entry being right-clicked (sidebar-only behaviour —
-    // center pane right-click never moves selection).
-    if (canEdit) {
-      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-    }
   }
 
   function handleDocumentClick(e: MouseEvent): void {
@@ -1376,38 +1566,127 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   // ── Clipboard paste handler (screenshot / image → attachment entry) ──
 
+  /**
+   * Check if a textarea is markdown-capable (TEXT body, TEXTLOG append/edit).
+   */
+  function isMarkdownTextarea(el: HTMLTextAreaElement): boolean {
+    const field = el.getAttribute('data-pkc-field');
+    return field === 'body'
+      || field === 'textlog-append-text'
+      || field === 'textlog-entry-text';
+  }
+
+  // Guard: prevent overlapping async paste operations (FileReader race)
+  let pasteInProgress = false;
+
   function handlePaste(e: ClipboardEvent): void {
     const state = dispatcher.getState();
-    if (state.phase !== 'ready' || state.readonly) return;
+    if (state.readonly) return;
+    if (pasteInProgress) return;
 
     const items = e.clipboardData?.items;
     if (!items) return;
 
-    // Look for image items in clipboard
+    // Find the first image item in clipboard
+    let imageItem: DataTransferItem | null = null;
     for (let i = 0; i < items.length; i++) {
       const item = items[i]!;
       if (item.kind === 'file' && item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (!file) continue;
-
-        e.preventDefault();
-
-        // Generate a descriptive filename for screenshots
-        const ext = file.type.split('/')[1] ?? 'png';
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const name = `screenshot-${ts}.${ext}`;
-        const namedFile = new File([file], name, { type: file.type });
-
-        // Determine context folder from current selection
-        const selectedEntry = state.selectedLid
-          ? state.container?.entries.find((ent) => ent.lid === state.selectedLid)
-          : undefined;
-        const contextFolder = selectedEntry?.archetype === 'folder' ? state.selectedLid ?? undefined : undefined;
-
-        processFileAttachment(namedFile, contextFolder, dispatcher);
-        return; // Process only the first image
+        imageItem = item;
+        break;
       }
     }
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    // Check if we're in a markdown-capable textarea
+    const target = e.target;
+    const isTextarea = target instanceof HTMLTextAreaElement && isMarkdownTextarea(target);
+
+    if (isTextarea && state.container) {
+      // ── Inline paste: insert asset reference into textarea ──
+      e.preventDefault();
+
+      const ext = file.type.split('/')[1] ?? 'png';
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const name = `screenshot-${ts}.${ext}`;
+      const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Determine context entry lid
+      const contextLid = state.editingLid ?? state.selectedLid;
+      if (!contextLid) return;
+
+      const textarea = target;
+      const cursorPos = textarea.selectionStart ?? textarea.value.length;
+
+      // Capture textarea identity for re-finding after re-render
+      const fieldAttr = textarea.getAttribute('data-pkc-field') ?? 'body';
+      const currentValue = textarea.value;
+
+      pasteInProgress = true;
+      const reader = new FileReader();
+      reader.onload = () => {
+        pasteInProgress = false;
+        const arrayBuffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]!);
+        }
+        const base64 = btoa(binary);
+
+        // Build the reference string before dispatch
+        const ref = `![${name}](asset:${assetKey})`;
+        const newValue = currentValue.slice(0, cursorPos) + ref + currentValue.slice(cursorPos);
+
+        // Dispatch PASTE_ATTACHMENT — creates attachment + ASSETS folder.
+        // This triggers synchronous re-render which replaces the textarea
+        // in the DOM, making the old reference stale.
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name,
+          mime: file.type || 'image/png',
+          size: file.size,
+          assetKey,
+          assetData: base64,
+          contextLid,
+        });
+
+        // Re-find the textarea in the (potentially rebuilt) DOM
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(
+          `textarea[data-pkc-field="${fieldAttr}"]`,
+        );
+        if (freshTextarea) {
+          freshTextarea.value = newValue;
+          const newPos = cursorPos + ref.length;
+          freshTextarea.setSelectionRange(newPos, newPos);
+          freshTextarea.focus();
+          updateTextEditPreview(freshTextarea);
+        }
+      };
+      reader.onerror = () => { pasteInProgress = false; };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
+    // ── Fallback: standalone attachment creation (no textarea focus) ──
+    if (state.phase !== 'ready') return;
+
+    e.preventDefault();
+
+    const ext = file.type.split('/')[1] ?? 'png';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const name = `screenshot-${ts}.${ext}`;
+    const namedFile = new File([file], name, { type: file.type });
+
+    const selectedEntry = state.selectedLid
+      ? state.container?.entries.find((ent) => ent.lid === state.selectedLid)
+      : undefined;
+    const contextFolder = selectedEntry?.archetype === 'folder' ? state.selectedLid ?? undefined : undefined;
+
+    processFileAttachment(namedFile, contextFolder, dispatcher);
   }
 
   // ── Double-click action handler ──
@@ -1433,6 +1712,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // chips appear rendered when the child first loads.
     const assetContext = buildEntryWindowAssetContext(entry, state);
 
+    // For text/textlog/todo, open directly in edit mode
+    const editableArchetypes: Set<string> = new Set(['text', 'textlog', 'todo']);
+    const shouldStartEditing = !state.readonly && editableArchetypes.has(entry.archetype);
+
     // Open in a separate browser window with markdown rendering + edit capability
     openEntryWindow(
       entry,
@@ -1457,6 +1740,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       !!state.lightSource,
       assetContext,
       (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+      shouldStartEditing,
     );
   }
 
@@ -1552,6 +1836,124 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('mousedown', handleResizeMouseDown);
 
+  // ── TEXT split editor: resize handle between editor and preview ──
+  let splitResizeActive = false;
+  let splitResizeStartX = 0;
+  let splitResizeWrapper: HTMLElement | null = null;
+  let splitResizeStartFr: [number, number] = [1, 1];
+
+  function handleSplitResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-split-resize]');
+    if (!handle) return;
+    const wrapper = handle.closest<HTMLElement>('.pkc-text-split-editor');
+    if (!wrapper) return;
+
+    splitResizeActive = true;
+    splitResizeStartX = e.clientX;
+    splitResizeWrapper = wrapper;
+    handle.setAttribute('data-pkc-resizing', 'true');
+
+    // Compute current column widths from rendered sizes
+    const cols = wrapper.style.gridTemplateColumns;
+    if (cols) {
+      const parts = cols.split(/\s+/).filter(p => p.endsWith('fr'));
+      if (parts.length >= 2) {
+        splitResizeStartFr = [parseFloat(parts[0]!) || 1, parseFloat(parts[1]!) || 1];
+      }
+    } else {
+      splitResizeStartFr = [1, 1];
+    }
+
+    e.preventDefault();
+    document.addEventListener('mousemove', handleSplitResizeMouseMove);
+    document.addEventListener('mouseup', handleSplitResizeMouseUp);
+  }
+
+  function handleSplitResizeMouseMove(e: MouseEvent): void {
+    if (!splitResizeActive || !splitResizeWrapper) return;
+    const wrapperWidth = splitResizeWrapper.getBoundingClientRect().width - 6; // subtract handle width
+    const dx = e.clientX - splitResizeStartX;
+    const totalFr = splitResizeStartFr[0] + splitResizeStartFr[1];
+    const leftPx = (splitResizeStartFr[0] / totalFr) * wrapperWidth + dx;
+    const rightPx = wrapperWidth - leftPx;
+    const minPx = 100;
+    if (leftPx < minPx || rightPx < minPx) return;
+    const leftFr = leftPx / wrapperWidth;
+    const rightFr = rightPx / wrapperWidth;
+    splitResizeWrapper.style.gridTemplateColumns = `${leftFr}fr 6px ${rightFr}fr`;
+  }
+
+  function handleSplitResizeMouseUp(): void {
+    if (splitResizeWrapper) {
+      const handle = splitResizeWrapper.querySelector<HTMLElement>('[data-pkc-resizing="true"]');
+      if (handle) handle.removeAttribute('data-pkc-resizing');
+    }
+    splitResizeActive = false;
+    splitResizeWrapper = null;
+    document.removeEventListener('mousemove', handleSplitResizeMouseMove);
+    document.removeEventListener('mouseup', handleSplitResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleSplitResizeMouseDown);
+
+  // ── TEXT split editor: update preview ──
+  // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
+  let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function updateTextEditPreview(textarea: HTMLTextAreaElement): void {
+    const wrapper = textarea.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    const src = textarea.value;
+    if (!src) { preview.textContent = '(preview)'; return; }
+
+    // Resolve asset references before markdown rendering so the preview
+    // shows inline images and non-image chips. The source body is never
+    // mutated — resolution produces a temporary string for display only.
+    let resolved = src;
+    if (hasAssetReferences(src)) {
+      const state = dispatcher.getState();
+      const container = state.container;
+      if (container?.assets) {
+        const mimeByKey = buildAssetMimeMap(container);
+        const nameByKey = buildAssetNameMap(container);
+        resolved = resolveAssetReferences(src, { assets: container.assets, mimeByKey, nameByKey });
+      }
+    }
+
+    if (hasMarkdownSyntax(resolved)) {
+      preview.innerHTML = renderMarkdown(resolved);
+    } else {
+      preview.textContent = src;
+    }
+  }
+
+  function handleTextEditPreviewUpdate(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    // Cancel any pending debounce — Enter is authoritative
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    requestAnimationFrame(() => updateTextEditPreview(target));
+  }
+
+  function handleTextEditPreviewInput(e: Event): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    // Debounce: update preview 500ms after typing stops
+    if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+      previewDebounceTimer = null;
+      updateTextEditPreview(target);
+    }, 500);
+  }
+  root.addEventListener('keyup', handleTextEditPreviewUpdate);
+  root.addEventListener('input', handleTextEditPreviewInput);
+
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
@@ -1614,6 +2016,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dragend', handleCalendarDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
     root.removeEventListener('mousedown', handleStaleDragCleanup);
+    root.removeEventListener('keyup', handleTextEditPreviewUpdate);
+    root.removeEventListener('input', handleTextEditPreviewInput);
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
@@ -1730,6 +2135,15 @@ function escapeMarkdownLabel(label: string): string {
 function formatEntryReference(entry: Entry): string {
   const label = escapeMarkdownLabel(entry.title || '(untitled)');
   return `[${label}](entry:${entry.lid})`;
+}
+
+/**
+ * Build an embed reference string for an entry.
+ * Uses the `![]()` form (like image embeds) with the `entry:` scheme.
+ */
+function formatEntryEmbedReference(entry: Entry): string {
+  const label = escapeMarkdownLabel(entry.title || '(untitled)');
+  return `![${label}](entry:${entry.lid})`;
 }
 
 /**

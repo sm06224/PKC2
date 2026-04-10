@@ -3,7 +3,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
-import type { ImportPreviewRef } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import {
@@ -50,6 +50,8 @@ export interface AppState {
   pendingOffers: PendingOffer[];
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
+  /** Batch import preview awaiting user confirmation (runtime-only). */
+  batchImportPreview: BatchImportPreviewInfo | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
   /** Current archetype filter (runtime-only, feature layer). null = show all. */
@@ -104,11 +106,12 @@ export function createInitialState(): AppState {
     embedded: false,
     pendingOffers: [],
     importPreview: null,
+    batchImportPreview: null,
     searchQuery: '',
     archetypeFilter: null,
     tagFilter: null,
-    sortKey: 'created_at',
-    sortDirection: 'desc',
+    sortKey: 'title',
+    sortDirection: 'asc',
     exportMode: null,
     exportMutability: null,
     readonly: false,
@@ -403,6 +406,125 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         events: [{ type: 'IMPORT_CANCELLED' }],
       };
     }
+    case 'SYS_BATCH_IMPORT_PREVIEW': {
+      const next: AppState = { ...state, batchImportPreview: action.preview };
+      return {
+        state: next,
+        events: [{
+          type: 'BATCH_IMPORT_PREVIEWED',
+          source: action.preview.source,
+          totalEntries: action.preview.totalEntries,
+        }],
+      };
+    }
+    case 'TOGGLE_BATCH_IMPORT_ENTRY': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const prev = state.batchImportPreview.selectedIndices;
+      const idx = action.index;
+      const selectedIndices = prev.includes(idx)
+        ? prev.filter((i) => i !== idx)
+        : [...prev, idx];
+      const next: AppState = {
+        ...state,
+        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const all = state.batchImportPreview.entries.map((e) => e.index);
+      const allSelected = state.batchImportPreview.selectedIndices.length === all.length;
+      const selectedIndices = allSelected ? [] : all;
+      const next: AppState = {
+        ...state,
+        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+      };
+      return { state: next, events: [] };
+    }
+    case 'CONFIRM_BATCH_IMPORT': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      if (state.batchImportPreview.selectedIndices.length === 0) return blocked(state, action);
+      const next: AppState = { ...state, batchImportPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'BATCH_IMPORT_CONFIRMED' }],
+      };
+    }
+    case 'CANCEL_BATCH_IMPORT': {
+      const next: AppState = { ...state, batchImportPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'BATCH_IMPORT_CANCELLED' }],
+      };
+    }
+    case 'SYS_APPLY_BATCH_IMPORT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const plan = action.plan;
+      const ts = now();
+      let container = state.container;
+      const events: DomainEvent[] = [];
+      const oldToNewLid = new Map<string, string>();
+
+      // 1. Create folders in topological order
+      for (const folder of plan.folders) {
+        const lid = generateLid();
+        container = addEntry(container, lid, 'folder', folder.title, ts);
+        container = updateEntry(container, lid, folder.title, '', ts);
+        oldToNewLid.set(folder.originalLid, lid);
+        events.push({ type: 'ENTRY_CREATED', lid, archetype: 'folder' });
+      }
+
+      // 2. Create structural relations between folders
+      for (const folder of plan.folders) {
+        if (folder.parentOriginalLid !== null) {
+          const newParent = oldToNewLid.get(folder.parentOriginalLid);
+          const newChild = oldToNewLid.get(folder.originalLid);
+          if (newParent && newChild) {
+            const relId = generateLid();
+            container = addRelation(container, relId, newParent, newChild, 'structural', ts);
+            events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: newChild, kind: 'structural' });
+          }
+        }
+      }
+
+      // 3. Create content entries with attachments and assets
+      for (const entry of plan.entries) {
+        // Merge assets first
+        if (Object.keys(entry.assets).length > 0) {
+          container = mergeAssets(container, entry.assets);
+        }
+
+        // Create attachment entries before the main entry
+        for (const att of entry.attachments) {
+          const attLid = generateLid();
+          container = addEntry(container, attLid, 'attachment', att.name, ts);
+          container = updateEntry(container, attLid, att.name, att.body, ts);
+          if (att.assetData) {
+            container = mergeAssets(container, { [att.assetKey]: att.assetData });
+          }
+          events.push({ type: 'ENTRY_CREATED', lid: attLid, archetype: 'attachment' });
+        }
+
+        const lid = generateLid();
+        container = addEntry(container, lid, entry.archetype, entry.title, ts);
+        container = updateEntry(container, lid, entry.title, entry.body, ts);
+        events.push({ type: 'ENTRY_CREATED', lid, archetype: entry.archetype });
+
+        // Create structural relation to parent folder if applicable
+        if (entry.parentFolderOriginalLid) {
+          const newParent = oldToNewLid.get(entry.parentFolderOriginalLid);
+          if (newParent) {
+            const relId = generateLid();
+            container = addRelation(container, relId, newParent, lid, 'structural', ts);
+            events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: lid, kind: 'structural' });
+          }
+        }
+      }
+
+      const next: AppState = { ...state, container };
+      return { state: next, events };
+    }
     case 'SET_SEARCH_QUERY': {
       const next: AppState = { ...state, searchQuery: action.query };
       return { state: next, events: [] };
@@ -590,6 +712,77 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container, multiSelectedLids: [] };
       return { state: next, events: [] };
     }
+    case 'PASTE_ATTACHMENT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+
+      const ts = now();
+      const events: DomainEvent[] = [];
+      let container = state.container;
+
+      // 1. Find structural parent of contextLid (same level)
+      let parentFolderLid: string | null = null;
+      for (const r of container.relations) {
+        if (r.kind === 'structural' && r.to === action.contextLid) {
+          const parent = container.entries.find((e) => e.lid === r.from);
+          if (parent) { parentFolderLid = parent.lid; break; }
+        }
+      }
+
+      // 2. Find or create ASSETS folder at that level
+      let assetsFolderLid: string | null = null;
+      for (const e of container.entries) {
+        if (e.archetype !== 'folder' || e.title !== 'ASSETS') continue;
+        if (parentFolderLid === null) {
+          // Context is at root — ASSETS folder must also be at root (no structural parent)
+          const hasParent = container.relations.some(
+            (r) => r.kind === 'structural' && r.to === e.lid,
+          );
+          if (!hasParent) { assetsFolderLid = e.lid; break; }
+        } else {
+          // Context is inside a folder — ASSETS must be a child of same parent
+          const isChild = container.relations.some(
+            (r) => r.kind === 'structural' && r.from === parentFolderLid && r.to === e.lid,
+          );
+          if (isChild) { assetsFolderLid = e.lid; break; }
+        }
+      }
+
+      if (!assetsFolderLid) {
+        // Create ASSETS folder
+        assetsFolderLid = generateLid();
+        container = addEntry(container, assetsFolderLid, 'folder', 'ASSETS', ts);
+        events.push({ type: 'ENTRY_CREATED', lid: assetsFolderLid, archetype: 'folder' });
+
+        // Place it under the same parent as contextLid
+        if (parentFolderLid) {
+          const relId = generateLid();
+          container = addRelation(container, relId, parentFolderLid, assetsFolderLid, 'structural', ts);
+          events.push({ type: 'RELATION_CREATED', id: relId, from: parentFolderLid, to: assetsFolderLid, kind: 'structural' });
+        }
+      }
+
+      // 3. Create attachment entry (no phase transition)
+      const attachmentLid = generateLid();
+      const bodyMeta = JSON.stringify({
+        name: action.name,
+        mime: action.mime,
+        size: action.size,
+        asset_key: action.assetKey,
+      });
+      container = addEntry(container, attachmentLid, 'attachment', action.name, ts);
+      container = updateEntry(container, attachmentLid, action.name, bodyMeta, ts);
+      container = mergeAssets(container, { [action.assetKey]: action.assetData });
+      events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
+
+      // 4. Place attachment inside ASSETS folder
+      const attRelId = generateLid();
+      container = addRelation(container, attRelId, assetsFolderLid, attachmentLid, 'structural', ts);
+      events.push({ type: 'RELATION_CREATED', id: attRelId, from: assetsFolderLid, to: attachmentLid, kind: 'structural' });
+
+      const next: AppState = { ...state, container };
+      return { state: next, events };
+    }
     case 'TOGGLE_FOLDER_COLLAPSE': {
       const lids = state.collapsedFolders.includes(action.lid)
         ? state.collapsedFolders.filter((l) => l !== action.lid)
@@ -632,6 +825,10 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
     case 'CANCEL_EDIT': {
       const next: AppState = { ...state, phase: 'ready', editingLid: null };
       return { state: next, events: [{ type: 'EDIT_CANCELLED' }] };
+    }
+    case 'PASTE_ATTACHMENT': {
+      // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
+      return reduceReady(state, action);
     }
     default:
       return blocked(state, action);

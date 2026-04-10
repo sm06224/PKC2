@@ -18,7 +18,14 @@ import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { importTextlogBundle } from './adapter/platform/textlog-bundle';
+import { importTextBundle } from './adapter/platform/text-bundle';
+import {
+  previewBatchBundleFromBuffer,
+  importBatchBundleFromBuffer,
+} from './adapter/platform/batch-import';
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
+import { buildBatchImportPlan } from './features/batch-import/import-planner';
+import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/batch-import/import-planner';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
@@ -173,6 +180,18 @@ async function boot(): Promise<void> {
   // 8a. Textlog bundle import handler (Issue H) — additive,
   // distinct file picker so the .textlog.zip flow is unambiguous.
   mountTextlogImportHandler(root, dispatcher);
+
+  // 8a'. Text bundle import handler — sister of the textlog flow,
+  // for `.text.zip` single-body markdown bundles. Additive with the
+  // same N+1 dispatch pattern (N attachments then 1 text entry).
+  mountTextImportHandler(root, dispatcher);
+
+  // 8a''. Batch bundle import handler — reads container-wide or
+  // folder-scoped export ZIPs containing multiple .text.zip /
+  // .textlog.zip bundles. Additive with the same N+1 dispatch pattern
+  // per nested bundle. Failure-atomic: if any nested bundle fails to
+  // parse, nothing is dispatched.
+  mountBatchImportHandler(root, dispatcher);
 
   // 8b. ZIP export handler: direct async export (no phase transition needed)
   mountZipExportHandler(root, dispatcher);
@@ -485,6 +504,260 @@ function mountTextlogImportHandler(root: HTMLElement, dispatcher: Dispatcher): v
       `[PKC2] Textlog import complete: "${result.textlog.title}"`
       + ` (${result.entryCount} rows, ${result.attachments.length} attachments)`,
     );
+  });
+}
+
+/**
+ * Mount text bundle import handler — sister of
+ * `mountTextlogImportHandler`, for `.text.zip` single-body markdown
+ * bundles. Format spec in `docs/development/text-markdown-zip-export.md`.
+ *
+ * Additive: the imported text + its attachments are **added** to the
+ * current container, never replacing it. The dispatch order is the
+ * same N + 1 pattern as the textlog path — attachments first (so
+ * `container.assets` gets populated and `buildAssetMimeMap` resolves),
+ * then the text entry last (so its body renders with every reference
+ * already resolvable).
+ *
+ * Failure atomicity: any parse / format / version / missing-body.md
+ * error resolves to `{ ok: false, error }` inside
+ * `importTextBundle`, and we never enter the dispatch loop.
+ */
+function mountTextImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  // Accept both `.text.zip` (canonical) and bare `.zip` for the same
+  // reasons the textlog path does.
+  fileInput.accept = '.zip,.text.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-text-input');
+  document.body.appendChild(fileInput);
+
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-text-bundle"]');
+    if (!target) return;
+    const state = dispatcher.getState();
+    if (state.readonly) {
+      console.warn('[PKC2] Text import blocked: workspace is readonly');
+      return;
+    }
+    if (!state.container) {
+      console.warn('[PKC2] Text import blocked: no container loaded');
+      return;
+    }
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const result = await importTextBundle(file);
+    if (!result.ok) {
+      console.warn(`[PKC2] Text import failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Text import failed: ${result.error}` });
+      return;
+    }
+
+    // 1. Dispatch each attachment as its own CREATE_ENTRY + COMMIT_EDIT
+    // pair. Must come BEFORE the text entry so that when the text
+    // entry renders, `buildAssetMimeMap` already sees each
+    // `asset_key` in `container.entries`.
+    for (const att of result.attachments) {
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
+      const lid = dispatcher.getState().editingLid;
+      if (!lid) continue;
+      const body = serializeAttachmentBody({
+        name: att.name,
+        mime: att.mime,
+        size: att.size,
+        asset_key: att.assetKey,
+      });
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid,
+        title: att.name,
+        body,
+        assets: { [att.assetKey]: att.data },
+      });
+    }
+
+    // 2. Dispatch the text entry itself. Its body already contains
+    // the rewritten asset keys.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: result.text.title });
+    const textLid = dispatcher.getState().editingLid;
+    if (textLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: textLid,
+        title: result.text.title,
+        body: result.text.body,
+      });
+    }
+
+    console.log(
+      `[PKC2] Text import complete: "${result.text.title}"`
+      + ` (${result.attachments.length} attachments)`,
+    );
+  });
+}
+
+/**
+ * Mount batch bundle import handler — reads container-wide or
+ * folder-scoped export ZIPs containing multiple .text.zip /
+ * .textlog.zip bundles. Delegates each nested bundle to the
+ * existing single-entry importers.
+ *
+ * Additive: imported entries are **added** to the current container.
+ * Failure-atomic: if any nested bundle fails to parse, nothing is
+ * dispatched and the error is surfaced via SYS_ERROR.
+ *
+ * Dispatch order per nested bundle: attachments first (N), then
+ * the main entry (1), same as single-entry import paths.
+ */
+function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.zip,.textlogs.zip,.texts.zip,.mixed.zip,.folder-export.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-batch-input');
+  document.body.appendChild(fileInput);
+
+  // Stores the raw buffer while user reviews the preview panel.
+  let pendingBuffer: ArrayBuffer | null = null;
+  let pendingSource = '';
+
+  // 1. Batch button → open file picker
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-batch-bundle"]');
+    if (!target) return;
+    const state = dispatcher.getState();
+    if (state.readonly) {
+      console.warn('[PKC2] Batch import blocked: workspace is readonly');
+      return;
+    }
+    if (!state.container) {
+      console.warn('[PKC2] Batch import blocked: no container loaded');
+      return;
+    }
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  // 2. File selected → preview (manifest only, fast)
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    const preview = previewBatchBundleFromBuffer(buf, file.name);
+    if (!preview.ok) {
+      console.warn(`[PKC2] Batch import failed: ${preview.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Batch import failed: ${preview.error}` });
+      return;
+    }
+    pendingBuffer = buf;
+    pendingSource = file.name;
+    dispatcher.dispatch({ type: 'SYS_BATCH_IMPORT_PREVIEW', preview: preview.info });
+  });
+
+  // 3a. Toggle individual entry selection
+  root.addEventListener('change', (e: Event) => {
+    const target = e.target as HTMLElement;
+    if (target.getAttribute('data-pkc-action') === 'toggle-batch-import-entry') {
+      const index = Number(target.getAttribute('data-pkc-entry-index'));
+      if (!Number.isNaN(index)) {
+        dispatcher.dispatch({ type: 'TOGGLE_BATCH_IMPORT_ENTRY', index });
+      }
+    } else if (target.getAttribute('data-pkc-action') === 'toggle-all-batch-import-entries') {
+      dispatcher.dispatch({ type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    }
+  });
+
+  // 3b. Continue → full parse + dispatch selected entries only
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="confirm-batch-import"]');
+    if (!target || !pendingBuffer) return;
+
+    // Read selected indices before clearing preview
+    const selectedSet = new Set(
+      dispatcher.getState().batchImportPreview?.selectedIndices ?? [],
+    );
+
+    const buf = pendingBuffer;
+    const source = pendingSource;
+    pendingBuffer = null;
+    pendingSource = '';
+
+    // Clear preview panel first
+    dispatcher.dispatch({ type: 'CONFIRM_BATCH_IMPORT' });
+
+    // Full parse
+    const result = importBatchBundleFromBuffer(buf, source);
+    if (!result.ok) {
+      console.warn(`[PKC2] Batch import failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Batch import failed: ${result.error}` });
+      return;
+    }
+
+    // Map adapter types → planner input (boundary mapping)
+    const plannerFolders: PlannerFolderInfo[] | undefined = result.folders?.map((f) => ({
+      lid: f.lid,
+      title: f.title,
+      parentLid: f.parentLid,
+    }));
+    const plannerEntries: PlannerEntry[] = result.entries.map((e) => ({
+      archetype: e.archetype,
+      title: e.title,
+      body: e.body,
+      parentFolderLid: e.parentFolderLid,
+      attachments: e.attachments.map((att) => ({
+        assetKey: att.assetKey,
+        data: att.data,
+        name: att.name,
+        mime: att.mime,
+        size: att.size ?? 0,
+      })),
+    }));
+    const plannerInput: PlannerInput = {
+      entries: plannerEntries,
+      folders: plannerFolders,
+      source,
+      format: result.format,
+    };
+
+    // Pure planning: validate folder graph + build plan
+    const planResult = buildBatchImportPlan(plannerInput, selectedSet);
+
+    if (!planResult.ok) {
+      console.warn(`[PKC2] Folder graph invalid, falling back to flat import: ${planResult.error}`);
+    }
+
+    // Atomic apply: single dispatch for the entire import
+    const plan = planResult.ok ? planResult.plan : planResult.fallbackPlan;
+    dispatcher.dispatch({ type: 'SYS_APPLY_BATCH_IMPORT', plan });
+
+    const selectedCount = selectedSet.size;
+    const totalAttachments = plan.entries.reduce((sum, e) => sum + e.attachments.length, 0);
+    const folderNote = plan.restoreStructure
+      ? ` (folder-export: ${plan.folders.length} folders restored)`
+      : !planResult.ok
+        ? ` (folder-export: malformed metadata — flat fallback)`
+        : result.format === 'pkc2-folder-export-bundle'
+          ? ' (folder-export: フォルダ構造は復元されません)'
+          : '';
+    console.log(
+      `[PKC2] Batch import complete: ${selectedCount}/${result.entries.length} entries`
+      + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,
+    );
+  });
+
+  // 4. Cancel → clear preview
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="cancel-batch-import"]');
+    if (!target) return;
+    pendingBuffer = null;
+    pendingSource = '';
+    dispatcher.dispatch({ type: 'CANCEL_BATCH_IMPORT' });
   });
 }
 

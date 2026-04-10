@@ -32,6 +32,10 @@ export type UserAction =
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
   | { type: 'CANCEL_IMPORT' }
+  | { type: 'CONFIRM_BATCH_IMPORT' }
+  | { type: 'CANCEL_BATCH_IMPORT' }
+  | { type: 'TOGGLE_BATCH_IMPORT_ENTRY'; index: number }
+  | { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
@@ -101,7 +105,21 @@ export type UserAction =
    * Runtime-only UI state. Toggles the presence of `lid` in
    * `state.collapsedFolders`. Does NOT mutate the container.
    */
-  | { type: 'TOGGLE_FOLDER_COLLAPSE'; lid: string };
+  | { type: 'TOGGLE_FOLDER_COLLAPSE'; lid: string }
+  /**
+   * PASTE_ATTACHMENT — create an attachment entry from pasted image data
+   * without changing phase or editing state.
+   *
+   * Contract:
+   * - Blocked when readonly or container is absent.
+   * - Creates a new attachment entry with the given asset data.
+   * - Merges the asset into container.assets.
+   * - Auto-creates an "ASSETS" folder as a sibling of contextLid if
+   *   one does not already exist, and places the attachment in it.
+   * - Does NOT change phase, editingLid, or selectedLid.
+   * - Emits ENTRY_CREATED + RELATION_CREATED events.
+   */
+  | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];
