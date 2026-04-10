@@ -275,6 +275,17 @@ function renderHeader(state: AppState): HTMLElement {
     rehydrateBtn.setAttribute('title', 'Copy this container to your browser storage for editing');
     rehydrateBtn.textContent = 'Rehydrate to Workspace';
     header.appendChild(rehydrateBtn);
+
+    // Container-wide TEXTLOG export — available in readonly mode
+    // because export is a read-only operation (spec §7).
+    const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+    if (hasTextlogs) {
+      const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
+      textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
+      textlogsBtn.textContent = 'TEXTLOGs';
+      header.appendChild(textlogsBtn);
+    }
   }
 
   // Light mode: show light badge (assets stripped)

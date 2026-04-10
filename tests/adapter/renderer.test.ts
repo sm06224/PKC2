@@ -1624,6 +1624,51 @@ describe('Renderer', () => {
   });
 });
 
+// ── Container-wide TEXTLOG export ──
+
+describe('Container-wide TEXTLOG export button', () => {
+  const textlogContainer: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'e1', title: 'Log', body: '{"entries":[]}', archetype: 'textlog', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'e2', title: 'Text', body: 'hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [], revisions: [], assets: {},
+  };
+
+  it('shows TEXTLOGs button when container has textlog entries', () => {
+    const state: AppState = {
+      phase: 'ready', container: textlogContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('TEXTLOGs');
+  });
+
+  it('hides TEXTLOGs button when container has no textlog entries', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
+    expect(btn).toBeNull();
+  });
+
+  it('shows TEXTLOGs button in readonly mode when textlog entries exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: textlogContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('TEXTLOGs');
+  });
+});
+
 // ── Issue #50: Folder UX Hardening ──
 
 describe('Folder UX Hardening', () => {
