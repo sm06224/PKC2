@@ -697,6 +697,66 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       return;
     }
 
+    // Folder structure restore: create necessary folders first
+    const oldToNewLid = new Map<string, string>();
+    let folderCount = 0;
+    if (result.folders && result.folders.length > 0) {
+      // Compute which folders are needed: ancestors of selected entries
+      const neededFolderLids = new Set<string>();
+      const folderByLid = new Map(result.folders.map((f) => [f.lid, f]));
+      for (let i = 0; i < result.entries.length; i++) {
+        if (!selectedSet.has(i)) continue;
+        let cur = result.entries[i]!.parentFolderLid;
+        while (cur && !neededFolderLids.has(cur)) {
+          neededFolderLids.add(cur);
+          const folder = folderByLid.get(cur);
+          cur = folder?.parentLid ?? undefined;
+        }
+      }
+
+      // Topological sort: create root folders first, then children.
+      // Process folders in order where parent always comes before child.
+      const sorted: typeof result.folders = [];
+      const placed = new Set<string>();
+      const remaining = result.folders.filter((f) => neededFolderLids.has(f.lid));
+      while (remaining.length > sorted.length) {
+        let progress = false;
+        for (const f of remaining) {
+          if (placed.has(f.lid)) continue;
+          if (f.parentLid === null || placed.has(f.parentLid)) {
+            sorted.push(f);
+            placed.add(f.lid);
+            progress = true;
+          }
+        }
+        if (!progress) break; // Prevent infinite loop on cycle
+      }
+
+      // Create folder entries
+      for (const folder of sorted) {
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'folder', title: folder.title });
+        const newLid = dispatcher.getState().editingLid;
+        if (newLid) {
+          dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: newLid, title: folder.title, body: '' });
+          oldToNewLid.set(folder.lid, newLid);
+          folderCount++;
+        }
+      }
+
+      // Create structural relations between folders (parent → child)
+      for (const folder of sorted) {
+        if (folder.parentLid !== null) {
+          const newParent = oldToNewLid.get(folder.parentLid);
+          const newChild = oldToNewLid.get(folder.lid);
+          if (newParent && newChild) {
+            dispatcher.dispatch({
+              type: 'CREATE_RELATION', from: newParent, to: newChild, kind: 'structural',
+            });
+          }
+        }
+      }
+    }
+
     let totalAttachments = 0;
     let importedCount = 0;
     for (let i = 0; i < result.entries.length; i++) {
@@ -732,13 +792,24 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
           title: entry.title,
           body: entry.body,
         });
+        // Create structural relation to parent folder if applicable
+        if (entry.parentFolderLid) {
+          const newParent = oldToNewLid.get(entry.parentFolderLid);
+          if (newParent) {
+            dispatcher.dispatch({
+              type: 'CREATE_RELATION', from: newParent, to: lid, kind: 'structural',
+            });
+          }
+        }
       }
       importedCount++;
     }
 
-    const folderNote = result.format === 'pkc2-folder-export-bundle'
-      ? ' (folder-export: フォルダ構造は復元されません)'
-      : '';
+    const folderNote = result.folders && result.folders.length > 0
+      ? ` (folder-export: ${folderCount} folders restored)`
+      : result.format === 'pkc2-folder-export-bundle'
+        ? ' (folder-export: フォルダ構造は復元されません)'
+        : '';
     console.log(
       `[PKC2] Batch import complete: ${importedCount}/${result.entries.length} entries`
       + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,

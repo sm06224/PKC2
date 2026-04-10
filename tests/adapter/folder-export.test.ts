@@ -358,4 +358,88 @@ describe('buildFolderExportBundle', () => {
     ) as TextlogBundleManifest;
     expect(innerManifest.format).toBe('pkc2-textlog-bundle');
   });
+
+  // ── folder hierarchy metadata tests ──────────────────
+
+  it('manifest includes folders array with root folder', () => {
+    const folder = makeEntry('f1', 'Root', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({
+      entries: [folder, text],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+
+    const result = buildFolderExportBundle(folder, container);
+    expect(result.manifest.folders).toBeDefined();
+    expect(result.manifest.folders).toHaveLength(1);
+    expect(result.manifest.folders![0]).toEqual({
+      lid: 'f1', title: 'Root', parent_lid: null,
+    });
+  });
+
+  it('manifest includes subfolder hierarchy', () => {
+    const root = makeEntry('f1', 'Root', 'folder');
+    const sub = makeEntry('f2', 'Sub', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({
+      entries: [root, sub, text],
+      relations: [
+        makeRelation('r1', 'f1', 'f2'),
+        makeRelation('r2', 'f2', 't1'),
+      ],
+    });
+
+    const result = buildFolderExportBundle(root, container);
+    expect(result.manifest.folders).toHaveLength(2);
+    expect(result.manifest.folders![0]).toEqual({
+      lid: 'f1', title: 'Root', parent_lid: null,
+    });
+    expect(result.manifest.folders![1]).toEqual({
+      lid: 'f2', title: 'Sub', parent_lid: 'f1',
+    });
+  });
+
+  it('entries include parent_folder_lid', () => {
+    const root = makeEntry('f1', 'Root', 'folder');
+    const sub = makeEntry('f2', 'Sub', 'folder');
+    const t1 = makeEntry('t1', 'Doc A', 'text', 'a');
+    const t2 = makeEntry('t2', 'Doc B', 'text', 'b');
+    const container = makeContainer({
+      entries: [root, sub, t1, t2],
+      relations: [
+        makeRelation('r1', 'f1', 'f2'),
+        makeRelation('r2', 'f1', 't1'),
+        makeRelation('r3', 'f2', 't2'),
+      ],
+    });
+
+    const result = buildFolderExportBundle(root, container);
+    const entryA = result.manifest.entries.find((e) => e.title === 'Doc A');
+    const entryB = result.manifest.entries.find((e) => e.title === 'Doc B');
+    expect(entryA!.parent_folder_lid).toBe('f1');
+    expect(entryB!.parent_folder_lid).toBe('f2');
+  });
+
+  it('deep nested folder hierarchy is preserved', () => {
+    const root = makeEntry('f1', 'Root', 'folder');
+    const sub1 = makeEntry('f2', 'Level 1', 'folder');
+    const sub2 = makeEntry('f3', 'Level 2', 'folder');
+    const text = makeEntry('t1', 'Deep Doc', 'text', 'deep');
+    const container = makeContainer({
+      entries: [root, sub1, sub2, text],
+      relations: [
+        makeRelation('r1', 'f1', 'f2'),
+        makeRelation('r2', 'f2', 'f3'),
+        makeRelation('r3', 'f3', 't1'),
+      ],
+    });
+
+    const result = buildFolderExportBundle(root, container);
+    expect(result.manifest.folders).toHaveLength(3);
+    expect(result.manifest.folders![2]).toEqual({
+      lid: 'f3', title: 'Level 2', parent_lid: 'f2',
+    });
+    const entry = result.manifest.entries[0]!;
+    expect(entry.parent_folder_lid).toBe('f3');
+  });
 });

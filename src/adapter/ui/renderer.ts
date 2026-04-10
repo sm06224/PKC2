@@ -446,7 +446,7 @@ function renderShellMenu(
     'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
     '表示: More… → Viewer（印刷可能なレンダリング表示）',
     'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs / フォルダ選択 → Export',
-    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加、フォルダ構造は復元されません）',
+    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加、フォルダ構造は自動復元）',
     '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
     'ショートカット: ? キーで一覧表示',
   ];
@@ -2111,12 +2111,19 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
   }
   panel.appendChild(summary);
 
-  // Folder-export caveat
+  // Folder-export: restore info or caveat
   if (info.isFolderExport) {
-    const caveat = createElement('div', 'pkc-import-warning');
-    caveat.setAttribute('data-pkc-role', 'folder-caveat');
-    caveat.textContent = 'フォルダ構造は復元されません — エントリはフラットに追加されます';
-    panel.appendChild(caveat);
+    if (info.canRestoreFolderStructure) {
+      const restoreInfo = createElement('div', 'pkc-import-info');
+      restoreInfo.setAttribute('data-pkc-role', 'folder-restore-info');
+      restoreInfo.textContent = `フォルダ構造: ${info.folderCount} folders — 復元されます`;
+      panel.appendChild(restoreInfo);
+    } else {
+      const caveat = createElement('div', 'pkc-import-warning');
+      caveat.setAttribute('data-pkc-role', 'folder-caveat');
+      caveat.textContent = 'フォルダ構造は復元されません — エントリはフラットに追加されます';
+      panel.appendChild(caveat);
+    }
   }
 
   // Entry list with checkboxes

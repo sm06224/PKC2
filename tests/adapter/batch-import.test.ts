@@ -883,3 +883,152 @@ describe('previewBatchBundleFromBuffer — deep preview (entry-level)', () => {
     expect(result.info.entries[0]!.bodySnippet).toBeUndefined();
   });
 });
+
+// ── folder structure restore tests ─────────────────
+
+describe('folder structure restore', () => {
+  it('importBatchBundleFromBuffer returns folders for folder-export bundles', async () => {
+    const folder = makeEntry('f1', 'Root', 'folder');
+    const sub = makeEntry('f2', 'Sub', 'folder');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({
+      entries: [folder, sub, t1],
+      relations: [makeRelation('r1', 'f1', 'f2'), makeRelation('r2', 'f2', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.folders).toBeDefined();
+    expect(result.folders).toHaveLength(2);
+    expect(result.folders![0]).toMatchObject({ lid: 'f1', title: 'Root', parentLid: null });
+    expect(result.folders![1]).toMatchObject({ lid: 'f2', title: 'Sub', parentLid: 'f1' });
+  });
+
+  it('importBatchBundleFromBuffer includes parentFolderLid on entries', async () => {
+    const folder = makeEntry('f1', 'Root', 'folder');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({
+      entries: [folder, t1],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]!.parentFolderLid).toBe('f1');
+  });
+
+  it('non-folder-export bundles do not have folders', async () => {
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.folders).toBeUndefined();
+  });
+
+  it('preview reports canRestoreFolderStructure for new folder-export bundles', async () => {
+    const folder = makeEntry('f1', 'Root', 'folder');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({
+      entries: [folder, t1],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(true);
+    expect(result.info.folderCount).toBe(1);
+  });
+
+  it('preview reports canRestoreFolderStructure=false for old bundles without folders', () => {
+    const manifest = {
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      exported_at: '2026-04-10T00:00:00Z',
+      source_cid: 'cnt-test',
+      source_folder_lid: 'f1',
+      source_folder_title: 'Root',
+      scope: 'recursive',
+      text_count: 1,
+      textlog_count: 0,
+      compact: false,
+      entries: [{ lid: 't1', title: 'Doc', archetype: 'text', filename: 'doc.text.zip', asset_count: 0, missing_asset_count: 0 }],
+      // No folders array — old format
+    };
+    const dummy = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const buf = buildFakeZip(manifest, [{ name: 'doc.text.zip', data: dummy }]);
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.folderCount).toBe(0);
+  });
+
+  it('non-folder-export bundles have canRestoreFolderStructure=false', async () => {
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.canRestoreFolderStructure).toBe(false);
+    expect(result.info.folderCount).toBe(0);
+  });
+
+  it('deep nested folder-export preserves full hierarchy in import result', async () => {
+    const root = makeEntry('f1', 'Root', 'folder');
+    const sub1 = makeEntry('f2', 'Level 1', 'folder');
+    const sub2 = makeEntry('f3', 'Level 2', 'folder');
+    const t1 = makeEntry('t1', 'Deep', 'text', 'deep content');
+    const container = makeContainer({
+      entries: [root, sub1, sub2, t1],
+      relations: [
+        makeRelation('r1', 'f1', 'f2'),
+        makeRelation('r2', 'f2', 'f3'),
+        makeRelation('r3', 'f3', 't1'),
+      ],
+    });
+    const exported = buildFolderExportBundle(root, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.folders).toHaveLength(3);
+    expect(result.folders![0]).toMatchObject({ lid: 'f1', parentLid: null });
+    expect(result.folders![1]).toMatchObject({ lid: 'f2', parentLid: 'f1' });
+    expect(result.folders![2]).toMatchObject({ lid: 'f3', parentLid: 'f2' });
+    expect(result.entries[0]!.parentFolderLid).toBe('f3');
+  });
+
+  it('mixed import remains unaffected by folder restore', async () => {
+    const { buildMixedContainerBundle } = await import('@adapter/platform/mixed-bundle');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'hi' }]));
+    const container = makeContainer({ entries: [t1, l1] });
+    const exported = buildMixedContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.folders).toBeUndefined();
+    expect(result.entries[0]!.parentFolderLid).toBeUndefined();
+    expect(result.entries[1]!.parentFolderLid).toBeUndefined();
+  });
+});
