@@ -302,6 +302,15 @@ function renderHeader(state: AppState): HTMLElement {
       textsBtn.textContent = 'TEXTs';
       header.appendChild(textsBtn);
     }
+
+    // Mixed container export — available in readonly mode.
+    if (hasTextlogs || hasTexts) {
+      const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+      mixedBtn.setAttribute('title', 'Export all TEXTs + TEXTLOGs as a single ZIP bundle (.mixed.zip)');
+      mixedBtn.textContent = 'Mixed';
+      header.appendChild(mixedBtn);
+    }
   }
 
   // Light mode: show light badge (assets stripped)
@@ -692,6 +701,17 @@ function renderExportImportInline(state: AppState): HTMLElement {
     content.appendChild(textsBtn);
   }
 
+  // Container-wide mixed export — shown when the container has at
+  // least one TEXT or TEXTLOG entry. Bundles both archetypes into
+  // a single .mixed.zip.
+  if (hasTextlogs || hasTexts) {
+    const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+    mixedBtn.setAttribute('title', '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip)');
+    mixedBtn.textContent = 'Mixed';
+    content.appendChild(mixedBtn);
+  }
+
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);
@@ -720,7 +740,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // Import batch bundle (container-wide / folder-scoped)
   const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBatchBtn.setAttribute('data-pkc-action', 'import-batch-bundle');
-  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .folder-export.zip) をまとめてインポート');
+  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .mixed.zip / .folder-export.zip) をまとめてインポート');
   importBatchBtn.textContent = '📥 Batch';
   content.appendChild(importBatchBtn);
 

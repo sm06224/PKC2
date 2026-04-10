@@ -91,6 +91,7 @@ const ACCEPTED_FORMATS = new Set([
   'pkc2-textlogs-container-bundle',
   'pkc2-texts-container-bundle',
   'pkc2-folder-export-bundle',
+  'pkc2-mixed-container-bundle',
 ]);
 
 // ── Public API ────────────────────────────────────────
@@ -202,6 +203,7 @@ const FORMAT_LABELS: Record<string, string> = {
   'pkc2-texts-container-bundle': 'TEXT container bundle',
   'pkc2-textlogs-container-bundle': 'TEXTLOG container bundle',
   'pkc2-folder-export-bundle': 'Folder export bundle',
+  'pkc2-mixed-container-bundle': 'Mixed (TEXT + TEXTLOG) container bundle',
 };
 
 /**
@@ -356,6 +358,7 @@ function resolveArchetype(
     case 'pkc2-texts-container-bundle':
       return 'text';
     case 'pkc2-folder-export-bundle':
+    case 'pkc2-mixed-container-bundle':
       if (entry.archetype === 'text') return 'text';
       if (entry.archetype === 'textlog') return 'textlog';
       return null;
