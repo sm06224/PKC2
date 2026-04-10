@@ -626,6 +626,74 @@ describe('previewBatchBundleFromBuffer — folder export bundle', () => {
   });
 });
 
+// ── preview entry list (selective import) ────────
+
+describe('previewBatchBundleFromBuffer — entry list', () => {
+  it('includes entries with title and archetype from texts bundle', async () => {
+    const t1 = makeEntry('t1', 'Doc A', 'text', 'Hello');
+    const t2 = makeEntry('t2', 'Doc B', 'text', 'World');
+    const container = makeContainer({ entries: [t1, t2] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf, 'test.texts.zip');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.entries).toHaveLength(2);
+    expect(result.info.entries[0]).toEqual({ index: 0, title: 'Doc A', archetype: 'text' });
+    expect(result.info.entries[1]).toEqual({ index: 1, title: 'Doc B', archetype: 'text' });
+  });
+
+  it('selectedIndices defaults to all entries', async () => {
+    const t1 = makeEntry('t1', 'A', 'text', 'a');
+    const t2 = makeEntry('t2', 'B', 'text', 'b');
+    const t3 = makeEntry('t3', 'C', 'text', 'c');
+    const container = makeContainer({ entries: [t1, t2, t3] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.selectedIndices).toEqual([0, 1, 2]);
+  });
+
+  it('includes entries with correct archetype from folder export', async () => {
+    const folder = makeEntry('f1', 'Project', 'folder');
+    const t1 = makeEntry('t1', 'Note', 'text', 'content');
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'hi' }]));
+    const container = makeContainer({
+      entries: [folder, t1, l1],
+      relations: [makeRelation('r1', 'f1', 't1'), makeRelation('r2', 'f1', 'l1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.entries).toHaveLength(2);
+    const archetypes = result.info.entries.map((e) => e.archetype);
+    expect(archetypes).toContain('text');
+    expect(archetypes).toContain('textlog');
+  });
+
+  it('includes entries from textlogs bundle', async () => {
+    const l1 = makeEntry('l1', 'Log A', 'textlog', makeTextlogBody([{ id: 'x', text: 'hi' }]));
+    const container = makeContainer({ entries: [l1] });
+    const exported = buildTextlogsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.entries).toHaveLength(1);
+    expect(result.info.entries[0]!.archetype).toBe('textlog');
+    expect(result.info.entries[0]!.title).toBe('Log A');
+    expect(result.info.selectedIndices).toEqual([0]);
+  });
+});
+
 describe('previewBatchBundleFromBuffer — error cases', () => {
   it('rejects non-ZIP input', () => {
     const garbage = new Uint8Array([0xff, 0xfe]).buffer as ArrayBuffer;

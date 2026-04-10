@@ -417,8 +417,33 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         }],
       };
     }
+    case 'TOGGLE_BATCH_IMPORT_ENTRY': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const prev = state.batchImportPreview.selectedIndices;
+      const idx = action.index;
+      const selectedIndices = prev.includes(idx)
+        ? prev.filter((i) => i !== idx)
+        : [...prev, idx];
+      const next: AppState = {
+        ...state,
+        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const all = state.batchImportPreview.entries.map((e) => e.index);
+      const allSelected = state.batchImportPreview.selectedIndices.length === all.length;
+      const selectedIndices = allSelected ? [] : all;
+      const next: AppState = {
+        ...state,
+        batchImportPreview: { ...state.batchImportPreview, selectedIndices },
+      };
+      return { state: next, events: [] };
+    }
     case 'CONFIRM_BATCH_IMPORT': {
       if (!state.batchImportPreview) return blocked(state, action);
+      if (state.batchImportPreview.selectedIndices.length === 0) return blocked(state, action);
       const next: AppState = { ...state, batchImportPreview: null };
       return {
         state: next,

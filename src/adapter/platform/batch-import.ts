@@ -54,6 +54,13 @@ export type BatchImportResult = BatchImportSuccess | BatchImportFailure;
 
 // ── Preview types ───────────────────────────────────
 
+/** Per-entry metadata from the batch bundle manifest. */
+export interface BatchImportPreviewEntry {
+  index: number;
+  title: string;
+  archetype: 'text' | 'textlog';
+}
+
 /** Lightweight metadata extracted from the manifest only (no nested parse). */
 export interface BatchImportPreviewInfo {
   format: string;
@@ -68,6 +75,10 @@ export interface BatchImportPreviewInfo {
   isFolderExport: boolean;
   sourceFolderTitle: string | null;
   source: string;
+  /** Per-entry metadata (title + archetype). */
+  entries: BatchImportPreviewEntry[];
+  /** Indices of entries selected for import (default: all). */
+  selectedIndices: number[];
 }
 
 export type BatchImportPreviewResult =
@@ -135,21 +146,30 @@ export function previewBatchBundleFromBuffer(
     }
 
     const manifestEntries = manifest.entries as
-      | { archetype?: string; missing_asset_count?: number }[]
+      | { archetype?: string; missing_asset_count?: number; title?: string; filename?: string }[]
       | undefined;
     if (!Array.isArray(manifestEntries)) {
       return { ok: false, error: 'Missing or invalid entries array in manifest' };
     }
 
-    // Count archetypes
+    // Count archetypes and build per-entry metadata
     let textCount = 0;
     let textlogCount = 0;
     let missingAssetCount = 0;
-    for (const me of manifestEntries) {
+    const previewEntries: BatchImportPreviewEntry[] = [];
+    for (let i = 0; i < manifestEntries.length; i++) {
+      const me = manifestEntries[i]!;
       const arch = resolveArchetype(format, me);
       if (arch === 'text') textCount++;
       else if (arch === 'textlog') textlogCount++;
       missingAssetCount += (me.missing_asset_count ?? 0);
+      if (arch) {
+        previewEntries.push({
+          index: i,
+          title: me.title ?? me.filename ?? `Entry ${i + 1}`,
+          archetype: arch,
+        });
+      }
     }
 
     const isFolderExport = format === 'pkc2-folder-export-bundle';
@@ -169,6 +189,8 @@ export function previewBatchBundleFromBuffer(
           ? (manifest.source_folder_title as string | null) ?? null
           : null,
         source,
+        entries: previewEntries,
+        selectedIndices: previewEntries.map((e) => e.index),
       },
     };
   } catch (e) {

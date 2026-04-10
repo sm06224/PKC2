@@ -586,6 +586,12 @@ describe('batch import preview', () => {
     isFolderExport: false,
     sourceFolderTitle: null,
     source: 'test.texts.zip',
+    entries: [
+      { index: 0, title: 'Note A', archetype: 'text' as const },
+      { index: 1, title: 'Note B', archetype: 'text' as const },
+      { index: 2, title: 'Note C', archetype: 'text' as const },
+    ],
+    selectedIndices: [0, 1, 2],
   };
 
   it('SYS_BATCH_IMPORT_PREVIEW sets batchImportPreview on state', () => {
@@ -632,6 +638,53 @@ describe('batch import preview', () => {
     const { state, events } = reduce(readyState(), { type: 'CANCEL_BATCH_IMPORT' });
     expect(state.batchImportPreview).toBeNull();
     expect(events).toEqual([{ type: 'BATCH_IMPORT_CANCELLED' }]);
+  });
+
+  it('TOGGLE_BATCH_IMPORT_ENTRY flips index in selectedIndices', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    expect(withPreview.batchImportPreview!.selectedIndices).toEqual([0, 1, 2]);
+
+    // Deselect index 1
+    const { state } = reduce(withPreview, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state.batchImportPreview!.selectedIndices).toEqual([0, 2]);
+
+    // Re-select index 1
+    const { state: state2 } = reduce(state, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state2.batchImportPreview!.selectedIndices).toContain(1);
+  });
+
+  it('TOGGLE_BATCH_IMPORT_ENTRY without preview is blocked', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 0 });
+    expect(state).toEqual(readyState());
+  });
+
+  it('TOGGLE_ALL_BATCH_IMPORT_ENTRIES toggles all on/off', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    // All selected → toggle all → none selected
+    const { state: allOff } = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOff.batchImportPreview!.selectedIndices).toEqual([]);
+
+    // None selected → toggle all → all selected
+    const { state: allOn } = reduce(allOff, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOn.batchImportPreview!.selectedIndices).toEqual([0, 1, 2]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT is blocked when selectedIndices is empty', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+    // Deselect all
+    const allOff = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' }).state;
+    expect(allOff.batchImportPreview!.selectedIndices).toEqual([]);
+
+    // Confirm should be blocked
+    const { state, events } = reduce(allOff, { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state.batchImportPreview).not.toBeNull(); // still set — not cleared
+    expect(events).toEqual([]); // blocked = no events
   });
 });
 
