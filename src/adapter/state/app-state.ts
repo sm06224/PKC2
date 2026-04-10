@@ -465,6 +465,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
       return { state: next, events: [] };
     }
+    case 'SET_BATCH_IMPORT_TARGET_FOLDER': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const next: AppState = {
+        ...state,
+        batchImportPreview: { ...state.batchImportPreview, targetFolderLid: action.lid },
+      };
+      return { state: next, events: [] };
+    }
     case 'CONFIRM_BATCH_IMPORT': {
       if (!state.batchImportPreview) return blocked(state, action);
       if (state.batchImportPreview.selectedIndices.length === 0) return blocked(state, action);
@@ -499,6 +507,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         events.push({ type: 'ENTRY_CREATED', lid, archetype: 'folder' });
       }
 
+      // Resolve target folder: must exist in container as a folder entry
+      const targetLid = plan.targetFolderLid ?? null;
+      const targetExists = targetLid !== null
+        && container.entries.some((e) => e.lid === targetLid && e.archetype === 'folder');
+
       // 2. Create structural relations between folders
       for (const folder of plan.folders) {
         if (folder.parentOriginalLid !== null) {
@@ -508,6 +521,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             const relId = generateLid();
             container = addRelation(container, relId, newParent, newChild, 'structural', ts);
             events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: newChild, kind: 'structural' });
+          }
+        } else if (targetExists) {
+          // Top-level imported folder → attach to target folder
+          const newChild = oldToNewLid.get(folder.originalLid);
+          if (newChild) {
+            const relId = generateLid();
+            container = addRelation(container, relId, targetLid, newChild, 'structural', ts);
+            events.push({ type: 'RELATION_CREATED', id: relId, from: targetLid, to: newChild, kind: 'structural' });
           }
         }
       }
@@ -543,6 +564,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             container = addRelation(container, relId, newParent, lid, 'structural', ts);
             events.push({ type: 'RELATION_CREATED', id: relId, from: newParent, to: lid, kind: 'structural' });
           }
+        } else if (targetExists) {
+          // Unparented content entry → attach to target folder
+          const relId = generateLid();
+          container = addRelation(container, relId, targetLid, lid, 'structural', ts);
+          events.push({ type: 'RELATION_CREATED', id: relId, from: targetLid, to: lid, kind: 'structural' });
         }
       }
 

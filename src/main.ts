@@ -660,7 +660,7 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     dispatcher.dispatch({ type: 'SYS_BATCH_IMPORT_PREVIEW', preview: preview.info });
   });
 
-  // 3a. Toggle individual entry selection
+  // 3a. Toggle individual entry selection / target folder change
   root.addEventListener('change', (e: Event) => {
     const target = e.target as HTMLElement;
     if (target.getAttribute('data-pkc-action') === 'toggle-batch-import-entry') {
@@ -670,6 +670,9 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       }
     } else if (target.getAttribute('data-pkc-action') === 'toggle-all-batch-import-entries') {
       dispatcher.dispatch({ type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    } else if (target.getAttribute('data-pkc-action') === 'set-batch-import-target-folder') {
+      const lid = (target as HTMLSelectElement).value || null;
+      dispatcher.dispatch({ type: 'SET_BATCH_IMPORT_TARGET_FOLDER', lid });
     }
   });
 
@@ -678,10 +681,10 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="confirm-batch-import"]');
     if (!target || !pendingBuffer) return;
 
-    // Read selected indices before clearing preview
-    const selectedSet = new Set(
-      dispatcher.getState().batchImportPreview?.selectedIndices ?? [],
-    );
+    // Read selected indices and target folder before clearing preview
+    const previewState = dispatcher.getState().batchImportPreview;
+    const selectedSet = new Set(previewState?.selectedIndices ?? []);
+    const targetFolderLid = previewState?.targetFolderLid ?? null;
 
     const buf = pendingBuffer;
     const source = pendingSource;
@@ -723,6 +726,7 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       folders: plannerFolders,
       source,
       format: result.format,
+      targetFolderLid,
     };
 
     // Pure planning: validate folder graph + build plan

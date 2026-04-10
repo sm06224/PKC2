@@ -826,6 +826,200 @@ describe('TOGGLE reclassification', () => {
   });
 });
 
+// ── SET_BATCH_IMPORT_TARGET_FOLDER ────────────
+
+describe('SET_BATCH_IMPORT_TARGET_FOLDER', () => {
+  const previewWithTarget = {
+    format: 'pkc2-texts-container-bundle',
+    formatLabel: 'TEXT container bundle',
+    textCount: 1,
+    textlogCount: 0,
+    totalEntries: 1,
+    compacted: false,
+    missingAssetCount: 0,
+    isFolderExport: false,
+    sourceFolderTitle: null,
+    canRestoreFolderStructure: false,
+    folderCount: 0,
+    source: 'test.zip',
+    entries: [{ index: 0, title: 'Note', archetype: 'text' as const }],
+    selectedIndices: [0],
+  };
+
+  it('sets targetFolderLid on preview', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: previewWithTarget,
+    }).state;
+    const { state } = reduce(withPreview, { type: 'SET_BATCH_IMPORT_TARGET_FOLDER', lid: 'folder-1' });
+    expect(state.batchImportPreview!.targetFolderLid).toBe('folder-1');
+  });
+
+  it('can set targetFolderLid to null (root)', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: previewWithTarget,
+    }).state;
+    const { state: s1 } = reduce(withPreview, { type: 'SET_BATCH_IMPORT_TARGET_FOLDER', lid: 'folder-1' });
+    const { state: s2 } = reduce(s1, { type: 'SET_BATCH_IMPORT_TARGET_FOLDER', lid: null });
+    expect(s2.batchImportPreview!.targetFolderLid).toBeNull();
+  });
+
+  it('is blocked without preview', () => {
+    const { state } = reduce(readyState(), { type: 'SET_BATCH_IMPORT_TARGET_FOLDER', lid: 'f1' });
+    expect(state).toEqual(readyState());
+  });
+});
+
+// ── SYS_APPLY_BATCH_IMPORT with target folder ────────
+
+describe('SYS_APPLY_BATCH_IMPORT with target folder', () => {
+  function readyWithFolder(): AppState {
+    const container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'target-folder', title: 'Target', body: '',
+          archetype: 'folder' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    return { ...createInitialState(), phase: 'ready', container };
+  }
+
+  it('flat import into target folder creates structural relations', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body-a', assets: {}, attachments: [] },
+        { archetype: 'text' as const, title: 'B', body: 'body-b', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+      targetFolderLid: 'target-folder',
+    };
+    const { state, events } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    // 2 entries created + 2 structural relations (one per entry → target folder)
+    const relEvents = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(relEvents).toHaveLength(2);
+    // Both relations point from target-folder to new entries
+    for (const ev of relEvents) {
+      if (ev.type === 'RELATION_CREATED') {
+        expect(ev.from).toBe('target-folder');
+        expect(ev.kind).toBe('structural');
+      }
+    }
+    // Structural relations exist in container
+    const targetRels = state.container!.relations.filter((r) => r.from === 'target-folder');
+    expect(targetRels).toHaveLength(2);
+  });
+
+  it('restore import into target folder attaches top-level folders to target', () => {
+    const plan = {
+      folders: [
+        { originalLid: 'imp-root', title: 'Imported Root', parentOriginalLid: null },
+        { originalLid: 'imp-child', title: 'Child', parentOriginalLid: 'imp-root' },
+      ],
+      entries: [
+        { archetype: 'text' as const, title: 'Note', body: 'body', parentFolderOriginalLid: 'imp-child', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-folder-export-bundle',
+      restoreStructure: true,
+      targetFolderLid: 'target-folder',
+    };
+    const { state, events } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const relEvents = events.filter((e) => e.type === 'RELATION_CREATED');
+    // Relations: target→imp-root, imp-root→imp-child, imp-child→note = 3
+    expect(relEvents).toHaveLength(3);
+    // First relation: target-folder → imported root folder
+    const targetRels = state.container!.relations.filter((r) => r.from === 'target-folder');
+    expect(targetRels).toHaveLength(1); // only top-level folder
+    // Internal: imp-root → imp-child
+    const internalRels = state.container!.relations.filter(
+      (r) => r.from !== 'target-folder' && r.kind === 'structural',
+    );
+    expect(internalRels).toHaveLength(2); // imp-root→imp-child, imp-child→note
+  });
+
+  it('target folder LID not found → silently imports at root (no target relations)', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+      targetFolderLid: 'nonexistent-folder',
+    };
+    const { state, events } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const relEvents = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(relEvents).toHaveLength(0);
+    // Entry still created
+    const entryEvents = events.filter((e) => e.type === 'ENTRY_CREATED');
+    expect(entryEvents).toHaveLength(1);
+    expect(state.container!.relations).toHaveLength(0);
+  });
+
+  it('null targetFolderLid → root import (no target relations)', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+      targetFolderLid: null,
+    };
+    const { state, events } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const relEvents = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(relEvents).toHaveLength(0);
+    expect(state.container!.relations).toHaveLength(0);
+  });
+
+  it('restore import with unparented content entry → attached to target', () => {
+    const plan = {
+      folders: [
+        { originalLid: 'imp-root', title: 'Root', parentOriginalLid: null },
+      ],
+      entries: [
+        { archetype: 'text' as const, title: 'Parented', body: 'b', parentFolderOriginalLid: 'imp-root', assets: {}, attachments: [] },
+        { archetype: 'text' as const, title: 'Unparented', body: 'b', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-folder-export-bundle',
+      restoreStructure: true,
+      targetFolderLid: 'target-folder',
+    };
+    const { state } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    // target-folder → imp-root (top-level folder)
+    // target-folder → unparented entry
+    // imp-root → parented entry
+    const targetRels = state.container!.relations.filter((r) => r.from === 'target-folder');
+    expect(targetRels).toHaveLength(2);
+  });
+
+  it('target LID pointing to non-folder entry → silently imports at root', () => {
+    // e1 is a 'text' entry, not a folder
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+      targetFolderLid: 'e1', // exists but is text, not folder
+    };
+    const { state, events } = reduce(readyWithFolder(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const relEvents = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(relEvents).toHaveLength(0);
+    expect(state.container!.relations).toHaveLength(0);
+  });
+});
+
 // ── Restore ────────────────────────
 
 describe('restore', () => {

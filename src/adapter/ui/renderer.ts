@@ -143,7 +143,7 @@ function renderShell(state: AppState): HTMLElement {
 
   // Batch import preview panel
   if (state.batchImportPreview) {
-    shell.appendChild(renderBatchImportPreview(state.batchImportPreview));
+    shell.appendChild(renderBatchImportPreview(state.batchImportPreview, state.container));
   }
 
   // Pending offers bar
@@ -2075,7 +2075,7 @@ function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
   return panel;
 }
 
-function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
+function renderBatchImportPreview(info: BatchImportPreviewInfo, container: Container | null): HTMLElement {
   const panel = createElement('div', 'pkc-import-confirm');
   panel.setAttribute('data-pkc-region', 'batch-import-preview');
 
@@ -2110,6 +2110,32 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
     summary.appendChild(row);
   }
   panel.appendChild(summary);
+
+  // Target folder picker
+  if (container) {
+    const existingFolders = container.entries.filter((e) => e.archetype === 'folder');
+    const targetRow = createElement('div', 'pkc-import-row');
+    targetRow.setAttribute('data-pkc-region', 'batch-import-target-folder');
+    const targetLabel = createElement('span', 'pkc-import-label');
+    targetLabel.textContent = 'Destination:';
+    targetRow.appendChild(targetLabel);
+    const targetSelect = document.createElement('select');
+    targetSelect.className = 'pkc-batch-target-folder-select';
+    targetSelect.setAttribute('data-pkc-action', 'set-batch-import-target-folder');
+    const rootOpt = document.createElement('option');
+    rootOpt.value = '';
+    rootOpt.textContent = '/ (Root)';
+    targetSelect.appendChild(rootOpt);
+    for (const f of existingFolders) {
+      const opt = document.createElement('option');
+      opt.value = f.lid;
+      opt.textContent = `\u{1F4C1} ${f.title || '(untitled)'}`;
+      if (info.targetFolderLid === f.lid) opt.selected = true;
+      targetSelect.appendChild(opt);
+    }
+    targetRow.appendChild(targetSelect);
+    panel.appendChild(targetRow);
+  }
 
   // Folder-export: restore info, malformed warning, or no-metadata caveat
   if (info.isFolderExport) {
