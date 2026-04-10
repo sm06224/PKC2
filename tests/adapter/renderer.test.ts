@@ -2295,6 +2295,63 @@ describe('DnD + Context Menu Foundation', () => {
     expect(legacy.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
   });
 
+  it('renderContextMenu shows Preview for text/textlog archetypes', () => {
+    const text = renderContextMenu('e1', 0, 0, { archetype: 'text', canEdit: true });
+    expect(text.querySelector('[data-pkc-action="ctx-preview"]')).not.toBeNull();
+
+    const textlog = renderContextMenu('tl1', 0, 0, { archetype: 'textlog', canEdit: true });
+    expect(textlog.querySelector('[data-pkc-action="ctx-preview"]')).not.toBeNull();
+
+    const att = renderContextMenu('a1', 0, 0, { archetype: 'attachment', canEdit: true });
+    expect(att.querySelector('[data-pkc-action="ctx-preview"]')).not.toBeNull();
+
+    // todo archetype → no preview
+    const todo = renderContextMenu('td1', 0, 0, { archetype: 'todo', canEdit: true });
+    expect(todo.querySelector('[data-pkc-action="ctx-preview"]')).toBeNull();
+  });
+
+  it('renderContextMenu shows Sandbox Run only for attachment archetype', () => {
+    const att = renderContextMenu('a1', 0, 0, { archetype: 'attachment', canEdit: true });
+    expect(att.querySelector('[data-pkc-action="ctx-sandbox-run"]')).not.toBeNull();
+
+    const text = renderContextMenu('e1', 0, 0, { archetype: 'text', canEdit: true });
+    expect(text.querySelector('[data-pkc-action="ctx-sandbox-run"]')).toBeNull();
+  });
+
+  it('renderContextMenu always shows Copy entry embed', () => {
+    const menu = renderContextMenu('e1', 0, 0, { canEdit: false });
+    expect(menu.querySelector('[data-pkc-action="copy-entry-embed-ref"]')).not.toBeNull();
+  });
+
+  it('renderContextMenu shows Move to Folder sub-menu when folders provided', () => {
+    const folders = [
+      { lid: 'f1', title: 'Folder A' },
+      { lid: 'f2', title: 'Folder B' },
+    ];
+    const menu = renderContextMenu('e1', 0, 0, { canEdit: true, folders });
+    const folderItems = menu.querySelectorAll('[data-pkc-action="ctx-move-to-folder"]');
+    expect(folderItems.length).toBe(2);
+    expect(folderItems[0]!.getAttribute('data-pkc-folder-lid')).toBe('f1');
+    expect(folderItems[1]!.getAttribute('data-pkc-folder-lid')).toBe('f2');
+  });
+
+  it('renderContextMenu excludes self from Move to Folder list', () => {
+    const folders = [
+      { lid: 'e1', title: 'Self' },
+      { lid: 'f2', title: 'Other' },
+    ];
+    const menu = renderContextMenu('e1', 0, 0, { canEdit: true, folders });
+    const folderItems = menu.querySelectorAll('[data-pkc-action="ctx-move-to-folder"]');
+    expect(folderItems.length).toBe(1);
+    expect(folderItems[0]!.getAttribute('data-pkc-folder-lid')).toBe('f2');
+  });
+
+  it('renderContextMenu hides Move to Folder when canEdit=false', () => {
+    const folders = [{ lid: 'f1', title: 'Folder' }];
+    const menu = renderContextMenu('e1', 0, 0, { canEdit: false, folders });
+    expect(menu.querySelector('[data-pkc-action="ctx-move-to-folder"]')).toBeNull();
+  });
+
   it('existing Move to Folder still works in meta pane', () => {
     const state: AppState = {
       phase: 'ready', container: folderContainer,

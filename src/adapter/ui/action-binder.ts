@@ -1473,9 +1473,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       || field === 'textlog-entry-text';
   }
 
+  // Guard: prevent overlapping async paste operations (FileReader race)
+  let pasteInProgress = false;
+
   function handlePaste(e: ClipboardEvent): void {
     const state = dispatcher.getState();
     if (state.readonly) return;
+    if (pasteInProgress) return;
 
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -1514,8 +1518,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const textarea = target;
       const cursorPos = textarea.selectionStart ?? textarea.value.length;
 
+      pasteInProgress = true;
       const reader = new FileReader();
       reader.onload = () => {
+        pasteInProgress = false;
         const arrayBuffer = reader.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
         let binary = '';
@@ -1545,19 +1551,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         textarea.focus();
 
         // Trigger preview update for split TEXT editor
-        const wrapper = textarea.closest('.pkc-text-split-editor');
-        if (wrapper) {
-          const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-          if (preview) {
-            const src = textarea.value;
-            if (src && hasMarkdownSyntax(src)) {
-              preview.innerHTML = renderMarkdown(src);
-            } else if (src) {
-              preview.textContent = src;
-            }
-          }
-        }
+        updateTextEditPreview(textarea);
       };
+      reader.onerror = () => { pasteInProgress = false; };
       reader.readAsArrayBuffer(file);
       return;
     }
@@ -1722,29 +1718,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('mousedown', handleResizeMouseDown);
 
-  // ── TEXT split editor: update preview on line commit (Enter) ──
+  // ── TEXT split editor: update preview ──
+  // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
+  let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function updateTextEditPreview(textarea: HTMLTextAreaElement): void {
+    const wrapper = textarea.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    const src = textarea.value;
+    if (src && hasMarkdownSyntax(src)) {
+      preview.innerHTML = renderMarkdown(src);
+    } else if (src) {
+      preview.textContent = src;
+    } else {
+      preview.textContent = '(preview)';
+    }
+  }
+
   function handleTextEditPreviewUpdate(e: KeyboardEvent): void {
     if (e.key !== 'Enter' || e.isComposing) return;
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
     if (target.getAttribute('data-pkc-field') !== 'body') return;
-    const wrapper = target.closest('.pkc-text-split-editor');
-    if (!wrapper) return;
-    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-    if (!preview) return;
-    // Use requestAnimationFrame so the Enter character is inserted first
-    requestAnimationFrame(() => {
-      const src = target.value;
-      if (src && hasMarkdownSyntax(src)) {
-        preview.innerHTML = renderMarkdown(src);
-      } else if (src) {
-        preview.textContent = src;
-      } else {
-        preview.textContent = '(preview)';
-      }
-    });
+    // Cancel any pending debounce — Enter is authoritative
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    requestAnimationFrame(() => updateTextEditPreview(target));
+  }
+
+  function handleTextEditPreviewInput(e: Event): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    // Debounce: update preview 500ms after typing stops
+    if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+      previewDebounceTimer = null;
+      updateTextEditPreview(target);
+    }, 500);
   }
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
+  root.addEventListener('input', handleTextEditPreviewInput);
 
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
@@ -1809,6 +1825,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('contextmenu', handleContextMenu);
     root.removeEventListener('mousedown', handleStaleDragCleanup);
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
+    root.removeEventListener('input', handleTextEditPreviewInput);
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
