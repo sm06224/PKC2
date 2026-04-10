@@ -36,6 +36,23 @@ export interface ImportPreviewRef {
 }
 
 /**
+ * BatchImportPreviewInfo: lightweight metadata from the batch bundle manifest.
+ * All primitives — no adapter types needed.
+ */
+export interface BatchImportPreviewInfo {
+  format: string;
+  formatLabel: string;
+  textCount: number;
+  textlogCount: number;
+  totalEntries: number;
+  compacted: boolean;
+  missingAssetCount: number;
+  isFolderExport: boolean;
+  sourceFolderTitle: string | null;
+  source: string;
+}
+
+/**
  * SystemCommand: commands issued by the runtime or infrastructure,
  * not directly by the user.
  *
@@ -50,6 +67,7 @@ export type SystemCommand =
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }
+  | { type: 'SYS_BATCH_IMPORT_PREVIEW'; preview: BatchImportPreviewInfo }
   | { type: 'SYS_RECORD_OFFERED'; offer: PendingOfferRef }
   | { type: 'SYS_ERROR'; error: string };
 

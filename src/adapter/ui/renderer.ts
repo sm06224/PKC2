@@ -2,7 +2,7 @@ import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
-import type { ImportPreviewRef } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
@@ -139,6 +139,11 @@ function renderShell(state: AppState): HTMLElement {
   // Import confirmation panel
   if (state.importPreview) {
     shell.appendChild(renderImportConfirmation(state.importPreview));
+  }
+
+  // Batch import preview panel
+  if (state.batchImportPreview) {
+    shell.appendChild(renderBatchImportPreview(state.batchImportPreview));
   }
 
   // Pending offers bar
@@ -2043,6 +2048,66 @@ function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
 
   const cancelBtn = createElement('button', 'pkc-btn');
   cancelBtn.setAttribute('data-pkc-action', 'cancel-import');
+  cancelBtn.textContent = 'Cancel';
+  actions.appendChild(cancelBtn);
+
+  panel.appendChild(actions);
+  return panel;
+}
+
+function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
+  const panel = createElement('div', 'pkc-import-confirm');
+  panel.setAttribute('data-pkc-region', 'batch-import-preview');
+
+  const heading = createElement('div', 'pkc-import-warning');
+  heading.textContent = 'Batch Import Preview — 以下の内容をインポートします（追加のみ）';
+  panel.appendChild(heading);
+
+  const summary = createElement('div', 'pkc-import-summary');
+  summary.setAttribute('data-pkc-region', 'batch-import-summary');
+
+  const items: [string, string][] = [
+    ['Source', info.source],
+    ['Format', info.formatLabel],
+    ['Entries', `${info.totalEntries} 件 (TEXT: ${info.textCount}, TEXTLOG: ${info.textlogCount})`],
+  ];
+
+  if (info.compacted) {
+    items.push(['Compacted', 'はい — 欠損アセット参照は除去済み']);
+  }
+  if (info.missingAssetCount > 0) {
+    items.push(['Missing assets', `${info.missingAssetCount} 件`]);
+  }
+
+  for (const [label, value] of items) {
+    const row = createElement('div', 'pkc-import-row');
+    const labelEl = createElement('span', 'pkc-import-label');
+    labelEl.textContent = `${label}:`;
+    row.appendChild(labelEl);
+    const valueEl = createElement('span', 'pkc-import-value');
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    summary.appendChild(row);
+  }
+  panel.appendChild(summary);
+
+  // Folder-export caveat
+  if (info.isFolderExport) {
+    const caveat = createElement('div', 'pkc-import-warning');
+    caveat.setAttribute('data-pkc-role', 'folder-caveat');
+    caveat.textContent = 'フォルダ構造は復元されません — エントリはフラットに追加されます';
+    panel.appendChild(caveat);
+  }
+
+  const actions = createElement('div', 'pkc-import-actions');
+
+  const confirmBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  confirmBtn.setAttribute('data-pkc-action', 'confirm-batch-import');
+  confirmBtn.textContent = 'Continue';
+  actions.appendChild(confirmBtn);
+
+  const cancelBtn = createElement('button', 'pkc-btn');
+  cancelBtn.setAttribute('data-pkc-action', 'cancel-batch-import');
   cancelBtn.textContent = 'Cancel';
   actions.appendChild(cancelBtn);
 

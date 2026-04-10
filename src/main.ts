@@ -19,7 +19,10 @@ import { importFromFile, formatImportErrors } from './adapter/platform/importer'
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { importTextlogBundle } from './adapter/platform/textlog-bundle';
 import { importTextBundle } from './adapter/platform/text-bundle';
-import { importBatchBundle } from './adapter/platform/batch-import';
+import {
+  previewBatchBundleFromBuffer,
+  importBatchBundleFromBuffer,
+} from './adapter/platform/batch-import';
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
@@ -618,6 +621,11 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
   fileInput.setAttribute('data-pkc-role', 'import-batch-input');
   document.body.appendChild(fileInput);
 
+  // Stores the raw buffer while user reviews the preview panel.
+  let pendingBuffer: ArrayBuffer | null = null;
+  let pendingSource = '';
+
+  // 1. Batch button → open file picker
   root.addEventListener('click', (e: Event) => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-batch-bundle"]');
     if (!target) return;
@@ -634,10 +642,37 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     fileInput.click();
   });
 
+  // 2. File selected → preview (manifest only, fast)
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
-    const result = await importBatchBundle(file);
+    const buf = await file.arrayBuffer();
+    const preview = previewBatchBundleFromBuffer(buf, file.name);
+    if (!preview.ok) {
+      console.warn(`[PKC2] Batch import failed: ${preview.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Batch import failed: ${preview.error}` });
+      return;
+    }
+    pendingBuffer = buf;
+    pendingSource = file.name;
+    dispatcher.dispatch({ type: 'SYS_BATCH_IMPORT_PREVIEW', preview: preview.info });
+  });
+
+  // 3. Continue → full parse + dispatch entries
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="confirm-batch-import"]');
+    if (!target || !pendingBuffer) return;
+
+    const buf = pendingBuffer;
+    const source = pendingSource;
+    pendingBuffer = null;
+    pendingSource = '';
+
+    // Clear preview panel first
+    dispatcher.dispatch({ type: 'CONFIRM_BATCH_IMPORT' });
+
+    // Full parse
+    const result = importBatchBundleFromBuffer(buf, source);
     if (!result.ok) {
       console.warn(`[PKC2] Batch import failed: ${result.error}`);
       dispatcher.dispatch({ type: 'SYS_ERROR', error: `Batch import failed: ${result.error}` });
@@ -646,7 +681,7 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
 
     let totalAttachments = 0;
     for (const entry of result.entries) {
-      // 1. Dispatch attachments first (same N+1 pattern)
+      // N+1 dispatch: attachments first, then main entry
       for (const att of entry.attachments) {
         dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
         const lid = dispatcher.getState().editingLid;
@@ -667,7 +702,6 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
         totalAttachments++;
       }
 
-      // 2. Dispatch the main entry
       dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: entry.archetype, title: entry.title });
       const lid = dispatcher.getState().editingLid;
       if (lid) {
@@ -685,8 +719,17 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       : '';
     console.log(
       `[PKC2] Batch import complete: ${result.entries.length} entries`
-      + ` (${totalAttachments} attachments) from "${result.source}"${folderNote}`,
+      + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,
     );
+  });
+
+  // 4. Cancel → clear preview
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="cancel-batch-import"]');
+    if (!target) return;
+    pendingBuffer = null;
+    pendingSource = '';
+    dispatcher.dispatch({ type: 'CANCEL_BATCH_IMPORT' });
   });
 }
 

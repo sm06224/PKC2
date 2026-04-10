@@ -32,6 +32,8 @@ export type UserAction =
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
   | { type: 'CANCEL_IMPORT' }
+  | { type: 'CONFIRM_BATCH_IMPORT' }
+  | { type: 'CANCEL_BATCH_IMPORT' }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }

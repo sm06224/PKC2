@@ -572,6 +572,69 @@ describe('import confirmation', () => {
   });
 });
 
+// ── Batch import preview ────────────────────────
+
+describe('batch import preview', () => {
+  const batchPreview = {
+    format: 'pkc2-texts-container-bundle',
+    formatLabel: 'TEXT container bundle',
+    textCount: 3,
+    textlogCount: 0,
+    totalEntries: 3,
+    compacted: false,
+    missingAssetCount: 0,
+    isFolderExport: false,
+    sourceFolderTitle: null,
+    source: 'test.texts.zip',
+  };
+
+  it('SYS_BATCH_IMPORT_PREVIEW sets batchImportPreview on state', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    });
+    expect(state.batchImportPreview).toBe(batchPreview);
+    expect(state.phase).toBe('ready');
+    expect(events).toEqual([{
+      type: 'BATCH_IMPORT_PREVIEWED',
+      source: 'test.texts.zip',
+      totalEntries: 3,
+    }]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT clears batchImportPreview', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(state.container).toBe(mockContainer); // unchanged
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CONFIRMED' }]);
+  });
+
+  it('CANCEL_BATCH_IMPORT clears batchImportPreview and keeps state', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: batchPreview,
+    }).state;
+
+    const { state, events } = reduce(withPreview, { type: 'CANCEL_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(state.container).toBe(mockContainer); // unchanged
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CANCELLED' }]);
+  });
+
+  it('CONFIRM_BATCH_IMPORT without preview is blocked', () => {
+    const { state } = reduce(readyState(), { type: 'CONFIRM_BATCH_IMPORT' });
+    expect(state).toEqual(readyState()); // unchanged
+  });
+
+  it('CANCEL_BATCH_IMPORT without preview is a no-op', () => {
+    const { state, events } = reduce(readyState(), { type: 'CANCEL_BATCH_IMPORT' });
+    expect(state.batchImportPreview).toBeNull();
+    expect(events).toEqual([{ type: 'BATCH_IMPORT_CANCELLED' }]);
+  });
+});
+
 // ── Restore ────────────────────────
 
 describe('restore', () => {

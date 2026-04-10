@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   importBatchBundleFromBuffer,
+  previewBatchBundleFromBuffer,
 } from '@adapter/platform/batch-import';
 import { buildTextsContainerBundle } from '@adapter/platform/text-bundle';
 import { buildTextlogsContainerBundle } from '@adapter/platform/textlog-bundle';
@@ -533,5 +534,128 @@ describe('importBatchBundleFromBuffer — folder-scoped import', () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]!.title).toBe('Deep');
     expect(result.entries[0]!.body).toBe('deep content');
+  });
+});
+
+// ── preview function tests ────────────────────────
+
+describe('previewBatchBundleFromBuffer — texts container bundle', () => {
+  it('extracts preview info from a valid texts container bundle', async () => {
+    const t1 = makeEntry('t1', 'Doc A', 'text', 'Hello');
+    const t2 = makeEntry('t2', 'Doc B', 'text', 'World');
+    const container = makeContainer({ entries: [t1, t2] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf, 'test.texts.zip');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.format).toBe('pkc2-texts-container-bundle');
+    expect(result.info.formatLabel).toBe('TEXT container bundle');
+    expect(result.info.totalEntries).toBe(2);
+    expect(result.info.textCount).toBe(2);
+    expect(result.info.textlogCount).toBe(0);
+    expect(result.info.isFolderExport).toBe(false);
+    expect(result.info.sourceFolderTitle).toBeNull();
+    expect(result.info.source).toBe('test.texts.zip');
+  });
+
+  it('reports compacted flag correctly', async () => {
+    const t1 = makeEntry('t1', 'Doc', 'text', 'content');
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container, { compact: true });
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.compacted).toBe(true);
+  });
+
+  it('reports missing asset count', async () => {
+    const t1 = makeEntry('t1', 'Doc', 'text', '![img](asset:ast-missing)');
+    const container = makeContainer({ entries: [t1] });
+    const exported = buildTextsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.missingAssetCount).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('previewBatchBundleFromBuffer — textlogs container bundle', () => {
+  it('extracts preview info from a valid textlogs container bundle', async () => {
+    const l1 = makeEntry('l1', 'Log A', 'textlog', makeTextlogBody([{ id: 'x', text: 'hello' }]));
+    const container = makeContainer({ entries: [l1] });
+    const exported = buildTextlogsContainerBundle(container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.format).toBe('pkc2-textlogs-container-bundle');
+    expect(result.info.textlogCount).toBe(1);
+    expect(result.info.textCount).toBe(0);
+  });
+});
+
+describe('previewBatchBundleFromBuffer — folder export bundle', () => {
+  it('extracts preview info from a folder export bundle', async () => {
+    const folder = makeEntry('f1', 'Project', 'folder');
+    const t1 = makeEntry('t1', 'Doc', 'text', 'hello');
+    const l1 = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'hi' }]));
+    const container = makeContainer({
+      entries: [folder, t1, l1],
+      relations: [makeRelation('r1', 'f1', 't1'), makeRelation('r2', 'f1', 'l1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.info.format).toBe('pkc2-folder-export-bundle');
+    expect(result.info.formatLabel).toBe('Folder export bundle');
+    expect(result.info.isFolderExport).toBe(true);
+    expect(result.info.sourceFolderTitle).toBe('Project');
+    expect(result.info.textCount).toBe(1);
+    expect(result.info.textlogCount).toBe(1);
+    expect(result.info.totalEntries).toBe(2);
+  });
+});
+
+describe('previewBatchBundleFromBuffer — error cases', () => {
+  it('rejects non-ZIP input', () => {
+    const garbage = new Uint8Array([0xff, 0xfe]).buffer as ArrayBuffer;
+    const result = previewBatchBundleFromBuffer(garbage);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects ZIP without manifest', () => {
+    const entries: ZipEntry[] = [{ name: 'data.txt', data: textToBytes('hello') }];
+    const bytes = createZipBytes(entries);
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('Missing manifest.json');
+  });
+
+  it('rejects unsupported format', () => {
+    const buf = buildFakeZip({ format: 'pkc2-unknown', version: 1, entries: [] });
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('Unsupported batch format');
+  });
+
+  it('rejects unsupported version', () => {
+    const buf = buildFakeZip({ format: 'pkc2-texts-container-bundle', version: 99, entries: [] });
+    const result = previewBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('Unsupported batch version');
   });
 });
