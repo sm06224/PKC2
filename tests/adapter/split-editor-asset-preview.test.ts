@@ -55,6 +55,7 @@ function makeEditingState(container: Container, selectedLid: string): AppState {
     embedded: false,
     pendingOffers: [],
     importPreview: null,
+    batchImportPreview: null,
     searchQuery: '',
     archetypeFilter: null,
     tagFilter: null,

@@ -52,6 +52,28 @@ export interface BatchImportFailure {
 
 export type BatchImportResult = BatchImportSuccess | BatchImportFailure;
 
+// ── Preview types ───────────────────────────────────
+
+/** Lightweight metadata extracted from the manifest only (no nested parse). */
+export interface BatchImportPreviewInfo {
+  format: string;
+  /** Human-readable format label. */
+  formatLabel: string;
+  textCount: number;
+  textlogCount: number;
+  totalEntries: number;
+  compacted: boolean;
+  /** Total missing asset count across all entries. */
+  missingAssetCount: number;
+  isFolderExport: boolean;
+  sourceFolderTitle: string | null;
+  source: string;
+}
+
+export type BatchImportPreviewResult =
+  | { ok: true; info: BatchImportPreviewInfo }
+  | { ok: false; error: string };
+
 // ── Accepted batch formats ──────────────────────────
 
 const ACCEPTED_FORMATS = new Set([
@@ -73,6 +95,92 @@ export async function importBatchBundle(file: File): Promise<BatchImportResult> 
     return { ok: false, error: `Batch import failed: ${String(e)}` };
   }
 }
+
+/**
+ * Extract lightweight preview metadata from a batch bundle.
+ * Reads only the manifest.json — does NOT parse nested bundles.
+ * Used by the preview UI to show import summary before the user confirms.
+ */
+export function previewBatchBundleFromBuffer(
+  buffer: ArrayBuffer,
+  source = 'buffer',
+): BatchImportPreviewResult {
+  try {
+    const bytes = new Uint8Array(buffer);
+    let outerEntries: ZipEntry[];
+    try {
+      outerEntries = parseZip(bytes);
+    } catch (e) {
+      return { ok: false, error: `Invalid ZIP: ${String(e)}` };
+    }
+
+    const manifestEntry = outerEntries.find((e) => e.name === 'manifest.json');
+    if (!manifestEntry) {
+      return { ok: false, error: 'Missing manifest.json in batch bundle' };
+    }
+
+    let manifest: Record<string, unknown>;
+    try {
+      manifest = JSON.parse(bytesToText(manifestEntry.data)) as Record<string, unknown>;
+    } catch (e) {
+      return { ok: false, error: `Invalid manifest.json: ${String(e)}` };
+    }
+
+    const format = manifest.format as string | undefined;
+    if (!format || !ACCEPTED_FORMATS.has(format)) {
+      return { ok: false, error: `Unsupported batch format: "${String(format)}"` };
+    }
+    if (manifest.version !== 1) {
+      return { ok: false, error: `Unsupported batch version: ${String(manifest.version)}` };
+    }
+
+    const manifestEntries = manifest.entries as
+      | { archetype?: string; missing_asset_count?: number }[]
+      | undefined;
+    if (!Array.isArray(manifestEntries)) {
+      return { ok: false, error: 'Missing or invalid entries array in manifest' };
+    }
+
+    // Count archetypes
+    let textCount = 0;
+    let textlogCount = 0;
+    let missingAssetCount = 0;
+    for (const me of manifestEntries) {
+      const arch = resolveArchetype(format, me);
+      if (arch === 'text') textCount++;
+      else if (arch === 'textlog') textlogCount++;
+      missingAssetCount += (me.missing_asset_count ?? 0);
+    }
+
+    const isFolderExport = format === 'pkc2-folder-export-bundle';
+
+    return {
+      ok: true,
+      info: {
+        format,
+        formatLabel: FORMAT_LABELS[format] ?? format,
+        textCount,
+        textlogCount,
+        totalEntries: manifestEntries.length,
+        compacted: manifest.compact === true,
+        missingAssetCount,
+        isFolderExport,
+        sourceFolderTitle: isFolderExport
+          ? (manifest.source_folder_title as string | null) ?? null
+          : null,
+        source,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: `Preview failed: ${String(e)}` };
+  }
+}
+
+const FORMAT_LABELS: Record<string, string> = {
+  'pkc2-texts-container-bundle': 'TEXT container bundle',
+  'pkc2-textlogs-container-bundle': 'TEXTLOG container bundle',
+  'pkc2-folder-export-bundle': 'Folder export bundle',
+};
 
 /**
  * Import a batch bundle from a raw `ArrayBuffer`. Used by tests

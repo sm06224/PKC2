@@ -3,7 +3,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
-import type { ImportPreviewRef } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import {
@@ -50,6 +50,8 @@ export interface AppState {
   pendingOffers: PendingOffer[];
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
+  /** Batch import preview awaiting user confirmation (runtime-only). */
+  batchImportPreview: BatchImportPreviewInfo | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
   /** Current archetype filter (runtime-only, feature layer). null = show all. */
@@ -104,6 +106,7 @@ export function createInitialState(): AppState {
     embedded: false,
     pendingOffers: [],
     importPreview: null,
+    batchImportPreview: null,
     searchQuery: '',
     archetypeFilter: null,
     tagFilter: null,
@@ -401,6 +404,32 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'IMPORT_CANCELLED' }],
+      };
+    }
+    case 'SYS_BATCH_IMPORT_PREVIEW': {
+      const next: AppState = { ...state, batchImportPreview: action.preview };
+      return {
+        state: next,
+        events: [{
+          type: 'BATCH_IMPORT_PREVIEWED',
+          source: action.preview.source,
+          totalEntries: action.preview.totalEntries,
+        }],
+      };
+    }
+    case 'CONFIRM_BATCH_IMPORT': {
+      if (!state.batchImportPreview) return blocked(state, action);
+      const next: AppState = { ...state, batchImportPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'BATCH_IMPORT_CONFIRMED' }],
+      };
+    }
+    case 'CANCEL_BATCH_IMPORT': {
+      const next: AppState = { ...state, batchImportPreview: null };
+      return {
+        state: next,
+        events: [{ type: 'BATCH_IMPORT_CANCELLED' }],
       };
     }
     case 'SET_SEARCH_QUERY': {

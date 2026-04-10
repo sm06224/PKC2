@@ -28,6 +28,9 @@ export type DomainEvent =
   | { type: 'EXPORT_COMPLETED' }
   | { type: 'IMPORT_PREVIEWED'; source: string; entry_count: number }
   | { type: 'IMPORT_CANCELLED' }
+  | { type: 'BATCH_IMPORT_PREVIEWED'; source: string; totalEntries: number }
+  | { type: 'BATCH_IMPORT_CONFIRMED' }
+  | { type: 'BATCH_IMPORT_CANCELLED' }
   | { type: 'RECORD_OFFERED'; offer_id: string; title: string }
   | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string }
   | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null }
