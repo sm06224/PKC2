@@ -1860,3 +1860,170 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
     }
   });
 });
+
+// ── F. TEXTLOG CSV + assets ZIP export action ──
+
+describe('Issue F — TEXTLOG CSV+ZIP export action', () => {
+  /**
+   * The download path goes through `triggerZipDownload`, which calls
+   * `URL.createObjectURL` and clicks an anchor. happy-dom does not
+   * implement createObjectURL by default, so we install a stub on
+   * window.URL for the duration of the test and capture the anchor
+   * click via a click listener on the document body.
+   *
+   * Returns a small handle exposing whatever the action handler asks
+   * the browser to download (filename + Blob).
+   */
+  function installDownloadCapture(): {
+    captures: Array<{ filename: string; blob: Blob | null }>;
+    restore: () => void;
+  } {
+    const captures: Array<{ filename: string; blob: Blob | null }> = [];
+    const originalCreate = (URL as unknown as { createObjectURL?: (b: Blob) => string }).createObjectURL;
+    const originalRevoke = (URL as unknown as { revokeObjectURL?: (u: string) => void }).revokeObjectURL;
+    let lastBlob: Blob | null = null;
+    (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = (b: Blob) => {
+      lastBlob = b;
+      return 'blob:mock';
+    };
+    (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = () => {};
+
+    // Intercept anchor clicks at the body level so the download is
+    // captured before the JSDOM/happy-dom default action runs.
+    const handler = (e: Event): void => {
+      const a = e.target as HTMLAnchorElement | null;
+      if (a && a.tagName === 'A' && a.download) {
+        e.preventDefault();
+        captures.push({ filename: a.download, blob: lastBlob });
+      }
+    };
+    document.body.addEventListener('click', handler, true);
+
+    return {
+      captures,
+      restore: () => {
+        document.body.removeEventListener('click', handler, true);
+        if (originalCreate) {
+          (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+        } else {
+          delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+        }
+        if (originalRevoke) {
+          (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = originalRevoke;
+        } else {
+          delete (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL;
+        }
+      },
+    };
+  }
+
+  it('clicking 📦 Export CSV+ZIP triggers a .textlog.zip download', async () => {
+    const cap = installDownloadCapture();
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+        { id: 'log-2', text: 'second', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
+      ]);
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+      );
+      expect(btn).not.toBeNull();
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // The download is dispatched synchronously inside the action
+      // handler — `exportTextlogAsBundle` is awaited but its body is
+      // synchronous up to and including the downloadFn call. Yield
+      // once to let the microtask queue drain, then assert.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(cap.captures.length).toBe(1);
+      const { filename, blob } = cap.captures[0]!;
+      expect(filename).toMatch(/^work-log-\d{8}\.textlog\.zip$/);
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob!.size).toBeGreaterThan(0);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('Export button is rendered for textlog and absent for non-textlog archetypes', () => {
+    mountTextlogContainer([
+      { id: 'log-1', text: 'a', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const exportBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]',
+    );
+    expect(exportBtn).not.toBeNull();
+
+    // Switch back to a non-textlog (TEXT) container, the button must vanish.
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({
+      type: 'SYS_INIT_COMPLETE',
+      container: {
+        ...mockContainer,
+        entries: [
+          {
+            lid: 'e1',
+            title: 'Plain text',
+            body: 'hello',
+            archetype: 'text',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      },
+    });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    expect(
+      root.querySelector('[data-pkc-region="action-bar"] [data-pkc-action="export-textlog-csv-zip"]'),
+    ).toBeNull();
+  });
+
+  it('export action is a no-op when the targeted entry is not a textlog', async () => {
+    // Wire a TEXT entry but synthesize a fake export-textlog button on
+    // it. The action handler must refuse to export and not call the
+    // download path.
+    const cap = installDownloadCapture();
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: {
+          ...mockContainer,
+          entries: [
+            {
+              lid: 'e1',
+              title: 'Not a log',
+              body: 'plain',
+              archetype: 'text',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      // Inject a synthetic button mimicking what the renderer would
+      // emit if the wiring leaked. The handler must still bail out
+      // because of the archetype check.
+      const fake = document.createElement('button');
+      fake.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
+      fake.setAttribute('data-pkc-lid', 'e1');
+      root.appendChild(fake);
+      fake.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(cap.captures.length).toBe(0);
+    } finally {
+      cap.restore();
+    }
+  });
+});

@@ -18,6 +18,7 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
+import { exportTextlogAsBundle } from '../platform/textlog-bundle';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
@@ -438,6 +439,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!ent) break;
         if (ent.archetype !== 'text' && ent.archetype !== 'textlog') break;
         openRenderedViewer(ent, st.container);
+        break;
+      }
+      case 'export-textlog-csv-zip': {
+        // TEXTLOG-only export. Bundles a single textlog entry as
+        //   <slug>-<yyyymmdd>.textlog.zip
+        //     ├── manifest.json
+        //     ├── textlog.csv
+        //     └── assets/<asset-key><ext>
+        // The button is rendered only for textlog archetypes; the
+        // archetype guard here is belt-and-braces.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog' || !st.container) break;
+        void exportTextlogAsBundle(ent, st.container);
         break;
       }
       case 'rename-attachment': {

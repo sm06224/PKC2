@@ -1366,6 +1366,22 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
       viewerBtn.textContent = '📖 Open Viewer';
       bar.appendChild(viewerBtn);
     }
+
+    // TEXTLOG-only: download a portable CSV+ZIP bundle of the log
+    // and its referenced assets. Format spec is pinned in
+    // docs/development/textlog-csv-zip-export.md. Always visible
+    // (including readonly) — export does not mutate state.
+    if (entry.archetype === 'textlog') {
+      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
+      exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
+      exportBtn.setAttribute('data-pkc-lid', entry.lid);
+      exportBtn.setAttribute(
+        'title',
+        'Download this textlog as a CSV + assets ZIP bundle for sharing outside PKC2',
+      );
+      exportBtn.textContent = '📦 Export CSV+ZIP';
+      bar.appendChild(exportBtn);
+    }
   }
 
   // Entry info badge

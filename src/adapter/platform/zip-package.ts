@@ -233,7 +233,12 @@ export async function importFromZipBuffer(
 
 // ── Minimal ZIP Implementation (Stored Mode) ────────────────────────
 
-interface ZipEntry {
+/**
+ * Single file inside a ZIP archive. Exported so adjacent platform
+ * modules (e.g. `textlog-bundle.ts`) can reuse the same writer
+ * without copying the type.
+ */
+export interface ZipEntry {
   name: string;
   data: Uint8Array;
 }
@@ -248,8 +253,12 @@ interface ParsedZipEntry {
  *
  * ZIP format reference: https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
  * Uses method 0 (stored) — no compression, simplest possible implementation.
+ *
+ * Exported so adjacent bundle formats (textlog CSV bundle, future
+ * markdown bundle …) can reuse the writer without duplicating the
+ * CRC-32 / EOCD logic.
  */
-function createZipBlob(entries: ZipEntry[]): Blob {
+export function createZipBlob(entries: ZipEntry[]): Blob {
   const parts: Uint8Array[] = [];
   const centralDirectory: Uint8Array[] = [];
   let offset = 0;
@@ -406,7 +415,12 @@ function crc32(data: Uint8Array): number {
 
 // ── Helpers ────────────────────────
 
-function textToBytes(text: string): Uint8Array {
+/**
+ * Encode a UTF-8 string to bytes. Exported so adjacent bundle formats
+ * can build ZIP entries from text payloads (manifest.json, CSV, etc.)
+ * without re-importing TextEncoder by hand.
+ */
+export function textToBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
@@ -414,7 +428,12 @@ function bytesToText(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
-function base64ToBytes(base64: string): Uint8Array {
+/**
+ * Decode a base64 string to bytes. Exported alongside `textToBytes`
+ * so callers building bundles from container assets do not have to
+ * reimplement the atob loop.
+ */
+export function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -437,7 +456,14 @@ function generateCid(): string {
   return `${ts}-${rand}`;
 }
 
-function slugify(s: string): string {
+/**
+ * Slugify a title for use in a download filename. Keeps ASCII word
+ * chars, CJK ideographs, and full-width punctuation; collapses
+ * everything else to dashes; trims to 40 chars; falls back to
+ * `untitled`. Exported so other bundle formats produce filenames
+ * that match the existing pkc2-package convention.
+ */
+export function slugify(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^\w\u3000-\u9fff\uff00-\uffef]+/g, '-')
@@ -445,7 +471,11 @@ function slugify(s: string): string {
     .slice(0, 40) || 'untitled';
 }
 
-function formatDateCompact(d: Date): string {
+/**
+ * Format a Date as `yyyymmdd` (no separators). Exported so other
+ * bundle formats can stamp filenames with the same compact date.
+ */
+export function formatDateCompact(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -458,7 +488,12 @@ function generateZipFilename(container: Container): string {
   return `pkc2-${slug}-${date}.pkc2.zip`;
 }
 
-function triggerZipDownload(blob: Blob, filename: string): void {
+/**
+ * Trigger a browser download for a Blob. Exported so adjacent bundle
+ * formats can use the exact same anchor-click pattern (and the same
+ * 100ms cleanup window) instead of inventing a new one.
+ */
+export function triggerZipDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
