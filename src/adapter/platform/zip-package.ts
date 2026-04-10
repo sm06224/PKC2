@@ -243,10 +243,10 @@ export interface ZipEntry {
   data: Uint8Array;
 }
 
-interface ParsedZipEntry {
-  name: string;
-  data: Uint8Array;
-}
+// `parseZip` returns the same shape as `ZipEntry` — a name + the raw
+// uncompressed bytes — so callers can pass parsed entries straight
+// back into the writer if they need to repackage a bundle.
+type ParsedZipEntry = ZipEntry;
 
 /**
  * Create a ZIP file as a Blob using stored mode (no compression).
@@ -336,8 +336,12 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
 
 /**
  * Parse a ZIP file from a Uint8Array. Supports stored mode (method 0).
+ *
+ * Exported so adjacent bundle formats (textlog CSV bundle re-import,
+ * future markdown bundle re-import …) can reuse the EOCD / central
+ * directory walker without duplicating the byte-level logic.
  */
-function parseZip(data: Uint8Array): ParsedZipEntry[] {
+export function parseZip(data: Uint8Array): ParsedZipEntry[] {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const entries: ParsedZipEntry[] = [];
 
@@ -424,7 +428,12 @@ export function textToBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function bytesToText(bytes: Uint8Array): string {
+/**
+ * Decode UTF-8 bytes to a string. Exported alongside `textToBytes`
+ * so callers parsing bundle payloads (manifest.json, CSV, …) do not
+ * have to reach for `TextDecoder` themselves.
+ */
+export function bytesToText(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
@@ -442,7 +451,12 @@ export function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+/**
+ * Encode bytes as a base64 string. Exported so callers reconstructing
+ * an entry's `container.assets` map from raw ZIP file data can reuse
+ * the same loop the package importer uses.
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]!);

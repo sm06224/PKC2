@@ -19,7 +19,7 @@
  *   `timestamp_iso`, matching the textlog-foundation invariant.
  */
 
-import type { TextlogBody, TextlogEntry } from './textlog-body';
+import type { TextlogBody, TextlogEntry, TextlogFlag } from './textlog-body';
 import { formatLogTimestamp } from './textlog-body';
 
 export const TEXTLOG_CSV_HEADER = [
@@ -156,7 +156,147 @@ export function stripMarkdownForCsvPlain(text: string): string {
   return out.trim();
 }
 
+/**
+ * Parse a TEXTLOG CSV document back into a `TextlogBody`.
+ *
+ * This is the inverse of `serializeTextlogAsCsv` and is used by the
+ * textlog bundle re-importer (Issue H, see
+ * `docs/development/textlog-csv-zip-export.md` §14). The parser is
+ * pure — no browser APIs — so it lives next to the serializer.
+ *
+ * Behaviour pinned by tests:
+ *
+ * - **Source of truth is `text_markdown`** (column index 4). The
+ *   `text_plain` column is *deliberately discarded* — see spec
+ *   §14.6. The plain column is a derived, lossy view; trusting it
+ *   would silently lose markdown.
+ * - **Append order is preserved verbatim.** Rows come out in the
+ *   same order they appear in the CSV. The parser never re-sorts by
+ *   `timestamp_iso`; this matches the serializer's "append order
+ *   wins" rule (see `serializeTextlogAsCsv`).
+ * - **Header row is required and validated by name.** Column order
+ *   in the body is keyed off the header so additional / reordered
+ *   columns degrade gracefully (unknown columns are ignored).
+ * - **Empty body** — a CSV that contains only the header row produces
+ *   `{ entries: [] }` (a valid empty textlog).
+ * - **Bad rows** — rows whose `log_id` is empty are *skipped*, not
+ *   thrown on. Re-import is best-effort: a single corrupted row
+ *   should not lose the rest of the log. The caller can detect this
+ *   by comparing `body.entries.length` against the row count.
+ * - **RFC 4180** quoting: handles `"…"`, doubled `""` for embedded
+ *   quotes, embedded newlines (`\n` / `\r\n`) inside quoted fields,
+ *   and CRLF or bare LF record separators interchangeably.
+ *
+ * Throws on:
+ * - Empty input.
+ * - Missing required columns (`log_id`, `timestamp_iso`,
+ *   `text_markdown`). The other columns are recoverable.
+ *
+ * Errors are thrown as plain `Error`. Callers — typically the
+ * adapter-layer importer — wrap them into `{ ok: false, error }`
+ * results so the dispatcher only sees structured failures.
+ */
+export function parseTextlogCsv(csv: string): TextlogBody {
+  if (!csv || csv.length === 0) {
+    throw new Error('CSV is empty');
+  }
+
+  const rows = parseCsvRows(csv);
+  if (rows.length === 0) {
+    throw new Error('CSV has no rows');
+  }
+
+  const header = rows[0]!;
+  const idxId = header.indexOf('log_id');
+  const idxIso = header.indexOf('timestamp_iso');
+  const idxImportant = header.indexOf('important');
+  const idxMarkdown = header.indexOf('text_markdown');
+  if (idxId < 0 || idxIso < 0 || idxMarkdown < 0) {
+    throw new Error('CSV header missing required columns (log_id / timestamp_iso / text_markdown)');
+  }
+
+  const entries: TextlogEntry[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    // Tolerate sparse rows — `csvFieldAt` returns '' for out-of-range
+    // indices so the parser does not crash on a short row that the
+    // CSV writer did not produce.
+    const id = csvFieldAt(row, idxId);
+    if (!id) continue; // skip unidentified rows — see jsdoc
+    const iso = csvFieldAt(row, idxIso);
+    const text = csvFieldAt(row, idxMarkdown);
+    const importantRaw = idxImportant >= 0 ? csvFieldAt(row, idxImportant) : '';
+    const flags: TextlogFlag[] =
+      importantRaw.toLowerCase() === 'true' ? ['important'] : [];
+    entries.push({ id, text, createdAt: iso, flags });
+  }
+
+  return { entries };
+}
+
 // ── internals ────────────────────────
+
+function csvFieldAt(row: string[], i: number): string {
+  return i >= 0 && i < row.length ? (row[i] ?? '') : '';
+}
+
+/**
+ * Parse a CSV document into rows of fields. RFC-4180-compatible:
+ * - `"…"` quoted fields, doubled `""` for an embedded quote
+ * - embedded `\n` / `\r\n` inside a quoted field is preserved
+ * - CRLF or bare LF as the record separator
+ *
+ * Used internally by `parseTextlogCsv`. Kept private — the textlog
+ * domain is the only consumer right now and a generic CSV parser is
+ * a future-needs-driven helper, not something to expose pre-emptively.
+ */
+function parseCsvRows(csv: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i]!;
+    if (inQuotes) {
+      if (c === '"') {
+        if (csv[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field);
+        field = '';
+      } else if (c === '\r' && csv[i + 1] === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        i++;
+      } else if (c === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += c;
+      }
+    }
+  }
+  // Trailing field / row without a final separator.
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
 
 function serializeRow(entry: TextlogEntry): string {
   const id = entry.id ?? '';

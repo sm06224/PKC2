@@ -597,6 +597,18 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   importBtn.textContent = 'Import';
   group.appendChild(importBtn);
 
+  // Import textlog bundle (Issue H) — additive: adds one new
+  // textlog entry plus its attachments to the current container.
+  // Distinct from `begin-import` (which replaces the whole
+  // container). Hidden in readonly mode by the action handler;
+  // the button itself is always rendered to keep the toolbar
+  // shape stable.
+  const importTextlogBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importTextlogBtn.setAttribute('data-pkc-action', 'import-textlog-bundle');
+  importTextlogBtn.setAttribute('title', 'Import a textlog bundle (.textlog.zip) as a new entry');
+  importTextlogBtn.textContent = '📥 Import Textlog';
+  group.appendChild(importTextlogBtn);
+
   const sep3 = createElement('span', 'pkc-eip-sep');
   sep3.textContent = '|';
   group.appendChild(sep3);
