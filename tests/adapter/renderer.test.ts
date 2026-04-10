@@ -1572,9 +1572,9 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Inline: has export + light + zip + import + reset buttons
+    // Inline: has export + light + zip + import + import-textlog + reset buttons
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(5);
+    expect(btns.length).toBe(6);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {

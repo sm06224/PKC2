@@ -17,6 +17,8 @@ import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
+import { importTextlogBundle } from './adapter/platform/textlog-bundle';
+import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
@@ -167,6 +169,10 @@ async function boot(): Promise<void> {
 
   // 8. Import handler: file input wiring (HTML + ZIP)
   mountImportHandler(root, dispatcher);
+
+  // 8a. Textlog bundle import handler (Issue H) — additive,
+  // distinct file picker so the .textlog.zip flow is unambiguous.
+  mountTextlogImportHandler(root, dispatcher);
 
   // 8b. ZIP export handler: direct async export (no phase transition needed)
   mountZipExportHandler(root, dispatcher);
@@ -385,6 +391,100 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
         dispatcher.dispatch({ type: 'SYS_ERROR', error: `Import failed: ${msg}` });
       }
     }
+  });
+}
+
+/**
+ * Mount textlog bundle import handler (Issue H).
+ *
+ * Hidden file picker dedicated to `.textlog.zip` bundles. Distinct
+ * from `mountImportHandler` (which replaces the whole container)
+ * because textlog bundle import is **additive**: it adds N + 1
+ * new entries (one textlog + N attachments) to the current
+ * container without touching anything that already exists.
+ *
+ * Failure atomicity (spec §14.7) is enforced by the platform
+ * layer's `importTextlogBundle`: a parse failure resolves to
+ * `{ ok: false, error }` and we never enter the dispatch loop.
+ */
+function mountTextlogImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  // Accept both `.textlog.zip` (the canonical extension) and bare
+  // `.zip` so that users who renamed the file or whose OS strips
+  // double extensions can still import.
+  fileInput.accept = '.zip,.textlog.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-textlog-input');
+  document.body.appendChild(fileInput);
+
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-textlog-bundle"]');
+    if (!target) return;
+    const state = dispatcher.getState();
+    // Belt-and-braces guard: the renderer hides the button in
+    // readonly via CSS pattern, but a stale state.readonly is the
+    // exact case the spec §14.10 calls out.
+    if (state.readonly) {
+      console.warn('[PKC2] Textlog import blocked: workspace is readonly');
+      return;
+    }
+    if (!state.container) {
+      console.warn('[PKC2] Textlog import blocked: no container loaded');
+      return;
+    }
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const result = await importTextlogBundle(file);
+    if (!result.ok) {
+      console.warn(`[PKC2] Textlog import failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Textlog import failed: ${result.error}` });
+      return;
+    }
+
+    // 1. Dispatch each attachment as its own CREATE_ENTRY +
+    // COMMIT_EDIT pair. This mirrors `processFileAttachment` so
+    // imported attachments behave like drag-dropped ones.
+    for (const att of result.attachments) {
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
+      const lid = dispatcher.getState().editingLid;
+      if (!lid) continue;
+      const body = serializeAttachmentBody({
+        name: att.name,
+        mime: att.mime,
+        size: att.size,
+        asset_key: att.assetKey,
+      });
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid,
+        title: att.name,
+        body,
+        assets: { [att.assetKey]: att.data },
+      });
+    }
+
+    // 2. Dispatch the textlog entry itself.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'textlog', title: result.textlog.title });
+    const textlogLid = dispatcher.getState().editingLid;
+    if (textlogLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: textlogLid,
+        title: result.textlog.title,
+        body: result.textlog.body,
+      });
+    }
+
+    console.log(
+      `[PKC2] Textlog import complete: "${result.textlog.title}"`
+      + ` (${result.entryCount} rows, ${result.attachments.length} attachments)`,
+    );
   });
 }
 

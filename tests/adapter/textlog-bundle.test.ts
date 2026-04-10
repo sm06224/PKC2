@@ -5,8 +5,10 @@ import {
   exportTextlogAsBundle,
   buildBundleFilename,
   chooseExtension,
+  importTextlogBundleFromBuffer,
   type TextlogBundleManifest,
 } from '@adapter/platform/textlog-bundle';
+import { parseTextlogBody } from '@features/textlog/textlog-body';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 
@@ -679,5 +681,353 @@ describe('exportTextlogAsBundle – compact passthrough', () => {
     });
     const manifest = await readManifest(captured!);
     expect(manifest.compacted).toBe(false);
+  });
+});
+
+// ── Issue H: re-import (importTextlogBundleFromBuffer) ────────────
+
+/**
+ * Build an in-memory `.textlog.zip` for the given entry / container,
+ * then immediately import it back. Returns the round-trip result.
+ *
+ * Used as the workhorse for the import tests so each test only has
+ * to specify the source-side state and assert the imported-side
+ * shape — the build-then-import boilerplate stays in this helper.
+ */
+async function buildAndReimport(entry: Entry, container: Container, opts?: { compact?: boolean }) {
+  const built = buildTextlogBundle(entry, container, { compact: opts?.compact });
+  const buf = await built.blob.arrayBuffer();
+  return importTextlogBundleFromBuffer(buf, 'roundtrip.textlog.zip');
+}
+
+describe('importTextlogBundleFromBuffer – happy path', () => {
+  it('round-trips a single-entry textlog bundle', async () => {
+    const entry = makeTextlogEntry('e1', 'My Log', [
+      { id: 'log-1', text: 'Hello world', flags: ['important'] },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.textlog.title).toBe('My Log');
+    expect(result.entryCount).toBe(1);
+    const parsed = parseTextlogBody(result.textlog.body);
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]!.id).toBe('log-1');
+    expect(parsed.entries[0]!.text).toBe('Hello world');
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
+  });
+
+  it('preserves CSV row order verbatim — never re-sorts by timestamp', async () => {
+    // Append order is "later first", as if a backdated row was
+    // appended after a future-dated one. The importer must keep
+    // that order.
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-future', text: 'future', createdAt: '2030-01-01T00:00:00.000Z' },
+      { id: 'log-past', text: 'past', createdAt: '2020-01-01T00:00:00.000Z' },
+      { id: 'log-mid', text: 'mid', createdAt: '2025-01-01T00:00:00.000Z' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const parsed = parseTextlogBody(result.textlog.body);
+    expect(parsed.entries.map((e) => e.id)).toEqual(['log-future', 'log-past', 'log-mid']);
+  });
+
+  it('falls back to "Imported textlog" when source_title is empty', async () => {
+    const entry = makeTextlogEntry('e1', '', [{ id: 'log-1', text: 'x' }]);
+    const container = makeContainer({ entries: [entry] });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.textlog.title).toBe('Imported textlog');
+  });
+
+  it('handles a header-only CSV (zero rows) without throwing', async () => {
+    const entry = makeTextlogEntry('e1', 'Empty Log', []);
+    const container = makeContainer({ entries: [entry] });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entryCount).toBe(0);
+    expect(parseTextlogBody(result.textlog.body).entries).toEqual([]);
+    expect(result.attachments).toEqual([]);
+  });
+});
+
+// Byte-level substring search — safer than decoding the whole ZIP
+// as text (binary framing bytes may decode to replacement chars,
+// which makes String.indexOf's UTF-16 index disagree with the byte
+// offset we need for Uint8Array.set).
+function findBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+describe('importTextlogBundleFromBuffer – format / version guards', () => {
+  it('rejects a bundle whose manifest.format is not pkc2-textlog-bundle', async () => {
+    // Re-pack the bundle with a tampered manifest. We do this by
+    // calling the importer with a freshly built ZIP whose
+    // manifest.json has been swapped via a bytewise rewrite — the
+    // simplest path that doesn't introduce a second writer.
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'x' }]);
+    const container = makeContainer({ entries: [entry] });
+    const built = buildTextlogBundle(entry, container);
+    // Inline rewrite: replace the canonical format token in the
+    // ZIP bytes. The token appears exactly once (inside
+    // manifest.json) and the rewrite preserves length so the
+    // central-directory offsets stay valid.
+    const buf = new Uint8Array(await built.blob.arrayBuffer());
+    const target = new TextEncoder().encode('"pkc2-textlog-bundle"');
+    const replacement = new TextEncoder().encode('"pkc2-textlog-bundlX"'); // same length, valid JSON, different value
+    expect(replacement.length).toBe(target.length);
+    const idx = findBytes(buf, target);
+    expect(idx).toBeGreaterThan(0);
+    buf.set(replacement, idx);
+    const result = importTextlogBundleFromBuffer(buf.buffer, 'tampered.textlog.zip');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/Invalid format/);
+  });
+
+  it('rejects a bundle whose manifest.version is not 1', async () => {
+    // Same byte-rewrite trick: swap `"version": 1` for
+    // `"version": 9` (same length).
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'x' }]);
+    const container = makeContainer({ entries: [entry] });
+    const built = buildTextlogBundle(entry, container);
+    const buf = new Uint8Array(await built.blob.arrayBuffer());
+    const target = new TextEncoder().encode('"version": 1');
+    const replacement = new TextEncoder().encode('"version": 9');
+    expect(replacement.length).toBe(target.length);
+    const idx = findBytes(buf, target);
+    expect(idx).toBeGreaterThan(0);
+    buf.set(replacement, idx);
+    const result = importTextlogBundleFromBuffer(buf.buffer, 'tampered.textlog.zip');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/Unsupported textlog bundle version/);
+  });
+
+  it('rejects a buffer that is not a valid ZIP at all', () => {
+    const buf = new TextEncoder().encode('not a zip').buffer;
+    const result = importTextlogBundleFromBuffer(buf, 'garbage');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/Invalid ZIP/);
+  });
+});
+
+describe('importTextlogBundleFromBuffer – assets', () => {
+  it('reconstructs assets as ImportedAttachment entries with re-keyed asset_keys', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![chart](asset:ast-001)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'screen.png', 'image/png', 'ast-001')],
+      assets: { 'ast-001': btoa('PNGDATA') },
+    });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.attachments).toHaveLength(1);
+    const att = result.attachments[0]!;
+    expect(att.name).toBe('screen.png');
+    expect(att.mime).toBe('image/png');
+    expect(atob(att.data)).toBe('PNGDATA');
+    // The new key MUST NOT equal the old key — re-keying is mandatory.
+    expect(att.assetKey).not.toBe('ast-001');
+    expect(att.assetKey).toMatch(/^att-/);
+  });
+
+  it('rewrites every text_markdown reference from old key to new key', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'a ![](asset:ast-001) b [doc](asset:ast-002)' },
+      { id: 'log-2', text: 'and again ![](asset:ast-001)' },
+    ]);
+    const container = makeContainer({
+      entries: [
+        entry,
+        makeAttachmentEntry('a1', 'screen.png', 'image/png', 'ast-001'),
+        makeAttachmentEntry('a2', 'budget.pdf', 'application/pdf', 'ast-002'),
+      ],
+      assets: {
+        'ast-001': btoa('PNG'),
+        'ast-002': btoa('PDF'),
+      },
+    });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const att1 = result.attachments.find((a) => a.name === 'screen.png')!;
+    const att2 = result.attachments.find((a) => a.name === 'budget.pdf')!;
+    const parsed = parseTextlogBody(result.textlog.body);
+    // Original keys must be GONE everywhere; only the new keys
+    // appear in text_markdown.
+    expect(parsed.entries[0]!.text).not.toContain('ast-001');
+    expect(parsed.entries[0]!.text).not.toContain('ast-002');
+    expect(parsed.entries[0]!.text).toContain(att1.assetKey);
+    expect(parsed.entries[0]!.text).toContain(att2.assetKey);
+    expect(parsed.entries[1]!.text).toContain(att1.assetKey);
+    expect(parsed.entries[1]!.text).not.toContain('ast-001');
+  });
+
+  it('always re-keys, even when the source key would not collide with anything', async () => {
+    // The source key here ("ast-only") is unique by name and would
+    // not collide with any existing container asset. Spec §14.4
+    // says we still re-key — collision-or-not is opaque to the
+    // platform layer.
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: '![](asset:ast-only)' }]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'x.png', 'image/png', 'ast-only')],
+      assets: { 'ast-only': btoa('PNG') },
+    });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.attachments[0]!.assetKey).not.toBe('ast-only');
+  });
+});
+
+describe('importTextlogBundleFromBuffer – missing-asset bundles', () => {
+  it('imports a bundle whose manifest had missing_asset_keys without throwing', async () => {
+    // Reference an asset whose binary is NOT in container.assets.
+    // The export side records it under missing_asset_keys; the
+    // import side must accept the bundle, leave the broken
+    // reference in text_markdown verbatim, and produce zero
+    // attachments for the missing key.
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![chart](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({ entries: [entry] }); // assets: {}
+    const built = buildTextlogBundle(entry, container);
+    expect(built.manifest.missing_asset_count).toBe(1);
+    expect(built.manifest.missing_asset_keys).toEqual(['ast-gone']);
+    const buf = await built.blob.arrayBuffer();
+    const result = importTextlogBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.attachments).toEqual([]);
+    const parsed = parseTextlogBody(result.textlog.body);
+    // The broken reference is preserved verbatim — keys not in
+    // the keyMap are left untouched (spec §14.3).
+    expect(parsed.entries[0]!.text).toBe('![chart](asset:ast-gone)');
+  });
+
+  it('imports a bundle that is half-broken (one present + one missing)', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'ok ![](asset:ast-ok) and missing ![](asset:ast-gone)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'ok.png', 'image/png', 'ast-ok')],
+      assets: { 'ast-ok': btoa('PNG') },
+      // ast-gone is intentionally absent from container.assets
+    });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.attachments).toHaveLength(1);
+    const newKey = result.attachments[0]!.assetKey;
+    const text = parseTextlogBody(result.textlog.body).entries[0]!.text;
+    // Present reference rewritten to the new key.
+    expect(text).toContain(newKey);
+    expect(text).not.toContain('ast-ok');
+    // Broken reference preserved verbatim.
+    expect(text).toContain('asset:ast-gone');
+  });
+});
+
+describe('importTextlogBundleFromBuffer – compacted bundles', () => {
+  it('imports a compact: true bundle with the rewritten body verbatim', async () => {
+    // Source has a broken reference. Compact mode strips it from
+    // text_markdown — the imported body must reflect the strip,
+    // NOT the original markdown.
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'ok ![chart](asset:ast-gone) end' },
+    ]);
+    const container = makeContainer({ entries: [entry] }); // ast-gone missing
+    const result = await buildAndReimport(entry, container, { compact: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The compact pass replaced `![chart](asset:ast-gone)` with `chart`.
+    // The imported text must contain that flattening — and must NOT
+    // contain the original reference.
+    const text = parseTextlogBody(result.textlog.body).entries[0]!.text;
+    expect(text).not.toContain('ast-gone');
+    expect(text).toBe('ok chart end');
+  });
+
+  it('uses text_markdown as the source of truth, not text_plain', async () => {
+    // text_plain is a derived view (markdown stripped). If the
+    // importer ever started reading text_plain, the round-tripped
+    // body would silently lose markdown formatting. This test
+    // pins that text_markdown is the truth: bold markers survive.
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: 'meeting **with** Alice' },
+    ]);
+    const container = makeContainer({ entries: [entry] });
+    const result = await buildAndReimport(entry, container);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const text = parseTextlogBody(result.textlog.body).entries[0]!.text;
+    // Bold markers survive — proves text_markdown was the source.
+    expect(text).toBe('meeting **with** Alice');
+  });
+});
+
+describe('importTextlogBundleFromBuffer – failure atomicity', () => {
+  it('returns ok:false without throwing on garbage input', () => {
+    const result = importTextlogBundleFromBuffer(new Uint8Array([1, 2, 3, 4, 5]).buffer);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(typeof result.error).toBe('string');
+      expect(result.error.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('does not mutate the source container when round-tripping', async () => {
+    const entry = makeTextlogEntry('e1', 'Log', [
+      { id: 'log-1', text: '![](asset:ast-001)' },
+    ]);
+    const container = makeContainer({
+      entries: [entry, makeAttachmentEntry('a1', 'x.png', 'image/png', 'ast-001')],
+      assets: { 'ast-001': btoa('PNG') },
+    });
+    const snapshot = JSON.stringify(container);
+    await buildAndReimport(entry, container);
+    // Source container must be byte-identical after the round trip.
+    expect(JSON.stringify(container)).toBe(snapshot);
+  });
+
+  it('on a tampered version, returns ok:false and dispatches no entries (caller-side)', async () => {
+    // This test simulates the caller-side guarantee: if ok===false,
+    // a caller that follows the documented pattern never enters
+    // the dispatch loop. We assert that the result has no
+    // textlog / attachments fields by virtue of the discriminated
+    // union — the type system catches incorrect access.
+    const entry = makeTextlogEntry('e1', 'Log', [{ id: 'log-1', text: 'x' }]);
+    const container = makeContainer({ entries: [entry] });
+    const built = buildTextlogBundle(entry, container);
+    const buf = new Uint8Array(await built.blob.arrayBuffer());
+    const target = new TextEncoder().encode('"version": 1');
+    const replacement = new TextEncoder().encode('"version": 7');
+    const idx = findBytes(buf, target);
+    expect(idx).toBeGreaterThan(0);
+    buf.set(replacement, idx);
+    const result = importTextlogBundleFromBuffer(buf.buffer);
+    expect(result.ok).toBe(false);
+    // Caller-side simulation: a strict if (!result.ok) return;
+    // would skip the entire dispatch loop.
+    let dispatchedCount = 0;
+    if (result.ok) {
+      dispatchedCount = result.attachments.length + 1;
+    }
+    expect(dispatchedCount).toBe(0);
   });
 });

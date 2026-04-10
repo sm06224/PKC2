@@ -20,17 +20,22 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import {
   parseTextlogBody,
+  serializeTextlogBody,
   type TextlogBody,
 } from '../../features/textlog/textlog-body';
 import {
   serializeTextlogAsCsv,
   collectTextlogAssetKeys,
   compactTextlogBodyAgainst,
+  parseTextlogCsv,
 } from '../../features/textlog/textlog-csv';
 import {
   createZipBlob,
   textToBytes,
   base64ToBytes,
+  bytesToText,
+  bytesToBase64,
+  parseZip,
   triggerZipDownload,
   slugify,
   formatDateCompact,
@@ -217,6 +222,231 @@ export function buildBundleFilename(entry: Entry, now: Date = new Date()): strin
   return `${slug}-${date}.textlog.zip`;
 }
 
+// ── Import (Issue H) ────────────────────────
+
+/**
+ * One imported attachment, ready to be dispatched as its own entry.
+ *
+ * The importer never calls the dispatcher directly (see
+ * `TextlogImportSuccess` rationale). Instead it returns one of these
+ * per asset and lets the caller emit a `CREATE_ENTRY` +
+ * `COMMIT_EDIT` pair per entry. The shape mirrors what
+ * `processFileAttachment` (drag-drop path) builds, so the imported
+ * attachments are indistinguishable from drag-dropped ones once
+ * inside the container.
+ */
+export interface ImportedAttachment {
+  /** Display name — used as the attachment entry title and inside the body. */
+  name: string;
+  /** MIME type from `manifest.assets[oldKey].mime`. */
+  mime: string;
+  /** Decoded byte length of the binary, if it was carried in the manifest. */
+  size?: number;
+  /** Newly minted asset key. The textlog body already references this key. */
+  assetKey: string;
+  /** Base64-encoded binary, ready for `COMMIT_EDIT.assets`. */
+  data: string;
+}
+
+/**
+ * Result shape for `importTextlogBundle` /
+ * `importTextlogBundleFromBuffer`.
+ *
+ * The successful path returns the *raw materials* needed to add a
+ * new textlog entry **plus** N attachment entries to the live
+ * container — but it never dispatches. The caller (typically
+ * `main.ts`'s file-picker handler) is the one that knows about the
+ * dispatcher and is responsible for emitting the
+ * `CREATE_ENTRY` + `COMMIT_EDIT` pairs.
+ *
+ * Why split it this way: the import path is purely additive (spec
+ * §14) and threading a dispatcher down into `adapter/platform/`
+ * would cross a layer boundary for zero gain. Returning the raw
+ * materials keeps the platform layer pure and mirrors the existing
+ * `importContainerFromZip` shape.
+ */
+export interface TextlogImportSuccess {
+  ok: true;
+  /** The textlog entry to create after the attachments are in place. */
+  textlog: { title: string; body: string };
+  /** One per asset present in `assets/`. Order matches manifest order. */
+  attachments: ImportedAttachment[];
+  /**
+   * Number of bundle entries (rows) that were imported. Equals
+   * `parseTextlogCsv(textlog.csv).entries.length` minus skipped rows.
+   */
+  entryCount: number;
+  /**
+   * Diagnostic copy of the source manifest, for caller logging /
+   * console output. NOT used by the reducer.
+   */
+  sourceManifest: TextlogBundleManifest;
+  /** Original filename (only set when imported from a `File`). */
+  source: string;
+}
+
+export interface TextlogImportFailure {
+  ok: false;
+  /** Human-readable error string. Safe to surface via `SYS_ERROR`. */
+  error: string;
+}
+
+export type TextlogImportResult = TextlogImportSuccess | TextlogImportFailure;
+
+/**
+ * Import a TEXTLOG bundle from a `File` (the file picker output).
+ *
+ * - Validates `manifest.format === 'pkc2-textlog-bundle'` and
+ *   `manifest.version === 1` (spec §14.1).
+ * - Parses `textlog.csv` with `text_markdown` as the source of
+ *   truth (spec §14.6) — `text_plain` and `asset_keys` are
+ *   discarded; the latter is re-derived from `text_markdown`.
+ * - **Always** re-keys every imported asset (spec §14.4) and
+ *   rewrites every `![…](asset:<old>)` / `[…](asset:<old>)`
+ *   reference in the imported `text_markdown` accordingly.
+ * - Failure-atomic: any error → `{ ok: false, error }` and the
+ *   caller never dispatches anything.
+ *
+ * The returned object is the raw material for **N + 1** entries:
+ * one `CREATE_ENTRY` + `COMMIT_EDIT` pair per imported attachment,
+ * followed by one for the textlog itself. The function does not
+ * call the dispatcher — see `TextlogImportSuccess` for why.
+ */
+export async function importTextlogBundle(file: File): Promise<TextlogImportResult> {
+  try {
+    const buf = await file.arrayBuffer();
+    return importTextlogBundleFromBuffer(buf, file.name);
+  } catch (e) {
+    return { ok: false, error: `Textlog import failed: ${String(e)}` };
+  }
+}
+
+/**
+ * Variant of `importTextlogBundle` that takes a raw `ArrayBuffer`
+ * directly. Used by tests so they can build a bundle in memory and
+ * round-trip it without going through a `File` constructor.
+ *
+ * Behaviour is identical to `importTextlogBundle`. Both paths
+ * funnel into the same parser / re-keyer / result-builder, so any
+ * future change only needs to land in one place.
+ */
+export function importTextlogBundleFromBuffer(
+  buffer: ArrayBuffer,
+  source = 'buffer',
+): TextlogImportResult {
+  try {
+    const bytes = new Uint8Array(buffer);
+    let entries: ZipEntry[];
+    try {
+      entries = parseZip(bytes);
+    } catch (e) {
+      return { ok: false, error: `Invalid ZIP: ${String(e)}` };
+    }
+
+    // 1. Locate manifest.json — required.
+    const manifestEntry = entries.find((e) => e.name === 'manifest.json');
+    if (!manifestEntry) {
+      return { ok: false, error: 'Missing manifest.json in textlog bundle' };
+    }
+    let parsedManifest: Partial<TextlogBundleManifest>;
+    try {
+      parsedManifest = JSON.parse(bytesToText(manifestEntry.data)) as Partial<TextlogBundleManifest>;
+    } catch (e) {
+      return { ok: false, error: `Invalid manifest.json: ${String(e)}` };
+    }
+
+    // 2. Validate format / version. Anything else is rejected up
+    // front so the dispatcher never sees a partial bundle.
+    if (parsedManifest.format !== 'pkc2-textlog-bundle') {
+      return {
+        ok: false,
+        error: `Invalid format: expected "pkc2-textlog-bundle", got "${String(parsedManifest.format)}"`,
+      };
+    }
+    if (parsedManifest.version !== 1) {
+      return {
+        ok: false,
+        error: `Unsupported textlog bundle version: ${String(parsedManifest.version)}`,
+      };
+    }
+
+    // 3. Locate textlog.csv — required.
+    const csvEntry = entries.find((e) => e.name === 'textlog.csv');
+    if (!csvEntry) {
+      return { ok: false, error: 'Missing textlog.csv in textlog bundle' };
+    }
+
+    // 4. Parse the CSV. `parseTextlogCsv` throws on header / shape
+    // failures; we wrap to keep the failure-atomic guarantee (§14.7).
+    let parsedBody: TextlogBody;
+    try {
+      parsedBody = parseTextlogCsv(bytesToText(csvEntry.data));
+    } catch (e) {
+      return { ok: false, error: `Invalid textlog.csv: ${String(e)}` };
+    }
+
+    // 5. Build the imported attachment list. Always re-key (spec
+    // §14.4): we never assume the source's keys are collision-free
+    // against the target container.
+    const sourceAssetIndex = parsedManifest.assets ?? {};
+    const keyMap: Record<string, string> = {};
+    const attachments: ImportedAttachment[] = [];
+    let collisionCounter = 0;
+    for (const oldKey of Object.keys(sourceAssetIndex)) {
+      // Find the matching binary file inside `assets/<oldKey>.<ext>`.
+      const fileEntry = entries.find(
+        (e) => e.name.startsWith('assets/') && stripAssetExtension(e.name.slice('assets/'.length)) === oldKey,
+      );
+      if (!fileEntry) {
+        // Manifest claims an asset that has no file — treat as
+        // missing. Don't add it to keyMap so the body's references
+        // to it stay unchanged (spec §14.3).
+        continue;
+      }
+      const meta = sourceAssetIndex[oldKey];
+      if (!meta) continue;
+      const newKey = generateImportAssetKey(collisionCounter++);
+      keyMap[oldKey] = newKey;
+      attachments.push({
+        name: meta.name,
+        mime: meta.mime,
+        size: fileEntry.data.byteLength,
+        assetKey: newKey,
+        data: bytesToBase64(fileEntry.data),
+      });
+    }
+
+    // 6. Rewrite every present-key reference inside text_markdown.
+    // Missing keys (those NOT in keyMap) are deliberately left as-is
+    // so the imported textlog still surfaces the broken-reference
+    // signal exactly like the source did.
+    const rewrittenBody: TextlogBody = {
+      entries: parsedBody.entries.map((entry) => ({
+        ...entry,
+        text: rewriteAssetReferences(entry.text ?? '', keyMap),
+      })),
+    };
+
+    // 7. Resolve the title. Spec §14.5: prefer source_title, fall
+    // back to a fixed string. Trim to avoid leaking trailing
+    // whitespace from a manifest that was hand-edited.
+    const title = (parsedManifest.source_title ?? '').trim() || 'Imported textlog';
+
+    return {
+      ok: true,
+      textlog: { title, body: serializeTextlogBody(rewrittenBody) },
+      attachments,
+      entryCount: rewrittenBody.entries.length,
+      sourceManifest: parsedManifest as TextlogBundleManifest,
+      source,
+    };
+  } catch (e) {
+    // Last-resort guard: any unexpected throw becomes a failure
+    // result, never a partial dispatch.
+    return { ok: false, error: `Textlog import failed: ${String(e)}` };
+  }
+}
+
 // ── internals ────────────────────────────────────────
 
 interface ResolvedAssets {
@@ -328,6 +558,66 @@ const MIME_EXTENSION: Record<string, string> = {
   'video/webm': '.webm',
   'video/quicktime': '.mov',
 };
+
+/**
+ * Strip a known asset extension off an `assets/<key><.ext>` filename
+ * to recover the bare asset key. Knows the same allowlist of
+ * extensions that `chooseExtension` writes, plus a generic
+ * `.<a-z0-9>{1,8}` fallback for `.bin` and any future addition.
+ *
+ * Used by the importer to match a manifest key against the actual
+ * file inside `assets/`. The export side guarantees the key portion
+ * of the filename equals the manifest key, so this is just an
+ * extension stripper, not a fuzzy match.
+ */
+function stripAssetExtension(filename: string): string {
+  // Greedy match against `<key><.ext>`. The allowed key character
+  // set matches `ast-{ts}-{rand}` and is broad enough that any
+  // legitimate asset key composes correctly.
+  const m = /^([A-Za-z0-9_-]+)\.[A-Za-z0-9]{1,8}$/.exec(filename);
+  if (m) return m[1]!;
+  return filename;
+}
+
+/**
+ * Generate a fresh asset key for an imported attachment. The shape
+ * matches the `att-{ts}-{rand}` form `processFileAttachment` uses
+ * for drag-dropped files, so any downstream consumer that special-
+ * cases that prefix continues to work.
+ *
+ * The `salt` argument lets us produce N distinct keys from a single
+ * `Date.now()` tick — important when the bundle has many assets and
+ * `Math.random` happens to collide on the first few characters.
+ */
+function generateImportAssetKey(salt: number): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `att-${ts}-${salt}${rand}`;
+}
+
+/**
+ * Rewrite every `![alt](asset:<old>)` / `[label](asset:<old>)`
+ * reference whose `<old>` key appears in `keyMap`, replacing the
+ * key with `keyMap[old]`. References whose key is **not** in
+ * `keyMap` are left untouched — those represent the missing assets
+ * recorded in `manifest.missing_asset_keys`, which spec §14.3 says
+ * we preserve verbatim.
+ *
+ * The regex mirrors `stripBrokenAssetRefs` and the asset collector
+ * in `textlog-csv.ts`, including the optional title (`"…"`) match,
+ * so all three stay in sync on edge cases.
+ *
+ * Pure — returns a new string.
+ */
+function rewriteAssetReferences(text: string, keyMap: Record<string, string>): string {
+  if (!text) return '';
+  const re = /(!?)\[([^\]]*)\]\(asset:([^\s)"]+)((?:\s+"[^"]*")?)\)/g;
+  return text.replace(re, (match, bang: string, label: string, oldKey: string, title: string) => {
+    const newKey = keyMap[oldKey];
+    if (!newKey) return match; // missing key — preserve verbatim
+    return `${bang}[${label}](asset:${newKey}${title})`;
+  });
+}
 
 /**
  * Re-exported for tests / callers that want to inspect the parsed
