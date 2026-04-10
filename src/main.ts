@@ -616,7 +616,7 @@ function mountTextImportHandler(root: HTMLElement, dispatcher: Dispatcher): void
 function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.zip,.textlogs.zip,.texts.zip,.folder-export.zip,application/zip';
+  fileInput.accept = '.zip,.textlogs.zip,.texts.zip,.mixed.zip,.folder-export.zip,application/zip';
   fileInput.style.display = 'none';
   fileInput.setAttribute('data-pkc-role', 'import-batch-input');
   document.body.appendChild(fileInput);

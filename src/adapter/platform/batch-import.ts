@@ -23,6 +23,7 @@ import {
 } from './zip-package';
 import { importTextBundleFromBuffer, type ImportedTextAttachment } from './text-bundle';
 import { importTextlogBundleFromBuffer, type ImportedAttachment } from './textlog-bundle';
+import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
 
 // ── Types ────────────────────────────────────────────
 
@@ -59,6 +60,18 @@ export interface BatchImportPreviewEntry {
   index: number;
   title: string;
   archetype: 'text' | 'textlog';
+  /** First ~200 chars of body (TEXT) or empty string. Optional — absent if peek fails. */
+  bodySnippet?: string;
+  /** TEXT: body.md char count. From inner manifest. */
+  bodyLength?: number;
+  /** TEXTLOG: number of log entries. From inner manifest. */
+  logEntryCount?: number;
+  /** TEXTLOG: first 3 log entry texts, each truncated to ~80 chars. */
+  logSnippets?: string[];
+  /** Number of resolved assets in the nested bundle. */
+  assetCount?: number;
+  /** Number of missing assets in the nested bundle. */
+  missingAssetCount?: number;
 }
 
 /** Lightweight metadata extracted from the manifest only (no nested parse). */
@@ -91,6 +104,7 @@ const ACCEPTED_FORMATS = new Set([
   'pkc2-textlogs-container-bundle',
   'pkc2-texts-container-bundle',
   'pkc2-folder-export-bundle',
+  'pkc2-mixed-container-bundle',
 ]);
 
 // ── Public API ────────────────────────────────────────
@@ -108,9 +122,14 @@ export async function importBatchBundle(file: File): Promise<BatchImportResult> 
 }
 
 /**
- * Extract lightweight preview metadata from a batch bundle.
- * Reads only the manifest.json — does NOT parse nested bundles.
- * Used by the preview UI to show import summary before the user confirms.
+ * Extract preview metadata from a batch bundle. Reads the outer
+ * manifest for summary info, then peeks into each nested bundle
+ * for body snippets and inner manifest metadata (deep preview).
+ *
+ * The nested peek is **not** a full import parse — no asset
+ * re-keying, no body rewriting, no attachment construction. If a
+ * nested peek fails, the summary preview still works (deep preview
+ * fields are simply absent).
  */
 export function previewBatchBundleFromBuffer(
   buffer: ArrayBuffer,
@@ -172,6 +191,28 @@ export function previewBatchBundleFromBuffer(
       }
     }
 
+    // Deep preview: peek into each nested bundle for body snippets
+    // and inner manifest metadata. This is NOT a full import parse —
+    // no asset re-keying, no body rewriting, no attachment construction.
+    const nestedByName = new Map<string, Uint8Array>();
+    for (const entry of outerEntries) {
+      if (entry.name !== 'manifest.json') {
+        nestedByName.set(entry.name, entry.data);
+      }
+    }
+    for (let i = 0; i < manifestEntries.length; i++) {
+      const me = manifestEntries[i]!;
+      const pe = previewEntries.find((e) => e.index === i);
+      if (!pe || !me.filename) continue;
+      const nestedData = nestedByName.get(me.filename);
+      if (!nestedData) continue;
+      try {
+        peekNestedBundle(nestedData, pe);
+      } catch {
+        // Peek failure is non-fatal — summary preview still works
+      }
+    }
+
     const isFolderExport = format === 'pkc2-folder-export-bundle';
 
     return {
@@ -202,6 +243,7 @@ const FORMAT_LABELS: Record<string, string> = {
   'pkc2-texts-container-bundle': 'TEXT container bundle',
   'pkc2-textlogs-container-bundle': 'TEXTLOG container bundle',
   'pkc2-folder-export-bundle': 'Folder export bundle',
+  'pkc2-mixed-container-bundle': 'Mixed (TEXT + TEXTLOG) container bundle',
 };
 
 /**
@@ -356,10 +398,84 @@ function resolveArchetype(
     case 'pkc2-texts-container-bundle':
       return 'text';
     case 'pkc2-folder-export-bundle':
+    case 'pkc2-mixed-container-bundle':
       if (entry.archetype === 'text') return 'text';
       if (entry.archetype === 'textlog') return 'textlog';
       return null;
     default:
       return null;
+  }
+}
+
+/** Max chars for a TEXT body snippet. */
+const BODY_SNIPPET_LIMIT = 200;
+/** Max log entries to include in TEXTLOG snippets. */
+const LOG_SNIPPET_COUNT = 3;
+/** Max chars per individual log snippet line. */
+const LOG_LINE_LIMIT = 80;
+
+/**
+ * Peek into a nested bundle ZIP to extract lightweight deep preview
+ * data. Mutates `previewEntry` in place to add optional fields.
+ *
+ * This is NOT a full import parse — no asset re-keying, no body
+ * rewriting, no attachment entry construction. It reads only the
+ * inner `manifest.json` and the first bytes of `body.md` /
+ * `textlog.csv`.
+ *
+ * Throws on ZIP parse failure — caller wraps in try/catch and
+ * treats failure as non-fatal (deep preview fields stay absent).
+ */
+function peekNestedBundle(nestedData: Uint8Array, previewEntry: BatchImportPreviewEntry): void {
+  const innerEntries = parseZip(nestedData);
+
+  // Read inner manifest
+  const manifestFile = innerEntries.find((e) => e.name === 'manifest.json');
+  if (!manifestFile) return;
+  let innerManifest: Record<string, unknown>;
+  try {
+    innerManifest = JSON.parse(bytesToText(manifestFile.data)) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  previewEntry.assetCount = typeof innerManifest.asset_count === 'number'
+    ? innerManifest.asset_count : undefined;
+  previewEntry.missingAssetCount = typeof innerManifest.missing_asset_count === 'number'
+    ? innerManifest.missing_asset_count : undefined;
+
+  if (previewEntry.archetype === 'text') {
+    // TEXT: body_length from manifest + body.md snippet
+    previewEntry.bodyLength = typeof innerManifest.body_length === 'number'
+      ? innerManifest.body_length : undefined;
+    const bodyFile = innerEntries.find((e) => e.name === 'body.md');
+    if (bodyFile) {
+      const fullBody = bytesToText(bodyFile.data);
+      previewEntry.bodySnippet = fullBody.length > BODY_SNIPPET_LIMIT
+        ? fullBody.slice(0, BODY_SNIPPET_LIMIT) + '…'
+        : fullBody;
+    }
+  } else if (previewEntry.archetype === 'textlog') {
+    // TEXTLOG: entry_count from manifest + first N log entries' text
+    previewEntry.logEntryCount = typeof innerManifest.entry_count === 'number'
+      ? innerManifest.entry_count : undefined;
+    const csvFile = innerEntries.find((e) => e.name === 'textlog.csv');
+    if (csvFile) {
+      try {
+        const parsed = parseTextlogCsv(bytesToText(csvFile.data));
+        const snippets: string[] = [];
+        for (let j = 0; j < Math.min(LOG_SNIPPET_COUNT, parsed.entries.length); j++) {
+          const text = parsed.entries[j]!.text ?? '';
+          snippets.push(
+            text.length > LOG_LINE_LIMIT
+              ? text.slice(0, LOG_LINE_LIMIT) + '…'
+              : text,
+          );
+        }
+        previewEntry.logSnippets = snippets;
+      } catch {
+        // CSV parse failure — non-fatal for preview
+      }
+    }
   }
 }

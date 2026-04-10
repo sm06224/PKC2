@@ -302,6 +302,15 @@ function renderHeader(state: AppState): HTMLElement {
       textsBtn.textContent = 'TEXTs';
       header.appendChild(textsBtn);
     }
+
+    // Mixed container export — available in readonly mode.
+    if (hasTextlogs || hasTexts) {
+      const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+      mixedBtn.setAttribute('title', 'Export all TEXTs + TEXTLOGs as a single ZIP bundle (.mixed.zip)');
+      mixedBtn.textContent = 'Mixed';
+      header.appendChild(mixedBtn);
+    }
   }
 
   // Light mode: show light badge (assets stripped)
@@ -692,6 +701,17 @@ function renderExportImportInline(state: AppState): HTMLElement {
     content.appendChild(textsBtn);
   }
 
+  // Container-wide mixed export — shown when the container has at
+  // least one TEXT or TEXTLOG entry. Bundles both archetypes into
+  // a single .mixed.zip.
+  if (hasTextlogs || hasTexts) {
+    const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
+    mixedBtn.setAttribute('title', '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip)');
+    mixedBtn.textContent = 'Mixed';
+    content.appendChild(mixedBtn);
+  }
+
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);
@@ -720,7 +740,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // Import batch bundle (container-wide / folder-scoped)
   const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBatchBtn.setAttribute('data-pkc-action', 'import-batch-bundle');
-  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .folder-export.zip) をまとめてインポート');
+  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .mixed.zip / .folder-export.zip) をまとめてインポート');
   importBatchBtn.textContent = '📥 Batch';
   content.appendChild(importBatchBtn);
 
@@ -2120,8 +2140,10 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
     entryList.appendChild(toggleAllRow);
 
     for (const entry of info.entries) {
+      const wrapper = createElement('div', 'pkc-batch-entry-wrapper');
+      wrapper.setAttribute('data-pkc-entry-index', String(entry.index));
+
       const row = createElement('label', 'pkc-batch-entry-row');
-      row.setAttribute('data-pkc-entry-index', String(entry.index));
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = selectedSet.has(entry.index);
@@ -2134,7 +2156,59 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
       const archBadge = createElement('span', 'pkc-batch-entry-archetype');
       archBadge.textContent = entry.archetype.toUpperCase();
       row.appendChild(archBadge);
-      entryList.appendChild(row);
+      wrapper.appendChild(row);
+
+      // Deep preview disclosure (default collapsed)
+      const hasDeepPreview = entry.bodySnippet != null || entry.logSnippets != null || entry.logEntryCount != null;
+      if (hasDeepPreview) {
+        const details = document.createElement('details');
+        details.className = 'pkc-batch-entry-details';
+        details.setAttribute('data-pkc-role', 'entry-deep-preview');
+        const summaryEl = document.createElement('summary');
+        summaryEl.textContent = 'Preview';
+        details.appendChild(summaryEl);
+
+        const content = createElement('div', 'pkc-batch-entry-preview');
+
+        if (entry.archetype === 'text' && entry.bodySnippet != null) {
+          const pre = createElement('pre', 'pkc-batch-snippet');
+          pre.textContent = entry.bodySnippet;
+          content.appendChild(pre);
+        }
+
+        if (entry.archetype === 'textlog') {
+          if (entry.logEntryCount != null) {
+            const countLine = createElement('div', 'pkc-batch-meta-line');
+            countLine.textContent = `${entry.logEntryCount} log entries`;
+            content.appendChild(countLine);
+          }
+          if (entry.logSnippets && entry.logSnippets.length > 0) {
+            const ol = createElement('ol', 'pkc-batch-log-snippets');
+            for (const snippet of entry.logSnippets) {
+              const li = document.createElement('li');
+              li.textContent = snippet;
+              ol.appendChild(li);
+            }
+            content.appendChild(ol);
+          }
+        }
+
+        // Metadata line: body length / asset count / missing
+        const metaParts: string[] = [];
+        if (entry.bodyLength != null) metaParts.push(`${entry.bodyLength} 文字`);
+        if (entry.assetCount != null && entry.assetCount > 0) metaParts.push(`${entry.assetCount} assets`);
+        if (entry.missingAssetCount != null && entry.missingAssetCount > 0) metaParts.push(`${entry.missingAssetCount} missing`);
+        if (metaParts.length > 0) {
+          const metaLine = createElement('div', 'pkc-batch-meta-line');
+          metaLine.textContent = metaParts.join(' | ');
+          content.appendChild(metaLine);
+        }
+
+        details.appendChild(content);
+        wrapper.appendChild(details);
+      }
+
+      entryList.appendChild(wrapper);
     }
     panel.appendChild(entryList);
   }
