@@ -680,9 +680,12 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
       }
     }
 
+    const folderNote = result.format === 'pkc2-folder-export-bundle'
+      ? ' (folder-export: フォルダ構造は復元されません)'
+      : '';
     console.log(
       `[PKC2] Batch import complete: ${result.entries.length} entries`
-      + ` (${totalAttachments} attachments) from "${result.source}"`,
+      + ` (${totalAttachments} attachments) from "${result.source}"${folderNote}`,
     );
   });
 }

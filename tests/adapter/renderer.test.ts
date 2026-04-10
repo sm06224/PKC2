@@ -1884,6 +1884,34 @@ describe('Action surface consolidation', () => {
     expect(items.length).toBeGreaterThanOrEqual(6);
   });
 
+  it('Quick Help mentions folder-export import and structure-not-restored caveat', () => {
+    render(makeState(), root);
+    const helpItems = root.querySelectorAll('.pkc-shell-menu-help-item');
+    const importLine = Array.from(helpItems).find((li) =>
+      li.textContent?.includes('インポート'),
+    );
+    expect(importLine).not.toBeNull();
+    // Must mention Batch (the entry point for folder-export import)
+    expect(importLine!.textContent).toContain('Batch');
+    // Must warn that folder structure is not restored
+    expect(importLine!.textContent).toContain('フォルダ構造は復元されません');
+  });
+
+  it('Batch import button tooltip mentions folder-export.zip', () => {
+    render(makeState(), root);
+    const batchBtn = root.querySelector('[data-pkc-action="import-batch-bundle"]');
+    expect(batchBtn).not.toBeNull();
+    const tooltip = batchBtn!.getAttribute('title') ?? '';
+    expect(tooltip).toContain('.folder-export.zip');
+  });
+
+  it('no separate folder-import button exists (action surface not excessive)', () => {
+    render(makeState(), root);
+    // There should be no dedicated import-folder-bundle action
+    const folderImportBtn = root.querySelector('[data-pkc-action="import-folder-bundle"]');
+    expect(folderImportBtn).toBeNull();
+  });
+
   it('context menu labels are concise and tooltips are descriptive', () => {
     const menu = renderContextMenu('lid', 0, 0, { hasParent: false, canEdit: true, archetype: 'attachment' });
     const assetRef = menu.querySelector('[data-pkc-action="copy-asset-ref"]');
