@@ -1572,10 +1572,10 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Collapsed behind <details>: export + light + zip + import + textlog + text
+    // Collapsed behind <details>: export + light + zip + TEXTs + import + textlog + text
     // (Reset moved to shell menu maintenance section)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(6);
+    expect(btns.length).toBe(7);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -1670,6 +1670,112 @@ describe('Container-wide TEXTLOG export button', () => {
   });
 });
 
+// ── Container-wide TEXT export ──
+
+describe('Container-wide TEXT export button', () => {
+  const textContainer: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'e1', title: 'My Doc', body: 'hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'e2', title: 'Log', body: '{"entries":[]}', archetype: 'textlog', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [], revisions: [], assets: {},
+  };
+
+  it('shows TEXTs button when container has text entries', () => {
+    const state: AppState = {
+      phase: 'ready', container: textContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('TEXTs');
+  });
+
+  it('hides TEXTs button when container has no text entries', () => {
+    const noTextContainer: Container = {
+      ...textContainer,
+      entries: [textContainer.entries[1]!], // only the textlog entry
+    };
+    const state: AppState = {
+      phase: 'ready', container: noTextContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
+    expect(btn).toBeNull();
+  });
+
+  it('shows TEXTs button in readonly mode when text entries exist', () => {
+    const state: AppState = {
+      phase: 'ready', container: textContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('TEXTs');
+  });
+});
+
+// ── Folder-scoped export ──
+
+describe('Folder-scoped export button', () => {
+  const folderWithTextChildren: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'f1', title: 'My Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 't1', title: 'Doc', body: 'hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [{ id: 'r1', from: 'f1', to: 't1', kind: 'structural' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    revisions: [], assets: {},
+  };
+
+  const folderNoTextChildren: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'f1', title: 'Empty Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'td1', title: 'Task', body: '{"status":"open","description":"x"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [{ id: 'r1', from: 'f1', to: 'td1', kind: 'structural' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    revisions: [], assets: {},
+  };
+
+  it('shows Export button on folder action bar when folder has TEXT/TEXTLOG descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderWithTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('📦 Export');
+    expect(btn!.getAttribute('title')).toContain('フォルダ配下');
+  });
+
+  it('hides Export button when folder has no TEXT/TEXTLOG descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderNoTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).toBeNull();
+  });
+
+  it('shows Export button in readonly mode for folder with TEXT descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderWithTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('📦 Export');
+  });
+});
+
 // ── Action Surface Consolidation ──
 
 describe('Action surface consolidation', () => {
@@ -1756,6 +1862,7 @@ describe('Action surface consolidation', () => {
     expect(panel!.querySelector('[data-pkc-action="import-textlog-bundle"]')).not.toBeNull();
     expect(panel!.querySelector('[data-pkc-action="import-text-bundle"]')).not.toBeNull();
     expect(panel!.querySelector('[data-pkc-action="export-textlogs-container"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="export-texts-container"]')).not.toBeNull();
   });
 
   it('Reset button moved to shell menu maintenance section', () => {

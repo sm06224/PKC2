@@ -23,6 +23,7 @@ import {
 } from '../../features/text/text-markdown';
 import {
   createZipBlob,
+  createZipBytes,
   textToBytes,
   base64ToBytes,
   bytesToText,
@@ -61,6 +62,10 @@ export interface TextBundleManifest {
 
 export interface TextBundleResult {
   blob: Blob;
+  /** Raw ZIP bytes — same content as `blob` but as a Uint8Array.
+   *  Available so callers that nest this bundle inside another ZIP
+   *  can avoid a Blob→ArrayBuffer async round-trip. */
+  zipBytes: Uint8Array;
   filename: string;
   manifest: TextBundleManifest;
 }
@@ -149,9 +154,10 @@ export function buildTextBundle(
     ...assetEntries,
   ];
 
-  const blob = createZipBlob(zipEntries);
+  const zipBytes = createZipBytes(zipEntries);
+  const blob = new Blob([zipBytes as BlobPart], { type: 'application/zip' });
   const filename = buildTextBundleFilename(entry, now);
-  return { blob, manifest, filename };
+  return { blob, zipBytes, manifest, filename };
 }
 
 /**
@@ -201,6 +207,115 @@ export function buildTextBundleFilename(entry: Entry, now: Date = new Date()): s
   const slug = slugify(entry.title || entry.lid);
   const date = formatDateCompact(now);
   return `${slug}-${date}.text.zip`;
+}
+
+// ── Container-wide export ────────────────────────
+
+/**
+ * Top-level manifest for a container-wide TEXT export bundle.
+ */
+export interface TextsContainerManifest {
+  format: 'pkc2-texts-container-bundle';
+  version: 1;
+  exported_at: string;
+  source_cid: string;
+  source_title: string;
+  entry_count: number;
+  compact: boolean;
+  entries: {
+    lid: string;
+    title: string;
+    filename: string;
+    body_length: number;
+    asset_count: number;
+    missing_asset_count: number;
+  }[];
+}
+
+export interface TextsContainerResult {
+  blob: Blob;
+  filename: string;
+  manifest: TextsContainerManifest;
+  /** Total missing asset count across all bundles. */
+  totalMissingAssetCount: number;
+}
+
+/**
+ * Build a container-wide TEXT export: a ZIP containing individual
+ * `.text.zip` bundles for every text entry in the container,
+ * plus a top-level `manifest.json`.
+ *
+ * Each inner bundle is produced by `buildTextBundle()` — the exact
+ * same format as a single-entry export. The outer ZIP nests them as
+ * stored byte arrays (ZIP-in-ZIP), so unzipping the outer archive
+ * gives individual bundles that can be imported independently.
+ *
+ * Live state is never mutated.
+ */
+export function buildTextsContainerBundle(
+  container: Container,
+  options?: { now?: Date; compact?: boolean },
+): TextsContainerResult {
+  const now = options?.now ?? new Date();
+  const compact = options?.compact === true;
+
+  const textEntries = container.entries.filter((e) => e.archetype === 'text');
+
+  // Track filenames for dedup
+  const usedFilenames = new Set<string>();
+  const manifestEntries: TextsContainerManifest['entries'] = [];
+  const zipEntries: ZipEntry[] = [];
+  let totalMissing = 0;
+
+  for (const entry of textEntries) {
+    const built = buildTextBundle(entry, container, { now, compact });
+
+    // Deduplicate filenames with -2, -3, ... suffixes
+    let filename = built.filename;
+    if (usedFilenames.has(filename)) {
+      const base = filename.replace(/\.text\.zip$/, '');
+      let suffix = 2;
+      while (usedFilenames.has(`${base}-${suffix}.text.zip`)) suffix++;
+      filename = `${base}-${suffix}.text.zip`;
+    }
+    usedFilenames.add(filename);
+
+    const innerBytes = built.zipBytes;
+
+    zipEntries.push({ name: filename, data: innerBytes });
+    manifestEntries.push({
+      lid: entry.lid,
+      title: entry.title ?? '',
+      filename,
+      body_length: built.manifest.body_length,
+      asset_count: built.manifest.asset_count,
+      missing_asset_count: built.manifest.missing_asset_count,
+    });
+    totalMissing += built.manifest.missing_asset_count;
+  }
+
+  const manifest: TextsContainerManifest = {
+    format: 'pkc2-texts-container-bundle',
+    version: 1,
+    exported_at: now.toISOString(),
+    source_cid: container.meta.container_id,
+    source_title: container.meta.title ?? '',
+    entry_count: textEntries.length,
+    compact,
+    entries: manifestEntries,
+  };
+
+  zipEntries.unshift({
+    name: 'manifest.json',
+    data: textToBytes(JSON.stringify(manifest, null, 2)),
+  });
+
+  const blob = createZipBlob(zipEntries);
+  const containerSlug = slugify(container.meta.title || container.meta.container_id);
+  const date = formatDateCompact(now);
+  const filename = `texts-${containerSlug}-${date}.texts.zip`;
+
+  return { blob, filename, manifest, totalMissingAssetCount: totalMissing };
 }
 
 // ── Import ─────────────────────────────────────────
