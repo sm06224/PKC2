@@ -785,10 +785,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
-    // Ctrl+S / Cmd+S: save in editing mode
-    if (mod && e.key === 's' && state.phase === 'editing' && state.editingLid) {
+    // Ctrl+S / Cmd+S: save in editing mode, or suppress browser save in ready phase
+    if (mod && e.key === 's') {
       e.preventDefault();
-      dispatchCommitEdit(root, state.editingLid, dispatcher);
+      if (state.phase === 'editing' && state.editingLid) {
+        dispatchCommitEdit(root, state.editingLid, dispatcher);
+      }
       return;
     }
 
@@ -1370,12 +1372,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       folders,
     });
     root.appendChild(menu);
-
-    // Select the entry being right-clicked (sidebar-only behaviour —
-    // center pane right-click never moves selection).
-    if (canEdit) {
-      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-    }
   }
 
   function handleDocumentClick(e: MouseEvent): void {
@@ -1473,9 +1469,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       || field === 'textlog-entry-text';
   }
 
+  // Guard: prevent overlapping async paste operations (FileReader race)
+  let pasteInProgress = false;
+
   function handlePaste(e: ClipboardEvent): void {
     const state = dispatcher.getState();
     if (state.readonly) return;
+    if (pasteInProgress) return;
 
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -1514,8 +1514,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const textarea = target;
       const cursorPos = textarea.selectionStart ?? textarea.value.length;
 
+      // Capture textarea identity for re-finding after re-render
+      const fieldAttr = textarea.getAttribute('data-pkc-field') ?? 'body';
+      const currentValue = textarea.value;
+
+      pasteInProgress = true;
       const reader = new FileReader();
       reader.onload = () => {
+        pasteInProgress = false;
         const arrayBuffer = reader.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
         let binary = '';
@@ -1524,7 +1530,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         const base64 = btoa(binary);
 
-        // Dispatch PASTE_ATTACHMENT — creates attachment + ASSETS folder
+        // Build the reference string before dispatch
+        const ref = `![${name}](asset:${assetKey})`;
+        const newValue = currentValue.slice(0, cursorPos) + ref + currentValue.slice(cursorPos);
+
+        // Dispatch PASTE_ATTACHMENT — creates attachment + ASSETS folder.
+        // This triggers synchronous re-render which replaces the textarea
+        // in the DOM, making the old reference stale.
         dispatcher.dispatch({
           type: 'PASTE_ATTACHMENT',
           name,
@@ -1535,29 +1547,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           contextLid,
         });
 
-        // Insert markdown image reference at cursor position
-        const ref = `![${name}](asset:${assetKey})`;
-        const before = textarea.value.slice(0, cursorPos);
-        const after = textarea.value.slice(cursorPos);
-        textarea.value = before + ref + after;
-        const newPos = cursorPos + ref.length;
-        textarea.setSelectionRange(newPos, newPos);
-        textarea.focus();
-
-        // Trigger preview update for split TEXT editor
-        const wrapper = textarea.closest('.pkc-text-split-editor');
-        if (wrapper) {
-          const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-          if (preview) {
-            const src = textarea.value;
-            if (src && hasMarkdownSyntax(src)) {
-              preview.innerHTML = renderMarkdown(src);
-            } else if (src) {
-              preview.textContent = src;
-            }
-          }
+        // Re-find the textarea in the (potentially rebuilt) DOM
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(
+          `textarea[data-pkc-field="${fieldAttr}"]`,
+        );
+        if (freshTextarea) {
+          freshTextarea.value = newValue;
+          const newPos = cursorPos + ref.length;
+          freshTextarea.setSelectionRange(newPos, newPos);
+          freshTextarea.focus();
+          updateTextEditPreview(freshTextarea);
         }
       };
+      reader.onerror = () => { pasteInProgress = false; };
       reader.readAsArrayBuffer(file);
       return;
     }
@@ -1603,6 +1605,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // chips appear rendered when the child first loads.
     const assetContext = buildEntryWindowAssetContext(entry, state);
 
+    // For text/textlog/todo, open directly in edit mode
+    const editableArchetypes: Set<string> = new Set(['text', 'textlog', 'todo']);
+    const shouldStartEditing = !state.readonly && editableArchetypes.has(entry.archetype);
+
     // Open in a separate browser window with markdown rendering + edit capability
     openEntryWindow(
       entry,
@@ -1627,6 +1633,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       !!state.lightSource,
       assetContext,
       (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+      shouldStartEditing,
     );
   }
 
@@ -1722,29 +1729,109 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('mousedown', handleResizeMouseDown);
 
-  // ── TEXT split editor: update preview on line commit (Enter) ──
+  // ── TEXT split editor: resize handle between editor and preview ──
+  let splitResizeActive = false;
+  let splitResizeStartX = 0;
+  let splitResizeWrapper: HTMLElement | null = null;
+  let splitResizeStartFr: [number, number] = [1, 1];
+
+  function handleSplitResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-split-resize]');
+    if (!handle) return;
+    const wrapper = handle.closest<HTMLElement>('.pkc-text-split-editor');
+    if (!wrapper) return;
+
+    splitResizeActive = true;
+    splitResizeStartX = e.clientX;
+    splitResizeWrapper = wrapper;
+    handle.setAttribute('data-pkc-resizing', 'true');
+
+    // Compute current column widths from rendered sizes
+    const cols = wrapper.style.gridTemplateColumns;
+    if (cols) {
+      const parts = cols.split(/\s+/).filter(p => p.endsWith('fr'));
+      if (parts.length >= 2) {
+        splitResizeStartFr = [parseFloat(parts[0]!) || 1, parseFloat(parts[1]!) || 1];
+      }
+    } else {
+      splitResizeStartFr = [1, 1];
+    }
+
+    e.preventDefault();
+    document.addEventListener('mousemove', handleSplitResizeMouseMove);
+    document.addEventListener('mouseup', handleSplitResizeMouseUp);
+  }
+
+  function handleSplitResizeMouseMove(e: MouseEvent): void {
+    if (!splitResizeActive || !splitResizeWrapper) return;
+    const wrapperWidth = splitResizeWrapper.getBoundingClientRect().width - 6; // subtract handle width
+    const dx = e.clientX - splitResizeStartX;
+    const totalFr = splitResizeStartFr[0] + splitResizeStartFr[1];
+    const leftPx = (splitResizeStartFr[0] / totalFr) * wrapperWidth + dx;
+    const rightPx = wrapperWidth - leftPx;
+    const minPx = 100;
+    if (leftPx < minPx || rightPx < minPx) return;
+    const leftFr = leftPx / wrapperWidth;
+    const rightFr = rightPx / wrapperWidth;
+    splitResizeWrapper.style.gridTemplateColumns = `${leftFr}fr 6px ${rightFr}fr`;
+  }
+
+  function handleSplitResizeMouseUp(): void {
+    if (splitResizeWrapper) {
+      const handle = splitResizeWrapper.querySelector<HTMLElement>('[data-pkc-resizing="true"]');
+      if (handle) handle.removeAttribute('data-pkc-resizing');
+    }
+    splitResizeActive = false;
+    splitResizeWrapper = null;
+    document.removeEventListener('mousemove', handleSplitResizeMouseMove);
+    document.removeEventListener('mouseup', handleSplitResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleSplitResizeMouseDown);
+
+  // ── TEXT split editor: update preview ──
+  // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
+  let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function updateTextEditPreview(textarea: HTMLTextAreaElement): void {
+    const wrapper = textarea.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    const src = textarea.value;
+    if (src && hasMarkdownSyntax(src)) {
+      preview.innerHTML = renderMarkdown(src);
+    } else if (src) {
+      preview.textContent = src;
+    } else {
+      preview.textContent = '(preview)';
+    }
+  }
+
   function handleTextEditPreviewUpdate(e: KeyboardEvent): void {
     if (e.key !== 'Enter' || e.isComposing) return;
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
     if (target.getAttribute('data-pkc-field') !== 'body') return;
-    const wrapper = target.closest('.pkc-text-split-editor');
-    if (!wrapper) return;
-    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-    if (!preview) return;
-    // Use requestAnimationFrame so the Enter character is inserted first
-    requestAnimationFrame(() => {
-      const src = target.value;
-      if (src && hasMarkdownSyntax(src)) {
-        preview.innerHTML = renderMarkdown(src);
-      } else if (src) {
-        preview.textContent = src;
-      } else {
-        preview.textContent = '(preview)';
-      }
-    });
+    // Cancel any pending debounce — Enter is authoritative
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    requestAnimationFrame(() => updateTextEditPreview(target));
+  }
+
+  function handleTextEditPreviewInput(e: Event): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    // Debounce: update preview 500ms after typing stops
+    if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+      previewDebounceTimer = null;
+      updateTextEditPreview(target);
+    }, 500);
   }
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
+  root.addEventListener('input', handleTextEditPreviewInput);
 
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
@@ -1809,6 +1896,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('contextmenu', handleContextMenu);
     root.removeEventListener('mousedown', handleStaleDragCleanup);
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
+    root.removeEventListener('input', handleTextEditPreviewInput);
+    if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);

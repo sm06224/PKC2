@@ -45,6 +45,40 @@ describe('DetailPresenter', () => {
     expect(preview).not.toBeNull();
   });
 
+  it('default presenter initial preview shows text content for non-markdown', () => {
+    const presenter = getDefaultPresenter();
+    const el = presenter.renderEditorBody(makeEntry());
+    const preview = el.querySelector('[data-pkc-region="text-edit-preview"]');
+    expect(preview!.textContent).toBe('Test body content');
+  });
+
+  it('default presenter initial preview renders markdown', () => {
+    const presenter = getDefaultPresenter();
+    const entry = { ...makeEntry(), body: '# Hello\n\nWorld' };
+    const el = presenter.renderEditorBody(entry);
+    const preview = el.querySelector('[data-pkc-region="text-edit-preview"]');
+    expect(preview!.innerHTML).toContain('<h1>');
+    expect(preview!.innerHTML).toContain('Hello');
+  });
+
+  it('default presenter empty body shows placeholder in preview', () => {
+    const presenter = getDefaultPresenter();
+    const entry = { ...makeEntry(), body: '' };
+    const el = presenter.renderEditorBody(entry);
+    const preview = el.querySelector('[data-pkc-region="text-edit-preview"]');
+    expect(preview!.textContent).toBe('(preview)');
+  });
+
+  it('default presenter collectBody still works with split editor', () => {
+    const presenter = getDefaultPresenter();
+    const el = presenter.renderEditorBody(makeEntry());
+    const wrapper = document.createElement('div');
+    wrapper.appendChild(el);
+    const textarea = wrapper.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    textarea!.value = 'new content';
+    expect(presenter.collectBody(wrapper)).toBe('new content');
+  });
+
   // ── Registry dispatch ──
 
   it('returns default presenter for unregistered archetype', () => {

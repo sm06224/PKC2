@@ -363,6 +363,7 @@ export function openEntryWindow(
   lightSource = false,
   assetContext?: EntryWindowAssetContext,
   onDownloadAsset?: (assetKey: string) => void,
+  startEditing = false,
 ): void {
   // ── Duplicate-open path ─────────────────────────────
   // If a child window for this lid is already open, we do NOT create
@@ -406,7 +407,7 @@ export function openEntryWindow(
   const openedAt = entry.updated_at;
 
   child.document.open();
-  child.document.write(buildWindowHtml(entry, readonly, lightSource, assetContext));
+  child.document.write(buildWindowHtml(entry, readonly, lightSource, assetContext, startEditing));
   child.document.close();
 
   // Listen for messages from child
@@ -697,6 +698,7 @@ function buildWindowHtml(
   readonly: boolean,
   lightSource = false,
   assetContext?: EntryWindowAssetContext,
+  startEditing = false,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
@@ -1501,6 +1503,7 @@ window.addEventListener('message', function(e) {
     }
   }
 });
+${!readonly && startEditing ? "/* Auto-enter edit mode on open */\nenterEdit();" : ''}
 </script>
 </body>
 </html>`;

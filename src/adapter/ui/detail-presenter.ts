@@ -89,6 +89,12 @@ const textPresenter: DetailPresenter = {
     bodyArea.rows = 10;
     wrapper.appendChild(bodyArea);
 
+    // Resize handle between editor and preview
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'pkc-text-split-resize-handle';
+    resizeHandle.setAttribute('data-pkc-split-resize', 'true');
+    wrapper.appendChild(resizeHandle);
+
     // Right: live preview pane
     const preview = document.createElement('div');
     preview.className = 'pkc-text-edit-preview pkc-md-rendered';
