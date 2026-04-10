@@ -258,7 +258,14 @@ type ParsedZipEntry = ZipEntry;
  * markdown bundle …) can reuse the writer without duplicating the
  * CRC-32 / EOCD logic.
  */
-export function createZipBlob(entries: ZipEntry[]): Blob {
+/**
+ * Create a ZIP file as a Uint8Array using stored mode (no compression).
+ *
+ * This is the byte-level workhorse behind `createZipBlob`. Exported so
+ * callers that need raw bytes (e.g. nesting a ZIP inside another ZIP)
+ * can skip the Blob round-trip entirely.
+ */
+export function createZipBytes(entries: ZipEntry[]): Uint8Array {
   const parts: Uint8Array[] = [];
   const centralDirectory: Uint8Array[] = [];
   let offset = 0;
@@ -331,7 +338,20 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
   ev.setUint16(20, 0, true);             // comment length
   parts.push(eocd);
 
-  return new Blob(parts as BlobPart[], { type: 'application/zip' });
+  // Concatenate all parts into a single Uint8Array
+  let totalLen = 0;
+  for (const p of parts) totalLen += p.length;
+  const result = new Uint8Array(totalLen);
+  let pos = 0;
+  for (const p of parts) {
+    result.set(p, pos);
+    pos += p.length;
+  }
+  return result;
+}
+
+export function createZipBlob(entries: ZipEntry[]): Blob {
+  return new Blob([createZipBytes(entries) as BlobPart], { type: 'application/zip' });
 }
 
 /**
