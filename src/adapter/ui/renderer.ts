@@ -2099,11 +2099,54 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo): HTMLElement {
     panel.appendChild(caveat);
   }
 
+  // Entry list with checkboxes
+  if (info.entries.length > 0) {
+    const entryList = createElement('div', 'pkc-batch-entry-list');
+    entryList.setAttribute('data-pkc-region', 'batch-entry-list');
+
+    const selectedSet = new Set(info.selectedIndices);
+
+    // Toggle-all header
+    const toggleAllRow = createElement('label', 'pkc-batch-entry-toggle-all');
+    const toggleAllCb = document.createElement('input');
+    toggleAllCb.type = 'checkbox';
+    toggleAllCb.checked = selectedSet.size === info.entries.length;
+    toggleAllCb.indeterminate = selectedSet.size > 0 && selectedSet.size < info.entries.length;
+    toggleAllCb.setAttribute('data-pkc-action', 'toggle-all-batch-import-entries');
+    toggleAllRow.appendChild(toggleAllCb);
+    const toggleAllLabel = createElement('span', '');
+    toggleAllLabel.textContent = `全選択 (${selectedSet.size}/${info.entries.length})`;
+    toggleAllRow.appendChild(toggleAllLabel);
+    entryList.appendChild(toggleAllRow);
+
+    for (const entry of info.entries) {
+      const row = createElement('label', 'pkc-batch-entry-row');
+      row.setAttribute('data-pkc-entry-index', String(entry.index));
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = selectedSet.has(entry.index);
+      cb.setAttribute('data-pkc-action', 'toggle-batch-import-entry');
+      cb.setAttribute('data-pkc-entry-index', String(entry.index));
+      row.appendChild(cb);
+      const titleSpan = createElement('span', 'pkc-batch-entry-title');
+      titleSpan.textContent = entry.title || '(untitled)';
+      row.appendChild(titleSpan);
+      const archBadge = createElement('span', 'pkc-batch-entry-archetype');
+      archBadge.textContent = entry.archetype.toUpperCase();
+      row.appendChild(archBadge);
+      entryList.appendChild(row);
+    }
+    panel.appendChild(entryList);
+  }
+
   const actions = createElement('div', 'pkc-import-actions');
 
-  const confirmBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  const confirmBtn = createElement('button', 'pkc-btn pkc-btn-create') as HTMLButtonElement;
   confirmBtn.setAttribute('data-pkc-action', 'confirm-batch-import');
   confirmBtn.textContent = 'Continue';
+  if (info.selectedIndices.length === 0) {
+    confirmBtn.disabled = true;
+  }
   actions.appendChild(confirmBtn);
 
   const cancelBtn = createElement('button', 'pkc-btn');

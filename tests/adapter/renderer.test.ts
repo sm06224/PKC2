@@ -439,6 +439,14 @@ describe('Renderer', () => {
         isFolderExport: false,
         sourceFolderTitle: null,
         source: 'export.texts.zip',
+        entries: [
+          { index: 0, title: 'Note A', archetype: 'text' },
+          { index: 1, title: 'Note B', archetype: 'text' },
+          { index: 2, title: 'Note C', archetype: 'text' },
+          { index: 3, title: 'Log 1', archetype: 'textlog' },
+          { index: 4, title: 'Log 2', archetype: 'textlog' },
+        ],
+        selectedIndices: [0, 1, 2, 3, 4],
       }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
     };
     render(state, root);
@@ -480,6 +488,8 @@ describe('Renderer', () => {
         isFolderExport: false,
         sourceFolderTitle: null,
         source: 'test.zip',
+        entries: [{ index: 0, title: 'Note', archetype: 'text' }],
+        selectedIndices: [0],
       }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
     };
     render(state, root);
@@ -502,6 +512,8 @@ describe('Renderer', () => {
         isFolderExport: false,
         sourceFolderTitle: null,
         source: 'test.zip',
+        entries: [{ index: 0, title: 'A', archetype: 'text' }, { index: 1, title: 'B', archetype: 'text' }],
+        selectedIndices: [0, 1],
       }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
     };
     render(state, root);
@@ -525,6 +537,8 @@ describe('Renderer', () => {
         isFolderExport: true,
         sourceFolderTitle: 'Project',
         source: 'folder-project.folder-export.zip',
+        entries: [{ index: 0, title: 'Doc', archetype: 'text' }, { index: 1, title: 'Log', archetype: 'textlog' }],
+        selectedIndices: [0, 1],
       }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
     };
     render(state, root);
@@ -533,6 +547,102 @@ describe('Renderer', () => {
     const caveat = panel!.querySelector('[data-pkc-role="folder-caveat"]');
     expect(caveat).not.toBeNull();
     expect(caveat!.textContent).toContain('フォルダ構造は復元されません');
+  });
+
+  it('renders entry list with checkboxes in batch preview', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 2,
+        textlogCount: 0,
+        totalEntries: 2,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [
+          { index: 0, title: 'Note A', archetype: 'text' },
+          { index: 1, title: 'Note B', archetype: 'text' },
+        ],
+        selectedIndices: [0, 1],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const entryList = root.querySelector('[data-pkc-region="batch-entry-list"]');
+    expect(entryList).not.toBeNull();
+
+    // Check toggle-all
+    const toggleAll = entryList!.querySelector('[data-pkc-action="toggle-all-batch-import-entries"]') as HTMLInputElement;
+    expect(toggleAll).not.toBeNull();
+    expect(toggleAll.checked).toBe(true);
+
+    // Check entry checkboxes
+    const checkboxes = entryList!.querySelectorAll('[data-pkc-action="toggle-batch-import-entry"]');
+    expect(checkboxes).toHaveLength(2);
+    expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
+    expect((checkboxes[1] as HTMLInputElement).checked).toBe(true);
+
+    // Check titles and archetype badges
+    expect(entryList!.textContent).toContain('Note A');
+    expect(entryList!.textContent).toContain('Note B');
+    expect(entryList!.textContent).toContain('TEXT');
+  });
+
+  it('checkbox checked state matches selectedIndices', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 2,
+        textlogCount: 0,
+        totalEntries: 2,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [
+          { index: 0, title: 'Note A', archetype: 'text' },
+          { index: 1, title: 'Note B', archetype: 'text' },
+        ],
+        selectedIndices: [0], // only first selected
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const checkboxes = root.querySelectorAll('[data-pkc-action="toggle-batch-import-entry"]');
+    expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
+    expect((checkboxes[1] as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('Continue button is disabled when selectedIndices is empty', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        source: 'test.zip',
+        entries: [{ index: 0, title: 'Note', archetype: 'text' }],
+        selectedIndices: [], // none selected
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const continueBtn = root.querySelector('[data-pkc-action="confirm-batch-import"]') as HTMLButtonElement;
+    expect(continueBtn).not.toBeNull();
+    expect(continueBtn.disabled).toBe(true);
   });
 
   it('does not render batch preview when batchImportPreview is null', () => {

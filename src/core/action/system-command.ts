@@ -36,6 +36,16 @@ export interface ImportPreviewRef {
 }
 
 /**
+ * Per-entry metadata from the batch bundle manifest.
+ * Used by the preview UI to show a selectable entry list.
+ */
+export interface BatchImportPreviewEntry {
+  index: number;
+  title: string;
+  archetype: 'text' | 'textlog';
+}
+
+/**
  * BatchImportPreviewInfo: lightweight metadata from the batch bundle manifest.
  * All primitives — no adapter types needed.
  */
@@ -50,6 +60,10 @@ export interface BatchImportPreviewInfo {
   isFolderExport: boolean;
   sourceFolderTitle: string | null;
   source: string;
+  /** Per-entry metadata (title + archetype). */
+  entries: BatchImportPreviewEntry[];
+  /** Indices of entries selected for import (default: all). */
+  selectedIndices: number[];
 }
 
 /**

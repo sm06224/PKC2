@@ -658,10 +658,28 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     dispatcher.dispatch({ type: 'SYS_BATCH_IMPORT_PREVIEW', preview: preview.info });
   });
 
-  // 3. Continue → full parse + dispatch entries
+  // 3a. Toggle individual entry selection
+  root.addEventListener('change', (e: Event) => {
+    const target = e.target as HTMLElement;
+    if (target.getAttribute('data-pkc-action') === 'toggle-batch-import-entry') {
+      const index = Number(target.getAttribute('data-pkc-entry-index'));
+      if (!Number.isNaN(index)) {
+        dispatcher.dispatch({ type: 'TOGGLE_BATCH_IMPORT_ENTRY', index });
+      }
+    } else if (target.getAttribute('data-pkc-action') === 'toggle-all-batch-import-entries') {
+      dispatcher.dispatch({ type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    }
+  });
+
+  // 3b. Continue → full parse + dispatch selected entries only
   root.addEventListener('click', (e: Event) => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="confirm-batch-import"]');
     if (!target || !pendingBuffer) return;
+
+    // Read selected indices before clearing preview
+    const selectedSet = new Set(
+      dispatcher.getState().batchImportPreview?.selectedIndices ?? [],
+    );
 
     const buf = pendingBuffer;
     const source = pendingSource;
@@ -680,7 +698,10 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     }
 
     let totalAttachments = 0;
-    for (const entry of result.entries) {
+    let importedCount = 0;
+    for (let i = 0; i < result.entries.length; i++) {
+      if (!selectedSet.has(i)) continue;
+      const entry = result.entries[i]!;
       // N+1 dispatch: attachments first, then main entry
       for (const att of entry.attachments) {
         dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
@@ -712,13 +733,14 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
           body: entry.body,
         });
       }
+      importedCount++;
     }
 
     const folderNote = result.format === 'pkc2-folder-export-bundle'
       ? ' (folder-export: フォルダ構造は復元されません)'
       : '';
     console.log(
-      `[PKC2] Batch import complete: ${result.entries.length} entries`
+      `[PKC2] Batch import complete: ${importedCount}/${result.entries.length} entries`
       + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,
     );
   });
