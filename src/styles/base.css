@@ -845,7 +845,7 @@
 
 /* ── Editor mode ── */
 .pkc-editor {
-  max-width: 720px;
+  /* fill full center pane width */
 }
 
 .pkc-editor-title-row {
@@ -897,15 +897,28 @@
 /* ── TEXT split editor/preview ── */
 .pkc-text-split-editor {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  grid-template-columns: 1fr 6px 1fr;
+  gap: 0;
   min-height: 200px;
+  flex: 1;
 }
 
 .pkc-text-split-editor .pkc-editor-body {
   margin-bottom: 0;
   min-height: 200px;
   height: 100%;
+}
+
+.pkc-text-split-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: var(--c-border);
+  border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+.pkc-text-split-resize-handle:hover,
+.pkc-text-split-resize-handle[data-pkc-resizing="true"] {
+  background: var(--c-accent);
 }
 
 .pkc-text-edit-preview {
