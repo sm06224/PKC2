@@ -690,6 +690,142 @@ describe('batch import preview', () => {
   });
 });
 
+// ── TOGGLE reclassification (selection-aware) ─────────
+
+describe('TOGGLE reclassification', () => {
+  const folderPreview = {
+    format: 'pkc2-folder-export-bundle',
+    formatLabel: 'Folder export bundle',
+    textCount: 2,
+    textlogCount: 0,
+    totalEntries: 2,
+    compacted: false,
+    missingAssetCount: 0,
+    isFolderExport: true,
+    sourceFolderTitle: 'Root',
+    canRestoreFolderStructure: true,
+    folderCount: 3,
+    source: 'test.folder.zip',
+    entries: [
+      { index: 0, title: 'In A', archetype: 'text' as const },
+      { index: 1, title: 'In B', archetype: 'text' as const },
+    ],
+    selectedIndices: [0, 1],
+    folderMetadata: [
+      { lid: 'root', title: 'Root', parentLid: null },
+      { lid: 'a', title: 'A', parentLid: 'root' },
+      { lid: 'b', title: 'B', parentLid: 'root' },
+    ],
+    entryFolderRefs: ['a', 'b'] as (string | undefined)[],
+  };
+
+  it('TOGGLE deselecting entry reduces folder count', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: folderPreview,
+    }).state;
+    expect(withPreview.batchImportPreview!.folderCount).toBe(3); // root + a + b
+
+    // Deselect entry 1 (folder B) → only root + a = 2
+    const { state } = reduce(withPreview, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state.batchImportPreview!.selectedIndices).toEqual([0]);
+    expect(state.batchImportPreview!.canRestoreFolderStructure).toBe(true);
+    expect(state.batchImportPreview!.folderCount).toBe(2);
+  });
+
+  it('TOGGLE deselecting all entries → flat (canRestore false)', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: folderPreview,
+    }).state;
+
+    const { state: allOff } = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOff.batchImportPreview!.selectedIndices).toEqual([]);
+    expect(allOff.batchImportPreview!.canRestoreFolderStructure).toBe(false);
+    expect(allOff.batchImportPreview!.folderCount).toBe(0);
+  });
+
+  it('TOGGLE reselecting all entries → restores original classification', () => {
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: folderPreview,
+    }).state;
+
+    // Deselect all, then reselect all
+    const allOff = reduce(withPreview, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' }).state;
+    const { state: allOn } = reduce(allOff, { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' });
+    expect(allOn.batchImportPreview!.canRestoreFolderStructure).toBe(true);
+    expect(allOn.batchImportPreview!.folderCount).toBe(3);
+  });
+
+  it('malformed warning appears when offending entry is selected', () => {
+    const malformedPreview = {
+      ...folderPreview,
+      entryFolderRefs: ['a', 'nonexistent'] as (string | undefined)[],
+      // Initial state computed with all selected → malformed
+      canRestoreFolderStructure: false,
+      folderCount: 0,
+      malformedFolderMetadata: true,
+      folderGraphWarning: 'Entry references unknown folder: "nonexistent"',
+    };
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: malformedPreview,
+    }).state;
+    expect(withPreview.batchImportPreview!.malformedFolderMetadata).toBe(true);
+  });
+
+  it('malformed warning disappears when offending entry is deselected', () => {
+    const malformedPreview = {
+      ...folderPreview,
+      entryFolderRefs: ['a', 'nonexistent'] as (string | undefined)[],
+      canRestoreFolderStructure: false,
+      folderCount: 0,
+      malformedFolderMetadata: true,
+      folderGraphWarning: 'Entry references unknown folder: "nonexistent"',
+    };
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: malformedPreview,
+    }).state;
+
+    // Deselect entry 1 (the offending one) → only valid entry 0 remains
+    const { state } = reduce(withPreview, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 1 });
+    expect(state.batchImportPreview!.canRestoreFolderStructure).toBe(true);
+    expect(state.batchImportPreview!.malformedFolderMetadata).toBeUndefined();
+    expect(state.batchImportPreview!.folderGraphWarning).toBeUndefined();
+    expect(state.batchImportPreview!.folderCount).toBe(2); // root + a
+  });
+
+  it('preview without folderMetadata keeps simple selectedIndices update', () => {
+    // batchPreview without folderMetadata (the original flat preview)
+    const flatPreview = {
+      format: 'pkc2-texts-container-bundle',
+      formatLabel: 'TEXT container bundle',
+      textCount: 2,
+      textlogCount: 0,
+      totalEntries: 2,
+      compacted: false,
+      missingAssetCount: 0,
+      isFolderExport: false,
+      sourceFolderTitle: null,
+      canRestoreFolderStructure: false,
+      folderCount: 0,
+      source: 'test.zip',
+      entries: [
+        { index: 0, title: 'A', archetype: 'text' as const },
+        { index: 1, title: 'B', archetype: 'text' as const },
+      ],
+      selectedIndices: [0, 1],
+      // No folderMetadata, no entryFolderRefs
+    };
+    const withPreview = reduce(readyState(), {
+      type: 'SYS_BATCH_IMPORT_PREVIEW', preview: flatPreview,
+    }).state;
+
+    const { state } = reduce(withPreview, { type: 'TOGGLE_BATCH_IMPORT_ENTRY', index: 0 });
+    expect(state.batchImportPreview!.selectedIndices).toEqual([1]);
+    // Classification stays flat — no reclassification triggered
+    expect(state.batchImportPreview!.canRestoreFolderStructure).toBe(false);
+    expect(state.batchImportPreview!.folderCount).toBe(0);
+  });
+});
+
 // ── Restore ────────────────────────
 
 describe('restore', () => {

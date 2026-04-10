@@ -84,6 +84,10 @@ export interface BatchImportPreviewInfo {
   entries: BatchImportPreviewEntry[];
   /** Indices of entries selected for import (default: all). */
   selectedIndices: number[];
+  /** Raw folder metadata for selection-aware classification recomputation. */
+  folderMetadata?: { lid: string; title: string; parentLid: string | null }[];
+  /** Per-entry parent folder LID for classification. Indexed by entry index. */
+  entryFolderRefs?: (string | undefined)[];
 }
 
 // ── Batch import plan types ─────────────────────────

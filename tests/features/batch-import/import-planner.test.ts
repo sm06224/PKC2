@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateFolderGraph,
   buildBatchImportPlan,
+  classifyFolderRestore,
   type PlannerInput,
   type PlannerFolderInfo,
   type PlannerEntry,
@@ -270,5 +271,104 @@ describe('buildBatchImportPlan', () => {
     if (!result.ok) return;
     expect(result.plan.source).toBe('my.zip');
     expect(result.plan.format).toBe('pkc2-folder-export-bundle');
+  });
+});
+
+// ── classifyFolderRestore ─────────────────────────────
+
+describe('classifyFolderRestore', () => {
+  const folders: PlannerFolderInfo[] = [
+    { lid: 'root', title: 'Root', parentLid: null },
+    { lid: 'a', title: 'A', parentLid: 'root' },
+    { lid: 'b', title: 'B', parentLid: 'root' },
+  ];
+
+  const entryRefs = [
+    { parentFolderLid: 'a' },       // 0: in folder A
+    { parentFolderLid: 'b' },       // 1: in folder B
+    { parentFolderLid: undefined },  // 2: no folder ref
+  ];
+
+  it('returns flat when no folders present', () => {
+    const result = classifyFolderRestore([], entryRefs, [0, 1]);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.folderCount).toBe(0);
+    expect(result.malformedFolderMetadata).toBeUndefined();
+  });
+
+  it('returns restore-available for valid selection with folder refs', () => {
+    const result = classifyFolderRestore(folders, entryRefs, [0, 1]);
+    expect(result.canRestoreFolderStructure).toBe(true);
+    // root + a + b = 3 needed folders
+    expect(result.folderCount).toBe(3);
+    expect(result.malformedFolderMetadata).toBeUndefined();
+  });
+
+  it('folder count shrinks when selection narrows', () => {
+    // Only entry 0 (folder A) selected → needs root + a = 2
+    const result = classifyFolderRestore(folders, entryRefs, [0]);
+    expect(result.canRestoreFolderStructure).toBe(true);
+    expect(result.folderCount).toBe(2);
+  });
+
+  it('returns flat when selected entries have no folder refs', () => {
+    // Only entry 2 (no folder ref) selected
+    const result = classifyFolderRestore(folders, entryRefs, [2]);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.folderCount).toBe(0);
+    expect(result.malformedFolderMetadata).toBeUndefined();
+  });
+
+  it('returns malformed when selected subset references unknown folder', () => {
+    const refsWithBad = [
+      { parentFolderLid: 'a' },
+      { parentFolderLid: 'nonexistent' },
+    ];
+    // Select only entry 1 (bad ref)
+    const result = classifyFolderRestore(folders, refsWithBad, [1]);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.malformedFolderMetadata).toBe(true);
+    expect(result.folderGraphWarning).toContain('unknown folder');
+  });
+
+  it('valid subset recovers when malformed entry is deselected', () => {
+    const refsWithBad = [
+      { parentFolderLid: 'a' },
+      { parentFolderLid: 'nonexistent' },
+    ];
+    // Select only entry 0 (valid ref) — malformed entry 1 excluded
+    const result = classifyFolderRestore(folders, refsWithBad, [0]);
+    expect(result.canRestoreFolderStructure).toBe(true);
+    expect(result.malformedFolderMetadata).toBeUndefined();
+    expect(result.folderCount).toBe(2); // root + a
+  });
+
+  it('detects malformed folder graph (self-parent) regardless of selection', () => {
+    const badFolders: PlannerFolderInfo[] = [
+      { lid: 'f1', title: 'F1', parentLid: 'f1' },
+    ];
+    const result = classifyFolderRestore(badFolders, [{ parentFolderLid: 'f1' }], [0]);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.malformedFolderMetadata).toBe(true);
+    expect(result.folderGraphWarning).toContain('Self-parent');
+  });
+
+  it('handles empty selection gracefully', () => {
+    const result = classifyFolderRestore(folders, entryRefs, []);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.folderCount).toBe(0);
+  });
+
+  it('ignores out-of-range indices', () => {
+    const result = classifyFolderRestore(folders, entryRefs, [99, -1]);
+    expect(result.canRestoreFolderStructure).toBe(false);
+    expect(result.folderCount).toBe(0);
+  });
+
+  it('whole-bundle behavior unchanged when all entries selected', () => {
+    // All selected → should match what whole-bundle validation would give
+    const result = classifyFolderRestore(folders, entryRefs, [0, 1, 2]);
+    expect(result.canRestoreFolderStructure).toBe(true);
+    expect(result.folderCount).toBe(3);
   });
 });

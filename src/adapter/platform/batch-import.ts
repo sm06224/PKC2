@@ -24,7 +24,7 @@ import {
 import { importTextBundleFromBuffer, type ImportedTextAttachment } from './text-bundle';
 import { importTextlogBundleFromBuffer, type ImportedAttachment } from './textlog-bundle';
 import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
-import { validateFolderGraph } from '../../features/batch-import/import-planner';
+import { classifyFolderRestore } from '../../features/batch-import/import-planner';
 import type { PlannerFolderInfo } from '../../features/batch-import/import-planner';
 import type { BatchImportPreviewEntry, BatchImportPreviewInfo } from '../../core/action/system-command';
 
@@ -199,30 +199,27 @@ export function previewBatchBundleFromBuffer(
       | { lid: string; title: string; parent_lid: string | null }[]
       | undefined;
     const hasFolders = isFolderExport && Array.isArray(rawFolders) && rawFolders.length > 0;
-    let canRestoreFolderStructure = hasFolders;
-    let malformedFolderMetadata: boolean | undefined;
-    let folderGraphWarning: string | undefined;
 
-    // Validate folder graph + entry references at preview time so UI can classify correctly.
-    // Uses the same validateFolderGraph as confirm path for full classification parity.
+    // Build raw data for selection-aware classification recomputation
+    let folderMetadata: PlannerFolderInfo[] | undefined;
+    let entryFolderRefs: (string | undefined)[] | undefined;
     if (hasFolders) {
-      const plannerFolders: PlannerFolderInfo[] = rawFolders!.map((f: { lid: string; title: string; parent_lid: string | null }) => ({
+      folderMetadata = rawFolders!.map((f: { lid: string; title: string; parent_lid: string | null }) => ({
         lid: f.lid,
         title: f.title ?? '',
         parentLid: f.parent_lid ?? null,
       }));
-      const entryRefs = manifestEntries.map((me) => ({
-        parentFolderLid: me.parent_folder_lid,
-      }));
-      const validation = validateFolderGraph(plannerFolders, entryRefs);
-      if (!validation.valid) {
-        canRestoreFolderStructure = false;
-        malformedFolderMetadata = true;
-        folderGraphWarning = validation.warnings.join('; ');
-      }
+      entryFolderRefs = manifestEntries.map((me) => me.parent_folder_lid);
     }
 
-    const folderCount = canRestoreFolderStructure ? rawFolders!.length : 0;
+    // Selection-aware classification: compute against all entries (initial selection = all)
+    const allIndices = previewEntries.map((e) => e.index);
+    const entryRefsForClassify = entryFolderRefs
+      ? entryFolderRefs.map((ref) => ({ parentFolderLid: ref }))
+      : [];
+    const classification = hasFolders
+      ? classifyFolderRestore(folderMetadata!, entryRefsForClassify, allIndices)
+      : { canRestoreFolderStructure: false, folderCount: 0 };
 
     return {
       ok: true,
@@ -238,10 +235,12 @@ export function previewBatchBundleFromBuffer(
         sourceFolderTitle: isFolderExport
           ? (manifest.source_folder_title as string | null) ?? null
           : null,
-        canRestoreFolderStructure,
-        folderCount,
-        malformedFolderMetadata,
-        folderGraphWarning,
+        canRestoreFolderStructure: classification.canRestoreFolderStructure,
+        folderCount: classification.folderCount,
+        malformedFolderMetadata: classification.malformedFolderMetadata,
+        folderGraphWarning: classification.folderGraphWarning,
+        folderMetadata,
+        entryFolderRefs,
         source,
         entries: previewEntries,
         selectedIndices: previewEntries.map((e) => e.index),

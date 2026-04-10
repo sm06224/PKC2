@@ -128,6 +128,63 @@ export function validateFolderGraph(
   return { valid: true, warnings };
 }
 
+// ── Selection-aware classification ─────────────────
+
+export interface FolderRestoreClassification {
+  canRestoreFolderStructure: boolean;
+  folderCount: number;
+  malformedFolderMetadata?: boolean;
+  folderGraphWarning?: string;
+}
+
+/**
+ * Classify folder restore availability for a selected subset of entries.
+ * Pure function — same logic as confirm-time validation but scoped to selection.
+ *
+ * Used by the reducer to recompute classification when entry selection changes.
+ */
+export function classifyFolderRestore(
+  folders: PlannerFolderInfo[],
+  entryRefs: { parentFolderLid?: string }[],
+  selectedIndices: number[],
+): FolderRestoreClassification {
+  if (folders.length === 0) {
+    return { canRestoreFolderStructure: false, folderCount: 0 };
+  }
+
+  // Filter entry references to selected subset only
+  const selectedRefs = selectedIndices
+    .filter((i) => i >= 0 && i < entryRefs.length)
+    .map((i) => entryRefs[i]!);
+
+  const validation = validateFolderGraph(folders, selectedRefs);
+  if (!validation.valid) {
+    return {
+      canRestoreFolderStructure: false,
+      folderCount: 0,
+      malformedFolderMetadata: true,
+      folderGraphWarning: validation.warnings.join('; '),
+    };
+  }
+
+  // Compute needed ancestor folder count for selected entries
+  const folderByLid = new Map(folders.map((f) => [f.lid, f]));
+  const neededLids = new Set<string>();
+  for (const ref of selectedRefs) {
+    let cur = ref.parentFolderLid;
+    while (cur && !neededLids.has(cur)) {
+      neededLids.add(cur);
+      const folder = folderByLid.get(cur);
+      cur = folder?.parentLid ?? undefined;
+    }
+  }
+
+  return {
+    canRestoreFolderStructure: neededLids.size > 0,
+    folderCount: neededLids.size,
+  };
+}
+
 // ── Plan building ───────────────────────────────────
 
 /**
