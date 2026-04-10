@@ -20,6 +20,7 @@ import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
+import { buildFolderExportBundle } from '../platform/folder-export';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
@@ -575,6 +576,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (built.totalMissingAssetCount > 0) {
           const msg = [
             `全 TEXT のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-folder': {
+        // Folder-scoped export. Bundles all TEXT / TEXTLOG entries
+        // under the selected folder (recursive) into a single ZIP.
+        // Read-only safe (no mutation).
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const folder = st.container.entries.find((e) => e.lid === lid);
+        if (!folder || folder.archetype !== 'folder') break;
+        const built = buildFolderExportBundle(folder, st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `フォルダ配下の TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
             'このまま ZIP を出力しますか？',
             '',
             '- 各 bundle 内の manifest.json に欠損キーが記録されます',

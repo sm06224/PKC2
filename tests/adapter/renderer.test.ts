@@ -1719,6 +1719,63 @@ describe('Container-wide TEXT export button', () => {
   });
 });
 
+// ── Folder-scoped export ──
+
+describe('Folder-scoped export button', () => {
+  const folderWithTextChildren: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'f1', title: 'My Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 't1', title: 'Doc', body: 'hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [{ id: 'r1', from: 'f1', to: 't1', kind: 'structural' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    revisions: [], assets: {},
+  };
+
+  const folderNoTextChildren: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'f1', title: 'Empty Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'td1', title: 'Task', body: '{"status":"open","description":"x"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [{ id: 'r1', from: 'f1', to: 'td1', kind: 'structural' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    revisions: [], assets: {},
+  };
+
+  it('shows Export button on folder action bar when folder has TEXT/TEXTLOG descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderWithTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('📦 Export');
+    expect(btn!.getAttribute('title')).toContain('フォルダ配下');
+  });
+
+  it('hides Export button when folder has no TEXT/TEXTLOG descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderNoTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).toBeNull();
+  });
+
+  it('shows Export button in readonly mode for folder with TEXT descendants', () => {
+    const state: AppState = {
+      phase: 'ready', container: folderWithTextChildren,
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const btn = root.querySelector('[data-pkc-action="export-folder"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toBe('📦 Export');
+  });
+});
+
 // ── Action Surface Consolidation ──
 
 describe('Action surface consolidation', () => {

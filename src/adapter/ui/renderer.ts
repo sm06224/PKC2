@@ -17,7 +17,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
-import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent } from '../../features/relation/tree';
+import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -431,7 +431,7 @@ function renderShellMenu(
     '編集: エントリ選択 → Edit ボタン、または右クリック → Edit',
     'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
     '表示: More… → Viewer（印刷可能なレンダリング表示）',
-    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs',
+    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs / フォルダ選択 → Export',
     'インポート: Data… → Import（上書き）/ Textlog / Text（追加）',
     '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
     'ショートカット: ? キーで一覧表示',
@@ -1152,7 +1152,7 @@ function renderCenter(state: AppState): HTMLElement {
   center.appendChild(content);
 
   // Fixed action bar at bottom
-  center.appendChild(renderActionBar(selected, state.phase, canEdit));
+  center.appendChild(renderActionBar(selected, state.phase, canEdit, state.container));
 
   return center;
 }
@@ -1404,7 +1404,7 @@ function renderKanbanView(state: AppState): HTMLElement {
 }
 
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */
-function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLElement {
+function renderActionBar(entry: Entry, phase: string, canEdit: boolean, container?: Container | null): HTMLElement {
   const bar = createElement('div', 'pkc-action-bar');
   bar.setAttribute('data-pkc-region', 'action-bar');
 
@@ -1442,6 +1442,25 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
       deleteBtn.setAttribute('title', 'Delete this entry permanently');
       deleteBtn.textContent = '🗑️ Delete';
       bar.appendChild(deleteBtn);
+    }
+
+    // Folder export: show when the selected folder has TEXT/TEXTLOG
+    // descendants. Export is a read-only operation, so always shown
+    // (including readonly). Lives on the action bar because it's
+    // folder-specific (not a global Data… panel action).
+    if (entry.archetype === 'folder' && container) {
+      const descendantLids = collectDescendantLids(container.relations, entry.lid);
+      const hasExportable = container.entries.some(
+        (e) => descendantLids.has(e.lid) && (e.archetype === 'text' || e.archetype === 'textlog'),
+      );
+      if (hasExportable) {
+        const exportBtn = createElement('button', 'pkc-btn');
+        exportBtn.setAttribute('data-pkc-action', 'export-folder');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'フォルダ配下の TEXT / TEXTLOG をまとめて ZIP エクスポート');
+        exportBtn.textContent = '📦 Export';
+        bar.appendChild(exportBtn);
+      }
     }
 
     // Secondary actions for TEXT / TEXTLOG: copy, viewer, export.

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTree, getStructuralParent, getBreadcrumb, getAvailableFolders, isDescendant,
+  collectDescendantLids,
 } from '@features/relation/tree';
 import type { Relation } from '@core/model/relation';
 import type { Entry } from '@core/model/record';
@@ -225,5 +226,62 @@ describe('getAvailableFolders', () => {
     const entries = [makeEntry('a', 'A'), makeEntry('b', 'B')];
     const available = getAvailableFolders(entries, [], 'a');
     expect(available).toEqual([]);
+  });
+});
+
+describe('collectDescendantLids', () => {
+  it('collects direct children', () => {
+    const relations = [
+      makeRelation('r1', 'folder', 'child1'),
+      makeRelation('r2', 'folder', 'child2'),
+    ];
+    const result = collectDescendantLids(relations, 'folder');
+    expect(result.size).toBe(2);
+    expect(result.has('child1')).toBe(true);
+    expect(result.has('child2')).toBe(true);
+  });
+
+  it('collects recursive descendants', () => {
+    const relations = [
+      makeRelation('r1', 'root', 'sub'),
+      makeRelation('r2', 'sub', 'leaf1'),
+      makeRelation('r3', 'sub', 'leaf2'),
+    ];
+    const result = collectDescendantLids(relations, 'root');
+    expect(result.size).toBe(3);
+    expect(result.has('sub')).toBe(true);
+    expect(result.has('leaf1')).toBe(true);
+    expect(result.has('leaf2')).toBe(true);
+  });
+
+  it('does NOT include the folder itself', () => {
+    const relations = [makeRelation('r1', 'folder', 'child')];
+    const result = collectDescendantLids(relations, 'folder');
+    expect(result.has('folder')).toBe(false);
+  });
+
+  it('returns empty set for folder with no children', () => {
+    const relations: Relation[] = [];
+    const result = collectDescendantLids(relations, 'lonely');
+    expect(result.size).toBe(0);
+  });
+
+  it('ignores non-structural relations', () => {
+    const relations = [
+      makeRelation('r1', 'folder', 'child', 'categorical'),
+      makeRelation('r2', 'folder', 'child2', 'semantic'),
+    ];
+    const result = collectDescendantLids(relations, 'folder');
+    expect(result.size).toBe(0);
+  });
+
+  it('handles circular relations without infinite loop', () => {
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'a'),
+    ];
+    const result = collectDescendantLids(relations, 'a');
+    expect(result.has('b')).toBe(true);
+    expect(result.has('a')).toBe(true); // circular back to a is recorded
   });
 });

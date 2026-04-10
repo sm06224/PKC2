@@ -157,3 +157,28 @@ export function getAvailableFolders(
     (e) => e.archetype === 'folder' && e.lid !== excludeLid && !descendants.has(e.lid),
   );
 }
+
+/**
+ * Collect all descendant LIDs of a folder, recursively, via
+ * structural relations. Returns a Set of LIDs (does NOT include
+ * the folder itself). Pure — no side effects or state mutation.
+ *
+ * Used by folder-scoped export to determine which entries belong
+ * to a given folder subtree.
+ */
+export function collectDescendantLids(
+  relations: readonly Relation[],
+  folderLid: string,
+): Set<string> {
+  const descendants = new Set<string>();
+  function walk(lid: string): void {
+    for (const r of relations) {
+      if (r.kind === 'structural' && r.from === lid && !descendants.has(r.to)) {
+        descendants.add(r.to);
+        walk(r.to);
+      }
+    }
+  }
+  walk(folderLid);
+  return descendants;
+}
