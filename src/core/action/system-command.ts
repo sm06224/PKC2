@@ -88,6 +88,8 @@ export interface BatchImportPreviewInfo {
   folderMetadata?: { lid: string; title: string; parentLid: string | null }[];
   /** Per-entry parent folder LID for classification. Indexed by entry index. */
   entryFolderRefs?: (string | undefined)[];
+  /** LID of the target folder in the current container for import. null = root. */
+  targetFolderLid?: string | null;
 }
 
 // ── Batch import plan types ─────────────────────────
@@ -125,6 +127,8 @@ export interface BatchImportPlan {
   format: string;
   /** Whether folder structure is being restored. */
   restoreStructure: boolean;
+  /** LID of existing target folder in container. null/undefined = root. */
+  targetFolderLid?: string | null;
 }
 
 /**

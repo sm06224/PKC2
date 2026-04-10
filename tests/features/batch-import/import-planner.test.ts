@@ -272,6 +272,53 @@ describe('buildBatchImportPlan', () => {
     expect(result.plan.source).toBe('my.zip');
     expect(result.plan.format).toBe('pkc2-folder-export-bundle');
   });
+
+  it('passes through targetFolderLid into flat plan', () => {
+    const input = makeInput({ targetFolderLid: 'existing-folder' });
+    const result = buildBatchImportPlan(input, new Set([0]));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.targetFolderLid).toBe('existing-folder');
+  });
+
+  it('passes through targetFolderLid into restore plan', () => {
+    const folders: PlannerFolderInfo[] = [
+      { lid: 'root', title: 'Root', parentLid: null },
+    ];
+    const input = makeInput({
+      entries: [makeEntry({ title: 'Note', parentFolderLid: 'root' })],
+      folders,
+      targetFolderLid: 'target-f',
+    });
+    const result = buildBatchImportPlan(input, new Set([0]));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.restoreStructure).toBe(true);
+    expect(result.plan.targetFolderLid).toBe('target-f');
+  });
+
+  it('passes through targetFolderLid into fallback plan', () => {
+    const folders: PlannerFolderInfo[] = [
+      { lid: 'f1', title: 'F1', parentLid: 'f1' }, // self-parent
+    ];
+    const input = makeInput({
+      entries: [makeEntry({ parentFolderLid: 'f1' })],
+      folders,
+      targetFolderLid: 'target-f',
+    });
+    const result = buildBatchImportPlan(input, new Set([0]));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fallbackPlan.targetFolderLid).toBe('target-f');
+  });
+
+  it('defaults targetFolderLid to null when not provided', () => {
+    const input = makeInput();
+    const result = buildBatchImportPlan(input, new Set([0]));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.targetFolderLid).toBeNull();
+  });
 });
 
 // ── classifyFolderRestore ─────────────────────────────

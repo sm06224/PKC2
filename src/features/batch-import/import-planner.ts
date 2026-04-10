@@ -42,6 +42,8 @@ export interface PlannerInput {
   folders?: PlannerFolderInfo[];
   source: string;
   format: string;
+  /** LID of existing target folder in container. null/undefined = root. */
+  targetFolderLid?: string | null;
 }
 
 import type {
@@ -227,12 +229,14 @@ export function buildBatchImportPlan(
   }
 
   // Build flat plan (no folder restore)
+  const targetLid = input.targetFolderLid ?? null;
   const flatPlan: BatchImportPlan = {
     folders: [],
     entries: selectedEntries.map((e) => ({ ...e, parentFolderOriginalLid: undefined })),
     source: input.source,
     format: input.format,
     restoreStructure: false,
+    targetFolderLid: targetLid,
   };
 
   // No folders → flat import (this is not an error, just no restore)
@@ -302,6 +306,7 @@ export function buildBatchImportPlan(
       source: input.source,
       format: input.format,
       restoreStructure: true,
+      targetFolderLid: targetLid,
     },
   };
 }

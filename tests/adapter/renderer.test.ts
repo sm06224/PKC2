@@ -727,6 +727,84 @@ describe('Renderer', () => {
     expect(continueBtn.disabled).toBe(true);
   });
 
+  it('renders target folder picker with existing folders from container', () => {
+    const containerWithFolders = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'f1', title: 'Project', body: '', archetype: 'folder' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'f2', title: 'Archive', body: '', archetype: 'folder' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithFolders,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
+        source: 'test.zip',
+        entries: [{ index: 0, title: 'Note', archetype: 'text' }],
+        selectedIndices: [0],
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const targetRegion = root.querySelector('[data-pkc-region="batch-import-target-folder"]');
+    expect(targetRegion).not.toBeNull();
+    const select = targetRegion!.querySelector('[data-pkc-action="set-batch-import-target-folder"]') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    // Root + 2 folders = 3 options
+    expect(select.options).toHaveLength(3);
+    expect(select.options[0]!.value).toBe('');
+    expect(select.options[0]!.textContent).toContain('Root');
+    expect(select.options[1]!.value).toBe('f1');
+    expect(select.options[1]!.textContent).toContain('Project');
+    expect(select.options[2]!.value).toBe('f2');
+    expect(select.options[2]!.textContent).toContain('Archive');
+  });
+
+  it('target folder picker selects the current targetFolderLid', () => {
+    const containerWithFolders = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'f1', title: 'Project', body: '', archetype: 'folder' as const, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithFolders,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: {
+        format: 'pkc2-texts-container-bundle',
+        formatLabel: 'TEXT container bundle',
+        textCount: 1,
+        textlogCount: 0,
+        totalEntries: 1,
+        compacted: false,
+        missingAssetCount: 0,
+        isFolderExport: false,
+        sourceFolderTitle: null,
+        canRestoreFolderStructure: false,
+        folderCount: 0,
+        source: 'test.zip',
+        entries: [{ index: 0, title: 'Note', archetype: 'text' }],
+        selectedIndices: [0],
+        targetFolderLid: 'f1',
+      }, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+
+    const select = root.querySelector('[data-pkc-action="set-batch-import-target-folder"]') as HTMLSelectElement;
+    expect(select.value).toBe('f1');
+  });
+
   it('renders deep preview disclosure for TEXT entry with bodySnippet', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

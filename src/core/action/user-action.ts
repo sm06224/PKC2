@@ -36,6 +36,7 @@ export type UserAction =
   | { type: 'CANCEL_BATCH_IMPORT' }
   | { type: 'TOGGLE_BATCH_IMPORT_ENTRY'; index: number }
   | { type: 'TOGGLE_ALL_BATCH_IMPORT_ENTRIES' }
+  | { type: 'SET_BATCH_IMPORT_TARGET_FOLDER'; lid: string | null }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
