@@ -1572,9 +1572,10 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Inline: export + light + zip + import + import-textlog + import-text + reset
+    // Collapsed behind <details>: export + light + zip + import + textlog + text
+    // (Reset moved to shell menu maintenance section)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(7);
+    expect(btns.length).toBe(6);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -1669,7 +1670,135 @@ describe('Container-wide TEXTLOG export button', () => {
   });
 });
 
-// ── Issue #50: Folder UX Hardening ──
+// ── Action Surface Consolidation ──
+
+describe('Action surface consolidation', () => {
+  const textlogContainer: Container = {
+    meta: { container_id: 'cid', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+    entries: [
+      { lid: 'e-text', title: 'My Text', body: 'hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { lid: 'e-log', title: 'My Log', body: '{"entries":[]}', archetype: 'textlog', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    relations: [], revisions: [], assets: {},
+  };
+
+  function makeState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: textlogContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null, tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+      ...overrides,
+    };
+  }
+
+  it('header export/import panel is collapsed behind a <details> element', () => {
+    render(makeState(), root);
+    const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+    expect(panel).not.toBeNull();
+    const details = panel!.querySelector('details.pkc-eip-details');
+    expect(details).not.toBeNull();
+    const summary = details!.querySelector('summary');
+    expect(summary).not.toBeNull();
+    expect(summary!.textContent).toBe('Data…');
+  });
+
+  it('primary action bar for TEXT has only Edit + Delete + More…', () => {
+    render(makeState({ selectedLid: 'e-text' }), root);
+    const bar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(bar).not.toBeNull();
+    // Direct children buttons (not inside <details>) = Edit + Delete
+    const directButtons = bar!.querySelectorAll(':scope > button');
+    const directLabels = Array.from(directButtons).map(b => b.textContent);
+    expect(directLabels).toContain('✏️ Edit');
+    expect(directLabels).toContain('🗑️ Delete');
+    // More… details element exists
+    const more = bar!.querySelector('[data-pkc-region="action-bar-more"]');
+    expect(more).not.toBeNull();
+  });
+
+  it('secondary actions for TEXT are inside More… details', () => {
+    render(makeState({ selectedLid: 'e-text' }), root);
+    const more = root.querySelector('[data-pkc-region="action-bar-more"]');
+    expect(more).not.toBeNull();
+    // Copy MD, Rich, Viewer, compact+Export are all inside
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="export-text-zip"]')).not.toBeNull();
+  });
+
+  it('secondary actions for TEXTLOG are inside More… details', () => {
+    render(makeState({ selectedLid: 'e-log' }), root);
+    const more = root.querySelector('[data-pkc-region="action-bar-more"]');
+    expect(more).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).not.toBeNull();
+  });
+
+  it('readonly mode still shows More… for TEXT (copy/viewer are read-only)', () => {
+    render(makeState({ selectedLid: 'e-text', readonly: true }), root);
+    const bar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(bar).not.toBeNull();
+    // Edit/Delete should NOT be present
+    expect(bar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    expect(bar!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
+    // More… should still be present
+    const more = bar!.querySelector('[data-pkc-region="action-bar-more"]');
+    expect(more).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+  });
+
+  it('export/import buttons are reachable inside Data… panel', () => {
+    render(makeState(), root);
+    const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+    expect(panel!.querySelector('[data-pkc-action="begin-export"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="export-zip"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="begin-import"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="import-textlog-bundle"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="import-text-bundle"]')).not.toBeNull();
+    expect(panel!.querySelector('[data-pkc-action="export-textlogs-container"]')).not.toBeNull();
+  });
+
+  it('Reset button moved to shell menu maintenance section', () => {
+    render(makeState(), root);
+    const resetBtn = root.querySelector('[data-pkc-action="clear-local-data"]');
+    expect(resetBtn).not.toBeNull();
+    const maintenance = resetBtn!.closest('[data-pkc-region="shell-menu-maintenance"]');
+    expect(maintenance).not.toBeNull();
+    // Not inside export-import panel
+    const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
+    expect(panel!.querySelector('[data-pkc-action="clear-local-data"]')).toBeNull();
+  });
+
+  it('shell menu has Quick Help section', () => {
+    render(makeState(), root);
+    const help = root.querySelector('[data-pkc-region="shell-menu-help"]');
+    expect(help).not.toBeNull();
+    const items = help!.querySelectorAll('.pkc-shell-menu-help-item');
+    expect(items.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('context menu labels are concise and tooltips are descriptive', () => {
+    const menu = renderContextMenu('lid', 0, 0, { hasParent: false, canEdit: true, archetype: 'attachment' });
+    const assetRef = menu.querySelector('[data-pkc-action="copy-asset-ref"]');
+    expect(assetRef).not.toBeNull();
+    expect(assetRef!.textContent).toBe('📎 Asset ref');
+    expect(assetRef!.getAttribute('title')).toContain('Markdown');
+  });
+
+  it('todo/folder archetypes have no More… overflow (only primary actions)', () => {
+    const todoContainer: Container = {
+      meta: textlogContainer.meta,
+      entries: [{ lid: 'e-todo', title: 'Task', body: '{"status":"open","description":"x"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+      relations: [], revisions: [], assets: {},
+    };
+    render(makeState({ container: todoContainer, selectedLid: 'e-todo' }), root);
+    const bar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(bar).not.toBeNull();
+    expect(bar!.querySelector('[data-pkc-region="action-bar-more"]')).toBeNull();
+  });
+});
+
+// ���─ Issue #50: Folder UX Hardening ��─
 
 describe('Folder UX Hardening', () => {
   const folderContainer: Container = {
@@ -2249,23 +2378,23 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true), Copy entry reference, Copy entry embed.
+    // Edit, Delete, Move to Root (shown because hasParent=true), Entry ref, Embed ref.
     expect(items.length).toBe(5);
     expect(items[0]!.textContent).toContain('Edit');
     expect(items[1]!.textContent).toContain('Delete');
     expect(items[2]!.textContent).toContain('Root');
-    expect(items[3]!.textContent).toContain('entry reference');
-    expect(items[4]!.textContent).toContain('entry embed');
+    expect(items[3]!.textContent).toContain('Entry ref');
+    expect(items[4]!.textContent).toContain('Embed ref');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Copy entry reference, Copy entry embed (Move to Root hidden, hasParent=false).
+    // Edit, Delete, Entry ref, Embed ref (Move to Root hidden, hasParent=false).
     expect(items.length).toBe(4);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
-    expect(texts.some(t => t!.includes('entry reference'))).toBe(true);
+    expect(texts.some(t => t!.includes('Entry ref'))).toBe(true);
   });
 
   it('context menu items have correct data-pkc-action and data-pkc-lid', () => {
@@ -4726,23 +4855,26 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     it('ZIP button has correct title attribute', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="export-zip"]') as HTMLElement;
-      expect(btn.getAttribute('title')).toContain('ZIP');
+      expect(btn.getAttribute('title')).toContain('.pkc2.zip');
     });
   });
 
   describe('CLEAR button safety', () => {
-    it('renders Reset button with danger class and warning icon', () => {
+    it('renders Reset button with danger class in shell menu maintenance', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]');
       expect(btn).not.toBeNull();
       expect(btn!.textContent).toContain('Reset');
       expect(btn!.className).toContain('pkc-btn-danger');
+      // Should be inside shell menu maintenance section
+      const maintenance = btn!.closest('[data-pkc-region="shell-menu-maintenance"]');
+      expect(maintenance).not.toBeNull();
     });
 
-    it('has warning title attribute', () => {
+    it('has descriptive title attribute', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]') as HTMLElement;
-      expect(btn.getAttribute('title')).toContain('WARNING');
+      expect(btn.getAttribute('title')).toContain('IndexedDB');
     });
 
     it('is not rendered in readonly mode', () => {

@@ -390,7 +390,7 @@ function renderShellMenu(
   shortcutSection.appendChild(shortcutBtn);
   card.appendChild(shortcutSection);
 
-  // Data Maintenance — manual orphan asset cleanup.
+  // Data Maintenance — manual orphan asset cleanup + workspace reset.
   //
   // This section is intentionally passive until the user clicks:
   // the orphan count is just a read-only scan of the current
@@ -398,11 +398,40 @@ function renderShellMenu(
   // nothing to do, and the whole surface is hidden in readonly /
   // container-absent modes where mutation is not allowed.
   //
-  // No auto-GC is wired anywhere — this button is the ONLY way an
-  // orphan asset gets removed from the container today.
+  // The ⚠ Reset button was moved here from the header export/import
+  // panel to separate destructive maintenance actions from daily
+  // export/import operations (action surface consolidation).
   if (state.container && !state.readonly) {
     card.appendChild(renderShellMenuMaintenance(state.container));
   }
+
+  // Quick Help — lightweight usage guide inside the shell menu.
+  // Usage-oriented, not a full manual. Each line answers "what can
+  // I do?" for a category of actions.
+  const helpSection = createElement('div', 'pkc-shell-menu-section');
+  helpSection.setAttribute('data-pkc-region', 'shell-menu-help');
+  const helpLabel = createElement('span', 'pkc-shell-menu-label');
+  helpLabel.textContent = 'Quick Help';
+  helpSection.appendChild(helpLabel);
+
+  const helpList = createElement('ul', 'pkc-shell-menu-help-list');
+  const helpItems = [
+    '作成: ヘッダーの Text / Log / Todo / File / Folder ボタン',
+    '編集: エントリ選択 → Edit ボタン、または右クリック → Edit',
+    'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
+    '表示: More… → Viewer（印刷可能なレンダリング表示）',
+    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs',
+    'インポート: Data… → Import（上書き）/ Textlog / Text（追加）',
+    '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
+    'ショートカット: ? キーで一覧表示',
+  ];
+  for (const text of helpItems) {
+    const li = createElement('li', 'pkc-shell-menu-help-item');
+    li.textContent = text;
+    helpList.appendChild(li);
+  }
+  helpSection.appendChild(helpList);
+  card.appendChild(helpSection);
 
   // Version
   const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
@@ -506,6 +535,21 @@ function renderShellMenuMaintenance(container: Container): HTMLElement {
   note.textContent = 'Removes assets not referenced by any entry. Cannot be undone.';
   section.appendChild(note);
 
+  // Workspace Reset — destructive action moved here from the header
+  // export/import panel. Separated from daily export/import buttons
+  // to reduce accidental clicks.
+  const resetRow = createElement('div', 'pkc-shell-menu-maintenance-actions');
+  const resetBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+  resetBtn.setAttribute('data-pkc-action', 'clear-local-data');
+  resetBtn.setAttribute('title', 'ローカル保存データ (IndexedDB) を全て削除します。元に戻せません。');
+  resetBtn.textContent = '⚠ Reset Workspace';
+  resetRow.appendChild(resetBtn);
+  section.appendChild(resetRow);
+
+  const resetNote = createElement('div', 'pkc-shell-menu-maintenance-note');
+  resetNote.textContent = 'Clears all locally saved data (IndexedDB). Cannot be undone.';
+  section.appendChild(resetNote);
+
   return section;
 }
 
@@ -570,34 +614,43 @@ function renderExportImportInline(state: AppState): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
-  const sep1 = createElement('span', 'pkc-eip-sep');
-  sep1.textContent = '|';
-  group.appendChild(sep1);
+  // Wrap all export/import buttons in a <details> element to reduce
+  // header noise. The summary acts as a single toggle button; the
+  // full panel is hidden until the user explicitly opens it.
+  const details = document.createElement('details');
+  details.className = 'pkc-eip-details';
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
+  summary.setAttribute('title', 'エクスポート・インポート操作');
+  summary.textContent = 'Data…';
+  details.appendChild(summary);
+
+  const content = createElement('div', 'pkc-eip-content');
 
   // Export Full (editable) — most common
   const exportBtn = createElement('button', 'pkc-btn pkc-btn-create');
   exportBtn.setAttribute('data-pkc-action', 'begin-export');
   exportBtn.setAttribute('data-pkc-export-mode', 'full');
   exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  exportBtn.setAttribute('title', 'Export complete HTML (editable, all data)');
+  exportBtn.setAttribute('title', '全データを HTML でエクスポート（編集可能）');
   exportBtn.textContent = 'Export';
-  group.appendChild(exportBtn);
+  content.appendChild(exportBtn);
 
   // Export Light (editable)
   const lightBtn = createElement('button', 'pkc-btn pkc-btn-create');
   lightBtn.setAttribute('data-pkc-action', 'begin-export');
   lightBtn.setAttribute('data-pkc-export-mode', 'light');
   lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  lightBtn.setAttribute('title', 'Export text-only HTML (no attachments)');
+  lightBtn.setAttribute('title', 'アセットなし HTML エクスポート（軽量版）');
   lightBtn.textContent = 'Light';
-  group.appendChild(lightBtn);
+  content.appendChild(lightBtn);
 
   // ZIP Export
   const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
   zipBtn.setAttribute('data-pkc-action', 'export-zip');
-  zipBtn.setAttribute('title', 'Export as ZIP package (.pkc2.zip)');
+  zipBtn.setAttribute('title', '.pkc2.zip パッケージとしてエクスポート');
   zipBtn.textContent = 'ZIP';
-  group.appendChild(zipBtn);
+  content.appendChild(zipBtn);
 
   // Container-wide TEXTLOG export — only shown when the container
   // has at least one textlog entry. Bundles all textlogs into a
@@ -606,55 +659,38 @@ function renderExportImportInline(state: AppState): HTMLElement {
   if (hasTextlogs) {
     const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
     textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
-    textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
+    textlogsBtn.setAttribute('title', '全テキストログをまとめて ZIP エクスポート');
     textlogsBtn.textContent = 'TEXTLOGs';
-    group.appendChild(textlogsBtn);
+    content.appendChild(textlogsBtn);
   }
 
-  const sep2 = createElement('span', 'pkc-eip-sep');
-  sep2.textContent = '|';
-  group.appendChild(sep2);
+  const sep = createElement('span', 'pkc-eip-sep');
+  sep.textContent = '|';
+  content.appendChild(sep);
 
   // Import
   const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');
-  importBtn.setAttribute('title', 'Import from HTML or ZIP');
+  importBtn.setAttribute('title', 'HTML または ZIP からインポート（上書き）');
   importBtn.textContent = 'Import';
-  group.appendChild(importBtn);
+  content.appendChild(importBtn);
 
-  // Import textlog bundle (Issue H) — additive: adds one new
-  // textlog entry plus its attachments to the current container.
-  // Distinct from `begin-import` (which replaces the whole
-  // container). Hidden in readonly mode by the action handler;
-  // the button itself is always rendered to keep the toolbar
-  // shape stable.
+  // Import textlog bundle
   const importTextlogBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importTextlogBtn.setAttribute('data-pkc-action', 'import-textlog-bundle');
-  importTextlogBtn.setAttribute('title', 'Import a textlog bundle (.textlog.zip) as a new entry');
-  importTextlogBtn.textContent = '📥 Import Textlog';
-  group.appendChild(importTextlogBtn);
+  importTextlogBtn.setAttribute('title', '.textlog.zip を新規エントリとしてインポート');
+  importTextlogBtn.textContent = '📥 Textlog';
+  content.appendChild(importTextlogBtn);
 
-  // Import text bundle — sister to Import Textlog, sharing the same
-  // additive semantics. Format spec is pinned in
-  // docs/development/text-markdown-zip-export.md. Readonly handling
-  // matches the textlog path: the button is always rendered for
-  // shape stability, the action handler bails out.
+  // Import text bundle
   const importTextBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importTextBtn.setAttribute('data-pkc-action', 'import-text-bundle');
-  importTextBtn.setAttribute('title', 'Import a text bundle (.text.zip) as a new entry');
-  importTextBtn.textContent = '📥 Import Text';
-  group.appendChild(importTextBtn);
+  importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
+  importTextBtn.textContent = '📥 Text';
+  content.appendChild(importTextBtn);
 
-  const sep3 = createElement('span', 'pkc-eip-sep');
-  sep3.textContent = '|';
-  group.appendChild(sep3);
-
-  // Clear local data (workspace reset) — destructive, positioned after separator
-  const clearBtn = createElement('button', 'pkc-btn pkc-btn-danger');
-  clearBtn.setAttribute('data-pkc-action', 'clear-local-data');
-  clearBtn.setAttribute('title', 'WARNING: Clears all locally saved data (IndexedDB). This cannot be undone.');
-  clearBtn.textContent = '⚠ Reset';
-  group.appendChild(clearBtn);
+  details.appendChild(content);
+  group.appendChild(details);
 
   return group;
 }
@@ -1385,97 +1421,87 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
       bar.appendChild(deleteBtn);
     }
 
-    // Markdown / rich copy + rendered viewer actions for TEXT / TEXTLOG.
-    // Always visible in the `ready` phase (including readonly) since
-    // none of these buttons mutate state — they only read the current
-    // entry body and hand it off to the clipboard or to a new window.
+    // Secondary actions for TEXT / TEXTLOG: copy, viewer, export.
+    // Collapsed behind a <details> "More…" toggle to keep the action
+    // bar compact. Always rendered (including readonly) since none
+    // of these buttons mutate state.
     if (entry.archetype === 'text' || entry.archetype === 'textlog') {
+      const more = document.createElement('details');
+      more.className = 'pkc-action-bar-more';
+      more.setAttribute('data-pkc-region', 'action-bar-more');
+      const moreSummary = document.createElement('summary');
+      moreSummary.className = 'pkc-btn pkc-action-bar-more-summary';
+      moreSummary.setAttribute('title', 'コピー・表示・エクスポート');
+      moreSummary.textContent = 'More…';
+      more.appendChild(moreSummary);
+
+      const moreContent = createElement('div', 'pkc-action-bar-more-content');
+
       const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
       copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
       copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyMdBtn.setAttribute('title', 'Copy the raw markdown source to the clipboard');
-      copyMdBtn.textContent = '📋 Copy MD';
-      bar.appendChild(copyMdBtn);
+      copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
+      copyMdBtn.textContent = '📋 MD';
+      moreContent.appendChild(copyMdBtn);
 
       const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
       copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
       copyRichBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyRichBtn.setAttribute(
-        'title',
-        'Copy both the markdown source and the rendered HTML (paste into rich editors)',
-      );
-      copyRichBtn.textContent = '🎨 Copy Rendered';
-      bar.appendChild(copyRichBtn);
+      copyRichBtn.setAttribute('title', 'Markdown + HTML をリッチコピー（リッチエディタに貼り付け可能）');
+      copyRichBtn.textContent = '🎨 Rich';
+      moreContent.appendChild(copyRichBtn);
 
       const viewerBtn = createElement('button', 'pkc-btn pkc-action-rendered-viewer');
       viewerBtn.setAttribute('data-pkc-action', 'open-rendered-viewer');
       viewerBtn.setAttribute('data-pkc-lid', entry.lid);
-      viewerBtn.setAttribute('title', 'Open a rendered, print-friendly view in a new window');
-      viewerBtn.textContent = '📖 Open Viewer';
-      bar.appendChild(viewerBtn);
-    }
+      viewerBtn.setAttribute('title', '印刷可能なビューを新しいウィンドウで開く');
+      viewerBtn.textContent = '📖 Viewer';
+      moreContent.appendChild(viewerBtn);
 
-    // TEXTLOG-only: download a portable CSV+ZIP bundle of the log
-    // and its referenced assets. Format spec is pinned in
-    // docs/development/textlog-csv-zip-export.md. Always visible
-    // (including readonly) — export does not mutate state.
-    //
-    // Issue G: the export button is paired with a "compact" checkbox
-    // that, when checked, tells the bundle builder to strip broken
-    // asset references from the CSV output. The checkbox is scoped
-    // per-entry by data-pkc-lid so multiple open detail views don't
-    // leak state between each other.
-    if (entry.archetype === 'textlog') {
-      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
-      compactLabel.setAttribute('title',
-        'Compact mode: strip broken asset references from the exported CSV.' +
-        ' The live textlog is never modified.');
-      const compactInput = createElement('input', 'pkc-action-export-compact-input');
-      (compactInput as HTMLInputElement).type = 'checkbox';
-      compactInput.setAttribute('data-pkc-control', 'textlog-export-compact');
-      compactInput.setAttribute('data-pkc-lid', entry.lid);
-      compactLabel.appendChild(compactInput);
-      compactLabel.appendChild(document.createTextNode(' compact'));
-      bar.appendChild(compactLabel);
+      // TEXTLOG-only: download a portable CSV+ZIP bundle.
+      if (entry.archetype === 'textlog') {
+        const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+        compactLabel.setAttribute('title',
+          'Compact モード: 欠損アセット参照を CSV から除去します。元データは変更されません。');
+        const compactInput = createElement('input', 'pkc-action-export-compact-input');
+        (compactInput as HTMLInputElement).type = 'checkbox';
+        compactInput.setAttribute('data-pkc-control', 'textlog-export-compact');
+        compactInput.setAttribute('data-pkc-lid', entry.lid);
+        compactLabel.appendChild(compactInput);
+        compactLabel.appendChild(document.createTextNode(' compact'));
+        moreContent.appendChild(compactLabel);
 
-      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
-      exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
-      exportBtn.setAttribute('data-pkc-lid', entry.lid);
-      exportBtn.setAttribute(
-        'title',
-        'Download this textlog as a CSV + assets ZIP bundle for sharing outside PKC2',
-      );
-      exportBtn.textContent = '📦 Export CSV+ZIP';
-      bar.appendChild(exportBtn);
-    }
+        const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
+        exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'CSV + アセット ZIP バンドルをダウンロード');
+        exportBtn.textContent = '📦 Export';
+        moreContent.appendChild(exportBtn);
+      }
 
-    // TEXT-only: sister format to the textlog bundle — single-body
-    // markdown + assets, spec frozen in
-    // docs/development/text-markdown-zip-export.md. Same "compact"
-    // checkbox shape as textlog so broken asset references can be
-    // stripped from body.md without touching the live entry.
-    if (entry.archetype === 'text') {
-      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
-      compactLabel.setAttribute('title',
-        'Compact mode: strip broken asset references from the exported body.md.' +
-        ' The live text entry is never modified.');
-      const compactInput = createElement('input', 'pkc-action-export-compact-input');
-      (compactInput as HTMLInputElement).type = 'checkbox';
-      compactInput.setAttribute('data-pkc-control', 'text-export-compact');
-      compactInput.setAttribute('data-pkc-lid', entry.lid);
-      compactLabel.appendChild(compactInput);
-      compactLabel.appendChild(document.createTextNode(' compact'));
-      bar.appendChild(compactLabel);
+      // TEXT-only: download a markdown + assets bundle.
+      if (entry.archetype === 'text') {
+        const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+        compactLabel.setAttribute('title',
+          'Compact モード: 欠損アセット参照を body.md から除去します。元データは変更されません。');
+        const compactInput = createElement('input', 'pkc-action-export-compact-input');
+        (compactInput as HTMLInputElement).type = 'checkbox';
+        compactInput.setAttribute('data-pkc-control', 'text-export-compact');
+        compactInput.setAttribute('data-pkc-lid', entry.lid);
+        compactLabel.appendChild(compactInput);
+        compactLabel.appendChild(document.createTextNode(' compact'));
+        moreContent.appendChild(compactLabel);
 
-      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
-      exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
-      exportBtn.setAttribute('data-pkc-lid', entry.lid);
-      exportBtn.setAttribute(
-        'title',
-        'Download this text entry as a markdown + assets ZIP bundle for sharing outside PKC2',
-      );
-      exportBtn.textContent = '📦 Export .text.zip';
-      bar.appendChild(exportBtn);
+        const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
+        exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
+        exportBtn.setAttribute('data-pkc-lid', entry.lid);
+        exportBtn.setAttribute('title', 'Markdown + アセット ZIP バンドルをダウンロード');
+        exportBtn.textContent = '📦 Export';
+        moreContent.appendChild(exportBtn);
+      }
+
+      more.appendChild(moreContent);
+      bar.appendChild(more);
     }
   }
 
@@ -2261,38 +2287,38 @@ export function renderContextMenu(
 
   const items: Item[] = [
     // Mutating actions — gated on canEdit.
-    { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: canEdit },
-    { action: 'ctx-preview', label: '👁️ Preview', tip: 'Open rendered preview in new window', lid, show: isPreviewable || isSandboxable },
-    { action: 'ctx-sandbox-run', label: '🔒 Sandbox Run', tip: 'Open in sandboxed window', lid, show: isSandboxable },
-    { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
-    { action: 'delete-log-entry', label: '✕ Delete log entry', tip: 'Remove this log entry', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
-    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
+    { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
+    { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },
+    { action: 'ctx-sandbox-run', label: '🔒 Sandbox', tip: 'サンドボックス環境で安全に開く（HTML/SVG）', lid, show: isSandboxable },
+    { action: 'delete-entry', label: '🗑️ Delete', tip: 'このエントリを完全に削除（元に戻せません）', lid, show: canEdit },
+    { action: 'delete-log-entry', label: '✕ Delete log', tip: 'このログ行を削除', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
+    { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: '現在のフォルダから取り出してルートに移動', lid, show: canEdit && hasParent },
     // Reference-string actions — never mutate, always shown.
     {
       action: 'copy-entry-ref',
-      label: '🔗 Copy entry reference',
-      tip: 'Copy a markdown link pointing at this entry',
+      label: '🔗 Entry ref',
+      tip: 'このエントリへの Markdown リンクをコピー [title](entry:lid)',
       lid,
       show: true,
     },
     {
       action: 'copy-entry-embed-ref',
-      label: '🖼️ Copy entry embed',
-      tip: 'Copy an embed reference for this entry',
+      label: '🖼️ Embed ref',
+      tip: 'このエントリの埋め込み参照をコピー',
       lid,
       show: true,
     },
     {
       action: 'copy-asset-ref',
-      label: '📎 Copy asset reference',
-      tip: 'Copy a markdown image / chip reference pointing at this attachment',
+      label: '📎 Asset ref',
+      tip: 'この添付ファイルへの Markdown 参照をコピー ![name](asset:key)',
       lid,
       show: opts.archetype === 'attachment',
     },
     {
       action: 'copy-log-line-ref',
-      label: '📝 Copy log line reference',
-      tip: 'Copy a markdown link pointing at this specific log entry',
+      label: '📝 Log ref',
+      tip: 'このログ行への Markdown リンクをコピー',
       lid,
       logId: opts.logId,
       show: !!(opts.archetype === 'textlog' && opts.logId),

@@ -259,12 +259,39 @@
   color: var(--c-fg);
 }
 
-/* ── Export / Import inline buttons ── */
+/* ── Export / Import inline buttons (collapsed behind <details>) ── */
 .pkc-eip-inline {
   display: flex;
   align-items: center;
   gap: 0.15rem;
   margin-left: auto;
+}
+
+.pkc-eip-details {
+  position: relative;
+}
+
+.pkc-eip-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.pkc-eip-summary::-webkit-details-marker { display: none; }
+
+.pkc-eip-content {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 200;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: max-content;
 }
 
 .pkc-eip-sep {
@@ -664,6 +691,37 @@
   margin-left: auto;
   font-size: 0.75rem;
   color: var(--c-muted);
+}
+
+/* Action bar "More…" collapsed section */
+.pkc-action-bar-more {
+  position: relative;
+}
+
+.pkc-action-bar-more-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 0.75rem;
+}
+.pkc-action-bar-more-summary::-webkit-details-marker { display: none; }
+
+.pkc-action-bar-more-content {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 200;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  min-width: max-content;
+  margin-bottom: 0.25rem;
 }
 
 .pkc-empty {
@@ -2426,6 +2484,19 @@
   font-size: 0.6rem;
   color: var(--c-muted);
   text-align: center;
+}
+
+.pkc-shell-menu-help-list {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  font-size: 0.7rem;
+  color: var(--c-fg);
+  line-height: 1.6;
+  list-style: disc;
+}
+
+.pkc-shell-menu-help-item {
+  padding: 0;
 }
 
 .pkc-shell-menu-close {
