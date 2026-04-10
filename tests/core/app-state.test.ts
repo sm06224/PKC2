@@ -1722,3 +1722,149 @@ describe('PASTE_ATTACHMENT', () => {
     expect(state.container!.assets['att-test-001']).toBeUndefined();
   });
 });
+
+// ── SYS_APPLY_BATCH_IMPORT (atomic batch import) ──────
+
+describe('SYS_APPLY_BATCH_IMPORT', () => {
+  it('creates entries atomically from a flat plan', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body-a', assets: {}, attachments: [] },
+        { archetype: 'textlog' as const, title: 'B', body: 'body-b', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const before = readyState();
+    const entryCountBefore = before.container!.entries.length;
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(entryCountBefore + 2);
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    expect(created).toHaveLength(2);
+  });
+
+  it('creates folders and structural relations for restore plan', () => {
+    const plan = {
+      folders: [
+        { originalLid: 'f-root', title: 'Root', parentOriginalLid: null },
+        { originalLid: 'f-sub', title: 'Sub', parentOriginalLid: 'f-root' },
+      ],
+      entries: [
+        { archetype: 'text' as const, title: 'Note', body: 'hello', parentFolderOriginalLid: 'f-sub', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-folder-export-bundle',
+      restoreStructure: true,
+    };
+    const before = readyState();
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+
+    // 2 folders + 1 content entry created
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    expect(created).toHaveLength(3);
+    const folderCreated = created.filter((e) => 'archetype' in e && e.archetype === 'folder');
+    expect(folderCreated).toHaveLength(2);
+
+    // Structural relations: f-root→f-sub, f-sub→Note
+    const rels = events.filter((e) => e.type === 'RELATION_CREATED');
+    expect(rels).toHaveLength(2);
+
+    // Container has new entries
+    const entryTitles = state.container!.entries.map((e) => e.title);
+    expect(entryTitles).toContain('Root');
+    expect(entryTitles).toContain('Sub');
+    expect(entryTitles).toContain('Note');
+  });
+
+  it('merges assets from plan entries', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: { 'k1': 'data1' }, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const { state } = reduce(readyState(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.assets['k1']).toBe('data1');
+  });
+
+  it('creates attachment entries from plan', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        {
+          archetype: 'text' as const,
+          title: 'WithAtt',
+          body: 'body',
+          assets: {},
+          attachments: [{
+            name: 'pic.png',
+            body: '{"name":"pic.png","mime":"image/png","size":100,"asset_key":"att-k1"}',
+            assetKey: 'att-k1',
+            assetData: 'base64pic',
+          }],
+        },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const { state, events } = reduce(readyState(), { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    const created = events.filter((e) => e.type === 'ENTRY_CREATED');
+    // 1 attachment + 1 content entry
+    expect(created).toHaveLength(2);
+    const attCreated = created.filter((e) => 'archetype' in e && e.archetype === 'attachment');
+    expect(attCreated).toHaveLength(1);
+    // Asset data merged
+    expect(state.container!.assets['att-k1']).toBe('base64pic');
+  });
+
+  it('is blocked when readonly', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const s: AppState = { ...readyState(), readonly: true };
+    const entryCountBefore = s.container!.entries.length;
+    const { state } = reduce(s, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(entryCountBefore);
+  });
+
+  it('is blocked when container is null', () => {
+    const plan = {
+      folders: [],
+      entries: [
+        { archetype: 'text' as const, title: 'A', body: 'body', assets: {}, attachments: [] },
+      ],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const s: AppState = { ...createInitialState(), phase: 'ready' };
+    const { state } = reduce(s, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container).toBeNull();
+  });
+
+  it('does not mutate state on empty plan', () => {
+    const plan = {
+      folders: [],
+      entries: [],
+      source: 'test.zip',
+      format: 'pkc2-texts-container-bundle',
+      restoreStructure: false,
+    };
+    const before = readyState();
+    const { state, events } = reduce(before, { type: 'SYS_APPLY_BATCH_IMPORT', plan });
+    expect(state.container!.entries.length).toBe(before.container!.entries.length);
+    expect(events).toHaveLength(0);
+  });
+});
