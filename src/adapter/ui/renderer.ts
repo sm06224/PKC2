@@ -26,6 +26,8 @@ import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIB
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
+import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -1055,7 +1057,7 @@ function renderCenter(state: AppState): HTMLElement {
       editWarn.textContent = 'Light mode: changes to this entry will not be saved. File uploads are unavailable.';
       content.appendChild(editWarn);
     }
-    content.appendChild(renderEditor(selected));
+    content.appendChild(renderEditor(selected, state.container));
   } else {
     content.appendChild(renderView(selected, canEdit, state.container));
   }
@@ -1860,7 +1862,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   return form;
 }
 
-function renderEditor(entry: Entry): HTMLElement {
+function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   const editor = createElement('div', 'pkc-editor');
   editor.setAttribute('data-pkc-mode', 'edit');
   editor.setAttribute('data-pkc-archetype', entry.archetype);
@@ -1881,7 +1883,23 @@ function renderEditor(entry: Entry): HTMLElement {
 
   // Archetype-dispatched editor body
   const presenter = getPresenter(entry.archetype);
-  editor.appendChild(presenter.renderEditorBody(entry));
+  const editorBody = presenter.renderEditorBody(entry);
+  editor.appendChild(editorBody);
+
+  // Resolve asset references in the TEXT split editor's initial preview
+  // so that `![alt](asset:key)` and `[label](asset:key)` render inline
+  // from the moment the editor opens. Source body is never mutated.
+  if (entry.archetype === 'text' && container?.assets && entry.body) {
+    const preview = editorBody.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (preview && hasAssetReferences(entry.body)) {
+      const mimeByKey = buildAssetMimeMap(container);
+      const nameByKey = buildAssetNameMap(container);
+      const resolved = resolveAssetReferences(entry.body, { assets: container.assets, mimeByKey, nameByKey });
+      if (hasMarkdownSyntax(resolved)) {
+        preview.innerHTML = renderMarkdown(resolved);
+      }
+    }
+  }
 
   // Actions moved to fixed action bar (renderActionBar)
   return editor;
@@ -2037,7 +2055,7 @@ function createElement(tag: string, className: string): HTMLElement {
  * Attachment entries store their metadata (name, mime, asset_key) in
  * the body JSON; the raw base64 data lives in `container.assets[key]`.
  */
-function buildAssetMimeMap(container: Container): Record<string, string> {
+export function buildAssetMimeMap(container: Container): Record<string, string> {
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
@@ -2055,7 +2073,7 @@ function buildAssetMimeMap(container: Container): Record<string, string> {
  * non-image chips (`[label](asset:key)`) when the user omits an
  * explicit link label.
  */
-function buildAssetNameMap(container: Container): Record<string, string> {
+export function buildAssetNameMap(container: Container): Record<string, string> {
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;

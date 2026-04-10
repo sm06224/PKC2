@@ -24,7 +24,7 @@ import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
-import { renderContextMenu } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import {
@@ -1815,12 +1815,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
     if (!preview) return;
     const src = textarea.value;
-    if (src && hasMarkdownSyntax(src)) {
-      preview.innerHTML = renderMarkdown(src);
-    } else if (src) {
-      preview.textContent = src;
+    if (!src) { preview.textContent = '(preview)'; return; }
+
+    // Resolve asset references before markdown rendering so the preview
+    // shows inline images and non-image chips. The source body is never
+    // mutated — resolution produces a temporary string for display only.
+    let resolved = src;
+    if (hasAssetReferences(src)) {
+      const state = dispatcher.getState();
+      const container = state.container;
+      if (container?.assets) {
+        const mimeByKey = buildAssetMimeMap(container);
+        const nameByKey = buildAssetNameMap(container);
+        resolved = resolveAssetReferences(src, { assets: container.assets, mimeByKey, nameByKey });
+      }
+    }
+
+    if (hasMarkdownSyntax(resolved)) {
+      preview.innerHTML = renderMarkdown(resolved);
     } else {
-      preview.textContent = '(preview)';
+      preview.textContent = src;
     }
   }
 
