@@ -432,7 +432,7 @@ function renderShellMenu(
     'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
     '表示: More… → Viewer（印刷可能なレンダリング表示）',
     'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs / フォルダ選択 → Export',
-    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加）',
+    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加、フォルダ構造は復元されません）',
     '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
     'ショートカット: ? キーで一覧表示',
   ];

@@ -304,3 +304,234 @@ describe('importBatchBundleFromBuffer — empty and edge cases', () => {
     expect(result.textlog.title).toBe('Solo Log');
   });
 });
+
+// ── folder-scoped import tests ────────────────────────
+
+describe('importBatchBundleFromBuffer — folder-scoped import', () => {
+  it('imports a folder export bundle and reports format correctly', async () => {
+    const folder = makeEntry('f1', 'Project', 'folder');
+    const t1 = makeEntry('t1', 'ReadMe', 'text', '# Project');
+    const t2 = makeEntry('t2', 'Notes', 'text', 'some notes');
+    const l1 = makeEntry('l1', 'DevLog', 'textlog', makeTextlogBody([{ id: 'x', text: 'started' }]));
+    const container = makeContainer({
+      entries: [folder, t1, t2, l1],
+      relations: [
+        makeRelation('r1', 'f1', 't1'),
+        makeRelation('r2', 'f1', 't2'),
+        makeRelation('r3', 'f1', 'l1'),
+      ],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.format).toBe('pkc2-folder-export-bundle');
+    expect(result.entries).toHaveLength(3);
+    const archetypes = result.entries.map((e) => e.archetype);
+    expect(archetypes.filter((a) => a === 'text')).toHaveLength(2);
+    expect(archetypes.filter((a) => a === 'textlog')).toHaveLength(1);
+  });
+
+  it('preserves TEXT body content through folder export → import round-trip', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', '**bold** and _italic_');
+    const container = makeContainer({
+      entries: [folder, text],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]!.body).toBe('**bold** and _italic_');
+  });
+
+  it('preserves TEXTLOG body content through folder export → import round-trip', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const log = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([
+      { id: 'a', text: 'first' },
+      { id: 'b', text: 'second' },
+    ]));
+    const container = makeContainer({
+      entries: [folder, log],
+      relations: [makeRelation('r1', 'f1', 'l1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]!.archetype).toBe('textlog');
+    // Body should be parseable JSON with 2 log entries
+    const parsed = JSON.parse(result.entries[0]!.body) as { entries: unknown[] };
+    expect(parsed.entries).toHaveLength(2);
+  });
+
+  it('re-keys asset references in folder export bundle', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const text = makeEntry('t1', 'With Asset', 'text', 'See ![img](asset:ast-folder-001)');
+    const att = makeAttachmentEntry('a1', 'photo.jpg', 'image/jpeg', 'ast-folder-001');
+    const container = makeContainer({
+      entries: [folder, text, att],
+      relations: [
+        makeRelation('r1', 'f1', 't1'),
+        makeRelation('r2', 'f1', 'a1'),
+      ],
+      assets: { 'ast-folder-001': btoa('JPEG_DATA') },
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Text entry should have re-keyed attachment
+    const textEntry = result.entries.find((e) => e.archetype === 'text')!;
+    expect(textEntry.attachments).toHaveLength(1);
+    const importedAtt = textEntry.attachments[0]!;
+    expect(importedAtt.assetKey).not.toBe('ast-folder-001');
+    expect(importedAtt.assetKey).toMatch(/^att-/);
+    // Body references the new key
+    expect(textEntry.body).toContain(`asset:${importedAtt.assetKey}`);
+    expect(textEntry.body).not.toContain('asset:ast-folder-001');
+  });
+
+  it('accepts a compacted folder export bundle', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', '![gone](asset:ast-missing) content');
+    const container = makeContainer({
+      entries: [folder, text],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container, { compact: true });
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(1);
+    // Compacted body should not contain the broken ref
+    expect(result.entries[0]!.body).not.toContain('asset:ast-missing');
+  });
+
+  it('accepts a folder export bundle with missing assets (non-compact)', async () => {
+    const folder = makeEntry('f1', 'Folder', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', '![gone](asset:ast-missing)');
+    const container = makeContainer({
+      entries: [folder, text],
+      relations: [makeRelation('r1', 'f1', 't1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Missing ref preserved verbatim
+    expect(result.entries[0]!.body).toContain('asset:ast-missing');
+  });
+
+  it('rejects folder export with corrupted nested bundle (failure-atomic)', () => {
+    const corruptedInner = new Uint8Array([0, 1, 2, 3, 4, 5]);
+    const buf = buildFakeZip(
+      {
+        format: 'pkc2-folder-export-bundle',
+        version: 1,
+        source_folder_lid: 'f1',
+        source_folder_title: 'Folder',
+        scope: 'recursive',
+        entries: [
+          { filename: 'bad.text.zip', lid: 't1', title: 'Bad', archetype: 'text' },
+        ],
+      },
+      [{ name: 'bad.text.zip', data: corruptedInner }],
+    );
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('Failed to parse nested text bundle');
+  });
+
+  it('rejects folder export with missing nested textlog bundle (failure-atomic)', () => {
+    const buf = buildFakeZip({
+      format: 'pkc2-folder-export-bundle',
+      version: 1,
+      source_folder_lid: 'f1',
+      source_folder_title: 'Folder',
+      scope: 'recursive',
+      entries: [
+        { filename: 'missing.textlog.zip', lid: 'l1', title: 'Missing', archetype: 'textlog' },
+      ],
+    });
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('missing from ZIP');
+  });
+
+  it('does not produce folder or relation entries (folder structure not restored)', async () => {
+    const folder = makeEntry('f1', 'Project', 'folder');
+    const text = makeEntry('t1', 'Doc', 'text', 'hello');
+    const log = makeEntry('l1', 'Log', 'textlog', makeTextlogBody([{ id: 'x', text: 'hi' }]));
+    const container = makeContainer({
+      entries: [folder, text, log],
+      relations: [makeRelation('r1', 'f1', 't1'), makeRelation('r2', 'f1', 'l1')],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Only text and textlog entries — no folder entry produced
+    for (const entry of result.entries) {
+      expect(entry.archetype === 'text' || entry.archetype === 'textlog').toBe(true);
+    }
+    // No structural relation data in the result (BatchImportEntry has no relations field)
+    expect(result.entries.every((e) => !('relations' in e))).toBe(true);
+  });
+
+  it('handles folder export with zero exportable descendants', async () => {
+    const folder = makeEntry('f1', 'Empty Folder', 'folder');
+    const container = makeContainer({
+      entries: [folder],
+      relations: [],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(0);
+    expect(result.format).toBe('pkc2-folder-export-bundle');
+  });
+
+  it('imports deeply nested folder descendants', async () => {
+    // folder → subfolder → text
+    const folder = makeEntry('f1', 'Root', 'folder');
+    const subfolder = makeEntry('f2', 'Sub', 'folder');
+    const text = makeEntry('t1', 'Deep', 'text', 'deep content');
+    const container = makeContainer({
+      entries: [folder, subfolder, text],
+      relations: [
+        makeRelation('r1', 'f1', 'f2'),
+        makeRelation('r2', 'f2', 't1'),
+      ],
+    });
+    const exported = buildFolderExportBundle(folder, container);
+    const buf = await exported.blob.arrayBuffer();
+
+    const result = importBatchBundleFromBuffer(buf);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.title).toBe('Deep');
+    expect(result.entries[0]!.body).toBe('deep content');
+  });
+});
