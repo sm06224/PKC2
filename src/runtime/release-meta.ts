@@ -41,7 +41,21 @@ export interface ReleaseMeta {
   /** ISO 8601 build time (machine-readable). */
   build_at: string;
 
-  /** Git short commit hash of the source. Build provenance. */
+  /**
+   * Git provenance stamp of the source.
+   *
+   * Format:
+   *   clean worktree  → "<short-sha>"          e.g. "20d7d30"
+   *   dirty worktree  → "<short-sha>+dirty"    e.g. "20d7d30+dirty"
+   *   git unavailable → "unknown"
+   *
+   * The "+dirty" marker is the build-side signal that `build:release`
+   * was run against a modified worktree — typically because dist/
+   * is being updated as part of the commit that will include it.
+   * In that case the short-sha refers to the PREVIOUS commit, not
+   * the commit that will be created, so treat "+dirty" as "one newer
+   * commit than this sha, still being written".
+   */
   source_commit: string;
 
   /**
