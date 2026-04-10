@@ -40,10 +40,10 @@ describe('textlog renderBody', () => {
     const empty = el.querySelector('.pkc-textlog-empty');
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toContain('No log entries');
-    // The hint should guide the user toward the append area below.
+    // The hint should guide the user toward the append area above (pinned to top).
     const hint = el.querySelector('.pkc-textlog-empty-hint');
     expect(hint).not.toBeNull();
-    expect(hint!.textContent).toContain('below');
+    expect(hint!.textContent).toContain('above');
   });
 
   it('still renders append area when empty so the user has a place to write', () => {
@@ -63,8 +63,10 @@ describe('textlog renderBody', () => {
   it('exposes full ISO timestamp via tooltip title for precision', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
-    expect(timestamps[0]!.getAttribute('title')).toBe('2026-04-09T10:00:00Z');
+    // Displayed in descending order (newest first)
+    expect(timestamps[0]!.getAttribute('title')).toBe('2026-04-09T12:00:00Z');
     expect(timestamps[1]!.getAttribute('title')).toBe('2026-04-09T11:00:00Z');
+    expect(timestamps[2]!.getAttribute('title')).toBe('2026-04-09T10:00:00Z');
   });
 
   it('marks important entries with data attribute', () => {
@@ -119,7 +121,8 @@ describe('textlog renderBody', () => {
 
   it('renders markdown in log entries', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const mdRow = el.querySelectorAll('.pkc-textlog-text')[2];
+    // log-3 (markdown heading) is now first due to descending order
+    const mdRow = el.querySelectorAll('.pkc-textlog-text')[0];
     expect(mdRow!.classList.contains('pkc-md-rendered')).toBe(true);
     expect(mdRow!.innerHTML).toContain('<h1>');
   });
@@ -168,8 +171,9 @@ describe('textlog renderBody', () => {
       { 'ast-png-001': 'image/png' },
     );
     const rows = el.querySelectorAll('.pkc-textlog-text');
-    expect(rows[0]!.textContent).toBe('plain text entry');
-    expect(rows[1]!.innerHTML).toContain('data:image/png');
+    // Reversed order: log-2 (image) first, log-1 (plain) second
+    expect(rows[0]!.innerHTML).toContain('data:image/png');
+    expect(rows[1]!.textContent).toBe('plain text entry');
   });
 
   it('renders markdown and asset references within the same log entry', () => {
@@ -292,8 +296,9 @@ describe('textlog renderBody', () => {
       { 'ast-zip-001': 'application/zip' },
     );
     const rows = el.querySelectorAll('.pkc-textlog-text');
-    expect(rows[0]!.textContent).toBe('just plain text');
-    expect(rows[1]!.innerHTML).toContain('#asset-ast-zip-001');
+    // Reversed order: log-asset first, log-plain second
+    expect(rows[0]!.innerHTML).toContain('#asset-ast-zip-001');
+    expect(rows[1]!.textContent).toBe('just plain text');
   });
 });
 
@@ -314,12 +319,14 @@ describe('textlog renderEditorBody', () => {
     expect(timestamps.length).toBe(3);
   });
 
-  it('shows flag checkboxes', () => {
+  it('shows flag checkboxes (editor in descending order)', () => {
     const el = textlogPresenter.renderEditorBody(makeEntry(sampleBody));
     const checks = el.querySelectorAll<HTMLInputElement>('[data-pkc-field="textlog-flag"]');
     expect(checks.length).toBe(3);
+    // Reversed: log-3 (no flag), log-2 (important), log-1 (no flag)
     expect(checks[0]!.checked).toBe(false);
     expect(checks[1]!.checked).toBe(true);
+    expect(checks[2]!.checked).toBe(false);
   });
 
   it('shows delete buttons', () => {
@@ -345,35 +352,39 @@ describe('textlog renderEditorBody', () => {
 // ── collectBody ──
 
 describe('textlog collectBody', () => {
-  it('collects edited entries back to JSON', () => {
+  it('collects edited entries back to JSON in original chronological order', () => {
     const entry = makeEntry(sampleBody);
     const editorEl = textlogPresenter.renderEditorBody(entry);
 
-    // Edit the first entry's text
+    // Editor displays in reversed order: textareas[0] is log-3 (newest)
     const textareas = editorEl.querySelectorAll<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
-    textareas[0]!.value = 'Edited first entry';
+    textareas[0]!.value = 'Edited newest entry';
 
     const collected = textlogPresenter.collectBody(editorEl);
     const parsed = JSON.parse(collected);
     expect(parsed.entries).toHaveLength(3);
-    expect(parsed.entries[0].text).toBe('Edited first entry');
+    // collectBody restores original chronological order
     expect(parsed.entries[0].id).toBe('log-1');
     expect(parsed.entries[0].createdAt).toBe('2026-04-09T10:00:00Z');
+    expect(parsed.entries[2].id).toBe('log-3');
+    expect(parsed.entries[2].text).toBe('Edited newest entry');
   });
 
-  it('collects flag changes', () => {
+  it('collects flag changes (restores original order)', () => {
     const entry = makeEntry(sampleBody);
     const editorEl = textlogPresenter.renderEditorBody(entry);
 
-    // Toggle flag on first entry
+    // Editor reversed: checks[0]=log-3, checks[1]=log-2(important), checks[2]=log-1
     const checks = editorEl.querySelectorAll<HTMLInputElement>('[data-pkc-field="textlog-flag"]');
-    checks[0]!.checked = true;
-    checks[1]!.checked = false;
+    checks[0]!.checked = true;   // log-3: add important
+    checks[1]!.checked = false;  // log-2: remove important
 
     const collected = textlogPresenter.collectBody(editorEl);
     const parsed = JSON.parse(collected);
-    expect(parsed.entries[0].flags).toEqual(['important']);
-    expect(parsed.entries[1].flags).toEqual([]);
+    // Original order restored: [log-1, log-2, log-3]
+    expect(parsed.entries[0].flags).toEqual([]);        // log-1 unchanged
+    expect(parsed.entries[1].flags).toEqual([]);         // log-2 flag removed
+    expect(parsed.entries[2].flags).toEqual(['important']); // log-3 flag added
   });
 
   it('returns empty body when no edit rows', () => {

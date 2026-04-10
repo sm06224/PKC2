@@ -107,8 +107,8 @@ export function createInitialState(): AppState {
     searchQuery: '',
     archetypeFilter: null,
     tagFilter: null,
-    sortKey: 'created_at',
-    sortDirection: 'desc',
+    sortKey: 'title',
+    sortDirection: 'asc',
     exportMode: null,
     exportMutability: null,
     readonly: false,
@@ -590,6 +590,77 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container, multiSelectedLids: [] };
       return { state: next, events: [] };
     }
+    case 'PASTE_ATTACHMENT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+
+      const ts = now();
+      const events: DomainEvent[] = [];
+      let container = state.container;
+
+      // 1. Find structural parent of contextLid (same level)
+      let parentFolderLid: string | null = null;
+      for (const r of container.relations) {
+        if (r.kind === 'structural' && r.to === action.contextLid) {
+          const parent = container.entries.find((e) => e.lid === r.from);
+          if (parent) { parentFolderLid = parent.lid; break; }
+        }
+      }
+
+      // 2. Find or create ASSETS folder at that level
+      let assetsFolderLid: string | null = null;
+      for (const e of container.entries) {
+        if (e.archetype !== 'folder' || e.title !== 'ASSETS') continue;
+        if (parentFolderLid === null) {
+          // Context is at root — ASSETS folder must also be at root (no structural parent)
+          const hasParent = container.relations.some(
+            (r) => r.kind === 'structural' && r.to === e.lid,
+          );
+          if (!hasParent) { assetsFolderLid = e.lid; break; }
+        } else {
+          // Context is inside a folder — ASSETS must be a child of same parent
+          const isChild = container.relations.some(
+            (r) => r.kind === 'structural' && r.from === parentFolderLid && r.to === e.lid,
+          );
+          if (isChild) { assetsFolderLid = e.lid; break; }
+        }
+      }
+
+      if (!assetsFolderLid) {
+        // Create ASSETS folder
+        assetsFolderLid = generateLid();
+        container = addEntry(container, assetsFolderLid, 'folder', 'ASSETS', ts);
+        events.push({ type: 'ENTRY_CREATED', lid: assetsFolderLid, archetype: 'folder' });
+
+        // Place it under the same parent as contextLid
+        if (parentFolderLid) {
+          const relId = generateLid();
+          container = addRelation(container, relId, parentFolderLid, assetsFolderLid, 'structural', ts);
+          events.push({ type: 'RELATION_CREATED', id: relId, from: parentFolderLid, to: assetsFolderLid, kind: 'structural' });
+        }
+      }
+
+      // 3. Create attachment entry (no phase transition)
+      const attachmentLid = generateLid();
+      const bodyMeta = JSON.stringify({
+        name: action.name,
+        mime: action.mime,
+        size: action.size,
+        asset_key: action.assetKey,
+      });
+      container = addEntry(container, attachmentLid, 'attachment', action.name, ts);
+      container = updateEntry(container, attachmentLid, action.name, bodyMeta, ts);
+      container = mergeAssets(container, { [action.assetKey]: action.assetData });
+      events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
+
+      // 4. Place attachment inside ASSETS folder
+      const attRelId = generateLid();
+      container = addRelation(container, attRelId, assetsFolderLid, attachmentLid, 'structural', ts);
+      events.push({ type: 'RELATION_CREATED', id: attRelId, from: assetsFolderLid, to: attachmentLid, kind: 'structural' });
+
+      const next: AppState = { ...state, container };
+      return { state: next, events };
+    }
     case 'TOGGLE_FOLDER_COLLAPSE': {
       const lids = state.collapsedFolders.includes(action.lid)
         ? state.collapsedFolders.filter((l) => l !== action.lid)
@@ -632,6 +703,10 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
     case 'CANCEL_EDIT': {
       const next: AppState = { ...state, phase: 'ready', editingLid: null };
       return { state: next, events: [{ type: 'EDIT_CANCELLED' }] };
+    }
+    case 'PASTE_ATTACHMENT': {
+      // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
+      return reduceReady(state, action);
     }
     default:
       return blocked(state, action);

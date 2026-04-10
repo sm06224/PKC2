@@ -18,6 +18,7 @@ import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { importTextlogBundle } from './adapter/platform/textlog-bundle';
+import { importTextBundle } from './adapter/platform/text-bundle';
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
@@ -173,6 +174,11 @@ async function boot(): Promise<void> {
   // 8a. Textlog bundle import handler (Issue H) — additive,
   // distinct file picker so the .textlog.zip flow is unambiguous.
   mountTextlogImportHandler(root, dispatcher);
+
+  // 8a'. Text bundle import handler — sister of the textlog flow,
+  // for `.text.zip` single-body markdown bundles. Additive with the
+  // same N+1 dispatch pattern (N attachments then 1 text entry).
+  mountTextImportHandler(root, dispatcher);
 
   // 8b. ZIP export handler: direct async export (no phase transition needed)
   mountZipExportHandler(root, dispatcher);
@@ -484,6 +490,101 @@ function mountTextlogImportHandler(root: HTMLElement, dispatcher: Dispatcher): v
     console.log(
       `[PKC2] Textlog import complete: "${result.textlog.title}"`
       + ` (${result.entryCount} rows, ${result.attachments.length} attachments)`,
+    );
+  });
+}
+
+/**
+ * Mount text bundle import handler — sister of
+ * `mountTextlogImportHandler`, for `.text.zip` single-body markdown
+ * bundles. Format spec in `docs/development/text-markdown-zip-export.md`.
+ *
+ * Additive: the imported text + its attachments are **added** to the
+ * current container, never replacing it. The dispatch order is the
+ * same N + 1 pattern as the textlog path — attachments first (so
+ * `container.assets` gets populated and `buildAssetMimeMap` resolves),
+ * then the text entry last (so its body renders with every reference
+ * already resolvable).
+ *
+ * Failure atomicity: any parse / format / version / missing-body.md
+ * error resolves to `{ ok: false, error }` inside
+ * `importTextBundle`, and we never enter the dispatch loop.
+ */
+function mountTextImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  // Accept both `.text.zip` (canonical) and bare `.zip` for the same
+  // reasons the textlog path does.
+  fileInput.accept = '.zip,.text.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-text-input');
+  document.body.appendChild(fileInput);
+
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-text-bundle"]');
+    if (!target) return;
+    const state = dispatcher.getState();
+    if (state.readonly) {
+      console.warn('[PKC2] Text import blocked: workspace is readonly');
+      return;
+    }
+    if (!state.container) {
+      console.warn('[PKC2] Text import blocked: no container loaded');
+      return;
+    }
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const result = await importTextBundle(file);
+    if (!result.ok) {
+      console.warn(`[PKC2] Text import failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Text import failed: ${result.error}` });
+      return;
+    }
+
+    // 1. Dispatch each attachment as its own CREATE_ENTRY + COMMIT_EDIT
+    // pair. Must come BEFORE the text entry so that when the text
+    // entry renders, `buildAssetMimeMap` already sees each
+    // `asset_key` in `container.entries`.
+    for (const att of result.attachments) {
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
+      const lid = dispatcher.getState().editingLid;
+      if (!lid) continue;
+      const body = serializeAttachmentBody({
+        name: att.name,
+        mime: att.mime,
+        size: att.size,
+        asset_key: att.assetKey,
+      });
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid,
+        title: att.name,
+        body,
+        assets: { [att.assetKey]: att.data },
+      });
+    }
+
+    // 2. Dispatch the text entry itself. Its body already contains
+    // the rewritten asset keys.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: result.text.title });
+    const textLid = dispatcher.getState().editingLid;
+    if (textLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: textLid,
+        title: result.text.title,
+        body: result.text.body,
+      });
+    }
+
+    console.log(
+      `[PKC2] Text import complete: "${result.text.title}"`
+      + ` (${result.attachments.length} attachments)`,
     );
   });
 }

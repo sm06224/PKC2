@@ -33,12 +33,16 @@ describe('DetailPresenter', () => {
     expect(el.textContent).toBe('(empty)');
   });
 
-  it('default presenter renders editor body as textarea', () => {
+  it('default presenter renders editor body as split editor with textarea and preview', () => {
     const presenter = getDefaultPresenter();
     const el = presenter.renderEditorBody(makeEntry());
-    expect(el.tagName).toBe('TEXTAREA');
-    expect((el as HTMLTextAreaElement).value).toBe('Test body content');
-    expect(el.getAttribute('data-pkc-field')).toBe('body');
+    expect(el.tagName).toBe('DIV');
+    expect(el.className).toContain('pkc-text-split-editor');
+    const textarea = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(textarea).not.toBeNull();
+    expect(textarea!.value).toBe('Test body content');
+    const preview = el.querySelector('[data-pkc-region="text-edit-preview"]');
+    expect(preview).not.toBeNull();
   });
 
   // ── Registry dispatch ──

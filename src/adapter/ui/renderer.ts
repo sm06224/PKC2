@@ -609,6 +609,17 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   importTextlogBtn.textContent = '📥 Import Textlog';
   group.appendChild(importTextlogBtn);
 
+  // Import text bundle — sister to Import Textlog, sharing the same
+  // additive semantics. Format spec is pinned in
+  // docs/development/text-markdown-zip-export.md. Readonly handling
+  // matches the textlog path: the button is always rendered for
+  // shape stability, the action handler bails out.
+  const importTextBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importTextBtn.setAttribute('data-pkc-action', 'import-text-bundle');
+  importTextBtn.setAttribute('title', 'Import a text bundle (.text.zip) as a new entry');
+  importTextBtn.textContent = '📥 Import Text';
+  group.appendChild(importTextBtn);
+
   const sep3 = createElement('span', 'pkc-eip-sep');
   sep3.textContent = '|';
   group.appendChild(sep3);
@@ -1412,6 +1423,35 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
       exportBtn.textContent = '📦 Export CSV+ZIP';
       bar.appendChild(exportBtn);
     }
+
+    // TEXT-only: sister format to the textlog bundle — single-body
+    // markdown + assets, spec frozen in
+    // docs/development/text-markdown-zip-export.md. Same "compact"
+    // checkbox shape as textlog so broken asset references can be
+    // stripped from body.md without touching the live entry.
+    if (entry.archetype === 'text') {
+      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+      compactLabel.setAttribute('title',
+        'Compact mode: strip broken asset references from the exported body.md.' +
+        ' The live text entry is never modified.');
+      const compactInput = createElement('input', 'pkc-action-export-compact-input');
+      (compactInput as HTMLInputElement).type = 'checkbox';
+      compactInput.setAttribute('data-pkc-control', 'text-export-compact');
+      compactInput.setAttribute('data-pkc-lid', entry.lid);
+      compactLabel.appendChild(compactInput);
+      compactLabel.appendChild(document.createTextNode(' compact'));
+      bar.appendChild(compactLabel);
+
+      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
+      exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
+      exportBtn.setAttribute('data-pkc-lid', entry.lid);
+      exportBtn.setAttribute(
+        'title',
+        'Download this text entry as a markdown + assets ZIP bundle for sharing outside PKC2',
+      );
+      exportBtn.textContent = '📦 Export .text.zip';
+      bar.appendChild(exportBtn);
+    }
   }
 
   // Entry info badge
@@ -2141,6 +2181,8 @@ export interface ContextMenuOptions {
   logId?: string;
   canEdit?: boolean;
   hasParent?: boolean;
+  /** Available folders for "move to folder" sub-menu. */
+  folders?: { lid: string; title: string }[];
 }
 
 export function renderContextMenu(
@@ -2172,9 +2214,15 @@ export function renderContextMenu(
     show: boolean;
   };
 
+  const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
+  const isSandboxable = opts.archetype === 'attachment';
+  const hasFolders = !!(opts.folders && opts.folders.length > 0);
+
   const items: Item[] = [
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'Edit this entry', lid, show: canEdit },
+    { action: 'ctx-preview', label: '👁️ Preview', tip: 'Open rendered preview in new window', lid, show: isPreviewable || isSandboxable },
+    { action: 'ctx-sandbox-run', label: '🔒 Sandbox Run', tip: 'Open in sandboxed window', lid, show: isSandboxable },
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'Delete this entry permanently', lid, show: canEdit },
     { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: 'Remove from current folder', lid, show: canEdit && hasParent },
     // Reference-string actions — never mutate, always shown.
@@ -2182,6 +2230,13 @@ export function renderContextMenu(
       action: 'copy-entry-ref',
       label: '🔗 Copy entry reference',
       tip: 'Copy a markdown link pointing at this entry',
+      lid,
+      show: true,
+    },
+    {
+      action: 'copy-entry-embed-ref',
+      label: '🖼️ Copy entry embed',
+      tip: 'Copy an embed reference for this entry',
       lid,
       show: true,
     },
@@ -2211,6 +2266,27 @@ export function renderContextMenu(
     if (item.logId) btn.setAttribute('data-pkc-log-id', item.logId);
     btn.textContent = item.label;
     menu.appendChild(btn);
+  }
+
+  // "Move to Folder" sub-menu — only shown when folders exist and entry is editable
+  if (canEdit && hasFolders) {
+    const sep = createElement('div', 'pkc-context-menu-separator');
+    menu.appendChild(sep);
+
+    const folderLabel = createElement('div', 'pkc-context-menu-label');
+    folderLabel.textContent = '📁 Move to Folder';
+    menu.appendChild(folderLabel);
+
+    for (const folder of opts.folders!) {
+      if (folder.lid === lid) continue; // Skip self
+      const btn = createElement('button', 'pkc-context-menu-item pkc-context-menu-folder-item');
+      btn.setAttribute('data-pkc-action', 'ctx-move-to-folder');
+      btn.setAttribute('data-pkc-lid', lid);
+      btn.setAttribute('data-pkc-folder-lid', folder.lid);
+      btn.setAttribute('title', `Move into ${folder.title || '(untitled)'}`);
+      btn.textContent = `  → ${folder.title || '(untitled)'}`;
+      menu.appendChild(btn);
+    }
   }
 
   return menu;

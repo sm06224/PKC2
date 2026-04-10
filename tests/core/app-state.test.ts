@@ -836,10 +836,10 @@ describe('show archived', () => {
 // ── Sort ────────────────────────
 
 describe('sort', () => {
-  it('createInitialState has default sort (created_at desc)', () => {
+  it('createInitialState has default sort (title asc)', () => {
     const state = createInitialState();
-    expect(state.sortKey).toBe('created_at');
-    expect(state.sortDirection).toBe('desc');
+    expect(state.sortKey).toBe('title');
+    expect(state.sortDirection).toBe('asc');
   });
 
   it('SET_SORT updates sort key and direction in ready phase', () => {
@@ -1470,5 +1470,137 @@ describe('sort', () => {
     const { state } = reduce(s, { type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
     expect(state.container).toBe(s.container);
     expect(state.selectedLid).toBe('e1');
+  });
+});
+
+// ── PASTE_ATTACHMENT ────────────────────────
+
+describe('PASTE_ATTACHMENT', () => {
+  const pasteAction = {
+    type: 'PASTE_ATTACHMENT' as const,
+    name: 'screenshot.png',
+    mime: 'image/png',
+    size: 1234,
+    assetKey: 'att-test-001',
+    assetData: 'base64data',
+    contextLid: 'e1',
+  };
+
+  it('creates attachment entry and merges asset without changing phase', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    expect(state.phase).toBe('ready');
+    expect(state.editingLid).toBeNull();
+    expect(state.selectedLid).toBe(s.selectedLid);
+    // Asset merged
+    expect(state.container!.assets['att-test-001']).toBe('base64data');
+    // Attachment entry created
+    const att = state.container!.entries.find((e) => e.title === 'screenshot.png' && e.archetype === 'attachment');
+    expect(att).not.toBeUndefined();
+    expect(JSON.parse(att!.body).asset_key).toBe('att-test-001');
+  });
+
+  it('auto-creates ASSETS folder at root when context entry is at root', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    // ASSETS folder should have no structural parent (root level)
+    const hasParent = state.container!.relations.some(
+      (r) => r.kind === 'structural' && r.to === assetsFolder!.lid,
+    );
+    expect(hasParent).toBe(false);
+  });
+
+  it('places attachment inside ASSETS folder', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    const att = state.container!.entries.find(
+      (e) => e.title === 'screenshot.png' && e.archetype === 'attachment',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    expect(att).not.toBeUndefined();
+    const rel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === assetsFolder!.lid && r.to === att!.lid,
+    );
+    expect(rel).not.toBeUndefined();
+  });
+
+  it('reuses existing ASSETS folder at root level', () => {
+    const containerWithFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'af1', title: 'ASSETS', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerWithFolder };
+    const { state } = reduce(s, pasteAction);
+    // Should NOT create a second ASSETS folder
+    const assetsFolders = state.container!.entries.filter(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolders.length).toBe(1);
+    expect(assetsFolders[0]!.lid).toBe('af1');
+  });
+
+  it('creates ASSETS folder inside parent when context entry is in a folder', () => {
+    const containerInFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'parent-f', title: 'Project', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'parent-f', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerInFolder };
+    const { state } = reduce(s, pasteAction);
+    const assetsFolder = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolder).not.toBeUndefined();
+    // ASSETS folder should be a child of parent-f
+    const parentRel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'parent-f' && r.to === assetsFolder!.lid,
+    );
+    expect(parentRel).not.toBeUndefined();
+  });
+
+  it('works during editing phase without disrupting edit state', () => {
+    const s: AppState = {
+      ...readyState(),
+      phase: 'editing',
+      editingLid: 'e1',
+      selectedLid: 'e1',
+    };
+    const { state } = reduce(s, pasteAction);
+    expect(state.phase).toBe('editing');
+    expect(state.editingLid).toBe('e1');
+    expect(state.selectedLid).toBe('e1');
+    expect(state.container!.assets['att-test-001']).toBe('base64data');
+  });
+
+  it('emits ENTRY_CREATED and RELATION_CREATED events', () => {
+    const s = readyState();
+    const { events } = reduce(s, pasteAction);
+    const entryCreated = events.filter((e) => e.type === 'ENTRY_CREATED');
+    const relCreated = events.filter((e) => e.type === 'RELATION_CREATED');
+    // At minimum: ASSETS folder creation + attachment creation
+    expect(entryCreated.length).toBeGreaterThanOrEqual(2);
+    // At minimum: attachment → ASSETS folder relation
+    expect(relCreated.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('is blocked when readonly', () => {
+    const s: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(s, pasteAction);
+    expect(state.container!.assets['att-test-001']).toBeUndefined();
   });
 });
