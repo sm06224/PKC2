@@ -227,6 +227,40 @@ describe('Attachment Presenter', () => {
       expect(btn!.textContent).toBe('Download');
     });
 
+    it('exposes a "🌐 Open in New Window" button at action-row level for HTML attachments', () => {
+      const entry = makeLegacyEntry(
+        '{"name":"page.html","mime":"text/html","data":"PHA+b2s8L3A+","size":12}',
+      );
+      const el = attachmentPresenter.renderBody(entry);
+      const actionRow = el.querySelector('[data-pkc-region="attachment-actions"]');
+      expect(actionRow).not.toBeNull();
+      const openBtn = actionRow!.querySelector('[data-pkc-action="open-html-attachment"]');
+      expect(openBtn).not.toBeNull();
+      expect(openBtn!.getAttribute('data-pkc-lid')).toBe('att1');
+      expect(openBtn!.textContent).toContain('Open in New Window');
+    });
+
+    it('does NOT show the open-in-new-window button for non-HTML attachments (PDF)', () => {
+      const entry = makeLegacyEntry(
+        '{"name":"doc.pdf","mime":"application/pdf","data":"JVBERi0xLjQK","size":12}',
+      );
+      const el = attachmentPresenter.renderBody(entry);
+      const openBtn = el.querySelector('[data-pkc-action="open-html-attachment"]');
+      expect(openBtn).toBeNull();
+      // The download button is still present.
+      expect(el.querySelector('[data-pkc-action="download-attachment"]')).not.toBeNull();
+    });
+
+    it('hides the open-in-new-window button when the HTML data has been stripped (light export)', () => {
+      const entry = makeLegacyEntry(
+        '{"name":"page.html","mime":"text/html","asset_key":"ast-html","size":100}',
+      );
+      // No assets provided → data not available, action row is suppressed.
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('[data-pkc-region="attachment-actions"]')).toBeNull();
+      expect(el.querySelector('[data-pkc-action="open-html-attachment"]')).toBeNull();
+    });
+
     it('hides download button when asset_key has no data (even with size)', () => {
       // asset_key with size but no data = light export, data not available for download
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');

@@ -9,8 +9,16 @@ import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
-import { toggleLogFlag, deleteLogEntry } from '../../features/textlog/textlog-body';
+import {
+  toggleLogFlag,
+  deleteLogEntry,
+  serializeTextlogAsMarkdown,
+  formatLogTimestamp,
+} from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
+import { openRenderedViewer } from './rendered-viewer';
+import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu } from './renderer';
@@ -354,6 +362,84 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'open-html-attachment': {
+        // Direct surfacing of `createHtmlOpenButton` at the attachment
+        // card level so HTML / SVG users do not need to scroll into the
+        // sandboxed preview iframe before they can open the file.
+        // Guarded by MIME classification so the button only ever
+        // appears for `classifyPreviewType === 'html'` (text/html or
+        // SVG). We resolve the bytes fresh from container.assets at
+        // click time — no cached blob URL, nothing escapes the current
+        // dispatch cycle.
+        if (!lid) break;
+        const resolved = resolveAttachmentData(lid, dispatcher);
+        if (!resolved) break;
+        if (classifyPreviewType(resolved.mime) !== 'html') break;
+        const htmlString = decodeBase64ToText(resolved.data);
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.open();
+          win.document.write(htmlString);
+          win.document.close();
+        }
+        break;
+      }
+      case 'copy-markdown-source': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        void copyPlainText(src);
+        break;
+      }
+      case 'copy-rich-markdown': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        const resolvedSrc = resolveMarkdownSourceForCopy(src, st.container);
+        const html = renderMarkdown(resolvedSrc);
+        void copyMarkdownAndHtml(src, html);
+        break;
+      }
+      case 'copy-entry-ref': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        void copyPlainText(formatEntryReference(ent));
+        break;
+      }
+      case 'copy-asset-ref': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        void copyPlainText(formatAssetReference(ent));
+        break;
+      }
+      case 'copy-log-line-ref': {
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const ref = formatLogLineReference(ent, logId);
+        if (ref) void copyPlainText(ref);
+        break;
+      }
+      case 'open-rendered-viewer': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        if (ent.archetype !== 'text' && ent.archetype !== 'textlog') break;
+        openRenderedViewer(ent, st.container);
+        break;
+      }
       case 'rename-attachment': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -1071,28 +1157,92 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleContextMenu(e: MouseEvent): void {
-    const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
-    if (!entryItem) return;
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready') return;
+    if (!state.container) return;
 
-    // Only in sidebar tree
+    const rawTarget = e.target as HTMLElement | null;
+    if (!rawTarget) return;
+    const canEdit = !state.readonly;
+
+    // Case 1 — TEXTLOG row context menu (center pane).
+    // Takes precedence over the generic detail-pane menu because a
+    // right-click on a log row carries sub-entry precision: we want
+    // the "copy log line reference" item to be reachable without
+    // the user first dismissing the entry-level menu.
+    const textlogRow = rawTarget.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid][data-pkc-log-id]');
+    if (textlogRow) {
+      const lid = textlogRow.getAttribute('data-pkc-lid');
+      const logId = textlogRow.getAttribute('data-pkc-log-id');
+      if (!lid || !logId) return;
+      const entry = state.container.entries.find((en) => en.lid === lid);
+      if (!entry || entry.archetype !== 'textlog') return;
+      e.preventDefault();
+      dismissContextMenu();
+      const hasParent =
+        getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+      const menu = renderContextMenu(lid, e.clientX, e.clientY, {
+        archetype: 'textlog',
+        logId,
+        canEdit,
+        hasParent,
+      });
+      root.appendChild(menu);
+      return;
+    }
+
+    // Case 2 — Detail / view-mode pane (center). Covers TEXT body,
+    // TEXTLOG view (outside a row), attachment card, folder view.
+    // Resolved via the wrapping `[data-pkc-mode="view"][data-pkc-archetype]`
+    // the renderer always emits so we can hand the archetype to the
+    // context menu for conditional items (e.g. "copy asset reference"
+    // only when archetype === 'attachment').
+    const viewWrap = rawTarget.closest<HTMLElement>(
+      '[data-pkc-mode="view"][data-pkc-archetype]',
+    );
+    if (viewWrap && state.selectedLid) {
+      const lid = state.selectedLid;
+      const entry = state.container.entries.find((en) => en.lid === lid);
+      if (!entry) return;
+      e.preventDefault();
+      dismissContextMenu();
+      const hasParent =
+        getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+      const menu = renderContextMenu(lid, e.clientX, e.clientY, {
+        archetype: entry.archetype,
+        canEdit,
+        hasParent,
+      });
+      root.appendChild(menu);
+      return;
+    }
+
+    // Case 3 — sidebar tree (unchanged behaviour).
+    const entryItem = rawTarget.closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
+    if (!entryItem) return;
     const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
     if (!sidebar) return;
-
-    const state = dispatcher.getState();
-    if (state.phase !== 'ready' || state.readonly) return;
 
     e.preventDefault();
     dismissContextMenu();
 
     const lid = entryItem.getAttribute('data-pkc-lid');
-    if (!lid || !state.container) return;
-
-    const hasParent = getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
-    const menu = renderContextMenu(lid, e.clientX, e.clientY, hasParent);
+    if (!lid) return;
+    const entry = state.container.entries.find((en) => en.lid === lid);
+    const hasParent =
+      getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+    const menu = renderContextMenu(lid, e.clientX, e.clientY, {
+      archetype: entry?.archetype,
+      canEdit,
+      hasParent,
+    });
     root.appendChild(menu);
 
-    // Select the entry being right-clicked
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+    // Select the entry being right-clicked (sidebar-only behaviour —
+    // center pane right-click never moves selection).
+    if (canEdit) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+    }
   }
 
   function handleDocumentClick(e: MouseEvent): void {
@@ -1269,6 +1419,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // This fallback catches cases where the dblclick event reaches root
   // (e.g., when the entry was already selected and re-render didn't replace DOM).
   function handleDblClick(e: MouseEvent): void {
+    // TEXTLOG row dblclick (center pane): enter in-place edit mode.
+    // The existing Edit button stays untouched so both paths coexist;
+    // double-click is the fast path for users who already live inside
+    // a log. We intentionally ignore clicks on the flag button, the
+    // timestamp tooltip holder, asset chip anchors, and the append
+    // textarea so the existing single-click handlers on those targets
+    // are not hijacked. The append area sits outside `.pkc-textlog-row`
+    // so it is already out of scope — the exclusions inside the row
+    // are the only ones we need to filter.
+    const rawTarget = e.target as HTMLElement | null;
+    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid]');
+    if (textlogRow) {
+      if (rawTarget?.closest('.pkc-textlog-flag-btn')) return;
+      if (rawTarget?.closest('a[href^="#asset-"]')) return;
+      const tlLid = textlogRow.getAttribute('data-pkc-lid');
+      if (!tlLid) return;
+      const state = dispatcher.getState();
+      if (state.phase !== 'ready' || state.readonly) return;
+      const ent = state.container?.entries.find((en) => en.lid === tlLid);
+      if (!ent || ent.archetype !== 'textlog') return;
+      e.preventDefault();
+      if (state.selectedLid !== tlLid) {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: tlLid });
+      }
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: tlLid });
+      return;
+    }
+
     const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
     if (!entryItem) return;
     const lid = entryItem.getAttribute('data-pkc-lid');
@@ -1437,6 +1615,127 @@ export function flashEntry(root: HTMLElement, lid: string): void {
     item.setAttribute('data-pkc-flash', 'true');
     item.addEventListener('animationend', () => item.removeAttribute('data-pkc-flash'), { once: true });
   });
+}
+
+/**
+ * Return the markdown source text for the "Copy MD" and rendered
+ * viewer paths. TEXT entries use the body directly. TEXTLOG entries
+ * are flattened into a single markdown document via
+ * `serializeTextlogAsMarkdown` so log rows become `## timestamp`
+ * sections followed by the log text.
+ */
+function entryToMarkdownSource(entry: Entry): string {
+  if (entry.archetype === 'textlog') {
+    try {
+      return serializeTextlogAsMarkdown(parseTextlogBody(entry.body));
+    } catch {
+      return entry.body ?? '';
+    }
+  }
+  return entry.body ?? '';
+}
+
+/**
+ * Pre-resolve `asset:` references before handing the markdown source
+ * to `renderMarkdown` for the rich-copy path. This lets a pasted
+ * rich-text payload still show the image embed and non-image chip.
+ */
+function resolveMarkdownSourceForCopy(source: string, container: Container | null): string {
+  if (!container) return source;
+  if (!hasAssetReferences(source)) return source;
+  const mimeByKey: Record<string, string> = {};
+  const nameByKey: Record<string, string> = {};
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(e.body);
+    if (att.asset_key) {
+      if (att.mime) mimeByKey[att.asset_key] = att.mime;
+      if (att.name) nameByKey[att.asset_key] = att.name;
+    }
+  }
+  return resolveAssetReferences(source, {
+    assets: container.assets ?? {},
+    mimeByKey,
+    nameByKey,
+  });
+}
+
+/**
+ * Escape a title for embedding in a markdown link label.
+ * Doubles `\`, `[`, `]` so the surrounding `[...](...)` syntax
+ * is not broken by user text.
+ */
+function escapeMarkdownLabel(label: string): string {
+  return label.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+/**
+ * Build an entry reference string for the context menu
+ * "Copy entry reference" action.
+ *
+ * Format: `[title](entry:lid)`
+ *
+ * This mirrors the existing asset reference syntax
+ * (`![name](asset:key)` / `[name](asset:key)`) so users get a single
+ * mental model: `<scheme>:<opaque-id>` inside a markdown link.
+ * The `entry:` scheme is reserved for future cross-entry linking
+ * (see `reference-string-format.md`).
+ */
+function formatEntryReference(entry: Entry): string {
+  const label = escapeMarkdownLabel(entry.title || '(untitled)');
+  return `[${label}](entry:${entry.lid})`;
+}
+
+/**
+ * Build an asset reference string for an ATTACHMENT entry.
+ *
+ * - Image attachments → image form `![name](asset:key)` so the
+ *   reference, when pasted into a TEXT or TEXTLOG body, renders
+ *   as an inline image via the existing asset resolver.
+ * - Non-image attachments → link form `[name](asset:key)` so the
+ *   reference renders as a downloadable chip via the non-image
+ *   asset resolver.
+ *
+ * Returns an empty string if the attachment has no asset_key (legacy
+ * body-data attachments and empty placeholders).
+ */
+function formatAssetReference(entry: Entry): string {
+  const att = parseAttachmentBody(entry.body);
+  if (!att.asset_key) return '';
+  const label = escapeMarkdownLabel(att.name || att.asset_key);
+  const previewType = classifyPreviewType(att.mime);
+  const prefix = previewType === 'image' ? '!' : '';
+  return `${prefix}[${label}](asset:${att.asset_key})`;
+}
+
+/**
+ * Build a textlog line reference string.
+ *
+ * Format: `[title › yyyy/MM/dd ddd HH:mm](entry:lid#log-id)`
+ *
+ * The fragment identifier targets a specific log row inside the
+ * parent TEXTLOG entry. Callers that know how to resolve the
+ * fragment (e.g. a future "scroll to log" handler) can split on
+ * `#` and match against `data-pkc-log-id`. Consumers that do not
+ * understand the fragment still get a readable, unambiguous
+ * reference to the parent entry.
+ *
+ * Returns an empty string if the logId is unknown in the parent
+ * body (e.g. the row was deleted between the context menu opening
+ * and the copy action firing).
+ */
+function formatLogLineReference(entry: Entry, logId: string): string {
+  try {
+    const log = parseTextlogBody(entry.body);
+    const row = log.entries.find((r) => r.id === logId);
+    if (!row) return '';
+    const label = escapeMarkdownLabel(
+      `${entry.title || '(untitled)'} › ${formatLogTimestamp(row.createdAt)}`,
+    );
+    return `[${label}](entry:${entry.lid}#${logId})`;
+  } catch {
+    return '';
+  }
 }
 
 /**

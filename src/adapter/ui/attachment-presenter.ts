@@ -270,14 +270,39 @@ export const attachmentPresenter: DetailPresenter = {
     }
     card.appendChild(metaRow);
 
-    // Download button
+    // Action row (Download + direct open links).
+    // HTML / SVG attachments get an extra "🌐 Open in New Window"
+    // button alongside Download so the user can reach the real HTML
+    // document without scrolling into the sandboxed preview iframe
+    // first. The preview iframe still renders a second copy of the
+    // button for discoverability — the two paths share the same
+    // `open-html-attachment` action handler.
     if (dataAvailable && !dataStripped) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'pkc-attachment-actions';
+      actionRow.setAttribute('data-pkc-region', 'attachment-actions');
+
       const downloadBtn = document.createElement('button');
       downloadBtn.className = 'pkc-btn pkc-attachment-download';
       downloadBtn.setAttribute('data-pkc-action', 'download-attachment');
       downloadBtn.setAttribute('data-pkc-lid', entry.lid);
       downloadBtn.textContent = 'Download';
-      card.appendChild(downloadBtn);
+      actionRow.appendChild(downloadBtn);
+
+      if (previewType === 'html') {
+        const openHtmlBtn = document.createElement('button');
+        openHtmlBtn.className = 'pkc-btn pkc-attachment-open-html-btn';
+        openHtmlBtn.setAttribute('data-pkc-action', 'open-html-attachment');
+        openHtmlBtn.setAttribute('data-pkc-lid', entry.lid);
+        openHtmlBtn.setAttribute(
+          'title',
+          `Open ${att.name} as a standalone HTML page in a new browser window`,
+        );
+        openHtmlBtn.textContent = '🌐 Open in New Window';
+        actionRow.appendChild(openHtmlBtn);
+      }
+
+      card.appendChild(actionRow);
     }
 
     root.appendChild(card);

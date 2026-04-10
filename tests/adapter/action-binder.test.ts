@@ -1194,3 +1194,669 @@ describe('ActionBinder — inline calc shortcut', () => {
     expect(parseTextlogBody(ent.body).entries).toHaveLength(0);
   });
 });
+
+// ────────────────────────────────────────────────────────────────
+// Issue D — TEXTLOG / TEXT / attachment UX polish batch
+// ────────────────────────────────────────────────────────────────
+//
+// Groups below test five independent items added together:
+//   A. TEXTLOG row dblclick → BEGIN_EDIT
+//   B. Reference-string context-menu items
+//   C. HTML attachment card "Open in New Window" button
+//   D. Markdown source copy + rich (markdown + HTML) copy
+//   E. Rendered viewer new window
+//
+// The helpers below build the minimal container each item needs.
+
+function mountTextlogContainer(entries: Array<{ id: string; text: string; createdAt: string; flags?: Array<'important'> }>): {
+  dispatcher: ReturnType<typeof createDispatcher>;
+} {
+  const dispatcher = createDispatcher();
+  dispatcher.onState((state) => render(state, root));
+  const container: Container = {
+    ...mockContainer,
+    entries: [
+      {
+        lid: 'tl1',
+        title: 'Work Log',
+        body: serializeTextlogBody({
+          entries: entries.map((e) => ({
+            id: e.id,
+            text: e.text,
+            createdAt: e.createdAt,
+            flags: e.flags ?? [],
+          })),
+        }),
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T00:00:00Z',
+      },
+    ],
+  };
+  dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+  render(dispatcher.getState(), root);
+  cleanup = bindActions(root, dispatcher);
+  dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+  return { dispatcher };
+}
+
+// ── A. TEXTLOG row dblclick → BEGIN_EDIT ──
+
+describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
+  it('double-clicking a row dispatches BEGIN_EDIT for the owning entry', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const row = root.querySelector<HTMLElement>('.pkc-textlog-row[data-pkc-log-id="log-1"]');
+    expect(row).not.toBeNull();
+    // Seed a text node inside the row so the dblclick origin is NOT the flag button or asset chip.
+    const textEl = row!.querySelector<HTMLElement>('.pkc-textlog-text');
+    expect(textEl).not.toBeNull();
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('single click on a log row does NOT begin editing', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+  });
+
+  it('dblclick on the flag button does NOT begin editing (flag handler wins)', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const flagBtn = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
+    );
+    expect(flagBtn).not.toBeNull();
+    flagBtn!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    // Flag area must be opted out of the dblclick→edit path.
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('the existing Edit button in the action bar still dispatches BEGIN_EDIT', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const editBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="begin-edit"]',
+    );
+    expect(editBtn).not.toBeNull();
+    editBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('dblclick is a no-op in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Work Log',
+          body: serializeTextlogBody({
+            entries: [{ id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z', flags: [] }],
+          }),
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+});
+
+// ── B. Reference-string context-menu items ──
+
+describe('Issue D / B — Reference-string context menu items', () => {
+  async function clipboardCaptureMock(): Promise<{ restore: () => void; capture: { value: string | null } }> {
+    const capture: { value: string | null } = { value: null };
+    const nav = globalThis.navigator as unknown as { clipboard?: unknown };
+    const prev = nav.clipboard;
+    Object.defineProperty(nav, 'clipboard', {
+      configurable: true,
+      writable: true,
+      value: {
+        writeText: (t: string) => {
+          capture.value = t;
+          return Promise.resolve();
+        },
+      },
+    });
+    return {
+      capture,
+      restore: () => {
+        Object.defineProperty(nav, 'clipboard', {
+          configurable: true,
+          writable: true,
+          value: prev,
+        });
+      },
+    };
+  }
+
+  it('right-clicking a TEXT entry view shows a "copy entry reference" item', () => {
+    // Fresh dispatcher with selection so the detail pane is rendered.
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    const viewWrap = root.querySelector<HTMLElement>(
+      '[data-pkc-mode="view"][data-pkc-archetype="text"]',
+    );
+    expect(viewWrap).not.toBeNull();
+    viewWrap!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }),
+    );
+
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
+    // Asset/log line references are NOT present for plain TEXT archetype.
+    expect(menu!.querySelector('[data-pkc-action="copy-asset-ref"]')).toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="copy-log-line-ref"]')).toBeNull();
+  });
+
+  it('right-clicking an attachment entry shows a "copy asset reference" item', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'Picture',
+          body: JSON.stringify({ name: 'picture.png', mime: 'image/png', size: 10, asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: 'AAAA' },
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'att1' });
+
+    const viewWrap = root.querySelector<HTMLElement>(
+      '[data-pkc-mode="view"][data-pkc-archetype="attachment"]',
+    );
+    expect(viewWrap).not.toBeNull();
+    viewWrap!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }),
+    );
+
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="copy-asset-ref"]')).not.toBeNull();
+  });
+
+  it('right-clicking a TEXTLOG row shows a "copy log line reference" item tagged with the log id', () => {
+    mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const row = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+    );
+    expect(row).not.toBeNull();
+    row!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
+    );
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).not.toBeNull();
+    const item = menu!.querySelector<HTMLElement>('[data-pkc-action="copy-log-line-ref"]');
+    expect(item).not.toBeNull();
+    expect(item!.getAttribute('data-pkc-lid')).toBe('tl1');
+    expect(item!.getAttribute('data-pkc-log-id')).toBe('log-1');
+  });
+
+  it('clicking "copy entry reference" writes `[title](entry:lid)` to the clipboard', async () => {
+    const { capture, restore } = await clipboardCaptureMock();
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      const viewWrap = root.querySelector<HTMLElement>(
+        '[data-pkc-mode="view"][data-pkc-archetype="text"]',
+      );
+      viewWrap!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
+      );
+      const item = root.querySelector<HTMLElement>(
+        '[data-pkc-region="context-menu"] [data-pkc-action="copy-entry-ref"]',
+      );
+      item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // Microtask flush: the copy helper is async.
+      await Promise.resolve();
+      expect(capture.value).toBe('[Entry One](entry:e1)');
+    } finally {
+      restore();
+    }
+  });
+
+  it('clicking "copy log line reference" writes `[title › ts](entry:lid#log-id)` to the clipboard', async () => {
+    const { capture, restore } = await clipboardCaptureMock();
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      const row = root.querySelector<HTMLElement>(
+        '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+      );
+      row!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+      const item = root.querySelector<HTMLElement>(
+        '[data-pkc-region="context-menu"] [data-pkc-action="copy-log-line-ref"]',
+      );
+      expect(item).not.toBeNull();
+      item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      expect(capture.value).not.toBeNull();
+      expect(capture.value!).toContain('](entry:tl1#log-1)');
+      expect(capture.value!.startsWith('[Work Log')).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it('readonly container still exposes reference-copy items but hides Edit/Delete', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    const viewWrap = root.querySelector<HTMLElement>(
+      '[data-pkc-mode="view"][data-pkc-archetype="text"]',
+    );
+    viewWrap!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 1, clientY: 1 }),
+    );
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).not.toBeNull();
+    // Reference copy items remain available.
+    expect(menu!.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
+    // Mutating items are hidden in readonly.
+    expect(menu!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    expect(menu!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
+  });
+});
+
+// ── C. HTML attachment open-in-new-window button ──
+
+describe('Issue D / C — HTML attachment "Open in New Window" action', () => {
+  function mountHtmlAttachment(mime: string, base64: string, name = 'report.html'): ReturnType<typeof createDispatcher> {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: name,
+          body: JSON.stringify({ name, mime, size: base64.length, asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: base64 },
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'att1' });
+    return dispatcher;
+  }
+
+  it('HTML attachment card exposes an "open-html-attachment" button', () => {
+    // btoa('<p>ok</p>') = 'PHA+b2s8L3A+'
+    mountHtmlAttachment('text/html', 'PHA+b2s8L3A+');
+    const btn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="attachment-actions"] [data-pkc-action="open-html-attachment"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-lid')).toBe('att1');
+  });
+
+  it('non-HTML (PDF) attachment does NOT show the open-in-new-window button', () => {
+    mountHtmlAttachment('application/pdf', 'JVBERi0xLjQK');
+    const btn = root.querySelector('[data-pkc-region="attachment-actions"] [data-pkc-action="open-html-attachment"]');
+    expect(btn).toBeNull();
+    // But the download button is still present.
+    expect(
+      root.querySelector('[data-pkc-region="attachment-actions"] [data-pkc-action="download-attachment"]'),
+    ).not.toBeNull();
+  });
+
+  it('clicking the HTML open button invokes window.open() with the decoded document', () => {
+    mountHtmlAttachment('text/html', 'PHA+b2s8L3A+'); // base64 of <p>ok</p>
+    const childDoc = { open: vi.fn(), write: vi.fn(), close: vi.fn() };
+    const childWin = { document: childDoc, closed: false } as unknown as Window;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(childWin);
+    try {
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="attachment-actions"] [data-pkc-action="open-html-attachment"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(openSpy).toHaveBeenCalled();
+      expect(childDoc.write).toHaveBeenCalled();
+      const written = childDoc.write.mock.calls[0]![0] as string;
+      expect(written).toContain('<p>ok</p>');
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+});
+
+// ── D. Markdown + rich copy ──
+
+describe('Issue D / D — Markdown source + rich clipboard copy', () => {
+  function installClipboard(mock: {
+    writeText?: (t: string) => Promise<void>;
+    write?: (items: unknown[]) => Promise<void>;
+  } | undefined): () => void {
+    const nav = globalThis.navigator as unknown as { clipboard?: unknown };
+    const prev = nav.clipboard;
+    Object.defineProperty(nav, 'clipboard', {
+      configurable: true,
+      writable: true,
+      value: mock,
+    });
+    return () => {
+      Object.defineProperty(nav, 'clipboard', {
+        configurable: true,
+        writable: true,
+        value: prev,
+      });
+    };
+  }
+
+  function installClipboardItem(): () => void {
+    const g = globalThis as unknown as { ClipboardItem?: unknown };
+    const prev = g.ClipboardItem;
+    g.ClipboardItem = function (this: { items: Record<string, Blob> }, parts: Record<string, Blob>) {
+      this.items = parts;
+    } as unknown as typeof ClipboardItem;
+    return () => {
+      g.ClipboardItem = prev;
+    };
+  }
+
+  it('Copy MD on a TEXT entry writes the body as text/plain', async () => {
+    let captured: string | null = null;
+    const restore = installClipboard({
+      writeText: (t: string) => {
+        captured = t;
+        return Promise.resolve();
+      },
+    });
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: {
+          ...mockContainer,
+          entries: [
+            {
+              lid: 'e1',
+              title: 'Note',
+              body: '# Hello\n\nWorld',
+              archetype: 'text',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+      );
+      expect(btn).not.toBeNull();
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      expect(captured).toBe('# Hello\n\nWorld');
+    } finally {
+      restore();
+    }
+  });
+
+  it('Copy MD on a TEXTLOG entry writes the serializeTextlogAsMarkdown output', async () => {
+    let captured: string | null = null;
+    const restore = installClipboard({
+      writeText: (t: string) => {
+        captured = t;
+        return Promise.resolve();
+      },
+    });
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
+        { id: 'log-2', text: 'beta', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
+      ]);
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      expect(captured).not.toBeNull();
+      expect(captured!).toContain('alpha');
+      expect(captured!).toContain('beta');
+      // Important marker must be present on the second heading.
+      expect(captured!).toContain('★');
+      // Two h2 headings.
+      expect(captured!.match(/## /g)?.length).toBe(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it('Copy Rendered writes both text/plain and text/html through ClipboardItem', async () => {
+    const payloads: Array<Record<string, Blob>> = [];
+    const restoreCI = installClipboardItem();
+    const restore = installClipboard({
+      write: (items: unknown[]) => {
+        const item = items[0] as { items: Record<string, Blob> };
+        payloads.push(item.items);
+        return Promise.resolve();
+      },
+    });
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: {
+          ...mockContainer,
+          entries: [
+            {
+              lid: 'e1',
+              title: 'Note',
+              body: '# Hello\n\nWorld',
+              archetype: 'text',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-rich-markdown"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // Two microtask boundaries: feature detect + write().
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(payloads).toHaveLength(1);
+      const keys = Object.keys(payloads[0]!).sort();
+      expect(keys).toEqual(['text/html', 'text/plain']);
+      const plain = await payloads[0]!['text/plain']!.text();
+      const html = await payloads[0]!['text/html']!.text();
+      expect(plain).toBe('# Hello\n\nWorld');
+      expect(html).toContain('<h1>Hello</h1>');
+      expect(html).toContain('<p>World</p>');
+    } finally {
+      restore();
+      restoreCI();
+    }
+  });
+
+  it('Copy Rendered falls back to plain markdown when ClipboardItem is unavailable', async () => {
+    let captured: string | null = null;
+    const restore = installClipboard({
+      writeText: (t: string) => {
+        captured = t;
+        return Promise.resolve();
+      },
+    });
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: {
+          ...mockContainer,
+          entries: [
+            {
+              lid: 'e1',
+              title: 'Fallback',
+              body: 'plain body',
+              archetype: 'text',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-rich-markdown"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      expect(captured).toBe('plain body');
+    } finally {
+      restore();
+    }
+  });
+});
+
+// ── E. Rendered viewer new window ──
+
+describe('Issue D / E — Open rendered viewer in new window', () => {
+  function mockChildWindow() {
+    const childDoc = { open: vi.fn(), write: vi.fn(), close: vi.fn() };
+    const childWin = { document: childDoc, closed: false } as unknown as Window;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(childWin);
+    return { childDoc, openSpy };
+  }
+
+  it('TEXT entry: clicking Open Viewer calls window.open and writes rendered HTML', () => {
+    const { childDoc, openSpy } = mockChildWindow();
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      dispatcher.dispatch({
+        type: 'SYS_INIT_COMPLETE',
+        container: {
+          ...mockContainer,
+          entries: [
+            {
+              lid: 'e1',
+              title: 'Printable',
+              body: '# Title\n\nBody',
+              archetype: 'text',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="open-rendered-viewer"]',
+      );
+      expect(btn).not.toBeNull();
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(openSpy).toHaveBeenCalled();
+      expect(childDoc.write).toHaveBeenCalled();
+      const html = childDoc.write.mock.calls[0]![0] as string;
+      expect(html).toContain('<!DOCTYPE html>');
+      expect(html).toContain('Printable');
+      expect(html).toContain('<h1>Title</h1>');
+      // No editor UI leaks into the viewer.
+      expect(html).not.toContain('data-pkc-action="commit-edit"');
+      expect(html).not.toContain('<textarea');
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('TEXTLOG entry: Open Viewer flattens via serializeTextlogAsMarkdown', () => {
+    const { childDoc, openSpy } = mockChildWindow();
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: '**first**', createdAt: '2026-04-09T10:00:00Z' },
+        { id: 'log-2', text: 'second', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
+      ]);
+      const btn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="action-bar"] [data-pkc-action="open-rendered-viewer"]',
+      );
+      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(openSpy).toHaveBeenCalled();
+      const html = childDoc.write.mock.calls[0]![0] as string;
+      expect(html).toContain('<strong>first</strong>');
+      expect(html).toContain('second');
+      // Important ★ marker ends up inside an h2 heading.
+      expect(html).toMatch(/<h2>[^<]*★<\/h2>/);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+});

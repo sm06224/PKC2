@@ -1868,6 +1868,40 @@ describe('Three-Pane Layout', () => {
     expect(actionBar!.querySelector('[data-pkc-action="cancel-edit"]')).not.toBeNull();
   });
 
+  it('fixed action bar exposes Copy MD / Copy Rendered / Open Viewer for TEXT entries', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
+  });
+
+  it('Copy MD / Copy Rendered / Open Viewer buttons stay visible in readonly mode (non-mutating)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    // Mutating buttons are hidden in readonly, but copy/viewer are still there.
+    expect(actionBar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
+  });
+
   it('meta pane shows tags and timestamps', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
@@ -2031,20 +2065,22 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true)
-    expect(items.length).toBe(3);
+    // Edit, Delete, Move to Root (shown because hasParent=true), Copy entry reference.
+    expect(items.length).toBe(4);
     expect(items[0]!.textContent).toContain('Edit');
     expect(items[1]!.textContent).toContain('Delete');
     expect(items[2]!.textContent).toContain('Root');
+    expect(items[3]!.textContent).toContain('entry reference');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Only Edit and Delete
-    expect(items.length).toBe(2);
+    // Edit, Delete, Copy entry reference (Move to Root hidden, hasParent=false).
+    expect(items.length).toBe(3);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
+    expect(texts.some(t => t!.includes('entry reference'))).toBe(true);
   });
 
   it('context menu items have correct data-pkc-action and data-pkc-lid', () => {
@@ -2060,6 +2096,63 @@ describe('DnD + Context Menu Foundation', () => {
     const moveItem = menu.querySelector('[data-pkc-action="ctx-move-to-root"]');
     expect(moveItem).not.toBeNull();
     expect(moveItem!.getAttribute('data-pkc-lid')).toBe('abc');
+  });
+
+  it('renderContextMenu always shows "copy entry reference" regardless of archetype', () => {
+    const plain = renderContextMenu('e1', 0, 0, { canEdit: true });
+    expect(plain.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
+    // Asset/log refs are hidden by default.
+    expect(plain.querySelector('[data-pkc-action="copy-asset-ref"]')).toBeNull();
+    expect(plain.querySelector('[data-pkc-action="copy-log-line-ref"]')).toBeNull();
+  });
+
+  it('renderContextMenu shows "copy asset reference" only when archetype is attachment', () => {
+    const att = renderContextMenu('att1', 0, 0, { archetype: 'attachment', canEdit: true });
+    expect(att.querySelector('[data-pkc-action="copy-asset-ref"]')).not.toBeNull();
+
+    const text = renderContextMenu('e1', 0, 0, { archetype: 'text', canEdit: true });
+    expect(text.querySelector('[data-pkc-action="copy-asset-ref"]')).toBeNull();
+  });
+
+  it('renderContextMenu shows "copy log line reference" only when archetype=textlog and logId provided', () => {
+    const row = renderContextMenu('tl1', 0, 0, {
+      archetype: 'textlog',
+      logId: 'log-1',
+      canEdit: true,
+    });
+    const logItem = row.querySelector<HTMLElement>('[data-pkc-action="copy-log-line-ref"]');
+    expect(logItem).not.toBeNull();
+    expect(logItem!.getAttribute('data-pkc-log-id')).toBe('log-1');
+    // Menu also carries the log-id at the root so a document-level handler can pick it up.
+    expect(row.getAttribute('data-pkc-log-id')).toBe('log-1');
+
+    // textlog without logId → no log-line item (the row is not a specific row click).
+    const noLogId = renderContextMenu('tl1', 0, 0, { archetype: 'textlog', canEdit: true });
+    expect(noLogId.querySelector('[data-pkc-action="copy-log-line-ref"]')).toBeNull();
+  });
+
+  it('renderContextMenu hides Edit/Delete/Move when canEdit=false but keeps reference items', () => {
+    const readonly = renderContextMenu('e1', 0, 0, {
+      archetype: 'attachment',
+      canEdit: false,
+      hasParent: true,
+    });
+    expect(readonly.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    expect(readonly.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
+    expect(readonly.querySelector('[data-pkc-action="ctx-move-to-root"]')).toBeNull();
+    // Reference-copy items are still there.
+    expect(readonly.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
+    expect(readonly.querySelector('[data-pkc-action="copy-asset-ref"]')).not.toBeNull();
+  });
+
+  it('renderContextMenu accepts the legacy boolean hasParent argument (backward compatible)', () => {
+    // The boolean overload is the old signature; it must still show the
+    // mutating items and the default entry-reference item.
+    const legacy = renderContextMenu('e1', 0, 0, true);
+    expect(legacy.querySelector('[data-pkc-action="begin-edit"]')).not.toBeNull();
+    expect(legacy.querySelector('[data-pkc-action="delete-entry"]')).not.toBeNull();
+    expect(legacy.querySelector('[data-pkc-action="ctx-move-to-root"]')).not.toBeNull();
+    expect(legacy.querySelector('[data-pkc-action="copy-entry-ref"]')).not.toBeNull();
   });
 
   it('existing Move to Folder still works in meta pane', () => {
