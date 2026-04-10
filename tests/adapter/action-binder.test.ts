@@ -1324,6 +1324,108 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
   });
+
+  it('dblclick while already editing is a no-op (phase guard)', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      { id: 'log-2', text: 'second', createdAt: '2026-04-09T11:00:00Z' },
+    ]);
+    // Enter editing via Edit button
+    const editBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="begin-edit"]',
+    );
+    editBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+
+    // Re-render to show editor, then simulate dblclick on the editor area
+    // (there are no .pkc-textlog-row elements in edit mode, but verify no error)
+    const editorArea = root.querySelector<HTMLElement>('.pkc-textlog-editor');
+    if (editorArea) {
+      editorArea.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    }
+    // State remains in editing — no duplicate transition
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('dblclick on nested child element resolves to owning row', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: '**bold text**', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    // The text content may contain rendered markdown children.
+    // Target a child of the textlog-text element.
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    expect(textEl).not.toBeNull();
+    // Even if we target a child node, closest() should resolve to the row
+    const childTarget = textEl!.firstElementChild ?? textEl!;
+    childTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('save after dblclick-edit produces correct body', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'original', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    // Enter edit via dblclick
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Modify the textarea
+    const textarea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    expect(textarea).not.toBeNull();
+    textarea!.value = 'modified text';
+
+    // Click save
+    const saveBtn = root.querySelector<HTMLElement>('[data-pkc-action="commit-edit"]');
+    expect(saveBtn).not.toBeNull();
+    saveBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Phase returns to ready
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+
+    // Body was updated with the modified text
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1');
+    expect(entry).toBeDefined();
+    const log = parseTextlogBody(entry!.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('modified text');
+  });
+
+  it('cancel after dblclick-edit preserves original body', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'original', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const originalBody = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1')!.body;
+
+    // Enter edit via dblclick
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Modify the textarea
+    const textarea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    textarea!.value = 'should be discarded';
+
+    // Click cancel
+    const cancelBtn = root.querySelector<HTMLElement>('[data-pkc-action="cancel-edit"]');
+    cancelBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Phase returns to ready, body unchanged
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1');
+    expect(entry!.body).toBe(originalBody);
+  });
 });
 
 // ── B. Reference-string context-menu items ──
