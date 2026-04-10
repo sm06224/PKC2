@@ -131,6 +131,19 @@ export interface BatchImportPlan {
   targetFolderLid?: string | null;
 }
 
+/** Compact summary of a completed batch import, for UI feedback. */
+export interface BatchImportResultSummary {
+  entryCount: number;
+  attachmentCount: number;
+  folderCount: number;
+  restoreStructure: boolean;
+  /** Human-readable destination: "/ (Root)" or folder title. */
+  destination: string;
+  /** True when the user chose a target folder but it was unavailable at apply time. */
+  fallbackToRoot: boolean;
+  source: string;
+}
+
 /**
  * SystemCommand: commands issued by the runtime or infrastructure,
  * not directly by the user.

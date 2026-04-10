@@ -2003,6 +2003,16 @@
   margin-top: 0.35rem;
 }
 
+.pkc-import-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: rgba(51,255,102,0.08);
+  border-bottom: 2px solid var(--c-accent);
+  font-size: 0.85rem;
+}
+
 /* ── Pending offers ── */
 .pkc-pending-offers {
   padding: 0.5rem 0.75rem;

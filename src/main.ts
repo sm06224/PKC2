@@ -740,19 +740,18 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     const plan = planResult.ok ? planResult.plan : planResult.fallbackPlan;
     dispatcher.dispatch({ type: 'SYS_APPLY_BATCH_IMPORT', plan });
 
-    const selectedCount = selectedSet.size;
-    const totalAttachments = plan.entries.reduce((sum, e) => sum + e.attachments.length, 0);
-    const folderNote = plan.restoreStructure
-      ? ` (folder-export: ${plan.folders.length} folders restored)`
-      : !planResult.ok
-        ? ` (folder-export: malformed metadata — flat fallback)`
-        : result.format === 'pkc2-folder-export-bundle'
-          ? ' (folder-export: フォルダ構造は復元されません)'
-          : '';
-    console.log(
-      `[PKC2] Batch import complete: ${selectedCount}/${result.entries.length} entries`
-      + ` (${totalAttachments} attachments) from "${source}"${folderNote}`,
-    );
+    // Log result from reducer-computed summary
+    const summary = dispatcher.getState().batchImportResult;
+    if (summary) {
+      const attNote = summary.attachmentCount > 0 ? ` (${summary.attachmentCount} attachments)` : '';
+      const restoreNote = summary.restoreStructure ? ` — ${summary.folderCount} folders restored` : '';
+      const fallbackNote = summary.fallbackToRoot ? ' — target folder was unavailable, imported to root' : '';
+      const planWarning = !planResult.ok ? ' — malformed folder metadata, flat fallback' : '';
+      console.log(
+        `[PKC2] Batch import complete: ${summary.entryCount}${attNote}`
+        + ` to "${summary.destination}" from "${summary.source}"${restoreNote}${fallbackNote}${planWarning}`,
+      );
+    }
   });
 
   // 4. Cancel → clear preview
@@ -762,6 +761,13 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     pendingBuffer = null;
     pendingSource = '';
     dispatcher.dispatch({ type: 'CANCEL_BATCH_IMPORT' });
+  });
+
+  // 5. Dismiss result banner
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="dismiss-batch-import-result"]');
+    if (!target) return;
+    dispatcher.dispatch({ type: 'DISMISS_BATCH_IMPORT_RESULT' });
   });
 }
 
