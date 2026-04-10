@@ -19,7 +19,7 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
-import { buildTextBundle } from '../platform/text-bundle';
+import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
@@ -553,6 +553,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (built.totalMissingAssetCount > 0) {
           const msg = [
             `全 TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+            '- assets/ フォルダには欠損キーは含まれません',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-texts-container': {
+        // Container-wide TEXT export. Bundles all text entries in
+        // the container into a single ZIP containing individual
+        // .text.zip bundles + a top-level manifest.json.
+        // Read-only safe (no mutation). Same confirm() pattern as
+        // the TEXTLOG container export for missing assets.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const built = buildTextsContainerBundle(st.container);
+        if (built.totalMissingAssetCount > 0) {
+          const msg = [
+            `全 TEXT のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
             'このまま ZIP を出力しますか？',
             '',
             '- 各 bundle 内の manifest.json に欠損キーが記録されます',

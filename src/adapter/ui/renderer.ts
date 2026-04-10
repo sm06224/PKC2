@@ -286,6 +286,17 @@ function renderHeader(state: AppState): HTMLElement {
       textlogsBtn.textContent = 'TEXTLOGs';
       header.appendChild(textlogsBtn);
     }
+
+    // Container-wide TEXT export — available in readonly mode
+    // because export is a read-only operation (spec §7).
+    const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+    if (hasTexts) {
+      const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+      textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
+      textsBtn.setAttribute('title', 'Export all TEXTs as a single ZIP bundle (.texts.zip)');
+      textsBtn.textContent = 'TEXTs';
+      header.appendChild(textsBtn);
+    }
   }
 
   // Light mode: show light badge (assets stripped)
@@ -420,7 +431,7 @@ function renderShellMenu(
     '編集: エントリ選択 → Edit ボタン、または右クリック → Edit',
     'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
     '表示: More… → Viewer（印刷可能なレンダリング表示）',
-    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs',
+    'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs',
     'インポート: Data… → Import（上書き）/ Textlog / Text（追加）',
     '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
     'ショートカット: ? キーで一覧表示',
@@ -662,6 +673,18 @@ function renderExportImportInline(state: AppState): HTMLElement {
     textlogsBtn.setAttribute('title', '全テキストログをまとめて ZIP エクスポート');
     textlogsBtn.textContent = 'TEXTLOGs';
     content.appendChild(textlogsBtn);
+  }
+
+  // Container-wide TEXT export — only shown when the container
+  // has at least one text entry. Bundles all texts into a
+  // single .texts.zip containing individual .text.zip files.
+  const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+  if (hasTexts) {
+    const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
+    textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
+    textsBtn.setAttribute('title', '全テキストをまとめて ZIP エクスポート');
+    textsBtn.textContent = 'TEXTs';
+    content.appendChild(textsBtn);
   }
 
   const sep = createElement('span', 'pkc-eip-sep');
