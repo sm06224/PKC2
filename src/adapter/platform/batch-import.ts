@@ -26,6 +26,7 @@ import { importTextlogBundleFromBuffer, type ImportedAttachment } from './textlo
 import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
 import { validateFolderGraph } from '../../features/batch-import/import-planner';
 import type { PlannerFolderInfo } from '../../features/batch-import/import-planner';
+import type { BatchImportPreviewEntry, BatchImportPreviewInfo } from '../../core/action/system-command';
 
 // ── Types ────────────────────────────────────────────
 
@@ -67,53 +68,10 @@ export interface BatchImportFailure {
 export type BatchImportResult = BatchImportSuccess | BatchImportFailure;
 
 // ── Preview types ───────────────────────────────────
-
-/** Per-entry metadata from the batch bundle manifest. */
-export interface BatchImportPreviewEntry {
-  index: number;
-  title: string;
-  archetype: 'text' | 'textlog';
-  /** First ~200 chars of body (TEXT) or empty string. Optional — absent if peek fails. */
-  bodySnippet?: string;
-  /** TEXT: body.md char count. From inner manifest. */
-  bodyLength?: number;
-  /** TEXTLOG: number of log entries. From inner manifest. */
-  logEntryCount?: number;
-  /** TEXTLOG: first 3 log entry texts, each truncated to ~80 chars. */
-  logSnippets?: string[];
-  /** Number of resolved assets in the nested bundle. */
-  assetCount?: number;
-  /** Number of missing assets in the nested bundle. */
-  missingAssetCount?: number;
-}
-
-/** Lightweight metadata extracted from the manifest only (no nested parse). */
-export interface BatchImportPreviewInfo {
-  format: string;
-  /** Human-readable format label. */
-  formatLabel: string;
-  textCount: number;
-  textlogCount: number;
-  totalEntries: number;
-  compacted: boolean;
-  /** Total missing asset count across all entries. */
-  missingAssetCount: number;
-  isFolderExport: boolean;
-  sourceFolderTitle: string | null;
-  /** Whether folder structure can be restored on import. */
-  canRestoreFolderStructure: boolean;
-  /** Number of folders in the hierarchy (0 if no restore). */
-  folderCount: number;
-  /** Folder graph validation failed → will fall back to flat import. */
-  malformedFolderMetadata?: boolean;
-  /** Human-readable reason (from validateFolderGraph warnings). */
-  folderGraphWarning?: string;
-  source: string;
-  /** Per-entry metadata (title + archetype). */
-  entries: BatchImportPreviewEntry[];
-  /** Indices of entries selected for import (default: all). */
-  selectedIndices: number[];
-}
+// BatchImportPreviewEntry and BatchImportPreviewInfo are defined in
+// core/action/system-command.ts and imported above.
+// Re-export for downstream consumers.
+export type { BatchImportPreviewEntry, BatchImportPreviewInfo };
 
 export type BatchImportPreviewResult =
   | { ok: true; info: BatchImportPreviewInfo }
@@ -186,7 +144,7 @@ export function previewBatchBundleFromBuffer(
     }
 
     const manifestEntries = manifest.entries as
-      | { archetype?: string; missing_asset_count?: number; title?: string; filename?: string }[]
+      | { archetype?: string; missing_asset_count?: number; title?: string; filename?: string; parent_folder_lid?: string }[]
       | undefined;
     if (!Array.isArray(manifestEntries)) {
       return { ok: false, error: 'Missing or invalid entries array in manifest' };
@@ -245,14 +203,18 @@ export function previewBatchBundleFromBuffer(
     let malformedFolderMetadata: boolean | undefined;
     let folderGraphWarning: string | undefined;
 
-    // Validate folder graph at preview time so UI can classify correctly
+    // Validate folder graph + entry references at preview time so UI can classify correctly.
+    // Uses the same validateFolderGraph as confirm path for full classification parity.
     if (hasFolders) {
       const plannerFolders: PlannerFolderInfo[] = rawFolders!.map((f: { lid: string; title: string; parent_lid: string | null }) => ({
         lid: f.lid,
         title: f.title ?? '',
         parentLid: f.parent_lid ?? null,
       }));
-      const validation = validateFolderGraph(plannerFolders, []);
+      const entryRefs = manifestEntries.map((me) => ({
+        parentFolderLid: me.parent_folder_lid,
+      }));
+      const validation = validateFolderGraph(plannerFolders, entryRefs);
       if (!validation.valid) {
         canRestoreFolderStructure = false;
         malformedFolderMetadata = true;

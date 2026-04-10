@@ -295,9 +295,14 @@ validation ロジックは複製しない。
 
 preview path では:
 1. `manifest.folders` を `PlannerFolderInfo[]` に変換
-2. `validateFolderGraph(folders, [])` を呼ぶ (entry reference は preview 段階では不検査)
-3. valid なら `canRestoreFolderStructure: true`
-4. invalid なら `canRestoreFolderStructure: false` + `folderGraphWarning` を設定
+2. `manifest.entries[].parent_folder_lid` を entry reference として抽出
+3. `validateFolderGraph(folders, entryRefs)` を呼ぶ (folder graph + entry reference を検査)
+4. valid なら `canRestoreFolderStructure: true`
+5. invalid なら `canRestoreFolderStructure: false` + `folderGraphWarning` を設定
+
+**重要**: preview と confirm は `validateFolderGraph` に同じ検査粒度の入力を渡す。
+folder graph のみの検査では entry reference 不整合を preview で見落とし、
+confirm で flat fallback する surprise が残る。
 
 ### 15.4 Preview data model の拡張
 
@@ -310,6 +315,10 @@ malformedFolderMetadata?: boolean;
 folderGraphWarning?: string;
 ```
 
+**型統一**: `BatchImportPreviewInfo` と `BatchImportPreviewEntry` は
+`core/action/system-command.ts` で定義し、adapter layer は core から import する。
+adapter 内のローカル重複定義は削除する。
+
 ### 15.5 Consistency contract
 
 | Phase | Classification | 動作 |
@@ -319,12 +328,20 @@ folderGraphWarning?: string;
 | preview: no-metadata | confirm: flat import | 一致 |
 
 confirm が preview と異なるモードになるのは、parse/runtime failure (ZIP 破損等) のみ。
-folder graph の malformed 判定は preview と confirm で同じ関数を使うため、不整合は構造的に発生しない。
+
+**保証の根拠**:
+- preview と confirm の両方が `validateFolderGraph(folders, entryRefs)` を呼ぶ
+- 入力は同一 manifest から派生 → 同一 folder graph + 同一 entry reference
+- `validateFolderGraph` は pure function → 同一入力に対して同一結果
+
+entry reference 検査で不整合が発覚するケースも preview 段階で検出される。
 
 ### 15.6 テスト追加要件
 
 15. preview: valid folder metadata → restore classification
 16. preview: malformed metadata → flat fallback classification with warning
 17. preview: no folder metadata → flat classification (no malformed warning)
-18. renderer: restore / malformed / no-metadata の各メッセージが正しく表示される
-19. preview classification と confirm apply mode の一致
+18. preview: entry referencing unknown folder → flat fallback (preview/confirm 一致)
+19. renderer: restore / malformed / no-metadata の各メッセージが正しく表示される
+20. preview classification と confirm apply mode の一致
+21. `BatchImportPreviewInfo` が core に一本化されている (adapter に重複定義なし)
