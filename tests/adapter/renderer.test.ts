@@ -1902,6 +1902,77 @@ describe('Three-Pane Layout', () => {
     expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
   });
 
+  it('action bar exposes Export CSV+ZIP button only for textlog entries', () => {
+    const containerWithTextlog: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'e3',
+          title: 'My Daily Log',
+          body: '{"entries":[{"id":"log-1","text":"first","createdAt":"2026-04-09T10:00:00Z","flags":[]}]}',
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    // Selecting the textlog entry: button MUST be present.
+    const stateTextlog: AppState = {
+      phase: 'ready', container: containerWithTextlog,
+      selectedLid: 'e3', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(stateTextlog, root);
+    let actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    const btn = actionBar!.querySelector('[data-pkc-action="export-textlog-csv-zip"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-lid')).toBe('e3');
+
+    // Selecting a TEXT entry: button MUST be absent.
+    const stateText: AppState = {
+      ...stateTextlog,
+      selectedLid: 'e1', // text archetype
+    };
+    render(stateText, root);
+    actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).toBeNull();
+  });
+
+  it('Export CSV+ZIP button stays visible in readonly mode (export does not mutate state)', () => {
+    const containerWithTextlog: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'e3',
+          title: 'Read-only log',
+          body: '{"entries":[]}',
+          archetype: 'textlog',
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithTextlog,
+      selectedLid: 'e3', editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], collapsedFolders: [],
+    };
+    render(state, root);
+    const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
+    expect(actionBar).not.toBeNull();
+    // Mutating buttons gone, export still here.
+    expect(actionBar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).not.toBeNull();
+  });
+
   it('meta pane shows tags and timestamps', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
