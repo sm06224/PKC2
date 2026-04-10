@@ -319,12 +319,14 @@ describe('textlog renderEditorBody', () => {
     expect(timestamps.length).toBe(3);
   });
 
-  it('shows flag checkboxes', () => {
+  it('shows flag checkboxes (editor in descending order)', () => {
     const el = textlogPresenter.renderEditorBody(makeEntry(sampleBody));
     const checks = el.querySelectorAll<HTMLInputElement>('[data-pkc-field="textlog-flag"]');
     expect(checks.length).toBe(3);
+    // Reversed: log-3 (no flag), log-2 (important), log-1 (no flag)
     expect(checks[0]!.checked).toBe(false);
     expect(checks[1]!.checked).toBe(true);
+    expect(checks[2]!.checked).toBe(false);
   });
 
   it('shows delete buttons', () => {
@@ -350,35 +352,39 @@ describe('textlog renderEditorBody', () => {
 // ── collectBody ──
 
 describe('textlog collectBody', () => {
-  it('collects edited entries back to JSON', () => {
+  it('collects edited entries back to JSON in original chronological order', () => {
     const entry = makeEntry(sampleBody);
     const editorEl = textlogPresenter.renderEditorBody(entry);
 
-    // Edit the first entry's text
+    // Editor displays in reversed order: textareas[0] is log-3 (newest)
     const textareas = editorEl.querySelectorAll<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
-    textareas[0]!.value = 'Edited first entry';
+    textareas[0]!.value = 'Edited newest entry';
 
     const collected = textlogPresenter.collectBody(editorEl);
     const parsed = JSON.parse(collected);
     expect(parsed.entries).toHaveLength(3);
-    expect(parsed.entries[0].text).toBe('Edited first entry');
+    // collectBody restores original chronological order
     expect(parsed.entries[0].id).toBe('log-1');
     expect(parsed.entries[0].createdAt).toBe('2026-04-09T10:00:00Z');
+    expect(parsed.entries[2].id).toBe('log-3');
+    expect(parsed.entries[2].text).toBe('Edited newest entry');
   });
 
-  it('collects flag changes', () => {
+  it('collects flag changes (restores original order)', () => {
     const entry = makeEntry(sampleBody);
     const editorEl = textlogPresenter.renderEditorBody(entry);
 
-    // Toggle flag on first entry
+    // Editor reversed: checks[0]=log-3, checks[1]=log-2(important), checks[2]=log-1
     const checks = editorEl.querySelectorAll<HTMLInputElement>('[data-pkc-field="textlog-flag"]');
-    checks[0]!.checked = true;
-    checks[1]!.checked = false;
+    checks[0]!.checked = true;   // log-3: add important
+    checks[1]!.checked = false;  // log-2: remove important
 
     const collected = textlogPresenter.collectBody(editorEl);
     const parsed = JSON.parse(collected);
-    expect(parsed.entries[0].flags).toEqual(['important']);
-    expect(parsed.entries[1].flags).toEqual([]);
+    // Original order restored: [log-1, log-2, log-3]
+    expect(parsed.entries[0].flags).toEqual([]);        // log-1 unchanged
+    expect(parsed.entries[1].flags).toEqual([]);         // log-2 flag removed
+    expect(parsed.entries[2].flags).toEqual(['important']); // log-3 flag added
   });
 
   it('returns empty body when no edit rows', () => {

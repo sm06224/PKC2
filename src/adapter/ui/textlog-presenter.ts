@@ -125,7 +125,9 @@ export const textlogPresenter: DetailPresenter = {
     const container = document.createElement('div');
     container.className = 'pkc-textlog-editor';
 
-    for (const logEntry of log.entries) {
+    // Editor also in descending chronological order (newest first)
+    const editorEntries = [...log.entries].reverse();
+    for (const logEntry of editorEntries) {
       const row = document.createElement('div');
       row.className = 'pkc-textlog-edit-row';
       row.setAttribute('data-pkc-log-id', logEntry.id);
@@ -197,10 +199,12 @@ export const textlogPresenter: DetailPresenter = {
       return bodyEl?.value ?? serializeTextlogBody({ entries: [] });
     }
 
-    // Read hidden body to get original data (for createdAt preservation)
+    // Read hidden body to get original data (for createdAt preservation
+    // and for restoring chronological storage order after reverse display)
     const bodyEl = root.querySelector<HTMLInputElement>('[data-pkc-field="body"]');
     const original = parseTextlogBody(bodyEl?.value ?? '');
     const originalMap = new Map(original.entries.map((e) => [e.id, e]));
+    const originalOrder = new Map(original.entries.map((e, i) => [e.id, i]));
 
     // Collect entries that haven't been deleted
     const entries: { id: string; text: string; createdAt: string; flags: TextlogFlag[] }[] = [];
@@ -223,6 +227,14 @@ export const textlogPresenter: DetailPresenter = {
         flags,
       });
     }
+
+    // Restore original chronological order (ascending) for storage,
+    // regardless of display order (which may be reversed).
+    entries.sort((a, b) => {
+      const ia = originalOrder.get(a.id) ?? Infinity;
+      const ib = originalOrder.get(b.id) ?? Infinity;
+      return ia - ib;
+    });
 
     return serializeTextlogBody({ entries });
   },
