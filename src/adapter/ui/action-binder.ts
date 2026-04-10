@@ -19,6 +19,7 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle } from '../platform/textlog-bundle';
+import { buildTextBundle } from '../platform/text-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
@@ -478,6 +479,44 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             compact
               ? '- compact モードが ON です: 欠損参照は text_markdown / asset_keys から除去されます'
               : '- CSV の asset_keys カラムには欠損キーが残ります',
+            '- assets/ フォルダには欠損キーは含まれません',
+            '- manifest.json の missing_asset_keys に記録されます',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-text-zip': {
+        // TEXT-only export. Sister format to export-textlog-csv-zip.
+        // Bundles a single text entry as
+        //   <slug>-<yyyymmdd>.text.zip
+        //     ├── manifest.json
+        //     ├── body.md
+        //     └── assets/<asset-key><ext>
+        // Format spec is pinned in
+        // docs/development/text-markdown-zip-export.md.
+        //
+        // Same compact checkbox + missing-asset confirm() pattern as
+        // the textlog export — reuses the UI shape so users don't have
+        // to learn a second one.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'text' || !st.container) break;
+        const compactToggle = root.querySelector<HTMLInputElement>(
+          `input[data-pkc-control="text-export-compact"][data-pkc-lid="${lid}"]`,
+        );
+        const compact = compactToggle?.checked === true;
+        const built = buildTextBundle(ent, st.container, { compact });
+        if (built.manifest.missing_asset_count > 0) {
+          const msg = [
+            `このテキストには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            compact
+              ? '- compact モードが ON です: 欠損参照は body.md から除去されます'
+              : '- body.md には欠損参照が verbatim で残ります',
             '- assets/ フォルダには欠損キーは含まれません',
             '- manifest.json の missing_asset_keys に記録されます',
           ].join('\n');

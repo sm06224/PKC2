@@ -609,6 +609,17 @@ function renderExportImportInline(_state: AppState): HTMLElement {
   importTextlogBtn.textContent = '📥 Import Textlog';
   group.appendChild(importTextlogBtn);
 
+  // Import text bundle — sister to Import Textlog, sharing the same
+  // additive semantics. Format spec is pinned in
+  // docs/development/text-markdown-zip-export.md. Readonly handling
+  // matches the textlog path: the button is always rendered for
+  // shape stability, the action handler bails out.
+  const importTextBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importTextBtn.setAttribute('data-pkc-action', 'import-text-bundle');
+  importTextBtn.setAttribute('title', 'Import a text bundle (.text.zip) as a new entry');
+  importTextBtn.textContent = '📥 Import Text';
+  group.appendChild(importTextBtn);
+
   const sep3 = createElement('span', 'pkc-eip-sep');
   sep3.textContent = '|';
   group.appendChild(sep3);
@@ -1410,6 +1421,35 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean): HTMLEle
         'Download this textlog as a CSV + assets ZIP bundle for sharing outside PKC2',
       );
       exportBtn.textContent = '📦 Export CSV+ZIP';
+      bar.appendChild(exportBtn);
+    }
+
+    // TEXT-only: sister format to the textlog bundle — single-body
+    // markdown + assets, spec frozen in
+    // docs/development/text-markdown-zip-export.md. Same "compact"
+    // checkbox shape as textlog so broken asset references can be
+    // stripped from body.md without touching the live entry.
+    if (entry.archetype === 'text') {
+      const compactLabel = createElement('label', 'pkc-action-export-compact-label');
+      compactLabel.setAttribute('title',
+        'Compact mode: strip broken asset references from the exported body.md.' +
+        ' The live text entry is never modified.');
+      const compactInput = createElement('input', 'pkc-action-export-compact-input');
+      (compactInput as HTMLInputElement).type = 'checkbox';
+      compactInput.setAttribute('data-pkc-control', 'text-export-compact');
+      compactInput.setAttribute('data-pkc-lid', entry.lid);
+      compactLabel.appendChild(compactInput);
+      compactLabel.appendChild(document.createTextNode(' compact'));
+      bar.appendChild(compactLabel);
+
+      const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
+      exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
+      exportBtn.setAttribute('data-pkc-lid', entry.lid);
+      exportBtn.setAttribute(
+        'title',
+        'Download this text entry as a markdown + assets ZIP bundle for sharing outside PKC2',
+      );
+      exportBtn.textContent = '📦 Export .text.zip';
       bar.appendChild(exportBtn);
     }
   }
