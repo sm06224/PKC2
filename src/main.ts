@@ -19,6 +19,7 @@ import { importFromFile, formatImportErrors } from './adapter/platform/importer'
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { importTextlogBundle } from './adapter/platform/textlog-bundle';
 import { importTextBundle } from './adapter/platform/text-bundle';
+import { importBatchBundle } from './adapter/platform/batch-import';
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
@@ -179,6 +180,13 @@ async function boot(): Promise<void> {
   // for `.text.zip` single-body markdown bundles. Additive with the
   // same N+1 dispatch pattern (N attachments then 1 text entry).
   mountTextImportHandler(root, dispatcher);
+
+  // 8a''. Batch bundle import handler — reads container-wide or
+  // folder-scoped export ZIPs containing multiple .text.zip /
+  // .textlog.zip bundles. Additive with the same N+1 dispatch pattern
+  // per nested bundle. Failure-atomic: if any nested bundle fails to
+  // parse, nothing is dispatched.
+  mountBatchImportHandler(root, dispatcher);
 
   // 8b. ZIP export handler: direct async export (no phase transition needed)
   mountZipExportHandler(root, dispatcher);
@@ -585,6 +593,96 @@ function mountTextImportHandler(root: HTMLElement, dispatcher: Dispatcher): void
     console.log(
       `[PKC2] Text import complete: "${result.text.title}"`
       + ` (${result.attachments.length} attachments)`,
+    );
+  });
+}
+
+/**
+ * Mount batch bundle import handler — reads container-wide or
+ * folder-scoped export ZIPs containing multiple .text.zip /
+ * .textlog.zip bundles. Delegates each nested bundle to the
+ * existing single-entry importers.
+ *
+ * Additive: imported entries are **added** to the current container.
+ * Failure-atomic: if any nested bundle fails to parse, nothing is
+ * dispatched and the error is surfaced via SYS_ERROR.
+ *
+ * Dispatch order per nested bundle: attachments first (N), then
+ * the main entry (1), same as single-entry import paths.
+ */
+function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.zip,.textlogs.zip,.texts.zip,.folder-export.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-batch-input');
+  document.body.appendChild(fileInput);
+
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="import-batch-bundle"]');
+    if (!target) return;
+    const state = dispatcher.getState();
+    if (state.readonly) {
+      console.warn('[PKC2] Batch import blocked: workspace is readonly');
+      return;
+    }
+    if (!state.container) {
+      console.warn('[PKC2] Batch import blocked: no container loaded');
+      return;
+    }
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const result = await importBatchBundle(file);
+    if (!result.ok) {
+      console.warn(`[PKC2] Batch import failed: ${result.error}`);
+      dispatcher.dispatch({ type: 'SYS_ERROR', error: `Batch import failed: ${result.error}` });
+      return;
+    }
+
+    let totalAttachments = 0;
+    for (const entry of result.entries) {
+      // 1. Dispatch attachments first (same N+1 pattern)
+      for (const att of entry.attachments) {
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: att.name });
+        const lid = dispatcher.getState().editingLid;
+        if (!lid) continue;
+        const body = serializeAttachmentBody({
+          name: att.name,
+          mime: att.mime,
+          size: att.size,
+          asset_key: att.assetKey,
+        });
+        dispatcher.dispatch({
+          type: 'COMMIT_EDIT',
+          lid,
+          title: att.name,
+          body,
+          assets: { [att.assetKey]: att.data },
+        });
+        totalAttachments++;
+      }
+
+      // 2. Dispatch the main entry
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: entry.archetype, title: entry.title });
+      const lid = dispatcher.getState().editingLid;
+      if (lid) {
+        dispatcher.dispatch({
+          type: 'COMMIT_EDIT',
+          lid,
+          title: entry.title,
+          body: entry.body,
+        });
+      }
+    }
+
+    console.log(
+      `[PKC2] Batch import complete: ${result.entries.length} entries`
+      + ` (${totalAttachments} attachments) from "${result.source}"`,
     );
   });
 }

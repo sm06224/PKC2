@@ -432,7 +432,7 @@ function renderShellMenu(
     'コピー: More… → MD（Markdown）/ Rich（リッチ貼り付け）',
     '表示: More… → Viewer（印刷可能なレンダリング表示）',
     'エクスポート: Data… → Export / Light / ZIP / TEXTLOGs / TEXTs / フォルダ選択 → Export',
-    'インポート: Data… → Import（上書き）/ Textlog / Text（追加）',
+    'インポート: Data… → Import（上書き）/ Textlog / Text / Batch（追加）',
     '参照文字列: 右クリック → Entry ref / Embed ref / Asset ref',
     'ショートカット: ? キーで一覧表示',
   ];
@@ -711,6 +711,13 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
   importTextBtn.textContent = '📥 Text';
   content.appendChild(importTextBtn);
+
+  // Import batch bundle (container-wide / folder-scoped)
+  const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importBatchBtn.setAttribute('data-pkc-action', 'import-batch-bundle');
+  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .folder-export.zip) をまとめてインポート');
+  importBatchBtn.textContent = '📥 Batch';
+  content.appendChild(importBatchBtn);
 
   details.appendChild(content);
   group.appendChild(details);

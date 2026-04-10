@@ -1572,10 +1572,10 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Collapsed behind <details>: export + light + zip + TEXTs + import + textlog + text
+    // Collapsed behind <details>: export + light + zip + TEXTs + import + textlog + text + batch
     // (Reset moved to shell menu maintenance section)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(7);
+    expect(btns.length).toBe(8);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
