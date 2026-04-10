@@ -14,8 +14,8 @@
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { execSync } from 'child_process';
 import { createHash } from 'crypto';
+import { computeGitStamp } from './git-stamp';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
@@ -41,14 +41,6 @@ function computeSha256(content: string): string {
   return `sha256:${hash}`;
 }
 
-function getGitCommit(): string {
-  try {
-    return execSync('git rev-parse --short HEAD').toString().trim();
-  } catch {
-    return 'unknown';
-  }
-}
-
 function main(): void {
   const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
 
@@ -68,7 +60,7 @@ function main(): void {
   const kind = process.env.PKC_KIND ?? 'dev';
   const timestamp = buildTimestamp14();
   const build_at = new Date().toISOString();
-  const source_commit = getGitCommit();
+  const source_commit = computeGitStamp();
   const code_integrity = computeSha256(js);
 
   const meta = {

@@ -58,6 +58,11 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     expect(meta.timestamp).toMatch(/^\d{14}$/);
     expect(meta.build_at).toBeTruthy();
     expect(meta.source_commit).toBeTruthy();
+    // source_commit must be one of:
+    //   "<short-sha>"           — clean worktree
+    //   "<short-sha>+dirty"     — uncommitted changes present
+    //   "unknown"               — git unavailable / fallback
+    expect(meta.source_commit).toMatch(/^([0-9a-f]{4,}(\+dirty)?|unknown)$/);
     expect(meta.code_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(Array.isArray(meta.capabilities)).toBe(true);
   });
