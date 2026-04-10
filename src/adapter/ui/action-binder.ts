@@ -18,7 +18,8 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
-import { exportTextlogAsBundle } from '../platform/textlog-bundle';
+import { buildTextlogBundle } from '../platform/textlog-bundle';
+import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
@@ -449,11 +450,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         //     └── assets/<asset-key><ext>
         // The button is rendered only for textlog archetypes; the
         // archetype guard here is belt-and-braces.
+        //
+        // Issue G additions:
+        //  - Read the per-entry compact checkbox
+        //    (`data-pkc-control="textlog-export-compact"` scoped by
+        //    `data-pkc-lid`) and pass it through as the `compact`
+        //    option.
+        //  - Build the bundle up-front to inspect
+        //    `manifest.missing_asset_keys`. If the list is non-empty,
+        //    show a native confirm() explaining the consequence, and
+        //    ONLY trigger the download if the user continues. The
+        //    live container is never mutated on either path.
         if (!lid) break;
         const st = dispatcher.getState();
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent || ent.archetype !== 'textlog' || !st.container) break;
-        void exportTextlogAsBundle(ent, st.container);
+        const compactToggle = root.querySelector<HTMLInputElement>(
+          `input[data-pkc-control="textlog-export-compact"][data-pkc-lid="${lid}"]`,
+        );
+        const compact = compactToggle?.checked === true;
+        const built = buildTextlogBundle(ent, st.container, { compact });
+        if (built.manifest.missing_asset_count > 0) {
+          const msg = [
+            `このテキストログには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            compact
+              ? '- compact モードが ON です: 欠損参照は text_markdown / asset_keys から除去されます'
+              : '- CSV の asset_keys カラムには欠損キーが残ります',
+            '- assets/ フォルダには欠損キーは含まれません',
+            '- manifest.json の missing_asset_keys に記録されます',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
         break;
       }
       case 'rename-attachment': {

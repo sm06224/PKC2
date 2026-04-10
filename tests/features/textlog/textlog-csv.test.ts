@@ -3,6 +3,7 @@ import {
   serializeTextlogAsCsv,
   collectTextlogAssetKeys,
   stripMarkdownForCsvPlain,
+  compactTextlogBodyAgainst,
   TEXTLOG_CSV_HEADER,
 } from '@features/textlog/textlog-csv';
 import type { TextlogBody } from '@features/textlog/textlog-body';
@@ -300,5 +301,97 @@ describe('stripMarkdownForCsvPlain', () => {
     expect(stripMarkdownForCsvPlain('plain text with no markdown')).toBe(
       'plain text with no markdown',
     );
+  });
+});
+
+// ── compactTextlogBodyAgainst ────────────────────────
+
+describe('compactTextlogBodyAgainst', () => {
+  it('leaves entries unchanged when every referenced key is present', () => {
+    const body = makeBody(
+      { text: '![a](asset:k1)' },
+      { text: '[b](asset:k2)' },
+    );
+    const result = compactTextlogBodyAgainst(body, new Set(['k1', 'k2']));
+    expect(result.entries[0]!.text).toBe('![a](asset:k1)');
+    expect(result.entries[1]!.text).toBe('[b](asset:k2)');
+  });
+
+  it('strips broken ![alt](asset:<missing>) down to alt text', () => {
+    const body = makeBody({ text: 'See ![chart](asset:ast-gone) now' });
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.text).toBe('See chart now');
+  });
+
+  it('strips broken [label](asset:<missing>) down to label text', () => {
+    const body = makeBody({ text: 'Open [budget](asset:ast-missing)' });
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.text).toBe('Open budget');
+  });
+
+  it('only strips broken references — valid references are preserved verbatim', () => {
+    const body = makeBody({
+      text: '![ok](asset:k-ok) and [gone](asset:k-gone)',
+    });
+    const result = compactTextlogBodyAgainst(body, new Set(['k-ok']));
+    expect(result.entries[0]!.text).toBe('![ok](asset:k-ok) and gone');
+  });
+
+  it('handles multiple broken refs in a single entry', () => {
+    const body = makeBody({
+      text: '![a](asset:k1) ![b](asset:k2) [c](asset:k3)',
+    });
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.text).toBe('a b c');
+  });
+
+  it('leaves non-asset markdown links untouched', () => {
+    const body = makeBody({
+      text: 'See [docs](https://example.com) and [broken](asset:k-gone)',
+    });
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.text).toBe(
+      'See [docs](https://example.com) and broken',
+    );
+  });
+
+  it('leaves plain text entries untouched', () => {
+    const body = makeBody({ text: 'no refs at all' });
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.text).toBe('no refs at all');
+  });
+
+  it('is pure — does not mutate the input body or its entries', () => {
+    const body = makeBody({ text: '![x](asset:k-gone)' });
+    const snapshot = JSON.stringify(body);
+    const result = compactTextlogBodyAgainst(body, new Set());
+    // The input body must be byte-identical after the call.
+    expect(JSON.stringify(body)).toBe(snapshot);
+    // The returned body must be a NEW reference, not the original.
+    expect(result).not.toBe(body);
+    expect(result.entries).not.toBe(body.entries);
+  });
+
+  it('preserves entry id, createdAt, and flags on the rewritten copy', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-42',
+          text: '![x](asset:gone)',
+          createdAt: '2026-04-09T10:00:00.000Z',
+          flags: ['important'],
+        },
+      ],
+    };
+    const result = compactTextlogBodyAgainst(body, new Set());
+    expect(result.entries[0]!.id).toBe('log-42');
+    expect(result.entries[0]!.createdAt).toBe('2026-04-09T10:00:00.000Z');
+    expect(result.entries[0]!.flags).toEqual(['important']);
+    expect(result.entries[0]!.text).toBe('x');
+  });
+
+  it('empty body returns empty body (no throw)', () => {
+    const result = compactTextlogBodyAgainst({ entries: [] }, new Set());
+    expect(result.entries).toEqual([]);
   });
 });

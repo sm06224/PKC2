@@ -25,6 +25,7 @@ import {
 import {
   serializeTextlogAsCsv,
   collectTextlogAssetKeys,
+  compactTextlogBodyAgainst,
 } from '../../features/textlog/textlog-csv';
 import {
   createZipBlob,
@@ -52,6 +53,17 @@ export interface TextlogBundleManifest {
   missing_asset_keys: string[];
   /** asset_key → { name, mime } for every file written under assets/. */
   assets: Record<string, { name: string; mime: string }>;
+  /**
+   * `true` when the bundle was produced in "compact mode" — broken
+   * asset references were stripped from `text_markdown` and
+   * consequently disappeared from the `asset_keys` column. See
+   * `docs/development/textlog-csv-zip-export.md` §13.
+   *
+   * `missing_asset_keys` is still populated under compact mode as an
+   * audit trail ("these references existed and were stripped"). The
+   * live container is never mutated regardless of this flag.
+   */
+  compacted: boolean;
 }
 
 export interface TextlogBundleResult {
@@ -75,6 +87,13 @@ export interface TextlogExportOptions {
   downloadFn?: (blob: Blob, filename: string) => void;
   /** Override the export timestamp — used by tests for stable output. */
   now?: Date;
+  /**
+   * Compact mode — see spec §13. When `true`, the bundle is built
+   * from a *rewritten copy* of the textlog body in which broken
+   * asset references are stripped from `text_markdown`. The live
+   * entry and container are never mutated. Default: `false`.
+   */
+  compact?: boolean;
 }
 
 // ── Public API ────────────────────────────────────────
@@ -90,21 +109,35 @@ export interface TextlogExportOptions {
 export function buildTextlogBundle(
   entry: Entry,
   container: Container,
-  options?: { now?: Date },
+  options?: { now?: Date; compact?: boolean },
 ): TextlogBundleResult {
   if (entry.archetype !== 'textlog') {
     throw new Error(`buildTextlogBundle requires a textlog entry, got ${entry.archetype}`);
   }
 
   const now = options?.now ?? new Date();
-  const body = parseTextlogBody(entry.body);
+  const compact = options?.compact === true;
+  const parsedBody = parseTextlogBody(entry.body);
 
-  // Resolve referenced assets, partitioning into "present" vs "missing".
-  const referencedKeys = collectTextlogAssetKeys(body);
+  // Resolve referenced assets *against the original body* first. This
+  // is important: the `missing_asset_keys` list in the manifest is
+  // the audit trail of "what was referenced but unavailable", and
+  // must not change based on whether compact mode rewrote them out.
+  const referencedKeys = collectTextlogAssetKeys(parsedBody);
   const { assetIndex, assetEntries, missingKeys } = resolveAssets(
     referencedKeys,
     container,
   );
+
+  // Under compact mode, build a new TextlogBody that has broken
+  // references stripped. The original `parsedBody` — and, more
+  // importantly, the live entry.body and container — are untouched
+  // by this: `compactTextlogBodyAgainst` is a pure function that
+  // returns a new object.
+  const presentKeys = new Set(Object.keys(assetIndex));
+  const bodyForCsv = compact
+    ? compactTextlogBodyAgainst(parsedBody, presentKeys)
+    : parsedBody;
 
   const manifest: TextlogBundleManifest = {
     format: 'pkc2-textlog-bundle',
@@ -113,14 +146,15 @@ export function buildTextlogBundle(
     source_cid: container.meta.container_id,
     source_lid: entry.lid,
     source_title: entry.title ?? '',
-    entry_count: body.entries.length,
+    entry_count: parsedBody.entries.length,
     asset_count: Object.keys(assetIndex).length,
     missing_asset_count: missingKeys.length,
     missing_asset_keys: missingKeys,
     assets: assetIndex,
+    compacted: compact,
   };
 
-  const csv = serializeTextlogAsCsv(body);
+  const csv = serializeTextlogAsCsv(bodyForCsv);
 
   const zipEntries: ZipEntry[] = [
     { name: 'manifest.json', data: textToBytes(JSON.stringify(manifest, null, 2)) },
@@ -146,7 +180,10 @@ export async function exportTextlogAsBundle(
   options?: TextlogExportOptions,
 ): Promise<TextlogExportResult> {
   try {
-    const built = buildTextlogBundle(entry, container, { now: options?.now });
+    const built = buildTextlogBundle(entry, container, {
+      now: options?.now,
+      compact: options?.compact,
+    });
     const filename = options?.filename
       ? `${options.filename}.textlog.zip`
       : built.filename;
