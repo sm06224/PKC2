@@ -83,6 +83,7 @@ multi-select 中核実装完了 (Phase 1 + 2-A/B/C) 後の残り候補。
 
 | 候補 | 脱落理由 |
 |------|---------|
+| Sidebar multi-DnD | structural relation の cycle detection 複雑化。action bar の BULK_MOVE で代替可能 |
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と構造的に衝突。着手前に設計変更議論が必要。コスト/リスクが見合わない |
 
 ## Close Audit Summary

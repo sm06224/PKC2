@@ -264,3 +264,61 @@ Phase 2 は以下のサブフェーズに分割:
 2. **Shift+click は Phase 1 で制限しない**: reducer は動作する。表示順との不一致は UX 上の問題だが、crash や data corruption は起きない。Phase 2 で修正。
 3. **DnD は Phase 1 で触らない**: multi-DnD は新しい操作パラダイムであり、Phase 1 の scope に含めると複雑性が爆発する。
 4. **Multi-action bar は B-1（サイドバー据え置き）**: PKC2 のレイアウトでサイドバーは常時表示。最小変更の原則。
+
+---
+
+## §10 UX Notes
+
+### 10.1 Bulk DnD 後の選択状態
+
+multi-drag drop 後の state 遷移:
+
+| フィールド | drop 前 | drop 後 | 理由 |
+|-----------|---------|---------|------|
+| `multiSelectedLids` | `[lid1, lid2, lid3]` | `[]` | `BULK_SET_*` reducer がクリア |
+| `selectedLid` | (任意) | **dragged lid** | drop 後の `SELECT_ENTRY` で設定 |
+
+**ユーザから見た挙動**: 3 件を選択して drag & drop → 3 件とも操作が適用される → 選択ハイライトは **ドラッグした 1 件のみ** に戻る。
+
+これは意図的な設計だが、ユーザにとって「3 件選択したのに 1 件だけ残っている」と感じる可能性がある。現状は BULK_DELETE / BULK_MOVE 等の action bar 操作と同一挙動（操作後に multi-select クリア）であり、一貫性は保たれている。
+
+### 10.2 Sidebar Multi-DnD: 意図的に対象外
+
+Sidebar DnD (structural relation 変更) は multi-DnD の対象外とした。理由:
+
+1. structural relation は 1:1 (parent → child)。複数エントリの一括移動は cycle detection が複雑化する
+2. Sidebar には既に `BULK_MOVE_TO_FOLDER` / `BULK_MOVE_TO_ROOT` が multi-action bar 経由で存在する
+3. multi-DnD は Kanban/Calendar の「属性値変更」に限定するのが自然
+
+Sidebar の一括移動が必要な場合は multi-action bar の [Move to...] を使用する。
+
+---
+
+## §11 Status Snapshot (2026-04-11)
+
+### 完了済み
+
+| Phase | 内容 | テスト数 | 設計ドキュメント |
+|-------|------|---------|---------------|
+| Phase 1 | Visual feedback (Calendar/Kanban multi-selected 属性 + action bar) | — | 本ドキュメント §6 |
+| Phase 2-A | BULK_SET_STATUS (action bar) | — | `calendar-kanban-multi-select-bulk-status.md` |
+| Phase 2-B | BULK_SET_DATE (action bar, 設定 + 解除) | — | `calendar-kanban-multi-select-bulk-date.md` |
+| Phase 2-C1 | Multi-DnD: Kanban | 11 | `calendar-kanban-multi-select-multi-dnd.md` |
+| Phase 2-C2 | Multi-DnD: Calendar | 12 | `calendar-kanban-multi-select-multi-dnd.md` |
+| Phase 2-C3 | Multi-DnD: Cross-view + flag 統合 | 11 | `calendar-kanban-multi-select-multi-dnd.md` S8 |
+| (bugfix) | Context menu: textarea/input の native menu 復帰 | 2 | — |
+
+### 残候補 (CANDIDATE)
+
+| Phase | 内容 | コスト | 備考 |
+|-------|------|--------|------|
+| Phase 2-D | SELECT_RANGE 表示順対応 | 中 | Ctrl+click で代替可能のため緊急度低 |
+| Phase 2-E | Escape で CLEAR_MULTI_SELECT | 小 | reducer 1 行 + handler 数行 |
+| (optional) | drag ghost UX 改善 (setDragImage) | 小 | 見た目のみ。multi-action bar で件数確認可能 |
+
+### 意図的に対象外
+
+| 項目 | 理由 |
+|------|------|
+| Sidebar multi-DnD | structural relation の cycle detection 複雑化。action bar の BULK_MOVE で代替可能 |
+| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と構造的に衝突。設計変更議論が先 |

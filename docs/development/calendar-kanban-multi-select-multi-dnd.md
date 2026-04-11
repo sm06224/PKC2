@@ -2,6 +2,7 @@
 
 Status: COMPLETED (C-1/C-2/C-3 全完了)
 Created: 2026-04-11
+Completed: 2026-04-11
 
 ---
 
