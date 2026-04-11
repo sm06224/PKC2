@@ -1348,6 +1348,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Space: toggle todo status in kanban mode
+    if (
+      e.key === ' '
+      && !mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.viewMode === 'kanban'
+      && state.container
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'todo') return;
+      const todo = parseTodoBody(entry.body);
+      const toggled = serializeTodoBody({
+        ...todo,
+        status: todo.status === 'done' ? 'open' : 'done',
+      });
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: toggled });
+      return;
+    }
+
     // Ctrl+N / Cmd+N: new entry in ready mode
     if (mod && e.key === 'n' && state.phase === 'ready') {
       e.preventDefault();
