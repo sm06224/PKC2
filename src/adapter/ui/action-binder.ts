@@ -2479,6 +2479,122 @@ export function cleanupBlobUrls(root: HTMLElement): void {
 }
 
 /**
+ * Populate inline asset previews for non-image chips in rendered markdown.
+ *
+ * Scans `.pkc-md-rendered` containers (excluding edit-preview panes) for
+ * `<a href="#asset-KEY">` chip links. For each chip whose underlying
+ * attachment has a previewable MIME (pdf, audio, video), inserts an inline
+ * preview element (object/audio/video) next to the chip.
+ *
+ * Called from main.ts after each render cycle, immediately after
+ * `populateAttachmentPreviews()`. Uses the same blob URL lifecycle:
+ * preview elements carry `data-pkc-blob-url` so `cleanupBlobUrls()`
+ * revokes them on the next render.
+ */
+export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
+  // Only target rendered markdown areas, excluding edit preview panes
+  const containers = root.querySelectorAll<HTMLElement>(
+    '.pkc-md-rendered:not(.pkc-text-edit-preview)',
+  );
+
+  const state = dispatcher.getState();
+  const container = state.container;
+  if (!container) return;
+
+  for (const mdContainer of containers) {
+    const chipLinks = mdContainer.querySelectorAll<HTMLAnchorElement>('a[href^="#asset-"]');
+    for (const chip of chipLinks) {
+      // Skip if already processed (sibling preview exists)
+      if (chip.nextElementSibling?.hasAttribute('data-pkc-inline-preview')) continue;
+
+      const href = chip.getAttribute('href') ?? '';
+      const assetKey = href.slice('#asset-'.length);
+      if (!assetKey) continue;
+
+      // Find the attachment entry for this asset key
+      let mime = '';
+      let base64 = '';
+      for (const entry of container.entries) {
+        if (entry.archetype !== 'attachment') continue;
+        const att = parseAttachmentBody(entry.body);
+        if (att.asset_key !== assetKey) continue;
+        mime = att.mime;
+        // Resolve data from container.assets or legacy body.data
+        if (att.asset_key && container.assets?.[att.asset_key] != null) {
+          base64 = container.assets[att.asset_key]!;
+        } else if (att.data) {
+          base64 = att.data;
+        }
+        break;
+      }
+
+      if (!base64 || !mime) continue;
+
+      const previewType = classifyPreviewType(mime);
+      if (previewType !== 'pdf' && previewType !== 'audio' && previewType !== 'video') continue;
+
+      try {
+        const blobUrl = createBlobUrl({ data: base64, mime });
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('data-pkc-inline-preview', previewType);
+        wrapper.className = 'pkc-inline-preview';
+
+        switch (previewType) {
+          case 'pdf': {
+            const obj = document.createElement('object');
+            obj.className = 'pkc-inline-pdf-preview';
+            obj.type = 'application/pdf';
+            obj.data = blobUrl;
+            obj.setAttribute('data-pkc-blob-url', blobUrl);
+            const fallback = document.createElement('p');
+            fallback.textContent = 'PDF preview not available in this browser.';
+            obj.appendChild(fallback);
+            wrapper.appendChild(obj);
+            // PDF: do NOT hide chip (fallback detection unreliable)
+            break;
+          }
+          case 'audio': {
+            const audio = document.createElement('audio');
+            audio.className = 'pkc-inline-audio-preview';
+            audio.controls = true;
+            audio.preload = 'none';
+            audio.setAttribute('data-pkc-blob-url', blobUrl);
+            const source = document.createElement('source');
+            source.src = blobUrl;
+            source.type = mime;
+            audio.appendChild(source);
+            wrapper.appendChild(audio);
+            // Audio: hide chip
+            chip.style.display = 'none';
+            break;
+          }
+          case 'video': {
+            const video = document.createElement('video');
+            video.className = 'pkc-inline-video-preview';
+            video.controls = true;
+            video.preload = 'none';
+            video.setAttribute('data-pkc-blob-url', blobUrl);
+            const source = document.createElement('source');
+            source.src = blobUrl;
+            source.type = mime;
+            video.appendChild(source);
+            wrapper.appendChild(video);
+            // Video: hide chip
+            chip.style.display = 'none';
+            break;
+          }
+        }
+
+        // Insert preview after the chip link
+        chip.after(wrapper);
+      } catch {
+        // Graceful fallback: keep chip visible, skip preview
+      }
+    }
+  }
+}
+
+/**
  * Decode base64 to text string (UTF-8).
  * Used for HTML/SVG content that goes into iframe.srcdoc.
  */

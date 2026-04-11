@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { bindActions, cleanupBlobUrls } from '@adapter/ui/action-binder';
+import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
@@ -2672,5 +2672,346 @@ describe('Interactive task list — checkbox toggle', () => {
     expect(checkboxes[0]!.getAttribute('data-pkc-task-index')).toBe('0');
     expect(checkboxes[1]!.getAttribute('data-pkc-task-index')).toBe('1');
     expect(checkboxes[2]!.getAttribute('data-pkc-task-index')).toBe('2');
+  });
+});
+
+// ── Inline asset preview (non-image) ──
+
+describe('populateInlineAssetPreviews', () => {
+  // Helper: create a minimal attachment entry body JSON
+  function attBody(name: string, mime: string, assetKey: string): string {
+    return JSON.stringify({ name, mime, size: 1024, asset_key: assetKey });
+  }
+
+  // Helper: set up a dispatcher with attachment entries + assets and
+  // a DOM root containing chip links inside a .pkc-md-rendered container.
+  function setupInlinePreview(chips: { key: string; label: string }[], attachments: { key: string; mime: string; name: string }[]) {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const entries = attachments.map((att, i) => ({
+      lid: `att-${i}`,
+      title: att.name,
+      body: attBody(att.name, att.mime, att.key),
+      archetype: 'attachment' as const,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }));
+
+    // Add a text entry whose rendered body will contain the chip links
+    entries.push({
+      lid: 'txt1',
+      title: 'Test Text',
+      body: 'plain text',
+      archetype: 'text' as any,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+
+    const assets: Record<string, string> = {};
+    for (const att of attachments) {
+      // Minimal valid base64 (a few bytes)
+      assets[att.key] = btoa('testdata');
+    }
+
+    const container: Container = {
+      ...mockContainer,
+      entries,
+      assets,
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    // Manually create a .pkc-md-rendered container with chip links
+    // (simulating what the renderer + asset resolver would produce)
+    const mdContainer = document.createElement('div');
+    mdContainer.className = 'pkc-md-rendered';
+    for (const chip of chips) {
+      const a = document.createElement('a');
+      a.href = `#asset-${chip.key}`;
+      a.textContent = chip.label;
+      mdContainer.appendChild(a);
+    }
+    root.appendChild(mdContainer);
+
+    return { dispatcher };
+  }
+
+  it('creates PDF preview with <object> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k1', label: '📄 test.pdf' }],
+      [{ key: 'k1', mime: 'application/pdf', name: 'test.pdf' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const obj = root.querySelector('object.pkc-inline-pdf-preview');
+    expect(obj).not.toBeNull();
+    expect(obj!.getAttribute('type')).toBe('application/pdf');
+    expect(obj!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    // PDF fallback text
+    expect(obj!.querySelector('p')?.textContent).toBe('PDF preview not available in this browser.');
+  });
+
+  it('does NOT hide chip for PDF (fallback unreliable)', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k1', label: '📄 test.pdf' }],
+      [{ key: 'k1', mime: 'application/pdf', name: 'test.pdf' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k1"]');
+    expect(chip).not.toBeNull();
+    // Chip should remain visible (style.display should NOT be 'none')
+    expect(chip!.style.display).not.toBe('none');
+  });
+
+  it('creates audio preview with <audio> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k2', label: '🎵 song.mp3' }],
+      [{ key: 'k2', mime: 'audio/mpeg', name: 'song.mp3' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const audio = root.querySelector('audio.pkc-inline-audio-preview');
+    expect(audio).not.toBeNull();
+    expect(audio!.getAttribute('controls')).not.toBeNull();
+    expect(audio!.getAttribute('preload')).toBe('none');
+    expect(audio!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    expect(audio!.querySelector('source')).not.toBeNull();
+  });
+
+  it('hides chip for audio preview', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k2', label: '🎵 song.mp3' }],
+      [{ key: 'k2', mime: 'audio/mpeg', name: 'song.mp3' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k2"]');
+    expect(chip!.style.display).toBe('none');
+  });
+
+  it('creates video preview with <video> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k3', label: '🎬 clip.mp4' }],
+      [{ key: 'k3', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const video = root.querySelector('video.pkc-inline-video-preview');
+    expect(video).not.toBeNull();
+    expect(video!.getAttribute('controls')).not.toBeNull();
+    expect(video!.getAttribute('preload')).toBe('none');
+    expect(video!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    expect(video!.querySelector('source')).not.toBeNull();
+  });
+
+  it('hides chip for video preview', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k3', label: '🎬 clip.mp4' }],
+      [{ key: 'k3', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k3"]');
+    expect(chip!.style.display).toBe('none');
+  });
+
+  it('skips non-previewable MIME (archive)', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k4', label: '🗜 data.zip' }],
+      [{ key: 'k4', mime: 'application/zip', name: 'data.zip' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    // No preview element should be created
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+    // Chip should remain visible
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k4"]');
+    expect(chip!.style.display).not.toBe('none');
+  });
+
+  it('skips chip when asset key has no matching attachment', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'no-such-key', label: '📎 missing' }],
+      [], // no attachments
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('skips chip when asset data is missing from container.assets', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'test.pdf',
+          body: attBody('test.pdf', 'application/pdf', 'k-no-data'),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: {}, // no data for k-no-data
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    const mdContainer = document.createElement('div');
+    mdContainer.className = 'pkc-md-rendered';
+    const a = document.createElement('a');
+    a.href = '#asset-k-no-data';
+    a.textContent = '📄 test.pdf';
+    mdContainer.appendChild(a);
+    root.appendChild(mdContainer);
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('wraps preview in div with data-pkc-inline-preview attribute', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k5', label: '🎬 vid.webm' }],
+      [{ key: 'k5', mime: 'video/webm', name: 'vid.webm' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const wrapper = root.querySelector('[data-pkc-inline-preview]');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.getAttribute('data-pkc-inline-preview')).toBe('video');
+    expect(wrapper!.classList.contains('pkc-inline-preview')).toBe(true);
+  });
+
+  it('does not process chips inside edit-preview panes', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'test.mp4',
+          body: attBody('test.mp4', 'video/mp4', 'k-edit'),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'k-edit': btoa('data') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    // Create a container with both pkc-md-rendered AND pkc-text-edit-preview
+    const editPreview = document.createElement('div');
+    editPreview.className = 'pkc-text-edit-preview pkc-md-rendered';
+    const a = document.createElement('a');
+    a.href = '#asset-k-edit';
+    a.textContent = '🎬 test.mp4';
+    editPreview.appendChild(a);
+    root.appendChild(editPreview);
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('handles multiple chips of different types', () => {
+    const { dispatcher } = setupInlinePreview(
+      [
+        { key: 'kp', label: '📄 doc.pdf' },
+        { key: 'ka', label: '🎵 track.wav' },
+        { key: 'kv', label: '🎬 movie.mp4' },
+      ],
+      [
+        { key: 'kp', mime: 'application/pdf', name: 'doc.pdf' },
+        { key: 'ka', mime: 'audio/wav', name: 'track.wav' },
+        { key: 'kv', mime: 'video/mp4', name: 'movie.mp4' },
+      ],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const previews = root.querySelectorAll('[data-pkc-inline-preview]');
+    expect(previews).toHaveLength(3);
+    expect(previews[0]!.getAttribute('data-pkc-inline-preview')).toBe('pdf');
+    expect(previews[1]!.getAttribute('data-pkc-inline-preview')).toBe('audio');
+    expect(previews[2]!.getAttribute('data-pkc-inline-preview')).toBe('video');
+  });
+
+  it('cleanupBlobUrls revokes inline preview blob URLs', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kc', label: '🎬 clip.mp4' }],
+      [{ key: 'kc', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const blobEl = root.querySelector<HTMLElement>('[data-pkc-blob-url]');
+    expect(blobEl).not.toBeNull();
+    const blobUrl = blobEl!.getAttribute('data-pkc-blob-url')!;
+
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
+    cleanupBlobUrls(root);
+    expect(revokeSpy).toHaveBeenCalledWith(blobUrl);
+    revokeSpy.mockRestore();
+  });
+
+  it('does not double-populate if called twice', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kd', label: '🎵 song.ogg' }],
+      [{ key: 'kd', mime: 'audio/ogg', name: 'song.ogg' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const previews = root.querySelectorAll('[data-pkc-inline-preview]');
+    expect(previews).toHaveLength(1);
+  });
+
+  it('sets correct source type on audio element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'ks', label: '🎵 sound.wav' }],
+      [{ key: 'ks', mime: 'audio/wav', name: 'sound.wav' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const source = root.querySelector('audio.pkc-inline-audio-preview source');
+    expect(source).not.toBeNull();
+    expect(source!.getAttribute('type')).toBe('audio/wav');
+  });
+
+  it('sets correct source type on video element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kv2', label: '🎬 movie.webm' }],
+      [{ key: 'kv2', mime: 'video/webm', name: 'movie.webm' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const source = root.querySelector('video.pkc-inline-video-preview source');
+    expect(source).not.toBeNull();
+    expect(source!.getAttribute('type')).toBe('video/webm');
   });
 });

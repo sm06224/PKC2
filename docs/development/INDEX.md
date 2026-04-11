@@ -65,25 +65,11 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | # | File | Topic | Completed | Summary |
 |---|------|-------|-----------|---------|
 | 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | 2026-04-11 | TEXT/TEXTLOG の rendered markdown 内 `- [ ]`/`- [x]` を click で toggle。pure helper + QUICK_UPDATE_ENTRY。テスト 38 件。 |
+| 44 | `non-image-inline-preview.md` | Non-image inline preview (PDF/audio/video) | 2026-04-11 | TEXT/TEXTLOG body 内の非画像 asset chip を inline preview に展開。`populateInlineAssetPreviews()` + 既存 blob lifecycle 再利用。CSP fallback 対応。テスト 16 件。 |
 
-## CANDIDATE — Next Feature Top 2
+## CANDIDATE — Next Feature Top 1
 
-前回 5 件から 2 件に圧縮。脱落理由は下記。
-
-### 暫定 1 位: Non-image inline preview
-
-PDF / audio / video の asset chip を inline player / viewer に展開する。
-**仕様確定済み**: `non-image-inline-preview.md` (rendering policy, security, blob lifecycle)
-
-| 観点 | 評価 |
-|------|------|
-| ユーザ価値 | 中 — 非画像 asset を持つユーザに直接恩恵 |
-| 実装コスト | 中 (4-6 日) |
-| リスク | 中 — blob URL lifecycle 管理。CSP は問題なし (確認済み) |
-| 既存基盤 | `attachment-preview-strategy.md` 完了済み、`createBlobUrl()` / `cleanupBlobUrls()` 再利用 |
-| 今すぐ着手する妥当性 | **高** — 仕様確定済み。基盤が揃っており独立性が高い |
-
-### 暫定 2 位: Calendar/Kanban multi-select
+### 暫定 1 位: Calendar/Kanban multi-select
 
 複数エントリを Ctrl/Shift+click で選択し、一括 status/date 変更する。
 

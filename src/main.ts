@@ -5,6 +5,7 @@ import { render } from './adapter/ui/renderer';
 import {
   bindActions,
   populateAttachmentPreviews,
+  populateInlineAssetPreviews,
   cleanupBlobUrls,
   flashEntry,
 } from './adapter/ui/action-binder';
@@ -114,6 +115,8 @@ async function boot(): Promise<void> {
 
     // Populate attachment image previews (needs container.assets data)
     populateAttachmentPreviews(root, dispatcher);
+    // Populate inline asset previews for non-image chips in rendered markdown
+    populateInlineAssetPreviews(root, dispatcher);
   });
 
   // 2b. Entry-window live refresh wiring.
