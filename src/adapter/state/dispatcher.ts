@@ -31,7 +31,21 @@ export type StateListener = (state: AppState, prev: AppState) => void;
 export interface Dispatcher {
   dispatch(action: Dispatchable): ReduceResult;
   getState(): AppState;
+
+  /**
+   * Subscribe to state changes. Returns an unsubscribe function.
+   *
+   * Page-lifetime subscriptions (main.ts boot) may discard the return
+   * value. Any shorter-lived caller must capture and call it on
+   * teardown to prevent stale-listener contamination.
+   */
   onState(listener: StateListener): () => void;
+
+  /**
+   * Subscribe to domain events. Returns an unsubscribe function.
+   *
+   * Same lifecycle contract as {@link onState}.
+   */
   onEvent(listener: EventListener): () => void;
 }
 

@@ -160,3 +160,27 @@ Two independent defenses now exist:
 
 Both are retained. Layer 1 is the root-cause fix; layer 2 is
 defense-in-depth.
+
+---
+
+## G. Subscription Lifecycle Contract
+
+`dispatcher.onState()` と `onEvent()` は unsubscribe 関数を返す。
+以下のルールに従うこと。
+
+| ケース | unsubscribe の扱い | 例 |
+|--------|-------------------|-----|
+| **ページ寿命と一致する購読** | 破棄してよい（例外的許容） | `main.ts` の renderer / export handler / bridge |
+| **コンポーネント寿命の購読** | **必ず capture し、teardown で呼ぶ** | `persistence.ts` の `dispose()`、`entry-window-*` の返却値 |
+| **テスト内の購読** | **必ず解除する**（auto-tracking wrapper で自動化済み） | `action-binder.test.ts` |
+
+### 将来の拡張に対する指針
+
+- runtime に mount/unmount サイクルが導入された場合、
+  そのモジュールは `onState`/`onEvent` の返り値を capture し、
+  unmount 時に呼ぶ責任を負う。
+- `bindActions` は現在 dispatcher 購読を管理しない。
+  将来 `bindActions` 内部で `onState` を使う場合は、
+  cleanup 関数に unsubscribe を含めること。
+- この契約は `Dispatcher` interface の JSDoc と
+  `CLAUDE.md` Key Conventions に記載済み。

@@ -83,6 +83,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - `SET_VIEW_MODE` does NOT clear selection
 - Todo helpers: `parseTodoBody()`, `serializeTodoBody()`, `formatTodoDate()`, `isTodoPastDue()`
 - Kanban always excludes archived todos; Calendar respects `showArchived` flag
+- `dispatcher.onState()` / `onEvent()` return an unsubscribe `() => void`. Page-lifetime subscriptions (main.ts) may discard it; any shorter-lived subscription must capture and call it on teardown. See `docs/development/stale-listener-prevention.md`.
 
 ## Invariants
 
