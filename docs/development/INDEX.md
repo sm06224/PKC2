@@ -79,6 +79,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 55 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Kanban view で Arrow Up/Down (列内) + Left/Right (列間) navigation。viewMode 分岐で sidebar 不変。テスト 24 件。 |
 | 56 | `calendar-kanban-keyboard-navigation.md` | Calendar keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Calendar view で Arrow Left/Right (日移動) + Up/Down (週移動)。空セル/空週スキップ。月境界 no-op。テスト 24 件。 |
 | 57 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 2 (Space status toggle) | 2026-04-11 | Kanban view で Space → todo status toggle。QUICK_UPDATE_ENTRY 再利用。multi-select 非対応。テスト 15 件。 |
+| 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | 2026-04-11 | entry window 内 task checkbox を click → 親 `QUICK_UPDATE_ENTRY` → `pushViewBodyUpdate` で反映。TEXTLOG は per-log-entry 描画 + `data-pkc-log-id` で識別。readonly CSS guard。protocol 追加: `pkc-entry-task-toggle`。テスト 16 件。 |
 
 ## CANDIDATE — Next Feature
 
@@ -133,16 +134,6 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 妥当性 | △ — 必要性が薄い | △ — 前提が未整備 |
 
 設計: `calendar-kanban-keyboard-navigation.md` §9
-
-### Active — Entry Window Task Toggle
-
-| # | File | Topic | Status |
-|---|------|-------|--------|
-| 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | CANDIDATE |
-
-entry window 内の markdown task checkbox を click で toggle 可能にする。
-既存 `QUICK_UPDATE_ENTRY` + `pushViewBodyUpdate` で閉じる設計。
-protocol 追加: `pkc-entry-task-toggle` (child → parent) 1 type のみ。
 
 ### 保留候補
 

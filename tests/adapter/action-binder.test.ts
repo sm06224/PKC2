@@ -6698,7 +6698,7 @@ describe('Kanban keyboard navigation (Phase 1)', () => {
 describe('Kanban keyboard Phase 2 — Space status toggle', () => {
   // Reuse kanban container: open=[t1,t2,t3], done=[t4,t5], text=tx, archived=ta
   const kanbanContainer: Container = {
-    meta: { id: 'test', name: 'Test', schema_version: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    meta: mockContainer.meta,
     entries: [
       { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
       { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },

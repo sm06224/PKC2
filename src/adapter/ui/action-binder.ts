@@ -27,7 +27,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
-import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
+import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import {
   formatDate,
@@ -2247,6 +2247,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       !!state.lightSource,
       assetContext,
       (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+      (toggleLid, taskIndex, logId) => {
+        const st = dispatcher.getState();
+        if (st.readonly) return;
+        if (!st.container) return;
+        const ent = st.container.entries.find((e) => e.lid === toggleLid);
+        if (!ent) return;
+
+        if (ent.archetype === 'textlog' && logId) {
+          const log = parseTextlogBody(ent.body);
+          const logEntry = log.entries.find((le) => le.id === logId);
+          if (!logEntry) return;
+          const toggled = toggleTaskItem(logEntry.text, taskIndex);
+          if (toggled === null) return;
+          logEntry.text = toggled;
+          const newBody = serializeTextlogBody(log);
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: toggleLid, body: newBody });
+          pushTextlogViewBodyUpdate(toggleLid, newBody);
+        } else {
+          const toggled = toggleTaskItem(ent.body, taskIndex);
+          if (toggled === null) return;
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: toggleLid, body: toggled });
+          // Resolve asset references before pushing, matching the initial render path
+          const ctx = buildEntryPreviewCtx(ent, st.container);
+          const resolved = ctx && hasAssetReferences(toggled)
+            ? resolveAssetReferences(toggled, ctx)
+            : toggled;
+          pushViewBodyUpdate(toggleLid, resolved);
+        }
+      },
       shouldStartEditing,
     );
   }

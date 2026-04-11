@@ -11,10 +11,12 @@
  *   Child → Parent: { type: 'pkc-entry-save', lid, title, body, openedAt }
  *   Parent → Child: { type: 'pkc-entry-saved' }
  *   Parent → Child: { type: 'pkc-entry-conflict', message }
+ *   Child → Parent: { type: 'pkc-entry-task-toggle', lid, taskIndex, logId }
  */
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { parseTextlogBody } from '../../features/textlog/textlog-body';
 import {
   resolveAssetReferences,
   hasAssetReferences,
@@ -309,6 +311,35 @@ export function pushViewBodyUpdate(
 }
 
 /**
+ * Push a TEXTLOG view-body update with per-log-entry rendering so the
+ * child retains `data-pkc-log-id` markers for task toggle identification.
+ */
+export function pushTextlogViewBodyUpdate(
+  lid: string,
+  textlogBody: string,
+): boolean {
+  const child = openWindows.get(lid);
+  if (!child || child.closed) return false;
+  const log = parseTextlogBody(textlogBody);
+  let html: string;
+  if (log.entries.length === 0) {
+    html = '<em style="color:var(--c-muted)">(empty)</em>';
+  } else {
+    html = log.entries
+      .map((le) => {
+        const rendered = renderMarkdown(le.text || '') || '';
+        return `<div data-pkc-log-id="${le.id}">${rendered}</div>`;
+      })
+      .join('');
+  }
+  child.postMessage(
+    { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
+    '*',
+  );
+  return true;
+}
+
+/**
  * Asset context threaded from the parent window into the child window
  * at open time so the child can preview attachments and show resolved
  * asset references without having live access to `container.assets`.
@@ -363,6 +394,7 @@ export function openEntryWindow(
   lightSource = false,
   assetContext?: EntryWindowAssetContext,
   onDownloadAsset?: (assetKey: string) => void,
+  onTaskToggle?: (lid: string, taskIndex: number, logId: string | null) => void,
   startEditing = false,
 ): void {
   // ── Duplicate-open path ─────────────────────────────
@@ -422,6 +454,13 @@ export function openEntryWindow(
     if (e.data.type === 'pkc-entry-download-asset') {
       if (typeof e.data.assetKey === 'string' && onDownloadAsset) {
         onDownloadAsset(e.data.assetKey);
+      }
+      return;
+    }
+    if (e.data.type === 'pkc-entry-task-toggle') {
+      if (typeof e.data.taskIndex === 'number' && onTaskToggle) {
+        const logId = typeof e.data.logId === 'string' ? e.data.logId : null;
+        onTaskToggle(e.data.lid, e.data.taskIndex, logId);
       }
       return;
     }
@@ -503,9 +542,24 @@ function renderViewBody(
       return renderTodoCard(entry.body);
     case 'form':
       return renderFormCard(entry.body);
+    case 'textlog': {
+      // TEXTLOG: render per-log-entry with data-pkc-log-id so the
+      // child-side task-toggle click handler can identify which log
+      // entry a checkbox belongs to.
+      const log = parseTextlogBody(entry.body);
+      if (log.entries.length === 0) {
+        return '<em style="color:var(--c-muted)">(empty)</em>';
+      }
+      return log.entries
+        .map((le) => {
+          const html = renderMarkdown(le.text || '') || '';
+          return `<div data-pkc-log-id="${le.id}">${html}</div>`;
+        })
+        .join('');
+    }
     default: {
-      // Text / textlog / generic: use the pre-resolved body when the
-      // parent provided one, so that `![](asset:…)` embeds and
+      // Text / generic: use the pre-resolved body when the parent
+      // provided one, so that `![](asset:…)` embeds and
       // `[](asset:…)` chips already appear as inline data URIs /
       // fragment-href chips by the time markdown-it sees them.
       const source = ctx?.resolvedBody != null ? ctx.resolvedBody : entry.body;
@@ -821,6 +875,9 @@ body {
 .pkc-md-rendered a { color: var(--c-accent); text-decoration: underline; }
 .pkc-md-rendered table { border-collapse: collapse; margin: 0.35em 0; }
 .pkc-md-rendered th, .pkc-md-rendered td { border: 1px solid var(--c-border); padding: 0.3em 0.5em; }
+/* ── Task checkbox: interactive in view mode, disabled when readonly ── */
+.pkc-task-checkbox { cursor: pointer; }
+${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacity: 0.6; }' : ''}
 
 /* ── Editor (mirrors center pane) ── */
 .pkc-editor { max-width: 720px; }
@@ -1242,6 +1299,18 @@ function downloadAttachmentFromChild() {
 }
 document.addEventListener('click', function(e) {
   var target = e.target;
+  /* Task checkbox toggle: route through parent for source-of-truth update. */
+  if (target && target.tagName === 'INPUT' && target.hasAttribute('data-pkc-task-index')) {
+    e.preventDefault();
+    var taskIndex = parseInt(target.getAttribute('data-pkc-task-index'), 10);
+    if (!isNaN(taskIndex) && window.opener) {
+      var logRow = target.closest ? target.closest('[data-pkc-log-id]') : null;
+      var logId = logRow ? logRow.getAttribute('data-pkc-log-id') : null;
+      try { window.opener.postMessage({ type: 'pkc-entry-task-toggle', lid: lid, taskIndex: taskIndex, logId: logId }, '*'); }
+      catch (_e) { /* parent closed */ }
+    }
+    return;
+  }
   /* Non-image asset chip click: route download through the parent window. */
   var chip = target && target.closest ? target.closest('a[href^="#asset-"]') : null;
   if (chip) {

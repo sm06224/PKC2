@@ -1,6 +1,6 @@
 # Entry Window Interactive Task Toggle
 
-Status: CANDIDATE
+Status: COMPLETED
 Created: 2026-04-11
 
 ---

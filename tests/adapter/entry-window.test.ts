@@ -1857,4 +1857,276 @@ describe('Entry Window', () => {
       expect(html).toMatch(/function revokeAllBlobUrls[\s\S]*?pkcActiveBlobUrls = \[\]/);
     });
   });
+
+  // ── Entry window interactive task toggle ──
+
+  describe('Entry window task toggle', () => {
+    describe('child-side click handler', () => {
+      it('child script intercepts checkbox clicks and posts pkc-entry-task-toggle to parent', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B',
+        });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+        expect(html).toContain('window.opener.postMessage');
+      });
+
+      it('child script calls preventDefault on checkbox click', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        // The click handler must prevent the default checkbox toggle so
+        // the DOM stays in sync with the parent's source of truth.
+        expect(html).toContain("e.preventDefault()");
+        // Specifically in the task-toggle branch
+        expect(html).toMatch(/data-pkc-task-index[\s\S]*?e\.preventDefault\(\)/);
+      });
+
+      it('child script reads logId from closest data-pkc-log-id ancestor', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        expect(html).toContain("closest('[data-pkc-log-id]')");
+      });
+    });
+
+    describe('parent message handling — pkc-entry-task-toggle', () => {
+      it('routes task-toggle messages to onTaskToggle callback', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry({ archetype: 'text', body: '- [ ] Task' });
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: entry.lid, taskIndex: 0, logId: null },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).toHaveBeenCalledWith(entry.lid, 0, null);
+      });
+
+      it('routes task-toggle messages with logId for TEXTLOG', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry({ archetype: 'textlog', body: '{}' });
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: entry.lid, taskIndex: 1, logId: 'log-abc' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).toHaveBeenCalledWith(entry.lid, 1, 'log-abc');
+      });
+
+      it('ignores task-toggle messages when onTaskToggle is omitted', async () => {
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        openEntryWindow(makeEntry() as never, false, vi.fn(), false);
+
+        // Should not throw
+        expect(() => {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              data: { type: 'pkc-entry-task-toggle', lid: 'e-x', taskIndex: 0, logId: null },
+              source: childWindow as unknown as Window,
+            }),
+          );
+        }).not.toThrow();
+      });
+
+      it('ignores task-toggle messages with non-numeric taskIndex', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        openEntryWindow(
+          makeEntry() as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: 'e-x', taskIndex: 'bad' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('TEXTLOG view body rendering', () => {
+      it('renders TEXTLOG entries with per-log-entry data-pkc-log-id wrappers', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'log1', text: '- [ ] Alpha', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'log2', text: '- [x] Beta', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('data-pkc-log-id="log1"');
+        expect(viewBody).toContain('data-pkc-log-id="log2"');
+        expect(viewBody).toContain('Alpha');
+        expect(viewBody).toContain('Beta');
+      });
+
+      it('renders empty TEXTLOG as (empty)', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({ entries: [] });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('(empty)');
+      });
+
+      it('TEXTLOG task checkboxes have data-pkc-task-index within their log-id wrapper', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'log1', text: '- [ ] Do it', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        // The checkbox should be inside the log-id wrapper
+        expect(viewBody).toMatch(/data-pkc-log-id="log1"[\s\S]*?data-pkc-task-index="0"/);
+      });
+    });
+
+    describe('readonly guard', () => {
+      it('applies pointer-events:none to task checkboxes in readonly mode', async () => {
+        const html = await openAndCapture(true, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).toContain('.pkc-task-checkbox { pointer-events: none;');
+        expect(html).toContain('opacity: 0.6');
+      });
+
+      it('does NOT apply pointer-events:none in non-readonly mode', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).not.toContain('.pkc-task-checkbox { pointer-events: none;');
+      });
+    });
+
+    describe('pushTextlogViewBodyUpdate', () => {
+      it('sends per-log-entry HTML to the child window', async () => {
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow, pushTextlogViewBodyUpdate, ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG } =
+          await import('../../src/adapter/ui/entry-window');
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+
+        const entry = makeEntry({ archetype: 'textlog', body: '{}' });
+        openEntryWindow(entry as never, false, vi.fn(), false);
+
+        const newBody = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const result = pushTextlogViewBodyUpdate(entry.lid, newBody);
+        expect(result).toBe(true);
+
+        const call = (childWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+          (c: unknown[]) => (c[0] as { type: string }).type === ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG,
+        );
+        expect(call).toBeDefined();
+        const payload = call![0] as { viewBody: string };
+        expect(payload.viewBody).toContain('data-pkc-log-id="lg1"');
+        expect(payload.viewBody).toContain('Done');
+      });
+
+      it('returns false when no child window is open for the lid', async () => {
+        const { pushTextlogViewBodyUpdate } = await import('../../src/adapter/ui/entry-window');
+        const result = pushTextlogViewBodyUpdate('nonexistent-lid', '{}');
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('regression — existing entry window features', () => {
+      it('pkc-entry-save still routes to onSave callback', async () => {
+        const onSave = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry();
+        openEntryWindow(
+          entry as never,
+          false,
+          onSave,
+          false,
+          undefined,
+          undefined,
+          vi.fn(), // onTaskToggle present
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-save', lid: entry.lid, title: 'New Title', body: 'New body' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onSave).toHaveBeenCalledWith(entry.lid, 'New Title', 'New body', expect.any(String));
+      });
+
+      it('pkc-entry-download-asset still routes to onDownloadAsset callback', async () => {
+        const onDownloadAsset = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry();
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          onDownloadAsset,
+          vi.fn(), // onTaskToggle present
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-download-asset', assetKey: 'ast-check' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onDownloadAsset).toHaveBeenCalledWith('ast-check');
+      });
+    });
+  });
 });
