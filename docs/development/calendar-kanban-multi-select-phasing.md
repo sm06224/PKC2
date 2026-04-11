@@ -1,7 +1,8 @@
 # Calendar/Kanban Multi-Select — Phase Split Design
 
-Status: CANDIDATE (design only — 実装未着手)
+Status: COMPLETED (Phase 1 + 2-A/B/C 完了。2-D/2-E は CANDIDATE)
 Created: 2026-04-11
+Completed: 2026-04-11
 
 ---
 

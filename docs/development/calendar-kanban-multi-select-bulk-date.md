@@ -1,6 +1,6 @@
 # Calendar/Kanban Multi-Select Phase 2-B: Bulk Date Change — Design
 
-Status: CANDIDATE (設計のみ — 実装未着手)
+Status: COMPLETED
 Created: 2026-04-11
 Parent: `calendar-kanban-multi-select-phasing.md`
 

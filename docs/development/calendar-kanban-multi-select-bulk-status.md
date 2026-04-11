@@ -1,6 +1,6 @@
 # Calendar/Kanban Multi-Select Phase 2-A: Bulk Status Change
 
-Status: IN PROGRESS
+Status: COMPLETED
 Created: 2026-04-11
 Parent: `calendar-kanban-multi-select-phasing.md`
 

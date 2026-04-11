@@ -40,7 +40,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 21 | `light-mode-badge-ui.md` | Light mode badge styling | |
 | 22 | `markdown-phase2.md` | Markdown rendering phase 2 | |
 | 23 | `mixed-container-export.md` | Mixed archetype export | |
-| 24 | `multi-select-design.md` | Multi-select design spec | Design doc only; impl is CANDIDATE |
+| 24 | `multi-select-design.md` | Multi-select design spec | Design doc; impl completed (#46) |
 | 25 | `non-image-asset-handling.md` | Non-image asset chip foundation | |
 | 26 | `pane-resize-selector-migration.md` | Pane resize selector migration | |
 | 27 | `release-builder-commit-stamp.md` | Commit hash in release build | |
@@ -67,23 +67,17 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | 2026-04-11 | TEXT/TEXTLOG の rendered markdown 内 `- [ ]`/`- [x]` を click で toggle。pure helper + QUICK_UPDATE_ENTRY。テスト 38 件。 |
 | 44 | `non-image-inline-preview.md` | Non-image inline preview (PDF/audio/video) | 2026-04-11 | TEXT/TEXTLOG body 内の非画像 asset chip を inline preview に展開。`populateInlineAssetPreviews()` + 既存 blob lifecycle 再利用。CSP fallback 対応。テスト 16 件。 |
 | 45 | `attachment-sandbox-phase5.md` | Container default sandbox policy | 2026-04-11 | `ContainerMeta.sandbox_policy` (strict/relaxed)。per-entry override 優先の fallback chain。meta pane に select UI。テスト 11 件。 |
+| 46 | `calendar-kanban-multi-select-phasing.md` | Calendar/Kanban multi-select (Phase 1 + 2-A/B/C) | 2026-04-11 | Phase 1: visual feedback。Phase 2-A: BULK_SET_STATUS。Phase 2-B: BULK_SET_DATE (set + clear)。Phase 2-C: multi-DnD (Kanban/Calendar/cross-view)。isMultiDrag 統合。テスト 56 件追加。残: 2-D (表示順), 2-E (Escape)。 |
 
-## CANDIDATE — Next Feature Top 1
+## CANDIDATE — Next Feature
 
-3 件の完了 (task lists, inline preview, sandbox phase 5) 後の残り候補。
+multi-select 中核実装完了 (Phase 1 + 2-A/B/C) 後の残り候補。
 
-### 暫定 1 位: Calendar/Kanban multi-select
-
-複数エントリを Ctrl/Shift+click で選択し、一括 status/date 変更する。
-
-| 観点 | 評価 |
-|------|------|
-| ユーザ価値 | 高 — 一括操作は全ユーザに恩恵 |
-| 実装コスト | 大 (3-4 週間) |
-| リスク | 高 — DnD/click handler 競合、state machine に `multiSelectedLids` 追加 |
-| 既存基盤 | `multi-select-design.md` 設計済み (CLOSED as design doc) |
-| Phase 分割設計 | `calendar-kanban-multi-select-phasing.md` — Phase 1 (visual feedback) / Phase 2 (bulk actions + DnD) |
-| 今すぐ着手する妥当性 | **中** — Phase 分割設計完了。Phase 1 は renderer 変更のみで低リスク |
+| # | 候補 | ユーザ価値 | コスト | リスク | 備考 |
+|---|------|----------|--------|--------|------|
+| 1 | Phase 2-E: Escape で CLEAR_MULTI_SELECT | 中 — 操作の取り消しが直感的 | 小 (reducer 1 行 + handler 数行) | 低 | 既存キーボード handler に追加 |
+| 2 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper が必要) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能のため緊急度低 |
+| 3 | drag ghost UX 改善 | 低 — 見た目のみ、機能に影響なし | 小 (setDragImage) | 低 | multi-action bar で件数確認可能 |
 
 ### 脱落候補と理由
 

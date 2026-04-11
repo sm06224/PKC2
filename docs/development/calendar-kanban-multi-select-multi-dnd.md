@@ -1,6 +1,6 @@
 # Calendar/Kanban Multi-Select — Phase 2-C: Multi-DnD Design
 
-Status: CANDIDATE (design only)
+Status: COMPLETED (C-1/C-2/C-3 全完了)
 Created: 2026-04-11
 
 ---
