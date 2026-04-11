@@ -3965,11 +3965,11 @@ describe('Todo Kanban Foundation', () => {
     meta: mockContainer.meta,
     entries: [
       { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"desc A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"desc A","date":"2099-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
       { lid: 't2', title: 'Task B', body: '{"status":"done","description":"desc B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
       { lid: 't3', title: 'Task C', body: '{"status":"open","description":"desc C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
       { lid: 't4', title: 'Archived Open', body: '{"status":"open","description":"archived","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
-      { lid: 't5', title: 'Archived Done', body: '{"status":"done","description":"archived done","date":"2026-04-10","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
+      { lid: 't5', title: 'Archived Done', body: '{"status":"done","description":"archived done","date":"2099-04-10","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
       { lid: 't6', title: 'Overdue Task', body: '{"status":"open","description":"overdue","date":"2025-01-01"}', archetype: 'todo', created_at: '2026-01-01T00:06:00Z', updated_at: '2026-01-01T00:06:00Z' },
     ],
     relations: [],
@@ -4113,7 +4113,7 @@ describe('Todo Kanban Foundation', () => {
   it('non-overdue todo card does NOT have overdue class', () => {
     render(kanbanState(), root);
     const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
-    // t1 has date 2026-04-10 and status open → not overdue (future date)
+    // t1 has date 2099-04-10 and status open → not overdue (far-future date)
     const t1Card = kanban.querySelector('.pkc-kanban-card[data-pkc-lid="t1"]');
     const dateEl = t1Card!.querySelector('.pkc-kanban-card-date');
     expect(dateEl).not.toBeNull();
