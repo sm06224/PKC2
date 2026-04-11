@@ -99,24 +99,26 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ### Keyboard Navigation — Not Implemented
 
-- Calendar/Kanban keyboard navigation
+- Calendar/Kanban keyboard navigation → **設計ドキュメント作成済み** (`calendar-kanban-keyboard-navigation.md`)
 - Shift+Arrow range selection
 
 ### Next Candidates
 
-| | Calendar/Kanban keyboard |
+| | Calendar/Kanban keyboard Phase 1 |
 |---|---|
 | ユーザ価値 | 高 — マウスなしで view 内操作 |
-| コスト | 中〜大 — 新 navigation model 設計 |
-| リスク | 中 — scope 拡大 |
-| 妥当性 | ○ — 設計ドキュメントを先に書くべき段階 |
+| コスト | 中 — 方式 C (viewMode 分岐) で adapter 内完結 |
+| リスク | 中 — Kanban 先行で scope 制御可能 |
+| 妥当性 | **◎** — 設計ドキュメント完了、実装可能 |
+
+設計方針: 方式 C (viewMode 分岐)、reducer 変更なし、Kanban → Calendar の順で実装。
+詳細: `calendar-kanban-keyboard-navigation.md`
 
 ### 保留候補
 
 | 候補 | 保留理由 |
 |------|---------|
 | Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能。設計負債だが実害小 |
-| Calendar/Kanban keyboard | 設計フェーズが先 |
 | Sidebar multi-DnD | structural relation の cycle detection 複雑化。BULK_MOVE で代替可能 |
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
 
