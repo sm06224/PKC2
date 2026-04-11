@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createDispatcher } from '@adapter/state/dispatcher';
+import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
@@ -38,12 +38,34 @@ const mockContainer: Container = {
 let root: HTMLElement;
 let cleanup: () => void;
 
+// --- Stale-listener prevention (see action-binder.test.ts for rationale) ---
+const _trackedUnsubs: (() => void)[] = [];
+
+function createDispatcher() {
+  const d = _createRawDispatcher();
+  return {
+    ...d,
+    onState(listener: Parameters<typeof d.onState>[0]) {
+      const unsub = d.onState(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+    onEvent(listener: Parameters<typeof d.onEvent>[0]) {
+      const unsub = d.onEvent(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+  };
+}
+
 beforeEach(() => {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
   return () => {
     cleanup?.();
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
     root.remove();
   };
 });

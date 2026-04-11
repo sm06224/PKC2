@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews, resolveContainerSandboxDefault } from '@adapter/ui/action-binder';
-import { createDispatcher } from '@adapter/state/dispatcher';
+import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
@@ -42,12 +42,37 @@ const mockContainer: Container = {
 let root: HTMLElement;
 let cleanup: () => void;
 
+// --- Stale-listener prevention infrastructure ---
+// Every dispatcher.onState / onEvent subscription is auto-tracked here.
+// The beforeEach teardown calls all accumulated unsubscribe functions,
+// ensuring no stale listener can render into a subsequent test's root.
+const _trackedUnsubs: (() => void)[] = [];
+
+function createDispatcher() {
+  const d = _createRawDispatcher();
+  return {
+    ...d,
+    onState(listener: Parameters<typeof d.onState>[0]) {
+      const unsub = d.onState(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+    onEvent(listener: Parameters<typeof d.onEvent>[0]) {
+      const unsub = d.onEvent(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+  };
+}
+
 beforeEach(() => {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
   return () => {
     cleanup?.();
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
     root.remove();
   };
 });
@@ -5148,5 +5173,79 @@ describe('Keyboard navigation: Arrow Up / Down (Phase 1)', () => {
 
     expect(dispatcher.getState().multiSelectedLids).toContain('n1');
     expect(dispatcher.getState().multiSelectedLids).toContain('n2');
+  });
+});
+
+// ─── Listener isolation (stale-listener prevention) ─────────────
+describe('Listener isolation', () => {
+  it('stale dispatcher does not render into subsequent test root', () => {
+    // Simulate cross-test contamination scenario:
+    // 1. Create dispatcherA with a render listener on the shared root
+    const containerA: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'stale1', title: 'Stale', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    const dispatcherA = createDispatcher();
+    dispatcherA.onState((state) => render(state, root));
+    dispatcherA.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerA });
+    render(dispatcherA.getState(), root);
+
+    // Verify stale1 is rendered
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).not.toBeNull();
+
+    // 2. Manually unsubscribe all tracked listeners (simulates beforeEach teardown)
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
+
+    // 3. Now set up a "new test" scenario with dispatcherB and different entries
+    const containerB: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'fresh1', title: 'Fresh', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    const dispatcherB = createDispatcher();
+    dispatcherB.onState((state) => render(state, root));
+    dispatcherB.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerB });
+    render(dispatcherB.getState(), root);
+
+    expect(root.querySelector('[data-pkc-lid="fresh1"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).toBeNull();
+
+    // 4. Fire dispatcherA — its listener should be unsubscribed, so root stays clean
+    dispatcherA.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Ghost' });
+
+    // Root must still show only fresh1 — no contamination from dispatcherA
+    expect(root.querySelector('[data-pkc-lid="fresh1"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).toBeNull();
+    const allLids = Array.from(root.querySelectorAll('[data-pkc-lid]')).map((el) => el.getAttribute('data-pkc-lid'));
+    expect(allLids).toEqual(['fresh1']);
+  });
+
+  it('_trackedUnsubs accumulates and drains correctly', () => {
+    const d = createDispatcher();
+
+    // Each onState/onEvent call should add to _trackedUnsubs
+    const before = _trackedUnsubs.length;
+    d.onState(() => {});
+    d.onEvent(() => {});
+    expect(_trackedUnsubs.length).toBe(before + 2);
+
+    // Drain
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
+
+    // Verify listeners are actually removed: dispatch should not notify
+    let called = false;
+    d.onState(() => { called = true; });
+    // Drain the one we just added
+    const unsub = _trackedUnsubs.pop()!;
+    unsub();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(called).toBe(false);
   });
 });
