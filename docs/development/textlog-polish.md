@@ -88,10 +88,10 @@ no promotion, no filtering — just stronger visibility on the row itself.
 The "No log entries yet." copy is split into a title and a hint:
 
 - Title: `No log entries yet.`
-- Hint: `Write your first log entry below ↓`
+- Hint: `Write your first log entry above ↑`
 
-The hint explicitly points at the append area, which is always rendered
-below (even when empty), so the first-run experience nudges the user
+The hint explicitly points at the append area, which is pinned to the
+top of the center pane, so the first-run experience nudges the user
 toward the right control without auto-focus stealing behaviour.
 
 ## 4. Markdown / asset compatibility
