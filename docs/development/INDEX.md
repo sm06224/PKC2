@@ -77,18 +77,44 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ## CANDIDATE — Next Feature
 
-multi-select 系は Phase 2-D を除き実質完成。2-D は Ctrl+click で代替可能なため緊急度低。新規機能ラインへの移行も妥当。
+### Keyboard Navigation 完了状況
+
+sidebar keyboard navigation は Phase 1–4 で基本操作が揃った。
+
+| Phase | Key | Action | Status | Tests |
+|-------|-----|--------|--------|-------|
+| 1 | Arrow Up/Down | sidebar 移動 | COMPLETED | 15 |
+| 2 | Enter | 編集開始 | COMPLETED | 12 |
+| 3 | Arrow Left/Right | tree 展開/折りたたみ | COMPLETED | 18 |
+| 4 | Arrow Left (collapsed) | 親フォルダへ移動 | COMPLETED | 15 |
+
+handleKeydown cascade: Escape → Arrow Up/Down → Arrow Left/Right → Enter → Ctrl+N
+
+### 未対応（sidebar keyboard）
+
+| 項目 | 理由 |
+|------|------|
+| Arrow Right で子の先頭を選択 | 次候補 |
+| non-folder の Arrow Left で parent 移動 | 次候補 |
+| Shift+Arrow range select | Phase 2-D 設計議論が先に必要 |
+
+### 次候補
 
 | # | 候補 | ユーザ価値 | コスト | リスク | 備考 |
 |---|------|----------|--------|--------|------|
-| 1 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper + reducer 拡張) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能。設計負債だが実害は小さい |
+| 1 | Arrow Right で子の先頭を選択 | 高 — tree navigation の自然な対称性。Right で入って Left で戻る完成形 | 小 (buildTree children[0] 取得) | 低 — sidebar 限定 | Phase 4 の対称で最も自然 |
+| 2 | non-folder の Arrow Left で parent 移動 | 中 — folder 以外からも親に戻れる | 小 (getStructuralParent 再利用) | 低 — archetype guard 緩和のみ | folder 限定を解除する拡張 |
 
-### 脱落候補と理由
+**推奨**: #1 Arrow Right 子選択 → #2 non-folder parent → keyboard line 完了
 
-| 候補 | 脱落理由 |
+### 保留候補
+
+| 候補 | 保留理由 |
 |------|---------|
-| Sidebar multi-DnD | structural relation の cycle detection 複雑化。action bar の BULK_MOVE で代替可能 |
-| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と構造的に衝突。着手前に設計変更議論が必要。コスト/リスクが見合わない |
+| Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能。設計負債だが実害小 |
+| Calendar/Kanban keyboard | sidebar 完成後に着手が安全。scope が大きい |
+| Sidebar multi-DnD | structural relation の cycle detection 複雑化。BULK_MOVE で代替可能 |
+| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
 
 ## Close Audit Summary
 
