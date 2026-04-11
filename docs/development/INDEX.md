@@ -72,15 +72,16 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ### 暫定 1 位: Non-image inline preview
 
-PDF / audio / video を attachment chip 内でインラインプレビューする。
+PDF / audio / video の asset chip を inline player / viewer に展開する。
+**仕様確定済み**: `non-image-inline-preview.md` (rendering policy, security, blob lifecycle)
 
 | 観点 | 評価 |
 |------|------|
 | ユーザ価値 | 中 — 非画像 asset を持つユーザに直接恩恵 |
 | 実装コスト | 中 (4-6 日) |
-| リスク | 中 — blob URL lifecycle 管理、CSP 制約 |
-| 既存基盤 | `attachment-preview-strategy.md` (phases 1-3) 完了済み、`populatePreviewElement()` 再利用可 |
-| 今すぐ着手する妥当性 | **高** — 基盤が揃っており、独立性が高い。他機能への波及なし |
+| リスク | 中 — blob URL lifecycle 管理。CSP は問題なし (確認済み) |
+| 既存基盤 | `attachment-preview-strategy.md` 完了済み、`createBlobUrl()` / `cleanupBlobUrls()` 再利用 |
+| 今すぐ着手する妥当性 | **高** — 仕様確定済み。基盤が揃っており独立性が高い |
 
 ### 暫定 2 位: Calendar/Kanban multi-select
 
