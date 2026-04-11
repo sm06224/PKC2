@@ -2186,7 +2186,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (hasMarkdownSyntax(resolved)) {
       preview.innerHTML = renderMarkdown(resolved);
     } else {
-      preview.textContent = src;
+      preview.innerHTML = '';
+      const pre = document.createElement('pre');
+      pre.className = 'pkc-view-body';
+      pre.textContent = src;
+      preview.appendChild(pre);
     }
   }
 

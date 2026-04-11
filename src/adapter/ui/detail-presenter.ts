@@ -104,7 +104,10 @@ const textPresenter: DetailPresenter = {
     if (initialSource && hasMarkdownSyntax(initialSource)) {
       preview.innerHTML = renderMarkdown(initialSource);
     } else if (initialSource) {
-      preview.textContent = initialSource;
+      const pre = document.createElement('pre');
+      pre.className = 'pkc-view-body';
+      pre.textContent = initialSource;
+      preview.appendChild(pre);
     } else {
       preview.textContent = '(preview)';
     }
