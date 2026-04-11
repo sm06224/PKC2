@@ -78,52 +78,46 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ## CANDIDATE — Next Feature
 
-### Sidebar Keyboard Navigation — 完了サマリ
+### Keyboard Navigation — Completion Snapshot
 
-Phase 1–5 で **sidebar tree keyboard navigation の基本操作が完成**。
-folder 中心の tree 操作（展開・折りたたみ・親移動・子選択）は Left/Right の対称性を持ち、
-sidebar 限定のまま reducer / renderer を汚さずに積み上げた。テスト合計 76 件。
+| Phase | Key | Action | Status |
+|-------|-----|--------|--------|
+| 1 | Arrow Up/Down | sidebar navigation | COMPLETED |
+| 2 | Enter | begin edit | COMPLETED |
+| 3 | Arrow Left/Right | collapse/expand | COMPLETED |
+| 4 | Arrow Left (collapsed) | move to parent | COMPLETED |
+| 5 | Arrow Right (expanded) | select first child | COMPLETED |
 
-| Phase | Key | Action | Status | Tests |
-|-------|-----|--------|--------|-------|
-| 1 | Arrow Up/Down | sidebar 移動 | COMPLETED | 15 |
-| 2 | Enter | 編集開始 | COMPLETED | 12 |
-| 3 | Arrow Left/Right | tree 展開/折りたたみ | COMPLETED | 18 |
-| 4 | Arrow Left (collapsed) | 親フォルダへ移動 | COMPLETED | 15 |
-| 5 | Arrow Right (expanded) | 最初の子を選択 | COMPLETED | 16 |
+**Summary**:
+- Sidebar tree navigation is now **Left/Right symmetric**
+- Navigation + Edit の基本操作はすべて keyboard で完結可能
+- folder 中心の tree 操作を sidebar 限定で積み上げ、reducer / renderer 変更なし
+- テスト合計 76 件
 
-handleKeydown cascade: Escape → Arrow Up/Down → Arrow Left/Right → Enter → Ctrl+N
+### Keyboard Navigation — Not Implemented
 
-Left/Right 対称性:
+- Arrow Left on non-folder → parent move
+- Calendar/Kanban keyboard navigation
+- Shift+Arrow range selection
 
-```
-Right (collapsed) → expand → Right (expanded) → 子へ入る
-Left  (expanded)  → collapse → Left (collapsed) → 親に戻る
-```
+### Next Candidates
 
-### 未対応（sidebar keyboard）
+| | non-folder Left parent | Calendar/Kanban keyboard |
+|---|---|---|
+| ユーザ価値 | 中 | 高 |
+| コスト | 小 | 中〜大 |
+| リスク | 低 | 中 |
+| 妥当性 | **◎** | ○ |
 
-| 項目 | 理由 |
-|------|------|
-| non-folder の Arrow Left で parent 移動 | 次候補 — archetype guard 緩和のみ |
-| Shift+Arrow range select | Phase 2-D 設計議論が先に必要 |
-
-### 次候補比較
-
-| # | 候補 | ユーザ価値 | コスト | リスク | 今やる妥当性 |
-|---|------|----------|--------|--------|------------|
-| 1 | non-folder の Arrow Left parent move | 中 — folder 以外からも親に戻れる。tree UX の自然な拡張 | 小 — `getStructuralParent` 再利用、archetype guard 1 行緩和 | 低 — sidebar 限定、既存テストパターン流用 | **高** — 最小コストで keyboard line を一歩完成に近づける |
-| 2 | Calendar/Kanban keyboard navigation | 高 — マウスなしで view 内操作可能に | 大 — 新しい navigation model、focus management、view-specific handler 設計が必要 | 中 — scope 拡大リスク | 低 — sidebar 完成確認後に着手が安全。設計フェーズが先 |
-
-**推奨**: #1 non-folder parent move。コスト最小で sidebar keyboard line の残タスクを消化。
-#2 は設計ドキュメントを先に書くべき段階。
+**推奨**: non-folder Left parent move。`getStructuralParent` 再利用、archetype guard 緩和のみ。
+Calendar/Kanban keyboard は設計ドキュメントを先に書くべき段階。
 
 ### 保留候補
 
 | 候補 | 保留理由 |
 |------|---------|
 | Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能。設計負債だが実害小 |
-| Calendar/Kanban keyboard | 上記 #2。設計フェーズが先 |
+| Calendar/Kanban keyboard | 設計フェーズが先 |
 | Sidebar multi-DnD | structural relation の cycle detection 複雑化。BULK_MOVE で代替可能 |
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
 
