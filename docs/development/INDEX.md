@@ -67,7 +67,9 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | 2026-04-11 | TEXT/TEXTLOG の rendered markdown 内 `- [ ]`/`- [x]` を click で toggle。pure helper + QUICK_UPDATE_ENTRY。テスト 38 件。 |
 | 44 | `non-image-inline-preview.md` | Non-image inline preview (PDF/audio/video) | 2026-04-11 | TEXT/TEXTLOG body 内の非画像 asset chip を inline preview に展開。`populateInlineAssetPreviews()` + 既存 blob lifecycle 再利用。CSP fallback 対応。テスト 16 件。 |
 
-## CANDIDATE — Next Feature Top 1
+## CANDIDATE — Next Feature Top 2
+
+Interactive task lists + Non-image inline preview 完了後の残り候補。
 
 ### 暫定 1 位: Calendar/Kanban multi-select
 
@@ -81,12 +83,23 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 既存基盤 | `multi-select-design.md` 設計済み (CLOSED as design doc) |
 | 今すぐ着手する妥当性 | **中** — 設計は完了しているが、規模が大きく段階分割が必要 |
 
+### 暫定 2 位: Sandbox Phase 5 (container default policy)
+
+container レベルでデフォルト sandbox policy を設定する。
+
+| 観点 | 評価 |
+|------|------|
+| ユーザ価値 | 低 — HTML attachment を頻繁に使うユーザに限定 |
+| 実装コスト | 小 (1-2 日) |
+| リスク | 低 — 既存 sandbox 基盤上の設定追加 |
+| 既存基盤 | attachment sandbox (Phase 1-4) 完了済み |
+| 今すぐ着手する妥当性 | **低** — ユーザ価値が限定的。multi-select の後に検討 |
+
 ### 脱落候補と理由
 
 | 候補 | 脱落理由 |
 |------|---------|
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と構造的に衝突。着手前に設計変更議論が必要。コスト/リスクが見合わない |
-| Sandbox Phase 5 (container default policy) | ユーザ価値が限定的。規模は小さいが優先度が低い |
 
 ## Close Audit Summary
 
