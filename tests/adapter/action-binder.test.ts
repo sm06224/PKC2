@@ -4188,3 +4188,321 @@ describe('Calendar Multi-DnD (Phase 2-C2)', () => {
     expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
   });
 });
+
+// ── Calendar/Kanban Multi-Select Phase 2-C3: Cross-view Multi-DnD ──
+
+describe('Cross-view Multi-DnD (Phase 2-C3)', () => {
+  const crossContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeCrossEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Kanban → Calendar multi-drag ──
+
+  it('Kanban→Calendar multi-drag: all selected entries get new date', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Start in Kanban view, multi-select t1 and t2
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t1 from Kanban
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    // Switch to Calendar view (simulating drag-over-tab)
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    // Drop on Calendar cell 2026-04-25
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-25');
+  });
+
+  it('Calendar→Kanban multi-drag: all selected entries get new status', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Start in Calendar view, multi-select t1 and t2
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t1 from Calendar
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    // Switch to Kanban view
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    // Drop on Kanban "done" column
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('cross-view multi-drag clears multiSelectedLids after drop', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('cross-view multi-drag sets selectedLid to the dragged entry', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t2 (not anchor, but in selection)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t2"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag cross-view regression ──
+
+  it('cross-view single-drag: non-selected entry uses QUICK_UPDATE_ENTRY', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t3 (NOT in selection — single drag)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    // Only t3 changes
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1 unchanged
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  it('cross-view single-drag: only one selected is still single-drag', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    // Only t1 selected (no multi)
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    // t1 changes, t2 does not
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Cleanup ──
+
+  it('dragEnd after cross-view switch resets multi-drag state', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    // Cancel: dragend on Kanban (drag origin)
+    card.dispatchEvent(makeCrossEvent('dragend', card));
+
+    // Now do a subsequent single-drag — should NOT be multi-drag
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeCrossEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeCrossEvent('drop', openTarget));
+
+    // Only t3 changes
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+  });
+
+  it('subsequent single-drag after cross-view multi-drop works correctly', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Multi-drag: Kanban → Calendar
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card1 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card1.dispatchEvent(makeCrossEvent('dragstart', card1));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const cell25 = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    cell25.dispatchEvent(makeCrossEvent('drop', cell25));
+
+    // Now single-drag t3 within Calendar
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCrossEvent('dragstart', item3));
+
+    const cell01 = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    cell01.dispatchEvent(makeCrossEvent('drop', cell01));
+
+    // t3 changes, t1/t2 stay at 2026-04-25
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-25');
+  });
+
+  // ── Regression: C-1 / C-2 ──
+
+  it('regression: C-1 Kanban in-view multi-DnD still works', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: C-2 Calendar in-view multi-DnD still works', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('regression: Phase 2-A/2-B action bar bulk actions still work', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+  });
+});

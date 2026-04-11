@@ -1233,7 +1233,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── DnD: kanban board ──
 
   let kanbanDraggedLid: string | null = null;
-  let isKanbanMultiDrag = false;
+  let isMultiDrag = false;
 
   function handleKanbanDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
@@ -1244,7 +1244,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     kanbanDraggedLid = lid;
     const state = dispatcher.getState();
     const selected = getAllSelected(state);
-    isKanbanMultiDrag = selected.length > 1 && selected.includes(lid);
+    isMultiDrag = selected.length > 1 && selected.includes(lid);
 
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -1284,7 +1284,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
     if (!targetStatus) return;
 
-    if (isKanbanMultiDrag && kanbanDraggedLid) {
+    if (isMultiDrag) {
       // Multi-drag: apply status change to all selected entries
       dispatcher.dispatch({
         type: 'BULK_SET_STATUS',
@@ -1309,7 +1309,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
-    isKanbanMultiDrag = false;
+    isMultiDrag = false;
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1322,13 +1322,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     kanbanDraggedLid = null;
-    isKanbanMultiDrag = false;
+    isMultiDrag = false;
   }
 
   // ── DnD: calendar date move ──
 
   let calendarDraggedLid: string | null = null;
-  let isCalendarMultiDrag = false;
 
   function handleCalendarDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
@@ -1339,7 +1338,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     calendarDraggedLid = lid;
     const state = dispatcher.getState();
     const selected = getAllSelected(state);
-    isCalendarMultiDrag = selected.length > 1 && selected.includes(lid);
+    isMultiDrag = selected.length > 1 && selected.includes(lid);
 
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -1379,7 +1378,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetDate = dropTarget.getAttribute('data-pkc-date');
     if (!targetDate) return;
 
-    if (isCalendarMultiDrag && calendarDraggedLid) {
+    if (isMultiDrag) {
       // Multi-drag: apply date change to all selected entries
       dispatcher.dispatch({
         type: 'BULK_SET_DATE',
@@ -1404,7 +1403,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     calendarDraggedLid = null;
     kanbanDraggedLid = null;
-    isCalendarMultiDrag = false;
+    isMultiDrag = false;
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1417,7 +1416,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     calendarDraggedLid = null;
-    isCalendarMultiDrag = false;
+    isMultiDrag = false;
   }
 
   // ── DnD: cleanup helper ──
@@ -1429,6 +1428,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     draggedLid = null;
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
+    isMultiDrag = false;
     if (viewSwitchTimer) {
       clearTimeout(viewSwitchTimer);
       viewSwitchTimer = null;
