@@ -3166,3 +3166,123 @@ describe('Container sandbox policy — reducer + UI', () => {
     expect(select!.value).toBe('strict');
   });
 });
+
+// ── Calendar/Kanban Multi-Select Phase 1: Click Routing ──
+
+describe('Calendar/Kanban Multi-Select — Ctrl+click / Shift+click', () => {
+  const todoContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupTodo(viewMode: 'calendar' | 'kanban') {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: todoContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  it('Calendar: Ctrl+click dispatches TOGGLE_MULTI_SELECT', () => {
+    const { dispatcher } = setupTodo('calendar');
+    // First select t1 normally
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t2Item = cal.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Item).not.toBeNull();
+    t2Item!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+  });
+
+  it('Kanban: Ctrl+click dispatches TOGGLE_MULTI_SELECT', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t3Card = kanban.querySelector('[data-pkc-lid="t3"]');
+    expect(t3Card).not.toBeNull();
+    t3Card!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t3');
+  });
+
+  it('Calendar: Shift+click dispatches SELECT_RANGE (storage order — Phase 2 will optimize)', () => {
+    const { dispatcher } = setupTodo('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t3Item = cal.querySelector('[data-pkc-lid="t3"]');
+    expect(t3Item).not.toBeNull();
+    t3Item!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    const state = dispatcher.getState();
+    // Range is storage-order based: t1, t2, t3 are indices 0-2
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+    expect(state.multiSelectedLids).toContain('t3');
+  });
+
+  it('Kanban: Shift+click dispatches SELECT_RANGE safely', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Card).not.toBeNull();
+    t2Card!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+  });
+
+  it('Calendar: normal click clears multiSelectedLids', () => {
+    const { dispatcher } = setupTodo('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    // Ctrl+click to build multi-select
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t3Item = cal.querySelector('[data-pkc-lid="t3"]');
+    t3Item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('Kanban: normal click clears multiSelectedLids', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    t2Card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+});

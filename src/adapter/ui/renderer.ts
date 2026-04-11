@@ -1303,6 +1303,9 @@ function renderCalendarView(state: AppState): HTMLElement {
           if (state.selectedLid === t.entry.lid) {
             item.setAttribute('data-pkc-selected', 'true');
           }
+          if (state.multiSelectedLids.includes(t.entry.lid)) {
+            item.setAttribute('data-pkc-multi-selected', 'true');
+          }
           if (isTodoPastDue(t.todo)) {
             item.setAttribute('data-pkc-todo-overdue', 'true');
           }
@@ -1378,6 +1381,9 @@ function renderKanbanView(state: AppState): HTMLElement {
       }
       if (state.selectedLid === item.entry.lid) {
         card.setAttribute('data-pkc-selected', 'true');
+      }
+      if (state.multiSelectedLids.includes(item.entry.lid)) {
+        card.setAttribute('data-pkc-multi-selected', 'true');
       }
       // DnD: make card draggable in non-readonly mode
       if (!state.readonly) {
