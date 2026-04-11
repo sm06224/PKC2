@@ -5249,3 +5249,194 @@ describe('Listener isolation', () => {
     expect(called).toBe(false);
   });
 });
+
+// ─── Keyboard Navigation Phase 2: Enter ─────────────────────────
+describe('Keyboard navigation: Enter (Phase 2)', () => {
+  const enterContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'k1', title: 'Alpha', body: 'a', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'k2', title: 'Beta', body: 'b', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressEnter(opts?: KeyboardEventInit) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...opts }));
+  }
+
+  function setupEnter() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: enterContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  it('Enter opens edit mode for selected entry', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter();
+
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter does nothing when no selection', () => {
+    const { dispatcher } = setupEnter();
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressEnter();
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+  });
+
+  it('Enter blocked during editing phase', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'k1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    pressEnter();
+
+    // Still editing k1 — Enter did not dispatch a second BEGIN_EDIT
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter blocked when textarea is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    ta.remove();
+  });
+
+  it('Enter blocked when input is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    input.remove();
+  });
+
+  it('Enter blocked when select is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const sel = document.createElement('select');
+    root.appendChild(sel);
+    sel.focus();
+    sel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    sel.remove();
+  });
+
+  it('Enter blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ ctrlKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Enter blocked with Shift modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ shiftKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Enter blocked with Alt modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ altKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  // ── Regression ──
+
+  it('regression: Escape then Enter round-trip', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    // Enter → editing
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Escape → back to ready
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().selectedLid).toBe('k1');
+
+    // Enter again → editing again
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('regression: Arrow then Enter selects and edits', () => {
+    const { dispatcher } = setupEnter();
+    // Start with no selection
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    // Arrow Down → selects first entry
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(dispatcher.getState().selectedLid).toBe('k1');
+
+    // Enter → edit that entry
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter is blocked in readonly mode (reducer guard)', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: enterContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter();
+
+    // BEGIN_EDIT is blocked by reducer in readonly mode
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+  });
+});
