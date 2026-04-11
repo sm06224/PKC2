@@ -1,5 +1,6 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
+import type { BatchImportResultSummary } from './system-command';
 
 /**
  * DomainEvent: immutable facts about what happened.
@@ -31,6 +32,7 @@ export type DomainEvent =
   | { type: 'BATCH_IMPORT_PREVIEWED'; source: string; totalEntries: number }
   | { type: 'BATCH_IMPORT_CONFIRMED' }
   | { type: 'BATCH_IMPORT_CANCELLED' }
+  | { type: 'BATCH_IMPORT_APPLIED'; summary: BatchImportResultSummary }
   | { type: 'RECORD_OFFERED'; offer_id: string; title: string }
   | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string }
   | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null }

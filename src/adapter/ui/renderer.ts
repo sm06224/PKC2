@@ -2,7 +2,7 @@ import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import type { PendingOffer } from '../transport/record-offer-handler';
-import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
@@ -144,6 +144,11 @@ function renderShell(state: AppState): HTMLElement {
   // Batch import preview panel
   if (state.batchImportPreview) {
     shell.appendChild(renderBatchImportPreview(state.batchImportPreview, state.container));
+  }
+
+  // Batch import result banner (transient)
+  if (state.batchImportResult && !state.batchImportPreview) {
+    shell.appendChild(renderBatchImportResult(state.batchImportResult));
   }
 
   // Pending offers bar
@@ -2268,6 +2273,55 @@ function renderBatchImportPreview(info: BatchImportPreviewInfo, container: Conta
 
   panel.appendChild(actions);
   return panel;
+}
+
+function renderBatchImportResult(summary: BatchImportResultSummary): HTMLElement {
+  const banner = createElement('div', 'pkc-import-result');
+  banner.setAttribute('data-pkc-region', 'batch-import-result');
+
+  const parts: string[] = [];
+
+  // Entry count + attachments
+  let countText = `${summary.entryCount} entries`;
+  if (summary.attachmentCount > 0) {
+    countText += ` (${summary.attachmentCount} attachments)`;
+  }
+  parts.push(countText + ' imported');
+
+  // Destination
+  if (summary.actualDestination === '/ (Root)') {
+    parts.push('to / (Root)');
+  } else {
+    parts.push(`to \u{1F4C1} ${summary.actualDestination}`);
+  }
+
+  // Restore / flat — always explicit
+  if (summary.restoreStructure && summary.folderCount > 0) {
+    parts.push(`\u2014 folder structure restored (${summary.folderCount} folders)`);
+  } else {
+    parts.push('\u2014 flat import');
+  }
+
+  // Fallback warning with intended destination
+  if (summary.fallbackToRoot) {
+    if (summary.intendedDestination) {
+      parts.push(`\u2014 selected destination \u{1F4C1} ${summary.intendedDestination} was unavailable`);
+    } else {
+      parts.push('\u2014 selected destination was unavailable');
+    }
+  }
+
+  const message = createElement('span', 'pkc-import-result-message');
+  message.setAttribute('data-pkc-role', 'import-result-message');
+  message.textContent = parts.join(' ');
+  banner.appendChild(message);
+
+  const dismissBtn = createElement('button', 'pkc-btn-small');
+  dismissBtn.setAttribute('data-pkc-action', 'dismiss-batch-import-result');
+  dismissBtn.textContent = '\u00D7';
+  banner.appendChild(dismissBtn);
+
+  return banner;
 }
 
 function renderPendingOffers(offers: PendingOffer[]): HTMLElement {

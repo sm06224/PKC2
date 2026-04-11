@@ -14,13 +14,17 @@ container-wide export / folder-scoped export で作成された batch bundle を
 
 ## 2. import 対象 format
 
-以下の 3 つの batch format を受け付ける:
+以下の 4 つの batch format を受け付ける:
 
 | format | 生成元 |
 |---|---|
 | `pkc2-textlogs-container-bundle` | container-wide TEXTLOG export |
 | `pkc2-texts-container-bundle` | container-wide TEXT export |
 | `pkc2-folder-export-bundle` | folder-scoped export |
+| `pkc2-mixed-container-bundle` | mixed container export (TEXT + TEXTLOG) |
+
+> **Note**: 4th format (`pkc2-mixed-container-bundle`) は
+> `mixed-container-export.md` で追加された。
 
 ### version guard
 
@@ -63,13 +67,25 @@ container-wide export / folder-scoped export で作成された batch bundle を
 
 ## 5. import 順序
 
-1. outer ZIP をパース
-2. manifest.json を読んで format / version を検証
-3. manifest.entries を巡回し、各 nested bundle をパース
-4. **全件パース成功を確認してから** dispatch 材料を返す
-5. caller (main.ts) が dispatch:
-   - 各 bundle の attachments → CREATE_ENTRY + COMMIT_EDIT
-   - 各 bundle の本体 → CREATE_ENTRY + COMMIT_EDIT
+> **Superseded**: 本 doc の初版では caller (main.ts) が N+1 回の dispatch を
+> 行う方式を記述していた。`batch-import-transaction-hardening.md` により、
+> 現行実装では `buildBatchImportPlan()` (pure planner) →
+> `SYS_APPLY_BATCH_IMPORT` (単一 reducer action) による atomic apply に移行済み。
+> 以下は歴史的参考として残す。
+
+~~1. outer ZIP をパース~~
+~~2. manifest.json を読んで format / version を検証~~
+~~3. manifest.entries を巡回し、各 nested bundle をパース~~
+~~4. **全件パース成功を確認してから** dispatch 材料を返す~~
+~~5. caller (main.ts) が dispatch:~~
+   ~~- 各 bundle の attachments → CREATE_ENTRY + COMMIT_EDIT~~
+   ~~- 各 bundle の本体 → CREATE_ENTRY + COMMIT_EDIT~~
+
+**現行実装**:
+1. outer ZIP をパース、manifest 検証
+2. `previewBatchBundleFromBuffer()` で preview 情報抽出 → UI に preview 表示
+3. ユーザ確認後、`buildBatchImportPlan()` で pure plan 作成
+4. `SYS_APPLY_BATCH_IMPORT` で plan を単一 reducer action として atomic apply
 
 ---
 
@@ -153,24 +169,31 @@ interface BatchImportFailure {
 type BatchImportResult = BatchImportSuccess | BatchImportFailure;
 ```
 
-caller は `entries` を順番に dispatch するだけ。
+~~caller は `entries` を順番に dispatch するだけ。~~
+
+> **Superseded**: 現行では `SYS_APPLY_BATCH_IMPORT` による atomic apply。
+> 上記 return type は parse 段階の中間表現として残存しているが、
+> 最終的な dispatch は `BatchImportPlan` 型 (`system-command.ts`) に変換される。
 
 ---
 
-## 13. intentionally やらなかったこと
+## 13. intentionally やらなかったこと (当時)
+
+> **Note**: 以下は本 doc 初版時点の「やらなかったこと」リスト。
+> その後の開発で多くが実装済みとなった。
 
 - 既存 entry への merge / overwrite
-- import preview UI
-- folder 構造（ネスト）の再現
-- folder-scoped import（別 Issue）
+- ~~import preview UI~~ → **実装済み** (`import-preview-ui.md`)
+- ~~folder 構造（ネスト）の再現~~ → **実装済み** (`folder-structure-restore.md`)
+- ~~folder-scoped import（別 Issue）~~ → **実装済み** (`folder-scoped-import.md`)
 - partial success（一部成功・一部失敗）
 - bundle ごとの skip / retry
 - multi-tab coordination
 
 ---
 
-## 14. 次候補
+## 14. 次候補 (当時) → 実装済み状況
 
-- folder-scoped import
-- import preview UI（batch の中身を表示してから commit）
-- mixed archetype batch import（attachment / todo 等を含む）
+- ~~folder-scoped import~~ → **実装済み**
+- ~~import preview UI~~ → **実装済み**
+- ~~mixed archetype batch import~~ → **実装済み** (`mixed-container-export.md`)

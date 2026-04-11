@@ -160,7 +160,8 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown('- [ ] todo item');
     expect(html).toContain('class="pkc-task-item"');
     expect(html).toContain('type="checkbox"');
-    expect(html).toContain('disabled');
+    expect(html).toContain('data-pkc-task-index="0"');
+    expect(html).not.toContain('disabled');
     expect(html).not.toContain('checked>');
     expect(html).toContain('todo item');
   });
@@ -196,6 +197,25 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown('- [ ] buy milk');
     expect(html).not.toContain('[ ] buy milk');
     expect(html).toContain('buy milk');
+  });
+
+  it('assigns sequential data-pkc-task-index to multiple tasks', () => {
+    const md = '- [ ] first\n- [x] second\n- [ ] third';
+    const html = renderMarkdown(md);
+    expect(html).toContain('data-pkc-task-index="0"');
+    expect(html).toContain('data-pkc-task-index="1"');
+    expect(html).toContain('data-pkc-task-index="2"');
+  });
+
+  it('resets task index counter per renderMarkdown call', () => {
+    // First call produces index 0,1
+    const html1 = renderMarkdown('- [ ] a\n- [ ] b');
+    expect(html1).toContain('data-pkc-task-index="0"');
+    expect(html1).toContain('data-pkc-task-index="1"');
+    // Second call also starts from 0
+    const html2 = renderMarkdown('- [ ] c');
+    expect(html2).toContain('data-pkc-task-index="0"');
+    expect(html2).not.toContain('data-pkc-task-index="1"');
   });
 
   // ── Phase 2: link safety ──

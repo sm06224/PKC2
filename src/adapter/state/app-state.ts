@@ -3,7 +3,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
-import type { ImportPreviewRef, BatchImportPreviewInfo } from '../../core/action/system-command';
+import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { classifyFolderRestore } from '../../features/batch-import/import-planner';
@@ -53,6 +53,8 @@ export interface AppState {
   importPreview: ImportPreviewRef | null;
   /** Batch import preview awaiting user confirmation (runtime-only). */
   batchImportPreview: BatchImportPreviewInfo | null;
+  /** Batch import result summary for UI feedback (runtime-only, transient). */
+  batchImportResult: BatchImportResultSummary | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
   /** Current archetype filter (runtime-only, feature layer). null = show all. */
@@ -108,6 +110,7 @@ export function createInitialState(): AppState {
     pendingOffers: [],
     importPreview: null,
     batchImportPreview: null,
+    batchImportResult: null,
     searchQuery: '',
     archetypeFilter: null,
     tagFilter: null,
@@ -431,7 +434,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'SYS_BATCH_IMPORT_PREVIEW': {
-      const next: AppState = { ...state, batchImportPreview: action.preview };
+      const next: AppState = { ...state, batchImportPreview: action.preview, batchImportResult: null };
       return {
         state: next,
         events: [{
@@ -572,8 +575,39 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         }
       }
 
-      const next: AppState = { ...state, container };
+      // Compute result summary for UI feedback
+      const totalAttachments = plan.entries.reduce((sum, e) => sum + e.attachments.length, 0);
+      const fallbackToRoot = targetLid !== null && !targetExists;
+      const targetEntry = targetExists
+        ? container.entries.find((e) => e.lid === targetLid)
+        : null;
+      const actualDestination = targetExists && targetEntry
+        ? targetEntry.title || '(untitled)'
+        : '/ (Root)';
+      // When fallback occurred, look up the intended folder title from original container
+      let intendedDestination: string | null = null;
+      if (fallbackToRoot && targetLid !== null) {
+        const intendedEntry = state.container!.entries.find((e) => e.lid === targetLid);
+        intendedDestination = intendedEntry ? intendedEntry.title || '(untitled)' : null;
+      }
+      const summary: BatchImportResultSummary = {
+        entryCount: plan.entries.length,
+        attachmentCount: totalAttachments,
+        folderCount: plan.folders.length,
+        restoreStructure: plan.restoreStructure,
+        actualDestination,
+        intendedDestination,
+        fallbackToRoot,
+        source: plan.source,
+      };
+      events.push({ type: 'BATCH_IMPORT_APPLIED', summary });
+
+      const next: AppState = { ...state, container, batchImportResult: summary };
       return { state: next, events };
+    }
+    case 'DISMISS_BATCH_IMPORT_RESULT': {
+      const next: AppState = { ...state, batchImportResult: null };
+      return { state: next, events: [] };
     }
     case 'SET_SEARCH_QUERY': {
       const next: AppState = { ...state, searchQuery: action.query };

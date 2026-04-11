@@ -1,5 +1,31 @@
 # Edit-mode Preview Asset Resolution
 
+> **Scope notice**: 本 doc は当初「entry-window 編集モード Preview の
+> asset 解決」(§A) を対象としていたが、関連する子ウィンドウ改善が
+> 段階的に追記された結果、9 セクションを含むオムニバス文書になっている。
+> 各セクションは独立した Issue 相当のスコープを持つ。
+>
+> **本題** (entry-window edit-preview):
+> - §A: Edit-mode preview asset resolution (L3–L265)
+> - §B: Duplicate-open context refresh (L267–L390)
+> - §C: Live refresh foundation (L391–L625)
+>
+> **関連項目** (本題から派生した entry-window 改善):
+> - §D: Live refresh wiring + hardening (L626–L922)
+>   - Sub-A: Live refresh wiring
+>   - Sub-B: Persistence debounce hardening
+>   - Sub-C: Slash menu per-root isolation
+>   - Sub-D: Blob URL lifecycle hardening
+> - §E: Child view-pane rerender foundation (L923–L1084)
+> - §F: Dirty state policy for view rerender (L1085–L1295)
+> - §G: Text/textlog view rerender wiring (L1296–L1527)
+>
+> **独立 Issue** (entry-window とは別の feature だが本 doc に蓄積):
+> - §H: Orphan asset GC foundation (L1528–L1783)
+> - §I: Orphan asset manual cleanup UI (L1784–L2022)
+>
+> 全セクション実装済み・テスト済み。
+
 ## 目的
 
 entry-window 子ウィンドウの **編集モード Preview タブ** で、

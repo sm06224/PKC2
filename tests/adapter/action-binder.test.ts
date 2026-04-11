@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { bindActions, cleanupBlobUrls } from '@adapter/ui/action-binder';
+import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
@@ -1324,6 +1324,108 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
   });
+
+  it('dblclick while already editing is a no-op (phase guard)', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      { id: 'log-2', text: 'second', createdAt: '2026-04-09T11:00:00Z' },
+    ]);
+    // Enter editing via Edit button
+    const editBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="begin-edit"]',
+    );
+    editBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+
+    // Re-render to show editor, then simulate dblclick on the editor area
+    // (there are no .pkc-textlog-row elements in edit mode, but verify no error)
+    const editorArea = root.querySelector<HTMLElement>('.pkc-textlog-editor');
+    if (editorArea) {
+      editorArea.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    }
+    // State remains in editing — no duplicate transition
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('dblclick on nested child element resolves to owning row', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: '**bold text**', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    // The text content may contain rendered markdown children.
+    // Target a child of the textlog-text element.
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    expect(textEl).not.toBeNull();
+    // Even if we target a child node, closest() should resolve to the row
+    const childTarget = textEl!.firstElementChild ?? textEl!;
+    childTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('save after dblclick-edit produces correct body', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'original', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    // Enter edit via dblclick
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Modify the textarea
+    const textarea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    expect(textarea).not.toBeNull();
+    textarea!.value = 'modified text';
+
+    // Click save
+    const saveBtn = root.querySelector<HTMLElement>('[data-pkc-action="commit-edit"]');
+    expect(saveBtn).not.toBeNull();
+    saveBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Phase returns to ready
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+
+    // Body was updated with the modified text
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1');
+    expect(entry).toBeDefined();
+    const log = parseTextlogBody(entry!.body);
+    expect(log.entries).toHaveLength(1);
+    expect(log.entries[0]!.text).toBe('modified text');
+  });
+
+  it('cancel after dblclick-edit preserves original body', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'original', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const originalBody = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1')!.body;
+
+    // Enter edit via dblclick
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Modify the textarea
+    const textarea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    textarea!.value = 'should be discarded';
+
+    // Click cancel
+    const cancelBtn = root.querySelector<HTMLElement>('[data-pkc-action="cancel-edit"]');
+    cancelBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Phase returns to ready, body unchanged
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 'tl1');
+    expect(entry!.body).toBe(originalBody);
+  });
 });
 
 // ── B. Reference-string context-menu items ──
@@ -2372,5 +2474,544 @@ describe('Issue G — missing-asset warning + compact export', () => {
       cf.restore();
       cap.restore();
     }
+  });
+});
+
+// ── Interactive task list checkbox toggle ──
+
+describe('Interactive task list — checkbox toggle', () => {
+  function setupTextWithTasks() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'txt1',
+          title: 'Tasks',
+          body: '- [ ] Buy milk\n- [x] Write code\n- [ ] Deploy',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'txt1' });
+
+    return { dispatcher, events };
+  }
+
+  function setupTextlogWithTasks() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Log',
+          body: serializeTextlogBody({
+            entries: [
+              { id: 'log1', text: '- [ ] Todo A\n- [x] Todo B', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            ],
+          }),
+          archetype: 'textlog',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+    return { dispatcher, events };
+  }
+
+  it('TEXT: clicking a checkbox toggles the task in the body', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // First checkbox should be unchecked (index 0)
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toContain('- [x] Buy milk');
+    // Other tasks unchanged
+    expect(entry.body).toContain('- [x] Write code');
+    expect(entry.body).toContain('- [ ] Deploy');
+  });
+
+  it('TEXT: clicking a checked checkbox unchecks it', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // Second checkbox (index 1) is checked
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="1"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toContain('- [ ] Write code');
+  });
+
+  it('TEXT: readonly prevents checkbox toggle', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'txt1',
+          title: 'Tasks',
+          body: '- [ ] Buy milk',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'txt1' });
+
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Body should be unchanged
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toBe('- [ ] Buy milk');
+  });
+
+  it('TEXT: editing phase prevents checkbox toggle', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // Enter editing
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'txt1' });
+    render(dispatcher.getState(), root);
+
+    // Edit preview may contain checkboxes but they should be ignored
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    if (checkbox) {
+      checkbox.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    // Body should remain unchanged
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toBe('- [ ] Buy milk\n- [x] Write code\n- [ ] Deploy');
+  });
+
+  it('TEXTLOG: clicking a checkbox toggles the task in the log entry', () => {
+    const { dispatcher } = setupTextlogWithTasks();
+
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(entry.body);
+    expect(log.entries[0]!.text).toContain('- [x] Todo A');
+    // Other task unchanged
+    expect(log.entries[0]!.text).toContain('- [x] Todo B');
+  });
+
+  it('TEXTLOG: unchecking works', () => {
+    const { dispatcher } = setupTextlogWithTasks();
+
+    // Second task (index 1) is checked
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="1"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(entry.body);
+    expect(log.entries[0]!.text).toContain('- [ ] Todo B');
+  });
+
+  it('does not fire on entries without task lists', () => {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    // No checkboxes should exist
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index]');
+    expect(checkbox).toBeNull();
+  });
+
+  it('rendered checkboxes have data-pkc-task-index attribute', () => {
+    setupTextWithTasks();
+
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('input[data-pkc-task-index]');
+    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes[0]!.getAttribute('data-pkc-task-index')).toBe('0');
+    expect(checkboxes[1]!.getAttribute('data-pkc-task-index')).toBe('1');
+    expect(checkboxes[2]!.getAttribute('data-pkc-task-index')).toBe('2');
+  });
+});
+
+// ── Inline asset preview (non-image) ──
+
+describe('populateInlineAssetPreviews', () => {
+  // Helper: create a minimal attachment entry body JSON
+  function attBody(name: string, mime: string, assetKey: string): string {
+    return JSON.stringify({ name, mime, size: 1024, asset_key: assetKey });
+  }
+
+  // Helper: set up a dispatcher with attachment entries + assets and
+  // a DOM root containing chip links inside a .pkc-md-rendered container.
+  function setupInlinePreview(chips: { key: string; label: string }[], attachments: { key: string; mime: string; name: string }[]) {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const entries = attachments.map((att, i) => ({
+      lid: `att-${i}`,
+      title: att.name,
+      body: attBody(att.name, att.mime, att.key),
+      archetype: 'attachment' as const,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }));
+
+    // Add a text entry whose rendered body will contain the chip links
+    entries.push({
+      lid: 'txt1',
+      title: 'Test Text',
+      body: 'plain text',
+      archetype: 'text' as any,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+
+    const assets: Record<string, string> = {};
+    for (const att of attachments) {
+      // Minimal valid base64 (a few bytes)
+      assets[att.key] = btoa('testdata');
+    }
+
+    const container: Container = {
+      ...mockContainer,
+      entries,
+      assets,
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    // Manually create a .pkc-md-rendered container with chip links
+    // (simulating what the renderer + asset resolver would produce)
+    const mdContainer = document.createElement('div');
+    mdContainer.className = 'pkc-md-rendered';
+    for (const chip of chips) {
+      const a = document.createElement('a');
+      a.href = `#asset-${chip.key}`;
+      a.textContent = chip.label;
+      mdContainer.appendChild(a);
+    }
+    root.appendChild(mdContainer);
+
+    return { dispatcher };
+  }
+
+  it('creates PDF preview with <object> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k1', label: '📄 test.pdf' }],
+      [{ key: 'k1', mime: 'application/pdf', name: 'test.pdf' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const obj = root.querySelector('object.pkc-inline-pdf-preview');
+    expect(obj).not.toBeNull();
+    expect(obj!.getAttribute('type')).toBe('application/pdf');
+    expect(obj!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    // PDF fallback text
+    expect(obj!.querySelector('p')?.textContent).toBe('PDF preview not available in this browser.');
+  });
+
+  it('does NOT hide chip for PDF (fallback unreliable)', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k1', label: '📄 test.pdf' }],
+      [{ key: 'k1', mime: 'application/pdf', name: 'test.pdf' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k1"]');
+    expect(chip).not.toBeNull();
+    // Chip should remain visible (style.display should NOT be 'none')
+    expect(chip!.style.display).not.toBe('none');
+  });
+
+  it('creates audio preview with <audio> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k2', label: '🎵 song.mp3' }],
+      [{ key: 'k2', mime: 'audio/mpeg', name: 'song.mp3' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const audio = root.querySelector('audio.pkc-inline-audio-preview');
+    expect(audio).not.toBeNull();
+    expect(audio!.getAttribute('controls')).not.toBeNull();
+    expect(audio!.getAttribute('preload')).toBe('none');
+    expect(audio!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    expect(audio!.querySelector('source')).not.toBeNull();
+  });
+
+  it('hides chip for audio preview', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k2', label: '🎵 song.mp3' }],
+      [{ key: 'k2', mime: 'audio/mpeg', name: 'song.mp3' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k2"]');
+    expect(chip!.style.display).toBe('none');
+  });
+
+  it('creates video preview with <video> element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k3', label: '🎬 clip.mp4' }],
+      [{ key: 'k3', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const video = root.querySelector('video.pkc-inline-video-preview');
+    expect(video).not.toBeNull();
+    expect(video!.getAttribute('controls')).not.toBeNull();
+    expect(video!.getAttribute('preload')).toBe('none');
+    expect(video!.getAttribute('data-pkc-blob-url')).toBeTruthy();
+    expect(video!.querySelector('source')).not.toBeNull();
+  });
+
+  it('hides chip for video preview', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k3', label: '🎬 clip.mp4' }],
+      [{ key: 'k3', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k3"]');
+    expect(chip!.style.display).toBe('none');
+  });
+
+  it('skips non-previewable MIME (archive)', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k4', label: '🗜 data.zip' }],
+      [{ key: 'k4', mime: 'application/zip', name: 'data.zip' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    // No preview element should be created
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+    // Chip should remain visible
+    const chip = root.querySelector<HTMLAnchorElement>('a[href="#asset-k4"]');
+    expect(chip!.style.display).not.toBe('none');
+  });
+
+  it('skips chip when asset key has no matching attachment', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'no-such-key', label: '📎 missing' }],
+      [], // no attachments
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('skips chip when asset data is missing from container.assets', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'test.pdf',
+          body: attBody('test.pdf', 'application/pdf', 'k-no-data'),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: {}, // no data for k-no-data
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    const mdContainer = document.createElement('div');
+    mdContainer.className = 'pkc-md-rendered';
+    const a = document.createElement('a');
+    a.href = '#asset-k-no-data';
+    a.textContent = '📄 test.pdf';
+    mdContainer.appendChild(a);
+    root.appendChild(mdContainer);
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('wraps preview in div with data-pkc-inline-preview attribute', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'k5', label: '🎬 vid.webm' }],
+      [{ key: 'k5', mime: 'video/webm', name: 'vid.webm' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const wrapper = root.querySelector('[data-pkc-inline-preview]');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.getAttribute('data-pkc-inline-preview')).toBe('video');
+    expect(wrapper!.classList.contains('pkc-inline-preview')).toBe(true);
+  });
+
+  it('does not process chips inside edit-preview panes', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'att1',
+          title: 'test.mp4',
+          body: attBody('test.mp4', 'video/mp4', 'k-edit'),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'k-edit': btoa('data') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+
+    // Create a container with both pkc-md-rendered AND pkc-text-edit-preview
+    const editPreview = document.createElement('div');
+    editPreview.className = 'pkc-text-edit-preview pkc-md-rendered';
+    const a = document.createElement('a');
+    a.href = '#asset-k-edit';
+    a.textContent = '🎬 test.mp4';
+    editPreview.appendChild(a);
+    root.appendChild(editPreview);
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    expect(root.querySelector('[data-pkc-inline-preview]')).toBeNull();
+  });
+
+  it('handles multiple chips of different types', () => {
+    const { dispatcher } = setupInlinePreview(
+      [
+        { key: 'kp', label: '📄 doc.pdf' },
+        { key: 'ka', label: '🎵 track.wav' },
+        { key: 'kv', label: '🎬 movie.mp4' },
+      ],
+      [
+        { key: 'kp', mime: 'application/pdf', name: 'doc.pdf' },
+        { key: 'ka', mime: 'audio/wav', name: 'track.wav' },
+        { key: 'kv', mime: 'video/mp4', name: 'movie.mp4' },
+      ],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const previews = root.querySelectorAll('[data-pkc-inline-preview]');
+    expect(previews).toHaveLength(3);
+    expect(previews[0]!.getAttribute('data-pkc-inline-preview')).toBe('pdf');
+    expect(previews[1]!.getAttribute('data-pkc-inline-preview')).toBe('audio');
+    expect(previews[2]!.getAttribute('data-pkc-inline-preview')).toBe('video');
+  });
+
+  it('cleanupBlobUrls revokes inline preview blob URLs', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kc', label: '🎬 clip.mp4' }],
+      [{ key: 'kc', mime: 'video/mp4', name: 'clip.mp4' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const blobEl = root.querySelector<HTMLElement>('[data-pkc-blob-url]');
+    expect(blobEl).not.toBeNull();
+    const blobUrl = blobEl!.getAttribute('data-pkc-blob-url')!;
+
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
+    cleanupBlobUrls(root);
+    expect(revokeSpy).toHaveBeenCalledWith(blobUrl);
+    revokeSpy.mockRestore();
+  });
+
+  it('does not double-populate if called twice', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kd', label: '🎵 song.ogg' }],
+      [{ key: 'kd', mime: 'audio/ogg', name: 'song.ogg' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const previews = root.querySelectorAll('[data-pkc-inline-preview]');
+    expect(previews).toHaveLength(1);
+  });
+
+  it('sets correct source type on audio element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'ks', label: '🎵 sound.wav' }],
+      [{ key: 'ks', mime: 'audio/wav', name: 'sound.wav' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const source = root.querySelector('audio.pkc-inline-audio-preview source');
+    expect(source).not.toBeNull();
+    expect(source!.getAttribute('type')).toBe('audio/wav');
+  });
+
+  it('sets correct source type on video element', () => {
+    const { dispatcher } = setupInlinePreview(
+      [{ key: 'kv2', label: '🎬 movie.webm' }],
+      [{ key: 'kv2', mime: 'video/webm', name: 'movie.webm' }],
+    );
+
+    populateInlineAssetPreviews(root, dispatcher);
+
+    const source = root.querySelector('video.pkc-inline-video-preview source');
+    expect(source).not.toBeNull();
+    expect(source!.getAttribute('type')).toBe('video/webm');
   });
 });

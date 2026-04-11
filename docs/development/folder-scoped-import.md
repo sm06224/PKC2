@@ -7,7 +7,10 @@ folder-scoped export (`pkc2-folder-export-bundle`) で生成された bundle を
 
 - import は **always-additive**（既存 entry の置換・マージはしない）
 - 失敗時は **全体 atomic**（1 件でも失敗したら dispatch 0 件）
-- **folder 構造は復元しない**（nested folder / relation は生成しない）
+- ~~**folder 構造は復元しない**（nested folder / relation は生成しない）~~
+  **Superseded**: `folder-structure-restore.md` により、現行実装では
+  bundle 内に `folders` metadata がある場合は folder 構造の復元が可能。
+  metadata がない旧 bundle の場合はフラット追加のまま。
 - 選択中 folder などの scope に依存しない
 - 既存 batch import インフラに完全委譲
 
@@ -141,23 +144,17 @@ batch import と同一の保証。
 
 ---
 
-## 12. folder 構造を再現しないことの明示
+## 12. folder 構造の復元について
 
-**重要**: folder-scoped export bundle には `source_folder_lid` /
-`source_folder_title` が記録されているが、import 時に:
+> **Historical note**: 本 doc の初版では「folder 構造は復元しない」としていた。
+> その後 `folder-structure-restore.md` により folder 構造復元機能が追加された。
+> 現行実装では bundle manifest 内に `folders` metadata がある場合は
+> folder entry + structural relation が自動生成され、元の階層が復元される。
+> `folders` metadata がない旧 bundle ではフラット追加 (本 doc の元仕様) となる。
 
-- **folder エントリは生成しない**
-- **structural relation は生成しない**
-- **元の folder 階層は復元されない**
-
-各 TEXT / TEXTLOG はフラットに container 直下に追加される。
-
-この制約は:
-- Quick Help に明記する
-- import 成功時のコンソールログに記載する
-- 📥 Batch ボタンの tooltip に反映しない（tooltip は短く保つ）
-
-将来 folder 構造を復元する場合は別 Issue として扱う。
+現行動作:
+- `folders` metadata **あり** → folder エントリ + structural relation を生成、階層を復元
+- `folders` metadata **なし** (旧 bundle) → フラットに container 直下に追加
 
 ---
 
@@ -193,7 +190,7 @@ caller は `result.format` を見て folder-export 固有の処理
 
 ## 15. intentionally やらなかったこと
 
-- folder 構造（ネスト）の再現
+- ~~folder 構造（ネスト）の再現~~ → **実装済み** (`folder-structure-restore.md`)
 - 新しい import ボタンの追加
 - import preview UI
 - merge / overwrite policy
@@ -207,5 +204,5 @@ caller は `result.format` を見て folder-export 固有の処理
 
 - **mixed archetype batch export/import**: attachment / todo 等を含む bundle
 - **import preview UI**: batch の中身を一覧表示してから commit
-- **folder 構造の復元**: 元の folder / relation も import で再現する
+- ~~**folder 構造の復元**: 元の folder / relation も import で再現する~~ → **実装済み** (`folder-structure-restore.md`)
 - **import 先 folder の指定**: 特定 folder 配下に import する

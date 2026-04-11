@@ -153,3 +153,26 @@ Revisit if:
 - A third cross-view direction is added
 - Cleanup logic becomes difficult to maintain
 - More than 5 state variables need coordinated cleanup
+
+## 9. Test Coverage
+
+### テスト済み (直接)
+- Layer 1/2: DnD 属性付与テスト (`renderer.test.ts` — `draggable`, `data-pkc-drop-target`)
+- Layer 7: 暗黙的カバー (binder teardown は別テストで検証)
+- Fresh render 時に drag 残留なし (`renderer.test.ts:5254-5272`)
+
+### テスト困難 (Layer 5/6)
+- **Layer 5** (`handleDocumentDragEnd`): `document.addEventListener('dragend')` は
+  happy-dom / JSDOM の HTML5 DnD 実装が不完全なため、`dragend` イベントの
+  バブリング挙動を正確に再現できない。
+- **Layer 6** (`handleStaleDragCleanup`): mousedown 時の stale state 検出は、
+  先行する drag 操作が cleanup なしで終了した状態の再現が必要。
+  テスト環境では drag 開始→source DOM 除去→mousedown の一連を
+  忠実にシミュレートすることが困難。
+
+### 判断
+Layer 5/6 は **ブラウザ DnD エッジケース向けの安全ネット** であり、
+テスト環境の制約により直接テストが困難。コードは十分にシンプル
+(それぞれ `clearAllDragState()` を呼ぶだけ) であり、
+`clearAllDragState()` 自体の正しさは Layer 4 のコードレビューで確認済み。
+リグレッションリスクは低いと判断し、テスト追加は保留とする。
