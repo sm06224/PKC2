@@ -82,7 +82,8 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 実装コスト | 大 (3-4 週間) |
 | リスク | 高 — DnD/click handler 競合、state machine に `multiSelectedLids` 追加 |
 | 既存基盤 | `multi-select-design.md` 設計済み (CLOSED as design doc) |
-| 今すぐ着手する妥当性 | **中** — 設計は完了しているが、規模が大きく段階分割が必要 |
+| Phase 分割設計 | `calendar-kanban-multi-select-phasing.md` — Phase 1 (visual feedback) / Phase 2 (bulk actions + DnD) |
+| 今すぐ着手する妥当性 | **中** — Phase 分割設計完了。Phase 1 は renderer 変更のみで低リスク |
 
 ### 脱落候補と理由
 
