@@ -5707,3 +5707,227 @@ describe('Keyboard navigation: Arrow Left / Right (Phase 3)', () => {
     expect(dispatcher.getState().selectedLid).toBe('f1');
   });
 });
+
+// ─── Keyboard Navigation Phase 4: Arrow Left → Parent ──────────
+describe('Keyboard navigation: Arrow Left → parent (Phase 4)', () => {
+  // Nested tree: root-folder > child-folder > grandchild text
+  const nestedContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'rf', title: 'Root Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'cf', title: 'Child Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'gc', title: 'Grandchild', body: '', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'top', title: 'Top-level', body: '', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'rf', to: 'cf', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { id: 'r2', from: 'cf', to: 'gc', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressLeft() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  }
+
+  function setupNested() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: nestedContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('expanded folder: Arrow Left collapses (Phase 3 behavior)', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).not.toContain('rf');
+
+    pressLeft();
+
+    expect(dispatcher.getState().collapsedFolders).toContain('rf');
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapsed child folder: Arrow Left selects parent', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapsed root folder: Arrow Left is no-op', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    // Still selected, no parent to move to
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('non-folder selected: Arrow Left is no-op', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'top' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('top');
+  });
+
+  it('double Arrow Left: collapse then move to parent', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    render(dispatcher.getState(), root);
+    // cf starts expanded
+    expect(dispatcher.getState().collapsedFolders).not.toContain('cf');
+
+    // First Left: collapse cf
+    pressLeft();
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+
+    // Second Left: move to parent rf
+    pressLeft();
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapse state preserved after parent move', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft(); // Move to parent
+
+    // cf is still collapsed after we moved away from it
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  // ── Guard ──
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    // Still editing cf, not moved to parent
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+    ta.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: nestedContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  // ── Regression ──
+
+  it('regression: Arrow Right expand still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).not.toContain('rf');
+  });
+
+  it('regression: Arrow Up/Down still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+  });
+
+  it('regression: Enter still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click toggle still works', () => {
+    const { dispatcher } = setupNested();
+    render(dispatcher.getState(), root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-folder-collapse"][data-pkc-lid="rf"]');
+    expect(toggle).not.toBeNull();
+    toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toContain('rf');
+  });
+});

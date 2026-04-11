@@ -25,8 +25,7 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { isDescendant } from '../../features/relation/tree';
-import { getStructuralParent } from '../../features/relation/tree';
+import { isDescendant, getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1101,6 +1100,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       } else if (e.key === 'ArrowLeft' && !isCollapsed) {
         e.preventDefault();
         dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: state.selectedLid });
+      } else if (e.key === 'ArrowLeft' && isCollapsed) {
+        // Already collapsed — move selection to parent folder
+        const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+        if (parent) {
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+        }
       }
       return;
     }
