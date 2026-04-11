@@ -1,7 +1,8 @@
 # Calendar / Kanban Keyboard Navigation — Design Document
 
-Status: CANDIDATE
+Status: CLOSED (Phase 1 complete — Kanban + Calendar)
 Created: 2026-04-11
+Completed: 2026-04-11
 
 ---
 
@@ -361,7 +362,7 @@ Arrow handler の冒頭で `viewMode` を分岐するだけ。
 
 ## Appendix A: Kanban Phase 1 — Implementation-Ready Spec
 
-Status: READY FOR IMPLEMENTATION
+Status: IMPLEMENTED
 
 ### A-1. 動作定義（曖昧さなし）
 

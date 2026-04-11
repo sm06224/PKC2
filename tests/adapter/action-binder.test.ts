@@ -6692,3 +6692,339 @@ describe('Kanban keyboard navigation (Phase 1)', () => {
     expect(dispatcher.getState().selectedLid).toBe('t2');
   });
 });
+
+// ─── Calendar Keyboard Navigation Phase 1 ──────────
+describe('Calendar keyboard navigation (Phase 1)', () => {
+  // April 2026 calendar: starts on Wednesday
+  // Dates with todos:
+  //   Apr 1 (Wed): c1 (open)
+  //   Apr 3 (Fri): c2 (open), c6 (done) — two todos same date
+  //   Apr 10 (Fri): c4 (open)
+  //   Apr 15 (Wed): c3 (open) — gap on Apr 8 to test week-skip
+  //   Apr 22 (Wed): c5 (open)
+  // Non-calendar entries:
+  //   cx: text entry (not a todo)
+  //   ca: archived todo (hidden when showArchived=false)
+  const calendarContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'c1', title: 'Todo Apr1', body: '{"status":"open","description":"A","date":"2026-04-01"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'c2', title: 'Todo Apr3a', body: '{"status":"open","description":"B","date":"2026-04-03"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'c3', title: 'Todo Apr15', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'c4', title: 'Todo Apr10', body: '{"status":"open","description":"D","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 'c5', title: 'Todo Apr22', body: '{"status":"open","description":"E","date":"2026-04-22"}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
+      { lid: 'c6', title: 'Todo Apr3b', body: '{"status":"done","description":"F","date":"2026-04-03"}', archetype: 'todo', created_at: '2026-01-01T00:06:00Z', updated_at: '2026-01-01T00:06:00Z' },
+      { lid: 'cx', title: 'Text Entry', body: 'plain text', archetype: 'text', created_at: '2026-01-01T00:07:00Z', updated_at: '2026-01-01T00:07:00Z' },
+      { lid: 'ca', title: 'Archived', body: '{"status":"done","description":"X","archived":true,"date":"2026-04-05"}', archetype: 'todo', created_at: '2026-01-01T00:08:00Z', updated_at: '2026-01-01T00:08:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupCalendar() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calendarContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration: Arrow Left / Right (day move, skip empty dates) ──
+
+  it('Arrow Right moves to next date with todos', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    // Apr 2 has no todo → skipped. Apr 3 has c2, c6.
+    expect(dispatcher.getState().selectedLid).toBe('c2');
+  });
+
+  it('Arrow Left moves to previous date with todos', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c4' }); // Apr 10
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    // Apr 9-4 empty → Apr 3 has c2, c6
+    expect(dispatcher.getState().selectedLid).toBe('c2');
+  });
+
+  it('Arrow Right at last date with todos is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c5' }); // Apr 22, last date with todos
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c5');
+  });
+
+  it('Arrow Left at first date with todos is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1, first date with todos
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('Arrow Right skips multiple empty dates', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c2' }); // Apr 3
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    // Apr 4-9 have no todos → Apr 10 has c4
+    expect(dispatcher.getState().selectedLid).toBe('c4');
+  });
+
+  // ── Integration: Arrow Up / Down (week move, ±7 days) ──
+
+  it('Arrow Down moves to same weekday +1 week', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c2' }); // Apr 3 (Fri)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // Apr 10 (Fri) has c4
+    expect(dispatcher.getState().selectedLid).toBe('c4');
+  });
+
+  it('Arrow Up moves to same weekday -1 week', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c4' }); // Apr 10 (Fri)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    // Apr 3 (Fri) has c2, c6
+    expect(dispatcher.getState().selectedLid).toBe('c2');
+  });
+
+  it('Arrow Down skips weeks without todos', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1 (Wed)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // Apr 8 (Wed) has NO todo → skip. Apr 15 (Wed) has c3.
+    expect(dispatcher.getState().selectedLid).toBe('c3');
+  });
+
+  it('Arrow Up skips weeks without todos', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c3' }); // Apr 15 (Wed)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    // Apr 8 (Wed) has NO todo → skip. Apr 1 (Wed) has c1.
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('Arrow Down at month boundary is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c5' }); // Apr 22 (Wed)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // Apr 29 has no todo, May 6 not in month → no-op
+    expect(dispatcher.getState().selectedLid).toBe('c5');
+  });
+
+  it('Arrow Up at month boundary is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1 (Wed)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    // Mar 25 not in April calendar → no-op
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('Arrow Down from Friday — month boundary no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c4' }); // Apr 10 (Fri)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // Apr 17 no todo, Apr 24 no todo, May 1 not in month → no-op
+    expect(dispatcher.getState().selectedLid).toBe('c4');
+  });
+
+  // ── Fallback: selectedLid not visible in calendar ──
+
+  it('selectedLid not in calendar → Arrow Down selects first calendar todo', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cx' }); // text entry, not in calendar
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1'); // first todo chronologically
+  });
+
+  it('no selection → Arrow Up selects first calendar todo', () => {
+    const { dispatcher } = setupCalendar();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('selectedLid not in calendar → Arrow Left is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cx' }); // text entry
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cx');
+  });
+
+  it('selectedLid not in calendar → Arrow Right is no-op', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cx' }); // text entry
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cx');
+  });
+
+  // ── Guard ──
+
+  it('non-calendar viewMode: Arrow keys use sidebar handler', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calendarContainer });
+    // viewMode is 'detail' (default) — sidebar includes ALL entries
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c5' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // In detail mode, sidebar navigates to next entry (c6 or beyond),
+    // not calendar navigation
+    const selected = dispatcher.getState().selectedLid;
+    expect(selected).not.toBe('c5'); // moved somewhere
+    expect(selected).not.toBeNull();
+  });
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'c1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+    ta.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calendarContainer, readonly: true });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c2');
+  });
+
+  // ── Regression ──
+
+  it('regression: detail mode sidebar Arrow Up/Down unchanged', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calendarContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).not.toBeNull();
+  });
+
+  it('regression: Enter dispatches BEGIN_EDIT in calendar mode', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('regression: Escape clears selection in calendar mode', () => {
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click selection works in calendar mode', () => {
+    const { dispatcher } = setupCalendar();
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-lid="c4"]');
+    expect(item).not.toBeNull();
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c4');
+  });
+});

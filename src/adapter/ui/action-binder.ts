@@ -1045,6 +1045,71 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       if (!state.container) return;
 
+      // Calendar mode: Arrow Up/Down = ±1 week (same weekday)
+      if (state.viewMode === 'calendar') {
+        const calendar = root.querySelector('[data-pkc-region="calendar-view"]');
+        if (!calendar) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+
+        // Collect all date cells in DOM (chronological) order
+        const dateCells = Array.from(calendar.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+
+        // Find which date cell contains the selected entry
+        let currentCellIdx = -1;
+        for (let i = 0; i < dateCells.length; i++) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (state.selectedLid && lids.includes(state.selectedLid)) {
+            currentCellIdx = i;
+            break;
+          }
+        }
+
+        if (currentCellIdx < 0) {
+          // selectedLid not visible in calendar → select first calendar todo
+          for (const cell of dateCells) {
+            const items = cell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+            const lids = Array.from(items)
+              .map((el) => el.getAttribute('data-pkc-lid')!)
+              .filter((lid) => containerLids.has(lid));
+            if (lids.length > 0) {
+              e.preventDefault();
+              dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+              return;
+            }
+          }
+          return; // no todos in calendar
+        }
+
+        // Date arithmetic: ±7 days, scanning forward until month boundary
+        const currentDateStr = dateCells[currentCellIdx]!.getAttribute('data-pkc-date')!;
+        const [cy, cm, cd] = currentDateStr.split('-').map(Number) as [number, number, number];
+        const step = e.key === 'ArrowDown' ? 7 : -7;
+        const baseDate = new Date(Date.UTC(cy, cm - 1, cd));
+
+        for (let offset = step; ; offset += step) {
+          const target = new Date(baseDate);
+          target.setUTCDate(target.getUTCDate() + offset);
+          const tk = `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(target.getUTCDate()).padStart(2, '0')}`;
+
+          const targetCell = calendar.querySelector<HTMLElement>(`[data-pkc-date="${tk}"]`);
+          if (!targetCell) return; // past month boundary → no-op
+
+          const targetItems = targetCell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const targetLids = Array.from(targetItems)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (targetLids.length > 0) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: targetLids[0]! });
+            return;
+          }
+          // target date has no todos — continue scanning ±7
+        }
+      }
+
       // Kanban mode: navigate within column
       if (state.viewMode === 'kanban') {
         const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
@@ -1126,7 +1191,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Arrow Left / Arrow Right: kanban cross-column or collapse/expand folder in sidebar
+    // Arrow Left / Arrow Right: calendar day / kanban cross-column / collapse/expand folder in sidebar
     if (
       (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && !mod && !e.shiftKey && !e.altKey
@@ -1142,6 +1207,45 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         || target?.isContentEditable
       ) {
         return;
+      }
+
+      // Calendar mode: Arrow Left/Right = previous/next day with todos
+      if (state.viewMode === 'calendar') {
+        const calendar = root.querySelector('[data-pkc-region="calendar-view"]');
+        if (!calendar) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+
+        const dateCells = Array.from(calendar.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+
+        // Find index of cell containing selectedLid
+        let currentCellIdx = -1;
+        for (let i = 0; i < dateCells.length; i++) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (lids.includes(state.selectedLid)) {
+            currentCellIdx = i;
+            break;
+          }
+        }
+
+        if (currentCellIdx < 0) return; // selectedLid not visible in calendar → no-op
+
+        // Scan in direction for next date cell with todos
+        const step = e.key === 'ArrowLeft' ? -1 : 1;
+        for (let i = currentCellIdx + step; i >= 0 && i < dateCells.length; i += step) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (lids.length > 0) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+            return;
+          }
+        }
+        return; // no more dates with todos in direction → no-op
       }
 
       // Kanban mode: cross-column navigation

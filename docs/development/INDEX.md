@@ -77,6 +77,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 53 | `keyboard-navigation-phase5-child.md` | Keyboard navigation Phase 5 (Arrow Right → child) | 2026-04-11 | expanded folder で Arrow Right → 最初の子を選択。getFirstStructuralChild 新規追加。テスト 16 件。 |
 | 54 | `keyboard-navigation-phase6-nonfolder-parent.md` | Keyboard navigation Phase 6 (non-folder Left → parent) | 2026-04-11 | non-folder entry で Arrow Left → 親フォルダ選択。archetype guard 緩和のみ。テスト 15 件。 |
 | 55 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Kanban view で Arrow Up/Down (列内) + Left/Right (列間) navigation。viewMode 分岐で sidebar 不変。テスト 24 件。 |
+| 56 | `calendar-kanban-keyboard-navigation.md` | Calendar keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Calendar view で Arrow Left/Right (日移動) + Up/Down (週移動)。空セル/空週スキップ。月境界 no-op。テスト 24 件。 |
 
 ## CANDIDATE — Next Feature
 
@@ -100,26 +101,33 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | Arrow Up/Down | 列内移動 | COMPLETED |
 | Arrow Left/Right | 列間移動 (index clamp) | COMPLETED |
 
+**Calendar** (Phase 1): 完成
+
+| Key | Action | Status |
+|-----|--------|--------|
+| Arrow Left/Right | 日移動 (空セルスキップ) | COMPLETED |
+| Arrow Up/Down | 週移動 (±7 days, 空週スキップ) | COMPLETED |
+
 **Summary**:
 - Sidebar tree keyboard navigation は Phase 1–6 で完成
 - Kanban keyboard navigation Phase 1 完了 — viewMode 分岐で sidebar 不変
+- Calendar keyboard navigation Phase 1 完了 — 日移動 + 週移動、月内限定
 - reducer / renderer 変更なし
-- テスト合計 115 件
+- テスト合計 139 件
 
 ### Keyboard Navigation — Not Implemented
 
-- Calendar keyboard navigation
+- Calendar Phase 2 (month wrap, empty cell cursor)
 - Kanban Phase 2 (Space status toggle, Ctrl+Arrow status move)
 - Shift+Arrow range selection
 
 ### Next Candidates
 
-| | Calendar keyboard Phase 1 | Kanban Phase 2 (status ops) |
-|---|---|---|
-| ユーザ価値 | 高 — Calendar もマウスなし操作 | 中 — Space で status toggle |
-| コスト | 中 — 2D grid + 空セルスキップ | 小 — TOGGLE_TODO_STATUS 再利用 |
-| リスク | 中 — 月またぎ scope 膨張 | 低 — 既存 action |
-| 妥当性 | **◎** — Kanban 完了で実装パターン確立 | ○ — 設計が必要 |
+| | Kanban Phase 2 (status ops) |
+|---|---|
+| ユーザ価値 | 中 — Space で status toggle |
+| コスト | 小 — TOGGLE_TODO_STATUS 再利用 |
+| リスク | 低 — 既存 action |
 
 設計: `calendar-kanban-keyboard-navigation.md`
 
