@@ -135,6 +135,16 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 設計: `calendar-kanban-keyboard-navigation.md` §9
 
+### Active — Task Completion Badge
+
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| 59 | `task-completion-badge.md` | Task completion badge (sidebar + detail pane) | CANDIDATE |
+
+TEXT / TEXTLOG の task list 進捗を `done/total` badge で表示。
+sidebar entry title 右側 + detail pane title row の 2 箇所。
+既存 `findTaskItems()` を再利用。task 0 件なら非表示。
+
 ### 保留候補
 
 | 候補 | 保留理由 |
