@@ -63,7 +63,13 @@ Status as of 2026-04-11. All 42 docs are **CLOSED** (implementation complete, te
 - **CLOSE_NEEDS_REVIEW fixes**: 5 docs patched (container-wide-batch-import, folder-scoped-import, dnd-cleanup-robustness, textlog-polish, edit-preview-asset-resolution)
 - **Final result**: 42/42 CLOSED
 
+## Active Development
+
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | OPEN |
+
 ## Next Feature Candidates (未着手)
 
 Comparison matrix and recommendation are in the close strategy report (session record).
-Top candidate: **Interactive task lists** (Markdown チェックボックスの inline toggle).
+Top candidate: **Interactive task lists** (Markdown チェックボックスの inline toggle) — implementation in progress.

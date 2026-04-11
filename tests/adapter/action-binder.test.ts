@@ -2476,3 +2476,201 @@ describe('Issue G — missing-asset warning + compact export', () => {
     }
   });
 });
+
+// ── Interactive task list checkbox toggle ──
+
+describe('Interactive task list — checkbox toggle', () => {
+  function setupTextWithTasks() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'txt1',
+          title: 'Tasks',
+          body: '- [ ] Buy milk\n- [x] Write code\n- [ ] Deploy',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'txt1' });
+
+    return { dispatcher, events };
+  }
+
+  function setupTextlogWithTasks() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'tl1',
+          title: 'Log',
+          body: serializeTextlogBody({
+            entries: [
+              { id: 'log1', text: '- [ ] Todo A\n- [x] Todo B', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            ],
+          }),
+          archetype: 'textlog',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+    return { dispatcher, events };
+  }
+
+  it('TEXT: clicking a checkbox toggles the task in the body', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // First checkbox should be unchecked (index 0)
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toContain('- [x] Buy milk');
+    // Other tasks unchanged
+    expect(entry.body).toContain('- [x] Write code');
+    expect(entry.body).toContain('- [ ] Deploy');
+  });
+
+  it('TEXT: clicking a checked checkbox unchecks it', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // Second checkbox (index 1) is checked
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="1"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toContain('- [ ] Write code');
+  });
+
+  it('TEXT: readonly prevents checkbox toggle', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'txt1',
+          title: 'Tasks',
+          body: '- [ ] Buy milk',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'txt1' });
+
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Body should be unchanged
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toBe('- [ ] Buy milk');
+  });
+
+  it('TEXT: editing phase prevents checkbox toggle', () => {
+    const { dispatcher } = setupTextWithTasks();
+
+    // Enter editing
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'txt1' });
+    render(dispatcher.getState(), root);
+
+    // Edit preview may contain checkboxes but they should be ignored
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    if (checkbox) {
+      checkbox.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    // Body should remain unchanged
+    const entry = dispatcher.getState().container!.entries[0]!;
+    expect(entry.body).toBe('- [ ] Buy milk\n- [x] Write code\n- [ ] Deploy');
+  });
+
+  it('TEXTLOG: clicking a checkbox toggles the task in the log entry', () => {
+    const { dispatcher } = setupTextlogWithTasks();
+
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="0"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(entry.body);
+    expect(log.entries[0]!.text).toContain('- [x] Todo A');
+    // Other task unchanged
+    expect(log.entries[0]!.text).toContain('- [x] Todo B');
+  });
+
+  it('TEXTLOG: unchecking works', () => {
+    const { dispatcher } = setupTextlogWithTasks();
+
+    // Second task (index 1) is checked
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index="1"]');
+    expect(checkbox).not.toBeNull();
+
+    checkbox!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries[0]!;
+    const log = parseTextlogBody(entry.body);
+    expect(log.entries[0]!.text).toContain('- [ ] Todo B');
+  });
+
+  it('does not fire on entries without task lists', () => {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+
+    // No checkboxes should exist
+    const checkbox = root.querySelector<HTMLInputElement>('input[data-pkc-task-index]');
+    expect(checkbox).toBeNull();
+  });
+
+  it('rendered checkboxes have data-pkc-task-index attribute', () => {
+    setupTextWithTasks();
+
+    const checkboxes = root.querySelectorAll<HTMLInputElement>('input[data-pkc-task-index]');
+    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes[0]!.getAttribute('data-pkc-task-index')).toBe('0');
+    expect(checkboxes[1]!.getAttribute('data-pkc-task-index')).toBe('1');
+    expect(checkboxes[2]!.getAttribute('data-pkc-task-index')).toBe('2');
+  });
+});

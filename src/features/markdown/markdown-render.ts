@@ -83,6 +83,7 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
 
 md.core.ruler.after('inline', 'pkc-task-list', function (state) {
   const tokens = state.tokens;
+  let taskIndex = 0;
   for (let i = 2; i < tokens.length; i++) {
     const token = tokens[i]!;
     if (token.type !== 'inline') continue;
@@ -110,7 +111,8 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
     }
 
     const checkbox = new state.Token('html_inline', '', 0);
-    checkbox.content = `<input type="checkbox" class="pkc-task-checkbox" disabled${checked ? ' checked' : ''}> `;
+    checkbox.content = `<input type="checkbox" class="pkc-task-checkbox" data-pkc-task-index="${taskIndex}"${checked ? ' checked' : ''}> `;
+    taskIndex++;
     children.unshift(checkbox);
     token.children = children as Token[];
   }

@@ -24,6 +24,7 @@ import { buildFolderExportBundle } from '../platform/folder-export';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant } from '../../features/relation/tree';
 import { getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
@@ -120,6 +121,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const href = assetLink.getAttribute('href') ?? '';
       const key = href.slice('#asset-'.length);
       if (key) downloadAttachmentByAssetKey(key, dispatcher);
+      return;
+    }
+
+    // Task list checkbox: toggle the corresponding `- [ ]`/`- [x]` in
+    // the markdown body. Intercept before the generic `[data-pkc-action]`
+    // dispatch because rendered checkboxes don't carry that attribute.
+    const taskCheckbox = rawTarget?.closest<HTMLInputElement>('input[data-pkc-task-index]');
+    if (taskCheckbox && root.contains(taskCheckbox)) {
+      e.preventDefault();
+      handleTaskCheckboxClick(taskCheckbox);
       return;
     }
 
@@ -817,6 +828,58 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       newInput.value = '';
       newInput.focus();
     }
+  }
+
+  /**
+   * Handle a click on a rendered task list checkbox.
+   * Toggles the corresponding `- [ ]`/`- [x]` in the entry body
+   * via QUICK_UPDATE_ENTRY.
+   */
+  function handleTaskCheckboxClick(checkbox: HTMLInputElement): void {
+    const state = dispatcher.getState();
+    if (state.readonly) return;
+    if (state.phase === 'editing') return;
+
+    const taskIndex = parseInt(checkbox.getAttribute('data-pkc-task-index') ?? '', 10);
+    if (isNaN(taskIndex)) return;
+
+    // TEXTLOG path: checkbox is inside a textlog row with data-pkc-log-id
+    const textlogRow = checkbox.closest<HTMLElement>('[data-pkc-log-id]');
+    if (textlogRow) {
+      const lid = textlogRow.getAttribute('data-pkc-lid');
+      const logId = textlogRow.getAttribute('data-pkc-log-id');
+      if (!lid || !logId) return;
+
+      const entry = state.container?.entries.find((e) => e.lid === lid);
+      if (!entry || entry.archetype !== 'textlog') return;
+
+      const log = parseTextlogBody(entry.body);
+      const logEntry = log.entries.find((le) => le.id === logId);
+      if (!logEntry) return;
+
+      const toggled = toggleTaskItem(logEntry.text, taskIndex);
+      if (toggled === null) return;
+
+      logEntry.text = toggled;
+      dispatcher.dispatch({
+        type: 'QUICK_UPDATE_ENTRY',
+        lid,
+        body: serializeTextlogBody(log),
+      });
+      return;
+    }
+
+    // TEXT path: use selectedLid (the entry currently shown in the center pane)
+    const lid = state.selectedLid;
+    if (!lid) return;
+
+    const entry = state.container?.entries.find((e) => e.lid === lid);
+    if (!entry) return;
+
+    const toggled = toggleTaskItem(entry.body, taskIndex);
+    if (toggled === null) return;
+
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
   }
 
   function handleKeydown(e: KeyboardEvent): void {

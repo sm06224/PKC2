@@ -841,8 +841,13 @@
 .pkc-md-rendered .pkc-task-checkbox {
   margin-right: 0.35em;
   vertical-align: -0.08em;
-  cursor: default;
+  cursor: pointer;
   accent-color: var(--c-accent);
+}
+/* Edit preview: checkboxes are non-interactive (edit the source instead) */
+.pkc-text-edit-preview .pkc-task-checkbox {
+  pointer-events: none;
+  cursor: default;
 }
 
 /* ── Phase 2: table polish ── */
