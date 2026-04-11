@@ -112,24 +112,27 @@ All 42 historical docs passed strict close audit (2026-04-11).
 - Sidebar tree keyboard navigation は Phase 1–6 で完成
 - Kanban keyboard navigation Phase 1 完了 — viewMode 分岐で sidebar 不変
 - Calendar keyboard navigation Phase 1 完了 — 日移動 + 週移動、月内限定
-- reducer / renderer 変更なし
-- テスト合計 139 件
+- 全 3 view で "navigation only" が完成。reducer / renderer 変更なし
+- テスト合計 139 件（Sidebar 91 + Kanban 24 + Calendar 24）
 
 ### Keyboard Navigation — Not Implemented
 
-- Calendar Phase 2 (month wrap, empty cell cursor)
 - Kanban Phase 2 (Space status toggle, Ctrl+Arrow status move)
+- Calendar Phase 2 (month wrap, empty cell cursor)
 - Shift+Arrow range selection
 
 ### Next Candidates
 
-| | Kanban Phase 2 (status ops) |
-|---|---|
-| ユーザ価値 | 中 — Space で status toggle |
-| コスト | 小 — TOGGLE_TODO_STATUS 再利用 |
-| リスク | 低 — 既存 action |
+| | Kanban Phase 2 (Space toggle) | Calendar Phase 2 (month wrap) | Shift+Arrow range selection |
+|---|---|---|---|
+| ユーザ価値 | **高** — 最頻操作を keyboard 化 | 低 — Phase 1 で主要操作は完了 | 中 — keyboard multi-select |
+| コスト | **小** — TOGGLE_TODO_STATUS 再利用 | 中 — re-render + 新 state 候補 | 高 — multiSelectedLids 統合 |
+| リスク | **低** — 既存 action | 中 — scope 膨張 (wrap 範囲) | 高 — Phase 2-D 未解決 |
+| 妥当性 | **◎** — navigation 完成の自然な次手 | △ — 必要性が薄い | △ — 前提が未整備 |
 
-設計: `calendar-kanban-keyboard-navigation.md`
+**推奨: Kanban Phase 2 (Space status toggle)**
+
+設計: `calendar-kanban-keyboard-navigation.md` §9 Phase 2
 
 ### 保留候補
 
