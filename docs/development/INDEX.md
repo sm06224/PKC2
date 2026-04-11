@@ -67,16 +67,16 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | 2026-04-11 | TEXT/TEXTLOG の rendered markdown 内 `- [ ]`/`- [x]` を click で toggle。pure helper + QUICK_UPDATE_ENTRY。テスト 38 件。 |
 | 44 | `non-image-inline-preview.md` | Non-image inline preview (PDF/audio/video) | 2026-04-11 | TEXT/TEXTLOG body 内の非画像 asset chip を inline preview に展開。`populateInlineAssetPreviews()` + 既存 blob lifecycle 再利用。CSP fallback 対応。テスト 16 件。 |
 | 45 | `attachment-sandbox-phase5.md` | Container default sandbox policy | 2026-04-11 | `ContainerMeta.sandbox_policy` (strict/relaxed)。per-entry override 優先の fallback chain。meta pane に select UI。テスト 11 件。 |
-| 46 | `calendar-kanban-multi-select-phasing.md` | Calendar/Kanban multi-select (Phase 1 + 2-A/B/C/E) | 2026-04-11 | Phase 1: visual feedback。Phase 2-A: BULK_SET_STATUS。Phase 2-B: BULK_SET_DATE (set + clear)。Phase 2-C: multi-DnD (Kanban/Calendar/cross-view)。Phase 2-E: Escape clear。テスト 67 件追加。残: 2-D (表示順)。 |
+| 46 | `calendar-kanban-multi-select-phasing.md` | Calendar/Kanban multi-select (Phase 1 + 2-A/B/C/E + ghost) | 2026-04-11 | Phase 1: visual feedback。Phase 2-A: BULK_SET_STATUS。Phase 2-B: BULK_SET_DATE (set + clear)。Phase 2-C: multi-DnD (Kanban/Calendar/cross-view)。Phase 2-E: Escape clear。Drag ghost: N件バッジ。テスト 76 件追加。残: 2-D (表示順)。 |
+| 47 | `multi-dnd-drag-ghost-ux.md` | Multi-DnD drag ghost (N件バッジ) | 2026-04-11 | multi-drag 時に setDragImage で件数バッジ表示。Kanban/Calendar 共通。テスト 9 件。 |
 
 ## CANDIDATE — Next Feature
 
-multi-select 中核実装完了 (Phase 1 + 2-A/B/C/E) 後の残り候補。
+multi-select 実装完了後の残り候補。
 
 | # | 候補 | ユーザ価値 | コスト | リスク | 備考 |
 |---|------|----------|--------|--------|------|
 | 1 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper が必要) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能のため緊急度低 |
-| 2 | drag ghost UX 改善 | 低 — 見た目のみ、機能に影響なし | 小 (setDragImage) | 低 | multi-action bar で件数確認可能 |
 
 ### 脱落候補と理由
 

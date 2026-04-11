@@ -1236,6 +1236,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   let kanbanDraggedLid: string | null = null;
   let isMultiDrag = false;
+  let multiDragGhostEl: HTMLElement | null = null;
+
+  function setMultiDragGhost(e: DragEvent, count: number): void {
+    const ghost = document.createElement('div');
+    ghost.setAttribute('data-pkc-drag-ghost', 'true');
+    ghost.textContent = `${count} 件`;
+    ghost.style.cssText = 'position:fixed;left:-9999px;top:0;padding:4px 12px;background:var(--c-accent,#4a9eff);color:#fff;border-radius:4px;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;';
+    document.body.appendChild(ghost);
+    e.dataTransfer?.setDragImage?.(ghost, 0, 0);
+    multiDragGhostEl = ghost;
+  }
+
+  function removeMultiDragGhost(): void {
+    if (multiDragGhostEl) {
+      multiDragGhostEl.remove();
+      multiDragGhostEl = null;
+    }
+  }
 
   function handleKanbanDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
@@ -1250,6 +1268,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (isMultiDrag) setMultiDragGhost(e, selected.length);
 
     requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
   }
@@ -1312,6 +1331,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
     isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1325,6 +1345,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     kanbanDraggedLid = null;
     isMultiDrag = false;
+    removeMultiDragGhost();
   }
 
   // ── DnD: calendar date move ──
@@ -1344,6 +1365,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (isMultiDrag) setMultiDragGhost(e, selected.length);
 
     requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
   }
@@ -1406,6 +1428,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     calendarDraggedLid = null;
     kanbanDraggedLid = null;
     isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1419,6 +1442,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     calendarDraggedLid = null;
     isMultiDrag = false;
+    removeMultiDragGhost();
   }
 
   // ── DnD: cleanup helper ──
@@ -1431,6 +1455,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
     isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) {
       clearTimeout(viewSwitchTimer);
       viewSwitchTimer = null;

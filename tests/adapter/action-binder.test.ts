@@ -4744,3 +4744,196 @@ describe('Escape clears multi-select (Phase 2-E)', () => {
     expect(dispatcher.getState().phase).toBe('ready');
   });
 });
+
+// ─── Multi-DnD Drag Ghost UX ──────────────────────────────────
+describe('Multi-DnD drag ghost UX', () => {
+  const ghostContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function makeGhostDragEvent(type: string, target: Element): DragEvent {
+    const setDragImage = vi.fn();
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '', setDragImage };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  function setupGhost(viewMode: 'kanban' | 'calendar') {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: ghostContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+    if (viewMode === 'calendar') {
+      dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    }
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  // ── Integration ──
+
+  it('Kanban multi-drag calls setDragImage with ghost element', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.getAttribute('data-pkc-drag-ghost')).toBe('true');
+    expect(ghostArg.textContent).toBe('2 件');
+  });
+
+  it('Calendar multi-drag calls setDragImage with ghost element', () => {
+    const dispatcher = setupGhost('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', item);
+    item.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.textContent).toBe('2 件');
+  });
+
+  it('single-drag does NOT call setDragImage', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
+  });
+
+  it('ghost element is removed after dragEnd', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+
+    // Ghost should exist in document
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Fire dragEnd
+    card.dispatchEvent(makeGhostDragEvent('dragend', card));
+
+    // Ghost should be removed
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+
+  it('ghost element is removed after drop', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Drop on a column
+    const doneCol = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneCol.dispatchEvent(makeGhostDragEvent('drop', doneCol));
+
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+
+  it('ghost count reflects actual selected count (3 items)', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.textContent).toBe('3 件');
+  });
+
+  // ── Regression ──
+
+  it('regression: Kanban multi-DnD still changes status', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+
+    const doneCol = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneCol.dispatchEvent(makeGhostDragEvent('drop', doneCol));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: Calendar multi-DnD still changes date', () => {
+    const dispatcher = setupGhost('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeGhostDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeGhostDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('regression: no stale ghost after aborted drag', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Abort drag (dragEnd without drop)
+    card.dispatchEvent(makeGhostDragEvent('dragend', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+
+    // Start a new single-drag — no ghost should appear
+    dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    const card2 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt2 = makeGhostDragEvent('dragstart', card2);
+    card2.dispatchEvent(evt2);
+
+    expect((evt2.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+});
