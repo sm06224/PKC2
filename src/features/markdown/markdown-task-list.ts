@@ -77,6 +77,64 @@ export function findTaskItems(body: string): TaskItem[] {
   return items;
 }
 
+// ── Task progress ───────────────────────────────────────
+
+/** Aggregate task completion count. */
+export interface TaskProgress {
+  done: number;
+  total: number;
+}
+
+/**
+ * Count task completion progress for an entry.
+ *
+ * - TEXT / generic / opaque / folder: scans body directly.
+ * - TEXTLOG: parses JSON body, scans each log entry's text,
+ *   and aggregates across all entries.
+ * - todo / form / attachment: returns null (no task lists).
+ *
+ * Returns null when no task items exist (total === 0).
+ */
+export function countTaskProgress(entry: {
+  archetype: string;
+  body: string;
+}): TaskProgress | null {
+  switch (entry.archetype) {
+    case 'todo':
+    case 'form':
+    case 'attachment':
+      return null;
+    case 'textlog': {
+      let done = 0;
+      let total = 0;
+      // Inline JSON parse — keeps features/ self-contained without
+      // importing from textlog module (avoids cross-feature dep).
+      let parsed: { entries?: { text?: string }[] };
+      try {
+        parsed = JSON.parse(entry.body);
+      } catch {
+        return null;
+      }
+      if (!Array.isArray(parsed.entries)) return null;
+      for (const le of parsed.entries) {
+        if (typeof le.text !== 'string') continue;
+        const items = findTaskItems(le.text);
+        done += items.filter((t) => t.checked).length;
+        total += items.length;
+      }
+      return total > 0 ? { done, total } : null;
+    }
+    default: {
+      const items = findTaskItems(entry.body);
+      if (items.length === 0) return null;
+      return {
+        done: items.filter((t) => t.checked).length,
+        total: items.length,
+      };
+    }
+  }
+}
+
 /**
  * Toggle the Nth task item (0-based) in a markdown body.
  *

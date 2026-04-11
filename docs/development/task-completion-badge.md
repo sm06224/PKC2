@@ -1,6 +1,6 @@
 # Task Completion Badge
 
-Status: CANDIDATE
+Status: COMPLETED
 Created: 2026-04-11
 
 ---

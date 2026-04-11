@@ -584,6 +584,30 @@
   color: rgba(255,255,255,0.7);
 }
 
+/* ── Task completion badge ── */
+.pkc-task-badge {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+[data-pkc-task-complete="true"] .pkc-task-badge,
+.pkc-task-badge[data-pkc-task-complete="true"] {
+  color: var(--c-success);
+}
+
+[data-pkc-selected="true"] .pkc-task-badge {
+  color: rgba(255,255,255,0.7);
+}
+
+[data-pkc-selected="true"][data-pkc-task-complete="true"] .pkc-task-badge {
+  color: var(--c-accent-fg);
+}
+
+.pkc-view-title-row .pkc-task-badge {
+  font-size: 0.7rem;
+}
+
 /* ── Restore candidates (collapsible) ── */
 .pkc-restore-candidates {
   border-top: 1px solid var(--c-border);
