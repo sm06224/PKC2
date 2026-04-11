@@ -830,6 +830,27 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container, multiSelectedLids: [] };
       return { state: next, events: [] };
     }
+    case 'BULK_SET_DATE': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const selected = getAllSelected(state);
+      if (selected.length === 0) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      const targetDate = action.date ?? undefined;
+      for (const lid of selected) {
+        const entry = container.entries.find((e) => e.lid === lid);
+        if (!entry || entry.archetype !== 'todo') continue;
+        const todo = parseTodoBody(entry.body);
+        if (todo.date === targetDate) continue;
+        const updated = serializeTodoBody({ ...todo, date: targetDate });
+        const revId = generateLid();
+        container = snapshotEntry(container, lid, revId, ts);
+        container = updateEntry(container, lid, entry.title, updated, ts);
+      }
+      const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
+    }
     case 'PASTE_ATTACHMENT': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);

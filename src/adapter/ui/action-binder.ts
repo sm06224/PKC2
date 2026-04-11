@@ -256,6 +256,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-multi-select':
         dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
         break;
+      case 'bulk-clear-date':
+        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+        break;
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
         break;
@@ -1104,6 +1107,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const val = (target as HTMLSelectElement).value;
       if (val === 'open' || val === 'done') {
         dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: val });
+      }
+    }
+
+    // Bulk date change via date input
+    if (action === 'bulk-set-date') {
+      const val = (target as HTMLInputElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: val });
       }
     }
 

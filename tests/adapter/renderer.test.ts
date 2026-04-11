@@ -5688,6 +5688,40 @@ describe('Calendar/Kanban Multi-Select Visual Feedback', () => {
     expect(statusSelect).not.toBeNull();
   });
 
+  // ── Bulk date input in multi-action bar ──
+
+  it('multi-action bar shows date input when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1', 't2'] }), root);
+    const dateInput = root.querySelector('[data-pkc-action="bulk-set-date"]');
+    expect(dateInput).not.toBeNull();
+    expect((dateInput as HTMLInputElement).type).toBe('date');
+  });
+
+  it('multi-action bar shows clear-date button when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1'] }), root);
+    const clearDate = root.querySelector('[data-pkc-action="bulk-clear-date"]');
+    expect(clearDate).not.toBeNull();
+  });
+
+  it('date input hidden when no todos in selection', () => {
+    const noTodoContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'n2', title: 'Note 2', body: 'text2', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    render(msState({ container: noTodoContainer, multiSelectedLids: ['n1', 'n2'] }), root);
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="bulk-clear-date"]')).toBeNull();
+  });
+
+  it('date input shows in kanban view', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t1', 't2'] }), root);
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).not.toBeNull();
+  });
+
   // ── Ghost selection resolution (view switch) ──
 
   it('multi-selected survives view switch from detail to calendar', () => {

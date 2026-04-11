@@ -514,6 +514,16 @@
   cursor: pointer;
 }
 
+.pkc-multi-action-date {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  max-width: 8.5rem;
+}
+
 /* Flash animation for newly created/moved entries */
 @keyframes pkc-flash-in {
   0% { background: var(--c-accent); color: var(--c-accent-fg); }

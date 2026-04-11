@@ -3465,3 +3465,210 @@ describe('Bulk Status Change (Phase 2-A)', () => {
     expect(body.status).toBe('done');
   });
 });
+
+// ── Calendar/Kanban Multi-Select Phase 2-B: Bulk Date Change ──
+
+describe('Bulk Date Change (Phase 2-B)', () => {
+  const dateContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 't4', title: 'Archived', body: '{"status":"done","description":"D","date":"2026-04-10","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupDate() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: dateContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Reducer: date set ──
+
+  it('BULK_SET_DATE sets date on multiple todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-05-01');
+  });
+
+  // ── Reducer: date clear ──
+
+  it('BULK_SET_DATE with null clears date on multiple todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // has date
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' }); // has date
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+
+    const s = dispatcher.getState();
+    const t1 = JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body);
+    const t3 = JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body);
+    expect(t1.date).toBeUndefined();
+    expect(t3.date).toBeUndefined();
+  });
+
+  // ── Reducer: no-op ──
+
+  it('BULK_SET_DATE is no-op when date already matches', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // date: 2026-04-10
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-04-10' });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(s.multiSelectedLids).toHaveLength(0);
+  });
+
+  it('BULK_SET_DATE clear is no-op for undated todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't2' }); // no date
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBeUndefined();
+    expect(s.multiSelectedLids).toHaveLength(0);
+  });
+
+  // ── Reducer: non-todo skip ──
+
+  it('BULK_SET_DATE skips non-todo entries', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-06-01' });
+
+    const s = dispatcher.getState();
+    // t1 updated
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-06-01');
+    // n1 unchanged
+    expect(s.container!.entries.find((e) => e.lid === 'n1')!.body).toBe('text content');
+  });
+
+  // ── Reducer: readonly block ──
+
+  it('BULK_SET_DATE is blocked with empty selection', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-06-01' });
+    // No selection → blocked, date unchanged
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Reducer: preserves other fields ──
+
+  it('BULK_SET_DATE preserves status, description, archived', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' }); // archived, done, date: 2026-04-10
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-07-01' });
+
+    const body = JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't4')!.body);
+    expect(body.date).toBe('2026-07-01');
+    expect(body.status).toBe('done');
+    expect(body.description).toBe('D');
+    expect(body.archived).toBe(true);
+  });
+
+  // ── Reducer: clears multiSelectedLids ──
+
+  it('BULK_SET_DATE clears multiSelectedLids', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  // ── Renderer / UI ──
+
+  it('multi-action bar shows date input and clear-date button when todos selected', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const dateInput = root.querySelector('[data-pkc-action="bulk-set-date"]');
+    expect(dateInput).not.toBeNull();
+    expect((dateInput as HTMLInputElement).type).toBe('date');
+
+    const clearDateBtn = root.querySelector('[data-pkc-action="bulk-clear-date"]');
+    expect(clearDateBtn).not.toBeNull();
+  });
+
+  it('date input and clear-date hidden when only non-todos selected', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="bulk-clear-date"]')).toBeNull();
+  });
+
+  // ── Integration: Calendar visibility ──
+
+  it('integration: bulk set date makes undated todo appear in Calendar', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // t2 has no date — should not be in Calendar
+    render(dispatcher.getState(), root);
+    let cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t2"]')).toBeNull();
+
+    // Set date on t2
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-04-10' });
+    render(dispatcher.getState(), root);
+
+    cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t2"]')).not.toBeNull();
+  });
+
+  it('integration: bulk clear date removes todo from Calendar', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // t1 has date 2026-04-10 — should be in Calendar
+    render(dispatcher.getState(), root);
+    let cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t1"]')).not.toBeNull();
+
+    // Clear date on t1
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+    render(dispatcher.getState(), root);
+
+    cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t1"]')).toBeNull();
+  });
+
+  it('integration: bulk set date does not break existing single-entry date edit via DnD', () => {
+    const { dispatcher } = setupDate();
+    // Single entry DnD date change still works
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: 't1', body: '{"status":"open","description":"A","date":"2026-04-20"}' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+  });
+
+  it('integration: bulk status change (Phase 2-A) still works after bulk date', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+});

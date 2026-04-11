@@ -969,6 +969,17 @@ function renderSidebar(state: AppState): HTMLElement {
           statusSelect.appendChild(opt);
         }
         bar.appendChild(statusSelect);
+
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.className = 'pkc-multi-action-date';
+        dateInput.setAttribute('data-pkc-action', 'bulk-set-date');
+        bar.appendChild(dateInput);
+
+        const clearDateBtn = createElement('button', 'pkc-btn-small');
+        clearDateBtn.setAttribute('data-pkc-action', 'bulk-clear-date');
+        clearDateBtn.textContent = '✕ date';
+        bar.appendChild(clearDateBtn);
       }
     }
 
