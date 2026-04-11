@@ -134,6 +134,16 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 設計: `calendar-kanban-keyboard-navigation.md` §9
 
+### Active — Entry Window Task Toggle
+
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | CANDIDATE |
+
+entry window 内の markdown task checkbox を click で toggle 可能にする。
+既存 `QUICK_UPDATE_ENTRY` + `pushViewBodyUpdate` で閉じる設計。
+protocol 追加: `pkc-entry-task-toggle` (child → parent) 1 type のみ。
+
 ### 保留候補
 
 | 候補 | 保留理由 |
@@ -141,6 +151,8 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能。設計負債だが実害小 |
 | Sidebar multi-DnD | structural relation の cycle detection 複雑化。BULK_MOVE で代替可能 |
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
+| Calendar Phase 2 (month wrap) | 必要性が薄い。Phase 1 で主要操作は完了 |
+| Shift+Arrow range selection | Phase 2-D 未解決。前提が未整備 |
 
 ## Close Audit Summary
 
