@@ -1092,7 +1092,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
-      if (!entry || entry.archetype !== 'folder') return;
+      if (!entry) return;
+
+      // Non-folder: Arrow Left moves to parent, Arrow Right is no-op
+      if (entry.archetype !== 'folder') {
+        if (e.key === 'ArrowLeft') {
+          const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+          if (parent) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+          }
+        }
+        return;
+      }
+
       const isCollapsed = state.collapsedFolders.includes(state.selectedLid);
       if (e.key === 'ArrowRight' && isCollapsed) {
         e.preventDefault();

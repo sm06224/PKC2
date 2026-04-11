@@ -75,6 +75,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 51 | `keyboard-navigation-phase3-tree.md` | Keyboard navigation Phase 3 (Arrow Left/Right) | 2026-04-11 | Arrow Left/Right で folder の折りたたみ/展開。TOGGLE_FOLDER_COLLAPSE 再利用。sidebar 限定。テスト 18 件。 |
 | 52 | `keyboard-navigation-phase4-parent.md` | Keyboard navigation Phase 4 (Arrow Left → parent) | 2026-04-11 | collapsed folder で Arrow Left → 親フォルダ選択。getStructuralParent 再利用。テスト 15 件。 |
 | 53 | `keyboard-navigation-phase5-child.md` | Keyboard navigation Phase 5 (Arrow Right → child) | 2026-04-11 | expanded folder で Arrow Right → 最初の子を選択。getFirstStructuralChild 新規追加。テスト 16 件。 |
+| 54 | `keyboard-navigation-phase6-nonfolder-parent.md` | Keyboard navigation Phase 6 (non-folder Left → parent) | 2026-04-11 | non-folder entry で Arrow Left → 親フォルダ選択。archetype guard 緩和のみ。テスト 15 件。 |
 
 ## CANDIDATE — Next Feature
 
@@ -85,32 +86,30 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 1 | Arrow Up/Down | sidebar navigation | COMPLETED |
 | 2 | Enter | begin edit | COMPLETED |
 | 3 | Arrow Left/Right | collapse/expand | COMPLETED |
-| 4 | Arrow Left (collapsed) | move to parent | COMPLETED |
-| 5 | Arrow Right (expanded) | select first child | COMPLETED |
+| 4 | Arrow Left (collapsed folder) | move to parent | COMPLETED |
+| 5 | Arrow Right (expanded folder) | select first child | COMPLETED |
+| 6 | Arrow Left (non-folder) | move to parent | COMPLETED |
 
 **Summary**:
-- Sidebar tree navigation is now **Left/Right symmetric**
+- Sidebar tree keyboard navigation は **Phase 1–6 で完成**
+- Left/Right symmetric: folder も non-folder も Arrow Left で親に戻れる
 - Navigation + Edit の基本操作はすべて keyboard で完結可能
-- folder 中心の tree 操作を sidebar 限定で積み上げ、reducer / renderer 変更なし
-- テスト合計 76 件
+- sidebar 限定で積み上げ、reducer / renderer 変更なし
+- テスト合計 91 件
 
 ### Keyboard Navigation — Not Implemented
 
-- Arrow Left on non-folder → parent move
 - Calendar/Kanban keyboard navigation
 - Shift+Arrow range selection
 
 ### Next Candidates
 
-| | non-folder Left parent | Calendar/Kanban keyboard |
-|---|---|---|
-| ユーザ価値 | 中 | 高 |
-| コスト | 小 | 中〜大 |
-| リスク | 低 | 中 |
-| 妥当性 | **◎** | ○ |
-
-**推奨**: non-folder Left parent move。`getStructuralParent` 再利用、archetype guard 緩和のみ。
-Calendar/Kanban keyboard は設計ドキュメントを先に書くべき段階。
+| | Calendar/Kanban keyboard |
+|---|---|
+| ユーザ価値 | 高 — マウスなしで view 内操作 |
+| コスト | 中〜大 — 新 navigation model 設計 |
+| リスク | 中 — scope 拡大 |
+| 妥当性 | ○ — 設計ドキュメントを先に書くべき段階 |
 
 ### 保留候補
 
