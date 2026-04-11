@@ -136,6 +136,16 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 設計: `calendar-kanban-keyboard-navigation.md` §9
 
+### Active — Kanban Keyboard Phase 3
+
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| 60 | `kanban-keyboard-phase3-ctrl-arrow.md` | Kanban Ctrl+Arrow status move | CANDIDATE |
+
+Kanban view で Ctrl+Arrow Left/Right により todo の status を列方向に変更。
+open → done (Right) / done → open (Left)。端列 no-op。
+既存 `QUICK_UPDATE_ENTRY` 再利用。single selection のみ。
+
 ### 保留候補
 
 | 候補 | 保留理由 |
