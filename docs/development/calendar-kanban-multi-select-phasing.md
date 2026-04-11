@@ -237,8 +237,8 @@ Phase 2 は以下のサブフェーズに分割:
 | Sub-phase | 内容 | 状態 | 設計ドキュメント |
 |-----------|------|------|---------------|
 | Phase 2-A | Bulk Status Change | **COMPLETED** | `calendar-kanban-multi-select-bulk-status.md` |
-| Phase 2-B | Bulk Date Change (設定 + 解除) | 設計完了、実装待ち | `calendar-kanban-multi-select-bulk-date.md` |
-| Phase 2-C | Multi-DnD (Kanban/Calendar drop で一括操作) | CANDIDATE | — |
+| Phase 2-B | Bulk Date Change (設定 + 解除) | **COMPLETED** | `calendar-kanban-multi-select-bulk-date.md` |
+| Phase 2-C | Multi-DnD (Kanban/Calendar drop で一括操作) | 設計完了、実装待ち | `calendar-kanban-multi-select-multi-dnd.md` |
 | Phase 2-D | SELECT_RANGE 表示順対応 | CANDIDATE | — |
 | Phase 2-E | Escape キーで CLEAR_MULTI_SELECT | CANDIDATE | — |
 
