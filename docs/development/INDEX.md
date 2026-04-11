@@ -81,6 +81,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 57 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 2 (Space status toggle) | 2026-04-11 | Kanban view で Space → todo status toggle。QUICK_UPDATE_ENTRY 再利用。multi-select 非対応。テスト 15 件。 |
 | 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | 2026-04-11 | entry window 内 task checkbox を click → 親 `QUICK_UPDATE_ENTRY` → `pushViewBodyUpdate` で反映。TEXTLOG は per-log-entry 描画 + `data-pkc-log-id` で識別。readonly CSS guard。protocol 追加: `pkc-entry-task-toggle`。テスト 16 件。 |
 | 59 | `task-completion-badge.md` | Task completion badge (sidebar + detail pane) | 2026-04-11 | TEXT/TEXTLOG の task list 進捗を sidebar + detail pane に `done/total` badge 表示。`countTaskProgress()` pure helper。TEXTLOG は全 log entry 合算。task 0 件は非表示。全完了は success 色。テスト 26 件。 |
+| 60 | `kanban-keyboard-phase3-ctrl-arrow.md` | Kanban keyboard Phase 3 (Ctrl+Arrow status move) | 2026-04-11 | Kanban view で Ctrl+Arrow Left/Right により todo status を列方向に変更。KANBAN_COLUMNS 参照。QUICK_UPDATE_ENTRY 再利用。single selection のみ。テスト 18 件。 |
 
 ## CANDIDATE — Next Feature
 
@@ -97,13 +98,14 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 5 | Arrow Right (expanded folder) | select first child | COMPLETED |
 | 6 | Arrow Left (non-folder) | move to parent | COMPLETED |
 
-**Kanban** (Phase 1 + 2): 完成
+**Kanban** (Phase 1 + 2 + 3): 完成
 
 | Key | Action | Status |
 |-----|--------|--------|
 | Arrow Up/Down | 列内移動 | COMPLETED |
 | Arrow Left/Right | 列間移動 (index clamp) | COMPLETED |
 | Space | status toggle (open ↔ done) | COMPLETED |
+| Ctrl+Arrow Left/Right | status move (directional) | COMPLETED |
 
 **Calendar** (Phase 1): 完成
 
@@ -114,14 +116,13 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 **Summary**:
 - Sidebar tree keyboard navigation は Phase 1–6 で完成
-- Kanban keyboard Phase 1 (navigation) + Phase 2 (Space toggle) 完了
+- Kanban keyboard Phase 1 (navigation) + Phase 2 (Space toggle) + Phase 3 (Ctrl+Arrow status move) 完了
 - Calendar keyboard Phase 1 (navigation) 完了 — 日移動 + 週移動、月内限定
-- 全 3 view で navigation 完成 + Kanban は action 操作も対応
-- テスト合計 154 件（Sidebar 91 + Kanban 39 + Calendar 24）
+- 全 3 view で navigation 完成 + Kanban は action 操作も完成
+- テスト合計 172 件（Sidebar 91 + Kanban 57 + Calendar 24）
 
 ### Keyboard Navigation — Not Implemented
 
-- Kanban Phase 2 残: Ctrl+Arrow status move
 - Calendar Phase 2 (month wrap, empty cell cursor)
 - Shift+Arrow range selection
 
@@ -135,16 +136,6 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 妥当性 | △ — 必要性が薄い | △ — 前提が未整備 |
 
 設計: `calendar-kanban-keyboard-navigation.md` §9
-
-### Active — Kanban Keyboard Phase 3
-
-| # | File | Topic | Status |
-|---|------|-------|--------|
-| 60 | `kanban-keyboard-phase3-ctrl-arrow.md` | Kanban Ctrl+Arrow status move | CANDIDATE |
-
-Kanban view で Ctrl+Arrow Left/Right により todo の status を列方向に変更。
-open → done (Right) / done → open (Left)。端列 no-op。
-既存 `QUICK_UPDATE_ENTRY` 再利用。single selection のみ。
 
 ### 保留候補
 

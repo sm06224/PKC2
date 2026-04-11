@@ -26,6 +26,7 @@ import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
+import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1188,6 +1189,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       e.preventDefault();
       dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[nextIdx]! });
+      return;
+    }
+
+    // Ctrl+Arrow Left / Right: kanban status move (directional)
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.viewMode === 'kanban'
+      && state.container
+      && !state.readonly
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'todo') return;
+      const todo = parseTodoBody(entry.body);
+      const currentIdx = KANBAN_COLUMNS.findIndex((c) => c.status === todo.status);
+      if (currentIdx < 0) return;
+      const targetIdx = e.key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1;
+      if (targetIdx < 0 || targetIdx >= KANBAN_COLUMNS.length) return;
+      const targetStatus = KANBAN_COLUMNS[targetIdx]!.status;
+      if (todo.status === targetStatus) return;
+      const updated = serializeTodoBody({ ...todo, status: targetStatus });
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: updated });
       return;
     }
 

@@ -1,6 +1,6 @@
 # Kanban Keyboard Phase 3 — Ctrl+Arrow Status Move
 
-Status: CANDIDATE
+Status: COMPLETED
 Created: 2026-04-11
 
 ---

@@ -6910,6 +6910,255 @@ describe('Kanban keyboard Phase 2 — Space status toggle', () => {
   });
 });
 
+// ─── Kanban Keyboard Phase 3 — Ctrl+Arrow status move ──────────
+describe('Kanban keyboard Phase 3 — Ctrl+Arrow status move', () => {
+  const kanbanContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't4', title: 'Task D', body: '{"status":"done","description":"D"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 'tx', title: 'Text Entry', body: 'plain text', archetype: 'text', created_at: '2026-01-01T00:06:00Z', updated_at: '2026-01-01T00:06:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupKanban() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('Ctrl+Right moves open → done', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('done');
+  });
+
+  it('Ctrl+Left moves done → open', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't4')!;
+    expect(parseTodoBody(entry.body).status).toBe('open');
+  });
+
+  it('Ctrl+Left on open entry (leftmost) is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  it('Ctrl+Right on done entry (rightmost) is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't4')!;
+    expect(parseTodoBody(entry.body).status).toBe('done'); // unchanged
+  });
+
+  it('selectedLid is maintained after status move', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('preserves description and other body fields', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    const todo = parseTodoBody(entry.body);
+    expect(todo.description).toBe('A');
+    expect(todo.status).toBe('done');
+  });
+
+  it('Cmd (metaKey) also works', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', metaKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('done');
+  });
+
+  // ── Guard ──
+
+  it('no-op in non-kanban view', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer });
+    // detail mode (default)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  it('no-op during editing', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  it('no-op when textarea is focused', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+    ta.remove();
+  });
+
+  it('no-op in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer, readonly: true });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  it('no-op for non-todo entry', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tx' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 'tx')!;
+    expect(entry.body).toBe('plain text'); // unchanged
+  });
+
+  it('no-op when no selection', () => {
+    const { dispatcher } = setupKanban();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true }));
+
+    const t1 = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(t1.body).status).toBe('open');
+  });
+
+  it('no-op with Shift modifier', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, shiftKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  it('no-op with Alt modifier', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, altKey: true, bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open'); // unchanged
+  });
+
+  // ── Regression ──
+
+  it('regression: plain Arrow Left/Right still navigates columns', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    // Plain ArrowRight moves selection to done column (Phase 1 navigation)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    // selectedLid should change (not t1 anymore — moved to done column)
+    const newLid = dispatcher.getState().selectedLid;
+    expect(newLid).not.toBeNull();
+    // t1 body should be unchanged (status still open — plain Arrow is navigation, not status move)
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('open');
+  });
+
+  it('regression: Space toggle still works', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    const entry = dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!;
+    expect(parseTodoBody(entry.body).status).toBe('done');
+  });
+
+  it('regression: Escape still clears selection', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+});
+
 // ─── Calendar Keyboard Navigation Phase 1 ──────────
 describe('Calendar keyboard navigation (Phase 1)', () => {
   // April 2026 calendar: starts on Wednesday
