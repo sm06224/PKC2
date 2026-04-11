@@ -4548,3 +4548,199 @@ describe('Cross-view Multi-DnD (Phase 2-C3)', () => {
     expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
   });
 });
+
+// ─── Phase 2-E: Escape clears multi-select ─────────────────────
+describe('Escape clears multi-select (Phase 2-E)', () => {
+  const escContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'e1', title: 'Entry 1', body: 'body1', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'e2', title: 'Entry 2', body: 'body2', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'e3', title: 'Entry 3', body: 'body3', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  const todoEscContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressEscape() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
+
+  function setupEsc(container: Container, viewMode?: 'detail' | 'calendar' | 'kanban') {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    if (viewMode && viewMode !== 'detail') {
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+      if (viewMode === 'calendar') {
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+      }
+    }
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration tests ──
+
+  it('Escape clears multiSelectedLids', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+  });
+
+  it('Escape preserves selectedLid when clearing multi-select', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    // TOGGLE_MULTI_SELECT sets selectedLid to action.lid
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('e2'); // preserved
+  });
+
+  it('second Escape deselects entry after multi-select cleared', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+
+    pressEscape(); // clears multi-select
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+
+    pressEscape(); // deselects entry
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('action bar disappears after Escape', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    render(dispatcher.getState(), root);
+    expect(root.querySelector('[data-pkc-region="multi-action-bar"]')).not.toBeNull();
+
+    pressEscape();
+    render(dispatcher.getState(), root);
+    expect(root.querySelector('[data-pkc-region="multi-action-bar"]')).toBeNull();
+  });
+
+  it('works consistently in Calendar view', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids).toContain('t1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('t2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+  });
+
+  it('works consistently in Kanban view', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids).toContain('t1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('t2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+  });
+
+  // ── Guard tests ──
+
+  it('does not fire during editing phase', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    pressEscape(); // should CANCEL_EDIT, not CLEAR_MULTI_SELECT
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    // multi-select should still be present (CANCEL_EDIT does not clear it)
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+  });
+
+  it('no-op when multiSelectedLids is already empty', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+
+    events.length = 0;
+    pressEscape(); // should DESELECT_ENTRY, not CLEAR_MULTI_SELECT
+
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+    expect(events.some((e) => e.type === 'MULTI_SELECT_CHANGED')).toBe(false);
+  });
+
+  // ── Regression tests ──
+
+  it('regression: Phase 1 visual feedback is not broken', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Card?.getAttribute('data-pkc-multi-selected')).toBe('true');
+
+    pressEscape();
+    render(dispatcher.getState(), root);
+
+    const kanbanAfter = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2CardAfter = kanbanAfter.querySelector('[data-pkc-lid="t2"]');
+    expect(t2CardAfter?.getAttribute('data-pkc-multi-selected')).not.toBe('true');
+  });
+
+  it('regression: existing Escape deselect still works when no multi-select', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(dispatcher.getState().selectedLid).toBe('e1');
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+
+    pressEscape();
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+  });
+
+  it('regression: existing Escape cancel-edit still works', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    pressEscape();
+
+    expect(events.some((e) => e.type === 'EDIT_CANCELLED')).toBe(true);
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+});

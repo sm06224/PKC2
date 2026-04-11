@@ -1017,6 +1017,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
       } else if (state.phase === 'editing') {
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+      } else if (state.multiSelectedLids.length > 0) {
+        dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
       } else if (state.selectedLid) {
         dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
       }
