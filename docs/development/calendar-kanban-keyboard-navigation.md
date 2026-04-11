@@ -359,7 +359,201 @@ Arrow handler の冒頭で `viewMode` を分岐するだけ。
 
 ---
 
-## Appendix: DOM Structure Reference
+## Appendix A: Kanban Phase 1 — Implementation-Ready Spec
+
+Status: READY FOR IMPLEMENTATION
+
+### A-1. 動作定義（曖昧さなし）
+
+#### Arrow Up（列内上移動）
+
+1. `viewMode !== 'kanban'` → sidebar handler にフォールスルー（現行不変）
+2. `selectedLid` が kanban 上に可視でない場合 → open 列の先頭 card を選択
+3. 現在の card が列の先頭 → no-op
+4. それ以外 → 同一列の 1 つ上の card を選択
+
+#### Arrow Down（列内下移動）
+
+1. `viewMode !== 'kanban'` → sidebar handler にフォールスルー
+2. `selectedLid` が kanban 上に可視でない場合 → open 列の先頭 card を選択
+3. 現在の card が列の末尾 → no-op
+4. それ以外 → 同一列の 1 つ下の card を選択
+
+#### Arrow Left（左列移動）
+
+1. `viewMode !== 'kanban'` → tree handler にフォールスルー（現行不変）
+2. `selectedLid` なし or kanban に可視でない → no-op
+3. 現在の card が最左列（open） → no-op
+4. 移動先列が空 → no-op
+5. 移動先列の card 数 > 現在 index → 同 index の card を選択
+6. 移動先列の card 数 ≤ 現在 index → 末尾の card を選択
+
+#### Arrow Right（右列移動）
+
+Arrow Left の鏡像。open → done 方向。
+
+#### Enter
+
+既存 BEGIN_EDIT をそのまま利用。viewMode による特別処理なし。
+（Enter handler は viewMode 分岐の外にあるため、変更不要。）
+
+#### selectedLid が kanban に可視でない場合
+
+以下のケースを統合:
+- `selectedLid === null`
+- `selectedLid` が todo でない（text, folder 等）
+- `selectedLid` が archived todo（kanban から除外済み）
+
+これらは全て **「kanban 上に可視でない」** として扱い、
+Arrow Up/Down で open 列の先頭 card を選択する。
+Arrow Left/Right では no-op。
+
+### A-2. Source of Truth
+
+**DOM ベース**（sidebar Arrow Up/Down と同一方式）。
+
+理由:
+1. sidebar handler は `sidebar.querySelectorAll('[data-pkc-action="select-entry"][data-pkc-lid]')` で
+   可視 entry 順を DOM から取得している。Kanban も同じパターンを踏襲する。
+2. renderer が `groupTodosByStatus()` の結果順に card を生成するため、
+   DOM 順 = state 由来の順序が保証される。
+3. 将来 sort/filter が追加されても DOM が正を反映する。
+
+**具体的な DOM クエリ**:
+
+```typescript
+// 列ごとの card lid リスト取得
+const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
+const columns = kanban.querySelectorAll('[data-pkc-kanban-drop-target]');
+// columns[0] = open, columns[1] = done (KANBAN_COLUMNS 順)
+
+// 列内の card lid 配列
+const cards = column.querySelectorAll<HTMLElement>('[data-pkc-lid]');
+const lids = Array.from(cards).map(el => el.getAttribute('data-pkc-lid')!);
+```
+
+**Stale DOM ガード**:
+sidebar handler と同様に `containerLids` Set で検証する。
+
+```typescript
+const containerLids = new Set(state.container.entries.map(e => e.lid));
+const lids = /* DOM query */.filter(lid => containerLids.has(lid));
+```
+
+### A-3. Focus / Selection Model
+
+- **selectedLid のみ使用**。新 state 不要。
+- **cursor / focusRegion は Phase 1 では導入しない。**
+- `SELECT_ENTRY` dispatch で selectedLid を更新。
+  sidebar と kanban で同じ entry が同時に highlight される（現行の click と同じ）。
+
+### A-4. Guard Conditions
+
+| Condition | Fires? | Reason |
+|-----------|--------|--------|
+| `viewMode !== 'kanban'` | NO | sidebar/tree handler にフォールスルー |
+| `phase === 'editing'` | NO | 既存 editing guard |
+| input / textarea / select focused | NO | form control guard |
+| contenteditable focused | NO | 同上 |
+| Ctrl / Meta + Arrow | NO | 修飾キー guard |
+| Shift / Alt + Arrow | NO | Reserved |
+| overlay / menu / picker open | NO | 既存 early return |
+| readonly mode | YES | navigation は runtime UI state のみ |
+| container が null | NO | container guard |
+
+### A-5. Keydown Cascade（変更後）
+
+```
+handleKeydown:
+  1. overlay / menu / autocomplete / import early return
+  2. Escape cascade
+  3. Arrow Up / Down:
+     if (viewMode === 'kanban') → kanban column navigation  ← NEW
+     else → sidebar navigation (現行不変)
+  4. Arrow Left / Right:
+     if (viewMode === 'kanban') → kanban cross-column navigation  ← NEW
+     else → tree collapse/expand/parent/child (現行不変)
+  5. Enter (begin edit) — viewMode 分岐なし、現行不変
+  6. Ctrl+N (new entry) — 現行不変
+```
+
+viewMode 分岐は **各 Arrow handler の最初** に置く。
+`viewMode === 'kanban'` のとき kanban 処理を行い return。
+それ以外は既存 handler がそのまま動く。
+
+### A-6. 実装変更箇所
+
+| File | Change | Lines |
+|------|--------|-------|
+| `action-binder.ts` | Arrow Up/Down handler に kanban 分岐追加 | ~30 |
+| `action-binder.ts` | Arrow Left/Right handler に kanban 分岐追加 | ~30 |
+| `action-binder.test.ts` | Kanban keyboard テスト | ~200 |
+| `INDEX.md` | Kanban Phase 1 status 追加 | ~5 |
+
+**Reducer 変更: なし。** `SELECT_ENTRY` 既存。
+**Renderer 変更: なし。** DOM 構造は既に十分。
+**features 変更: なし。** `groupTodosByStatus` / `KANBAN_COLUMNS` 既存。
+
+### A-7. テスト計画
+
+#### Integration — Arrow Up/Down（列内移動）
+
+| # | Test | Expect |
+|---|------|--------|
+| 1 | open 列先頭 card 選択中に Arrow Down | 2 番目の card 選択 |
+| 2 | open 列末尾 card 選択中に Arrow Down | no-op（末尾） |
+| 3 | open 列 2 番目の card 選択中に Arrow Up | 先頭 card 選択 |
+| 4 | open 列先頭 card 選択中に Arrow Up | no-op（先頭） |
+| 5 | done 列内で Up/Down | 列内移動（open と同様） |
+| 6 | selectedLid が kanban に可視でない → Arrow Down | open 列先頭を選択 |
+
+#### Integration — Arrow Left/Right（列間移動）
+
+| # | Test | Expect |
+|---|------|--------|
+| 7 | done 列の card 選択中に Arrow Left | open 列の同 index card 選択 |
+| 8 | open 列の card 選択中に Arrow Right | done 列の同 index card 選択 |
+| 9 | open 列の card 選択中に Arrow Left | no-op（最左列） |
+| 10 | done 列の card 選択中に Arrow Right | no-op（最右列） |
+| 11 | done[2] 選択 → Arrow Left、open 列が 1 件のみ | open 列末尾（= 先頭）を選択 |
+| 12 | Arrow Left/Right、移動先列が空 | no-op |
+
+#### Guard
+
+| # | Test | Expect |
+|---|------|--------|
+| 13 | viewMode !== 'kanban' で Arrow → sidebar handler が動く | sidebar 移動 |
+| 14 | editing 中は発火しない | no dispatch |
+| 15 | textarea focus 中は発火しない | no dispatch |
+| 16 | Ctrl modifier 中は発火しない | no dispatch |
+| 17 | readonly でも navigation は動く | 正常動作 |
+
+#### Regression
+
+| # | Test | Expect |
+|---|------|--------|
+| 18 | detail mode で sidebar Arrow Up/Down は不変 | 現行動作 |
+| 19 | detail mode で Arrow Left/Right tree 操作は不変 | 現行動作 |
+| 20 | Enter は viewMode によらず BEGIN_EDIT | 現行動作 |
+| 21 | Escape cascade は不変 | 現行動作 |
+| 22 | click 選択は kanban mode でも動作 | 現行動作 |
+| 23 | multi-select Ctrl+click は壊れない | 現行動作 |
+
+### A-8. 明確な非対象（Phase 1）
+
+| 項目 | 理由 |
+|------|------|
+| Space で status toggle | Phase 2（DnD interaction） |
+| Ctrl+Arrow で列間 status 移動 | Phase 2（DnD interaction） |
+| Shift+Arrow range selection | Phase 3（multi-select） |
+| Calendar keyboard navigation | 別 Phase（Kanban 完了後） |
+| viewMode を跨ぐ keyboard navigation | 方式 C では viewMode 切替は mouse/shortcut |
+| kanban 内での新規 entry 作成 | 既存 Ctrl+N で代替可能 |
+| multi-select keyboard 拡張 | Phase 3 |
+
+---
+
+## Appendix B: DOM Structure Reference
 
 ### Calendar
 
