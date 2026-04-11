@@ -1962,6 +1962,28 @@
   font-size: 0.6rem;
   font-style: italic;
 }
+.pkc-sandbox-default-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--c-border);
+  font-size: 0.7rem;
+}
+.pkc-sandbox-default-label {
+  color: var(--c-fg);
+  white-space: nowrap;
+}
+.pkc-sandbox-policy-select {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+}
 
 .pkc-attachment-open-btn {
   margin-top: 0.25rem;

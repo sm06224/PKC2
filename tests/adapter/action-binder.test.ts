@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews } from '@adapter/ui/action-binder';
+import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews, resolveContainerSandboxDefault } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
@@ -3013,5 +3013,156 @@ describe('populateInlineAssetPreviews', () => {
     const source = root.querySelector('video.pkc-inline-video-preview source');
     expect(source).not.toBeNull();
     expect(source!.getAttribute('type')).toBe('video/webm');
+  });
+});
+
+// ── Container default sandbox policy ──
+
+describe('resolveContainerSandboxDefault', () => {
+  it('returns empty array for undefined (strict default)', () => {
+    expect(resolveContainerSandboxDefault(undefined)).toEqual([]);
+  });
+
+  it('returns empty array for "strict"', () => {
+    expect(resolveContainerSandboxDefault('strict')).toEqual([]);
+  });
+
+  it('returns allow-scripts + allow-forms for "relaxed"', () => {
+    expect(resolveContainerSandboxDefault('relaxed')).toEqual(['allow-scripts', 'allow-forms']);
+  });
+
+  it('returns empty array for unknown/invalid values', () => {
+    expect(resolveContainerSandboxDefault('invalid')).toEqual([]);
+    expect(resolveContainerSandboxDefault('')).toEqual([]);
+  });
+});
+
+describe('Container sandbox policy — reducer + UI', () => {
+  it('SET_SANDBOX_POLICY updates container.meta.sandbox_policy', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBeUndefined();
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('relaxed');
+  });
+
+  it('SET_SANDBOX_POLICY can switch back to strict', () => {
+    const dispatcher = createDispatcher();
+    const container: Container = {
+      ...mockContainer,
+      meta: { ...mockContainer.meta, sandbox_policy: 'relaxed' },
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('relaxed');
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'strict' });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('strict');
+  });
+
+  it('SET_SANDBOX_POLICY is blocked in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer, readonly: true });
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    // Should remain unchanged
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBeUndefined();
+  });
+
+  it('SET_SANDBOX_POLICY updates container.meta.updated_at', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    const before = dispatcher.getState().container!.meta.updated_at;
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    const after = dispatcher.getState().container!.meta.updated_at;
+    expect(after).not.toBe(before);
+  });
+
+  it('sandbox policy select renders in meta pane for HTML attachment', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('strict');
+  });
+
+  it('sandbox policy select reflects current container policy', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      meta: { ...mockContainer.meta, sandbox_policy: 'relaxed' },
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('relaxed');
+  });
+
+  it('backward compat: container without sandbox_policy works normally', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    // Container has no sandbox_policy field at all
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    // Select defaults to strict
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('strict');
   });
 });

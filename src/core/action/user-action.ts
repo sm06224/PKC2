@@ -121,7 +121,19 @@ export type UserAction =
    * - Does NOT change phase, editingLid, or selectedLid.
    * - Emits ENTRY_CREATED + RELATION_CREATED events.
    */
-  | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string };
+  | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string }
+  /**
+   * SET_SANDBOX_POLICY — update container-level default sandbox policy.
+   *
+   * Contract:
+   * - Allowed in ready phase only.
+   * - Blocked when readonly or container is absent.
+   * - Updates container.meta.sandbox_policy.
+   * - Valid values: 'strict', 'relaxed'.
+   * - Invalid values are treated as 'strict'.
+   * - Emits no domain event (meta-only change, no entry mutation).
+   */
+  | { type: 'SET_SANDBOX_POLICY'; policy: 'strict' | 'relaxed' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

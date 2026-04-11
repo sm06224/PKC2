@@ -1098,6 +1098,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
       }
     }
+
+    // Container sandbox policy select
+    if (action === 'set-sandbox-policy') {
+      const policy = (target as HTMLSelectElement).value;
+      if (policy === 'strict' || policy === 'relaxed') {
+        dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy });
+      }
+    }
   }
 
   // ── DnD handlers ──
@@ -2454,11 +2462,14 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const resolved = resolveAttachmentData(lid, dispatcher);
     if (!resolved) continue;
 
-    // Read sandbox_allow from the entry body for HTML previews
-    const entryForPreview = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
-    const sandboxAllow = entryForPreview
-      ? (parseAttachmentBody(entryForPreview.body).sandbox_allow ?? [])
-      : [];
+    // Read sandbox_allow from the entry body for HTML previews.
+    // Fallback chain: per-entry override → container default → strict.
+    const state = dispatcher.getState();
+    const entryForPreview = state.container?.entries.find((e) => e.lid === lid);
+    const entryAllow = entryForPreview
+      ? parseAttachmentBody(entryForPreview.body).sandbox_allow
+      : undefined;
+    const sandboxAllow = entryAllow ?? resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
     populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
@@ -2592,6 +2603,18 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
       }
     }
   }
+}
+
+/**
+ * Resolve the container-level sandbox default into an attribute list.
+ * Used as fallback when an entry has no per-entry sandbox_allow.
+ *
+ * - 'relaxed' → allow-scripts + allow-forms (common web app needs)
+ * - 'strict' or unknown → empty (only allow-same-origin baseline from populatePreviewElement)
+ */
+export function resolveContainerSandboxDefault(policy: string | undefined): string[] {
+  if (policy === 'relaxed') return ['allow-scripts', 'allow-forms'];
+  return [];
 }
 
 /**

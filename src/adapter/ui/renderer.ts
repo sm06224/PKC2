@@ -1873,6 +1873,26 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
       heading.textContent = 'Sandbox Policy';
       sandboxSection.appendChild(heading);
 
+      // Container default policy control
+      const defaultRow = createElement('div', 'pkc-sandbox-default-row');
+      const defaultLabel = createElement('label', 'pkc-sandbox-default-label');
+      defaultLabel.textContent = 'Container Default:';
+      defaultRow.appendChild(defaultLabel);
+      const policySelect = document.createElement('select');
+      policySelect.className = 'pkc-sandbox-policy-select';
+      policySelect.setAttribute('data-pkc-action', 'set-sandbox-policy');
+      if (!canEdit) policySelect.disabled = true;
+      const currentPolicy = container?.meta.sandbox_policy ?? 'strict';
+      for (const opt of ['strict', 'relaxed'] as const) {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        if (opt === currentPolicy) option.selected = true;
+        policySelect.appendChild(option);
+      }
+      defaultRow.appendChild(policySelect);
+      sandboxSection.appendChild(defaultRow);
+
       const currentAllow = att.sandbox_allow ?? [];
 
       for (const attr of SANDBOX_ATTRIBUTES) {

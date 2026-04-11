@@ -713,6 +713,19 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container: pruned };
       return { state: next, events: [{ type: 'ORPHAN_ASSETS_PURGED', count }] };
     }
+    case 'SET_SANDBOX_POLICY': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      // Validate policy value; treat unknown as 'strict'
+      const policy = action.policy === 'relaxed' ? 'relaxed' : 'strict';
+      const ts = now();
+      const container: Container = {
+        ...state.container,
+        meta: { ...state.container.meta, sandbox_policy: policy, updated_at: ts },
+      };
+      const next: AppState = { ...state, container };
+      return { state: next, events: [] };
+    }
     case 'TOGGLE_MULTI_SELECT': {
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
