@@ -3,7 +3,7 @@ import type { RelationKind } from '../../core/model/relation';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
-import type { AppState } from '../state/app-state';
+import { type AppState, getAllSelected } from '../state/app-state';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
@@ -25,8 +25,7 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { isDescendant } from '../../features/relation/tree';
-import { getStructuralParent } from '../../features/relation/tree';
+import { isDescendant, getStructuralParent } from '../../features/relation/tree';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -255,6 +254,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'clear-multi-select':
         dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+        break;
+      case 'bulk-clear-date':
+        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
         break;
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
@@ -1014,9 +1016,119 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
       } else if (state.phase === 'editing') {
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+      } else if (state.multiSelectedLids.length > 0) {
+        dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
       } else if (state.selectedLid) {
         dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
       }
+      return;
+    }
+
+    // Arrow Up / Arrow Down: move selection through sidebar entries
+    if (
+      (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+      && !mod
+      && !e.shiftKey
+      && !e.altKey
+      && state.phase !== 'editing'
+    ) {
+      // Don't steal arrow keys from form controls
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (!state.container) return;
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+      if (!sidebar) return;
+      const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+      if (items.length === 0) return;
+
+      // Validate against current container to guard against stale DOM
+      const containerLids = new Set(state.container.entries.map((en) => en.lid));
+      const lids = Array.from(items)
+        .map((el) => el.getAttribute('data-pkc-lid')!)
+        .filter((lid) => containerLids.has(lid));
+      if (lids.length === 0) return;
+      const currentIdx = state.selectedLid ? lids.indexOf(state.selectedLid) : -1;
+
+      let nextIdx: number;
+      if (currentIdx < 0) {
+        // No selection or selected entry not visible → select first
+        nextIdx = 0;
+      } else if (e.key === 'ArrowDown') {
+        if (currentIdx >= lids.length - 1) return; // already at end
+        nextIdx = currentIdx + 1;
+      } else {
+        if (currentIdx <= 0) return; // already at start
+        nextIdx = currentIdx - 1;
+      }
+
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[nextIdx]! });
+      return;
+    }
+
+    // Arrow Left / Arrow Right: collapse / expand folder in sidebar
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && !mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.container
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'folder') return;
+      const isCollapsed = state.collapsedFolders.includes(state.selectedLid);
+      if (e.key === 'ArrowRight' && isCollapsed) {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: state.selectedLid });
+      } else if (e.key === 'ArrowLeft' && !isCollapsed) {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: state.selectedLid });
+      } else if (e.key === 'ArrowLeft' && isCollapsed) {
+        // Already collapsed — move selection to parent folder
+        const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+        if (parent) {
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+        }
+      }
+      return;
+    }
+
+    // Enter: open selected entry for editing
+    if (
+      e.key === 'Enter'
+      && !mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: state.selectedLid });
       return;
     }
 
@@ -1096,6 +1208,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'BULK_MOVE_TO_ROOT' });
       } else {
         dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
+      }
+    }
+
+    // Bulk status change via select dropdown
+    if (action === 'bulk-set-status') {
+      const val = (target as HTMLSelectElement).value;
+      if (val === 'open' || val === 'done') {
+        dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: val });
+      }
+    }
+
+    // Bulk date change via date input
+    if (action === 'bulk-set-date') {
+      const val = (target as HTMLInputElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: val });
+      }
+    }
+
+    // Container sandbox policy select
+    if (action === 'set-sandbox-policy') {
+      const policy = (target as HTMLSelectElement).value;
+      if (policy === 'strict' || policy === 'relaxed') {
+        dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy });
       }
     }
   }
@@ -1206,6 +1342,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── DnD: kanban board ──
 
   let kanbanDraggedLid: string | null = null;
+  let isMultiDrag = false;
+  let multiDragGhostEl: HTMLElement | null = null;
+
+  function setMultiDragGhost(e: DragEvent, count: number): void {
+    const ghost = document.createElement('div');
+    ghost.setAttribute('data-pkc-drag-ghost', 'true');
+    ghost.textContent = `${count} 件`;
+    ghost.style.cssText = 'position:fixed;left:-9999px;top:0;padding:4px 12px;background:var(--c-accent,#4a9eff);color:#fff;border-radius:4px;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;';
+    document.body.appendChild(ghost);
+    e.dataTransfer?.setDragImage?.(ghost, 0, 0);
+    multiDragGhostEl = ghost;
+  }
+
+  function removeMultiDragGhost(): void {
+    if (multiDragGhostEl) {
+      multiDragGhostEl.remove();
+      multiDragGhostEl = null;
+    }
+  }
 
   function handleKanbanDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
@@ -1214,8 +1369,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!lid) return;
 
     kanbanDraggedLid = lid;
+    const state = dispatcher.getState();
+    const selected = getAllSelected(state);
+    isMultiDrag = selected.length > 1 && selected.includes(lid);
+
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (isMultiDrag) setMultiDragGhost(e, selected.length);
 
     requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
   }
@@ -1252,15 +1412,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
     if (!targetStatus) return;
 
-    const entry = state.container.entries.find((e) => e.lid === lid);
-    if (!entry) return;
+    if (isMultiDrag) {
+      // Multi-drag: apply status change to all selected entries
+      dispatcher.dispatch({
+        type: 'BULK_SET_STATUS',
+        status: targetStatus as 'open' | 'done',
+      });
+    } else {
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return;
 
-    const todo = parseTodoBody(entry.body);
+      const todo = parseTodoBody(entry.body);
 
-    // Only update if status actually changes
-    if (todo.status !== targetStatus) {
-      const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      // Only update if status actually changes
+      if (todo.status !== targetStatus) {
+        const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      }
     }
 
     // Select the dragged entry
@@ -1269,6 +1437,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
+    isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1281,6 +1451,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     kanbanDraggedLid = null;
+    isMultiDrag = false;
+    removeMultiDragGhost();
   }
 
   // ── DnD: calendar date move ──
@@ -1294,8 +1466,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!lid) return;
 
     calendarDraggedLid = lid;
+    const state = dispatcher.getState();
+    const selected = getAllSelected(state);
+    isMultiDrag = selected.length > 1 && selected.includes(lid);
+
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (isMultiDrag) setMultiDragGhost(e, selected.length);
 
     requestAnimationFrame(() => target.setAttribute('data-pkc-dragging', 'true'));
   }
@@ -1332,15 +1509,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetDate = dropTarget.getAttribute('data-pkc-date');
     if (!targetDate) return;
 
-    const entry = state.container.entries.find((e) => e.lid === lid);
-    if (!entry) return;
+    if (isMultiDrag) {
+      // Multi-drag: apply date change to all selected entries
+      dispatcher.dispatch({
+        type: 'BULK_SET_DATE',
+        date: targetDate,
+      });
+    } else {
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return;
 
-    const todo = parseTodoBody(entry.body);
+      const todo = parseTodoBody(entry.body);
 
-    // Only update if date actually changes
-    if (todo.date !== targetDate) {
-      const updated = serializeTodoBody({ ...todo, date: targetDate });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      // Only update if date actually changes
+      if (todo.date !== targetDate) {
+        const updated = serializeTodoBody({ ...todo, date: targetDate });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      }
     }
 
     // Select the dragged entry
@@ -1349,6 +1534,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     calendarDraggedLid = null;
     kanbanDraggedLid = null;
+    isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1361,6 +1548,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     calendarDraggedLid = null;
+    isMultiDrag = false;
+    removeMultiDragGhost();
   }
 
   // ── DnD: cleanup helper ──
@@ -1372,6 +1561,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     draggedLid = null;
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
+    isMultiDrag = false;
+    removeMultiDragGhost();
     if (viewSwitchTimer) {
       clearTimeout(viewSwitchTimer);
       viewSwitchTimer = null;
@@ -1463,6 +1654,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     const rawTarget = e.target as HTMLElement | null;
     if (!rawTarget) return;
+
+    // Allow native context menu on editable form controls (copy/paste support)
+    if (rawTarget instanceof HTMLTextAreaElement ||
+        (rawTarget instanceof HTMLInputElement && rawTarget.type !== 'button' && rawTarget.type !== 'submit')) {
+      return;
+    }
+
     const canEdit = !state.readonly;
 
     // Case 1 — TEXTLOG row context menu (center pane).
@@ -2454,11 +2652,14 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const resolved = resolveAttachmentData(lid, dispatcher);
     if (!resolved) continue;
 
-    // Read sandbox_allow from the entry body for HTML previews
-    const entryForPreview = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
-    const sandboxAllow = entryForPreview
-      ? (parseAttachmentBody(entryForPreview.body).sandbox_allow ?? [])
-      : [];
+    // Read sandbox_allow from the entry body for HTML previews.
+    // Fallback chain: per-entry override → container default → strict.
+    const state = dispatcher.getState();
+    const entryForPreview = state.container?.entries.find((e) => e.lid === lid);
+    const entryAllow = entryForPreview
+      ? parseAttachmentBody(entryForPreview.body).sandbox_allow
+      : undefined;
+    const sandboxAllow = entryAllow ?? resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
     populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
@@ -2592,6 +2793,18 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
       }
     }
   }
+}
+
+/**
+ * Resolve the container-level sandbox default into an attribute list.
+ * Used as fallback when an entry has no per-entry sandbox_allow.
+ *
+ * - 'relaxed' → allow-scripts + allow-forms (common web app needs)
+ * - 'strict' or unknown → empty (only allow-same-origin baseline from populatePreviewElement)
+ */
+export function resolveContainerSandboxDefault(policy: string | undefined): string[] {
+  if (policy === 'relaxed') return ['allow-scripts', 'allow-forms'];
+  return [];
 }
 
 /**

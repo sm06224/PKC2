@@ -21,6 +21,7 @@ import {
   purgeTrash,
 } from '../../core/operations/container-ops';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
+import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -713,6 +714,19 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container: pruned };
       return { state: next, events: [{ type: 'ORPHAN_ASSETS_PURGED', count }] };
     }
+    case 'SET_SANDBOX_POLICY': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      // Validate policy value; treat unknown as 'strict'
+      const policy = action.policy === 'relaxed' ? 'relaxed' : 'strict';
+      const ts = now();
+      const container: Container = {
+        ...state.container,
+        meta: { ...state.container.meta, sandbox_policy: policy, updated_at: ts },
+      };
+      const next: AppState = { ...state, container };
+      return { state: next, events: [] };
+    }
     case 'TOGGLE_MULTI_SELECT': {
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
@@ -792,6 +806,47 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             container = removeRelation(container, r.id);
           }
         }
+      }
+      const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
+    }
+    case 'BULK_SET_STATUS': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const selected = getAllSelected(state);
+      if (selected.length === 0) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      for (const lid of selected) {
+        const entry = container.entries.find((e) => e.lid === lid);
+        if (!entry || entry.archetype !== 'todo') continue;
+        const todo = parseTodoBody(entry.body);
+        if (todo.status === action.status) continue;
+        const updated = serializeTodoBody({ ...todo, status: action.status });
+        const revId = generateLid();
+        container = snapshotEntry(container, lid, revId, ts);
+        container = updateEntry(container, lid, entry.title, updated, ts);
+      }
+      const next: AppState = { ...state, container, multiSelectedLids: [] };
+      return { state: next, events: [] };
+    }
+    case 'BULK_SET_DATE': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const selected = getAllSelected(state);
+      if (selected.length === 0) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      const targetDate = action.date ?? undefined;
+      for (const lid of selected) {
+        const entry = container.entries.find((e) => e.lid === lid);
+        if (!entry || entry.archetype !== 'todo') continue;
+        const todo = parseTodoBody(entry.body);
+        if (todo.date === targetDate) continue;
+        const updated = serializeTodoBody({ ...todo, date: targetDate });
+        const revId = generateLid();
+        container = snapshotEntry(container, lid, revId, ts);
+        container = updateEntry(container, lid, entry.title, updated, ts);
       }
       const next: AppState = { ...state, container, multiSelectedLids: [] };
       return { state: next, events: [] };

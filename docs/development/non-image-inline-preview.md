@@ -348,7 +348,25 @@ chip リンク専用の post-render 関数を新設。内部で `createBlobUrl()
 
 - **DOM 構造テスト** (happy-dom): preview 要素の生成・属性・fallback を自動テスト
 - **統合テスト** (happy-dom): render → populate → cleanup のライフサイクルを自動テスト
-- **ブラウザ検証** (手動): 実際の PDF/audio/video の表示・再生を目視確認
+- **ブラウザ検証** (手動): 下記チェックリストに従い目視確認
+
+### 10.4 手動検証チェックリスト
+
+happy-dom は blob URL の実 resolve、メディアデコード、PDF plugin をシミュレートしない。
+以下の項目は実ブラウザでの手動検証が必須。
+
+| # | 検証項目 | 確認内容 |
+|---|---------|---------|
+| M1 | PDF 表示 | TEXT body 内の PDF chip が `<object>` として展開され、ブラウザ PDF viewer で閲覧可能か |
+| M2 | PDF viewer 非対応時 | モバイルブラウザ等で PDF viewer がない場合、chip が表示されたままで download 可能か (chip は非表示にならない設計) |
+| M3 | audio controls | audio chip が `<audio controls>` に展開され、再生・一時停止・シークが動作するか |
+| M4 | video controls | video chip が `<video controls>` に展開され、再生・一時停止・フルスクリーンが動作するか |
+| M5 | entry 切り替え | entry を切り替えた後、旧 entry の preview が残らず新 entry の preview が正しく表示されるか |
+| M6 | 再 render 安定性 | QUICK_UPDATE_ENTRY (タスクチェックボックス toggle 等) 後に preview が壊れずに再構築されるか |
+| M7 | blob URL cleanup | DevTools の Application > Blob URLs (またはメモリプロファイラ) で、entry 切替後に旧 blob URL が revoke されているか |
+| M8 | CSP 制限環境 | HTTP header で `object-src 'none'` や `media-src 'none'` を設定した環境で、preview が出ない代わりに chip が維持され致命的エラーが出ないか |
+| M9 | 複数 preview 共存 | body 内に PDF + audio + video を混在させた場合、全件が正しく展開されるか |
+| M10 | edit mode 除外 | edit mode の preview pane 内では inline preview が展開されないか |
 
 ---
 
@@ -381,12 +399,14 @@ chip リンク専用の post-render 関数を新設。内部で `createBlobUrl()
 
 ---
 
-## 13. 次ステップ
+## 13. 実装ステータス
 
-1. 本仕様の承認
-2. `populateInlineAssetPreviews()` の実装
-3. CSS (サイズ制約、chip 非表示)
-4. main.ts への呼び出し追加
-5. テスト (DOM 構造 + lifecycle)
-6. ブラウザ手動検証
-7. INDEX.md 更新
+| ステップ | 状態 |
+|---------|------|
+| 仕様承認 | 完了 |
+| `populateInlineAssetPreviews()` 実装 | 完了 (`action-binder.ts`) |
+| CSS (サイズ制約、chip 表示制御) | 完了 (`base.css`) |
+| main.ts への呼び出し追加 | 完了 |
+| 自動テスト (DOM 構造 + lifecycle) | 完了 (16 件) |
+| ブラウザ手動検証 | 未実施 (§10.4 チェックリスト参照) |
+| INDEX.md 更新 | 完了 |

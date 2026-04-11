@@ -946,6 +946,43 @@ function renderSidebar(state: AppState): HTMLElement {
       }
     }
 
+    // Bulk status change (only when selection contains todos)
+    if (state.container) {
+      const hasTodo = state.multiSelectedLids.some((lid) => {
+        const e = state.container!.entries.find((en) => en.lid === lid);
+        return e?.archetype === 'todo';
+      });
+      if (hasTodo) {
+        const statusSelect = document.createElement('select');
+        statusSelect.className = 'pkc-multi-action-status';
+        statusSelect.setAttribute('data-pkc-action', 'bulk-set-status');
+        const ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = 'Status...';
+        ph.disabled = true;
+        ph.selected = true;
+        statusSelect.appendChild(ph);
+        for (const [val, label] of [['open', 'Open'], ['done', 'Done']] as const) {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = label;
+          statusSelect.appendChild(opt);
+        }
+        bar.appendChild(statusSelect);
+
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.className = 'pkc-multi-action-date';
+        dateInput.setAttribute('data-pkc-action', 'bulk-set-date');
+        bar.appendChild(dateInput);
+
+        const clearDateBtn = createElement('button', 'pkc-btn-small');
+        clearDateBtn.setAttribute('data-pkc-action', 'bulk-clear-date');
+        clearDateBtn.textContent = '✕ date';
+        bar.appendChild(clearDateBtn);
+      }
+    }
+
     const clearBtn = createElement('button', 'pkc-btn-small');
     clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
     clearBtn.textContent = 'Clear';
@@ -1303,6 +1340,9 @@ function renderCalendarView(state: AppState): HTMLElement {
           if (state.selectedLid === t.entry.lid) {
             item.setAttribute('data-pkc-selected', 'true');
           }
+          if (state.multiSelectedLids.includes(t.entry.lid)) {
+            item.setAttribute('data-pkc-multi-selected', 'true');
+          }
           if (isTodoPastDue(t.todo)) {
             item.setAttribute('data-pkc-todo-overdue', 'true');
           }
@@ -1378,6 +1418,9 @@ function renderKanbanView(state: AppState): HTMLElement {
       }
       if (state.selectedLid === item.entry.lid) {
         card.setAttribute('data-pkc-selected', 'true');
+      }
+      if (state.multiSelectedLids.includes(item.entry.lid)) {
+        card.setAttribute('data-pkc-multi-selected', 'true');
       }
       // DnD: make card draggable in non-readonly mode
       if (!state.readonly) {
@@ -1872,6 +1915,26 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
       const heading = createElement('div', 'pkc-sandbox-heading');
       heading.textContent = 'Sandbox Policy';
       sandboxSection.appendChild(heading);
+
+      // Container default policy control
+      const defaultRow = createElement('div', 'pkc-sandbox-default-row');
+      const defaultLabel = createElement('label', 'pkc-sandbox-default-label');
+      defaultLabel.textContent = 'Container Default:';
+      defaultRow.appendChild(defaultLabel);
+      const policySelect = document.createElement('select');
+      policySelect.className = 'pkc-sandbox-policy-select';
+      policySelect.setAttribute('data-pkc-action', 'set-sandbox-policy');
+      if (!canEdit) policySelect.disabled = true;
+      const currentPolicy = container?.meta.sandbox_policy ?? 'strict';
+      for (const opt of ['strict', 'relaxed'] as const) {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        if (opt === currentPolicy) option.selected = true;
+        policySelect.appendChild(option);
+      }
+      defaultRow.appendChild(policySelect);
+      sandboxSection.appendChild(defaultRow);
 
       const currentAllow = att.sandbox_allow ?? [];
 

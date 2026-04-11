@@ -5527,6 +5527,262 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
   });
 });
 
+// ── Calendar/Kanban Multi-Select Phase 1: Visual Feedback ──
+
+describe('Calendar/Kanban Multi-Select Visual Feedback', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    document.body.appendChild(root);
+  });
+
+  const msContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function msState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: msContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+      ...overrides,
+    };
+  }
+
+  // ── Calendar visual feedback ──
+
+  it('Calendar: marks multi-selected items with data-pkc-multi-selected', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't3'] }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t1 = cal.querySelector('[data-pkc-lid="t1"]');
+    const t2 = cal.querySelector('[data-pkc-lid="t2"]');
+    const t3 = cal.querySelector('[data-pkc-lid="t3"]');
+    expect(t1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2!.hasAttribute('data-pkc-multi-selected')).toBe(false);
+    expect(t3!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('Calendar: multi-selected coexists with single selected', () => {
+    render(msState({ viewMode: 'calendar', selectedLid: 't1', multiSelectedLids: ['t1', 't2'] }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t1 = cal.querySelector('[data-pkc-lid="t1"]');
+    expect(t1!.getAttribute('data-pkc-selected')).toBe('true');
+    expect(t1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+    const t2 = cal.querySelector('[data-pkc-lid="t2"]');
+    expect(t2!.hasAttribute('data-pkc-selected')).toBe(false);
+    expect(t2!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('Calendar: no multi-selected attributes when multiSelectedLids is empty', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: [] }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const items = cal.querySelectorAll('[data-pkc-multi-selected]');
+    expect(items).toHaveLength(0);
+  });
+
+  // ── Kanban visual feedback ──
+
+  it('Kanban: marks multi-selected cards with data-pkc-multi-selected', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t1', 't3'] }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t1 = kanban.querySelector('[data-pkc-lid="t1"]');
+    const t2 = kanban.querySelector('[data-pkc-lid="t2"]');
+    const t3 = kanban.querySelector('[data-pkc-lid="t3"]');
+    expect(t1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2!.hasAttribute('data-pkc-multi-selected')).toBe(false);
+    expect(t3!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('Kanban: multi-selected coexists with single selected', () => {
+    render(msState({ viewMode: 'kanban', selectedLid: 't2', multiSelectedLids: ['t1', 't2'] }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2 = kanban.querySelector('[data-pkc-lid="t2"]');
+    expect(t2!.getAttribute('data-pkc-selected')).toBe('true');
+    expect(t2!.getAttribute('data-pkc-multi-selected')).toBe('true');
+    const t1 = kanban.querySelector('[data-pkc-lid="t1"]');
+    expect(t1!.hasAttribute('data-pkc-selected')).toBe(false);
+    expect(t1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('Kanban: no multi-selected attributes when multiSelectedLids is empty', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: [] }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const items = kanban.querySelectorAll('[data-pkc-multi-selected]');
+    expect(items).toHaveLength(0);
+  });
+
+  // ── Sidebar consistency ──
+
+  it('Sidebar: multi-selected attribute is consistent with Calendar view', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't3'] }), root);
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const sidebarT1 = sidebar.querySelector('[data-pkc-lid="t1"]');
+    const sidebarT3 = sidebar.querySelector('[data-pkc-lid="t3"]');
+    expect(sidebarT1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(sidebarT3!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  // ── Multi-action bar coherence ──
+
+  it('multi-action bar shows in sidebar when viewMode is calendar and multiSelectedLids is non-empty', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't2'] }), root);
+    const bar = root.querySelector('[data-pkc-region="multi-action-bar"]');
+    expect(bar).not.toBeNull();
+    expect(bar!.textContent).toContain('2 selected');
+  });
+
+  it('multi-action bar shows in sidebar when viewMode is kanban and multiSelectedLids is non-empty', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t1'] }), root);
+    const bar = root.querySelector('[data-pkc-region="multi-action-bar"]');
+    expect(bar).not.toBeNull();
+    expect(bar!.textContent).toContain('1 selected');
+  });
+
+  it('multi-action bar hidden in readonly even with multiSelectedLids', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t1'], readonly: true }), root);
+    const bar = root.querySelector('[data-pkc-region="multi-action-bar"]');
+    expect(bar).toBeNull();
+  });
+
+  // ── Bulk status select in multi-action bar ──
+
+  it('multi-action bar shows bulk status select when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1', 't2'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).not.toBeNull();
+    const options = statusSelect!.querySelectorAll('option');
+    expect(options).toHaveLength(3); // placeholder + Open + Done
+  });
+
+  it('multi-action bar hides bulk status select when no todos in selection', () => {
+    // Create a container with only non-todo entries selected
+    const noTodoContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'n2', title: 'Note 2', body: 'text2', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    render(msState({ container: noTodoContainer, multiSelectedLids: ['n1', 'n2'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).toBeNull();
+  });
+
+  it('bulk status select shows in calendar view', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't3'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).not.toBeNull();
+  });
+
+  // ── Bulk date input in multi-action bar ──
+
+  it('multi-action bar shows date input when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1', 't2'] }), root);
+    const dateInput = root.querySelector('[data-pkc-action="bulk-set-date"]');
+    expect(dateInput).not.toBeNull();
+    expect((dateInput as HTMLInputElement).type).toBe('date');
+  });
+
+  it('multi-action bar shows clear-date button when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1'] }), root);
+    const clearDate = root.querySelector('[data-pkc-action="bulk-clear-date"]');
+    expect(clearDate).not.toBeNull();
+  });
+
+  it('date input hidden when no todos in selection', () => {
+    const noTodoContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'n2', title: 'Note 2', body: 'text2', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    render(msState({ container: noTodoContainer, multiSelectedLids: ['n1', 'n2'] }), root);
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="bulk-clear-date"]')).toBeNull();
+  });
+
+  it('date input shows in kanban view', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t1', 't2'] }), root);
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).not.toBeNull();
+  });
+
+  // ── Ghost selection resolution (view switch) ──
+
+  it('multi-selected survives view switch from detail to calendar', () => {
+    // Render in detail mode with multi-select
+    render(msState({ viewMode: 'detail', multiSelectedLids: ['t1', 't2'] }), root);
+    const sidebarDetail = root.querySelector('[data-pkc-region="sidebar"]')!;
+    expect(sidebarDetail.querySelectorAll('[data-pkc-multi-selected]')).toHaveLength(2);
+
+    // Re-render in calendar mode with same state
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't2'] }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const multiItems = cal.querySelectorAll('[data-pkc-multi-selected]');
+    expect(multiItems).toHaveLength(2);
+    // Sidebar also retains
+    const sidebarCal = root.querySelector('[data-pkc-region="sidebar"]')!;
+    expect(sidebarCal.querySelectorAll('[data-pkc-multi-selected]')).toHaveLength(2);
+  });
+
+  it('multi-selected survives view switch from detail to kanban', () => {
+    render(msState({ viewMode: 'detail', multiSelectedLids: ['t2', 't3'] }), root);
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t2', 't3'] }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const multiCards = kanban.querySelectorAll('[data-pkc-multi-selected]');
+    expect(multiCards).toHaveLength(2);
+  });
+
+  // ── Single selection regression ──
+
+  it('Calendar: single selection still works without multi-select', () => {
+    render(msState({ viewMode: 'calendar', selectedLid: 't2', multiSelectedLids: [] }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t2 = cal.querySelector('[data-pkc-lid="t2"]');
+    expect(t2!.getAttribute('data-pkc-selected')).toBe('true');
+    expect(t2!.hasAttribute('data-pkc-multi-selected')).toBe(false);
+  });
+
+  it('Kanban: single selection still works without multi-select', () => {
+    render(msState({ viewMode: 'kanban', selectedLid: 't1', multiSelectedLids: [] }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t1 = kanban.querySelector('[data-pkc-lid="t1"]');
+    expect(t1!.getAttribute('data-pkc-selected')).toBe('true');
+    expect(t1!.hasAttribute('data-pkc-multi-selected')).toBe(false);
+  });
+
+  // ── Readonly visual feedback ──
+
+  it('Calendar: multi-selected visual shows in readonly mode', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1'], readonly: true }), root);
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t1 = cal.querySelector('[data-pkc-lid="t1"]');
+    expect(t1!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('Kanban: multi-selected visual shows in readonly mode', () => {
+    render(msState({ viewMode: 'kanban', multiSelectedLids: ['t3'], readonly: true }), root);
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t3 = kanban.querySelector('[data-pkc-lid="t3"]');
+    expect(t3!.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+});
+
 // ── Issue #69: Critical UX Regression Recovery ──
 
 describe('Critical UX Regression Recovery (Issue #69)', () => {

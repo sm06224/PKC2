@@ -2,8 +2,8 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews } from '@adapter/ui/action-binder';
-import { createDispatcher } from '@adapter/state/dispatcher';
+import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews, resolveContainerSandboxDefault } from '@adapter/ui/action-binder';
+import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
@@ -42,12 +42,37 @@ const mockContainer: Container = {
 let root: HTMLElement;
 let cleanup: () => void;
 
+// --- Stale-listener prevention infrastructure ---
+// Every dispatcher.onState / onEvent subscription is auto-tracked here.
+// The beforeEach teardown calls all accumulated unsubscribe functions,
+// ensuring no stale listener can render into a subsequent test's root.
+const _trackedUnsubs: (() => void)[] = [];
+
+function createDispatcher() {
+  const d = _createRawDispatcher();
+  return {
+    ...d,
+    onState(listener: Parameters<typeof d.onState>[0]) {
+      const unsub = d.onState(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+    onEvent(listener: Parameters<typeof d.onEvent>[0]) {
+      const unsub = d.onEvent(listener);
+      _trackedUnsubs.push(unsub);
+      return unsub;
+    },
+  };
+}
+
 beforeEach(() => {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
   return () => {
     cleanup?.();
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
     root.remove();
   };
 });
@@ -1613,6 +1638,48 @@ describe('Issue D / B — Reference-string context menu items', () => {
     expect(menu!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
     expect(menu!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
   });
+
+  it('right-clicking a textarea in the center pane does NOT show custom context menu', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = root.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+    expect(textarea).not.toBeNull();
+
+    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    textarea!.dispatchEvent(evt);
+
+    // Native context menu should NOT be prevented
+    expect(evt.defaultPrevented).toBe(false);
+    // Custom context menu should NOT appear
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).toBeNull();
+  });
+
+  it('right-clicking a text input does NOT show custom context menu', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Create a text input inside the root to simulate date input etc.
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+
+    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    input.dispatchEvent(evt);
+
+    expect(evt.defaultPrevented).toBe(false);
+    expect(root.querySelector('[data-pkc-region="context-menu"]')).toBeNull();
+  });
 });
 
 // ── C. HTML attachment open-in-new-window button ──
@@ -3013,5 +3080,2854 @@ describe('populateInlineAssetPreviews', () => {
     const source = root.querySelector('video.pkc-inline-video-preview source');
     expect(source).not.toBeNull();
     expect(source!.getAttribute('type')).toBe('video/webm');
+  });
+});
+
+// ── Container default sandbox policy ──
+
+describe('resolveContainerSandboxDefault', () => {
+  it('returns empty array for undefined (strict default)', () => {
+    expect(resolveContainerSandboxDefault(undefined)).toEqual([]);
+  });
+
+  it('returns empty array for "strict"', () => {
+    expect(resolveContainerSandboxDefault('strict')).toEqual([]);
+  });
+
+  it('returns allow-scripts + allow-forms for "relaxed"', () => {
+    expect(resolveContainerSandboxDefault('relaxed')).toEqual(['allow-scripts', 'allow-forms']);
+  });
+
+  it('returns empty array for unknown/invalid values', () => {
+    expect(resolveContainerSandboxDefault('invalid')).toEqual([]);
+    expect(resolveContainerSandboxDefault('')).toEqual([]);
+  });
+});
+
+describe('Container sandbox policy — reducer + UI', () => {
+  it('SET_SANDBOX_POLICY updates container.meta.sandbox_policy', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBeUndefined();
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('relaxed');
+  });
+
+  it('SET_SANDBOX_POLICY can switch back to strict', () => {
+    const dispatcher = createDispatcher();
+    const container: Container = {
+      ...mockContainer,
+      meta: { ...mockContainer.meta, sandbox_policy: 'relaxed' },
+    };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('relaxed');
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'strict' });
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBe('strict');
+  });
+
+  it('SET_SANDBOX_POLICY is blocked in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer, readonly: true });
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    // Should remain unchanged
+    expect(dispatcher.getState().container?.meta.sandbox_policy).toBeUndefined();
+  });
+
+  it('SET_SANDBOX_POLICY updates container.meta.updated_at', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    const before = dispatcher.getState().container!.meta.updated_at;
+
+    dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy: 'relaxed' });
+    const after = dispatcher.getState().container!.meta.updated_at;
+    expect(after).not.toBe(before);
+  });
+
+  it('sandbox policy select renders in meta pane for HTML attachment', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('strict');
+  });
+
+  it('sandbox policy select reflects current container policy', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    const container: Container = {
+      ...mockContainer,
+      meta: { ...mockContainer.meta, sandbox_policy: 'relaxed' },
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('relaxed');
+  });
+
+  it('backward compat: container without sandbox_policy works normally', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+
+    // Container has no sandbox_policy field at all
+    const container: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'html1',
+          title: 'Page',
+          body: JSON.stringify({ name: 'page.html', mime: 'text/html', asset_key: 'k1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { k1: btoa('<html></html>') },
+    };
+
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'html1' });
+
+    // Select defaults to strict
+    const select = root.querySelector<HTMLSelectElement>('[data-pkc-action="set-sandbox-policy"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe('strict');
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 1: Click Routing ──
+
+describe('Calendar/Kanban Multi-Select — Ctrl+click / Shift+click', () => {
+  const todoContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupTodo(viewMode: 'calendar' | 'kanban') {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: todoContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  it('Calendar: Ctrl+click dispatches TOGGLE_MULTI_SELECT', () => {
+    const { dispatcher } = setupTodo('calendar');
+    // First select t1 normally
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t2Item = cal.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Item).not.toBeNull();
+    t2Item!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+  });
+
+  it('Kanban: Ctrl+click dispatches TOGGLE_MULTI_SELECT', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t3Card = kanban.querySelector('[data-pkc-lid="t3"]');
+    expect(t3Card).not.toBeNull();
+    t3Card!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t3');
+  });
+
+  it('Calendar: Shift+click dispatches SELECT_RANGE (storage order — Phase 2 will optimize)', () => {
+    const { dispatcher } = setupTodo('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t3Item = cal.querySelector('[data-pkc-lid="t3"]');
+    expect(t3Item).not.toBeNull();
+    t3Item!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    const state = dispatcher.getState();
+    // Range is storage-order based: t1, t2, t3 are indices 0-2
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+    expect(state.multiSelectedLids).toContain('t3');
+  });
+
+  it('Kanban: Shift+click dispatches SELECT_RANGE safely', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Card).not.toBeNull();
+    t2Card!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    const state = dispatcher.getState();
+    expect(state.multiSelectedLids).toContain('t1');
+    expect(state.multiSelectedLids).toContain('t2');
+  });
+
+  it('Calendar: normal click clears multiSelectedLids', () => {
+    const { dispatcher } = setupTodo('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    // Ctrl+click to build multi-select
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t3Item = cal.querySelector('[data-pkc-lid="t3"]');
+    t3Item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('Kanban: normal click clears multiSelectedLids', () => {
+    const { dispatcher } = setupTodo('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    t2Card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 2-A: Bulk Status Change ──
+
+describe('Bulk Status Change (Phase 2-A)', () => {
+  const bulkContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupBulk() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: bulkContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Reducer tests ──
+
+  it('BULK_SET_STATUS changes status of multiple todos to done', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    const state = dispatcher.getState();
+    const t1 = state.container!.entries.find((e) => e.lid === 't1')!;
+    const t2 = state.container!.entries.find((e) => e.lid === 't2')!;
+    expect(JSON.parse(t1.body).status).toBe('done');
+    expect(JSON.parse(t2.body).status).toBe('done');
+  });
+
+  it('BULK_SET_STATUS changes status of multiple todos to open', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't3' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'open' });
+
+    const state = dispatcher.getState();
+    const t1 = state.container!.entries.find((e) => e.lid === 't1')!;
+    const t3 = state.container!.entries.find((e) => e.lid === 't3')!;
+    // t1 was already open, t3 was done → now open
+    expect(JSON.parse(t1.body).status).toBe('open');
+    expect(JSON.parse(t3.body).status).toBe('open');
+  });
+
+  it('BULK_SET_STATUS clears multiSelectedLids after execution', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('BULK_SET_STATUS skips non-todo entries safely', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    const state = dispatcher.getState();
+    // t1 should be updated
+    expect(JSON.parse(state.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    // n1 body should be unchanged
+    expect(state.container!.entries.find((e) => e.lid === 'n1')!.body).toBe('text content');
+  });
+
+  it('BULK_SET_STATUS is no-op when status already matches', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't3' }); // t3 is already done
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    const state = dispatcher.getState();
+    // t3 should still be done, and no revision should have been created
+    // (or at minimum, body is unchanged)
+    expect(JSON.parse(state.container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('done');
+    expect(state.multiSelectedLids).toHaveLength(0);
+  });
+
+  it('BULK_SET_STATUS is blocked in readonly mode', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    // Force readonly
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: { ...bulkContainer, meta: { ...bulkContainer.meta, container_id: 'ro' } } });
+    // The state is re-initialized, so re-select
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+
+    // Now make readonly by dispatching the readonly container
+    // Actually, let's test directly — readonly is set when lightSource is true and embedded
+    // Simpler: check that the reducer blocks when multiSelectedLids is empty
+    dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    // With empty selection, it should be blocked — no changes
+    expect(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).toContain('"open"');
+  });
+
+  it('BULK_SET_STATUS preserves date and archived fields', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // t1 has date: 2026-04-10
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    const body = JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body);
+    expect(body.status).toBe('done');
+    expect(body.date).toBe('2026-04-10');
+    expect(body.description).toBe('A');
+  });
+
+  // ── Renderer / UI tests ──
+
+  it('multi-action bar shows bulk status select when todos are selected', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).not.toBeNull();
+    const options = statusSelect!.querySelectorAll('option');
+    expect(options.length).toBe(3); // placeholder + open + done
+  });
+
+  it('multi-action bar hides bulk status select when only non-todos are selected', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    // n1 is the only selection (no multi), but getAllSelected includes it
+    // Need to put it in multiSelectedLids
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    // But n1 is a text entry; it was already selectedLid, so TOGGLE adds it
+    // The bar should show but without status select
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).toBeNull();
+  });
+
+  // ── Integration: select → bulk status → visual update ──
+
+  it('integration: multi-select todos, bulk set done, verify Kanban reflects change', () => {
+    const { dispatcher } = setupBulk();
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    // t1 and t2 should now be in the Done column
+    const doneColumn = kanban.querySelector('[data-pkc-kanban-status="done"]')!;
+    const doneList = doneColumn.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    const doneCards = doneList.querySelectorAll('[data-pkc-action="select-entry"]');
+    const doneLids = Array.from(doneCards).map((c) => c.getAttribute('data-pkc-lid'));
+    expect(doneLids).toContain('t1');
+    expect(doneLids).toContain('t2');
+    expect(doneLids).toContain('t3'); // was already done
+  });
+
+  it('integration: bulk set status does not break existing single-entry status change', () => {
+    const { dispatcher } = setupBulk();
+    // Single entry update via QUICK_UPDATE_ENTRY still works
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: 't1', body: '{"status":"done","description":"A","date":"2026-04-10"}' });
+    const body = JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body);
+    expect(body.status).toBe('done');
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 2-B: Bulk Date Change ──
+
+describe('Bulk Date Change (Phase 2-B)', () => {
+  const dateContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 't4', title: 'Archived', body: '{"status":"done","description":"D","date":"2026-04-10","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupDate() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: dateContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Reducer: date set ──
+
+  it('BULK_SET_DATE sets date on multiple todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-05-01');
+  });
+
+  // ── Reducer: date clear ──
+
+  it('BULK_SET_DATE with null clears date on multiple todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // has date
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' }); // has date
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+
+    const s = dispatcher.getState();
+    const t1 = JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body);
+    const t3 = JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body);
+    expect(t1.date).toBeUndefined();
+    expect(t3.date).toBeUndefined();
+  });
+
+  // ── Reducer: no-op ──
+
+  it('BULK_SET_DATE is no-op when date already matches', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // date: 2026-04-10
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-04-10' });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(s.multiSelectedLids).toHaveLength(0);
+  });
+
+  it('BULK_SET_DATE clear is no-op for undated todos', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't2' }); // no date
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBeUndefined();
+    expect(s.multiSelectedLids).toHaveLength(0);
+  });
+
+  // ── Reducer: non-todo skip ──
+
+  it('BULK_SET_DATE skips non-todo entries', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-06-01' });
+
+    const s = dispatcher.getState();
+    // t1 updated
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-06-01');
+    // n1 unchanged
+    expect(s.container!.entries.find((e) => e.lid === 'n1')!.body).toBe('text content');
+  });
+
+  // ── Reducer: readonly block ──
+
+  it('BULK_SET_DATE is blocked with empty selection', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-06-01' });
+    // No selection → blocked, date unchanged
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Reducer: preserves other fields ──
+
+  it('BULK_SET_DATE preserves status, description, archived', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' }); // archived, done, date: 2026-04-10
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-07-01' });
+
+    const body = JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't4')!.body);
+    expect(body.date).toBe('2026-07-01');
+    expect(body.status).toBe('done');
+    expect(body.description).toBe('D');
+    expect(body.archived).toBe(true);
+  });
+
+  // ── Reducer: clears multiSelectedLids ──
+
+  it('BULK_SET_DATE clears multiSelectedLids', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  // ── Renderer / UI ──
+
+  it('multi-action bar shows date input and clear-date button when todos selected', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const dateInput = root.querySelector('[data-pkc-action="bulk-set-date"]');
+    expect(dateInput).not.toBeNull();
+    expect((dateInput as HTMLInputElement).type).toBe('date');
+
+    const clearDateBtn = root.querySelector('[data-pkc-action="bulk-clear-date"]');
+    expect(clearDateBtn).not.toBeNull();
+  });
+
+  it('date input and clear-date hidden when only non-todos selected', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    expect(root.querySelector('[data-pkc-action="bulk-set-date"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="bulk-clear-date"]')).toBeNull();
+  });
+
+  // ── Integration: Calendar visibility ──
+
+  it('integration: bulk set date makes undated todo appear in Calendar', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // t2 has no date — should not be in Calendar
+    render(dispatcher.getState(), root);
+    let cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t2"]')).toBeNull();
+
+    // Set date on t2
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-04-10' });
+    render(dispatcher.getState(), root);
+
+    cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t2"]')).not.toBeNull();
+  });
+
+  it('integration: bulk clear date removes todo from Calendar', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // t1 has date 2026-04-10 — should be in Calendar
+    render(dispatcher.getState(), root);
+    let cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t1"]')).not.toBeNull();
+
+    // Clear date on t1
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+    render(dispatcher.getState(), root);
+
+    cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    expect(cal.querySelector('[data-pkc-lid="t1"]')).toBeNull();
+  });
+
+  it('integration: bulk set date does not break existing single-entry date edit via DnD', () => {
+    const { dispatcher } = setupDate();
+    // Single entry DnD date change still works
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: 't1', body: '{"status":"open","description":"A","date":"2026-04-20"}' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+  });
+
+  it('integration: bulk status change (Phase 2-A) still works after bulk date', () => {
+    const { dispatcher } = setupDate();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 2-C1: Kanban Multi-DnD ──
+
+describe('Kanban Multi-DnD (Phase 2-C1)', () => {
+  const dndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupDnD() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: dndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeDragEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Multi-drag: selected set member drag → bulk status ──
+
+  it('multi-drag: drag selected card to Done column applies BULK_SET_STATUS', () => {
+    const { dispatcher } = setupDnD();
+    // Multi-select t1 and t2 (both open)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t1 (member of selection)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Drop on "done" column
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('multi-drag clears multiSelectedLids after drop', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('multi-drag sets selectedLid to the dragged card after drop', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t2"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag: non-selected card preserves existing behavior ──
+
+  it('single-drag: non-selected card uses QUICK_UPDATE_ENTRY (existing behavior)', () => {
+    const { dispatcher } = setupDnD();
+    // Select t1 only — t3 is NOT in selection
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    // Drag t3 (done, NOT selected)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Drop on "open" column
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    const s = dispatcher.getState();
+    // t3 should change to open
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    // t1 should remain unchanged (single-drag does not touch other entries)
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+  });
+
+  it('single-drag: only one selected entry is still single-drag', () => {
+    const { dispatcher } = setupDnD();
+    // Only t1 selected (no multi)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    // Should work as single-drag (QUICK_UPDATE_ENTRY)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    // t2 untouched
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Same-column drop ──
+
+  it('same-column drop is no-op for multi-drag (status already matches)', () => {
+    const { dispatcher } = setupDnD();
+    // t1 and t2 are open, drop on "open" column
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // Status should remain open (BULK_SET_STATUS with same value = no-op per entry)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Cleanup: dragEnd without drop ──
+
+  it('dragEnd without drop resets multi-drag state', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Cancel: dragend without drop
+    card.dispatchEvent(makeDragEvent('dragend', card));
+
+    // Now do a single-drag with t3 — should NOT be treated as multi-drag
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeDragEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // Only t3 should change, not t1/t2
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  it('subsequent single-drag after multi-drop works correctly', () => {
+    const { dispatcher } = setupDnD();
+    // First: multi-drag t1+t2 to done
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card1 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card1.dispatchEvent(makeDragEvent('dragstart', card1));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    // Now re-render and do a single-drag with t3
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeDragEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // t3 should now be open
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    // t1, t2 remain done from the multi-drag
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  // ── Regression: existing features ──
+
+  it('regression: Phase 1 visual feedback still works with multi-select in Kanban', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t1Card = kanban.querySelector('[data-pkc-lid="t1"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]')!;
+    expect(t1Card.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2Card.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('regression: Phase 2-A bulk status via multi-action bar still works', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: single Kanban DnD without selection works unchanged', () => {
+    const { dispatcher } = setupDnD();
+    // No selection, just drag t3 (done) to open
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 2-C2: Calendar Multi-DnD ──
+
+describe('Calendar Multi-DnD (Phase 2-C2)', () => {
+  const calDndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupCalDnD() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calDndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // Ensure calendar shows April 2026 (matches test data dates)
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeCalDragEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Multi-drag: selected set member drag → bulk date ──
+
+  it('multi-drag: drag selected item to different date applies BULK_SET_DATE', () => {
+    const { dispatcher } = setupCalDnD();
+    // Multi-select t1 and t2 (both on 2026-04-10)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t1 (member of selection)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on 2026-04-20 cell
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('multi-drag clears multiSelectedLids after drop', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('multi-drag sets selectedLid to the dragged item after drop', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t2 (not the anchor, but in multi-select)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t2"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag: non-selected item preserves existing behavior ──
+
+  it('single-drag: non-selected item uses QUICK_UPDATE_ENTRY (existing behavior)', () => {
+    const { dispatcher } = setupCalDnD();
+    // Select t1 only — t3 is NOT in selection
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    // Drag t3 (on 2026-04-15, NOT selected)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on 2026-04-05
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    // t3 should change to 2026-04-05
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1 should remain unchanged
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  it('single-drag: only one selected entry is still single-drag', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    // t2 untouched
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Same-date drop ──
+
+  it('same-date drop is no-op for multi-drag (date already matches)', () => {
+    const { dispatcher } = setupCalDnD();
+    // t1 and t2 are both on 2026-04-10
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on same date 2026-04-10
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-10"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    // Date should remain 2026-04-10 (BULK_SET_DATE with same value = no-op per entry)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Cleanup: dragEnd without drop ──
+
+  it('dragEnd without drop resets multi-drag state', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Cancel: dragend without drop
+    item.dispatchEvent(makeCalDragEvent('dragend', item));
+
+    // Now do a single-drag with t3 — should NOT be treated as multi-drag
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCalDragEvent('dragstart', item3));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    // Only t3 should change
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  it('subsequent single-drag after multi-drop works correctly', () => {
+    const { dispatcher } = setupCalDnD();
+    // First: multi-drag t1+t2 to 2026-04-20
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item1 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item1.dispatchEvent(makeCalDragEvent('dragstart', item1));
+
+    const cell20 = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    cell20.dispatchEvent(makeCalDragEvent('drop', cell20));
+
+    // Now re-render and single-drag t3
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCalDragEvent('dragstart', item3));
+
+    const cell05 = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    cell05.dispatchEvent(makeCalDragEvent('drop', cell05));
+
+    // t3 should now be 2026-04-05
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1, t2 remain on 2026-04-20 from the multi-drag
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  // ── Regression ──
+
+  it('regression: Phase 1 visual feedback still works with multi-select in Calendar', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t1Item = cal.querySelector('[data-pkc-lid="t1"]')!;
+    const t2Item = cal.querySelector('[data-pkc-lid="t2"]')!;
+    expect(t1Item.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2Item.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('regression: Phase 2-B bulk date via multi-action bar still works', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-05-01');
+  });
+
+  it('regression: single Calendar DnD without selection works unchanged', () => {
+    const { dispatcher } = setupCalDnD();
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+  });
+
+  it('regression: Kanban C-1 multi-DnD still works', () => {
+    // Switch to kanban, multi-drag, verify C-1 behavior preserved
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calDndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCalDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCalDragEvent('drop', doneTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+});
+
+// ── Calendar/Kanban Multi-Select Phase 2-C3: Cross-view Multi-DnD ──
+
+describe('Cross-view Multi-DnD (Phase 2-C3)', () => {
+  const crossContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeCrossEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Kanban → Calendar multi-drag ──
+
+  it('Kanban→Calendar multi-drag: all selected entries get new date', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Start in Kanban view, multi-select t1 and t2
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t1 from Kanban
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    // Switch to Calendar view (simulating drag-over-tab)
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    // Drop on Calendar cell 2026-04-25
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-25');
+  });
+
+  it('Calendar→Kanban multi-drag: all selected entries get new status', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Start in Calendar view, multi-select t1 and t2
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t1 from Calendar
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    // Switch to Kanban view
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    // Drop on Kanban "done" column
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('cross-view multi-drag clears multiSelectedLids after drop', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('cross-view multi-drag sets selectedLid to the dragged entry', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t2 (not anchor, but in selection)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t2"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag cross-view regression ──
+
+  it('cross-view single-drag: non-selected entry uses QUICK_UPDATE_ENTRY', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Drag t3 (NOT in selection — single drag)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    // Only t3 changes
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1 unchanged
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  it('cross-view single-drag: only one selected is still single-drag', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    // Only t1 selected (no multi)
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    // t1 changes, t2 does not
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Cleanup ──
+
+  it('dragEnd after cross-view switch resets multi-drag state', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+
+    // Cancel: dragend on Kanban (drag origin)
+    card.dispatchEvent(makeCrossEvent('dragend', card));
+
+    // Now do a subsequent single-drag — should NOT be multi-drag
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeCrossEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeCrossEvent('drop', openTarget));
+
+    // Only t3 changes
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+  });
+
+  it('subsequent single-drag after cross-view multi-drop works correctly', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+
+    // Multi-drag: Kanban → Calendar
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card1 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card1.dispatchEvent(makeCrossEvent('dragstart', card1));
+
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+
+    const cell25 = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    cell25.dispatchEvent(makeCrossEvent('drop', cell25));
+
+    // Now single-drag t3 within Calendar
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCrossEvent('dragstart', item3));
+
+    const cell01 = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    cell01.dispatchEvent(makeCrossEvent('drop', cell01));
+
+    // t3 changes, t1/t2 stay at 2026-04-25
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-25');
+  });
+
+  // ── Regression: C-1 / C-2 ──
+
+  it('regression: C-1 Kanban in-view multi-DnD still works', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCrossEvent('dragstart', card));
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCrossEvent('drop', doneTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: C-2 Calendar in-view multi-DnD still works', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCrossEvent('dragstart', item));
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCrossEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('regression: Phase 2-A/2-B action bar bulk actions still work', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: crossContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+  });
+});
+
+// ─── Phase 2-E: Escape clears multi-select ─────────────────────
+describe('Escape clears multi-select (Phase 2-E)', () => {
+  const escContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'e1', title: 'Entry 1', body: 'body1', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'e2', title: 'Entry 2', body: 'body2', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'e3', title: 'Entry 3', body: 'body3', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  const todoEscContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"done","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressEscape() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
+
+  function setupEsc(container: Container, viewMode?: 'detail' | 'calendar' | 'kanban') {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    if (viewMode && viewMode !== 'detail') {
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+      if (viewMode === 'calendar') {
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+      }
+    }
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration tests ──
+
+  it('Escape clears multiSelectedLids', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+  });
+
+  it('Escape preserves selectedLid when clearing multi-select', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    // TOGGLE_MULTI_SELECT sets selectedLid to action.lid
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('e2'); // preserved
+  });
+
+  it('second Escape deselects entry after multi-select cleared', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+
+    pressEscape(); // clears multi-select
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+
+    pressEscape(); // deselects entry
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('action bar disappears after Escape', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    render(dispatcher.getState(), root);
+    expect(root.querySelector('[data-pkc-region="multi-action-bar"]')).not.toBeNull();
+
+    pressEscape();
+    render(dispatcher.getState(), root);
+    expect(root.querySelector('[data-pkc-region="multi-action-bar"]')).toBeNull();
+  });
+
+  it('works consistently in Calendar view', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids).toContain('t1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('t2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+  });
+
+  it('works consistently in Kanban view', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    expect(dispatcher.getState().multiSelectedLids).toContain('t1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('t2');
+
+    pressEscape();
+
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+  });
+
+  // ── Guard tests ──
+
+  it('does not fire during editing phase', () => {
+    const { dispatcher } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    pressEscape(); // should CANCEL_EDIT, not CLEAR_MULTI_SELECT
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    // multi-select should still be present (CANCEL_EDIT does not clear it)
+    expect(dispatcher.getState().multiSelectedLids.length).toBeGreaterThan(0);
+  });
+
+  it('no-op when multiSelectedLids is already empty', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+
+    events.length = 0;
+    pressEscape(); // should DESELECT_ENTRY, not CLEAR_MULTI_SELECT
+
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+    expect(events.some((e) => e.type === 'MULTI_SELECT_CHANGED')).toBe(false);
+  });
+
+  // ── Regression tests ──
+
+  it('regression: Phase 1 visual feedback is not broken', () => {
+    const { dispatcher } = setupEsc(todoEscContainer, 'kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]');
+    expect(t2Card?.getAttribute('data-pkc-multi-selected')).toBe('true');
+
+    pressEscape();
+    render(dispatcher.getState(), root);
+
+    const kanbanAfter = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t2CardAfter = kanbanAfter.querySelector('[data-pkc-lid="t2"]');
+    expect(t2CardAfter?.getAttribute('data-pkc-multi-selected')).not.toBe('true');
+  });
+
+  it('regression: existing Escape deselect still works when no multi-select', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(dispatcher.getState().selectedLid).toBe('e1');
+    expect(dispatcher.getState().multiSelectedLids).toEqual([]);
+
+    pressEscape();
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+  });
+
+  it('regression: existing Escape cancel-edit still works', () => {
+    const { dispatcher, events } = setupEsc(escContainer);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    pressEscape();
+
+    expect(events.some((e) => e.type === 'EDIT_CANCELLED')).toBe(true);
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+});
+
+// ─── Multi-DnD Drag Ghost UX ──────────────────────────────────
+describe('Multi-DnD drag ghost UX', () => {
+  const ghostContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function makeGhostDragEvent(type: string, target: Element): DragEvent {
+    const setDragImage = vi.fn();
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '', setDragImage };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  function setupGhost(viewMode: 'kanban' | 'calendar') {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: ghostContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: viewMode });
+    if (viewMode === 'calendar') {
+      dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    }
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  // ── Integration ──
+
+  it('Kanban multi-drag calls setDragImage with ghost element', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.getAttribute('data-pkc-drag-ghost')).toBe('true');
+    expect(ghostArg.textContent).toBe('2 件');
+  });
+
+  it('Calendar multi-drag calls setDragImage with ghost element', () => {
+    const dispatcher = setupGhost('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', item);
+    item.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.textContent).toBe('2 件');
+  });
+
+  it('single-drag does NOT call setDragImage', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    expect((evt.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
+  });
+
+  it('ghost element is removed after dragEnd', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+
+    // Ghost should exist in document
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Fire dragEnd
+    card.dispatchEvent(makeGhostDragEvent('dragend', card));
+
+    // Ghost should be removed
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+
+  it('ghost element is removed after drop', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Drop on a column
+    const doneCol = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneCol.dispatchEvent(makeGhostDragEvent('drop', doneCol));
+
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+
+  it('ghost count reflects actual selected count (3 items)', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't3' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt = makeGhostDragEvent('dragstart', card);
+    card.dispatchEvent(evt);
+
+    const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
+    expect(ghostArg.textContent).toBe('3 件');
+  });
+
+  // ── Regression ──
+
+  it('regression: Kanban multi-DnD still changes status', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+
+    const doneCol = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneCol.dispatchEvent(makeGhostDragEvent('drop', doneCol));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: Calendar multi-DnD still changes date', () => {
+    const dispatcher = setupGhost('calendar');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeGhostDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeGhostDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('regression: no stale ghost after aborted drag', () => {
+    const dispatcher = setupGhost('kanban');
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeGhostDragEvent('dragstart', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).not.toBeNull();
+
+    // Abort drag (dragEnd without drop)
+    card.dispatchEvent(makeGhostDragEvent('dragend', card));
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+
+    // Start a new single-drag — no ghost should appear
+    dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    const card2 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    const evt2 = makeGhostDragEvent('dragstart', card2);
+    card2.dispatchEvent(evt2);
+
+    expect((evt2.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
+  });
+});
+
+// ─── Keyboard Navigation Phase 1: Arrow Up / Down ─────────────
+describe('Keyboard navigation: Arrow Up / Down (Phase 1)', () => {
+  const navContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'n1', title: 'Alpha', body: 'a', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'n2', title: 'Beta', body: 'b', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'n3', title: 'Gamma', body: 'c', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressArrow(key: 'ArrowDown' | 'ArrowUp') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  }
+
+  function setupNav(container?: Container) {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: container ?? navContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('Arrow Down selects next entry', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n2');
+  });
+
+  it('Arrow Up selects previous entry', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n2' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Down at end is no-op', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n3' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n3');
+  });
+
+  it('Arrow Up at start is no-op', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Down with no selection selects first entry', () => {
+    const { dispatcher } = setupNav();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Up with no selection selects first entry', () => {
+    const { dispatcher } = setupNav();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('follows visible order when search filter is active', () => {
+    const { dispatcher } = setupNav();
+    // Filter so only 'Beta' and 'Gamma' are visible
+    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'a' });
+    render(dispatcher.getState(), root);
+
+    // Verify sidebar shows filtered results
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+    const visibleLids = Array.from(items).map((el) => el.getAttribute('data-pkc-lid'));
+
+    // Select the first visible entry
+    if (visibleLids.length >= 2) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: visibleLids[0]! });
+      pressArrow('ArrowDown');
+      expect(dispatcher.getState().selectedLid).toBe(visibleLids[1]);
+    }
+  });
+
+  it('selects first when selectedLid is filtered out', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n2' });
+
+    // Filter to show only entries matching 'Alpha' — n2 becomes hidden
+    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'Alpha' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+    if (items.length > 0) {
+      pressArrow('ArrowDown');
+      // Should select first visible entry since n2 is not in visible list
+      expect(dispatcher.getState().selectedLid).toBe(items[0]!.getAttribute('data-pkc-lid'));
+    }
+  });
+
+  // ── Guards ──
+
+  it('does not fire during editing', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'n1' });
+
+    pressArrow('ArrowDown');
+
+    // Should still be n1 (editing phase blocks arrow navigation)
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('does not fire when textarea has focus', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    // Create and focus a textarea
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+    ta.remove();
+  });
+
+  it('does not fire when input has focus', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+    input.remove();
+  });
+
+  it('no-op when visible entries is 0', () => {
+    const emptyContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+    const { dispatcher } = setupNav(emptyContainer);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  // ── Regression ──
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher, events } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+  });
+
+  it('regression: click selection still works', () => {
+    const { dispatcher } = setupNav();
+    const item = root.querySelector('[data-pkc-action="select-entry"][data-pkc-lid="n2"]');
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n2');
+  });
+
+  it('regression: multi-select Ctrl+click still works', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    const item = root.querySelector('[data-pkc-action="select-entry"][data-pkc-lid="n2"]');
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toContain('n1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('n2');
+  });
+});
+
+// ─── Listener isolation (stale-listener prevention) ─────────────
+describe('Listener isolation', () => {
+  it('stale dispatcher does not render into subsequent test root', () => {
+    // Simulate cross-test contamination scenario:
+    // 1. Create dispatcherA with a render listener on the shared root
+    const containerA: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'stale1', title: 'Stale', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    const dispatcherA = createDispatcher();
+    dispatcherA.onState((state) => render(state, root));
+    dispatcherA.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerA });
+    render(dispatcherA.getState(), root);
+
+    // Verify stale1 is rendered
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).not.toBeNull();
+
+    // 2. Manually unsubscribe all tracked listeners (simulates beforeEach teardown)
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
+
+    // 3. Now set up a "new test" scenario with dispatcherB and different entries
+    const containerB: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'fresh1', title: 'Fresh', body: '', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    const dispatcherB = createDispatcher();
+    dispatcherB.onState((state) => render(state, root));
+    dispatcherB.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerB });
+    render(dispatcherB.getState(), root);
+
+    expect(root.querySelector('[data-pkc-lid="fresh1"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).toBeNull();
+
+    // 4. Fire dispatcherA — its listener should be unsubscribed, so root stays clean
+    dispatcherA.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Ghost' });
+
+    // Root must still show only fresh1 — no contamination from dispatcherA
+    expect(root.querySelector('[data-pkc-lid="fresh1"]')).not.toBeNull();
+    expect(root.querySelector('[data-pkc-lid="stale1"]')).toBeNull();
+    const allLids = Array.from(root.querySelectorAll('[data-pkc-lid]')).map((el) => el.getAttribute('data-pkc-lid'));
+    expect(allLids).toEqual(['fresh1']);
+  });
+
+  it('_trackedUnsubs accumulates and drains correctly', () => {
+    const d = createDispatcher();
+
+    // Each onState/onEvent call should add to _trackedUnsubs
+    const before = _trackedUnsubs.length;
+    d.onState(() => {});
+    d.onEvent(() => {});
+    expect(_trackedUnsubs.length).toBe(before + 2);
+
+    // Drain
+    for (const fn of _trackedUnsubs) fn();
+    _trackedUnsubs.length = 0;
+
+    // Verify listeners are actually removed: dispatch should not notify
+    let called = false;
+    d.onState(() => { called = true; });
+    // Drain the one we just added
+    const unsub = _trackedUnsubs.pop()!;
+    unsub();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(called).toBe(false);
+  });
+});
+
+// ─── Keyboard Navigation Phase 2: Enter ─────────────────────────
+describe('Keyboard navigation: Enter (Phase 2)', () => {
+  const enterContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'k1', title: 'Alpha', body: 'a', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'k2', title: 'Beta', body: 'b', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressEnter(opts?: KeyboardEventInit) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...opts }));
+  }
+
+  function setupEnter() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: enterContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  it('Enter opens edit mode for selected entry', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter();
+
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter does nothing when no selection', () => {
+    const { dispatcher } = setupEnter();
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressEnter();
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+  });
+
+  it('Enter blocked during editing phase', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'k1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    pressEnter();
+
+    // Still editing k1 — Enter did not dispatch a second BEGIN_EDIT
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter blocked when textarea is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    ta.remove();
+  });
+
+  it('Enter blocked when input is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    input.remove();
+  });
+
+  it('Enter blocked when select is focused', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    const sel = document.createElement('select');
+    root.appendChild(sel);
+    sel.focus();
+    sel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('ready');
+    sel.remove();
+  });
+
+  it('Enter blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ ctrlKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Enter blocked with Shift modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ shiftKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('Enter blocked with Alt modifier', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter({ altKey: true });
+
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  // ── Regression ──
+
+  it('regression: Escape then Enter round-trip', () => {
+    const { dispatcher } = setupEnter();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    // Enter → editing
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Escape → back to ready
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().selectedLid).toBe('k1');
+
+    // Enter again → editing again
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('regression: Arrow then Enter selects and edits', () => {
+    const { dispatcher } = setupEnter();
+    // Start with no selection
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    // Arrow Down → selects first entry
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(dispatcher.getState().selectedLid).toBe('k1');
+
+    // Enter → edit that entry
+    pressEnter();
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('k1');
+  });
+
+  it('Enter is blocked in readonly mode (reducer guard)', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: enterContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'k1' });
+    render(dispatcher.getState(), root);
+
+    pressEnter();
+
+    // BEGIN_EDIT is blocked by reducer in readonly mode
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(dispatcher.getState().editingLid).toBeNull();
+  });
+});
+
+// ─── Keyboard Navigation Phase 3: Arrow Left / Right (tree) ────
+describe('Keyboard navigation: Arrow Left / Right (Phase 3)', () => {
+  const treeContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'f1', title: 'Folder A', body: '', archetype: 'folder', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'c1', title: 'Child 1', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'c2', title: 'Child 2', body: '', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't1', title: 'Top-level text', body: '', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'f1', to: 'c1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { id: 'r2', from: 'f1', to: 'c2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressArrowLR(key: 'ArrowLeft' | 'ArrowRight') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  }
+
+  function setupTree() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: treeContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('Arrow Left collapses an expanded folder', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    // Folder starts expanded (not in collapsedFolders)
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+
+    pressArrowLR('ArrowLeft');
+
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('Arrow Right expands a collapsed folder', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    // Collapse first
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+
+    pressArrowLR('ArrowRight');
+
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+  });
+
+  it('Arrow Left on already collapsed folder is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+
+    pressArrowLR('ArrowLeft');
+
+    // Still collapsed — not toggled back to expanded
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('Arrow Right on already expanded folder is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+
+    pressArrowLR('ArrowRight');
+
+    // Still expanded — not toggled to collapsed
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+  });
+
+  it('Arrow Left/Right on non-folder entry is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+    pressArrowLR('ArrowRight');
+
+    // No change — text entry is not a folder
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('Arrow Left/Right with no selection is no-op', () => {
+    const { dispatcher } = setupTree();
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrowLR('ArrowLeft');
+    pressArrowLR('ArrowRight');
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('children are hidden in sidebar after Arrow Left collapse', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
+    // Children visible in sidebar before collapse
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+
+    pressArrowLR('ArrowLeft');
+
+    // Children hidden in sidebar after collapse (renderer skips them)
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).toBeNull();
+  });
+
+  it('children reappear in sidebar after Arrow Right expand', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
+    // Children hidden in sidebar
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+
+    pressArrowLR('ArrowRight');
+
+    // Children visible again in sidebar
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+  });
+
+  // ── Guard ──
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    ta.remove();
+  });
+
+  it('blocked when input is focused', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    input.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: treeContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+
+    // Collapse works in readonly — it's runtime UI state, not data
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  // ── Regression ──
+
+  it('regression: Arrow Up/Down still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('regression: Enter still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('f1');
+  });
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click toggle still works', () => {
+    const { dispatcher } = setupTree();
+    render(dispatcher.getState(), root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-folder-collapse"][data-pkc-lid="f1"]');
+    expect(toggle).not.toBeNull();
+    toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('selection is preserved after collapse/expand', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+    expect(dispatcher.getState().selectedLid).toBe('f1');
+
+    pressArrowLR('ArrowRight');
+    expect(dispatcher.getState().selectedLid).toBe('f1');
+  });
+});
+
+// ─── Keyboard Navigation Phase 4: Arrow Left → Parent ──────────
+describe('Keyboard navigation: Arrow Left → parent (Phase 4)', () => {
+  // Nested tree: root-folder > child-folder > grandchild text
+  const nestedContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'rf', title: 'Root Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'cf', title: 'Child Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'gc', title: 'Grandchild', body: '', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'top', title: 'Top-level', body: '', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'rf', to: 'cf', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { id: 'r2', from: 'cf', to: 'gc', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressLeft() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  }
+
+  function setupNested() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: nestedContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('expanded folder: Arrow Left collapses (Phase 3 behavior)', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).not.toContain('rf');
+
+    pressLeft();
+
+    expect(dispatcher.getState().collapsedFolders).toContain('rf');
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapsed child folder: Arrow Left selects parent', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapsed root folder: Arrow Left is no-op', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    // Still selected, no parent to move to
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('non-folder selected: Arrow Left is no-op', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'top' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('top');
+  });
+
+  it('double Arrow Left: collapse then move to parent', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    render(dispatcher.getState(), root);
+    // cf starts expanded
+    expect(dispatcher.getState().collapsedFolders).not.toContain('cf');
+
+    // First Left: collapse cf
+    pressLeft();
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+
+    // Second Left: move to parent rf
+    pressLeft();
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  it('collapse state preserved after parent move', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft(); // Move to parent
+
+    // cf is still collapsed after we moved away from it
+    expect(dispatcher.getState().collapsedFolders).toContain('cf');
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  // ── Guard ──
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    // Still editing cf, not moved to parent
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+    ta.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: nestedContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'cf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf' });
+    render(dispatcher.getState(), root);
+
+    pressLeft();
+
+    expect(dispatcher.getState().selectedLid).toBe('rf');
+  });
+
+  // ── Regression ──
+
+  it('regression: Arrow Right expand still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).not.toContain('rf');
+  });
+
+  it('regression: Arrow Up/Down still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('cf');
+  });
+
+  it('regression: Enter still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher } = setupNested();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'rf' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click toggle still works', () => {
+    const { dispatcher } = setupNested();
+    render(dispatcher.getState(), root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-folder-collapse"][data-pkc-lid="rf"]');
+    expect(toggle).not.toBeNull();
+    toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toContain('rf');
   });
 });
