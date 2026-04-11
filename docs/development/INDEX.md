@@ -72,11 +72,11 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ## CANDIDATE — Next Feature
 
-multi-select 実装完了後の残り候補。
+multi-select 系は Phase 2-D を除き実質完成。2-D は Ctrl+click で代替可能なため緊急度低。新規機能ラインへの移行も妥当。
 
 | # | 候補 | ユーザ価値 | コスト | リスク | 備考 |
 |---|------|----------|--------|--------|------|
-| 1 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper が必要) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能のため緊急度低 |
+| 1 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper + reducer 拡張) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能。設計負債だが実害は小さい |
 
 ### 脱落候補と理由
 
