@@ -3672,3 +3672,249 @@ describe('Bulk Date Change (Phase 2-B)', () => {
     expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
   });
 });
+
+// ── Calendar/Kanban Multi-Select Phase 2-C1: Kanban Multi-DnD ──
+
+describe('Kanban Multi-DnD (Phase 2-C1)', () => {
+  const dndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupDnD() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: dndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeDragEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Multi-drag: selected set member drag → bulk status ──
+
+  it('multi-drag: drag selected card to Done column applies BULK_SET_STATUS', () => {
+    const { dispatcher } = setupDnD();
+    // Multi-select t1 and t2 (both open)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t1 (member of selection)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Drop on "done" column
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('multi-drag clears multiSelectedLids after drop', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('multi-drag sets selectedLid to the dragged card after drop', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t2"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag: non-selected card preserves existing behavior ──
+
+  it('single-drag: non-selected card uses QUICK_UPDATE_ENTRY (existing behavior)', () => {
+    const { dispatcher } = setupDnD();
+    // Select t1 only — t3 is NOT in selection
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    // Drag t3 (done, NOT selected)
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Drop on "open" column
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    const s = dispatcher.getState();
+    // t3 should change to open
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    // t1 should remain unchanged (single-drag does not touch other entries)
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+  });
+
+  it('single-drag: only one selected entry is still single-drag', () => {
+    const { dispatcher } = setupDnD();
+    // Only t1 selected (no multi)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    // Should work as single-drag (QUICK_UPDATE_ENTRY)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    // t2 untouched
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Same-column drop ──
+
+  it('same-column drop is no-op for multi-drag (status already matches)', () => {
+    const { dispatcher } = setupDnD();
+    // t1 and t2 are open, drop on "open" column
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // Status should remain open (BULK_SET_STATUS with same value = no-op per entry)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  // ── Cleanup: dragEnd without drop ──
+
+  it('dragEnd without drop resets multi-drag state', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    // Cancel: dragend without drop
+    card.dispatchEvent(makeDragEvent('dragend', card));
+
+    // Now do a single-drag with t3 — should NOT be treated as multi-drag
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeDragEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // Only t3 should change, not t1/t2
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('open');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('open');
+  });
+
+  it('subsequent single-drag after multi-drop works correctly', () => {
+    const { dispatcher } = setupDnD();
+    // First: multi-drag t1+t2 to done
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card1 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card1.dispatchEvent(makeDragEvent('dragstart', card1));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeDragEvent('drop', doneTarget));
+
+    // Now re-render and do a single-drag with t3
+    render(dispatcher.getState(), root);
+    const card3 = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card3.dispatchEvent(makeDragEvent('dragstart', card3));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    // t3 should now be open
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+    // t1, t2 remain done from the multi-drag
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  // ── Regression: existing features ──
+
+  it('regression: Phase 1 visual feedback still works with multi-select in Kanban', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const kanban = root.querySelector('[data-pkc-region="kanban-view"]')!;
+    const t1Card = kanban.querySelector('[data-pkc-lid="t1"]')!;
+    const t2Card = kanban.querySelector('[data-pkc-lid="t2"]')!;
+    expect(t1Card.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2Card.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('regression: Phase 2-A bulk status via multi-action bar still works', () => {
+    const { dispatcher } = setupDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+
+  it('regression: single Kanban DnD without selection works unchanged', () => {
+    const { dispatcher } = setupDnD();
+    // No selection, just drag t3 (done) to open
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t3"]')!;
+    card.dispatchEvent(makeDragEvent('dragstart', card));
+
+    const openTarget = root.querySelector('[data-pkc-kanban-drop-target="open"]')!;
+    openTarget.dispatchEvent(makeDragEvent('drop', openTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
+  });
+});

@@ -3,7 +3,7 @@ import type { RelationKind } from '../../core/model/relation';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
-import type { AppState } from '../state/app-state';
+import { type AppState, getAllSelected } from '../state/app-state';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
@@ -1233,6 +1233,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── DnD: kanban board ──
 
   let kanbanDraggedLid: string | null = null;
+  let isKanbanMultiDrag = false;
 
   function handleKanbanDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-kanban-draggable]');
@@ -1241,6 +1242,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!lid) return;
 
     kanbanDraggedLid = lid;
+    const state = dispatcher.getState();
+    const selected = getAllSelected(state);
+    isKanbanMultiDrag = selected.length > 1 && selected.includes(lid);
+
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 
@@ -1279,15 +1284,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetStatus = dropTarget.getAttribute('data-pkc-kanban-drop-target');
     if (!targetStatus) return;
 
-    const entry = state.container.entries.find((e) => e.lid === lid);
-    if (!entry) return;
+    if (isKanbanMultiDrag && kanbanDraggedLid) {
+      // Multi-drag: apply status change to all selected entries
+      dispatcher.dispatch({
+        type: 'BULK_SET_STATUS',
+        status: targetStatus as 'open' | 'done',
+      });
+    } else {
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return;
 
-    const todo = parseTodoBody(entry.body);
+      const todo = parseTodoBody(entry.body);
 
-    // Only update if status actually changes
-    if (todo.status !== targetStatus) {
-      const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      // Only update if status actually changes
+      if (todo.status !== targetStatus) {
+        const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      }
     }
 
     // Select the dragged entry
@@ -1296,6 +1309,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
+    isKanbanMultiDrag = false;
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1308,6 +1322,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     kanbanDraggedLid = null;
+    isKanbanMultiDrag = false;
   }
 
   // ── DnD: calendar date move ──
