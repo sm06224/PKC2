@@ -3918,3 +3918,273 @@ describe('Kanban Multi-DnD (Phase 2-C1)', () => {
     expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).status).toBe('open');
   });
 });
+
+// ── Calendar/Kanban Multi-Select Phase 2-C2: Calendar Multi-DnD ──
+
+describe('Calendar Multi-DnD (Phase 2-C2)', () => {
+  const calDndContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B","date":"2026-04-10"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"done","description":"C","date":"2026-04-15"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 'n1', title: 'Note', body: 'text content', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupCalDnD() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calDndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    // Ensure calendar shows April 2026 (matches test data dates)
+    dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: 2026, month: 4 });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  /** Create a minimal DragEvent with a mock DataTransfer. */
+  function makeCalDragEvent(type: string, target: Element): DragEvent {
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    const evt = new Event(type, { bubbles: true, cancelable: true }) as unknown as DragEvent;
+    Object.defineProperty(evt, 'dataTransfer', { value: dt });
+    Object.defineProperty(evt, 'target', { value: target, writable: false });
+    return evt;
+  }
+
+  // ── Multi-drag: selected set member drag → bulk date ──
+
+  it('multi-drag: drag selected item to different date applies BULK_SET_DATE', () => {
+    const { dispatcher } = setupCalDnD();
+    // Multi-select t1 and t2 (both on 2026-04-10)
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t1 (member of selection)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on 2026-04-20 cell
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  it('multi-drag clears multiSelectedLids after drop', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(dispatcher.getState().multiSelectedLids).toHaveLength(0);
+  });
+
+  it('multi-drag sets selectedLid to the dragged item after drop', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    // Drag t2 (not the anchor, but in multi-select)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t2"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Single-drag: non-selected item preserves existing behavior ──
+
+  it('single-drag: non-selected item uses QUICK_UPDATE_ENTRY (existing behavior)', () => {
+    const { dispatcher } = setupCalDnD();
+    // Select t1 only — t3 is NOT in selection
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    // Drag t3 (on 2026-04-15, NOT selected)
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on 2026-04-05
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    const s = dispatcher.getState();
+    // t3 should change to 2026-04-05
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1 should remain unchanged
+    expect(JSON.parse(s.container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+  });
+
+  it('single-drag: only one selected entry is still single-drag', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-25"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-25');
+    // t2 untouched
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Same-date drop ──
+
+  it('same-date drop is no-op for multi-drag (date already matches)', () => {
+    const { dispatcher } = setupCalDnD();
+    // t1 and t2 are both on 2026-04-10
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Drop on same date 2026-04-10
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-10"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    // Date should remain 2026-04-10 (BULK_SET_DATE with same value = no-op per entry)
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  // ── Cleanup: dragEnd without drop ──
+
+  it('dragEnd without drop resets multi-drag state', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    // Cancel: dragend without drop
+    item.dispatchEvent(makeCalDragEvent('dragend', item));
+
+    // Now do a single-drag with t3 — should NOT be treated as multi-drag
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCalDragEvent('dragstart', item3));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    // Only t3 should change
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-10');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-10');
+  });
+
+  it('subsequent single-drag after multi-drop works correctly', () => {
+    const { dispatcher } = setupCalDnD();
+    // First: multi-drag t1+t2 to 2026-04-20
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const item1 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t1"]')!;
+    item1.dispatchEvent(makeCalDragEvent('dragstart', item1));
+
+    const cell20 = root.querySelector('[data-pkc-date="2026-04-20"]')!;
+    cell20.dispatchEvent(makeCalDragEvent('drop', cell20));
+
+    // Now re-render and single-drag t3
+    render(dispatcher.getState(), root);
+    const item3 = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item3.dispatchEvent(makeCalDragEvent('dragstart', item3));
+
+    const cell05 = root.querySelector('[data-pkc-date="2026-04-05"]')!;
+    cell05.dispatchEvent(makeCalDragEvent('drop', cell05));
+
+    // t3 should now be 2026-04-05
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-05');
+    // t1, t2 remain on 2026-04-20 from the multi-drag
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-04-20');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-04-20');
+  });
+
+  // ── Regression ──
+
+  it('regression: Phase 1 visual feedback still works with multi-select in Calendar', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const cal = root.querySelector('[data-pkc-region="calendar-view"]')!;
+    const t1Item = cal.querySelector('[data-pkc-lid="t1"]')!;
+    const t2Item = cal.querySelector('[data-pkc-lid="t2"]')!;
+    expect(t1Item.getAttribute('data-pkc-multi-selected')).toBe('true');
+    expect(t2Item.getAttribute('data-pkc-multi-selected')).toBe('true');
+  });
+
+  it('regression: Phase 2-B bulk date via multi-action bar still works', () => {
+    const { dispatcher } = setupCalDnD();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    dispatcher.dispatch({ type: 'BULK_SET_DATE', date: '2026-05-01' });
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).date).toBe('2026-05-01');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).date).toBe('2026-05-01');
+  });
+
+  it('regression: single Calendar DnD without selection works unchanged', () => {
+    const { dispatcher } = setupCalDnD();
+    render(dispatcher.getState(), root);
+
+    const item = root.querySelector('[data-pkc-calendar-draggable][data-pkc-lid="t3"]')!;
+    item.dispatchEvent(makeCalDragEvent('dragstart', item));
+
+    const dateCell = root.querySelector('[data-pkc-date="2026-04-01"]')!;
+    dateCell.dispatchEvent(makeCalDragEvent('drop', dateCell));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't3')!.body).date).toBe('2026-04-01');
+  });
+
+  it('regression: Kanban C-1 multi-DnD still works', () => {
+    // Switch to kanban, multi-drag, verify C-1 behavior preserved
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: calDndContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-kanban-draggable][data-pkc-lid="t1"]')!;
+    card.dispatchEvent(makeCalDragEvent('dragstart', card));
+
+    const doneTarget = root.querySelector('[data-pkc-kanban-drop-target="done"]')!;
+    doneTarget.dispatchEvent(makeCalDragEvent('drop', doneTarget));
+
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't1')!.body).status).toBe('done');
+    expect(JSON.parse(dispatcher.getState().container!.entries.find((e) => e.lid === 't2')!.body).status).toBe('done');
+  });
+});

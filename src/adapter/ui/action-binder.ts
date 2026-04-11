@@ -1328,6 +1328,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── DnD: calendar date move ──
 
   let calendarDraggedLid: string | null = null;
+  let isCalendarMultiDrag = false;
 
   function handleCalendarDragStart(e: DragEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-calendar-draggable]');
@@ -1336,6 +1337,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!lid) return;
 
     calendarDraggedLid = lid;
+    const state = dispatcher.getState();
+    const selected = getAllSelected(state);
+    isCalendarMultiDrag = selected.length > 1 && selected.includes(lid);
+
     e.dataTransfer?.setData('text/plain', lid);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 
@@ -1374,15 +1379,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const targetDate = dropTarget.getAttribute('data-pkc-date');
     if (!targetDate) return;
 
-    const entry = state.container.entries.find((e) => e.lid === lid);
-    if (!entry) return;
+    if (isCalendarMultiDrag && calendarDraggedLid) {
+      // Multi-drag: apply date change to all selected entries
+      dispatcher.dispatch({
+        type: 'BULK_SET_DATE',
+        date: targetDate,
+      });
+    } else {
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return;
 
-    const todo = parseTodoBody(entry.body);
+      const todo = parseTodoBody(entry.body);
 
-    // Only update if date actually changes
-    if (todo.date !== targetDate) {
-      const updated = serializeTodoBody({ ...todo, date: targetDate });
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      // Only update if date actually changes
+      if (todo.date !== targetDate) {
+        const updated = serializeTodoBody({ ...todo, date: targetDate });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+      }
     }
 
     // Select the dragged entry
@@ -1391,6 +1404,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clean up both possible drag sources
     calendarDraggedLid = null;
     kanbanDraggedLid = null;
+    isCalendarMultiDrag = false;
     if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
   }
 
@@ -1403,6 +1417,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     for (const el of overEls) el.removeAttribute('data-pkc-drag-over');
 
     calendarDraggedLid = null;
+    isCalendarMultiDrag = false;
   }
 
   // ── DnD: cleanup helper ──
