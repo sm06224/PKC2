@@ -5440,3 +5440,270 @@ describe('Keyboard navigation: Enter (Phase 2)', () => {
     expect(dispatcher.getState().editingLid).toBeNull();
   });
 });
+
+// ─── Keyboard Navigation Phase 3: Arrow Left / Right (tree) ────
+describe('Keyboard navigation: Arrow Left / Right (Phase 3)', () => {
+  const treeContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'f1', title: 'Folder A', body: '', archetype: 'folder', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'c1', title: 'Child 1', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'c2', title: 'Child 2', body: '', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't1', title: 'Top-level text', body: '', archetype: 'text', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+    ],
+    relations: [
+      { id: 'r1', from: 'f1', to: 'c1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      { id: 'r2', from: 'f1', to: 'c2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressArrowLR(key: 'ArrowLeft' | 'ArrowRight') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  }
+
+  function setupTree() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: treeContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('Arrow Left collapses an expanded folder', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    // Folder starts expanded (not in collapsedFolders)
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+
+    pressArrowLR('ArrowLeft');
+
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('Arrow Right expands a collapsed folder', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    // Collapse first
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+
+    pressArrowLR('ArrowRight');
+
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+  });
+
+  it('Arrow Left on already collapsed folder is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+
+    pressArrowLR('ArrowLeft');
+
+    // Still collapsed — not toggled back to expanded
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('Arrow Right on already expanded folder is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+
+    pressArrowLR('ArrowRight');
+
+    // Still expanded — not toggled to collapsed
+    expect(dispatcher.getState().collapsedFolders).not.toContain('f1');
+  });
+
+  it('Arrow Left/Right on non-folder entry is no-op', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+    pressArrowLR('ArrowRight');
+
+    // No change — text entry is not a folder
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('Arrow Left/Right with no selection is no-op', () => {
+    const { dispatcher } = setupTree();
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrowLR('ArrowLeft');
+    pressArrowLR('ArrowRight');
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('children are hidden in sidebar after Arrow Left collapse', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
+    // Children visible in sidebar before collapse
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+
+    pressArrowLR('ArrowLeft');
+
+    // Children hidden in sidebar after collapse (renderer skips them)
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).toBeNull();
+  });
+
+  it('children reappear in sidebar after Arrow Right expand', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
+    // Children hidden in sidebar
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+
+    pressArrowLR('ArrowRight');
+
+    // Children visible again in sidebar
+    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+  });
+
+  // ── Guard ──
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    ta.remove();
+  });
+
+  it('blocked when input is focused', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+    input.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toEqual([]);
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: treeContainer, readonly: true });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+
+    // Collapse works in readonly — it's runtime UI state, not data
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  // ── Regression ──
+
+  it('regression: Arrow Up/Down still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('c1');
+  });
+
+  it('regression: Enter still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('f1');
+  });
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click toggle still works', () => {
+    const { dispatcher } = setupTree();
+    render(dispatcher.getState(), root);
+
+    const toggle = root.querySelector('[data-pkc-action="toggle-folder-collapse"][data-pkc-lid="f1"]');
+    expect(toggle).not.toBeNull();
+    toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('selection is preserved after collapse/expand', () => {
+    const { dispatcher } = setupTree();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+
+    pressArrowLR('ArrowLeft');
+    expect(dispatcher.getState().selectedLid).toBe('f1');
+
+    pressArrowLR('ArrowRight');
+    expect(dispatcher.getState().selectedLid).toBe('f1');
+  });
+});

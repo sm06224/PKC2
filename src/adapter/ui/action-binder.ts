@@ -1075,6 +1075,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Arrow Left / Arrow Right: collapse / expand folder in sidebar
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && !mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.container
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'folder') return;
+      const isCollapsed = state.collapsedFolders.includes(state.selectedLid);
+      if (e.key === 'ArrowRight' && isCollapsed) {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: state.selectedLid });
+      } else if (e.key === 'ArrowLeft' && !isCollapsed) {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: state.selectedLid });
+      }
+      return;
+    }
+
     // Enter: open selected entry for editing
     if (
       e.key === 'Enter'
