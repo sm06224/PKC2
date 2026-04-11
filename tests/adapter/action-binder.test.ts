@@ -1613,6 +1613,48 @@ describe('Issue D / B — Reference-string context menu items', () => {
     expect(menu!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
     expect(menu!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
   });
+
+  it('right-clicking a textarea in the center pane does NOT show custom context menu', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+
+    const textarea = root.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+    expect(textarea).not.toBeNull();
+
+    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    textarea!.dispatchEvent(evt);
+
+    // Native context menu should NOT be prevented
+    expect(evt.defaultPrevented).toBe(false);
+    // Custom context menu should NOT appear
+    const menu = root.querySelector('[data-pkc-region="context-menu"]');
+    expect(menu).toBeNull();
+  });
+
+  it('right-clicking a text input does NOT show custom context menu', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Create a text input inside the root to simulate date input etc.
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+
+    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    input.dispatchEvent(evt);
+
+    expect(evt.defaultPrevented).toBe(false);
+    expect(root.querySelector('[data-pkc-region="context-menu"]')).toBeNull();
+  });
 });
 
 // ── C. HTML attachment open-in-new-window button ──

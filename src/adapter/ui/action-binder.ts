@@ -1520,6 +1520,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     const rawTarget = e.target as HTMLElement | null;
     if (!rawTarget) return;
+
+    // Allow native context menu on editable form controls (copy/paste support)
+    if (rawTarget instanceof HTMLTextAreaElement ||
+        (rawTarget instanceof HTMLInputElement && rawTarget.type !== 'button' && rawTarget.type !== 'submit')) {
+      return;
+    }
+
     const canEdit = !state.readonly;
 
     // Case 1 — TEXTLOG row context menu (center pane).
