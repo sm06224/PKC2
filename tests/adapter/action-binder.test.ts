@@ -4937,3 +4937,216 @@ describe('Multi-DnD drag ghost UX', () => {
     expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
   });
 });
+
+// ─── Keyboard Navigation Phase 1: Arrow Up / Down ─────────────
+describe('Keyboard navigation: Arrow Up / Down (Phase 1)', () => {
+  const navContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 'n1', title: 'Alpha', body: 'a', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 'n2', title: 'Beta', body: 'b', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 'n3', title: 'Gamma', body: 'c', archetype: 'text', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function pressArrow(key: 'ArrowDown' | 'ArrowUp') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  }
+
+  function setupNav(container?: Container) {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: container ?? navContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration ──
+
+  it('Arrow Down selects next entry', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n2');
+  });
+
+  it('Arrow Up selects previous entry', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n2' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Down at end is no-op', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n3' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n3');
+  });
+
+  it('Arrow Up at start is no-op', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    render(dispatcher.getState(), root);
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Down with no selection selects first entry', () => {
+    const { dispatcher } = setupNav();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('Arrow Up with no selection selects first entry', () => {
+    const { dispatcher } = setupNav();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    pressArrow('ArrowUp');
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('follows visible order when search filter is active', () => {
+    const { dispatcher } = setupNav();
+    // Filter so only 'Beta' and 'Gamma' are visible
+    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'a' });
+    render(dispatcher.getState(), root);
+
+    // Verify sidebar shows filtered results
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+    const visibleLids = Array.from(items).map((el) => el.getAttribute('data-pkc-lid'));
+
+    // Select the first visible entry
+    if (visibleLids.length >= 2) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: visibleLids[0]! });
+      pressArrow('ArrowDown');
+      expect(dispatcher.getState().selectedLid).toBe(visibleLids[1]);
+    }
+  });
+
+  it('selects first when selectedLid is filtered out', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n2' });
+
+    // Filter to show only entries matching 'Alpha' — n2 becomes hidden
+    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'Alpha' });
+    render(dispatcher.getState(), root);
+
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const items = sidebar.querySelectorAll('[data-pkc-action="select-entry"]');
+    if (items.length > 0) {
+      pressArrow('ArrowDown');
+      // Should select first visible entry since n2 is not in visible list
+      expect(dispatcher.getState().selectedLid).toBe(items[0]!.getAttribute('data-pkc-lid'));
+    }
+  });
+
+  // ── Guards ──
+
+  it('does not fire during editing', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'n1' });
+
+    pressArrow('ArrowDown');
+
+    // Should still be n1 (editing phase blocks arrow navigation)
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+  });
+
+  it('does not fire when textarea has focus', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    // Create and focus a textarea
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+    ta.remove();
+  });
+
+  it('does not fire when input has focus', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    root.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n1');
+    input.remove();
+  });
+
+  it('no-op when visible entries is 0', () => {
+    const emptyContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+    const { dispatcher } = setupNav(emptyContainer);
+
+    pressArrow('ArrowDown');
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  // ── Regression ──
+
+  it('regression: Escape cascade still works', () => {
+    const { dispatcher, events } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
+  });
+
+  it('regression: click selection still works', () => {
+    const { dispatcher } = setupNav();
+    const item = root.querySelector('[data-pkc-action="select-entry"][data-pkc-lid="n2"]');
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('n2');
+  });
+
+  it('regression: multi-select Ctrl+click still works', () => {
+    const { dispatcher } = setupNav();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'n1' });
+    const item = root.querySelector('[data-pkc-action="select-entry"][data-pkc-lid="n2"]');
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    expect(dispatcher.getState().multiSelectedLids).toContain('n1');
+    expect(dispatcher.getState().multiSelectedLids).toContain('n2');
+  });
+});

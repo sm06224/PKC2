@@ -1025,6 +1025,56 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Arrow Up / Arrow Down: move selection through sidebar entries
+    if (
+      (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+      && !mod
+      && !e.shiftKey
+      && !e.altKey
+      && state.phase !== 'editing'
+    ) {
+      // Don't steal arrow keys from form controls
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (!state.container) return;
+      const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
+      if (!sidebar) return;
+      const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+      if (items.length === 0) return;
+
+      // Validate against current container to guard against stale DOM
+      const containerLids = new Set(state.container.entries.map((en) => en.lid));
+      const lids = Array.from(items)
+        .map((el) => el.getAttribute('data-pkc-lid')!)
+        .filter((lid) => containerLids.has(lid));
+      if (lids.length === 0) return;
+      const currentIdx = state.selectedLid ? lids.indexOf(state.selectedLid) : -1;
+
+      let nextIdx: number;
+      if (currentIdx < 0) {
+        // No selection or selected entry not visible → select first
+        nextIdx = 0;
+      } else if (e.key === 'ArrowDown') {
+        if (currentIdx >= lids.length - 1) return; // already at end
+        nextIdx = currentIdx + 1;
+      } else {
+        if (currentIdx <= 0) return; // already at start
+        nextIdx = currentIdx - 1;
+      }
+
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[nextIdx]! });
+      return;
+    }
+
     // Ctrl+N / Cmd+N: new entry in ready mode
     if (mod && e.key === 'n' && state.phase === 'ready') {
       e.preventDefault();
