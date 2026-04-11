@@ -230,17 +230,17 @@ Slice A/B の実装後にテスト追加。
 
 ---
 
-## §7 Phase 2 スコープ（概要のみ）
+## §7 Phase 2 スコープ
 
-Phase 1 完了後に設計を詳細化する。現時点の概要:
+Phase 2 は以下のサブフェーズに分割:
 
-| 項目 | 概要 |
-|------|------|
-| BULK_SET_STATUS | Kanban で multi-select → 列にドロップ → 全選択エントリの status を一括変更 |
-| BULK_SET_DATE | Calendar で multi-select → 日付セルにドロップ → 全選択エントリの date を一括変更 |
-| Multi-DnD | dragstart 時に `multiSelectedLids` を drag payload に含める。drop 時に batch 適用 |
-| SELECT_RANGE 表示順対応 | ビュー依存の visible order で範囲計算。Calendar: 日付順、Kanban: status グループ内格納順 |
-| Escape キーで CLEAR_MULTI_SELECT | キーボードショートカット |
+| Sub-phase | 内容 | 状態 | 設計ドキュメント |
+|-----------|------|------|---------------|
+| Phase 2-A | Bulk Status Change | **COMPLETED** | `calendar-kanban-multi-select-bulk-status.md` |
+| Phase 2-B | Bulk Date Change (設定 + 解除) | 設計完了、実装待ち | `calendar-kanban-multi-select-bulk-date.md` |
+| Phase 2-C | Multi-DnD (Kanban/Calendar drop で一括操作) | CANDIDATE | — |
+| Phase 2-D | SELECT_RANGE 表示順対応 | CANDIDATE | — |
+| Phase 2-E | Escape キーで CLEAR_MULTI_SELECT | CANDIDATE | — |
 
 ---
 
