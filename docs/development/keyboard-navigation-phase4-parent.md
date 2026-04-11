@@ -17,7 +17,7 @@ Created: 2026-04-11
 
 ### Not Today
 
-- Arrow Right で子の先頭へ移動
+- Arrow Right で子の先頭へ移動 → **Phase 5 で実装済み** (`keyboard-navigation-phase5-child.md`)
 - Calendar / Kanban keyboard navigation
 - tree grid 的な完全 keyboard UX
 - Shift+Arrow range select

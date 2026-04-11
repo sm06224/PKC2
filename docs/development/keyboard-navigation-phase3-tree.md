@@ -102,7 +102,9 @@ handleKeydown:
 - **親ノードへの移動**: Arrow Left で collapsed folder にいるとき、
   親 folder へ `SELECT_ENTRY` する機能は今回含まない。
   理由: tree 構造の parent 解決が必要で、コスト/リスクが見合わない。
+  → **Phase 4 で実装済み** (`keyboard-navigation-phase4-parent.md`)
 - **子の自動選択**: Arrow Right で展開後に最初の子を選択する機能は含まない。
   Arrow Down で移動すればよく、自動選択は予期しない挙動になりうる。
+  → **Phase 5 で実装済み** (`keyboard-navigation-phase5-child.md`)
 - **tree grid 型の完全 keyboard UX**: WAI-ARIA tree grid pattern は
   将来の検討対象だが、今回のスコープ外。
