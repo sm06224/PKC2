@@ -258,9 +258,134 @@ if (isMultiDrag) {
 
 ### Slice C-3: Cross-view multi-DnD
 
-**scope**: C-1 + C-2 実装後、cross-view (Kanban→Calendar, Calendar→Kanban) の multi-drag テスト追加。`isMultiDrag` が cross-view で正しく引き継がれることの検証。
+**前提の変更**: C-1/C-2 の実装では設計 S4.5 の共通 `isMultiDrag` ではなく、view 別の `isKanbanMultiDrag` / `isCalendarMultiDrag` を採用した。そのため C-3 は「コード変更なし、テストのみ」ではなく、flag 統合を含む小規模なコード変更が必要。
 
-**変更量**: コード変更なし（C-1 + C-2 の設計で cross-view は自動対応）。テスト ~4 件。
+**scope**: flag 統合 + cross-view multi-DnD テスト追加。詳細は本ドキュメント S8 を参照。
+
+**変更量**: action-binder.ts に ~10 行の rename/修正。テスト ~6 件。
+
+---
+
+## S8 Phase 2-C3: Cross-view Multi-DnD 設計
+
+### 8.1 現状棚卸し
+
+#### flag の set/clear マップ
+
+| flag | set | clear (drop) | clear (dragEnd) | clear (clearAllDragState) |
+|------|-----|-------------|-----------------|--------------------------|
+| `isKanbanMultiDrag` | `handleKanbanDragStart` (L1247) | `handleKanbanDrop` (L1312) | `handleKanbanDragEnd` (L1325) | **未対応** |
+| `isCalendarMultiDrag` | `handleCalendarDragStart` (L1342) | `handleCalendarDrop` (L1407) | `handleCalendarDragEnd` (L1421) | **未対応** |
+
+#### cross-view で multi-drag にならない原因
+
+**Kanban → Calendar**:
+1. `handleKanbanDragStart` → `kanbanDraggedLid = lid`, `isKanbanMultiDrag = true`
+2. ビューが Calendar に切り替わる（drag-over-tab 経由）
+3. `handleCalendarDrop` → `lid = calendarDraggedLid ?? kanbanDraggedLid` → `kanbanDraggedLid` を取得
+4. 条件: `isCalendarMultiDrag && calendarDraggedLid` → **両方 false/null** → single-drag path
+
+**Calendar → Kanban**: 同構造。`isKanbanMultiDrag && kanbanDraggedLid` が false/null。
+
+#### clearAllDragState の漏れ
+
+`clearAllDragState()` (L1428-1441) は `draggedLid`, `kanbanDraggedLid`, `calendarDraggedLid` をクリアするが、`isKanbanMultiDrag` / `isCalendarMultiDrag` を**クリアしない**。安全側（multi-drag flag が残っても lid が null なので分岐条件に入らない）だが、設計上は漏れ。
+
+### 8.2 Flag 設計案比較
+
+#### 案 A: 共通 `isMultiDrag` に統合
+
+`isKanbanMultiDrag` と `isCalendarMultiDrag` を単一の `isMultiDrag` に統合。
+
+**変更**:
+- 変数宣言: 2 箇所削除、1 箇所追加
+- `handleKanbanDragStart`: `isKanbanMultiDrag = ...` → `isMultiDrag = ...`
+- `handleCalendarDragStart`: `isCalendarMultiDrag = ...` → `isMultiDrag = ...`
+- `handleKanbanDrop`: `isKanbanMultiDrag && kanbanDraggedLid` → `isMultiDrag`
+- `handleCalendarDrop`: `isCalendarMultiDrag && calendarDraggedLid` → `isMultiDrag`
+- 全 clear 箇所: rename
+- `clearAllDragState`: `isMultiDrag = false` 追加
+
+| 評価軸 | 評価 |
+|--------|------|
+| diff の小ささ | ◎ rename のみ、ロジック変更は drop 条件の guard 削除だけ |
+| stale state リスク | ◎ clear 箇所が減る（2→1）。clearAllDragState にも追加しやすい |
+| cleanup の明快さ | ◎ flag が 1 本なので全 cleanup 経路で見落としにくい |
+| single-drag への影響 | ◎ `isMultiDrag = false` のとき既存 single-drag path。変更なし |
+
+#### 案 B: 現行 2 flag のまま drop 側で OR 判定
+
+**変更**:
+- `handleKanbanDrop`: `(isKanbanMultiDrag || isCalendarMultiDrag)` に変更
+- `handleCalendarDrop`: 同上
+- 全 drop/dragEnd: 両 flag をクリア
+- `clearAllDragState`: 両 flag をクリア
+
+| 評価軸 | 評価 |
+|--------|------|
+| diff の小ささ | ○ 条件式の変更 + clear の追加 |
+| stale state リスク | △ 2 flag のうち片方だけ立つケースがあるため、clear 漏れのリスクが残る |
+| cleanup の明快さ | △ OR 条件が「なぜ 2 つあるのか」を後から読む人に説明が必要 |
+| single-drag への影響 | ◎ 変更なし |
+
+#### 案 C: drag payload オブジェクト
+
+`{ lid: string, isMulti: boolean }` を `kanbanDragPayload` / `calendarDragPayload` として管理。
+
+| 評価軸 | 評価 |
+|--------|------|
+| diff の小ささ | × 大規模リファクタ。既存 lid 参照を全て payload.lid に変更 |
+| stale state リスク | ○ オブジェクト一括管理で良い |
+| cleanup の明快さ | ○ null 代入 1 回で全 state クリア |
+| single-drag への影響 | △ 全ハンドラの lid 参照が変わる |
+
+### 8.3 Cross-view Drop Semantics
+
+| drag 元 | drop 先 | multi-drag | action |
+|---------|---------|-----------|--------|
+| Kanban | Calendar | `isMultiDrag = true` | `BULK_SET_DATE` |
+| Kanban | Calendar | `isMultiDrag = false` | `QUICK_UPDATE_ENTRY` (date) |
+| Calendar | Kanban | `isMultiDrag = true` | `BULK_SET_STATUS` |
+| Calendar | Kanban | `isMultiDrag = false` | `QUICK_UPDATE_ENTRY` (status) |
+| Kanban | Kanban | `isMultiDrag = true` | `BULK_SET_STATUS` (C-1 既存) |
+| Calendar | Calendar | `isMultiDrag = true` | `BULK_SET_DATE` (C-2 既存) |
+
+**key rule**: **drop 先が action を決定する**。drag 元は関係ない。multi/single の判定は dragStart 時に確定し、drop 先を問わず引き継がれる。
+
+**dragged lid が selection 集合外の場合**: `isMultiDrag = false` (dragStart で判定済み)。既存 single-drag path。
+
+**drop 後の state**:
+- `multiSelectedLids`: `[]` (BULK action が clear / SELECT_ENTRY が clear)
+- `selectedLid`: dragged lid (SELECT_ENTRY で設定)
+
+**invalid drop (drop 先属性なし)**: 既存 guard (`if (!targetStatus) return`, `if (!targetDate) return`) で no-op。multi-drag flag は `handleXxxDragEnd` でクリア。
+
+### 8.4 Cleanup Semantics
+
+| イベント | `isMultiDrag` | `kanbanDraggedLid` | `calendarDraggedLid` |
+|---------|-------------|-------------------|---------------------|
+| drop 成功 (Kanban) | `false` | `null` | `null` |
+| drop 成功 (Calendar) | `false` | `null` | `null` |
+| dragEnd (Kanban) | `false` | `null` | (変更なし) |
+| dragEnd (Calendar) | `false` | (変更なし) | `null` |
+| clearAllDragState (safety net) | `false` | `null` | `null` |
+
+**cross-view 途中中断**: dragStart → ビュー切り替え → drop せずに dragEnd。`handleKanbanDragEnd` または `handleCalendarDragEnd` が発火し、flag をクリア。ただし **dragEnd は drag 元のビューで発火する** ため、正しく cleanup される。
+
+### 8.5 推奨最小設計
+
+**案 A（共通 `isMultiDrag` に統合）を採用**。
+
+理由:
+1. **diff が最小**: 変数 rename + drop 条件の guard 削除。ロジック追加なし
+2. **概念が 1:1**: 「今の drag が multi-drag かどうか」は単一の bool で表現すべき。2 flag は C-1/C-2 の分離実装による一時的な状態であり、本来不要
+3. **clearAllDragState の修正が自然**: 1 flag を追加するだけ
+4. **案 B は設計負債**: OR 条件は「なぜ 2 つ flag があるのか」への回答を先送りするだけ
+5. **案 C は過剰**: payload オブジェクト化は diff が大きすぎる
+
+**不採用理由**:
+- 案 B: cleanup の見落としリスクが倍。読みにくい。rename で済む問題を OR で解決するのは不適切
+- 案 C: リファクタ規模が C-3 の scope を超える
 
 ### 推奨実装順序
 
