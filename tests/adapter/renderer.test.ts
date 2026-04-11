@@ -5657,6 +5657,37 @@ describe('Calendar/Kanban Multi-Select Visual Feedback', () => {
     expect(bar).toBeNull();
   });
 
+  // ── Bulk status select in multi-action bar ──
+
+  it('multi-action bar shows bulk status select when todos are selected', () => {
+    render(msState({ multiSelectedLids: ['t1', 't2'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).not.toBeNull();
+    const options = statusSelect!.querySelectorAll('option');
+    expect(options).toHaveLength(3); // placeholder + Open + Done
+  });
+
+  it('multi-action bar hides bulk status select when no todos in selection', () => {
+    // Create a container with only non-todo entries selected
+    const noTodoContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'n1', title: 'Note', body: 'text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'n2', title: 'Note 2', body: 'text2', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    render(msState({ container: noTodoContainer, multiSelectedLids: ['n1', 'n2'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).toBeNull();
+  });
+
+  it('bulk status select shows in calendar view', () => {
+    render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't3'] }), root);
+    const statusSelect = root.querySelector('[data-pkc-action="bulk-set-status"]');
+    expect(statusSelect).not.toBeNull();
+  });
+
   // ── Ghost selection resolution (view switch) ──
 
   it('multi-selected survives view switch from detail to calendar', () => {

@@ -946,6 +946,32 @@ function renderSidebar(state: AppState): HTMLElement {
       }
     }
 
+    // Bulk status change (only when selection contains todos)
+    if (state.container) {
+      const hasTodo = state.multiSelectedLids.some((lid) => {
+        const e = state.container!.entries.find((en) => en.lid === lid);
+        return e?.archetype === 'todo';
+      });
+      if (hasTodo) {
+        const statusSelect = document.createElement('select');
+        statusSelect.className = 'pkc-multi-action-status';
+        statusSelect.setAttribute('data-pkc-action', 'bulk-set-status');
+        const ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = 'Status...';
+        ph.disabled = true;
+        ph.selected = true;
+        statusSelect.appendChild(ph);
+        for (const [val, label] of [['open', 'Open'], ['done', 'Done']] as const) {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = label;
+          statusSelect.appendChild(opt);
+        }
+        bar.appendChild(statusSelect);
+      }
+    }
+
     const clearBtn = createElement('button', 'pkc-btn-small');
     clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
     clearBtn.textContent = 'Clear';

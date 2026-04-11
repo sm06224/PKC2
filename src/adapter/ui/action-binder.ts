@@ -1099,6 +1099,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
+    // Bulk status change via select dropdown
+    if (action === 'bulk-set-status') {
+      const val = (target as HTMLSelectElement).value;
+      if (val === 'open' || val === 'done') {
+        dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: val });
+      }
+    }
+
     // Container sandbox policy select
     if (action === 'set-sandbox-policy') {
       const policy = (target as HTMLSelectElement).value;
