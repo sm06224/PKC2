@@ -25,7 +25,7 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { isDescendant, getStructuralParent } from '../../features/relation/tree';
+import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1106,6 +1106,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (parent) {
           e.preventDefault();
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+        }
+      } else if (e.key === 'ArrowRight' && !isCollapsed) {
+        // Already expanded — select first child
+        const child = getFirstStructuralChild(state.container.relations, state.container.entries, state.selectedLid);
+        if (child) {
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: child.lid });
         }
       }
       return;
