@@ -1024,7 +1024,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Arrow Up / Arrow Down: move selection through sidebar entries
+    // Arrow Up / Arrow Down: move selection through sidebar entries (or kanban column)
     if (
       (e.key === 'ArrowDown' || e.key === 'ArrowUp')
       && !mod
@@ -1044,6 +1044,58 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
 
       if (!state.container) return;
+
+      // Kanban mode: navigate within column
+      if (state.viewMode === 'kanban') {
+        const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
+        if (!kanban) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+        const columns = kanban.querySelectorAll<HTMLElement>('[data-pkc-kanban-drop-target]');
+        if (columns.length === 0) return;
+
+        // Find which column contains the selected card
+        let currentCol: HTMLElement | null = null;
+        let currentLids: string[] = [];
+        let currentIdx = -1;
+        for (const col of columns) {
+          const cards = col.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(cards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (state.selectedLid && lids.includes(state.selectedLid)) {
+            currentCol = col;
+            currentLids = lids;
+            currentIdx = lids.indexOf(state.selectedLid);
+            break;
+          }
+        }
+
+        if (!currentCol) {
+          // selectedLid not visible in kanban → select first card in open column
+          const openCol = columns[0];
+          if (!openCol) return;
+          const openCards = openCol.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const openLids = Array.from(openCards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (openLids.length === 0) return;
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: openLids[0]! });
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          if (currentIdx >= currentLids.length - 1) return; // at end
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: currentLids[currentIdx + 1]! });
+        } else {
+          if (currentIdx <= 0) return; // at start
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: currentLids[currentIdx - 1]! });
+        }
+        return;
+      }
+
       const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
       if (!sidebar) return;
       const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
@@ -1074,7 +1126,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Arrow Left / Arrow Right: collapse / expand folder in sidebar
+    // Arrow Left / Arrow Right: kanban cross-column or collapse/expand folder in sidebar
     if (
       (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && !mod && !e.shiftKey && !e.altKey
@@ -1091,6 +1143,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       ) {
         return;
       }
+
+      // Kanban mode: cross-column navigation
+      if (state.viewMode === 'kanban') {
+        const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
+        if (!kanban) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+        const columnEls = kanban.querySelectorAll<HTMLElement>('[data-pkc-kanban-drop-target]');
+        if (columnEls.length === 0) return;
+
+        // Build column lid arrays
+        const colLids: string[][] = [];
+        let currentColIdx = -1;
+        let currentCardIdx = -1;
+        for (let ci = 0; ci < columnEls.length; ci++) {
+          const cards = columnEls[ci]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(cards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          colLids.push(lids);
+          const idx = lids.indexOf(state.selectedLid);
+          if (idx >= 0) {
+            currentColIdx = ci;
+            currentCardIdx = idx;
+          }
+        }
+
+        if (currentColIdx < 0) return; // selected card not visible in kanban
+
+        const targetColIdx = e.key === 'ArrowLeft' ? currentColIdx - 1 : currentColIdx + 1;
+        if (targetColIdx < 0 || targetColIdx >= colLids.length) return; // at edge
+        const targetLids = colLids[targetColIdx]!;
+        if (targetLids.length === 0) return; // target column empty
+
+        // Clamp index to target column length
+        const targetCardIdx = Math.min(currentCardIdx, targetLids.length - 1);
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: targetLids[targetCardIdx]! });
+        return;
+      }
+
       const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
       if (!entry) return;
 

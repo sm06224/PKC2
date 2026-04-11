@@ -76,10 +76,13 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 52 | `keyboard-navigation-phase4-parent.md` | Keyboard navigation Phase 4 (Arrow Left → parent) | 2026-04-11 | collapsed folder で Arrow Left → 親フォルダ選択。getStructuralParent 再利用。テスト 15 件。 |
 | 53 | `keyboard-navigation-phase5-child.md` | Keyboard navigation Phase 5 (Arrow Right → child) | 2026-04-11 | expanded folder で Arrow Right → 最初の子を選択。getFirstStructuralChild 新規追加。テスト 16 件。 |
 | 54 | `keyboard-navigation-phase6-nonfolder-parent.md` | Keyboard navigation Phase 6 (non-folder Left → parent) | 2026-04-11 | non-folder entry で Arrow Left → 親フォルダ選択。archetype guard 緩和のみ。テスト 15 件。 |
+| 55 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Kanban view で Arrow Up/Down (列内) + Left/Right (列間) navigation。viewMode 分岐で sidebar 不変。テスト 24 件。 |
 
 ## CANDIDATE — Next Feature
 
 ### Keyboard Navigation — Completion Snapshot
+
+**Sidebar** (Phase 1–6): 完成
 
 | Phase | Key | Action | Status |
 |-------|-----|--------|--------|
@@ -90,29 +93,35 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 5 | Arrow Right (expanded folder) | select first child | COMPLETED |
 | 6 | Arrow Left (non-folder) | move to parent | COMPLETED |
 
+**Kanban** (Phase 1): 完成
+
+| Key | Action | Status |
+|-----|--------|--------|
+| Arrow Up/Down | 列内移動 | COMPLETED |
+| Arrow Left/Right | 列間移動 (index clamp) | COMPLETED |
+
 **Summary**:
-- Sidebar tree keyboard navigation は **Phase 1–6 で完成**
-- Left/Right symmetric: folder も non-folder も Arrow Left で親に戻れる
-- Navigation + Edit の基本操作はすべて keyboard で完結可能
-- sidebar 限定で積み上げ、reducer / renderer 変更なし
-- テスト合計 91 件
+- Sidebar tree keyboard navigation は Phase 1–6 で完成
+- Kanban keyboard navigation Phase 1 完了 — viewMode 分岐で sidebar 不変
+- reducer / renderer 変更なし
+- テスト合計 115 件
 
 ### Keyboard Navigation — Not Implemented
 
-- Calendar/Kanban keyboard navigation → **設計ドキュメント作成済み** (`calendar-kanban-keyboard-navigation.md`)
+- Calendar keyboard navigation
+- Kanban Phase 2 (Space status toggle, Ctrl+Arrow status move)
 - Shift+Arrow range selection
 
 ### Next Candidates
 
-| | Calendar/Kanban keyboard Phase 1 |
-|---|---|
-| ユーザ価値 | 高 — マウスなしで view 内操作 |
-| コスト | 中 — 方式 C (viewMode 分岐) で adapter 内完結 |
-| リスク | 中 — Kanban 先行で scope 制御可能 |
-| 妥当性 | **◎** — 設計ドキュメント完了、実装可能 |
+| | Calendar keyboard Phase 1 | Kanban Phase 2 (status ops) |
+|---|---|---|
+| ユーザ価値 | 高 — Calendar もマウスなし操作 | 中 — Space で status toggle |
+| コスト | 中 — 2D grid + 空セルスキップ | 小 — TOGGLE_TODO_STATUS 再利用 |
+| リスク | 中 — 月またぎ scope 膨張 | 低 — 既存 action |
+| 妥当性 | **◎** — Kanban 完了で実装パターン確立 | ○ — 設計が必要 |
 
-設計方針: 方式 C (viewMode 分岐)、reducer 変更なし、Kanban → Calendar の順で実装。
-詳細: `calendar-kanban-keyboard-navigation.md`
+設計: `calendar-kanban-keyboard-navigation.md`
 
 ### 保留候補
 

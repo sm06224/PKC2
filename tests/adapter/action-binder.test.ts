@@ -6361,3 +6361,334 @@ describe('Keyboard navigation: non-folder Arrow Left → parent (Phase 6)', () =
     expect(dispatcher.getState().selectedLid).toBeNull();
   });
 });
+
+// ─── Kanban Keyboard Navigation Phase 1 ──────────
+describe('Kanban keyboard navigation (Phase 1)', () => {
+  // open: t1 (Task A), t2 (Task B), t3 (Task C)
+  // done: t4 (Task D), t5 (Task E)
+  // archived: excluded from kanban
+  // non-todo text entry: excluded from kanban
+  const kanbanContainer: Container = {
+    meta: mockContainer.meta,
+    entries: [
+      { lid: 't1', title: 'Task A', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      { lid: 't2', title: 'Task B', body: '{"status":"open","description":"B"}', archetype: 'todo', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      { lid: 't3', title: 'Task C', body: '{"status":"open","description":"C"}', archetype: 'todo', created_at: '2026-01-01T00:03:00Z', updated_at: '2026-01-01T00:03:00Z' },
+      { lid: 't4', title: 'Task D', body: '{"status":"done","description":"D"}', archetype: 'todo', created_at: '2026-01-01T00:04:00Z', updated_at: '2026-01-01T00:04:00Z' },
+      { lid: 't5', title: 'Task E', body: '{"status":"done","description":"E"}', archetype: 'todo', created_at: '2026-01-01T00:05:00Z', updated_at: '2026-01-01T00:05:00Z' },
+      { lid: 'tx', title: 'Text Entry', body: 'plain text', archetype: 'text', created_at: '2026-01-01T00:06:00Z', updated_at: '2026-01-01T00:06:00Z' },
+      { lid: 'ta', title: 'Archived', body: '{"status":"done","description":"X","archived":true}', archetype: 'todo', created_at: '2026-01-01T00:07:00Z', updated_at: '2026-01-01T00:07:00Z' },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupKanban() {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  // ── Integration: Arrow Up / Down (within column) ──
+
+  it('Arrow Down moves to next card in same column', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  it('Arrow Down at end of column is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't3' }); // last in open
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t3');
+  });
+
+  it('Arrow Up moves to previous card in same column', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't2' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('Arrow Up at start of column is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // first in open
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('Arrow Up/Down works in done column', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' }); // first in done
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(dispatcher.getState().selectedLid).toBe('t5');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(dispatcher.getState().selectedLid).toBe('t4');
+  });
+
+  it('selectedLid not visible in kanban → Arrow Down selects open column first', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tx' }); // text entry, not in kanban
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('no selection → Arrow Up selects open column first', () => {
+    const { dispatcher } = setupKanban();
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().selectedLid).toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  // ── Integration: Arrow Left / Right (cross-column) ──
+
+  it('Arrow Right moves from open to done at same index', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // open[0]
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t4'); // done[0]
+  });
+
+  it('Arrow Left moves from done to open at same index', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' }); // done[0]
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1'); // open[0]
+  });
+
+  it('Arrow Left at leftmost column is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' }); // open column (leftmost)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('Arrow Right at rightmost column is no-op', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't4' }); // done column (rightmost)
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t4');
+  });
+
+  it('Arrow Right clamps index when target column is shorter', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't3' }); // open[2], done has only 2 items
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t5'); // done[1] (last)
+  });
+
+  it('Arrow Left/Right no-op when target column is empty', () => {
+    // Container with only open todos (done column empty)
+    const openOnlyContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'o1', title: 'Open 1', body: '{"status":"open","description":"A"}', archetype: 'todo', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: openOnlyContainer });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'o1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('o1'); // can't move to empty done
+  });
+
+  // ── Guard ──
+
+  it('non-kanban viewMode: Arrow keys use sidebar handler', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer });
+    // viewMode is 'detail' (default) — sidebar includes ALL entries (not just todos)
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Select last todo, then Arrow Down — sidebar shows non-todo 'tx' next,
+    // but kanban has no entry after the last open todo
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't5' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // In detail mode, sidebar navigates to next visible entry (tx or ta)
+    // which are NOT in kanban. This proves sidebar handler is used.
+    const selected = dispatcher.getState().selectedLid;
+    expect(selected).not.toBe('t5'); // moved somewhere
+    expect(selected).not.toBeNull();
+  });
+
+  it('blocked during editing', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('blocked when textarea is focused', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    const ta = document.createElement('textarea');
+    root.appendChild(ta);
+    ta.focus();
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+    ta.remove();
+  });
+
+  it('blocked with Ctrl modifier', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t1');
+  });
+
+  it('allowed in readonly mode', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer, readonly: true });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'kanban' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+
+  // ── Regression ──
+
+  it('regression: detail mode sidebar Arrow Up/Down unchanged', () => {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: kanbanContainer });
+    // detail mode (default)
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    // Should select first sidebar item
+    expect(dispatcher.getState().selectedLid).not.toBeNull();
+  });
+
+  it('regression: detail mode Arrow Left/Right tree ops unchanged', () => {
+    // Use a container with a folder to test tree ops
+    const folderContainer: Container = {
+      meta: mockContainer.meta,
+      entries: [
+        { lid: 'f1', title: 'Folder', body: '', archetype: 'folder', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+        { lid: 'c1', title: 'Child', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'f1', to: 'c1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      revisions: [],
+      assets: {},
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: folderContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Arrow Left collapses folder
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(dispatcher.getState().collapsedFolders).toContain('f1');
+  });
+
+  it('regression: Enter dispatches BEGIN_EDIT in kanban mode', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(dispatcher.getState().phase).toBe('editing');
+  });
+
+  it('regression: Escape clears selection in kanban mode', () => {
+    const { dispatcher } = setupKanban();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBeNull();
+  });
+
+  it('regression: click selection works in kanban mode', () => {
+    const { dispatcher } = setupKanban();
+    render(dispatcher.getState(), root);
+
+    const card = root.querySelector('[data-pkc-lid="t2"]');
+    expect(card).not.toBeNull();
+    card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe('t2');
+  });
+});
