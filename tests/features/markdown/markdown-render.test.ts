@@ -428,3 +428,58 @@ describe('heading id injection (A-3 TOC)', () => {
     expect(b).toContain('<h1 id="title">');
   });
 });
+
+// ── P1 Slice 5-A: entry: link interception attribute stamping ──
+//
+// The renderer must pass `entry:` hrefs through validateLink and
+// tag the resulting <a> with `data-pkc-action="navigate-entry-ref"`
+// plus a verbatim `data-pkc-entry-ref` carrying the raw href. This
+// attribute pair is the contract that `action-binder`'s navigator
+// relies on (see the `navigate-entry-ref` case in action-binder.ts).
+
+describe('entry: link interception (P1 Slice 5-A)', () => {
+  it('keeps the entry: href — validateLink must not strip it', () => {
+    const html = renderMarkdown('[go](entry:lid-1)');
+    expect(html).toContain('href="entry:lid-1"');
+  });
+
+  it('stamps data-pkc-action="navigate-entry-ref" on entry: links', () => {
+    const html = renderMarkdown('[go](entry:lid-1)');
+    expect(html).toContain('data-pkc-action="navigate-entry-ref"');
+  });
+
+  it('carries the raw href on data-pkc-entry-ref for action-binder parsing', () => {
+    const html = renderMarkdown('[go](entry:lid-1#log/abc)');
+    expect(html).toContain('data-pkc-entry-ref="entry:lid-1#log/abc"');
+  });
+
+  it('does NOT add target=_blank to entry: links (they stay in-app)', () => {
+    const html = renderMarkdown('[go](entry:lid-1)');
+    // Isolate the entry: anchor open tag.
+    const m = html.match(/<a[^>]*href="entry:[^"]*"[^>]*>/);
+    expect(m).not.toBeNull();
+    expect(m![0]).not.toContain('target="_blank"');
+    expect(m![0]).not.toContain('rel="noopener');
+  });
+
+  it('continues to add target=_blank/rel on regular https links', () => {
+    const html = renderMarkdown('[x](https://example.com) and [y](entry:lid-1)');
+    // The https anchor keeps the hardened attributes.
+    const httpsOpen = html.match(/<a[^>]*href="https:\/\/example\.com"[^>]*>/)![0];
+    expect(httpsOpen).toContain('target="_blank"');
+    expect(httpsOpen).toContain('rel="noopener noreferrer"');
+    // The entry anchor still gets its interception attrs.
+    const entryOpen = html.match(/<a[^>]*href="entry:lid-1"[^>]*>/)![0];
+    expect(entryOpen).toContain('data-pkc-action="navigate-entry-ref"');
+  });
+
+  it('stamps interception attrs on heading-form and day-form refs too', () => {
+    const h = renderMarkdown('[h](entry:lid-1#log/abc/intro)');
+    expect(h).toContain('data-pkc-action="navigate-entry-ref"');
+    expect(h).toContain('data-pkc-entry-ref="entry:lid-1#log/abc/intro"');
+
+    const d = renderMarkdown('[d](entry:lid-1#day/2026-04-09)');
+    expect(d).toContain('data-pkc-action="navigate-entry-ref"');
+    expect(d).toContain('data-pkc-entry-ref="entry:lid-1#day/2026-04-09"');
+  });
+});

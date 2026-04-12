@@ -49,7 +49,14 @@ const md = new MarkdownIt({
 // pass through; arbitrary `ms-*:` schemes remain blocked.
 // https://learn.microsoft.com/office/client-developer/office-uri-schemes
 
-const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+// `entry:` is PKC2's internal cross-entry link scheme (see
+// `docs/development/textlog-viewer-and-linkability-redesign.md` §6.5
+// and `src/features/entry-ref/entry-ref.ts`). It is added to the safe
+// allowlist so markdown-it emits the `<a>` at all; the link_open rule
+// below then tags it with `data-pkc-action="navigate-entry-ref"` so
+// `action-binder` can intercept the click and route through the
+// parser instead of letting the browser attempt a scheme navigation.
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
 const SAFE_OFFICE_URI_RE =
   /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
@@ -70,8 +77,26 @@ const defaultLinkOpen = md.renderer.rules.link_open ??
   };
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  tokens[idx]!.attrSet('target', '_blank');
-  tokens[idx]!.attrSet('rel', 'noopener noreferrer');
+  const token = tokens[idx]!;
+  const hrefIdx = token.attrIndex('href');
+  const href = hrefIdx >= 0 ? (token.attrs?.[hrefIdx]?.[1] ?? '') : '';
+  // `entry:` links stay in-app: they are routed through
+  // `action-binder`'s `navigate-entry-ref` handler which parses the
+  // fragment via `parseEntryRef` and scrolls to the right
+  // `<section id="day-...">`, `<article id="log-...">`, or heading
+  // slug anchor. Adding `target="_blank"` here would pop a new tab
+  // for every in-app jump; `rel="noopener noreferrer"` is also
+  // unnecessary for a link that never actually navigates. The
+  // `data-pkc-entry-ref` attribute carries the raw href so the
+  // handler can read the unescaped original (the parser accepts
+  // the same grammar formatted by `formatEntryRef`).
+  if (href.startsWith('entry:')) {
+    token.attrSet('data-pkc-action', 'navigate-entry-ref');
+    token.attrSet('data-pkc-entry-ref', href);
+  } else {
+    token.attrSet('target', '_blank');
+    token.attrSet('rel', 'noopener noreferrer');
+  }
   return defaultLinkOpen(tokens, idx, options, env, self);
 };
 

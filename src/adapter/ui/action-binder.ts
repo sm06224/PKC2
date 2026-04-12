@@ -29,6 +29,7 @@ import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import {
   formatDate,
   formatTime,
@@ -822,6 +823,107 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
           (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        break;
+      }
+      case 'navigate-entry-ref': {
+        // P1 Slice 5-A: resolve in-app `entry:` links produced by the
+        // markdown renderer's link_open rule (see
+        // `src/features/markdown/markdown-render.ts`). The anchor carries
+        // `data-pkc-entry-ref="<raw>"` with the exact href string so we
+        // parse the same grammar that `formatEntryRef` emits.
+        //
+        // Routing by ParsedEntryRef.kind:
+        //   entry   → SELECT_ENTRY (no scroll)
+        //   log     → SELECT_ENTRY + scroll to `#log-<logId>`
+        //   range   → SELECT_ENTRY + scroll to `#log-<fromId>` (first log
+        //             of the range — range highlighting is a 5-B concern)
+        //   day     → SELECT_ENTRY + scroll to `#day-<dateKey>`
+        //   heading → SELECT_ENTRY + scroll to `#<slug>` scoped to the
+        //             owning `[data-pkc-log-id=<logId>]` article (mirrors
+        //             toc-jump mode 2 so cross-log slug collisions resolve
+        //             the same way)
+        //   legacy  → SELECT_ENTRY + scroll to `#log-<logId>` (treat the
+        //             bare fragment as a log id, matches what
+        //             `copy-log-line-ref` writes today)
+        //   invalid → no navigation. Mark the anchor with
+        //             `data-pkc-ref-broken="true"` so a click leaves a
+        //             visible breadcrumb even without extra CSS.
+        //
+        // Unknown lid: also no navigation; stamped broken. We look up
+        // the lid in `dispatcher.getState().container.entries`.
+        //
+        // Unknown fragment target (e.g., stale log id): the entry IS
+        // selected, and we try the scroll optimistically. If the
+        // querySelector returns null the viewer simply stays at its
+        // current scroll position — the top of the just-rendered entry.
+        // No broken-ref stamp for this path: the link itself is
+        // syntactically valid and the entry did open.
+        e.preventDefault();
+        const rawRef = target.getAttribute('data-pkc-entry-ref')
+          ?? target.getAttribute('href')
+          ?? '';
+        const parsed = parseEntryRef(rawRef);
+        if (parsed.kind === 'invalid') {
+          target.setAttribute('data-pkc-ref-broken', 'true');
+          break;
+        }
+        const st = dispatcher.getState();
+        const entryExists = !!st.container?.entries.some((en) => en.lid === parsed.lid);
+        if (!entryExists) {
+          target.setAttribute('data-pkc-ref-broken', 'true');
+          break;
+        }
+        // Clear any stale broken marker in case the entry was
+        // (re)created since the last click on this anchor.
+        target.removeAttribute('data-pkc-ref-broken');
+        if (st.selectedLid !== parsed.lid) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid });
+        }
+        // The dispatch triggered a synchronous re-render, but some
+        // layouts (virtualized lists, deferred TEXTLOG builds) settle
+        // on the next frame. A single rAF is enough in practice — the
+        // renderer is synchronous and this is belt-and-braces.
+        const scroll = (selector: string, scope: ParentNode = root): void => {
+          const el = scope.querySelector(selector);
+          if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+            (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        };
+        const raf =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (cb: FrameRequestCallback) => {
+                cb(0 as unknown as number);
+                return 0;
+              };
+        raf(() => {
+          switch (parsed.kind) {
+            case 'entry':
+              // No scroll target — SELECT_ENTRY already scrolled the
+              // center pane to the top of the entry body.
+              break;
+            case 'day':
+              scroll(`#${CSS.escape(`day-${parsed.dateKey}`)}`);
+              break;
+            case 'log':
+              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+              break;
+            case 'range':
+              scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
+              break;
+            case 'legacy':
+              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+              break;
+            case 'heading': {
+              const logEl = root.querySelector(
+                `[data-pkc-log-id="${CSS.escape(parsed.logId)}"]`,
+              );
+              const headingScope: ParentNode = logEl ?? root;
+              scroll(`#${CSS.escape(parsed.slug)}`, headingScope);
+              break;
+            }
+          }
+        });
         break;
       }
     }
