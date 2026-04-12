@@ -20,7 +20,6 @@
  */
 
 import type { TextlogBody, TextlogEntry, TextlogFlag } from './textlog-body';
-import { formatLogTimestamp } from './textlog-body';
 
 export const TEXTLOG_CSV_HEADER = [
   'log_id',
@@ -301,7 +300,11 @@ function parseCsvRows(csv: string): string[][] {
 function serializeRow(entry: TextlogEntry): string {
   const id = entry.id ?? '';
   const iso = entry.createdAt ?? '';
-  const display = iso ? formatLogTimestamp(iso) : '';
+  // `timestamp_display` is kept in the schema for backward-compatibility
+  // with consumers that read the named column, but it now emits the raw
+  // ISO value so export fidelity is preserved end-to-end. See
+  // `docs/development/textlog-readability-hardening.md` §4.
+  const display = iso;
   const important = entry.flags.includes('important') ? 'true' : 'false';
   const textMarkdown = entry.text ?? '';
   const textPlain = stripMarkdownForCsvPlain(textMarkdown);

@@ -6,7 +6,7 @@ import {
   updateLogEntry,
   toggleLogFlag,
   deleteLogEntry,
-  formatLogTimestamp,
+  formatLogTimestampWithSeconds,
   serializeTextlogAsMarkdown,
 } from '@features/textlog/textlog-body';
 import type { TextlogBody } from '@features/textlog/textlog-body';
@@ -196,18 +196,27 @@ describe('deleteLogEntry', () => {
   });
 });
 
-// ── formatLogTimestamp ──
+// ── formatLogTimestampWithSeconds ──
 
-describe('formatLogTimestamp', () => {
-  it('formats valid ISO timestamp', () => {
-    const result = formatLogTimestamp('2026-04-09T14:30:00Z');
-    // Should contain date and time parts
+describe('formatLogTimestampWithSeconds', () => {
+  it('formats valid ISO timestamp with seconds (HH:mm:ss)', () => {
+    const result = formatLogTimestampWithSeconds('2026-04-09T14:30:45Z');
+    // Should contain date and a time with seconds.
     expect(result).toMatch(/2026/);
-    expect(result).toMatch(/\d{2}:\d{2}/);
+    expect(result).toMatch(/\d{2}:\d{2}:\d{2}/);
   });
 
   it('returns input for invalid timestamp', () => {
-    expect(formatLogTimestamp('not a date')).toBe('not a date');
+    expect(formatLogTimestampWithSeconds('not a date')).toBe('not a date');
+  });
+
+  it('pads single-digit seconds to two digits', () => {
+    // Use a synthetic timestamp whose local seconds part is known.
+    // 14:30:05 UTC — local offset does not affect seconds, which are
+    // UTC-invariant for display purposes here.
+    const result = formatLogTimestampWithSeconds('2026-04-09T14:30:05Z');
+    // Ensure we see ":05" not ":5" — pads exist.
+    expect(result).toMatch(/:05(\D|$)/);
   });
 });
 
@@ -218,16 +227,26 @@ describe('serializeTextlogAsMarkdown', () => {
     expect(serializeTextlogAsMarkdown({ entries: [] })).toBe('');
   });
 
-  it('emits one `## timestamp` heading per entry followed by its text', () => {
+  it('emits one `## <raw ISO>` heading per entry followed by its text', () => {
     const body: TextlogBody = {
       entries: [
         { id: 'log-1', text: 'First line', createdAt: '2026-04-09T10:00:00Z', flags: [] },
       ],
     };
     const md = serializeTextlogAsMarkdown(body);
-    // Heading is emitted with the same timestamp format used on screen.
-    const expectedTs = formatLogTimestamp('2026-04-09T10:00:00Z');
-    expect(md).toBe(`## ${expectedTs}\n\nFirst line`);
+    // Heading emits the raw createdAt value so export preserves
+    // millisecond fidelity (see textlog-readability-hardening.md §6).
+    expect(md).toBe('## 2026-04-09T10:00:00Z\n\nFirst line');
+  });
+
+  it('preserves millisecond precision in the heading (raw ISO pass-through)', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-1', text: 'ms fidelity', createdAt: '2026-04-09T10:00:00.123Z', flags: [] },
+      ],
+    };
+    const md = serializeTextlogAsMarkdown(body);
+    expect(md).toContain('## 2026-04-09T10:00:00.123Z');
   });
 
   it('preserves original order (no timestamp re-sort)', () => {

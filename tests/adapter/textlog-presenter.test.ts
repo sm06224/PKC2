@@ -60,6 +60,17 @@ describe('textlog renderBody', () => {
     expect(timestamps[0]!.textContent).toMatch(/\d{4}\/\d{2}\/\d{2}/);
   });
 
+  it('timestamp display includes seconds (HH:mm:ss) — A-1 readability', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
+    // Every row's timestamp must carry HH:mm:ss so high-frequency log
+    // entries stay visually distinguishable. See
+    // docs/development/textlog-readability-hardening.md.
+    for (const ts of timestamps) {
+      expect(ts.textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    }
+  });
+
   it('exposes full ISO timestamp via tooltip title for precision', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
@@ -299,6 +310,21 @@ describe('textlog renderBody', () => {
     // Reversed order: log-asset first, log-plain second
     expect(rows[0]!.innerHTML).toContain('#asset-ast-zip-001');
     expect(rows[1]!.textContent).toBe('just plain text');
+  });
+
+  // ── A-1 structural block-ization ──
+
+  it('DOM order within each row is [flag, timestamp, text] so grid-areas can place them', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const rows = el.querySelectorAll<HTMLElement>('.pkc-textlog-row');
+    for (const row of rows) {
+      const children = Array.from(row.children) as HTMLElement[];
+      // Unchanged DOM order keeps data-pkc-log-id / data-pkc-action
+      // selectors working regardless of grid-template-areas placement.
+      expect(children[0]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
+      expect(children[1]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
+      expect(children[2]!.classList.contains('pkc-textlog-text')).toBe(true);
+    }
   });
 });
 

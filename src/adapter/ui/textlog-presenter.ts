@@ -4,7 +4,7 @@ import {
   parseTextlogBody,
   serializeTextlogBody,
   appendLogEntry,
-  formatLogTimestamp,
+  formatLogTimestampWithSeconds,
 } from '../../features/textlog/textlog-body';
 import type { TextlogFlag } from '../../features/textlog/textlog-body';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -92,7 +92,7 @@ export const textlogPresenter: DetailPresenter = {
         // Timestamp — display is short form; title shows full ISO for precision.
         const tsEl = document.createElement('span');
         tsEl.className = 'pkc-textlog-timestamp';
-        tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
+        tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt);
         tsEl.setAttribute('title', logEntry.createdAt);
         row.appendChild(tsEl);
 
@@ -135,7 +135,7 @@ export const textlogPresenter: DetailPresenter = {
       // Timestamp (read-only in editor)
       const tsEl = document.createElement('span');
       tsEl.className = 'pkc-textlog-timestamp';
-      tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
+      tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt);
       row.appendChild(tsEl);
 
       // Flag checkbox
