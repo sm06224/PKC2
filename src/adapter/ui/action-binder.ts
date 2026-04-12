@@ -12,7 +12,6 @@ import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlo
 import {
   toggleLogFlag,
   deleteLogEntry,
-  serializeTextlogAsMarkdown,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
@@ -340,9 +339,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (st.readonly) break;
         const ent = st.container?.entries.find((e) => e.lid === lid);
         if (!ent || ent.archetype !== 'textlog') break;
+
+        // Suppress default button action + stop bubbling so the flag
+        // click does not also trigger the article's dblclick→BEGIN_EDIT
+        // path or any ancestor handler that might shift focus / scroll.
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Preserve the scroll position of the center pane across the
+        // full re-render triggered by `QUICK_UPDATE_ENTRY`. The
+        // renderer does `root.innerHTML = ''` on every dispatch, which
+        // would otherwise reset `.pkc-center-content`'s scrollTop to 0
+        // and snap the viewport to the top of the log — surprising for
+        // what should feel like a purely local flag toggle.
+        const scroller = root.querySelector<HTMLElement>('.pkc-center-content');
+        const savedScroll = scroller ? scroller.scrollTop : null;
+
         const log = parseTextlogBody(ent.body);
         const updated = serializeTextlogBody(toggleLogFlag(log, logId, 'important'));
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+
+        if (savedScroll !== null) {
+          requestAnimationFrame(() => {
+            const fresh = root.querySelector<HTMLElement>('.pkc-center-content');
+            if (fresh) fresh.scrollTop = savedScroll;
+          });
+        }
         break;
       }
       case 'delete-log-entry': {
@@ -2786,20 +2808,15 @@ export function flashEntry(root: HTMLElement, lid: string): void {
 }
 
 /**
- * Return the markdown source text for the "Copy MD" and rendered
- * viewer paths. TEXT entries use the body directly. TEXTLOG entries
- * are flattened into a single markdown document via
- * `serializeTextlogAsMarkdown` so log rows become `## timestamp`
- * sections followed by the log text.
+ * Return the markdown source text for the "Copy MD" path.
+ *
+ * Slice 4-B (TEXTLOG Viewer & Linkability Redesign): the legacy
+ * TEXTLOG flatten (`## <ISO>` per log row) path has been removed.
+ * Copy-MD is only surfaced for TEXT archetype in the action bar, so
+ * this helper simply returns `entry.body` — any non-TEXT archetype
+ * accidentally routed here falls back to the raw body verbatim.
  */
 function entryToMarkdownSource(entry: Entry): string {
-  if (entry.archetype === 'textlog') {
-    try {
-      return serializeTextlogAsMarkdown(parseTextlogBody(entry.body));
-    } catch {
-      return entry.body ?? '';
-    }
-  }
   return entry.body ?? '';
 }
 

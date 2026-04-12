@@ -1573,19 +1573,26 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
 
       const moreContent = createElement('div', 'pkc-action-bar-more-content');
 
-      const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
-      copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
-      copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
-      copyMdBtn.textContent = '📋 MD';
-      moreContent.appendChild(copyMdBtn);
+      // Slice 4-B: Copy MD / Copy Rich emit markdown-source round-trip
+      // payloads and therefore only make sense for TEXT. TEXTLOG's
+      // flatten path (`serializeTextlogAsMarkdown`) has been removed —
+      // users export TEXTLOG via the rendered viewer's Download HTML
+      // button instead.
+      if (entry.archetype === 'text') {
+        const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
+        copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
+        copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
+        copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
+        copyMdBtn.textContent = '📋 MD';
+        moreContent.appendChild(copyMdBtn);
 
-      const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
-      copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
-      copyRichBtn.setAttribute('data-pkc-lid', entry.lid);
-      copyRichBtn.setAttribute('title', 'Markdown + HTML をリッチコピー（リッチエディタに貼り付け可能）');
-      copyRichBtn.textContent = '🎨 Rich';
-      moreContent.appendChild(copyRichBtn);
+        const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
+        copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
+        copyRichBtn.setAttribute('data-pkc-lid', entry.lid);
+        copyRichBtn.setAttribute('title', 'Markdown + HTML をリッチコピー（リッチエディタに貼り付け可能）');
+        copyRichBtn.textContent = '🎨 Rich';
+        moreContent.appendChild(copyRichBtn);
+      }
 
       const viewerBtn = createElement('button', 'pkc-btn pkc-action-rendered-viewer');
       viewerBtn.setAttribute('data-pkc-action', 'open-rendered-viewer');

@@ -34,6 +34,11 @@
      inheritance fallbacks. */
   --c-text: var(--c-fg);
   --c-text-dim: var(--c-muted);
+  /* TOC secondary rows (day / log labels). Dark theme reuses --c-muted;
+     light theme overrides this token below to a darker parchment ink so
+     the rows pass WCAG AA against the warm-beige sidebar background
+     (see docs/development/textlog-viewer-and-linkability-redesign.md). */
+  --c-toc-secondary: var(--c-muted);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   --transition-fast: 120ms ease;
@@ -58,8 +63,12 @@
     --c-warn-fg: #ffffff;
     --c-info: #2563eb;
     --c-info-fg: #ffffff;
-    --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
-    --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+    /* Light-theme darker override: the light sidebar background
+       (#f0ebe0 / #e6e0d3) washes out `--c-muted` (#6b6558) enough that
+       day / log rows in the right-pane TOC read as barely-visible gray.
+       Use a deep parchment ink for TOC secondary rows only — body-level
+       muted text stays at the softer value. */
+    --c-toc-secondary: #3d3830;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
     --glow: none;
     --transition-fast: 120ms ease;
@@ -84,6 +93,7 @@
   --c-warn-fg: #ffffff;
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
+  --c-toc-secondary: #3d3830;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
   --glow: none;
   color-scheme: light;
@@ -105,6 +115,7 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
+  --c-toc-secondary: var(--c-muted);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   color-scheme: dark;
@@ -1227,7 +1238,7 @@
  */
 .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
   font-weight: 600;
-  color: var(--c-muted);
+  color: var(--c-toc-secondary);
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
   font-size: 0.72rem;
@@ -1235,7 +1246,7 @@
 }
 
 .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
-  color: var(--c-muted);
+  color: var(--c-toc-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
 }

@@ -1308,6 +1308,24 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     expect(dispatcher.getState().phase).toBe('ready');
   });
 
+  it('clicking the flag button calls preventDefault + stopPropagation (Slice 4-B scroll-jump fix)', () => {
+    // Slice 4-B: the flag toggle path must suppress the native click
+    // (preventDefault) and stop the event from bubbling up to any
+    // ancestor that might shift focus or scroll.  We dispatch a
+    // cancelable click and assert `defaultPrevented` — that's the
+    // observable proxy for both calls having fired.
+    mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const flagBtn = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
+    );
+    expect(flagBtn).not.toBeNull();
+    const evt = new MouseEvent('click', { bubbles: true, cancelable: true });
+    flagBtn!.dispatchEvent(evt);
+    expect(evt.defaultPrevented).toBe(true);
+  });
+
   it('the existing Edit button in the action bar still dispatches BEGIN_EDIT', () => {
     const { dispatcher } = mountTextlogContainer([
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
@@ -1827,34 +1845,18 @@ describe('Issue D / D — Markdown source + rich clipboard copy', () => {
     }
   });
 
-  it('Copy MD on a TEXTLOG entry writes the serializeTextlogAsMarkdown output', async () => {
-    let captured: string | null = null;
-    const restore = installClipboard({
-      writeText: (t: string) => {
-        captured = t;
-        return Promise.resolve();
-      },
-    });
-    try {
-      mountTextlogContainer([
-        { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
-        { id: 'log-2', text: 'beta', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
-      ]);
-      const btn = root.querySelector<HTMLElement>(
-        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
-      );
-      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-      expect(captured).not.toBeNull();
-      expect(captured!).toContain('alpha');
-      expect(captured!).toContain('beta');
-      // Important marker must be present on the second heading.
-      expect(captured!).toContain('★');
-      // Two h2 headings.
-      expect(captured!.match(/## /g)?.length).toBe(2);
-    } finally {
-      restore();
-    }
+  it('Copy MD button is not rendered for TEXTLOG entries (Slice 4-B)', () => {
+    // Slice 4-B of textlog-viewer-and-linkability-redesign.md gated
+    // Copy MD / Copy Rendered on `archetype === 'text'`. The TEXTLOG
+    // action bar now ships with viewer / export-csv only, so the
+    // copy-markdown-source button should not exist.
+    mountTextlogContainer([
+      { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const btn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+    );
+    expect(btn).toBeNull();
   });
 
   it('Copy Rendered writes both text/plain and text/html through ClipboardItem', async () => {
@@ -2009,7 +2011,11 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
     }
   });
 
-  it('TEXTLOG entry: Open Viewer flattens via serializeTextlogAsMarkdown', () => {
+  it('TEXTLOG entry: Open Viewer renders day-grouped HTML via buildTextlogDoc', () => {
+    // Slice 4-B switched the TEXTLOG viewer away from the flat
+    // `serializeTextlogAsMarkdown` output. The rendered HTML now
+    // mirrors the live viewer: `<section class="pkc-textlog-day">`
+    // wrappers around `<article class="pkc-textlog-log">` entries.
     const { childDoc, openSpy } = mockChildWindow();
     try {
       mountTextlogContainer([
@@ -2024,8 +2030,11 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
       const html = childDoc.write.mock.calls[0]![0] as string;
       expect(html).toContain('<strong>first</strong>');
       expect(html).toContain('second');
-      // Important ★ marker ends up inside an h2 heading.
-      expect(html).toMatch(/<h2[^>]*>[^<]*★<\/h2>/);
+      // Day grouping + log articles appear.
+      expect(html).toContain('class="pkc-textlog-day"');
+      expect(html).toContain('class="pkc-textlog-log"');
+      // Important flag is surfaced via a data attribute on the article.
+      expect(html).toMatch(/data-pkc-log-important="true"/);
     } finally {
       openSpy.mockRestore();
     }

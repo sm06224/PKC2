@@ -1,29 +1,29 @@
 /**
- * Rendered viewer: open a TEXT or TEXTLOG entry as a plain,
+ * Rendered viewer: open a TEXT or TEXTLOG entry as a standalone,
  * print-friendly HTML page in a new browser window.
  *
- * This is **not** the `entry-window.ts` edit-capable path. There is
- * no editor, no toolbar, no postMessage round-trip. The new window
- * receives a standalone HTML document assembled from the current
- * container state:
+ * Not the `entry-window.ts` edit-capable path. There is no editor,
+ * no postMessage round-trip. The new window receives a standalone
+ * HTML document assembled from the current container state:
  *
- *   1. The entry body is pre-processed with `resolveAssetReferences`
+ *   1. TEXT: the body is pre-processed with `resolveAssetReferences`
  *      so `![alt](asset:key)` embeds and `[label](asset:key)` chips
  *      are already resolved when markdown-it sees the source.
- *   2. `renderMarkdown` produces the final HTML.
- *   3. A minimal inline CSS block gives the page a readable
- *      light-mode layout and a print stylesheet — it is explicitly
- *      NOT the main app stylesheet.
- *   4. The document is written via `window.open('') +
- *      document.write(…)` so it inherits an `about:blank` origin
- *      and there is no network round-trip.
- *
- * Intended use cases:
- *
- * - Quick read-only preview of a long note.
- * - Print a TEXT / TEXTLOG with the browser's native "Print" dialog.
- * - Simple hand-off: "share this rendered view" by saving the new
- *   window as HTML / PDF, without exporting the whole container.
+ *   2. TEXTLOG: the common `buildTextlogDoc` representation drives a
+ *      day-grouped `<section id="day-..."><article id="log-...">`
+ *      tree (Slice 4-B unifies rendered-viewer, print, and HTML
+ *      download on this single representation — the legacy
+ *      `serializeTextlogAsMarkdown` flatten path has been removed).
+ *   3. A minimal inline CSS block gives the page a readable light
+ *      layout and a print stylesheet. Slice 4-B adds a toolbar with
+ *      Print / HTML Download buttons; the toolbar is hidden under
+ *      `@media print` so saved PDFs / print output stay clean.
+ *   4. An inline `<script data-pkc-viewer-script>` wires the two
+ *      toolbar buttons. The Download path clones the document, removes
+ *      the toolbar + script, and emits a self-contained HTML Blob.
+ *   5. The assembled document is written via `window.open('') +
+ *      document.write(…)` so it inherits an `about:blank` origin and
+ *      there is no network round-trip.
  *
  * Architectural exception AE-003 (Preview Window Bridge) covers the
  * `document.write` step. Everything else is plain string building.
@@ -37,33 +37,35 @@ import {
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
 import { parseAttachmentBody } from './attachment-presenter';
-import {
-  parseTextlogBody,
-  serializeTextlogAsMarkdown,
-} from '../../features/textlog/textlog-body';
+import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
+import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 
 /**
  * Build the standalone HTML document for a rendered viewer window.
  *
- * Exported separately from `openRenderedViewer` so tests can
- * inspect the document without having to mock `window.open`.
+ * Exported separately from `openRenderedViewer` so tests can inspect
+ * the document without having to mock `window.open`.
  *
  * `entry.archetype` is expected to be `text` or `textlog`; other
  * archetypes are accepted but rendered as their raw body string so
- * the helper is resilient to unexpected inputs. Callers are
- * expected to gate the action on archetype before calling this.
+ * the helper is resilient to unexpected inputs. Callers are expected
+ * to gate the action on archetype before calling this.
  */
-export function buildRenderedViewerHtml(entry: Entry, container: Container | null): string {
-  const source = entryToMarkdownSource(entry);
-  const resolved = resolveAssetSource(source, container);
-  const body = renderMarkdown(resolved);
+export function buildRenderedViewerHtml(
+  entry: Entry,
+  container: Container | null,
+): string {
   const title = escapeForHtml(entry.title || '(untitled)');
   const archetypeLabel = entry.archetype === 'textlog' ? 'Textlog' : 'Text';
+  const bodyHtml = buildBodyHtml(entry, container);
+  const exportedAt = new Date().toISOString();
+  const filename = buildDownloadFilename(entry, exportedAt);
 
   // A tight inline stylesheet. Intentionally NOT the app stylesheet —
   // the viewer is a "print this note" target, not a second copy of
   // the app UI. We favour a readable body width, a sane mono font
-  // for code, and a clean `@media print` rule that strips backgrounds.
+  // for code, and a clean `@media print` rule that strips backgrounds
+  // and hides the toolbar.
   const style = `
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
@@ -89,6 +91,34 @@ export function buildRenderedViewerHtml(entry: Entry, container: Container | nul
     header.pkc-viewer-header .pkc-viewer-meta {
       font-size: 0.85rem;
       color: #666;
+    }
+    .pkc-viewer-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(250, 250, 250, 0.96);
+      backdrop-filter: blur(4px);
+      border-bottom: 1px solid #ddd;
+      margin: -2.5rem -1.5rem 1.25rem -1.5rem;
+      padding: 0.55rem 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+    .pkc-viewer-toolbar button {
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.25rem 0.75rem;
+      border: 1px solid #c0c0c0;
+      background: #fff;
+      color: #222;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .pkc-viewer-toolbar button:hover { background: #f0f0f0; }
+    .pkc-viewer-toolbar button:focus-visible {
+      outline: 2px solid #1a6b35;
+      outline-offset: 2px;
     }
     article.pkc-viewer-body h1,
     article.pkc-viewer-body h2,
@@ -128,11 +158,82 @@ export function buildRenderedViewerHtml(entry: Entry, container: Container | nul
       border: 1px solid #ccc;
       padding: 0.4em 0.8em;
     }
+    /* TEXTLOG day-grouped rendering (Slice 4-B: day+log article tree
+       via buildTextlogDoc). Mirrors the live viewer's class names so
+       downstream tooling (e.g. exported HTML re-imported somewhere) can
+       still recognise the structure. */
+    .pkc-textlog-document { display: flex; flex-direction: column; gap: 1.25rem; }
+    .pkc-textlog-day {
+      border: 1px solid #e2ddd0;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .pkc-textlog-day-header {
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid #e2ddd0;
+      background: #f6f1e4;
+    }
+    .pkc-textlog-day-title {
+      margin: 0;
+      font-size: 0.95rem;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      color: #4a4030;
+    }
+    .pkc-textlog-log {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px dashed #ece6d5;
+    }
+    .pkc-textlog-log:last-child { border-bottom: none; }
+    .pkc-textlog-log[data-pkc-log-important="true"] {
+      background: #fffbeb;
+      border-left: 3px solid #c07000;
+    }
+    .pkc-textlog-log-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.78rem;
+      color: #666;
+    }
+    .pkc-textlog-log-flag { color: #c07000; }
+    .pkc-textlog-text > :first-child { margin-top: 0; }
+    .pkc-textlog-text > :last-child { margin-bottom: 0; }
     @media print {
       body { background: #fff; padding: 0; color: #000; }
       header.pkc-viewer-header { border-bottom-color: #000; }
+      .pkc-viewer-toolbar { display: none; }
+      .pkc-textlog-day { break-inside: avoid; }
+      .pkc-textlog-log { break-inside: avoid; }
     }
   `;
+
+  const filenameJson = JSON.stringify(filename);
+  const script = `
+(function(){
+  var printBtn = document.getElementById('pkc-viewer-print-btn');
+  var dlBtn = document.getElementById('pkc-viewer-download-btn');
+  if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+  if (dlBtn) dlBtn.addEventListener('click', function(){
+    var root = document.documentElement.cloneNode(true);
+    var tb = root.querySelector('[data-pkc-region="viewer-toolbar"]');
+    if (tb && tb.parentNode) tb.parentNode.removeChild(tb);
+    var s = root.querySelector('script[data-pkc-viewer-script]');
+    if (s && s.parentNode) s.parentNode.removeChild(s);
+    var html = '<!DOCTYPE html>\\n' + root.outerHTML;
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = ${filenameJson};
+    document.body.appendChild(a);
+    a.click();
+    a.parentNode.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 0);
+  });
+})();
+`;
 
   return [
     '<!DOCTYPE html>',
@@ -140,19 +241,27 @@ export function buildRenderedViewerHtml(entry: Entry, container: Container | nul
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<meta name="pkc-source-lid" content="${escapeForAttr(entry.lid)}">`,
+    `<meta name="pkc-exported-at" content="${escapeForAttr(exportedAt)}">`,
+    `<meta name="pkc-archetype" content="${escapeForAttr(entry.archetype)}">`,
     `<title>${title}</title>`,
     `<style>${style}</style>`,
     '</head>',
     '<body>',
     '<main>',
+    '<header class="pkc-viewer-toolbar" data-pkc-region="viewer-toolbar">',
+    '<button type="button" id="pkc-viewer-print-btn" data-pkc-action="viewer-print">🖨 Print</button>',
+    '<button type="button" id="pkc-viewer-download-btn" data-pkc-action="viewer-download">💾 Download HTML</button>',
+    '</header>',
     '<header class="pkc-viewer-header">',
     `<h1>${title}</h1>`,
     `<div class="pkc-viewer-meta">${archetypeLabel} · rendered view (read-only)</div>`,
     '</header>',
     '<article class="pkc-viewer-body pkc-md-rendered">',
-    body,
+    bodyHtml,
     '</article>',
     '</main>',
+    `<script data-pkc-viewer-script>${script}</script>`,
     '</body>',
     '</html>',
   ].join('\n');
@@ -168,7 +277,10 @@ export function buildRenderedViewerHtml(entry: Entry, container: Container | nul
  * and returns the (possibly `null`) window handle so callers can
  * react.
  */
-export function openRenderedViewer(entry: Entry, container: Container | null): Window | null {
+export function openRenderedViewer(
+  entry: Entry,
+  container: Container | null,
+): Window | null {
   const html = buildRenderedViewerHtml(entry, container);
   const win = window.open('', '_blank');
   if (!win) return null;
@@ -180,15 +292,81 @@ export function openRenderedViewer(entry: Entry, container: Container | null): W
 
 // ── helpers ────────────────────────────────────────────
 
-function entryToMarkdownSource(entry: Entry): string {
+/**
+ * Build the body HTML fragment that goes inside
+ * `<article class="pkc-viewer-body">`. Dispatches on archetype:
+ *
+ *   - TEXTLOG → day-grouped `<section>`/`<article>` tree driven by
+ *     `buildTextlogDoc`. The same builder powers the live viewer,
+ *     entry-window, and (Slice 5-B) transclusion — there is a single
+ *     source of truth for what a rendered textlog looks like.
+ *   - TEXT / everything else → asset references resolved, then
+ *     markdown-it.
+ */
+function buildBodyHtml(entry: Entry, container: Container | null): string {
   if (entry.archetype === 'textlog') {
-    try {
-      return serializeTextlogAsMarkdown(parseTextlogBody(entry.body));
-    } catch {
-      return entry.body ?? '';
-    }
+    return buildTextlogBodyHtml(entry, container);
   }
-  return entry.body ?? '';
+  const resolved = resolveAssetSource(entry.body ?? '', container);
+  return renderMarkdown(resolved);
+}
+
+/**
+ * Render a TEXTLOG entry as a day-grouped HTML tree.
+ *
+ * Slice 4-B: replaces the previous `serializeTextlogAsMarkdown`
+ * flatten-then-render path with the common `buildTextlogDoc`
+ * representation. The emitted structure matches the live viewer
+ * (`<section class="pkc-textlog-day">` → `<article class="pkc-textlog-log">`)
+ * so all four surfaces (live / rendered / print / download) share a
+ * single DOM vocabulary.
+ */
+function buildTextlogBodyHtml(entry: Entry, container: Container | null): string {
+  const doc = buildTextlogDoc(entry, { order: 'asc' });
+  if (doc.sections.length === 0) {
+    return '<em style="color:#999">(empty log)</em>';
+  }
+
+  const parts: string[] = [];
+  parts.push('<div class="pkc-textlog-document">');
+
+  for (const section of doc.sections) {
+    const dayId =
+      section.dateKey === '' ? 'day-undated' : `day-${section.dateKey}`;
+    const dayTitle = section.dateKey === '' ? 'Undated' : section.dateKey;
+    parts.push(
+      `<section class="pkc-textlog-day" id="${escapeForAttr(dayId)}" data-pkc-date-key="${escapeForAttr(section.dateKey)}">`,
+      '<header class="pkc-textlog-day-header">',
+      `<h2 class="pkc-textlog-day-title">${escapeForHtml(dayTitle)}</h2>`,
+      '</header>',
+    );
+
+    for (const log of section.logs) {
+      const importantAttr = log.flags.includes('important')
+        ? ' data-pkc-log-important="true"'
+        : '';
+      const resolved = resolveAssetSource(log.bodySource ?? '', container);
+      const logHtml = renderMarkdown(resolved) || '';
+      const flagMark = log.flags.includes('important')
+        ? '<span class="pkc-textlog-log-flag" aria-label="important">★</span>'
+        : '';
+
+      parts.push(
+        `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(entry.lid)}"${importantAttr}>`,
+        '<header class="pkc-textlog-log-header">',
+        flagMark,
+        `<span class="pkc-textlog-timestamp" title="${escapeForAttr(log.createdAt)}">${escapeForHtml(formatLogTimestampWithSeconds(log.createdAt))}</span>`,
+        '</header>',
+        `<div class="pkc-textlog-text pkc-md-rendered">${logHtml}</div>`,
+        '</article>',
+      );
+    }
+
+    parts.push('</section>');
+  }
+
+  parts.push('</div>');
+  return parts.join('');
 }
 
 function resolveAssetSource(source: string, container: Container | null): string {
@@ -211,6 +389,44 @@ function resolveAssetSource(source: string, container: Container | null): string
   });
 }
 
+/**
+ * Produce a safe download filename: `<slug>-<yyyymmdd>.<ext>.html`.
+ *
+ * `slug` is derived from the entry title (alphanumerics + hyphens,
+ * ASCII-only) with a `untitled` fallback. Non-ASCII titles get
+ * collapsed to an empty slug and fall back to the lid + archetype
+ * tail so downloads from Japanese / CJK titles still produce usable
+ * filenames.
+ *
+ * `.textlog.html` / `.text.html` makes the archetype obvious to
+ * downstream tooling (e.g. an importer keyed on filename extension).
+ */
+function buildDownloadFilename(entry: Entry, exportedAtIso: string): string {
+  const date = isoToDateStamp(exportedAtIso);
+  const slug = slugifyTitle(entry.title || '');
+  const body = slug || entry.lid || 'untitled';
+  const kind = entry.archetype === 'textlog' ? 'textlog' : 'text';
+  return `${body}-${date}.${kind}.html`;
+}
+
+function slugifyTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
+function isoToDateStamp(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '00000000';
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  return `${y}${pad(m)}${pad(day)}`;
+}
+
 function escapeForHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -218,4 +434,12 @@ function escapeForHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeForAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

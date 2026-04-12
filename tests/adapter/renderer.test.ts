@@ -2458,11 +2458,18 @@ describe('Action surface consolidation', () => {
     expect(more!.querySelector('[data-pkc-action="export-text-zip"]')).not.toBeNull();
   });
 
-  it('secondary actions for TEXTLOG are inside More… details', () => {
+  it('secondary actions for TEXTLOG are inside More… details (Slice 4-B: no Copy MD)', () => {
+    // Slice 4-B of textlog-viewer-and-linkability-redesign.md removed
+    // Copy MD / Copy Rendered from the TEXTLOG action bar. The rendered
+    // viewer (now driven by buildTextlogDoc with Print + Download HTML
+    // buttons) is the supported output surface for textlogs; CSV+ZIP
+    // remains for structured export.
     render(makeState({ selectedLid: 'e-log' }), root);
     const more = root.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-rich-markdown"]')).toBeNull();
+    expect(more!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).not.toBeNull();
   });
 
