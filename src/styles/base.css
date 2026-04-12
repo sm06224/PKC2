@@ -19,8 +19,21 @@
   --c-info-fg: #ffffff;
   --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+  /* Slice A: markdown body font alias. Currently mono (PKC2 terminal theme);
+     defining this variable provides a future switch point for proportional
+     fonts without touching every md-rendered selector.
+     See docs/development/ui-readability-and-editor-sizing-hardening.md §3-A. */
+  --font-body: var(--font-sans);
   --radius: 2px;
   --radius-lg: 4px;
+  /* Slice A: small radius for inline code / fenced code / asset chip pills.
+     Previously referenced by `.pkc-md-rendered` selectors but undefined. */
+  --radius-sm: 1px;
+  /* Slice A: text color aliases used by markdown rendered HTML (blockquote,
+     asset chip body). Previously referenced but undefined, causing silent
+     inheritance fallbacks. */
+  --c-text: var(--c-fg);
+  --c-text-dim: var(--c-muted);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   --transition-fast: 120ms ease;
@@ -808,6 +821,10 @@
 .pkc-md-rendered {
   font-family: var(--font-body);
   white-space: normal;
+  /* Slice A: slightly tighter than the view-body base (1.5) for better
+     scanning of prose, lists, and task items.
+     See docs/development/ui-readability-and-editor-sizing-hardening.md §3-A. */
+  line-height: 1.45;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
@@ -833,6 +850,9 @@
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 0.35em 0;
+  /* Slice A: tighter line-height for fenced code blocks — code is scanned
+     by structure and benefits from higher information density. */
+  line-height: 1.35;
 }
 .pkc-md-rendered pre code {
   background: none;
