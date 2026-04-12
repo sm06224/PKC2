@@ -323,7 +323,7 @@ function renderTextlogSlice(
     return;
   }
 
-  renderTextlogSections(body, sections, target.lid, ctx);
+  renderTextlogSections(body, sections, target.lid, ctx, parsed.kind === 'range');
 }
 
 function renderTextlogSections(
@@ -331,6 +331,7 @@ function renderTextlogSections(
   sections: DaySection[],
   lid: string,
   ctx: TransclusionContext,
+  isRangeEmbed = false,
 ): void {
   // The embedded subtree reuses the live-viewer's CSS classes
   // (`pkc-textlog-day`, `pkc-textlog-log`) so the visual treatment
@@ -339,6 +340,13 @@ function renderTextlogSections(
   // document as the live viewer.
   const docEl = document.createElement('div');
   docEl.className = 'pkc-textlog-document pkc-transclusion-document';
+  // Slice 5-C: mark range embeds so CSS can share the same visual
+  // vocabulary as the live-viewer range highlight. Single-log / day
+  // / heading embeds stay unmarked — only ranges need the "this is
+  // a span, not a single row" affordance.
+  if (isRangeEmbed) {
+    docEl.setAttribute('data-pkc-range-embed', 'true');
+  }
 
   for (const section of sections) {
     const sectionEl = document.createElement('section');

@@ -200,6 +200,28 @@ describe('expandTransclusions — happy path', () => {
     expect(ids).toEqual(['log-a', 'log-b']);
   });
 
+  it('range: transclusion-document is marked data-pkc-range-embed="true" (Slice 5-C)', () => {
+    // Slice 5-C: range embeds share the visual vocabulary of the live
+    // viewer range highlight. The marker lives on the wrapping
+    // `.pkc-transclusion-document` so a single CSS descendant rule
+    // can style every embedded log in the span.
+    root = makeBodyEl('![](entry:textlog-1#log/log-a..log-b)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const docEl = root.querySelector('.pkc-transclusion-document');
+    expect(docEl).not.toBeNull();
+    expect(docEl!.getAttribute('data-pkc-range-embed')).toBe('true');
+  });
+
+  it('range-embed marker is NOT set on single-log / day / heading embeds', () => {
+    // Only ranges need the "this is a span" affordance — other kinds
+    // are scalar targets and should stay unmarked.
+    root = makeBodyEl('![](entry:textlog-1#log/log-a)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const docEl = root.querySelector('.pkc-transclusion-document');
+    expect(docEl).not.toBeNull();
+    expect(docEl!.getAttribute('data-pkc-range-embed')).toBeNull();
+  });
+
   it('removes empty <p> left behind by the auto-closed paragraph', () => {
     root = makeBodyEl('![](entry:other-text)');
     expandTransclusions(root, { entries, hostLid: 'host' });
