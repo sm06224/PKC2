@@ -1069,6 +1069,16 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-md-rendered a[href^="#asset-"]:hover {
   background: var(--c-hover); border-color: var(--c-accent-dim);
 }
+/* ── Task completion badge ── */
+.pkc-task-badge {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pkc-task-badge[data-pkc-task-complete="true"] {
+  color: var(--c-success);
+}
 </style>
 </head>
 <body>
@@ -1084,6 +1094,7 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
       <div class="pkc-view-title-row">
         <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
         <span class="pkc-archetype-label">${entry.archetype}</span>
+        <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
       </div>
       <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
     </div>
@@ -1372,6 +1383,34 @@ function hidePendingViewNotice() {
 }
 
 /*
+ * Derive task completion badge from the visible #body-view DOM.
+ * Counts .pkc-task-checkbox elements to produce a done/total badge.
+ * Called after every body-view innerHTML update (init, push, save, flush).
+ */
+function updateTaskBadge() {
+  var bodyView = document.getElementById('body-view');
+  var badge = document.getElementById('task-badge');
+  if (!bodyView || !badge) return;
+  var checkboxes = bodyView.querySelectorAll('.pkc-task-checkbox');
+  if (checkboxes.length === 0) {
+    badge.style.display = 'none';
+    badge.removeAttribute('data-pkc-task-complete');
+    return;
+  }
+  var done = 0;
+  for (var i = 0; i < checkboxes.length; i++) {
+    if (checkboxes[i].checked) done++;
+  }
+  badge.textContent = done + '/' + checkboxes.length;
+  badge.style.display = '';
+  if (done === checkboxes.length) {
+    badge.setAttribute('data-pkc-task-complete', 'true');
+  } else {
+    badge.removeAttribute('data-pkc-task-complete');
+  }
+}
+
+/*
  * Apply any stashed pendingViewBody to #body-view.innerHTML and
  * clear the stash. No-op when nothing is pending. This is the
  * canonical dirty → clean transition point invoked by cancelEdit()
@@ -1385,6 +1424,7 @@ function flushPendingViewBody() {
   if (viewBodyEl) viewBodyEl.innerHTML = pendingViewBody;
   pendingViewBody = null;
   hidePendingViewNotice();
+  updateTaskBadge();
 }
 
 function enterEdit() {
@@ -1484,6 +1524,7 @@ window.addEventListener('message', function(e) {
     /* Update the view-pane body to reflect saved content */
     document.getElementById('title-display').textContent = originalTitle;
     document.getElementById('body-view').innerHTML = renderMd(originalBody);
+    updateTaskBadge();
     document.getElementById('status').textContent = 'Saved.';
     setTimeout(function() { document.getElementById('status').textContent = ''; }, 2000);
     /*
@@ -1568,10 +1609,13 @@ window.addEventListener('message', function(e) {
         if (viewBodyEl) viewBodyEl.innerHTML = e.data.viewBody;
         pendingViewBody = null;
         hidePendingViewNotice();
+        updateTaskBadge();
       }
     }
   }
 });
+/* Derive initial task badge from the rendered body */
+updateTaskBadge();
 ${!readonly && startEditing ? "/* Auto-enter edit mode on open */\nenterEdit();" : ''}
 </script>
 </body>

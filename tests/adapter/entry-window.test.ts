@@ -2129,4 +2129,195 @@ describe('Entry Window', () => {
       });
     });
   });
+
+  // ── Entry window task completion badge ──
+
+  describe('Entry window task completion badge', () => {
+    describe('badge display', () => {
+      it('TEXT entry with tasks shows badge element in title row', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B\n- [ ] Task C',
+        });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('TEXTLOG entry with tasks shows badge element in title row', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done item', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: '- [ ] Open item', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('TEXT entry with no tasks still renders badge element (hidden by script)', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: 'No tasks here, just plain text.',
+        });
+        // Badge element exists but starts with display:none
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('style="display:none"');
+      });
+
+      it('todo archetype renders badge element (hidden — no checkboxes in todo card)', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Buy groceries' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        // Badge element present but todo card has no .pkc-task-checkbox, so script hides it
+        expect(html).toContain('id="task-badge"');
+      });
+
+      it('badge element is inside view title row, not in edit pane', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        const viewPaneStart = html.indexOf('<div id="view-pane">');
+        const editPaneStart = html.indexOf('<div id="edit-pane"');
+        const badgePos = html.indexOf('id="task-badge"');
+        expect(badgePos).toBeGreaterThan(viewPaneStart);
+        expect(badgePos).toBeLessThan(editPaneStart);
+      });
+
+      it('badge comes after archetype label in title row', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        const archetypePos = html.indexOf('pkc-archetype-label');
+        const badgePos = html.indexOf('id="task-badge"');
+        expect(badgePos).toBeGreaterThan(archetypePos);
+      });
+    });
+
+    describe('badge CSS', () => {
+      it('includes .pkc-task-badge CSS in inline styles', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('.pkc-task-badge');
+        expect(html).toContain('font-size: 0.7rem');
+      });
+
+      it('includes complete-state CSS rule', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('data-pkc-task-complete="true"');
+        expect(html).toContain('var(--c-success)');
+      });
+    });
+
+    describe('updateTaskBadge function', () => {
+      it('child script contains updateTaskBadge function', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('function updateTaskBadge()');
+      });
+
+      it('updateTaskBadge queries .pkc-task-checkbox elements', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain(".querySelectorAll('.pkc-task-checkbox')");
+      });
+
+      it('updateTaskBadge sets data-pkc-task-complete when all done', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain("setAttribute('data-pkc-task-complete', 'true')");
+      });
+
+      it('updateTaskBadge hides badge when no checkboxes found', async () => {
+        const html = await openAndCapture();
+        // When checkboxes.length === 0, badge is hidden
+        expect(html).toMatch(/checkboxes\.length === 0[\s\S]*?badge\.style\.display = 'none'/);
+      });
+    });
+
+    describe('badge update hook points', () => {
+      it('calls updateTaskBadge on initial load', async () => {
+        const html = await openAndCapture();
+        // After message listener, before auto-edit
+        const listenerEnd = html.lastIndexOf('});');
+        const initBadgeCall = html.indexOf('updateTaskBadge()', listenerEnd);
+        expect(initBadgeCall).toBeGreaterThan(-1);
+      });
+
+      it('calls updateTaskBadge in pkc-entry-update-view-body handler (clean path)', async () => {
+        const html = await openAndCapture();
+        // In the view body update handler, after innerHTML assignment
+        const viewBodyHandler = html.indexOf("type === 'pkc-entry-update-view-body'");
+        expect(viewBodyHandler).toBeGreaterThan(-1);
+        const handlerEnd = html.indexOf('}', html.indexOf('hidePendingViewNotice()', viewBodyHandler));
+        const badgeCall = html.indexOf('updateTaskBadge()', viewBodyHandler);
+        expect(badgeCall).toBeGreaterThan(viewBodyHandler);
+        expect(badgeCall).toBeLessThan(handlerEnd + 50);
+      });
+
+      it('calls updateTaskBadge in pkc-entry-saved handler', async () => {
+        const html = await openAndCapture();
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        expect(savedHandler).toBeGreaterThan(-1);
+        // updateTaskBadge() should appear between the saved handler start and the next handler
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const badgeCall = html.indexOf('updateTaskBadge()', savedHandler);
+        expect(badgeCall).toBeGreaterThan(savedHandler);
+        expect(badgeCall).toBeLessThan(nextHandler);
+      });
+
+      it('calls updateTaskBadge in flushPendingViewBody', async () => {
+        const html = await openAndCapture();
+        const flushFn = html.indexOf('function flushPendingViewBody()');
+        expect(flushFn).toBeGreaterThan(-1);
+        // updateTaskBadge() should appear inside flushPendingViewBody
+        const nextFn = html.indexOf('function ', flushFn + 30);
+        const badgeCall = html.indexOf('updateTaskBadge()', flushFn);
+        expect(badgeCall).toBeGreaterThan(flushFn);
+        expect(badgeCall).toBeLessThan(nextFn);
+      });
+    });
+
+    describe('guard / regression', () => {
+      it('no new protocol message types added', async () => {
+        const html = await openAndCapture();
+        // Only the known message types should appear as handler conditions
+        const messageTypes = [
+          'pkc-entry-saved',
+          'pkc-entry-conflict',
+          'pkc-entry-update-preview-ctx',
+          'pkc-entry-update-view-body',
+        ];
+        for (const msgType of messageTypes) {
+          expect(html).toContain(msgType);
+        }
+        // No new badge-specific protocol
+        expect(html).not.toContain('pkc-entry-update-task-badge');
+        expect(html).not.toContain('pkc-entry-badge');
+      });
+
+      it('task toggle click handler is still present', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+      });
+
+      it('readonly entry still renders badge element', async () => {
+        const html = await openAndCapture(true, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B',
+        });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('attachment archetype entry window is unaffected by badge', async () => {
+        const attBody = JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 102400, asset_key: 'a1' });
+        const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+        expect(html).toContain('data-pkc-ew-card="attachment"');
+        expect(html).toContain('id="task-badge"');
+      });
+    });
+  });
 });

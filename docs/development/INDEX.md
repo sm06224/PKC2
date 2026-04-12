@@ -82,6 +82,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | 2026-04-11 | entry window 内 task checkbox を click → 親 `QUICK_UPDATE_ENTRY` → `pushViewBodyUpdate` で反映。TEXTLOG は per-log-entry 描画 + `data-pkc-log-id` で識別。readonly CSS guard。protocol 追加: `pkc-entry-task-toggle`。テスト 16 件。 |
 | 59 | `task-completion-badge.md` | Task completion badge (sidebar + detail pane) | 2026-04-11 | TEXT/TEXTLOG の task list 進捗を sidebar + detail pane に `done/total` badge 表示。`countTaskProgress()` pure helper。TEXTLOG は全 log entry 合算。task 0 件は非表示。全完了は success 色。テスト 26 件。 |
 | 60 | `kanban-keyboard-phase3-ctrl-arrow.md` | Kanban keyboard Phase 3 (Ctrl+Arrow status move) | 2026-04-11 | Kanban view で Ctrl+Arrow Left/Right により todo status を列方向に変更。KANBAN_COLUMNS 参照。QUICK_UPDATE_ENTRY 再利用。single selection のみ。テスト 18 件。 |
+| 61 | `entry-window-task-completion-badge.md` | Entry window task completion badge | 2026-04-12 | entry window view title row に `done/total` badge 追加。child 側で `#body-view` DOM から `.pkc-task-checkbox` をカウントして導出。protocol 変更なし。parent 側変更なし。4 経路で同期（init/push/save/flush）。テスト 16 件。 |
 
 ## CANDIDATE — Next Feature
 
