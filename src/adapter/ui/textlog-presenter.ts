@@ -11,6 +11,7 @@ import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { expandTransclusions } from './transclusion';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
@@ -54,6 +55,7 @@ export const textlogPresenter: DetailPresenter = {
     assets?: Record<string, string>,
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
+    entries?: Entry[],
   ): HTMLElement {
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
@@ -123,7 +125,7 @@ export const textlogPresenter: DetailPresenter = {
 
       for (const log of section.logs) {
         sectionEl.appendChild(
-          renderLogArticle(entry.lid, log, assets, mimeByKey, nameByKey),
+          renderLogArticle(entry.lid, log, assets, mimeByKey, nameByKey, entries),
         );
       }
       docEl.appendChild(sectionEl);
@@ -273,6 +275,7 @@ function renderLogArticle(
   assets?: Record<string, string>,
   mimeByKey?: Record<string, string>,
   nameByKey?: Record<string, string>,
+  entries?: Entry[],
 ): HTMLElement {
   const article = document.createElement('article');
   article.className = 'pkc-textlog-log';
@@ -331,6 +334,19 @@ function renderLogArticle(
   if (hasMarkdownSyntax(source)) {
     textEl.innerHTML = renderMarkdown(source);
     textEl.classList.add('pkc-md-rendered');
+    // Slice 5-B: expand `![](entry:...)` transclusion placeholders.
+    // Guarded by `entries` so the presenter is safe to call without
+    // container context (existing tests that call renderLogArticle
+    // indirectly via renderBody without entries just skip expansion).
+    if (entries) {
+      expandTransclusions(textEl, {
+        entries,
+        assets,
+        mimeByKey,
+        nameByKey,
+        hostLid: lid,
+      });
+    }
   } else {
     textEl.textContent = log.bodySource;
   }

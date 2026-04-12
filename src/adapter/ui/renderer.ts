@@ -1713,7 +1713,10 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   } else if (container?.assets) {
     const mimeByKey = buildAssetMimeMap(container);
     const nameByKey = buildAssetNameMap(container);
-    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey));
+    // `container.entries` is passed so text-like presenters can expand
+    // `![](entry:...)` transclusions (P1 Slice 5-B). Non-text presenters
+    // (attachment / folder / todo / form) ignore this 5th argument.
+    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey, container.entries));
   } else {
     view.appendChild(presenter.renderBody(entry));
   }
@@ -2941,7 +2944,7 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
     if (container?.assets) {
       const mimeByKey = buildAssetMimeMap(container);
       const nameByKey = buildAssetNameMap(container);
-      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey));
+      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey, container.entries));
     } else {
       content.appendChild(presenter.renderBody(entry));
     }

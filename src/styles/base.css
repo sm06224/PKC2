@@ -3641,3 +3641,88 @@
      is bypassed the textarea must remain usable. */
   min-height: 6.5em;
 }
+
+/*
+ * Entry transclusion (P1 Slice 5-B).
+ *
+ * `<section class="pkc-transclusion">` wraps an embedded entry (or
+ * fragment) inside the host markdown body. The rule below uses a left
+ * accent + muted header to visually distinguish embedded content from
+ * the surrounding prose, mirroring typical "quoted document" styling.
+ *
+ * Broken and degraded fallbacks use a subdued red/gray so the author
+ * can spot them at a glance but they don't scream during normal reading.
+ */
+.pkc-transclusion {
+  border-left: 3px solid var(--c-accent, #4a90e2);
+  background: var(--c-bg-subtle, rgba(74,144,226,0.04));
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.pkc-transclusion-header {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px dashed var(--c-border);
+}
+
+.pkc-transclusion-source {
+  color: var(--c-muted);
+  text-decoration: none;
+}
+
+.pkc-transclusion-source::before {
+  content: '↪ ';
+  color: var(--c-muted);
+}
+
+.pkc-transclusion-source:hover {
+  color: var(--c-accent, #4a90e2);
+  text-decoration: underline;
+}
+
+.pkc-transclusion-body > :first-child {
+  margin-top: 0;
+}
+.pkc-transclusion-body > :last-child {
+  margin-bottom: 0;
+}
+
+.pkc-transclusion-fallback {
+  color: var(--c-muted);
+  font-style: italic;
+}
+
+.pkc-transclusion-broken {
+  display: inline-block;
+  color: #c0392b;
+  background: rgba(192,57,43,0.08);
+  border: 1px dashed rgba(192,57,43,0.35);
+  border-radius: var(--radius);
+  padding: 0 0.35em;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+}
+
+/*
+ * Degraded in-embed link — Slice 5-B enforces depth ≤ 1, so any
+ * `entry:` image placed inside an already-embedded body is rendered
+ * as a plain navigate-entry-ref link instead of expanding recursively.
+ */
+.pkc-transclusion-fallback-link {
+  color: var(--c-accent, #4a90e2);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/*
+ * Embedded log articles reuse `.pkc-textlog-log` base styling but drop
+ * the interactive affordances (no id, no flag/copy-anchor buttons in
+ * the embed), so the outer accent bar is the only visual cue.
+ */
+.pkc-transclusion-log .pkc-textlog-timestamp {
+  color: var(--c-muted);
+}

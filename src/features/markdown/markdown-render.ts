@@ -100,6 +100,64 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   return defaultLinkOpen(tokens, idx, options, env, self);
 };
 
+// ── Entry transclusion placeholder (Slice 5-B) ────────
+//
+// `![alt](entry:<lid>[#frag])` is the transclusion syntax. markdown-it
+// would otherwise emit `<img src="entry:...">` and the browser would
+// try to load it as a real image (404'ing and cluttering the console).
+// Instead, the image rule below detects the `entry:` scheme and emits
+// an inert `<div class="pkc-transclusion-placeholder">` that the
+// adapter-layer expander (`adapter/ui/transclusion.ts`) later replaces
+// with the actual embed HTML.
+//
+// Why a `<div>` (not a `<span>`): the expanded content is block-level
+// (day-grouped articles for TEXTLOG, paragraphs for TEXT). markdown-it
+// emits the image inside a `<p>`, so the browser's HTML parser will
+// auto-close the paragraph when it encounters the div, leaving an
+// empty `<p></p>` behind. The expander deletes these empties after
+// substitution.
+//
+// The raw `entry:` href is preserved in `data-pkc-embed-ref` verbatim
+// so the expander can re-parse it via `parseEntryRef` (same grammar
+// as `navigate-entry-ref`). The `alt` text is preserved in
+// `data-pkc-embed-alt` and is used by the fallback path (broken /
+// unsupported refs) as visible placeholder text.
+//
+// HTML attribute escaping: markdown-it's `escapeHtml` quotes `"`, `&`,
+// `<`, `>`, which is exactly what we need for attribute values.
+const defaultImage =
+  md.renderer.rules.image ??
+  function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+
+md.renderer.rules.image = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]!;
+  const srcIdx = token.attrIndex('src');
+  const src = srcIdx >= 0 ? (token.attrs?.[srcIdx]?.[1] ?? '') : '';
+  if (src.startsWith('entry:')) {
+    // markdown-it stashes the alt text on token.content by the time
+    // the renderer runs (inline children were already linearized).
+    const alt = token.content ?? '';
+    const srcEsc = escapeHtmlAttr(src);
+    const altEsc = escapeHtmlAttr(alt);
+    return (
+      `<div class="pkc-transclusion-placeholder"` +
+      ` data-pkc-embed-ref="${srcEsc}"` +
+      ` data-pkc-embed-alt="${altEsc}"></div>`
+    );
+  }
+  return defaultImage(tokens, idx, options, env, self);
+};
+
+function escapeHtmlAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table

@@ -127,8 +127,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Task list checkbox: toggle the corresponding `- [ ]`/`- [x]` in
     // the markdown body. Intercept before the generic `[data-pkc-action]`
     // dispatch because rendered checkboxes don't carry that attribute.
+    //
+    // Slice 5-B: a checkbox inside a transclusion subtree carries
+    // `data-pkc-embedded="true"` and `disabled`; the disabled attribute
+    // already suppresses clicks in modern browsers, but the data-attr
+    // guard here is defense in depth against future DOM shuffling.
     const taskCheckbox = rawTarget?.closest<HTMLInputElement>('input[data-pkc-task-index]');
     if (taskCheckbox && root.contains(taskCheckbox)) {
+      if (taskCheckbox.getAttribute('data-pkc-embedded') === 'true') {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       handleTaskCheckboxClick(taskCheckbox);
       return;
