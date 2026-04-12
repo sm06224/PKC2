@@ -3186,9 +3186,24 @@
   padding: 0.4rem 0;
 }
 
-.pkc-storage-profile-close {
+.pkc-storage-profile-actions {
   margin-top: 0.5rem;
-  align-self: flex-end;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.pkc-storage-profile-export {
+  /* Read-only export: slightly de-emphasised relative to Close so
+     the primary dismiss action stays obvious. */
+  opacity: 0.9;
+}
+
+.pkc-storage-profile-close {
+  /* Close lives inside .pkc-storage-profile-actions now, so the
+     standalone margin/align rules are no longer needed.  Kept as a
+     selector to allow future per-button styling. */
 }
 
 /* Collapsed pane states */

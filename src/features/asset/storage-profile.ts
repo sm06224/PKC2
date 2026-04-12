@@ -270,6 +270,83 @@ export function buildStorageProfile(container: Container): StorageProfile {
   };
 }
 
+/**
+ * CSV column order for the Storage Profile export. Must stay in
+ * sync with `formatStorageProfileCsv`'s header and row order.
+ *
+ * Column meanings mirror the UI — see `EntryStorageRow`.
+ */
+export const STORAGE_PROFILE_CSV_COLUMNS = [
+  'lid',
+  'title',
+  'archetype',
+  'ownedCount',
+  'referencedCount',
+  'selfBytes',
+  'subtreeBytes',
+  'largestAssetBytes',
+] as const;
+
+/**
+ * Render the Storage Profile as a CSV document (text, not Blob).
+ *
+ * - Row order = `profile.rows` (subtreeBytes desc, title asc tie-break).
+ * - Prepends a UTF-8 BOM so Excel opens Japanese titles correctly.
+ * - Uses CRLF line endings for maximum spreadsheet compatibility.
+ * - Escapes comma / quote / newline per RFC 4180 (fields containing
+ *   any of those are wrapped in double quotes; literal quotes are
+ *   doubled).
+ *
+ * Pure — no DOM, no Blob construction. Callers wrap the returned
+ * string in a Blob for download.
+ */
+export function formatStorageProfileCsv(profile: StorageProfile): string {
+  const BOM = '\uFEFF';
+  const CRLF = '\r\n';
+  const headerLine = STORAGE_PROFILE_CSV_COLUMNS.join(',');
+  const lines: string[] = [headerLine];
+  for (const row of profile.rows) {
+    lines.push(
+      [
+        csvEscape(row.lid),
+        csvEscape(row.title),
+        csvEscape(row.archetype),
+        String(row.ownedCount),
+        String(row.referencedCount),
+        String(row.selfBytes),
+        String(row.subtreeBytes),
+        String(row.largestAssetBytes),
+      ].join(','),
+    );
+  }
+  return BOM + lines.join(CRLF) + CRLF;
+}
+
+/**
+ * Build a timestamped filename for the CSV export, e.g.
+ * `pkc-storage-profile-20260412-223015.csv`. Accepts a Date so the
+ * test suite can pin the output.
+ */
+export function storageProfileCsvFilename(date: Date = new Date()): string {
+  const pad2 = (n: number): string => n.toString().padStart(2, '0');
+  const y = date.getFullYear();
+  const m = pad2(date.getMonth() + 1);
+  const d = pad2(date.getDate());
+  const hh = pad2(date.getHours());
+  const mm = pad2(date.getMinutes());
+  const ss = pad2(date.getSeconds());
+  return `pkc-storage-profile-${y}${m}${d}-${hh}${mm}${ss}.csv`;
+}
+
+function csvEscape(value: string): string {
+  // RFC 4180: wrap in quotes if the field contains comma, quote, CR
+  // or LF; double any embedded quote.
+  if (/[",\r\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 /** Human-readable byte formatter (B / KB / MB / GB). */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '0 B';

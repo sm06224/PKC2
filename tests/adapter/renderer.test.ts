@@ -7376,4 +7376,52 @@ describe('Storage Profile dialog (renderer)', () => {
     );
     expect(summary!.textContent!.toLowerCase()).toContain('orphan');
   });
+
+  it('mounts the Export CSV button in the actions row when rows are present', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e1', 'k1', 'Alpha')],
+        assets: { k1: base64Of(1500) },
+      }),
+    );
+    const exportBtn = overlay.querySelector(
+      '[data-pkc-action="export-storage-profile-csv"]',
+    );
+    expect(exportBtn).not.toBeNull();
+    // Button sits alongside the close button in a shared actions row so
+    // layout and focus order stay predictable.
+    const actions = overlay.querySelector('.pkc-storage-profile-actions');
+    expect(actions).not.toBeNull();
+    expect(
+      actions!.querySelector('[data-pkc-action="export-storage-profile-csv"]'),
+    ).not.toBeNull();
+    expect(
+      actions!.querySelector('[data-pkc-action="close-storage-profile"]'),
+    ).not.toBeNull();
+  });
+
+  it('omits the Export CSV button when the profile has zero byte-contributing rows', () => {
+    // Orphan-only container: assets exist but no entry owns them, so
+    // `profile.rows.length === 0`. Nothing to export → no button.
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [],
+        assets: { 'ast-floating': base64Of(200) },
+      }),
+    );
+    expect(
+      overlay.querySelector('[data-pkc-action="export-storage-profile-csv"]'),
+    ).toBeNull();
+    // Close button must still be mounted so the user can dismiss.
+    expect(
+      overlay.querySelector('[data-pkc-action="close-storage-profile"]'),
+    ).not.toBeNull();
+  });
+
+  it('omits the Export CSV button in the no-container shell (launch button is already gated)', () => {
+    const overlay = buildStorageProfileOverlay(null);
+    expect(
+      overlay.querySelector('[data-pkc-action="export-storage-profile-csv"]'),
+    ).toBeNull();
+  });
 });

@@ -634,5 +634,98 @@ describe('ActionBinder — Storage Profile dialog', () => {
     const overlays = root.querySelectorAll('[data-pkc-region="storage-profile"]');
     expect(overlays.length).toBe(1);
   });
+
+  it('Export CSV click creates a Blob URL and triggers a download anchor', () => {
+    // A container with at least one byte-contributing row so the
+    // Export CSV button is actually mounted in the overlay.
+    const csvContainer: Container = {
+      meta: {
+        container_id: 'csv-test', title: 'CSV Test',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+      },
+      entries: [
+        {
+          lid: 'att-1',
+          title: 'Attachment One',
+          // AAAA → 3 decoded bytes, enough to make profile.rows non-empty.
+          body: JSON.stringify({ name: 'a.bin', mime: 'application/octet-stream', asset_key: 'k-1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      relations: [],
+      revisions: [],
+      assets: { 'k-1': 'AAAA' },
+    };
+
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: csvContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    // Spy on the Blob URL lifecycle so we can confirm the download
+    // path executed end-to-end without actually persisting a file.
+    const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-csv-url');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    // Silence the anchor click — happy-dom dispatches it as a real
+    // event but without a navigation target there is nothing to do.
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    // Open the dialog, then click Export CSV.
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const exportBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="export-storage-profile-csv"]',
+    );
+    expect(exportBtn).not.toBeNull();
+    exportBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // The handler built a Blob and handed it to URL.createObjectURL;
+    // the anchor was created with the right filename and click() ran.
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const blob = createSpy.mock.calls[0]![0] as Blob;
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toContain('text/csv');
+    expect(anchorClickSpy).toHaveBeenCalledTimes(1);
+    const anchor = anchorClickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
+    expect(anchor.download.startsWith('pkc-storage-profile-')).toBe(true);
+    expect(anchor.download.endsWith('.csv')).toBe(true);
+    expect(anchor.href).toBe('blob:mock-csv-url');
+
+    createSpy.mockRestore();
+    revokeSpy.mockRestore();
+    anchorClickSpy.mockRestore();
+  });
+
+  it('Export CSV is a no-op when profile has no byte-contributing rows', () => {
+    // With only the default mockContainer (no assets), profile.rows is
+    // empty so the button should not be mounted.  Confirm that the
+    // button is absent and a manually dispatched action is inert.
+    setupWithMenuOpen();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const exportBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="export-storage-profile-csv"]',
+    );
+    expect(exportBtn).toBeNull();
+
+    // Even if something synthesises a click on a rogue action element,
+    // the handler short-circuits on `profile.rows.length === 0`.
+    const createSpy = vi.spyOn(URL, 'createObjectURL');
+    const rogue = document.createElement('button');
+    rogue.setAttribute('data-pkc-action', 'export-storage-profile-csv');
+    root.appendChild(rogue);
+    rogue.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(createSpy).not.toHaveBeenCalled();
+    createSpy.mockRestore();
+  });
 });
 

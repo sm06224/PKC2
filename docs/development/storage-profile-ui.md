@@ -20,13 +20,18 @@ dialog tells them *where the weight is* so they can export, split, or
 Deliberately NOT in scope:
 
 - No delete button
-- No export button
 - No externalization / externalized-asset store
 - No auto-optimization
-- No reducer changes (`show-storage-profile` and
-  `close-storage-profile` are pure DOM toggles)
+- No reducer changes (`show-storage-profile`,
+  `close-storage-profile`, and `export-storage-profile-csv` are pure
+  DOM / download operations — no AppState mutations)
 - No new persistent AppState fields
 - No data-model changes
+
+In scope: **read-only CSV export** of the same rows the UI displays,
+so the user can persist the capacity picture externally for
+comparison over time. The CSV path reuses `buildStorageProfile` — no
+duplicate aggregation logic.
 
 ## Architecture
 
@@ -46,11 +51,46 @@ adapter/ui/renderer.ts
                                              fully-populated overlay
 
 adapter/ui/action-binder.ts
-├── case 'show-storage-profile'  — builds overlay via
-│                                  buildStorageProfileOverlay(container)
-│                                  and appends to root
-└── case 'close-storage-profile' — removes the overlay from root
+├── case 'show-storage-profile'          — builds overlay via
+│                                          buildStorageProfileOverlay(container)
+│                                          and appends to root
+├── case 'close-storage-profile'         — removes the overlay from root
+└── case 'export-storage-profile-csv'    — rebuilds profile from the
+                                           current container, formats
+                                           CSV, triggers a Blob download
 ```
+
+## CSV export
+
+Read-only persistence of the current profile. The overlay mounts an
+`Export CSV` button in a shared actions row next to `Close (Esc)`
+whenever `profile.rows.length > 0` (empty / orphan-only / no-container
+shells omit the button — there is nothing to export).
+
+Pipeline:
+
+```
+buildStorageProfile(container) → profile.rows (already sorted)
+formatStorageProfileCsv(profile) → "\uFEFFheader\r\nrow\r\n..."
+Blob([csv], { type: 'text/csv;charset=utf-8' })
+URL.createObjectURL → <a download=filename> → click → revoke
+```
+
+- Columns (in order): `lid, title, archetype, ownedCount,
+  referencedCount, selfBytes, subtreeBytes, largestAssetBytes`.
+- Sort order: same as the UI (`subtreeBytes` desc, tie-break `title`
+  asc). The CSV walks `profile.rows` — no re-sort.
+- Filename: `pkc-storage-profile-yyyymmdd-hhmmss.csv` (local time,
+  zero-padded).
+- Encoding: UTF-8 with BOM + CRLF so Excel correctly detects encoding
+  for non-ASCII titles and respects row breaks.
+- Escape: RFC 4180 — fields containing `,`, `"`, `\r`, or `\n` are
+  wrapped in double quotes with embedded `"` doubled.
+- Read-only: the handler never touches the container or dispatches
+  state-mutating actions.
+- Double guard: even if the button is hidden, the handler
+  short-circuits on `!container` and `rows.length === 0` to stay inert
+  against rogue clicks.
 
 ### Ownership rule (one owner per asset)
 
@@ -132,6 +172,7 @@ entries.
 | `storage-profile-row`                   | One entry row               |
 | Action `show-storage-profile`           | Launch button               |
 | Action `close-storage-profile`          | Close button inside overlay |
+| Action `export-storage-profile-csv`     | Export CSV button           |
 
 Summary row carries `data-pkc-asset-count` + `data-pkc-total-bytes`.
 Each `storage-profile-row` carries `data-pkc-lid`,
@@ -139,13 +180,16 @@ Each `storage-profile-row` carries `data-pkc-lid`,
 
 ## Tests
 
-- `tests/features/asset/storage-profile.test.ts` — pure aggregator
-  (18 tests): `estimateBase64Size` boundaries, `formatBytes` unit
-  thresholds, empty / orphan-only / attachment / text-fallback
-  ownership, attachment-vs-text ownership contest, folder subtree
-  rollup, sort order, largest-asset / largest-entry summary,
-  malformed-JSON graceful handling, reference-count tally,
-  missing-asset refs dropped, `largestAssetBytes` tracking.
+- `tests/features/asset/storage-profile.test.ts` — pure aggregator +
+  CSV formatter (25 tests): `estimateBase64Size` boundaries,
+  `formatBytes` unit thresholds, empty / orphan-only / attachment /
+  text-fallback ownership, attachment-vs-text ownership contest,
+  folder subtree rollup, sort order, largest-asset / largest-entry
+  summary, malformed-JSON graceful handling, reference-count tally,
+  missing-asset refs dropped, `largestAssetBytes` tracking, plus
+  CSV: BOM+CRLF header, row emission order, RFC 4180 escape,
+  pass-through sort, aggregator-integration round-trip, and
+  `storageProfileCsvFilename` zero-padded timestamp format.
 - `tests/adapter/renderer.test.ts` — `buildStorageProfileOverlay`
   unit coverage (10 tests): hidden-by-render contract, launch
   button presence + readonly gating, hedged note, close button,
