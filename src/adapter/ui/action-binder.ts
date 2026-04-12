@@ -13,7 +13,6 @@ import {
   toggleLogFlag,
   deleteLogEntry,
   serializeTextlogAsMarkdown,
-  formatLogTimestamp,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
@@ -793,6 +792,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'toggle-meta': {
         togglePane(root, 'meta');
+        break;
+      }
+      case 'toc-jump': {
+        const slug = target.getAttribute('data-pkc-toc-slug');
+        if (!slug) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        // Scope the lookup: when a logId is present (TEXTLOG), only
+        // search inside the owning log row so cross-log-entry slug
+        // collisions don't jump to the wrong heading. Otherwise search
+        // the whole document (TEXT detail / editor preview).
+        const scope: ParentNode = logId
+          ? (root.querySelector(`[data-pkc-log-id="${CSS.escape(logId)}"]`) ?? root)
+          : root;
+        const el = scope.querySelector(`#${CSS.escape(slug)}`);
+        if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+          (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         break;
       }
     }
@@ -2764,8 +2780,13 @@ function formatLogLineReference(entry: Entry, logId: string): string {
     const log = parseTextlogBody(entry.body);
     const row = log.entries.find((r) => r.id === logId);
     if (!row) return '';
+    // Label uses the raw ISO timestamp so millisecond fidelity survives
+    // the copy action — the UI-side seconds formatter is intentionally
+    // not used here. See
+    // `docs/development/textlog-readability-hardening.md` §6 (UI vs
+    // export responsibility split).
     const label = escapeMarkdownLabel(
-      `${entry.title || '(untitled)'} › ${formatLogTimestamp(row.createdAt)}`,
+      `${entry.title || '(untitled)'} › ${row.createdAt}`,
     );
     return `[${label}](entry:${entry.lid}#${logId})`;
   } catch {

@@ -1153,6 +1153,41 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-task-badge[data-pkc-task-complete="true"] {
   color: var(--c-success);
 }
+/* ── TEXTLOG rendered view ──
+ * Mirrors base.css (see docs/development/textlog-readability-hardening.md).
+ * grid-areas give each log entry a visible block: flag = row badge,
+ * timestamp = header, text = body. DOM order is unchanged so
+ * data-pkc-log-id selectors continue to work.
+ */
+.pkc-textlog-view { display: flex; flex-direction: column; gap: 0.5rem; }
+.pkc-textlog-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.pkc-textlog-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "flag ts"
+    "flag text";
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+  padding: 0.5rem 0.5rem 0.6rem;
+  border-left: 3px solid var(--c-border);
+  font-size: 0.85rem;
+}
+.pkc-textlog-row > .pkc-textlog-flag-btn { grid-area: flag; align-self: start; background: none; border: none; cursor: pointer; color: var(--c-muted); line-height: 1; }
+.pkc-textlog-row > .pkc-textlog-timestamp { grid-area: ts; }
+.pkc-textlog-row > .pkc-textlog-text { grid-area: text; white-space: pre-wrap; word-break: break-word; }
+.pkc-textlog-row + .pkc-textlog-row {
+  border-top: 1px solid var(--c-border);
+  padding-top: 0.6rem;
+}
+.pkc-textlog-row[data-pkc-log-important="true"] {
+  border-left-color: #f5a623;
+  border-left-width: 4px;
+  background: rgba(245,166,35,0.12);
+  padding-left: 0.6rem;
+}
+.pkc-textlog-row[data-pkc-log-important="true"] > .pkc-textlog-flag-btn { color: #f5a623; }
+
 /* ── Structured editors (textlog / todo / form) ── */
 .pkc-textlog-editor { display: flex; flex-direction: column; gap: 0.5rem; }
 .pkc-textlog-edit-row {
@@ -1172,7 +1207,10 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   border: 1px solid var(--c-border); border-radius: var(--radius);
   padding: 0.3rem; font-family: var(--font-mono); font-size: 0.85rem; resize: vertical;
 }
-.pkc-textlog-timestamp { font-size: 0.7rem; color: var(--c-muted); white-space: nowrap; }
+.pkc-textlog-timestamp {
+  font-size: 0.75rem; color: var(--c-muted); white-space: nowrap;
+  font-family: var(--font-mono);
+}
 .pkc-todo-editor { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
 .pkc-todo-status-select {
   width: auto; max-width: 120px; font-size: 0.8rem; padding: 0.25rem 0.4rem;

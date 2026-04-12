@@ -103,17 +103,26 @@ export function deleteLogEntry(body: TextlogBody, entryId: string): TextlogBody 
 }
 
 /**
- * Format a timestamp for display.
- * Shows date + localized weekday + HH:mm. The date portion is produced
+ * Format a timestamp for UI display.
+ *
+ * Shows date + localized weekday + HH:mm:ss. The date portion is produced
  * by the shared `formatDate` helper so log timestamps match the rest of
  * the app's date formatting conventions.
+ *
+ * Seconds are included so high-frequency log entries are visually
+ * distinguishable (see `docs/development/textlog-readability-hardening.md`).
+ *
+ * **Scope**: this formatter is for **UI display only**. Export / copy
+ * paths (`serializeTextlogAsMarkdown`, CSV `timestamp_display`, Copy
+ * Reference labels) emit the raw ISO timestamp instead, so millisecond
+ * fidelity is preserved when the log leaves the app.
  */
-export function formatLogTimestamp(iso: string): string {
+export function formatLogTimestampWithSeconds(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const day = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
-  return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /**
@@ -122,11 +131,11 @@ export function formatLogTimestamp(iso: string): string {
  * Used by the copy-to-clipboard and "open rendered viewer" paths so
  * TEXTLOG entries can be round-tripped as a plain document:
  *
- *   ## 2026/04/09 Thu 10:00
+ *   ## 2026-04-09T10:00:00.000Z
  *
  *   First log entry text (possibly markdown)
  *
- *   ## 2026/04/09 Thu 10:05 ★
+ *   ## 2026-04-09T10:05:00.000Z ★
  *
  *   Second log entry — important flag exposes a gold star suffix
  *   on the heading so the "important" signal survives the flattening.
@@ -136,9 +145,12 @@ export function formatLogTimestamp(iso: string): string {
  *   keeps them in append order; we intentionally do not re-sort by
  *   timestamp, matching the on-screen view's "append-order wins"
  *   semantics established in `textlog-foundation.md`).
- * - Each entry is framed by a `## <timestamp>` heading. The heading
- *   uses `formatLogTimestamp` so copy output matches the row label
- *   visible in the UI.
+ * - Each entry is framed by a `## <raw-ISO-timestamp>` heading. The
+ *   heading emits the raw `createdAt` value so export preserves
+ *   millisecond fidelity — the UI formatter (with seconds) is
+ *   intentionally **not** used here. See
+ *   `docs/development/textlog-readability-hardening.md` §6 for the
+ *   UI-vs-export responsibility split.
  * - `important` entries get a trailing ` ★` marker on the heading so
  *   the flag is not silently lost.
  * - The body text is emitted verbatim; it may contain markdown.
@@ -152,8 +164,8 @@ export function serializeTextlogAsMarkdown(body: TextlogBody): string {
   for (const entry of body.entries) {
     const important = entry.flags.includes('important');
     const heading = important
-      ? `## ${formatLogTimestamp(entry.createdAt)} ★`
-      : `## ${formatLogTimestamp(entry.createdAt)}`;
+      ? `## ${entry.createdAt} ★`
+      : `## ${entry.createdAt}`;
     blocks.push(`${heading}\n\n${entry.text}`);
   }
   return blocks.join('\n\n');

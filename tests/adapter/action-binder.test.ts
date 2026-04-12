@@ -1903,7 +1903,8 @@ describe('Issue D / D — Markdown source + rich clipboard copy', () => {
       const plain = await payloads[0]!['text/plain']!.text();
       const html = await payloads[0]!['text/html']!.text();
       expect(plain).toBe('# Hello\n\nWorld');
-      expect(html).toContain('<h1>Hello</h1>');
+      // h1 now carries a slug `id` for TOC (A-3), so match loosely.
+      expect(html).toMatch(/<h1[^>]*>Hello<\/h1>/);
       expect(html).toContain('<p>World</p>');
     } finally {
       restore();
@@ -1999,7 +2000,7 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
       const html = childDoc.write.mock.calls[0]![0] as string;
       expect(html).toContain('<!DOCTYPE html>');
       expect(html).toContain('Printable');
-      expect(html).toContain('<h1>Title</h1>');
+      expect(html).toMatch(/<h1[^>]*>Title<\/h1>/);
       // No editor UI leaks into the viewer.
       expect(html).not.toContain('data-pkc-action="commit-edit"');
       expect(html).not.toContain('<textarea');
@@ -2024,7 +2025,7 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
       expect(html).toContain('<strong>first</strong>');
       expect(html).toContain('second');
       // Important ★ marker ends up inside an h2 heading.
-      expect(html).toMatch(/<h2>[^<]*★<\/h2>/);
+      expect(html).toMatch(/<h2[^>]*>[^<]*★<\/h2>/);
     } finally {
       openSpy.mockRestore();
     }
@@ -7492,5 +7493,113 @@ describe('Calendar keyboard navigation (Phase 1)', () => {
     item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(dispatcher.getState().selectedLid).toBe('c4');
+  });
+});
+
+// ── TOC jump (A-3) ────────────────────────────
+
+describe('ActionBinder — TOC jump', () => {
+  const tocContainer: Container = {
+    meta: {
+      container_id: 'toc-test', title: 'TOC Test',
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'tx-1',
+        title: 'With TOC',
+        body: '# Introduction\n\n## Details\n\ntext here',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        lid: 'tl-1',
+        title: 'Log',
+        body: JSON.stringify({
+          entries: [
+            { id: 'log-a', text: '# Overview', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+            { id: 'log-b', text: '# Overview', createdAt: '2026-04-09T11:00:00Z', flags: [] },
+          ],
+        }),
+        archetype: 'textlog',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  function setupToc(selectedLid: string) {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: tocContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: selectedLid });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher };
+  }
+
+  it('TEXT: click on TOC item calls scrollIntoView on the heading with matching id', () => {
+    setupToc('tx-1');
+
+    const heading = root.querySelector('#introduction') as HTMLElement | null;
+    expect(heading).not.toBeNull();
+    const spy = vi.fn();
+    heading!.scrollIntoView = spy;
+
+    const tocBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="toc-jump"][data-pkc-toc-slug="introduction"]',
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('TEXTLOG: click scopes the lookup to the owning log row so duplicate slugs do not collide', () => {
+    setupToc('tl-1');
+
+    // Both log rows contain an <h1 id="overview">. The TOC click must
+    // hit the id inside the log row that matches data-pkc-log-id.
+    const rowA = root.querySelector<HTMLElement>('[data-pkc-log-id="log-a"]');
+    const rowB = root.querySelector<HTMLElement>('[data-pkc-log-id="log-b"]');
+    expect(rowA).not.toBeNull();
+    expect(rowB).not.toBeNull();
+
+    const headingA = rowA!.querySelector('#overview') as HTMLElement | null;
+    const headingB = rowB!.querySelector('#overview') as HTMLElement | null;
+    expect(headingA).not.toBeNull();
+    expect(headingB).not.toBeNull();
+
+    const spyA = vi.fn();
+    const spyB = vi.fn();
+    headingA!.scrollIntoView = spyA;
+    headingB!.scrollIntoView = spyB;
+
+    // Click the TOC item tagged with log-b → should call spyB only.
+    const tocBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="toc-jump"][data-pkc-log-id="log-b"]',
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spyA).not.toHaveBeenCalled();
+    expect(spyB).toHaveBeenCalledTimes(1);
+  });
+
+  it('no-op when the target id does not exist', () => {
+    setupToc('tx-1');
+
+    // Fabricate a stray TOC button pointing to a non-existent slug.
+    const fake = document.createElement('button');
+    fake.setAttribute('data-pkc-action', 'toc-jump');
+    fake.setAttribute('data-pkc-toc-slug', 'no-such-slug');
+    root.appendChild(fake);
+
+    // Should not throw.
+    expect(() => fake.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
   });
 });

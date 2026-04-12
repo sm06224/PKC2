@@ -4,7 +4,7 @@ import {
   parseTextlogBody,
   serializeTextlogBody,
   appendLogEntry,
-  formatLogTimestamp,
+  formatLogTimestampWithSeconds,
 } from '../../features/textlog/textlog-body';
 import type { TextlogFlag } from '../../features/textlog/textlog-body';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -92,7 +92,7 @@ export const textlogPresenter: DetailPresenter = {
         // Timestamp — display is short form; title shows full ISO for precision.
         const tsEl = document.createElement('span');
         tsEl.className = 'pkc-textlog-timestamp';
-        tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
+        tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt);
         tsEl.setAttribute('title', logEntry.createdAt);
         row.appendChild(tsEl);
 
@@ -135,7 +135,7 @@ export const textlogPresenter: DetailPresenter = {
       // Timestamp (read-only in editor)
       const tsEl = document.createElement('span');
       tsEl.className = 'pkc-textlog-timestamp';
-      tsEl.textContent = formatLogTimestamp(logEntry.createdAt);
+      tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt);
       row.appendChild(tsEl);
 
       // Flag checkbox
@@ -162,13 +162,18 @@ export const textlogPresenter: DetailPresenter = {
       delBtn.setAttribute('title', 'Remove this log entry');
       row.appendChild(delBtn);
 
-      // Editable text
+      // Editable text.
+      // Slice C-style sizing tuned for per-log entries: min 5 rows (large
+      // enough to be usable — `rows=2` regressed this into a near-invisible
+      // sliver), +2 buffer, grows with content. Log entries tend to be
+      // shorter than TEXT bodies so we do not reuse the 15-row minimum.
       const textArea = document.createElement('textarea');
       textArea.className = 'pkc-textlog-edit-text';
       textArea.setAttribute('data-pkc-field', 'textlog-entry-text');
       textArea.setAttribute('data-pkc-log-id', logEntry.id);
       textArea.value = logEntry.text;
-      textArea.rows = 2;
+      const lineCount = logEntry.text ? logEntry.text.split('\n').length : 0;
+      textArea.rows = Math.max(5, lineCount + 2);
       row.appendChild(textArea);
 
       container.appendChild(row);

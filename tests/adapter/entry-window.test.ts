@@ -95,7 +95,7 @@ describe('Entry Window', () => {
       const global = window as unknown as Record<string, unknown>;
       const render = global.pkcRenderMarkdown as (text: string) => string;
       const result = render('# Title');
-      expect(result).toContain('<h1>');
+      expect(result).toMatch(/<h1[ >]/);
       expect(result).toContain('Title');
     });
   });
@@ -240,7 +240,7 @@ describe('Entry Window', () => {
   describe('Text archetype', () => {
     it('renders markdown for text entries', async () => {
       const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
-      expect(html).toContain('<h1>');
+      expect(html).toMatch(/<h1[ >]/);
       expect(html).toContain('Hello');
     });
 
@@ -351,7 +351,7 @@ describe('Entry Window', () => {
   describe('Fallback archetype', () => {
     it('renders markdown for unknown archetype', async () => {
       const html = await openAndCapture(false, { archetype: 'generic', body: '# Test' });
-      expect(html).toContain('<h1>');
+      expect(html).toMatch(/<h1[ >]/);
       expect(html).toContain('Test');
     });
 
@@ -581,7 +581,7 @@ describe('Entry Window', () => {
         archetype: 'text',
         body: '# Hello',
       });
-      expect(html).toContain('<h1>');
+      expect(html).toMatch(/<h1[ >]/);
     });
   });
 
@@ -686,7 +686,7 @@ describe('Entry Window', () => {
       const global = window as unknown as Record<string, unknown>;
       const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
       const result = render('unknown-lid', '# Title');
-      expect(result).toContain('<h1>');
+      expect(result).toMatch(/<h1[ >]/);
       expect(result).toContain('Title');
     });
 
@@ -838,7 +838,7 @@ describe('Entry Window', () => {
       const render = global.pkcRenderEntryPreview as (lid: string, text: string) => string;
       // Plain markdown — no asset refs at all
       const result = render(entry.lid, '# Heading\n\nSome text with **bold**.');
-      expect(result).toContain('<h1>');
+      expect(result).toMatch(/<h1[ >]/);
       expect(result).toContain('<strong>');
       // Must not accidentally embed the image
       expect(result).not.toContain('data:image/png');

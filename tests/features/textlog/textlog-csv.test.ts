@@ -7,7 +7,6 @@ import {
   TEXTLOG_CSV_HEADER,
 } from '@features/textlog/textlog-csv';
 import type { TextlogBody } from '@features/textlog/textlog-body';
-import { formatLogTimestamp } from '@features/textlog/textlog-body';
 
 // ── helpers ────────────────────────
 
@@ -133,7 +132,11 @@ describe('serializeTextlogAsCsv – column contract', () => {
     const row = rows[1]!;
     expect(row[0]).toBe('log-42');
     expect(row[1]).toBe(iso);
-    expect(row[2]).toBe(formatLogTimestamp(iso));
+    // `timestamp_display` emits the raw ISO value (export fidelity —
+    // see textlog-readability-hardening.md §4). The column is retained
+    // in the schema for backward compatibility with consumers that key
+    // off the named column.
+    expect(row[2]).toBe(iso);
     expect(row[3]).toBe('true');
     expect(row[4]).toBe('Meeting **with** Alice');
     expect(row[5]).toBe('Meeting with Alice');

@@ -108,7 +108,7 @@ Unknown fields MUST be ignored by consumers. New fields added in
 |---|---|---|---|
 | 1 | `log_id` | `log-1744185600000-1` | Stable id from the textlog body. |
 | 2 | `timestamp_iso` | `2026-04-09T10:00:00.000Z` | Original ISO 8601. |
-| 3 | `timestamp_display` | `2026/04/09 Thu 10:00` | Same format as the on-screen row label (`formatLogTimestamp`). |
+| 3 | `timestamp_display` | `2026-04-09T10:00:00.000Z` | **Updated by `textlog-readability-hardening.md` (2026-04-12)**: now emits the raw ISO value, identical to `timestamp_iso`. Column retained in the schema for backward compatibility with consumers that key off the named column. |
 | 4 | `important` | `true` / `false` | Lowercase boolean. |
 | 5 | `text_markdown` | `Meeting with **Alice**` | Original body verbatim. |
 | 6 | `text_plain` | `Meeting with Alice` | Derived: strips the common markdown metacharacters, flattens whitespace, replaces `![alt](asset:k)` with `alt`, replaces `[label](asset:k)` with `label`. Human-readable fallback, not a full markdown-to-text renderer. |

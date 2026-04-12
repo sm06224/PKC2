@@ -24,6 +24,7 @@
 
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import { makeSlugCounter } from './markdown-toc';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
@@ -72,6 +73,37 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   tokens[idx]!.attrSet('target', '_blank');
   tokens[idx]!.attrSet('rel', 'noopener noreferrer');
   return defaultLinkOpen(tokens, idx, options, env, self);
+};
+
+// ── Heading id injection ──────────────────────────────
+//
+// Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
+// of Contents can scroll to a heading via `getElementById`. Slugs are
+// produced by the same `makeSlugCounter` helper the TOC extractor uses,
+// so the id emitted here matches the slug the TOC lists.
+//
+// Counter state is stored on the per-render `env` object (markdown-it
+// creates a fresh `{}` when `md.render(src)` is called without an
+// explicit env), so renders are independent. TEXTLOG renders each log
+// entry in its own `renderMarkdown()` call and therefore has its own
+// slug-collision scope — click handlers disambiguate cross-log-entry
+// id collisions by scoping the DOM lookup to the owning log row.
+//
+// See `docs/development/table-of-contents-right-pane.md`.
+
+md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]!;
+  const level = parseInt(token.tag.slice(1), 10);
+  if (level >= 1 && level <= 3) {
+    const inline = tokens[idx + 1];
+    const text = inline && inline.type === 'inline' ? inline.content.trim() : '';
+    if (text) {
+      const e = env as { __pkcHeadingSlug?: (t: string) => string };
+      if (!e.__pkcHeadingSlug) e.__pkcHeadingSlug = makeSlugCounter();
+      token.attrSet('id', e.__pkcHeadingSlug(text));
+    }
+  }
+  return self.renderToken(tokens, idx, options);
 };
 
 // ── Task list support (GFM-style) ─────────────────────

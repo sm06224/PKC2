@@ -57,7 +57,7 @@ describe('DetailPresenter', () => {
     const entry = { ...makeEntry(), body: '# Hello\n\nWorld' };
     const el = presenter.renderEditorBody(entry);
     const preview = el.querySelector('[data-pkc-region="text-edit-preview"]');
-    expect(preview!.innerHTML).toContain('<h1>');
+    expect(preview!.innerHTML).toMatch(/<h1[ >]/);
     expect(preview!.innerHTML).toContain('Hello');
   });
 

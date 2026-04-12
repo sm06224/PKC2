@@ -9,7 +9,16 @@
  * Design decisions:
  * - No external ZIP library: uses minimal ZIP implementation (stored mode)
  * - Assets stored as raw binary (base64 decoded) for interoperability
- * - ZIP "stored" mode (no internal compression) — simple, correct, extensible
+ * - ZIP "stored" mode (method 0, no internal compression). Intentional,
+ *   not a bug: keeping the writer store-only avoids shipping a deflate
+ *   implementation inside the single-HTML artifact. Container / manifest
+ *   JSON is small; asset binaries are the dominant bytes and most of
+ *   them (images, PDFs, already-compressed archives) would not benefit
+ *   from a second compression pass. See
+ *   docs/development/zip-export-contract.md.
+ * - Per-entry `mtime` is encoded as MS-DOS date/time in both the local
+ *   header and central directory. Defaults to the export timestamp so
+ *   extracted files never show 1980-01-01 "default" values.
  * - Import assigns a new cid to avoid collision with existing Workspaces
  * - manifest provides metadata for validation without parsing container.json
  *
@@ -65,10 +74,11 @@ export async function exportContainerAsZip(
   options?: { filename?: string; downloadFn?: (blob: Blob, filename: string) => void },
 ): Promise<ZipExportResult> {
   try {
+    const exportedAt = new Date();
     const manifest: PackageManifest = {
       format: 'pkc2-package',
       version: 1,
-      exported_at: new Date().toISOString(),
+      exported_at: exportedAt.toISOString(),
       source_cid: container.meta.container_id,
       entry_count: container.entries.length,
       relation_count: container.relations.length,
@@ -79,16 +89,18 @@ export async function exportContainerAsZip(
     // Container without assets (assets go to separate files)
     const containerForZip: Container = { ...container, assets: {} };
 
-    // Build ZIP entries
+    // Build ZIP entries — every entry is stamped with the export
+    // time so extracted files show a meaningful date instead of
+    // 1980-01-01.
     const zipEntries: ZipEntry[] = [
-      { name: 'manifest.json', data: textToBytes(JSON.stringify(manifest, null, 2)) },
-      { name: 'container.json', data: textToBytes(JSON.stringify(containerForZip, null, 2)) },
+      { name: 'manifest.json', data: textToBytes(JSON.stringify(manifest, null, 2)), mtime: exportedAt },
+      { name: 'container.json', data: textToBytes(JSON.stringify(containerForZip, null, 2)), mtime: exportedAt },
     ];
 
     // Add assets as raw binary
     for (const [key, base64Data] of Object.entries(container.assets)) {
       const binary = base64ToBytes(base64Data);
-      zipEntries.push({ name: `assets/${key}.bin`, data: binary });
+      zipEntries.push({ name: `assets/${key}.bin`, data: binary, mtime: exportedAt });
     }
 
     const zipBlob = createZipBlob(zipEntries);
@@ -195,10 +207,11 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
  * Build a PKC2 Package ZIP as a Blob (for testing without download).
  */
 export function buildPackageZip(container: Container): Blob {
+  const exportedAt = new Date();
   const manifest: PackageManifest = {
     format: 'pkc2-package',
     version: 1,
-    exported_at: new Date().toISOString(),
+    exported_at: exportedAt.toISOString(),
     source_cid: container.meta.container_id,
     entry_count: container.entries.length,
     relation_count: container.relations.length,
@@ -209,12 +222,12 @@ export function buildPackageZip(container: Container): Blob {
   const containerForZip: Container = { ...container, assets: {} };
 
   const zipEntries: ZipEntry[] = [
-    { name: 'manifest.json', data: textToBytes(JSON.stringify(manifest, null, 2)) },
-    { name: 'container.json', data: textToBytes(JSON.stringify(containerForZip, null, 2)) },
+    { name: 'manifest.json', data: textToBytes(JSON.stringify(manifest, null, 2)), mtime: exportedAt },
+    { name: 'container.json', data: textToBytes(JSON.stringify(containerForZip, null, 2)), mtime: exportedAt },
   ];
 
   for (const [key, base64Data] of Object.entries(container.assets)) {
-    zipEntries.push({ name: `assets/${key}.bin`, data: base64ToBytes(base64Data) });
+    zipEntries.push({ name: `assets/${key}.bin`, data: base64ToBytes(base64Data), mtime: exportedAt });
   }
 
   return createZipBlob(zipEntries);
@@ -237,16 +250,25 @@ export async function importFromZipBuffer(
  * Single file inside a ZIP archive. Exported so adjacent platform
  * modules (e.g. `textlog-bundle.ts`) can reuse the same writer
  * without copying the type.
+ *
+ * `mtime` — optional last-modified timestamp encoded into both the
+ * local file header and the central directory as MS-DOS date/time.
+ * When omitted the writer substitutes the current time rather than
+ * the DOS epoch (1980-01-01), so extracted files never show bogus
+ * "default" timestamps. See docs/development/zip-export-contract.md.
  */
 export interface ZipEntry {
   name: string;
   data: Uint8Array;
+  mtime?: Date;
 }
 
 // `parseZip` returns the same shape as `ZipEntry` — a name + the raw
 // uncompressed bytes — so callers can pass parsed entries straight
 // back into the writer if they need to repackage a bundle.
-type ParsedZipEntry = ZipEntry;
+// `mtime` is always populated on parsed entries (decoded from the
+// central directory's DOS date/time).
+type ParsedZipEntry = Required<Pick<ZipEntry, 'name' | 'data' | 'mtime'>>;
 
 /**
  * Create a ZIP file as a Blob using stored mode (no compression).
@@ -270,9 +292,14 @@ export function createZipBytes(entries: ZipEntry[]): Uint8Array {
   const centralDirectory: Uint8Array[] = [];
   let offset = 0;
 
+  // Default timestamp for entries that don't carry one. Captured once
+  // per archive so every defaulting entry gets the same mtime.
+  const defaultMtime = new Date();
+
   for (const entry of entries) {
     const nameBytes = textToBytes(entry.name);
     const crc = crc32(entry.data);
+    const { time: dosTime, date: dosDate } = toDosDateTime(entry.mtime ?? defaultMtime);
 
     // Local file header (30 bytes + name)
     const localHeader = new Uint8Array(30 + nameBytes.length);
@@ -281,8 +308,8 @@ export function createZipBytes(entries: ZipEntry[]): Uint8Array {
     lv.setUint16(4, 20, true);            // version needed
     lv.setUint16(6, 0x0800, true);        // flags: UTF-8 filenames (bit 11)
     lv.setUint16(8, 0, true);             // method: stored
-    lv.setUint16(10, 0, true);            // mod time
-    lv.setUint16(12, 0, true);            // mod date
+    lv.setUint16(10, dosTime, true);      // mod time (DOS)
+    lv.setUint16(12, dosDate, true);      // mod date (DOS)
     lv.setUint32(14, crc, true);          // crc-32
     lv.setUint32(18, entry.data.length, true); // compressed size
     lv.setUint32(22, entry.data.length, true); // uncompressed size
@@ -298,8 +325,8 @@ export function createZipBytes(entries: ZipEntry[]): Uint8Array {
     cv.setUint16(6, 20, true);            // version needed
     cv.setUint16(8, 0x0800, true);        // flags: UTF-8 filenames (bit 11)
     cv.setUint16(10, 0, true);            // method: stored
-    cv.setUint16(12, 0, true);            // mod time
-    cv.setUint16(14, 0, true);            // mod date
+    cv.setUint16(12, dosTime, true);      // mod time (DOS)
+    cv.setUint16(14, dosDate, true);      // mod date (DOS)
     cv.setUint32(16, crc, true);          // crc-32
     cv.setUint32(20, entry.data.length, true); // compressed size
     cv.setUint32(24, entry.data.length, true); // uncompressed size
@@ -388,6 +415,8 @@ export function parseZip(data: Uint8Array): ParsedZipEntry[] {
     }
 
     const method = view.getUint16(pos + 10, true);
+    const dosTime = view.getUint16(pos + 12, true);
+    const dosDate = view.getUint16(pos + 14, true);
     const compressedSize = view.getUint32(pos + 20, true);
     const nameLen = view.getUint16(pos + 28, true);
     const extraLen = view.getUint16(pos + 30, true);
@@ -407,7 +436,11 @@ export function parseZip(data: Uint8Array): ParsedZipEntry[] {
       throw new Error(`Unsupported ZIP compression method ${method} for ${name}. Only stored (0) is supported.`);
     }
 
-    entries.push({ name, data: new Uint8Array(fileData) });
+    entries.push({
+      name,
+      data: new Uint8Array(fileData),
+      mtime: fromDosDateTime(dosTime, dosDate),
+    });
 
     pos += 46 + nameLen + extraLen + commentLen;
   }
@@ -435,6 +468,51 @@ function crc32(data: Uint8Array): number {
     crc = CRC_TABLE[(crc ^ data[i]!) & 0xFF]! ^ (crc >>> 8);
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ── DOS date/time ────────────────────────
+//
+// ZIP stores timestamps in the legacy MS-DOS format (APPNOTE 4.4.6):
+//   time = (hour << 11) | (minute << 5) | (second / 2)    // 2-second precision
+//   date = ((year - 1980) << 9) | (month << 5) | day
+// Range is [1980-01-01 00:00:00, 2107-12-31 23:59:58]. Values outside
+// the range are clamped — extracted files will show a sensible date
+// instead of propagating the `0/0` sentinel that the old writer emitted.
+
+/**
+ * Encode a Date into DOS date/time halves. Uses local time (matches
+ * the convention used by most ZIP tooling; APPNOTE does not require
+ * UTC).
+ */
+export function toDosDateTime(date: Date): { time: number; date: number } {
+  const year = Math.min(2107, Math.max(1980, date.getFullYear()));
+  const month = date.getMonth() + 1; // 1–12
+  const day = date.getDate();        // 1–31
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const second = date.getSeconds();
+
+  const dosTime = ((hour & 0x1f) << 11) | ((minute & 0x3f) << 5) | ((second >> 1) & 0x1f);
+  const dosDate = (((year - 1980) & 0x7f) << 9) | ((month & 0x0f) << 5) | (day & 0x1f);
+  return { time: dosTime, date: dosDate };
+}
+
+/**
+ * Decode DOS date/time halves back into a Date (local time).
+ * Zero values yield the DOS epoch (1980-01-01 00:00:00) — this is
+ * what legacy ZIPs produced by the previous PKC2 writer will read as.
+ */
+export function fromDosDateTime(dosTime: number, dosDate: number): Date {
+  const second = (dosTime & 0x1f) << 1;
+  const minute = (dosTime >> 5) & 0x3f;
+  const hour = (dosTime >> 11) & 0x1f;
+  const day = dosDate & 0x1f;
+  const month = (dosDate >> 5) & 0x0f;
+  const year = ((dosDate >> 9) & 0x7f) + 1980;
+  // Fall back to DOS epoch when the date components are 0 — `new Date(1980, 0, 0, ...)`
+  // would otherwise roll back to 1979 because getDate() is 1-indexed.
+  if (day === 0 && month === 0) return new Date(1980, 0, 1, 0, 0, 0);
+  return new Date(year, Math.max(0, month - 1), Math.max(1, day), hour, minute, second);
 }
 
 // ── Helpers ────────────────────────

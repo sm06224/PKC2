@@ -60,6 +60,17 @@ describe('textlog renderBody', () => {
     expect(timestamps[0]!.textContent).toMatch(/\d{4}\/\d{2}\/\d{2}/);
   });
 
+  it('timestamp display includes seconds (HH:mm:ss) — A-1 readability', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
+    // Every row's timestamp must carry HH:mm:ss so high-frequency log
+    // entries stay visually distinguishable. See
+    // docs/development/textlog-readability-hardening.md.
+    for (const ts of timestamps) {
+      expect(ts.textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    }
+  });
+
   it('exposes full ISO timestamp via tooltip title for precision', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const timestamps = el.querySelectorAll('.pkc-textlog-timestamp');
@@ -124,7 +135,7 @@ describe('textlog renderBody', () => {
     // log-3 (markdown heading) is now first due to descending order
     const mdRow = el.querySelectorAll('.pkc-textlog-text')[0];
     expect(mdRow!.classList.contains('pkc-md-rendered')).toBe(true);
-    expect(mdRow!.innerHTML).toContain('<h1>');
+    expect(mdRow!.innerHTML).toMatch(/<h1[ >]/);
   });
 
   // ── Asset reference resolution ──
@@ -300,6 +311,21 @@ describe('textlog renderBody', () => {
     expect(rows[0]!.innerHTML).toContain('#asset-ast-zip-001');
     expect(rows[1]!.textContent).toBe('just plain text');
   });
+
+  // ── A-1 structural block-ization ──
+
+  it('DOM order within each row is [flag, timestamp, text] so grid-areas can place them', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const rows = el.querySelectorAll<HTMLElement>('.pkc-textlog-row');
+    for (const row of rows) {
+      const children = Array.from(row.children) as HTMLElement[];
+      // Unchanged DOM order keeps data-pkc-log-id / data-pkc-action
+      // selectors working regardless of grid-template-areas placement.
+      expect(children[0]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
+      expect(children[1]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
+      expect(children[2]!.classList.contains('pkc-textlog-text')).toBe(true);
+    }
+  });
 });
 
 // ── renderEditorBody ──
@@ -346,6 +372,58 @@ describe('textlog renderEditorBody', () => {
     const bodyField = el.querySelector<HTMLInputElement>('[data-pkc-field="body"]');
     expect(bodyField).not.toBeNull();
     expect(bodyField!.type).toBe('hidden');
+  });
+
+  // ── P0-1: editor textarea sizing regression guard ──
+
+  it('per-log textarea has at least 5 rows for short entries (P0-1 regression guard)', () => {
+    // Regression: rows=2 hardcoded made the edit area a near-invisible sliver
+    // when double-clicking to edit. Minimum must stay usable.
+    const shortBody: TextlogBody = {
+      entries: [
+        { id: 'log-short', text: 'short', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(shortBody));
+    const ta = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    expect(ta).not.toBeNull();
+    // happy-dom reports `rows` as a string; normalize for numeric comparison.
+    expect(Number(ta!.rows)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('per-log textarea grows with content (line count + buffer)', () => {
+    const longText = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n');
+    const longBody: TextlogBody = {
+      entries: [
+        { id: 'log-long', text: longText, createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(longBody));
+    const ta = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    // 20 lines + 2 buffer = 22, should grow past the 5-row minimum.
+    expect(Number(ta!.rows)).toBeGreaterThanOrEqual(22);
+  });
+
+  it('each editor row gets its own dynamic sizing (no shared single hardcoded value)', () => {
+    const mixedBody: TextlogBody = {
+      entries: [
+        { id: 'log-a', text: 'a', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        {
+          id: 'log-b',
+          text: Array.from({ length: 12 }, (_, i) => `l${i}`).join('\n'),
+          createdAt: '2026-04-09T11:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(mixedBody));
+    const rows = Array.from(
+      el.querySelectorAll<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]'),
+    ).map((t) => Number(t.rows));
+    // Reversed display: [log-b(long), log-a(short)].
+    expect(rows[0]).toBeGreaterThan(rows[1]!);
+    // Short entry still honors the 5-row floor.
+    expect(rows[1]).toBeGreaterThanOrEqual(5);
   });
 });
 

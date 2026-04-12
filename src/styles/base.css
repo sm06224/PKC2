@@ -1185,6 +1185,56 @@
   transform: scale(0.95);
 }
 
+/* ── Table of Contents (right-pane TOC, A-3) ── */
+.pkc-toc {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
+}
+
+.pkc-toc-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.pkc-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-toc-item {
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.75rem; }
+.pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.5rem; }
+
+.pkc-toc-link {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  padding: 0.1rem 0.15rem;
+  font-size: 0.75rem;
+  color: var(--c-text, inherit);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+}
+
+.pkc-toc-link:hover,
+.pkc-toc-link:focus-visible {
+  background: var(--c-border);
+  color: var(--c-accent);
+}
+
 /* ── Tags ── */
 .pkc-tags {
   padding: 0.25rem 0;
@@ -3344,18 +3394,44 @@
 .pkc-textlog-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
+/*
+ * TEXTLOG row layout (see docs/development/textlog-readability-hardening.md).
+ *
+ * grid-template-areas places the flag button on the left (spanning both
+ * rows so it acts as a "log-entry badge" over the whole block), the
+ * timestamp as a header strip above the text body. DOM order
+ * (flag / ts / text) is preserved — grid-areas only affect visual
+ * placement, so data-pkc-log-id selectors keep working.
+ */
 .pkc-textlog-row {
   display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 0.4rem;
-  align-items: start;
-  padding: 0.4rem 0.5rem;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "flag ts"
+    "flag text";
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+  padding: 0.5rem 0.5rem 0.6rem;
   border-left: 3px solid var(--c-border);
   font-size: 0.85rem;
   transition: background-color 0.15s ease;
+}
+
+.pkc-textlog-row > .pkc-textlog-flag-btn { grid-area: flag; align-self: start; }
+.pkc-textlog-row > .pkc-textlog-timestamp { grid-area: ts; }
+.pkc-textlog-row > .pkc-textlog-text { grid-area: text; }
+
+/*
+ * Inter-row separator. Applied only between siblings so the first row
+ * has no top rule, keeping the append area edge clean. Kept to 1px of
+ * --c-border so the effect is "quietly noticeable", not card-like.
+ */
+.pkc-textlog-row + .pkc-textlog-row {
+  border-top: 1px solid var(--c-border);
+  padding-top: 0.6rem;
 }
 
 .pkc-textlog-row[data-pkc-log-important="true"] {
@@ -3492,4 +3568,7 @@
   font-family: var(--font-mono);
   font-size: 0.85rem;
   resize: vertical;
+  /* Defense-in-depth against the `rows=2` regression — even if JS sizing
+     is bypassed the textarea must remain usable. */
+  min-height: 6.5em;
 }

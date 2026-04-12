@@ -6920,3 +6920,141 @@ describe('Task completion badge', () => {
     });
   });
 });
+
+describe('Table of Contents (A-3, right pane)', () => {
+  beforeEach(() => {
+    registerPresenter('todo', todoPresenter);
+    registerPresenter('form', formPresenter);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+      ...overrides,
+    };
+  }
+
+  function containerWith(entries: Entry[]): Container {
+    return { meta: mockContainer.meta, entries, relations: [], revisions: [], assets: {} };
+  }
+
+  it('TEXT: meta pane shows TOC with one item per h1–h3', () => {
+    const container = containerWith([
+      {
+        lid: 'tx-toc',
+        title: 'With TOC',
+        body: '# Introduction\n\n## Details\n\n### Notes',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tx-toc' }), root);
+    const toc = root.querySelector('[data-pkc-region="toc"]');
+    expect(toc).not.toBeNull();
+    const items = toc!.querySelectorAll('[data-pkc-action="toc-jump"]');
+    expect(items.length).toBe(3);
+    expect(items[0]!.getAttribute('data-pkc-toc-slug')).toBe('introduction');
+    expect(items[1]!.getAttribute('data-pkc-toc-slug')).toBe('details');
+    expect(items[2]!.getAttribute('data-pkc-toc-slug')).toBe('notes');
+  });
+
+  it('TEXT: TOC item carries data-pkc-toc-level for indent styling', () => {
+    const container = containerWith([
+      {
+        lid: 'tx-lv',
+        title: 'Levels',
+        body: '# A\n\n## B\n\n### C',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tx-lv' }), root);
+    const items = root.querySelectorAll('[data-pkc-region="toc"] .pkc-toc-item');
+    expect(items[0]!.getAttribute('data-pkc-toc-level')).toBe('1');
+    expect(items[1]!.getAttribute('data-pkc-toc-level')).toBe('2');
+    expect(items[2]!.getAttribute('data-pkc-toc-level')).toBe('3');
+  });
+
+  it('TEXT without headings produces no TOC section', () => {
+    const container = containerWith([
+      {
+        lid: 'tx-none',
+        title: 'No Headings',
+        body: 'just a paragraph, no headings here',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tx-none' }), root);
+    expect(root.querySelector('[data-pkc-region="toc"]')).toBeNull();
+  });
+
+  it('TEXTLOG: TOC aggregates headings across log entries and tags them with data-pkc-log-id', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-a', text: '# Morning notes', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-b', text: '## Afternoon section', createdAt: '2026-04-09T14:00:00Z', flags: [] },
+      ],
+    });
+    const container = containerWith([
+      {
+        lid: 'tl-1',
+        title: 'Log',
+        body,
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T14:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tl-1' }), root);
+    const items = root.querySelectorAll('[data-pkc-region="toc"] [data-pkc-action="toc-jump"]');
+    expect(items.length).toBe(2);
+    expect(items[0]!.getAttribute('data-pkc-log-id')).toBe('log-a');
+    expect(items[0]!.getAttribute('data-pkc-toc-slug')).toBe('morning-notes');
+    expect(items[1]!.getAttribute('data-pkc-log-id')).toBe('log-b');
+    expect(items[1]!.getAttribute('data-pkc-toc-slug')).toBe('afternoon-section');
+  });
+
+  it('non-TEXT/TEXTLOG archetypes never get a TOC section', () => {
+    const container = containerWith([
+      {
+        lid: 'td-1',
+        title: 'Todo',
+        body: JSON.stringify({ status: 'open', description: '# fake heading' }),
+        archetype: 'todo',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'td-1' }), root);
+    expect(root.querySelector('[data-pkc-region="toc"]')).toBeNull();
+  });
+
+  it('rendered TEXT body exposes heading ids that match the TOC slugs', () => {
+    // Ensures TOC click targets actually exist in the rendered DOM.
+    const container = containerWith([
+      {
+        lid: 'tx-ids',
+        title: 'Ids',
+        body: '# Introduction\n\n## Details',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tx-ids' }), root);
+    const body = root.querySelector('.pkc-view-body');
+    expect(body).not.toBeNull();
+    expect(body!.querySelector('#introduction')).not.toBeNull();
+    expect(body!.querySelector('#details')).not.toBeNull();
+  });
+});
