@@ -60,14 +60,64 @@ condition persists.
 - Asset re-hydration across sessions (assets are stored per-container
   in the assets store)
 
-## Failure modes NOT yet surfaced
+## Runtime save failure (mid-session)
 
-- `save()` failure during a live session (quota exhausted mid-write)
-  is currently logged to `console.warn` only. A future slice may
-  dispatch `SYS_ERROR` for this so the UI reflects the state, but
-  doing so requires threading an `onError` callback through
-  `mountPersistence` into the UI layer.
-- The banner covers **boot-time** detection only.
+The boot-time banner covers *startup* unavailability. Saves can still
+fail **after** a successful boot — typically when the origin hits its
+IndexedDB quota mid-edit, when a transaction aborts (`AbortError`),
+or when a put() is rejected for any other reason. These used to be
+`console.warn`-only; they are now also surfaced as a distinct
+non-blocking banner.
+
+- **Region:** `data-pkc-region="idb-save-warning"` (separate from the
+  boot-time `idb-warning` region so both can be visible at once if a
+  session starts degraded and later also encounters a save failure).
+- **Headline:** "Save to IndexedDB failed"
+- **Detail:** " — recent edits may not have been persisted *(reason:
+  ClassifiedError)*. Export or copy your container to avoid losing
+  changes."
+- **Wording is hedged** ("*may* not have been persisted") because the
+  error-to-recoverability mapping is browser-specific — a
+  `QuotaExceededError` truly dropped the write, but a transient
+  `AbortError` may have been retried successfully by the debounce
+  timer.
+- **Coalescing:** repeated failures do NOT stack. The same banner node
+  is reused and its reason text is updated to the latest classified
+  kind.
+- **Dismissal:** session-only, just like the boot banner. A new
+  failure *after* dismissal creates a fresh banner — the user is
+  explicitly opting back in to warnings.
+- **No auto-retraction on success.** If the next save succeeds, the
+  banner stays until dismissed. Silently retracting it would hide the
+  fact that an earlier write may have already been lost.
+
+### Error classification
+
+`classifySaveError(err)` in `idb-warning-banner.ts` maps the error
+into a short reason string shown in parentheses:
+
+| Condition                    | Reason string                               |
+|------------------------------|---------------------------------------------|
+| `err.name === 'QuotaExceededError'` | `QuotaExceededError: browser storage full` |
+| `err.name === 'AbortError'`  | `AbortError: transaction aborted` (or the provided message) |
+| Generic `Error`              | `<name>: <message>` (truncated to 140 chars) |
+| Non-Error throw              | `String(err)` (truncated to 140 chars)     |
+
+### Wiring
+
+`mountPersistence` accepts `onError: (err) => void`. `main.ts` §6
+passes a callback that calls
+`showIdbSaveFailureBanner({ reason: classifySaveError(err) })`. No
+action is dispatched, no state is mutated — persistence remains a
+passive listener.
+
+### What is still NOT surfaced
+
+- **Per-asset `saveAsset` failures** are logged but not yet banner-
+  surfaced. The container-level `save` path is the dominant signal,
+  and an asset-level failure will usually be followed by a container
+  save failure on the next mutation, which does banner. Granular
+  per-asset surfacing is out of scope for this slice.
 
 ## Operator guidance
 
@@ -84,9 +134,15 @@ condition persists.
 ## Related code
 
 - `src/adapter/platform/idb-store.ts` — `probeIDBAvailability()`
-- `src/adapter/platform/idb-warning-banner.ts` — `showIdbWarningBanner()`
-- `src/adapter/platform/persistence.ts` — `mountPersistence`,
-  `loadFromStore` (save / load error paths still use `console.warn`)
-- `src/main.ts` § 6a — probe wired at boot
+- `src/adapter/platform/idb-warning-banner.ts` — `showIdbWarningBanner()`,
+  `showIdbSaveFailureBanner()`, `classifySaveError()`
+- `src/adapter/platform/persistence.ts` — `mountPersistence` (accepts
+  `onError`), `loadFromStore` (load error path still uses
+  `console.warn`)
+- `src/main.ts` § 6 — `onError` wired to save-failure banner
+- `src/main.ts` § 6a — boot probe wired
 - `src/styles/base.css` — `.pkc-idb-warning*` rules
-- `tests/adapter/idb-availability.test.ts` — probe + banner unit tests
+  (plus `.pkc-idb-save-warning` offset for stacking)
+- `tests/adapter/idb-availability.test.ts` — probe + boot banner tests
+- `tests/adapter/idb-save-failure.test.ts` — save-failure banner +
+  onError integration tests

@@ -15,6 +15,7 @@ import {
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage } from './guardrails';
+import { showToast } from './toast';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
@@ -2363,8 +2364,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // See docs/development/attachment-size-limits.md.
     if (isFileTooLarge(file.size)) {
       e.preventDefault();
-      console.warn(`[PKC2] Paste rejected: ${fileSizeWarningMessage(file.size)}`);
-      alert(fileSizeWarningMessage(file.size) ?? 'File too large.');
+      const rejectMsg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+      console.warn(`[PKC2] Paste rejected: ${rejectMsg}`);
+      showToast({ message: rejectMsg, kind: 'warn' });
       return;
     }
 
@@ -2440,7 +2442,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // instead of silently dropping the paste.
         const msg = `Paste failed to read "${name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
         console.warn(`[PKC2] ${msg}`);
-        alert(msg);
+        showToast({ message: msg, kind: 'error' });
       };
       reader.readAsArrayBuffer(file);
       return;
@@ -3571,14 +3573,14 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
   if (isFileTooLarge(file.size)) {
     const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
     console.warn(`[PKC2] Drop rejected: ${msg}`);
-    alert(msg);
+    showToast({ message: msg, kind: 'warn' });
     return;
   }
   const reader = new FileReader();
   reader.onerror = () => {
     const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
     console.warn(`[PKC2] ${msg}`);
-    alert(msg);
+    showToast({ message: msg, kind: 'error' });
   };
   reader.onload = () => {
     const arrayBuffer = reader.result as ArrayBuffer;

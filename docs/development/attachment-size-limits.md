@@ -49,24 +49,30 @@ All three attachment entry points now consult
 | Path                                             | File                            | Behaviour on reject |
 |--------------------------------------------------|---------------------------------|---------------------|
 | Attachment archetype — file picker `change`     | `attachment-presenter.ts:400`   | Clears hidden fields, marks `[data-pkc-attachment-rejected="true"]`, resets the file input |
-| Inline paste into markdown textarea             | `action-binder.ts:2361`         | `e.preventDefault()`, `console.warn`, `alert()` |
-| Drag-and-drop file attachment (sidebar / body)  | `action-binder.ts:processFileAttachment` | `console.warn`, `alert()`, returns without dispatching |
+| Inline paste into markdown textarea             | `action-binder.ts:2361`         | `e.preventDefault()`, `console.warn`, non-blocking toast (`[data-pkc-region="toast"]`) |
+| Drag-and-drop file attachment (sidebar / body)  | `action-binder.ts:processFileAttachment` | `console.warn`, non-blocking toast, returns without dispatching |
 
 Each entry point also now installs a `FileReader.onerror` handler so
 an allocation failure **below** the hard limit (e.g. 200 MB on a
 memory-pressured tab) is surfaced as a clear error instead of a silent
-dropped attachment.
+dropped attachment. The FileReader error surfaces the toast as kind
+`error` (red) while the hard-reject uses kind `warn` (amber).
 
-## Why `alert()` for paste/drop but not the presenter
+## Why toast for paste/drop but not the presenter
 
 - The presenter path has a dedicated DOM slot (`[data-pkc-region=
   "attachment-size-warning"]`) that is already integrated with the
   visual guardrail styling — the user sees the message in place.
 - Paste and drop happen from arbitrary contexts (body textareas,
-  sidebar drop targets, etc.) where there is no dedicated slot, and
-  introducing one would require cross-cutting UI changes. `alert()`
-  is the minimal-diff way to guarantee the user notices that their
-  file was rejected — a future slice may replace it with a toast.
+  sidebar drop targets, etc.) where there is no dedicated slot, so
+  they use the shared non-blocking toast helper (`showToast` in
+  `src/adapter/ui/toast.ts`). The toast is dismissible, auto-closes
+  after 7 s by default, coalesces on identical messages (so dragging
+  five oversized files in a row does not stack five toasts), and
+  upgrades severity in-place when a repeat call has a higher kind.
+- Earlier revisions used `alert()`; it has been removed from the
+  paste / drop paths. `alert()` remains only in the workspace-reset
+  confirmation flow, which is an intentionally-blocking action.
 
 ## Escape hatches for oversized assets
 
@@ -102,5 +108,7 @@ dropped attachment.
 - `src/adapter/ui/guardrails.ts` — threshold constants + classifiers
 - `src/adapter/ui/attachment-presenter.ts` — presenter file picker
 - `src/adapter/ui/action-binder.ts` — paste handler + drop handler
-- `src/styles/base.css` — `.pkc-guardrail-reject` rule
+- `src/adapter/ui/toast.ts` — non-blocking toast helper used by paste/drop
+- `src/styles/base.css` — `.pkc-guardrail-reject` + `.pkc-toast*` rules
 - `tests/adapter/guardrails.test.ts` — threshold + message tests
+- `tests/adapter/toast.test.ts` — toast helper unit tests

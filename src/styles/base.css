@@ -68,12 +68,22 @@
     --c-warn-fg: #ffffff;
     --c-info: #2563eb;
     --c-info-fg: #ffffff;
+    /* Belt-and-braces: explicitly bind the body-text alias to the
+       concrete light-ink hex instead of relying on lazy
+       `var(--c-fg)` substitution — removes any cascade edge case
+       where `--c-text` could resolve to its dark-theme value
+       inside a nested custom-property chain. */
+    --c-text: #1a1a14;
+    --c-text-dim: #6b6558;
     /* Light-theme darker override: the light sidebar background
-       (#f0ebe0 / #e6e0d3) washes out `--c-muted` (#6b6558) enough that
-       day / log rows in the right-pane TOC read as barely-visible gray.
-       Use a deep parchment ink for TOC secondary rows only — body-level
-       muted text stays at the softer value. */
-    --c-toc-secondary: #3d3830;
+       (#f0ebe0 / #e6e0d3) washes out `--c-muted` (#6b6558) enough
+       that day / log rows in the right-pane TOC read as
+       barely-visible gray.  The earlier #3d3830 value passed WCAG
+       AAA on paper (~9:1) but still read as washed-out at the
+       0.72rem mono font size.  Drop to a near-black parchment
+       ink (~13:1) so visual hierarchy is carried by font-weight
+       and size, not by color faintness. */
+    --c-toc-secondary: #26221b;
     /* Light theme: the deeper accent green renders cleanly against
        the warm beige surface at 11% alpha without fighting the
        orange important-flag tint. */
@@ -102,7 +112,11 @@
   --c-warn-fg: #ffffff;
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
-  --c-toc-secondary: #3d3830;
+  /* Explicit concrete-hex binding; see the @media light block
+     for the rationale. */
+  --c-text: #1a1a14;
+  --c-text-dim: #6b6558;
+  --c-toc-secondary: #26221b;
   --c-range-active-bg: rgba(26, 107, 53, 0.11);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
   --glow: none;
@@ -232,6 +246,92 @@
 }
 .pkc-idb-warning-dismiss:hover,
 .pkc-idb-warning-dismiss:focus-visible {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Save-failure variant ──
+ *
+ * Same visual style as the boot-time banner, but offset vertically so
+ * that if the boot banner is also visible (e.g. quota exhausted at
+ * boot time AND mid-session) the two banners stack instead of
+ * overlapping. 2.25rem roughly matches the boot banner's rendered
+ * height at the default font size; the slight left/right inset makes
+ * the stacking visually obvious.
+ */
+.pkc-idb-save-warning {
+  top: 2.25rem;
+  left: 0.5rem;
+  right: 0.5rem;
+}
+
+/* ── Non-blocking toast stack ──
+ *
+ * Fixed-position column at the bottom-right of the viewport used by
+ * `showToast()` to surface transient warnings (paste / drop reject,
+ * FileReader errors). Kept deliberately narrow so it does not cover
+ * the working area; individual toasts wrap their body text.
+ *
+ * Intentionally separate from `.pkc-idb-warning` because toasts can
+ * auto-dismiss and are expected to appear/disappear frequently, while
+ * the IDB banner is a single persistent surface.
+ */
+.pkc-toast-stack {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: auto;
+  top: auto;
+  z-index: 9998; /* just below the IDB banner (9999) */
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(28rem, calc(100vw - 1.5rem));
+  pointer-events: none; /* toasts themselves re-enable pointer events */
+}
+.pkc-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  line-height: 1.35;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* Defaults override by kind classes below — the tokens are already
+   * light/dark aware (see :root / @media / [data-pkc-theme] blocks). */
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+}
+.pkc-toast-warn {
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+}
+.pkc-toast-error {
+  background: var(--c-danger);
+  color: #ffffff;
+}
+.pkc-toast-info {
+  background: var(--c-info);
+  color: var(--c-info-fg);
+}
+.pkc-toast-body {
+  flex: 1;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.pkc-toast-dismiss {
+  all: unset;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.pkc-toast-dismiss:hover,
+.pkc-toast-dismiss:focus-visible {
   background: rgba(0, 0, 0, 0.15);
 }
 
@@ -1337,6 +1437,35 @@
 .pkc-toc-link:focus-visible {
   background: var(--c-border);
   color: var(--c-accent);
+}
+
+/*
+ * Light-mode hard overrides — belt-and-braces against any cascade edge
+ * case (`all: unset` interaction, specificity quirks, future refactors)
+ * that could let day/log rows fall back to a faint color.  We assert
+ * concrete hex values at theme scope so the TOC is legible even if the
+ * custom-property chain breaks.  Day/log rows retain visual hierarchy
+ * through font-weight + smaller mono size rather than color faintness.
+ */
+@media (prefers-color-scheme: light) {
+  .pkc-toc-label,
+  .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+  .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+    color: #26221b;
+  }
+  .pkc-toc-item[data-pkc-toc-kind="heading"] > .pkc-toc-link,
+  .pkc-toc-link {
+    color: #1a1a14;
+  }
+}
+#pkc-root[data-pkc-theme="light"] .pkc-toc-label,
+#pkc-root[data-pkc-theme="light"] .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+#pkc-root[data-pkc-theme="light"] .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+  color: #26221b;
+}
+#pkc-root[data-pkc-theme="light"] .pkc-toc-item[data-pkc-toc-kind="heading"] > .pkc-toc-link,
+#pkc-root[data-pkc-theme="light"] .pkc-toc-link {
+  color: #1a1a14;
 }
 
 /* ── Tags ── */
