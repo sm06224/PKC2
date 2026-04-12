@@ -373,6 +373,58 @@ describe('textlog renderEditorBody', () => {
     expect(bodyField).not.toBeNull();
     expect(bodyField!.type).toBe('hidden');
   });
+
+  // ── P0-1: editor textarea sizing regression guard ──
+
+  it('per-log textarea has at least 5 rows for short entries (P0-1 regression guard)', () => {
+    // Regression: rows=2 hardcoded made the edit area a near-invisible sliver
+    // when double-clicking to edit. Minimum must stay usable.
+    const shortBody: TextlogBody = {
+      entries: [
+        { id: 'log-short', text: 'short', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(shortBody));
+    const ta = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    expect(ta).not.toBeNull();
+    // happy-dom reports `rows` as a string; normalize for numeric comparison.
+    expect(Number(ta!.rows)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('per-log textarea grows with content (line count + buffer)', () => {
+    const longText = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n');
+    const longBody: TextlogBody = {
+      entries: [
+        { id: 'log-long', text: longText, createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(longBody));
+    const ta = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]');
+    // 20 lines + 2 buffer = 22, should grow past the 5-row minimum.
+    expect(Number(ta!.rows)).toBeGreaterThanOrEqual(22);
+  });
+
+  it('each editor row gets its own dynamic sizing (no shared single hardcoded value)', () => {
+    const mixedBody: TextlogBody = {
+      entries: [
+        { id: 'log-a', text: 'a', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        {
+          id: 'log-b',
+          text: Array.from({ length: 12 }, (_, i) => `l${i}`).join('\n'),
+          createdAt: '2026-04-09T11:00:00Z',
+          flags: [],
+        },
+      ],
+    };
+    const el = textlogPresenter.renderEditorBody(makeEntry(mixedBody));
+    const rows = Array.from(
+      el.querySelectorAll<HTMLTextAreaElement>('[data-pkc-field="textlog-entry-text"]'),
+    ).map((t) => Number(t.rows));
+    // Reversed display: [log-b(long), log-a(short)].
+    expect(rows[0]).toBeGreaterThan(rows[1]!);
+    // Short entry still honors the 5-row floor.
+    expect(rows[1]).toBeGreaterThanOrEqual(5);
+  });
 });
 
 // ── collectBody ──

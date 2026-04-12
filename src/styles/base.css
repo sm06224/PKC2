@@ -3568,4 +3568,7 @@
   font-family: var(--font-mono);
   font-size: 0.85rem;
   resize: vertical;
+  /* Defense-in-depth against the `rows=2` regression — even if JS sizing
+     is bypassed the textarea must remain usable. */
+  min-height: 6.5em;
 }
