@@ -749,6 +749,37 @@ function escapeForHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Sync DOM properties to HTML attributes/content so that `.outerHTML`
+ * serializes form element values correctly.
+ *
+ * Background: presenters set `textarea.value`, `select.value`, and
+ * `checkbox.checked` as DOM properties. These are NOT reflected in
+ * `.outerHTML` output. Since entry-window injects editor HTML via
+ * `document.write(outerHTML)`, the values are lost without this step.
+ *
+ * This is not a bug workaround — it is the serialization contract for
+ * any DOM tree that will be injected into entry-window via outerHTML.
+ *
+ * If new form element types are added to presenters (e.g. radio,
+ * contenteditable), this function must be extended.
+ */
+function syncDomPropertiesToHtml(root: HTMLElement): void {
+  for (const ta of root.querySelectorAll('textarea')) {
+    ta.textContent = ta.value;
+  }
+  for (const sel of root.querySelectorAll('select')) {
+    for (const opt of sel.options) {
+      if (opt.value === sel.value) opt.setAttribute('selected', '');
+      else opt.removeAttribute('selected');
+    }
+  }
+  for (const chk of root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+    if (chk.checked) chk.setAttribute('checked', '');
+    else chk.removeAttribute('checked');
+  }
+}
+
 function buildWindowHtml(
   entry: Entry,
   readonly: boolean,
@@ -776,24 +807,7 @@ function buildWindowHtml(
     const presenter = presenterMap[entry.archetype];
     if (presenter) {
       const el = presenter.renderEditorBody(entry);
-      // Sync DOM properties → HTML attributes so .outerHTML serializes them.
-      // textarea.value is a DOM property not reflected in outerHTML;
-      // we must write it as textContent (the content between the tags).
-      for (const ta of el.querySelectorAll('textarea')) {
-        ta.textContent = ta.value;
-      }
-      // Sync select.value → selected attribute on the correct option.
-      for (const sel of el.querySelectorAll('select')) {
-        for (const opt of sel.options) {
-          if (opt.value === sel.value) opt.setAttribute('selected', '');
-          else opt.removeAttribute('selected');
-        }
-      }
-      // Sync checkbox .checked → checked attribute.
-      for (const chk of el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
-        if (chk.checked) chk.setAttribute('checked', '');
-        else chk.removeAttribute('checked');
-      }
+      syncDomPropertiesToHtml(el);
       editorBodyHtml = el.outerHTML;
     }
   }
