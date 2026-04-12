@@ -39,6 +39,11 @@
      the rows pass WCAG AA against the warm-beige sidebar background
      (see docs/development/textlog-viewer-and-linkability-redesign.md). */
   --c-toc-secondary: var(--c-muted);
+  /* Slice 5-C: live-viewer range highlight + range-embed marker.
+     A low-alpha accent tint layered on top of the normal log
+     background so it coexists with the important-flag tint (orange).
+     Dark theme uses the neon-accent green at 8% alpha. */
+  --c-range-active-bg: rgba(51, 255, 102, 0.08);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   --transition-fast: 120ms ease;
@@ -69,6 +74,10 @@
        Use a deep parchment ink for TOC secondary rows only — body-level
        muted text stays at the softer value. */
     --c-toc-secondary: #3d3830;
+    /* Light theme: the deeper accent green renders cleanly against
+       the warm beige surface at 11% alpha without fighting the
+       orange important-flag tint. */
+    --c-range-active-bg: rgba(26, 107, 53, 0.11);
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
     --glow: none;
     --transition-fast: 120ms ease;
@@ -94,6 +103,7 @@
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
   --c-toc-secondary: #3d3830;
+  --c-range-active-bg: rgba(26, 107, 53, 0.11);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
   --glow: none;
   color-scheme: light;
@@ -116,6 +126,7 @@
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
   --c-toc-secondary: var(--c-muted);
+  --c-range-active-bg: rgba(51, 255, 102, 0.08);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   color-scheme: dark;
@@ -3552,6 +3563,39 @@
 
 .pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-timestamp {
   color: #c88a1c;
+}
+
+/* Slice 5-C: range navigation / range-embed highlight.
+ *
+ * The live-viewer anchors `data-pkc-range-active="true"` on each log
+ * in a clicked `entry:<lid>#log/<a>..<b>` range. Transclusion range
+ * embeds set `data-pkc-range-embed="true"` on the wrapping
+ * `.pkc-transclusion-document`, which descends to every log inside.
+ *
+ * Visual channel: a subtle background tint + a right-side inset
+ * accent stripe. Crucially uses `border-left`-free styling so the
+ * existing important-flag treatment (left-orange) stays fully
+ * visible — an important-flagged log inside a highlighted range
+ * shows BOTH the orange left bar and the green right stripe.
+ *
+ * See docs/development/textlog-viewer-and-linkability-redesign.md
+ * §Slice 5-C.
+ */
+.pkc-textlog-log[data-pkc-range-active="true"],
+.pkc-transclusion-document[data-pkc-range-embed="true"] .pkc-textlog-log {
+  background: var(--c-range-active-bg);
+  box-shadow: inset -3px 0 0 var(--c-accent-dim);
+}
+
+.pkc-textlog-log[data-pkc-range-active="true"][data-pkc-log-important="true"],
+.pkc-transclusion-document[data-pkc-range-embed="true"]
+  .pkc-textlog-log[data-pkc-log-important="true"] {
+  /* Important-flagged logs inside a highlighted range keep their
+     orange background tint (the stronger signal) and pick up the
+     green right stripe from the range, so both affordances are
+     visible simultaneously. */
+  background: rgba(245,166,35,0.12);
+  box-shadow: inset -3px 0 0 var(--c-accent-dim);
 }
 
 .pkc-textlog-text {

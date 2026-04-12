@@ -836,6 +836,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         //    `<article data-pkc-log-id>` for TEXTLOG so cross-log slug
         //    collisions don't jump to the wrong heading. TEXT uses
         //    document scope.
+        //
+        // Slice 5-C: any non-range navigation drops a prior range
+        // highlight so the viewer never shows a stale "active range"
+        // after the user has moved on to a single log / day / heading.
+        clearRangeHighlight(root);
         const targetId = target.getAttribute('data-pkc-toc-target-id');
         if (targetId) {
           const el = root.querySelector(`#${CSS.escape(targetId)}`);
@@ -866,8 +871,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Routing by ParsedEntryRef.kind:
         //   entry   → SELECT_ENTRY (no scroll)
         //   log     → SELECT_ENTRY + scroll to `#log-<logId>`
-        //   range   → SELECT_ENTRY + scroll to `#log-<fromId>` (first log
-        //             of the range — range highlighting is a 5-B concern)
+        //   range   → SELECT_ENTRY + scroll to the first log of the
+        //             normalized range + apply `data-pkc-range-active="true"`
+        //             to every `.pkc-textlog-log` between the from/to
+        //             endpoints in storage order (Slice 5-C). Reverse
+        //             ranges (`log/b..a`) land on the same set.
         //   day     → SELECT_ENTRY + scroll to `#day-<dateKey>`
         //   heading → SELECT_ENTRY + scroll to `#<slug>` scoped to the
         //             owning `[data-pkc-log-id=<logId>]` article (mirrors
@@ -930,22 +938,66 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         raf(() => {
           switch (parsed.kind) {
             case 'entry':
+              clearRangeHighlight(root);
               // No scroll target — SELECT_ENTRY already scrolled the
               // center pane to the top of the entry body.
               break;
             case 'day':
+              clearRangeHighlight(root);
               scroll(`#${CSS.escape(`day-${parsed.dateKey}`)}`);
               break;
             case 'log':
+              clearRangeHighlight(root);
               scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
               break;
-            case 'range':
-              scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
+            case 'range': {
+              // Slice 5-C: clear any prior highlight (needed for the
+              // same-entry re-click case — `SELECT_ENTRY` re-render
+              // already wipes DOM for cross-entry jumps) then mark the
+              // inclusive slice between the two endpoints in storage
+              // order.  Embedded logs (transclusion) use a separate
+              // `data-pkc-range-embed` attribute and are filtered out
+              // so a live-viewer range click never bleeds into an
+              // embed above it.
+              clearRangeHighlight(root);
+              const liveLogs = Array.from(
+                root.querySelectorAll<HTMLElement>(
+                  '.pkc-textlog-log[data-pkc-log-id]:not([data-pkc-embedded])',
+                ),
+              ).filter((el) => el.getAttribute('data-pkc-lid') === parsed.lid);
+              const fromIdx = liveLogs.findIndex(
+                (el) => el.getAttribute('data-pkc-log-id') === parsed.fromId,
+              );
+              const toIdx = liveLogs.findIndex(
+                (el) => el.getAttribute('data-pkc-log-id') === parsed.toId,
+              );
+              if (fromIdx === -1 && toIdx === -1) {
+                // Neither endpoint landed in the DOM (stale ref).
+                // Still scroll optimistically to the fromId hash so the
+                // viewer at least settles near where the user expected.
+                scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
+                break;
+              }
+              const validIdx = [fromIdx, toIdx].filter((i) => i !== -1);
+              const lo = Math.min(...validIdx);
+              const hi = Math.max(...validIdx);
+              for (let i = lo; i <= hi; i++) {
+                liveLogs[i]!.setAttribute('data-pkc-range-active', 'true');
+              }
+              // Scroll to the earliest log of the highlighted range —
+              // reverse-ordered refs (`log/b..a`) land in the same
+              // place as the canonical form.
+              if (typeof liveLogs[lo]!.scrollIntoView === 'function') {
+                liveLogs[lo]!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
               break;
+            }
             case 'legacy':
+              clearRangeHighlight(root);
               scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
               break;
             case 'heading': {
+              clearRangeHighlight(root);
               const logEl = root.querySelector(
                 `[data-pkc-log-id="${CSS.escape(parsed.logId)}"]`,
               );
@@ -2768,6 +2820,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeAssetAutocomplete();
     registerAssetPickerCallback(null);
   };
+}
+
+/**
+ * Remove any `data-pkc-range-active="true"` markers from live-viewer
+ * log articles.  Called before any non-range navigation so a prior
+ * range highlight doesn't linger after the user has moved on.
+ *
+ * Scoped to live logs (`:not([data-pkc-embedded])`) because transclusion
+ * range embeds carry their own `data-pkc-range-embed="true"` marker on
+ * the container — those are compile-time fixtures, not navigation
+ * artefacts, and must not be cleared here.
+ *
+ * (Slice 5-C: textlog-viewer-and-linkability-redesign.md §Slice 5-C)
+ */
+function clearRangeHighlight(root: HTMLElement): void {
+  const marked = root.querySelectorAll<HTMLElement>(
+    '.pkc-textlog-log[data-pkc-range-active]:not([data-pkc-embedded])',
+  );
+  marked.forEach((el) => el.removeAttribute('data-pkc-range-active'));
 }
 
 function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatcher: Dispatcher): void {
