@@ -149,6 +149,14 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | Calendar Phase 2 (month wrap) | 必要性が薄い。Phase 1 で主要操作は完了 |
 | Shift+Arrow range selection | Phase 2-D 未解決。前提が未整備 |
 
+### UI Readability & Editor Sizing Hardening
+
+| Slice | File | Topic | Priority |
+|-------|------|-------|----------|
+| B | `ui-readability-and-editor-sizing-hardening.md` §3-B | Sandbox PDF scanline overlay bug fix | 最高 |
+| C | `ui-readability-and-editor-sizing-hardening.md` §3-C | Editor textarea sizing policy | 高 |
+| A | `ui-readability-and-editor-sizing-hardening.md` §3-A | Markdown readability hardening | 中 |
+
 ## Close Audit Summary
 
 - **First audit**: 2026-04-11 (broad scan)
