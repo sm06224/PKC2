@@ -30,7 +30,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
-import type { TocHeading } from '../../features/markdown/markdown-toc';
+import type { TocNode } from '../../features/markdown/markdown-toc';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -2004,36 +2004,56 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
 /**
  * Right-pane Table of Contents for TEXT / TEXTLOG entries.
  *
- * Returns `null` when the entry produces zero h1–h3 headings so the
- * caller can skip appending the section (spec §4: TOC 0 件時は非表示).
+ * Returns `null` when the entry has no navigable structure (no
+ * headings for TEXT, no logs for TEXTLOG) so the caller can skip
+ * appending the section (spec §4: TOC 0 件時は非表示).
  *
- * Each item carries `data-pkc-toc-slug` and, for TEXTLOG, `data-pkc-log-id`
- * so the `toc-jump` action can locate the scroll target scoped to the
- * owning log row. Levels render with progressive indent via the
- * `data-pkc-toc-level` attribute.
+ * TEXT produces a flat list of heading nodes (unchanged contract).
+ * TEXTLOG produces a linearized day → log → heading tree built by
+ * `extractTocFromEntry` on top of `buildTextlogDoc` — see
+ * `docs/development/textlog-viewer-and-linkability-redesign.md` §5.
+ *
+ * Per-item data attributes:
+ * - `data-pkc-toc-kind`   — `heading` | `day` | `log`, drives styling
+ * - `data-pkc-toc-level`  — visual depth (1-based; TEXT uses 1..3,
+ *                            TEXTLOG uses 1=day, 2=log, 3..5=heading)
+ * - `data-pkc-toc-target-id` — DOM id to scroll to (day / log nodes)
+ * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
+ * - `data-pkc-log-id`        — owning article for headings / logs
  */
 function renderTocSection(entry: Entry): HTMLElement | null {
   if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return null;
-  const items: TocHeading[] = extractTocFromEntry(entry);
-  if (items.length === 0) return null;
+  const nodes: TocNode[] = extractTocFromEntry(entry);
+  if (nodes.length === 0) return null;
 
   const section = createElement('div', 'pkc-toc');
   section.setAttribute('data-pkc-region', 'toc');
+  // Archetype marker lets CSS scope the per-kind styling without
+  // bleeding TEXTLOG's day/log chrome into TEXT.
+  section.setAttribute('data-pkc-toc-archetype', entry.archetype);
 
   const label = createElement('span', 'pkc-toc-label');
   label.textContent = 'Contents';
   section.appendChild(label);
 
   const list = createElement('ul', 'pkc-toc-list');
-  for (const h of items) {
+  for (const n of nodes) {
     const li = createElement('li', 'pkc-toc-item');
-    li.setAttribute('data-pkc-toc-level', String(h.level));
+    li.setAttribute('data-pkc-toc-kind', n.kind);
+    li.setAttribute('data-pkc-toc-level', String(n.level));
+
     const btn = createElement('button', 'pkc-toc-link');
     btn.setAttribute('data-pkc-action', 'toc-jump');
-    btn.setAttribute('data-pkc-toc-slug', h.slug);
-    if (h.logId) btn.setAttribute('data-pkc-log-id', h.logId);
-    btn.setAttribute('title', h.text);
-    btn.textContent = h.text;
+    if (n.kind === 'heading') {
+      btn.setAttribute('data-pkc-toc-slug', n.slug);
+      if (n.logId) btn.setAttribute('data-pkc-log-id', n.logId);
+    } else {
+      // day / log — direct DOM-id lookup by `data-pkc-toc-target-id`.
+      btn.setAttribute('data-pkc-toc-target-id', n.targetId);
+      if (n.kind === 'log') btn.setAttribute('data-pkc-log-id', n.logId);
+    }
+    btn.setAttribute('title', n.text);
+    btn.textContent = n.text;
     li.appendChild(btn);
     list.appendChild(li);
   }

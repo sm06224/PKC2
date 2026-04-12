@@ -7579,9 +7579,13 @@ describe('ActionBinder — TOC jump', () => {
     headingA!.scrollIntoView = spyA;
     headingB!.scrollIntoView = spyB;
 
-    // Click the TOC item tagged with log-b → should call spyB only.
+    // Click the heading TOC item tagged with log-b → should call spyB only.
+    // Scope to the heading-kind row so the log-kind row (which also carries
+    // data-pkc-log-id="log-b") does not match first — the log row would
+    // jump to the article via targetId and bypass the slug scope logic
+    // we're testing here.
     const tocBtn = root.querySelector<HTMLElement>(
-      '[data-pkc-action="toc-jump"][data-pkc-log-id="log-b"]',
+      '[data-pkc-toc-kind="heading"] [data-pkc-action="toc-jump"][data-pkc-log-id="log-b"]',
     );
     expect(tocBtn).not.toBeNull();
     tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -7601,5 +7605,41 @@ describe('ActionBinder — TOC jump', () => {
 
     // Should not throw.
     expect(() => fake.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+  });
+
+  it('TEXTLOG day node click scrolls to the matching day section via targetId', () => {
+    setupToc('tl-1');
+
+    const daySection = root.querySelector<HTMLElement>('.pkc-textlog-day');
+    expect(daySection).not.toBeNull();
+    const targetId = daySection!.id;
+    expect(targetId).toMatch(/^day-/);
+    const spy = vi.fn();
+    daySection!.scrollIntoView = spy;
+
+    const tocBtn = root.querySelector<HTMLElement>(
+      `[data-pkc-action="toc-jump"][data-pkc-toc-target-id="${targetId}"]`,
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('TEXTLOG log node click scrolls to the matching log article via targetId', () => {
+    setupToc('tl-1');
+
+    const article = root.querySelector<HTMLElement>('#log-log-a');
+    expect(article).not.toBeNull();
+    const spy = vi.fn();
+    article!.scrollIntoView = spy;
+
+    const tocBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="toc-jump"][data-pkc-toc-target-id="log-log-a"]',
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
