@@ -119,6 +119,46 @@ passive listener.
   save failure on the next mutation, which does banner. Granular
   per-asset surfacing is out of scope for this slice.
 
+## Storage capacity preflight
+
+The boot banner and save-failure banner both react *after* IDB has
+rejected a write. The preflight — added as a companion signal —
+reads `navigator.storage.estimate()` and surfaces a hedged warning
+**before** the quota wall is hit. It never blocks a write; the
+existing 250 MB `SIZE_REJECT_HARD` in `guardrails.ts` remains the
+sole hard stop.
+
+- **Boot-time surface.** Once, right after the IDB probe in
+  `src/main.ts § 6b`, `estimateStorage()` resolves and
+  `bootWarningMessage()` is shown via a sticky toast
+  (`autoDismissMs: 0`, `kind: 'warn'`) carrying the Export Now
+  escape hatch. Thresholds:
+  - `free < 50 MB` → "Browser storage is nearly full…"  (critical)
+  - `free < 500 MB` → "Browser storage is low…"  (low)
+  - Otherwise silent.
+- **Per-attachment surface.** In the paste / drop handlers of
+  `action-binder.ts`, files of at least `SIZE_WARN_HEAVY` (5 MB)
+  trigger a second, file-relative preflight via
+  `attachmentWarningMessage()`. Thresholds operate on the headroom
+  `free - fileBytes`:
+  - headroom `< 10 MB` → "close to the remaining browser storage…"
+    (risky)
+  - headroom `< 100 MB` → "tight relative to this attachment…"
+    (tight)
+  - Otherwise silent.
+  The preflight is fire-and-forget: the attachment still proceeds,
+  the warning arrives alongside.
+- **Silent when unavailable.** `estimateStorage()` always resolves
+  with `{ available: false }` when the API is missing (old engines,
+  some `file://` contexts, cross-origin iframes that throw). Message
+  helpers short-circuit to `null` in that case rather than guess.
+- **Hedged wording only.** All messages use *may fail* / *consider
+  exporting* — never *will fail* — because the browser does not
+  guarantee quota behaviour and a borderline save may still succeed.
+- **No polling, no reducer touch.** The preflight is read at known
+  choke points (boot, each heavy attachment). No timers, no state
+  writes, no new dispatch actions — toasts only.
+
 ## Operator guidance
 
 1. **Prefer a local HTTP server.** Python's `python3 -m http.server 8080`
@@ -141,8 +181,17 @@ passive listener.
   `console.warn`)
 - `src/main.ts` § 6 — `onError` wired to save-failure banner
 - `src/main.ts` § 6a — boot probe wired
+- `src/main.ts` § 6b — storage preflight wired (boot-time sticky
+  toast with Export Now)
+- `src/adapter/platform/storage-estimate.ts` — `estimateStorage()`,
+  `classifyFreeSpace()`, `classifyFreeSpaceVsFile()`,
+  `bootWarningMessage()`, `attachmentWarningMessage()`
+- `src/adapter/ui/action-binder.ts` — `preflightStorageWarn()` at
+  paste / drop attachment sites (heavy-file band only)
 - `src/styles/base.css` — `.pkc-idb-warning*` rules
   (plus `.pkc-idb-save-warning` offset for stacking)
 - `tests/adapter/idb-availability.test.ts` — probe + boot banner tests
 - `tests/adapter/idb-save-failure.test.ts` — save-failure banner +
   onError integration tests
+- `tests/adapter/storage-estimate.test.ts` — preflight classifier +
+  message + `estimateStorage` defensive-wrapper tests

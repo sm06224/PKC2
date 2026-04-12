@@ -26,6 +26,8 @@ import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIB
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
+import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
+import type { StorageProfile } from '../../features/asset/storage-profile';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
@@ -167,6 +169,13 @@ function renderShell(state: AppState): HTMLElement {
 
   // Shortcut help overlay (hidden by default, toggled by ? key)
   shell.appendChild(renderShortcutHelp());
+
+  // Storage profile overlay is mounted on demand by `action-binder`
+  // when the user opens the dialog (and removed on close). Mounting
+  // it per render would add several DOM nodes to every state update,
+  // inflating test-run memory across hundreds of renders — and the
+  // dialog is opened rarely, so the shell-level cost is not worth
+  // paying on every render.
 
   // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
@@ -568,20 +577,27 @@ function renderShellMenuMaintenance(container: Container): HTMLElement {
   note.textContent = 'Removes assets not referenced by any entry. Cannot be undone.';
   section.appendChild(note);
 
+  // Storage Profile — read-only diagnostic dialog. Opens a surface
+  // showing which entries / folder subtrees weigh most in
+  // `container.assets`. Helps decide what to export / delete when
+  // capacity warnings appear. Non-destructive; added here so the
+  // whole capacity toolbox sits in one place.
+  //
   // Workspace Reset — destructive action moved here from the header
-  // export/import panel. Separated from daily export/import buttons
-  // to reduce accidental clicks.
+  // export/import panel. Mounted in the same row as the profile
+  // button (compact layout + `pkc-btn-danger` still visually
+  // distinguishes it).
   const resetRow = createElement('div', 'pkc-shell-menu-maintenance-actions');
+  const profileBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-maintenance-btn');
+  profileBtn.setAttribute('data-pkc-action', 'show-storage-profile');
+  profileBtn.textContent = '📊 Storage Profile';
+  resetRow.appendChild(profileBtn);
   const resetBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
   resetBtn.setAttribute('data-pkc-action', 'clear-local-data');
   resetBtn.setAttribute('title', 'ローカル保存データ (IndexedDB) を全て削除します。元に戻せません。');
   resetBtn.textContent = '⚠ Reset Workspace';
   resetRow.appendChild(resetBtn);
   section.appendChild(resetRow);
-
-  const resetNote = createElement('div', 'pkc-shell-menu-maintenance-note');
-  resetNote.textContent = 'Clears all locally saved data (IndexedDB). Cannot be undone.';
-  section.appendChild(resetNote);
 
   return section;
 }
@@ -641,6 +657,195 @@ function renderShortcutHelp(): HTMLElement {
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Storage Profile overlay — read-only dialog surfacing which entries
+ * and folder subtrees weigh most in `container.assets`. Opened via
+ * the shell-menu Data Maintenance section; closed via its own close
+ * button or Escape (handled by the shell-menu Esc handler).
+ *
+ * This dialog holds no state of its own — every open recomputes the
+ * profile from the live container, mirroring how the orphan count
+ * is read on each shell-menu render. The computation is pure (see
+ * `buildStorageProfile`) and cheap enough that no memoisation is
+ * warranted.
+ *
+ * The wording is intentionally qualified ("estimate", "approximate")
+ * because decoded-base64 bytes are not identical to the actual IDB
+ * footprint — the JSON envelope still inflates the stored size — but
+ * they are close enough for capacity triage.
+ */
+/**
+ * Build the fully-populated Storage Profile overlay for mounting on
+ * demand.  Exported so `action-binder` can create the dialog at
+ * click time (and remove it on close) — mounting per render would
+ * add several DOM nodes to every state update.
+ *
+ * `container === null` renders a neutral "no container" shell (the
+ * launch button is already gated out in that case, but the dialog
+ * stays robust for programmatic callers).
+ */
+export function buildStorageProfileOverlay(
+  container: Container | null,
+): HTMLElement {
+  const overlay = createElement('div', 'pkc-storage-profile-overlay');
+  overlay.setAttribute('data-pkc-region', 'storage-profile');
+
+  const card = createElement('div', 'pkc-storage-profile-card');
+
+  const heading = createElement('h2', 'pkc-storage-profile-heading');
+  heading.textContent = 'Storage Profile';
+  card.appendChild(heading);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent =
+    'Estimate based on embedded assets and asset references. Actual browser storage usage may differ.';
+  card.appendChild(note);
+
+  if (!container) {
+    const empty = createElement('div', 'pkc-storage-profile-empty');
+    empty.textContent = 'No container loaded.';
+    card.appendChild(empty);
+  } else {
+    const profile = buildStorageProfile(container);
+    card.appendChild(renderStorageProfileSummary(profile));
+    card.appendChild(renderStorageProfileRows(profile));
+  }
+
+  const closeBtn = createElement('button', 'pkc-btn-small pkc-storage-profile-close');
+  closeBtn.setAttribute('data-pkc-action', 'close-storage-profile');
+  closeBtn.textContent = 'Close (Esc)';
+  card.appendChild(closeBtn);
+
+  overlay.appendChild(card);
+  return overlay;
+}
+
+/**
+ * Summary block for the Storage Profile dialog — top-level
+ * aggregates only (total assets, total bytes, largest asset,
+ * largest subtree).
+ */
+function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'storage-profile-summary');
+  section.setAttribute('data-pkc-asset-count', String(profile.summary.assetCount));
+  section.setAttribute('data-pkc-total-bytes', String(profile.summary.totalBytes));
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Summary';
+  section.appendChild(label);
+
+  const { summary, orphanBytes, orphanCount } = profile;
+  const lines: { label: string; value: string; raw?: number }[] = [
+    { label: 'Total assets', value: String(summary.assetCount) },
+    { label: 'Total size', value: formatBytes(summary.totalBytes), raw: summary.totalBytes },
+  ];
+  if (summary.largestAsset) {
+    const ownerHint = summary.largestAssetOwnerTitle
+      ? ` (${summary.largestAssetOwnerTitle})`
+      : ' (unowned)';
+    lines.push({
+      label: 'Largest asset',
+      value: `${formatBytes(summary.largestAsset.bytes)}${ownerHint}`,
+      raw: summary.largestAsset.bytes,
+    });
+  }
+  if (summary.largestEntry) {
+    lines.push({
+      label: 'Largest subtree',
+      value: `${formatBytes(summary.largestEntry.subtreeBytes)} — ${summary.largestEntry.title || '(untitled)'}`,
+      raw: summary.largestEntry.subtreeBytes,
+    });
+  }
+  if (orphanCount > 0) {
+    lines.push({
+      label: 'Orphan assets',
+      value: `${orphanCount} (${formatBytes(orphanBytes)})`,
+      raw: orphanBytes,
+    });
+  }
+
+  const list = createElement('ul', 'pkc-storage-profile-summary-list');
+  for (const { label: k, value, raw } of lines) {
+    const li = createElement('li', 'pkc-storage-profile-summary-row');
+    const kEl = createElement('span', 'pkc-storage-profile-summary-key');
+    kEl.textContent = k;
+    const vEl = createElement('span', 'pkc-storage-profile-summary-value');
+    vEl.textContent = value;
+    if (raw !== undefined) vEl.setAttribute('title', `${raw} bytes`);
+    li.appendChild(kEl);
+    li.appendChild(vEl);
+    list.appendChild(li);
+  }
+  section.appendChild(list);
+  return section;
+}
+
+/**
+ * Top-list table for the Storage Profile dialog — up to N entries
+ * ordered by subtree size.  Empty rows (entries that contribute
+ * zero bytes) are filtered at `buildStorageProfile` sort time.
+ */
+function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
+  const TOP_N = 20;
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'storage-profile-top');
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = `Top entries by size (showing ${Math.min(profile.rows.length, TOP_N)} of ${profile.rows.length})`;
+  section.appendChild(label);
+
+  if (profile.rows.length === 0) {
+    const empty = createElement('div', 'pkc-storage-profile-empty');
+    empty.textContent = 'No entries carry asset bytes.';
+    section.appendChild(empty);
+    return section;
+  }
+
+  const table = createElement('ul', 'pkc-storage-profile-rows');
+  for (const row of profile.rows.slice(0, TOP_N)) {
+    const li = createElement('li', 'pkc-storage-profile-row');
+    li.setAttribute('data-pkc-region', 'storage-profile-row');
+    li.setAttribute('data-pkc-lid', row.lid);
+    li.setAttribute('data-pkc-archetype', row.archetype);
+    li.setAttribute('data-pkc-subtree-bytes', String(row.subtreeBytes));
+
+    const head = createElement('span', 'pkc-storage-profile-row-head');
+    const icon = createElement('span', 'pkc-storage-profile-row-icon');
+    icon.textContent = archetypeIcon(row.archetype);
+    head.appendChild(icon);
+
+    const title = createElement('span', 'pkc-storage-profile-row-title');
+    title.textContent = row.title || '(untitled)';
+    head.appendChild(title);
+
+    const size = createElement('span', 'pkc-storage-profile-row-size');
+    size.textContent = formatBytes(row.subtreeBytes);
+    size.setAttribute('title', `${row.subtreeBytes} bytes`);
+    head.appendChild(size);
+    li.appendChild(head);
+
+    const detail = createElement('span', 'pkc-storage-profile-row-detail');
+    const parts: string[] = [];
+    if (row.archetype === 'folder') {
+      parts.push(`folder · self ${formatBytes(row.selfBytes)}`);
+    } else {
+      parts.push(archetypeLabel(row.archetype));
+    }
+    if (row.ownedCount > 0) parts.push(`${row.ownedCount} owned`);
+    if (row.referencedCount > 0) parts.push(`${row.referencedCount} refs`);
+    if (row.largestAssetBytes > 0) {
+      parts.push(`largest ${formatBytes(row.largestAssetBytes)}`);
+    }
+    detail.textContent = parts.join(' · ');
+    li.appendChild(detail);
+
+    table.appendChild(li);
+  }
+  section.appendChild(table);
+  return section;
 }
 
 function renderExportImportInline(state: AppState): HTMLElement {

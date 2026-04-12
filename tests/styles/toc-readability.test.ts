@@ -111,11 +111,32 @@ describe('TOC light-mode readability', () => {
     );
   });
 
-  it('dark-mode token still references --c-muted (no regression)', () => {
-    // Manual dark theme must keep its existing definition — we are
-    // only fixing light mode here per the user report.
+  it(':root (dark default) defines --c-toc-secondary: #9ab37e (AA pass)', () => {
+    // Previously aliased to `var(--c-muted)` (#5a6e4a) which only
+    // reaches ~3.3:1 against the #0d0f0a terminal bg — fails WCAG AA
+    // for normal text.  Pinned to a brighter PIP-Boy green (~8.2:1)
+    // so day/log/label rows are legible while still being visibly
+    // "quieter" than --c-fg (#c8d8b0).
+    const rootBlock = baseCss.match(/:root\s*\{[\s\S]*?\n\}/);
+    expect(rootBlock).not.toBeNull();
+    expect(rootBlock![0]).toMatch(/--c-toc-secondary:\s*#9ab37e/);
+  });
+
+  it('manual dark theme (#pkc-root[data-pkc-theme="dark"]) defines --c-toc-secondary: #9ab37e', () => {
     expect(baseCss).toMatch(
-      /#pkc-root\[data-pkc-theme="dark"\]\s*\{[\s\S]*?--c-toc-secondary:\s*var\(--c-muted\)/,
+      /#pkc-root\[data-pkc-theme="dark"\]\s*\{[\s\S]*?--c-toc-secondary:\s*#9ab37e/,
+    );
+  });
+
+  it('dark-mode TOC secondary is no longer aliased to var(--c-muted)', () => {
+    // Regression guard — an accidental revert to `var(--c-muted)`
+    // would silently drop day/log rows back below WCAG AA.
+    const darkBlock = baseCss.match(
+      /#pkc-root\[data-pkc-theme="dark"\]\s*\{[\s\S]*?\n\}/,
+    );
+    expect(darkBlock).not.toBeNull();
+    expect(darkBlock![0]).not.toMatch(
+      /--c-toc-secondary:\s*var\(--c-muted\)/,
     );
   });
 });

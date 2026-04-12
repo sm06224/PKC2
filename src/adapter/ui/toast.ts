@@ -37,6 +37,20 @@ export interface ToastOptions {
   autoDismissMs?: number;
   /** Host element. Default: `document.body`. */
   host?: HTMLElement;
+  /**
+   * If provided, render an inline "Export Now" action link inside
+   * the toast so the user has a one-click escape route (typical
+   * cause: "attachment rejected — too big to embed in the single
+   * HTML; export now to back up your current state before retrying
+   * with a smaller file").  The callback is invoked directly on
+   * click — we cannot rely on `bindActions()` delegation because
+   * the toast stack is hosted outside `#pkc-root`.  The button
+   * still carries `data-pkc-action="begin-export"` for parity with
+   * the in-app export buttons and for test targeting.
+   */
+  onExport?: () => void;
+  /** Label for the export action. Default: "Export Now". */
+  exportLabel?: string;
 }
 
 const DEFAULT_AUTO_DISMISS_MS = 7000;
@@ -85,6 +99,22 @@ export function showToast(opts: ToastOptions): HTMLElement {
       const next = severerKind(prev, kind);
       if (next !== prev) applyKindClass(t, next);
       t.dataset.pkcToastKind = next;
+      // Belt-and-braces: if the first call omitted `onExport` but a
+      // repeat provides one, upgrade the toast by inserting the
+      // action button before the existing dismiss × so the newer
+      // context (e.g. the user dropped a SECOND oversized file and
+      // now really needs a way out) is honoured.
+      if (
+        opts.onExport &&
+        !t.querySelector('[data-pkc-action="begin-export"]')
+      ) {
+        const dismissEl = t.querySelector<HTMLElement>(
+          '[data-pkc-action="dismiss-toast"]',
+        );
+        const action = buildExportAction(opts.onExport, opts.exportLabel);
+        if (dismissEl) t.insertBefore(action, dismissEl);
+        else t.appendChild(action);
+      }
       // Reset timer.
       resetTimer(t, autoDismissMs);
       return t;
@@ -104,6 +134,10 @@ export function showToast(opts: ToastOptions): HTMLElement {
   body.textContent = opts.message;
   toast.appendChild(body);
 
+  if (opts.onExport) {
+    toast.appendChild(buildExportAction(opts.onExport, opts.exportLabel));
+  }
+
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'pkc-toast-dismiss';
@@ -121,6 +155,33 @@ export function showToast(opts: ToastOptions): HTMLElement {
   stack.appendChild(toast);
   resetTimer(toast, autoDismissMs);
   return toast;
+}
+
+/**
+ * Build the "Export Now" inline action button that surfaces the
+ * existing BEGIN_EXPORT flow from inside a toast.  The onclick
+ * handler invokes the callback directly (the toast stack lives
+ * outside `#pkc-root`, so the global action-binder delegation
+ * cannot see this element); the `data-pkc-action` / `data-pkc-
+ * export-*` attributes are kept for test targeting and for parity
+ * with the in-app export buttons.
+ */
+function buildExportAction(
+  onExport: () => void,
+  label?: string,
+): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pkc-toast-action';
+  btn.setAttribute('data-pkc-action', 'begin-export');
+  btn.setAttribute('data-pkc-export-mode', 'full');
+  btn.setAttribute('data-pkc-export-mutability', 'editable');
+  btn.textContent = label ?? 'Export Now';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onExport();
+  });
+  return btn;
 }
 
 function applyKindClass(el: HTMLElement, kind: ToastKind): void {

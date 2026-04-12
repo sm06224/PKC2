@@ -14,8 +14,12 @@ import {
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
-import { isFileTooLarge, fileSizeWarningMessage } from './guardrails';
+import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { showToast } from './toast';
+import {
+  estimateStorage,
+  attachmentWarningMessage,
+} from '../platform/storage-estimate';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
@@ -27,7 +31,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
@@ -795,6 +799,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (helpOverlay) helpOverlay.style.display = 'none';
         break;
       }
+      case 'show-storage-profile': {
+        // Open the Storage Profile dialog. The overlay is built on
+        // demand (NOT rendered per render) so the profile compute
+        // and DOM allocation only happen at click time. Re-mounts
+        // each open so the numbers reflect the live container.
+        const existing = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (existing) existing.remove();
+        const st = dispatcher.getState();
+        const overlay = buildStorageProfileOverlay(st.container);
+        root.appendChild(overlay);
+        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menuPanel) menuPanel.style.display = 'none';
+        break;
+      }
+      case 'close-storage-profile': {
+        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (overlay) overlay.remove();
+        break;
+      }
       case 'toggle-show-archived': {
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
@@ -1215,6 +1238,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
       if (isSlashMenuOpen()) {
         closeSlashMenu();
+        return;
+      }
+      // Close storage profile if mounted (sits visually on top of
+      // the shell menu so close it first when both are visible). The
+      // overlay is mounted on demand, so its presence alone means
+      // "open" — no display-toggling needed.
+      const profileOverlay = root.querySelector<HTMLElement>(
+        '[data-pkc-region="storage-profile"]',
+      );
+      if (profileOverlay) {
+        profileOverlay.remove();
         return;
       }
       // Close shortcut help if open
@@ -2366,9 +2400,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       e.preventDefault();
       const rejectMsg = fileSizeWarningMessage(file.size) ?? 'File too large.';
       console.warn(`[PKC2] Paste rejected: ${rejectMsg}`);
-      showToast({ message: rejectMsg, kind: 'warn' });
+      showToast({
+        message: rejectMsg,
+        kind: 'warn',
+        // Surface a one-click escape hatch — the attachment was
+        // refused because it would bloat the single-HTML product;
+        // exporting the current container BEFORE the user tries
+        // again lets them keep progress.
+        onExport: () =>
+          dispatcher.dispatch({
+            type: 'BEGIN_EXPORT',
+            mode: 'full',
+            mutability: 'editable',
+          }),
+      });
       return;
     }
+
+    // Storage-capacity preflight — for heavy (≥5 MB) paste attempts,
+    // consult navigator.storage.estimate() asynchronously. The paste
+    // itself is NOT blocked; the warning surfaces alongside the
+    // attempt so the user knows the save may fail and has a one-
+    // click export path. Silent on engines without the API.
+    preflightStorageWarn(file, dispatcher);
 
     // Check if we're in a markdown-capable textarea
     const target = e.target;
@@ -3564,6 +3618,42 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
 }
 
 /**
+ * Storage-capacity preflight helper — shared by the paste and drop
+ * attachment entry points.  For files at or above the "heavy" band
+ * (≥ 5 MB) we consult `navigator.storage.estimate()` asynchronously
+ * and surface a non-blocking toast with an Export Now escape hatch
+ * when free space is tight relative to the file.
+ *
+ * Design notes:
+ *   - Skips small files so the surface is not noisy — a 200 KB
+ *     screenshot would never sensibly trigger a quota warning.
+ *   - Never blocks: the underlying paste / drop proceeds in parallel;
+ *     the warning arrives alongside the FileReader work.
+ *   - Stays silent on engines where the API is absent or throws —
+ *     `estimateStorage()` already encapsulates that fallback.
+ *   - Toast coalescing (identical message) prevents a storm when
+ *     the user retries with the same file.
+ */
+function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
+  if (file.size < SIZE_WARN_HEAVY) return;
+  void estimateStorage().then((result) => {
+    const msg = attachmentWarningMessage(result, file.size);
+    if (!msg) return;
+    console.warn(`[PKC2] Storage preflight (attachment): ${msg}`);
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () =>
+        dispatcher.dispatch({
+          type: 'BEGIN_EXPORT',
+          mode: 'full',
+          mutability: 'editable',
+        }),
+    });
+  });
+}
+
+/**
  * Process a dropped file: create an attachment entry and commit it immediately.
  * Flow: CREATE_ENTRY → COMMIT_EDIT (with body metadata + assets) → CREATE_RELATION (if folder context)
  */
@@ -3573,9 +3663,23 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
   if (isFileTooLarge(file.size)) {
     const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
     console.warn(`[PKC2] Drop rejected: ${msg}`);
-    showToast({ message: msg, kind: 'warn' });
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () =>
+        dispatcher.dispatch({
+          type: 'BEGIN_EXPORT',
+          mode: 'full',
+          mutability: 'editable',
+        }),
+    });
     return;
   }
+
+  // Storage-capacity preflight — for heavy (≥5 MB) drops, surface
+  // a quota warning alongside the attempt. Does not block the drop.
+  preflightStorageWarn(file, dispatcher);
+
   const reader = new FileReader();
   reader.onerror = () => {
     const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;

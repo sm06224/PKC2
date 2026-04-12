@@ -34,11 +34,15 @@
      inheritance fallbacks. */
   --c-text: var(--c-fg);
   --c-text-dim: var(--c-muted);
-  /* TOC secondary rows (day / log labels). Dark theme reuses --c-muted;
-     light theme overrides this token below to a darker parchment ink so
-     the rows pass WCAG AA against the warm-beige sidebar background
+  /* TOC secondary rows (day / log labels).
+     Previously aliased to `var(--c-muted)` (#5a6e4a) which only reaches
+     ~3.3:1 against the #0d0f0a terminal bg — below WCAG AA for normal
+     text at the 0.72rem mono size used by day/log rows.  Pinned to a
+     brighter muted PIP-Boy green (~8.2:1) so the rows pass AA without
+     losing the "quieter than --c-fg" hierarchy.  Light theme overrides
+     this token below to a darker parchment ink for the same reason
      (see docs/development/textlog-viewer-and-linkability-redesign.md). */
-  --c-toc-secondary: var(--c-muted);
+  --c-toc-secondary: #9ab37e;
   /* Slice 5-C: live-viewer range highlight + range-embed marker.
      A low-alpha accent tint layered on top of the normal log
      background so it coexists with the important-flag tint (orange).
@@ -139,7 +143,9 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
-  --c-toc-secondary: var(--c-muted);
+  /* See the `:root` block for the rationale — #5a6e4a (aliased via
+     `--c-muted`) fails WCAG AA on the dark terminal bg. */
+  --c-toc-secondary: #9ab37e;
   --c-range-active-bg: rgba(51, 255, 102, 0.08);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
@@ -249,6 +255,33 @@
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* ── Inline "Export Now" action inside the save-failure banner.
+ *
+ * Rendered only when callers pass `onExport` to
+ * `showIdbSaveFailureBanner()`.  Sits between the detail text and
+ * the × dismiss so the user sees a clear escape route from a
+ * quota / abort situation without leaving the banner.  Visual
+ * style mirrors the banner's inverted-on-warn colors; the hover /
+ * focus state uses a modestly darker overlay so the button is
+ * obviously actionable.
+ */
+.pkc-idb-warning-action {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pkc-idb-warning-action:hover,
+.pkc-idb-warning-action:focus-visible {
+  background: rgba(0, 0, 0, 0.18);
+}
+
 /* ── Save-failure variant ──
  *
  * Same visual style as the boot-time banner, but offset vertically so
@@ -333,6 +366,32 @@
 .pkc-toast-dismiss:hover,
 .pkc-toast-dismiss:focus-visible {
   background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Inline "Export Now" action inside a toast.
+ *
+ * Rendered only when callers pass `onExport` to `showToast()`.
+ * Sits between the body text and the × dismiss; uses an outlined
+ * chip style rather than a full button so it fits visually inside
+ * the toast without dominating it.  `currentColor` borrow means the
+ * outline automatically inverts for warn / error / info kinds.
+ */
+.pkc-toast-action {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+.pkc-toast-action:hover,
+.pkc-toast-action:focus-visible {
+  background: rgba(0, 0, 0, 0.18);
 }
 
 /* ── Shell layout ── */
@@ -2992,6 +3051,144 @@
   padding-top: 0.5rem;
   border-top: 1px solid var(--c-border);
   margin-top: 0.25rem;
+}
+
+/* ── Storage Profile Dialog ── */
+.pkc-storage-profile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-storage-profile-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 520px;
+  width: 92%;
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-storage-profile-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin: 0 0 0.25rem 0;
+  font-weight: 600;
+}
+
+.pkc-storage-profile-note {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  line-height: 1.4;
+}
+
+.pkc-storage-profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--c-border);
+}
+
+.pkc-storage-profile-section:first-of-type {
+  border-top: none;
+}
+
+.pkc-storage-profile-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pkc-storage-profile-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.pkc-storage-profile-summary-key {
+  color: var(--c-muted);
+}
+
+.pkc-storage-profile-summary-value {
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+}
+
+.pkc-storage-profile-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pkc-storage-profile-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+
+.pkc-storage-profile-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.pkc-storage-profile-row-icon {
+  flex-shrink: 0;
+}
+
+.pkc-storage-profile-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--c-fg);
+}
+
+.pkc-storage-profile-row-size {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--c-accent);
+}
+
+.pkc-storage-profile-row-detail {
+  font-size: 0.65rem;
+  color: var(--c-muted);
+}
+
+.pkc-storage-profile-empty {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  padding: 0.4rem 0;
+}
+
+.pkc-storage-profile-close {
+  margin-top: 0.5rem;
+  align-self: flex-end;
 }
 
 /* Collapsed pane states */

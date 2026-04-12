@@ -159,6 +159,115 @@ describe('showIdbSaveFailureBanner', () => {
     expect(second.textContent).toContain('AbortError');
   });
 
+  // ── Export Now action ───────────────────────────────────────────────
+  //
+  // When a caller passes `onExport`, the save-failure banner exposes a
+  // one-click escape hatch carrying `data-pkc-action="begin-export"`.
+  // The callback fires directly (delegation via `#pkc-root`'s
+  // action-binder cannot reach this banner since it lives under
+  // document.body).
+
+  it('renders no Export Now button when onExport is omitted', () => {
+    const banner = showIdbSaveFailureBanner({ host });
+    expect(
+      banner.querySelector('[data-pkc-action="begin-export"]'),
+    ).toBeNull();
+  });
+
+  it('renders an Export Now button when onExport is provided', () => {
+    const onExport = vi.fn();
+    const banner = showIdbSaveFailureBanner({ host, onExport });
+    const btn = banner.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.classList.contains('pkc-idb-warning-action')).toBe(true);
+    expect(btn!.textContent).toBe('Export Now');
+    expect(btn!.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(btn!.getAttribute('data-pkc-export-mutability')).toBe('editable');
+  });
+
+  it('clicking Export Now invokes the callback exactly once', () => {
+    const onExport = vi.fn();
+    const banner = showIdbSaveFailureBanner({ host, onExport });
+    const btn = banner.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    )!;
+    btn.click();
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export Now click does NOT dismiss the banner', () => {
+    const banner = showIdbSaveFailureBanner({ host, onExport: () => {} });
+    banner
+      .querySelector<HTMLButtonElement>('[data-pkc-action="begin-export"]')!
+      .click();
+    expect(host.contains(banner)).toBe(true);
+  });
+
+  it('Export Now button sits between the detail and the × dismiss', () => {
+    const banner = showIdbSaveFailureBanner({
+      host,
+      onExport: () => {},
+    });
+    const children = Array.from(banner.children) as HTMLElement[];
+    const detailIdx = children.findIndex((c) =>
+      c.classList.contains('pkc-idb-warning-detail'),
+    );
+    const actionIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-action') === 'begin-export',
+    );
+    const dismissIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-action') === 'dismiss-idb-save-warning',
+    );
+    expect(detailIdx).toBeGreaterThanOrEqual(0);
+    expect(actionIdx).toBeGreaterThan(detailIdx);
+    expect(dismissIdx).toBeGreaterThan(actionIdx);
+  });
+
+  it('coalescing does not duplicate the Export Now button', () => {
+    const onExport = vi.fn();
+    const first = showIdbSaveFailureBanner({ host, onExport, reason: 'A' });
+    const second = showIdbSaveFailureBanner({ host, onExport, reason: 'B' });
+    expect(second).toBe(first);
+    expect(
+      first.querySelectorAll('[data-pkc-action="begin-export"]').length,
+    ).toBe(1);
+  });
+
+  it('coalescing upgrades a button-less banner when the repeat provides onExport', () => {
+    const first = showIdbSaveFailureBanner({ host, reason: 'initial' });
+    expect(
+      first.querySelector('[data-pkc-action="begin-export"]'),
+    ).toBeNull();
+    const onExport = vi.fn();
+    const same = showIdbSaveFailureBanner({
+      host,
+      reason: 'upgraded',
+      onExport,
+    });
+    expect(same).toBe(first);
+    const btn = first.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    );
+    expect(btn).not.toBeNull();
+    btn!.click();
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export Now button is a keyboard-focusable native <button>', () => {
+    const banner = showIdbSaveFailureBanner({
+      host,
+      onExport: () => {},
+    });
+    const btn = banner.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    )!;
+    expect(btn.tagName).toBe('BUTTON');
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+  });
+
   it('coexists with the boot-time idb-warning banner (distinct regions)', () => {
     const boot = showIdbWarningBanner({ host, reason: 'indexedDB undefined' });
     const save = showIdbSaveFailureBanner({ host, reason: 'QuotaExceededError' });
