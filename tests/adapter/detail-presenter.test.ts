@@ -79,6 +79,47 @@ describe('DetailPresenter', () => {
     expect(presenter.collectBody(wrapper)).toBe('new content');
   });
 
+  // ── Slice C: Editor sizing policy ──
+  //
+  // See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C.
+  // Center pane textarea height must be at least 15 rows and grow with
+  // body line count. Replaces the previous fixed rows=10.
+
+  it('Slice C: editor textarea rows is at least 15 for short bodies', () => {
+    const presenter = getDefaultPresenter();
+    const entry = { ...makeEntry(), body: 'one line' };
+    const el = presenter.renderEditorBody(entry);
+    const textarea = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(Number(textarea!.rows)).toBeGreaterThanOrEqual(15);
+  });
+
+  it('Slice C: editor textarea rows grows with body line count (lineCount + 3)', () => {
+    const presenter = getDefaultPresenter();
+    const body = new Array(20).fill('line').join('\n'); // 20 lines
+    const entry = { ...makeEntry(), body };
+    const el = presenter.renderEditorBody(entry);
+    const textarea = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(Number(textarea!.rows)).toBe(23); // max(15, 20+3) = 23
+  });
+
+  it('Slice C: editor textarea rows is 15 for empty body (minimum)', () => {
+    const presenter = getDefaultPresenter();
+    const entry = { ...makeEntry(), body: '' };
+    const el = presenter.renderEditorBody(entry);
+    const textarea = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(Number(textarea!.rows)).toBe(15);
+  });
+
+  it('Slice C: editor textarea rows is 15 for bodies below threshold', () => {
+    const presenter = getDefaultPresenter();
+    // 10 lines + 3 buffer = 13, still below minimum of 15.
+    const body = new Array(10).fill('line').join('\n');
+    const entry = { ...makeEntry(), body };
+    const el = presenter.renderEditorBody(entry);
+    const textarea = el.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(Number(textarea!.rows)).toBe(15);
+  });
+
   // ── Registry dispatch ──
 
   it('returns default presenter for unregistered archetype', () => {

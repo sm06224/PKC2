@@ -2585,4 +2585,58 @@ describe('Entry Window', () => {
       });
     });
   });
+
+  // ── Slice C: Editor sizing policy ───────────────────────────
+  //
+  // See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C.
+  // Entry window (dblclick edit) for non-structured archetypes must follow
+  // viewport/pane instead of rows=10. Structured archetypes unaffected.
+  describe('Slice C: editor sizing policy', () => {
+    it('non-structured TEXT edit-pane marks body-edit as viewport-sized (no rows=10)', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+      // Body textarea should no longer be rows="10" — it follows viewport.
+      const bodyEditTag = html.match(/<textarea[^>]*id="body-edit"[^>]*>/)?.[0] ?? '';
+      expect(bodyEditTag).toContain('data-pkc-viewport-sized="true"');
+      expect(bodyEditTag).not.toMatch(/\brows="10"/);
+    });
+
+    it('non-structured edit-pane has data-pkc-wide="true"', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+      const editPaneTag = html.match(/<div[^>]*id="edit-pane"[^>]*>/)?.[0] ?? '';
+      expect(editPaneTag).toContain('data-pkc-wide="true"');
+    });
+
+    it('structured archetypes (textlog) do NOT widen edit-pane', async () => {
+      const textlogBody = JSON.stringify({ entries: [] });
+      const html = await openAndCapture(false, { archetype: 'textlog', body: textlogBody });
+      const editPaneTag = html.match(/<div[^>]*id="edit-pane"[^>]*>/)?.[0] ?? '';
+      expect(editPaneTag).not.toContain('data-pkc-wide="true"');
+    });
+
+    it('structured archetypes keep hidden body-edit without viewport sizing', async () => {
+      const textlogBody = JSON.stringify({ entries: [] });
+      const html = await openAndCapture(false, { archetype: 'textlog', body: textlogBody });
+      const bodyEditTag = html.match(/<textarea[^>]*id="body-edit"[^>]*>/)?.[0] ?? '';
+      expect(bodyEditTag).not.toContain('data-pkc-viewport-sized');
+    });
+
+    it('inline CSS includes viewport-sized textarea rule', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'x' });
+      expect(html).toContain('.pkc-editor-body[data-pkc-viewport-sized="true"]');
+      expect(html).toContain('calc(100vh - 12rem)');
+    });
+
+    it('inline CSS includes wide edit-pane rule', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'x' });
+      expect(html).toContain('.pkc-editor[data-pkc-wide="true"]');
+    });
+
+    it('pkc-window-content becomes flex column for edit-pane flex:1 chain', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'x' });
+      // Assert both flex declarations appear in the window-content rule.
+      const match = html.match(/\.pkc-window-content\s*\{[^}]*\}/)?.[0] ?? '';
+      expect(match).toContain('display: flex');
+      expect(match).toContain('flex-direction: column');
+    });
+  });
 });
