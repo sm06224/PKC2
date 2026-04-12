@@ -5,6 +5,11 @@ import {
   importContainerFromZip,
   buildPackageZip,
   importFromZipBuffer,
+  createZipBytes,
+  parseZip,
+  toDosDateTime,
+  fromDosDateTime,
+  textToBytes,
 } from '@adapter/platform/zip-package';
 import type { Container } from '@core/model/container';
 
@@ -470,3 +475,131 @@ function simpleCrc32(data: Uint8Array): number {
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
+
+// ── P0-2: DOS date/time encoding regression guards ──
+
+describe('DOS date/time encoding', () => {
+  it('encodes a specific Date and round-trips with 2-second precision', () => {
+    // ZIP stores seconds in 2-second increments, so odd seconds round down.
+    const original = new Date(2026, 3, 12, 14, 37, 20); // 2026-04-12 14:37:20 local
+    const { time, date } = toDosDateTime(original);
+    const decoded = fromDosDateTime(time, date);
+    expect(decoded.getFullYear()).toBe(2026);
+    expect(decoded.getMonth()).toBe(3);
+    expect(decoded.getDate()).toBe(12);
+    expect(decoded.getHours()).toBe(14);
+    expect(decoded.getMinutes()).toBe(37);
+    expect(decoded.getSeconds()).toBe(20);
+  });
+
+  it('rounds odd seconds down to the nearest even second (ZIP spec)', () => {
+    const original = new Date(2026, 0, 1, 0, 0, 5); // seconds=5 → 4
+    const { time, date } = toDosDateTime(original);
+    const decoded = fromDosDateTime(time, date);
+    expect(decoded.getSeconds()).toBe(4);
+  });
+
+  it('clamps years below 1980 to the DOS epoch', () => {
+    const original = new Date(1970, 5, 15, 12, 0, 0);
+    const { time, date } = toDosDateTime(original);
+    const decoded = fromDosDateTime(time, date);
+    expect(decoded.getFullYear()).toBe(1980);
+  });
+
+  it('clamps years above 2107 to the DOS ceiling', () => {
+    const original = new Date(2200, 5, 15, 12, 0, 0);
+    const { time, date } = toDosDateTime(original);
+    const decoded = fromDosDateTime(time, date);
+    expect(decoded.getFullYear()).toBe(2107);
+  });
+
+  it('(0, 0) decodes to DOS epoch 1980-01-01 (legacy ZIP compatibility)', () => {
+    const d = fromDosDateTime(0, 0);
+    expect(d.getFullYear()).toBe(1980);
+    expect(d.getMonth()).toBe(0);
+    expect(d.getDate()).toBe(1);
+  });
+});
+
+describe('createZipBytes timestamp stamping (P0-2)', () => {
+  it('writes the entry mtime into the ZIP (regression guard for hardcoded zero)', () => {
+    const mtime = new Date(2026, 3, 12, 9, 30, 0);
+    const bytes = createZipBytes([
+      { name: 'sample.txt', data: textToBytes('hello'), mtime },
+    ]);
+    const parsed = parseZip(bytes);
+    expect(parsed).toHaveLength(1);
+    // Precision is 2s; minute granularity is exact.
+    expect(parsed[0]!.mtime.getFullYear()).toBe(2026);
+    expect(parsed[0]!.mtime.getMonth()).toBe(3);
+    expect(parsed[0]!.mtime.getDate()).toBe(12);
+    expect(parsed[0]!.mtime.getHours()).toBe(9);
+    expect(parsed[0]!.mtime.getMinutes()).toBe(30);
+  });
+
+  it('defaults missing mtime to the current time (not 1980-01-01)', () => {
+    const before = Date.now();
+    const bytes = createZipBytes([
+      { name: 'nostamp.txt', data: textToBytes('x') },
+    ]);
+    const after = Date.now();
+    const parsed = parseZip(bytes);
+    const stamped = parsed[0]!.mtime.getTime();
+    // 2-second rounding can push the stamp slightly below `before`, so
+    // give a 2-second floor.
+    expect(stamped).toBeGreaterThanOrEqual(before - 2000);
+    expect(stamped).toBeLessThanOrEqual(after + 1000);
+    // And definitely not the DOS epoch.
+    expect(parsed[0]!.mtime.getFullYear()).toBeGreaterThan(2000);
+  });
+
+  it('all default-stamped entries in a single archive share the same mtime', () => {
+    // Captured once per archive in createZipBytes, so two entries written
+    // in the same call must match.
+    const bytes = createZipBytes([
+      { name: 'a.txt', data: textToBytes('a') },
+      { name: 'b.txt', data: textToBytes('b') },
+    ]);
+    const parsed = parseZip(bytes);
+    expect(parsed[0]!.mtime.getTime()).toBe(parsed[1]!.mtime.getTime());
+  });
+});
+
+describe('buildPackageZip timestamp stamping (P0-2)', () => {
+  it('stamps manifest.json, container.json and assets with the export time', async () => {
+    const container = createTestContainer({
+      assets: { 'ast-1': 'aGVsbG8=' }, // base64 "hello"
+    });
+    const before = Date.now();
+    const blob = buildPackageZip(container);
+    const after = Date.now();
+    const parsed = parseZip(new Uint8Array(await blob.arrayBuffer()));
+    expect(parsed.length).toBeGreaterThanOrEqual(3);
+    for (const e of parsed) {
+      const t = e.mtime.getTime();
+      expect(t).toBeGreaterThanOrEqual(before - 2000);
+      expect(t).toBeLessThanOrEqual(after + 1000);
+      expect(e.mtime.getFullYear()).toBeGreaterThan(2000);
+    }
+  });
+});
+
+describe('compression mode audit (P0-2)', () => {
+  it('every entry uses ZIP method 0 (stored) — documented & intentional', async () => {
+    const container = createTestContainer();
+    const blob = buildPackageZip(container);
+    const data = new Uint8Array(await blob.arrayBuffer());
+    // Scan local file headers for method at offset +8.
+    // Local file header signature = 0x04034b50.
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let checked = 0;
+    for (let i = 0; i < data.length - 4; i++) {
+      if (view.getUint32(i, true) === 0x04034b50) {
+        const method = view.getUint16(i + 8, true);
+        expect(method).toBe(0);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
