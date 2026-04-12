@@ -250,6 +250,77 @@
   right: 0.5rem;
 }
 
+/* ── Non-blocking toast stack ──
+ *
+ * Fixed-position column at the bottom-right of the viewport used by
+ * `showToast()` to surface transient warnings (paste / drop reject,
+ * FileReader errors). Kept deliberately narrow so it does not cover
+ * the working area; individual toasts wrap their body text.
+ *
+ * Intentionally separate from `.pkc-idb-warning` because toasts can
+ * auto-dismiss and are expected to appear/disappear frequently, while
+ * the IDB banner is a single persistent surface.
+ */
+.pkc-toast-stack {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: auto;
+  top: auto;
+  z-index: 9998; /* just below the IDB banner (9999) */
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(28rem, calc(100vw - 1.5rem));
+  pointer-events: none; /* toasts themselves re-enable pointer events */
+}
+.pkc-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  line-height: 1.35;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* Defaults override by kind classes below — the tokens are already
+   * light/dark aware (see :root / @media / [data-pkc-theme] blocks). */
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+}
+.pkc-toast-warn {
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+}
+.pkc-toast-error {
+  background: var(--c-danger);
+  color: #ffffff;
+}
+.pkc-toast-info {
+  background: var(--c-info);
+  color: var(--c-info-fg);
+}
+.pkc-toast-body {
+  flex: 1;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.pkc-toast-dismiss {
+  all: unset;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.pkc-toast-dismiss:hover,
+.pkc-toast-dismiss:focus-visible {
+  background: rgba(0, 0, 0, 0.15);
+}
+
 /* ── Shell layout ── */
 .pkc-shell {
   display: flex;
