@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-11.
+Last updated: 2026-04-12.
 
 ## Status Legend
 
@@ -155,6 +155,50 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
 | Calendar Phase 2 (month wrap) | 必要性が薄い。Phase 1 で主要操作は完了 |
 | Shift+Arrow range selection | Phase 2-D 未解決。前提が未整備 |
+
+## Idea Inventory — 2026-04-12
+
+`project-priority-refresh.md` 後に収集したアイデアを粒度ごとに分解・正規化。
+実装は行わず、各 idea を 1 ファイル = 1 テーマで spec 化した。
+カテゴリ間の参照は各 doc 末尾「将来拡張の余地」に記載。
+
+### Category A — Immediate UX Improvements (`docs/development/`)
+
+| # | File | Topic |
+|---|------|-------|
+| A-1 | `textlog-readability-hardening.md` | TEXTLOG 境界/日付/秒表示 |
+| A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit |
+| A-3 | `table-of-contents-right-pane.md` | 右ペイン TOC |
+| A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット |
+
+### Category B — Markdown / Rendering Extensions (`docs/development/markdown-extensions/`)
+
+| # | File | Topic |
+|---|------|-------|
+| B-1 | `markdown-csv-table-extension.md` | CSV fenced block → table |
+| B-2 | `markdown-code-block-highlighting.md` | code block syntax highlight |
+| B-3 | `markdown-quote-input-assist.md` | 引用入力補助 |
+
+### Category C — Data Model Extensions (`docs/development/data-model/`)
+
+| # | File | Topic |
+|---|------|-------|
+| C-1 | `revision-branch-restore.md` | revision 復元 |
+| C-2 | `entry-ordering-model.md` | entry 手動 ordering |
+| C-3 | `link-index-entry.md` | link index entry |
+| C-4 | `spreadsheet-entry-archetype.md` | spreadsheet archetype |
+| C-5 | `complex-entry-archetype.md` | complex (composite) archetype |
+| C-6 | `document-set-archetype.md` | document-set archetype |
+| C-7 | `office-preview-strategy.md` | office file preview |
+
+### Category D — Long-Term Vision (`docs/vision/`)
+
+| # | File | Topic |
+|---|------|-------|
+| D-1 | `pkc-message-externalization.md` | entry message 送受信 |
+| D-2 | `pkc-multi-window-architecture.md` | multi-window 協調 |
+| D-3 | `webrtc-p2p-collaboration.md` | WebRTC P2P |
+| D-4 | `pkc-application-scope-vision.md` | application scope 定義 |
 
 ## Close Audit Summary
 
