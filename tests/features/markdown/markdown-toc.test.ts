@@ -4,7 +4,9 @@ import {
   makeSlugCounter,
   extractHeadingsFromMarkdown,
   extractTocFromEntry,
+  makeLogLabel,
 } from '../../../src/features/markdown/markdown-toc';
+import type { TocNode } from '../../../src/features/markdown/markdown-toc';
 import type { Entry } from '../../../src/core/model/record';
 
 // ── slugifyHeading ──
@@ -128,7 +130,7 @@ function makeEntry(archetype: Entry['archetype'], body: string): Entry {
   };
 }
 
-describe('extractTocFromEntry', () => {
+describe('extractTocFromEntry — TEXT', () => {
   it('returns empty for archetypes without markdown bodies', () => {
     expect(extractTocFromEntry(makeEntry('todo', '# should not appear'))).toEqual([]);
     expect(extractTocFromEntry(makeEntry('form', '# nope'))).toEqual([]);
@@ -136,57 +138,101 @@ describe('extractTocFromEntry', () => {
     expect(extractTocFromEntry(makeEntry('attachment', '# nope'))).toEqual([]);
   });
 
-  it('TEXT: flattens headings from entry.body without logId', () => {
+  it('flattens headings from entry.body as heading nodes', () => {
     const out = extractTocFromEntry(makeEntry('text', '# A\n## B\n### C'));
     expect(out).toHaveLength(3);
-    expect(out.every((h) => h.logId === undefined)).toBe(true);
-    expect(out.map((h) => h.text)).toEqual(['A', 'B', 'C']);
+    expect(out.every((n) => n.kind === 'heading')).toBe(true);
+    expect(out.map((n) => (n as { text: string }).text)).toEqual(['A', 'B', 'C']);
+    expect(out.map((n) => (n as { level: number }).level)).toEqual([1, 2, 3]);
   });
 
-  it('TEXTLOG: concatenates headings across log entries, each tagged with its logId', () => {
+  it('TEXT heading nodes carry no logId', () => {
+    const out = extractTocFromEntry(makeEntry('text', '# A'));
+    expect(out[0]).toMatchObject({ kind: 'heading' });
+    expect((out[0] as { logId?: string }).logId).toBeUndefined();
+  });
+});
+
+describe('extractTocFromEntry — TEXTLOG (time-driven)', () => {
+  it('emits day / log / heading nodes in linearized pre-order', () => {
     const body = JSON.stringify({
       entries: [
-        {
-          id: 'log-1',
-          text: '# First log\n\nSome body',
-          createdAt: '2026-04-09T10:00:00Z',
-          flags: [],
-        },
-        {
-          id: 'log-2',
-          text: '## Second log heading',
-          createdAt: '2026-04-09T11:00:00Z',
-          flags: [],
-        },
+        // Two logs on 2026-04-09, one on 2026-04-10 → viewer/TOC
+        // use desc so 2026-04-10 comes first.
+        { id: 'log-a', text: '# Morning notes', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-b', text: '## Afternoon section', createdAt: '2026-04-09T14:00:00Z', flags: [] },
+        { id: 'log-c', text: '# Today\n\nintro', createdAt: '2026-04-10T09:00:00Z', flags: [] },
       ],
     });
     const out = extractTocFromEntry(makeEntry('textlog', body));
-    expect(out).toEqual([
-      { level: 1, text: 'First log', slug: 'first-log', logId: 'log-1' },
-      { level: 2, text: 'Second log heading', slug: 'second-log-heading', logId: 'log-2' },
+    expect(out.map((n) => n.kind)).toEqual([
+      'day', 'log', 'heading',        // 2026-04-10
+      'day', 'log', 'heading',        // 2026-04-09 log-b (desc)
+      'log', 'heading',               //           log-a (desc within day)
     ]);
   });
 
-  it('TEXTLOG: skips log entries with no headings but keeps ordering', () => {
+  it('day nodes carry dateKey and a pre-computed targetId', () => {
     const body = JSON.stringify({
       entries: [
-        { id: 'log-1', text: 'plain log line', createdAt: '2026-04-09T10:00:00Z', flags: [] },
-        { id: 'log-2', text: '# heading here', createdAt: '2026-04-09T11:00:00Z', flags: [] },
-        { id: 'log-3', text: 'another plain', createdAt: '2026-04-09T12:00:00Z', flags: [] },
+        { id: 'log-x', text: 'plain', createdAt: '2026-04-09T10:00:00Z', flags: [] },
       ],
     });
     const out = extractTocFromEntry(makeEntry('textlog', body));
-    expect(out).toEqual([
-      { level: 1, text: 'heading here', slug: 'heading-here', logId: 'log-2' },
-    ]);
+    const day = out.find((n): n is Extract<TocNode, { kind: 'day' }> => n.kind === 'day')!;
+    // dateKey is the local yyyy-mm-dd produced by buildTextlogDoc; assert
+    // shape rather than exact value to stay timezone-portable.
+    expect(day.dateKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(day.targetId).toBe(`day-${day.dateKey}`);
+    expect(day.text).toBe(day.dateKey);
+    expect(day.level).toBe(1);
   });
 
-  it('TEXTLOG: slug collisions are scoped per log entry (matches renderer)', () => {
-    // Because each log entry renders independently, the renderer resets
-    // its slug counter per-entry. The TOC extractor mirrors that, so the
-    // same heading text in two different log entries gets the same slug
-    // `overview` (not `overview-1`). The click handler disambiguates by
-    // scoping the DOM lookup to `data-pkc-log-id`.
+  it('log nodes carry logId, targetId, and a time-prefixed label', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-x', text: 'hello world', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    });
+    const out = extractTocFromEntry(makeEntry('textlog', body));
+    const log = out.find((n): n is Extract<TocNode, { kind: 'log' }> => n.kind === 'log')!;
+    expect(log.logId).toBe('log-x');
+    expect(log.targetId).toBe('log-log-x');
+    expect(log.level).toBe(2);
+    // Label contains a time portion and a first-line preview.
+    expect(log.text).toMatch(/\d{2}:\d{2}:\d{2}/);
+    expect(log.text).toContain('hello world');
+  });
+
+  it('heading nodes under a log carry logId and depth >= 3', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-x', text: '# h1\n\n## h2\n\n### h3', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    });
+    const out = extractTocFromEntry(makeEntry('textlog', body));
+    const hs = out.filter((n): n is Extract<TocNode, { kind: 'heading' }> => n.kind === 'heading');
+    expect(hs.map((h) => h.level)).toEqual([3, 4, 5]); // shifted by +2
+    expect(hs.every((h) => h.logId === 'log-x')).toBe(true);
+    expect(hs.map((h) => h.slug)).toEqual(['h1', 'h2', 'h3']);
+  });
+
+  it('emits day/log rows even when a log has no markdown headings', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-plain', text: 'just prose, no heading', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    });
+    const out = extractTocFromEntry(makeEntry('textlog', body));
+    expect(out.map((n) => n.kind)).toEqual(['day', 'log']);
+  });
+
+  it('empty textlog produces empty TOC (no day / log / heading rows)', () => {
+    expect(extractTocFromEntry(makeEntry('textlog', ''))).toEqual([]);
+    expect(extractTocFromEntry(makeEntry('textlog', '{"entries":[]}'))).toEqual([]);
+  });
+
+  it('slug collisions across logs are scoped per log (matches renderer)', () => {
     const body = JSON.stringify({
       entries: [
         { id: 'log-1', text: '# Overview', createdAt: '2026-04-09T10:00:00Z', flags: [] },
@@ -194,12 +240,65 @@ describe('extractTocFromEntry', () => {
       ],
     });
     const out = extractTocFromEntry(makeEntry('textlog', body));
-    expect(out.map((h) => h.slug)).toEqual(['overview', 'overview']);
-    expect(out.map((h) => h.logId)).toEqual(['log-1', 'log-2']);
+    const hs = out.filter((n): n is Extract<TocNode, { kind: 'heading' }> => n.kind === 'heading');
+    expect(hs.map((h) => h.slug)).toEqual(['overview', 'overview']);
+    expect(hs.map((h) => h.logId)).toEqual(['log-2', 'log-1']); // desc order
   });
 
-  it('TEXTLOG: empty body produces empty TOC', () => {
-    expect(extractTocFromEntry(makeEntry('textlog', ''))).toEqual([]);
-    expect(extractTocFromEntry(makeEntry('textlog', '{"entries":[]}'))).toEqual([]);
+  it('undated logs get a day node with text "Undated" and targetId "day-undated"', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-bad', text: 'broken', createdAt: 'not-a-date', flags: [] },
+      ],
+    });
+    const out = extractTocFromEntry(makeEntry('textlog', body));
+    const day = out.find((n): n is Extract<TocNode, { kind: 'day' }> => n.kind === 'day')!;
+    expect(day.dateKey).toBe('');
+    expect(day.text).toBe('Undated');
+    expect(day.targetId).toBe('day-undated');
+  });
+});
+
+// ── makeLogLabel ──
+
+describe('makeLogLabel', () => {
+  it('prefixes the label with HH:mm:ss from the ISO timestamp', () => {
+    const d = new Date(2026, 3, 9, 10, 15, 30);
+    const label = makeLogLabel(d.toISOString(), 'hello');
+    expect(label).toMatch(/^10:15:30/);
+    expect(label).toContain('hello');
+  });
+
+  it('falls back to the time alone when body is empty', () => {
+    const d = new Date(2026, 3, 9, 7, 5, 2);
+    expect(makeLogLabel(d.toISOString(), '')).toBe('07:05:02');
+    expect(makeLogLabel(d.toISOString(), '   \n  ')).toBe('07:05:02');
+  });
+
+  it('truncates preview beyond 60 chars with an ellipsis', () => {
+    const d = new Date(2026, 3, 9, 0, 0, 0);
+    const long = 'x'.repeat(200);
+    const label = makeLogLabel(d.toISOString(), long);
+    // 60 preview chars + ellipsis.
+    expect(label).toMatch(/x{60}…$/);
+  });
+
+  it('skips ATX heading lines so the preview does not duplicate the heading child row', () => {
+    const d = new Date(2026, 3, 9, 0, 0, 0);
+    const body = '# Title\n\nthe real content';
+    const label = makeLogLabel(d.toISOString(), body);
+    // `# Title` is already surfaced as a heading child node; the log
+    // label should instead show the first non-heading prose line.
+    expect(label).toContain('the real content');
+    expect(label).not.toContain('# Title');
+  });
+
+  it('falls back to the time when only heading lines exist', () => {
+    const d = new Date(2026, 3, 9, 12, 0, 0);
+    expect(makeLogLabel(d.toISOString(), '# Only')).toBe('12:00:00');
+  });
+
+  it('returns the raw ISO string when the timestamp is unparseable', () => {
+    expect(makeLogLabel('not-a-date', 'body')).toContain('not-a-date');
   });
 });

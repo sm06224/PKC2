@@ -8,6 +8,7 @@
  */
 
 import { formatDate } from '../datetime/datetime-format';
+import { generateLogId as generateUlidLogId } from './log-id';
 
 export type TextlogFlag = 'important';
 
@@ -113,9 +114,9 @@ export function deleteLogEntry(body: TextlogBody, entryId: string): TextlogBody 
  * distinguishable (see `docs/development/textlog-readability-hardening.md`).
  *
  * **Scope**: this formatter is for **UI display only**. Export / copy
- * paths (`serializeTextlogAsMarkdown`, CSV `timestamp_display`, Copy
- * Reference labels) emit the raw ISO timestamp instead, so millisecond
- * fidelity is preserved when the log leaves the app.
+ * paths (CSV `timestamp_display`, Copy Reference labels) emit the raw
+ * ISO timestamp instead, so millisecond fidelity is preserved when the
+ * log leaves the app.
  */
 export function formatLogTimestampWithSeconds(iso: string): string {
   const d = new Date(iso);
@@ -125,55 +126,24 @@ export function formatLogTimestampWithSeconds(iso: string): string {
   return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+// Slice 4-B (TEXTLOG Viewer & Linkability Redesign): the legacy
+// `serializeTextlogAsMarkdown` flatten helper (`## <ISO>` heading per
+// log row) has been removed. Rendered viewer / print / HTML download
+// all drive off `buildTextlogDoc` (features/textlog/textlog-doc.ts)
+// now, so there is no second render path to keep in sync. Copy-MD for
+// TEXTLOG is also removed from the action bar; TEXT copy-MD remains
+// and reads `entry.body` directly.
+
 /**
- * Serialize a textlog body as a single Markdown document.
+ * Internal ID generator for newly-created log entries.
  *
- * Used by the copy-to-clipboard and "open rendered viewer" paths so
- * TEXTLOG entries can be round-tripped as a plain document:
- *
- *   ## 2026-04-09T10:00:00.000Z
- *
- *   First log entry text (possibly markdown)
- *
- *   ## 2026-04-09T10:05:00.000Z ★
- *
- *   Second log entry — important flag exposes a gold star suffix
- *   on the heading so the "important" signal survives the flattening.
- *
- * Rules (pinned by tests):
- * - Entries are emitted in **original order** (the container already
- *   keeps them in append order; we intentionally do not re-sort by
- *   timestamp, matching the on-screen view's "append-order wins"
- *   semantics established in `textlog-foundation.md`).
- * - Each entry is framed by a `## <raw-ISO-timestamp>` heading. The
- *   heading emits the raw `createdAt` value so export preserves
- *   millisecond fidelity — the UI formatter (with seconds) is
- *   intentionally **not** used here. See
- *   `docs/development/textlog-readability-hardening.md` §6 for the
- *   UI-vs-export responsibility split.
- * - `important` entries get a trailing ` ★` marker on the heading so
- *   the flag is not silently lost.
- * - The body text is emitted verbatim; it may contain markdown.
- * - Entries are joined by a blank line.
- * - An empty log yields an empty string (the caller decides whether
- *   that is "nothing to copy" or a placeholder).
+ * Slice 1 of `textlog-viewer-and-linkability-redesign.md` switched
+ * this from the legacy `log-<ts>-<n>` counter format to ULID.
+ * Existing IDs parsed from stored bodies are **never** rewritten —
+ * `parseTextlogBody` preserves whatever id string the entry already
+ * carries, and the resolver treats both formats as equally valid
+ * opaque tokens.
  */
-export function serializeTextlogAsMarkdown(body: TextlogBody): string {
-  if (body.entries.length === 0) return '';
-  const blocks: string[] = [];
-  for (const entry of body.entries) {
-    const important = entry.flags.includes('important');
-    const heading = important
-      ? `## ${entry.createdAt} ★`
-      : `## ${entry.createdAt}`;
-    blocks.push(`${heading}\n\n${entry.text}`);
-  }
-  return blocks.join('\n\n');
-}
-
-let logIdCounter = 0;
-
 function generateLogId(): string {
-  logIdCounter++;
-  return `log-${Date.now()}-${logIdCounter}`;
+  return generateUlidLogId();
 }

@@ -49,7 +49,14 @@ const md = new MarkdownIt({
 // pass through; arbitrary `ms-*:` schemes remain blocked.
 // https://learn.microsoft.com/office/client-developer/office-uri-schemes
 
-const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+// `entry:` is PKC2's internal cross-entry link scheme (see
+// `docs/development/textlog-viewer-and-linkability-redesign.md` §6.5
+// and `src/features/entry-ref/entry-ref.ts`). It is added to the safe
+// allowlist so markdown-it emits the `<a>` at all; the link_open rule
+// below then tags it with `data-pkc-action="navigate-entry-ref"` so
+// `action-binder` can intercept the click and route through the
+// parser instead of letting the browser attempt a scheme navigation.
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
 const SAFE_OFFICE_URI_RE =
   /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
@@ -70,10 +77,86 @@ const defaultLinkOpen = md.renderer.rules.link_open ??
   };
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  tokens[idx]!.attrSet('target', '_blank');
-  tokens[idx]!.attrSet('rel', 'noopener noreferrer');
+  const token = tokens[idx]!;
+  const hrefIdx = token.attrIndex('href');
+  const href = hrefIdx >= 0 ? (token.attrs?.[hrefIdx]?.[1] ?? '') : '';
+  // `entry:` links stay in-app: they are routed through
+  // `action-binder`'s `navigate-entry-ref` handler which parses the
+  // fragment via `parseEntryRef` and scrolls to the right
+  // `<section id="day-...">`, `<article id="log-...">`, or heading
+  // slug anchor. Adding `target="_blank"` here would pop a new tab
+  // for every in-app jump; `rel="noopener noreferrer"` is also
+  // unnecessary for a link that never actually navigates. The
+  // `data-pkc-entry-ref` attribute carries the raw href so the
+  // handler can read the unescaped original (the parser accepts
+  // the same grammar formatted by `formatEntryRef`).
+  if (href.startsWith('entry:')) {
+    token.attrSet('data-pkc-action', 'navigate-entry-ref');
+    token.attrSet('data-pkc-entry-ref', href);
+  } else {
+    token.attrSet('target', '_blank');
+    token.attrSet('rel', 'noopener noreferrer');
+  }
   return defaultLinkOpen(tokens, idx, options, env, self);
 };
+
+// ── Entry transclusion placeholder (Slice 5-B) ────────
+//
+// `![alt](entry:<lid>[#frag])` is the transclusion syntax. markdown-it
+// would otherwise emit `<img src="entry:...">` and the browser would
+// try to load it as a real image (404'ing and cluttering the console).
+// Instead, the image rule below detects the `entry:` scheme and emits
+// an inert `<div class="pkc-transclusion-placeholder">` that the
+// adapter-layer expander (`adapter/ui/transclusion.ts`) later replaces
+// with the actual embed HTML.
+//
+// Why a `<div>` (not a `<span>`): the expanded content is block-level
+// (day-grouped articles for TEXTLOG, paragraphs for TEXT). markdown-it
+// emits the image inside a `<p>`, so the browser's HTML parser will
+// auto-close the paragraph when it encounters the div, leaving an
+// empty `<p></p>` behind. The expander deletes these empties after
+// substitution.
+//
+// The raw `entry:` href is preserved in `data-pkc-embed-ref` verbatim
+// so the expander can re-parse it via `parseEntryRef` (same grammar
+// as `navigate-entry-ref`). The `alt` text is preserved in
+// `data-pkc-embed-alt` and is used by the fallback path (broken /
+// unsupported refs) as visible placeholder text.
+//
+// HTML attribute escaping: markdown-it's `escapeHtml` quotes `"`, `&`,
+// `<`, `>`, which is exactly what we need for attribute values.
+const defaultImage =
+  md.renderer.rules.image ??
+  function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+
+md.renderer.rules.image = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]!;
+  const srcIdx = token.attrIndex('src');
+  const src = srcIdx >= 0 ? (token.attrs?.[srcIdx]?.[1] ?? '') : '';
+  if (src.startsWith('entry:')) {
+    // markdown-it stashes the alt text on token.content by the time
+    // the renderer runs (inline children were already linearized).
+    const alt = token.content ?? '';
+    const srcEsc = escapeHtmlAttr(src);
+    const altEsc = escapeHtmlAttr(alt);
+    return (
+      `<div class="pkc-transclusion-placeholder"` +
+      ` data-pkc-embed-ref="${srcEsc}"` +
+      ` data-pkc-embed-alt="${altEsc}"></div>`
+    );
+  }
+  return defaultImage(tokens, idx, options, env, self);
+};
+
+function escapeHtmlAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 // ── Heading id injection ──────────────────────────────
 //

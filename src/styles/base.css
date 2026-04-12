@@ -34,6 +34,11 @@
      inheritance fallbacks. */
   --c-text: var(--c-fg);
   --c-text-dim: var(--c-muted);
+  /* TOC secondary rows (day / log labels). Dark theme reuses --c-muted;
+     light theme overrides this token below to a darker parchment ink so
+     the rows pass WCAG AA against the warm-beige sidebar background
+     (see docs/development/textlog-viewer-and-linkability-redesign.md). */
+  --c-toc-secondary: var(--c-muted);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   --transition-fast: 120ms ease;
@@ -58,8 +63,12 @@
     --c-warn-fg: #ffffff;
     --c-info: #2563eb;
     --c-info-fg: #ffffff;
-    --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
-    --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+    /* Light-theme darker override: the light sidebar background
+       (#f0ebe0 / #e6e0d3) washes out `--c-muted` (#6b6558) enough that
+       day / log rows in the right-pane TOC read as barely-visible gray.
+       Use a deep parchment ink for TOC secondary rows only — body-level
+       muted text stays at the softer value. */
+    --c-toc-secondary: #3d3830;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
     --glow: none;
     --transition-fast: 120ms ease;
@@ -84,6 +93,7 @@
   --c-warn-fg: #ffffff;
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
+  --c-toc-secondary: #3d3830;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
   --glow: none;
   color-scheme: light;
@@ -105,6 +115,7 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
+  --c-toc-secondary: var(--c-muted);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
   color-scheme: dark;
@@ -1211,8 +1222,34 @@
   padding: 0;
 }
 
+/*
+ * Indent by `data-pkc-toc-level`. TEXT uses 1..3 (heading level);
+ * TEXTLOG uses 1=day, 2=log, 3..5=heading-inside-log (Slice 3 of
+ * docs/development/textlog-viewer-and-linkability-redesign.md).
+ */
 .pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.75rem; }
 .pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.5rem; }
+.pkc-toc-item[data-pkc-toc-level="4"] { padding-left: 2.25rem; }
+.pkc-toc-item[data-pkc-toc-level="5"] { padding-left: 3rem; }
+
+/*
+ * Per-kind styling for TEXTLOG TOC — day and log rows get a quieter,
+ * label-ish look so the heading children stand out below them.
+ */
+.pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
+  font-weight: 600;
+  color: var(--c-toc-secondary);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  padding-top: 0.2rem;
+}
+
+.pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+  color: var(--c-toc-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
 
 .pkc-toc-link {
   all: unset;
@@ -3391,59 +3428,84 @@
   gap: 0.5rem;
 }
 
-.pkc-textlog-list {
+/*
+ * TEXTLOG day-grouped document (Slice 2 of the viewer redesign — see
+ * docs/development/textlog-viewer-and-linkability-redesign.md).
+ *
+ * `<div.pkc-textlog-document>` replaces the old flat `.pkc-textlog-list`.
+ * Each `<section.pkc-textlog-day id="day-yyyy-mm-dd">` groups its logs
+ * under a plain date heading; each log is an
+ * `<article.pkc-textlog-log id="log-<id>">` carrying the existing
+ * `data-pkc-log-id` / `data-pkc-lid` attributes so dblclick→edit,
+ * flag toggle, copy-anchor, and context menus keep resolving against a
+ * single predictable element.
+ */
+.pkc-textlog-document {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.pkc-textlog-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pkc-textlog-day-header {
+  padding: 0.15rem 0 0.25rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-textlog-day-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 /*
- * TEXTLOG row layout (see docs/development/textlog-readability-hardening.md).
+ * TEXTLOG log article layout.
  *
- * grid-template-areas places the flag button on the left (spanning both
- * rows so it acts as a "log-entry badge" over the whole block), the
- * timestamp as a header strip above the text body. DOM order
- * (flag / ts / text) is preserved — grid-areas only affect visual
- * placement, so data-pkc-log-id selectors keep working.
+ * The article reserves a header strip for [flag, timestamp, copy-anchor]
+ * and stacks the text body below. DOM order is header→text so
+ * screen readers / plain-text fallbacks read timestamp first. The
+ * important-flag styling and the left accent rule carry over from the
+ * previous `.pkc-textlog-row` rules verbatim.
  */
-.pkc-textlog-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas:
-    "flag ts"
-    "flag text";
-  column-gap: 0.5rem;
-  row-gap: 0.25rem;
+.pkc-textlog-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.5rem 0.5rem 0.6rem;
   border-left: 3px solid var(--c-border);
   font-size: 0.85rem;
   transition: background-color 0.15s ease;
 }
 
-.pkc-textlog-row > .pkc-textlog-flag-btn { grid-area: flag; align-self: start; }
-.pkc-textlog-row > .pkc-textlog-timestamp { grid-area: ts; }
-.pkc-textlog-row > .pkc-textlog-text { grid-area: text; }
-
-/*
- * Inter-row separator. Applied only between siblings so the first row
- * has no top rule, keeping the append area edge clean. Kept to 1px of
- * --c-border so the effect is "quietly noticeable", not card-like.
- */
-.pkc-textlog-row + .pkc-textlog-row {
+.pkc-textlog-log + .pkc-textlog-log {
   border-top: 1px solid var(--c-border);
   padding-top: 0.6rem;
 }
 
-.pkc-textlog-row[data-pkc-log-important="true"] {
+.pkc-textlog-log[data-pkc-log-important="true"] {
   border-left-color: #f5a623;
   border-left-width: 4px;
   background: rgba(245,166,35,0.12);
   padding-left: 0.6rem;
 }
 
-.pkc-textlog-row[data-pkc-log-important="true"] .pkc-textlog-text {
+.pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-text {
   font-weight: 600;
   color: var(--c-fg);
+}
+
+.pkc-textlog-log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .pkc-textlog-flag-btn {
@@ -3456,9 +3518,27 @@
   color: var(--c-muted);
 }
 
-.pkc-textlog-row[data-pkc-log-important="true"] .pkc-textlog-flag-btn {
+.pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-flag-btn {
   color: #f5a623;
   text-shadow: 0 0 2px rgba(245,166,35,0.35);
+}
+
+.pkc-textlog-anchor-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 0.15rem;
+  line-height: 1;
+  color: var(--c-muted);
+  margin-left: auto;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.pkc-textlog-anchor-btn:hover,
+.pkc-textlog-anchor-btn:focus-visible {
+  opacity: 1;
 }
 
 .pkc-textlog-timestamp {
@@ -3470,7 +3550,7 @@
   cursor: help;
 }
 
-.pkc-textlog-row[data-pkc-log-important="true"] .pkc-textlog-timestamp {
+.pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-timestamp {
   color: #c88a1c;
 }
 
@@ -3571,4 +3651,89 @@
   /* Defense-in-depth against the `rows=2` regression — even if JS sizing
      is bypassed the textarea must remain usable. */
   min-height: 6.5em;
+}
+
+/*
+ * Entry transclusion (P1 Slice 5-B).
+ *
+ * `<section class="pkc-transclusion">` wraps an embedded entry (or
+ * fragment) inside the host markdown body. The rule below uses a left
+ * accent + muted header to visually distinguish embedded content from
+ * the surrounding prose, mirroring typical "quoted document" styling.
+ *
+ * Broken and degraded fallbacks use a subdued red/gray so the author
+ * can spot them at a glance but they don't scream during normal reading.
+ */
+.pkc-transclusion {
+  border-left: 3px solid var(--c-accent, #4a90e2);
+  background: var(--c-bg-subtle, rgba(74,144,226,0.04));
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.pkc-transclusion-header {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px dashed var(--c-border);
+}
+
+.pkc-transclusion-source {
+  color: var(--c-muted);
+  text-decoration: none;
+}
+
+.pkc-transclusion-source::before {
+  content: '↪ ';
+  color: var(--c-muted);
+}
+
+.pkc-transclusion-source:hover {
+  color: var(--c-accent, #4a90e2);
+  text-decoration: underline;
+}
+
+.pkc-transclusion-body > :first-child {
+  margin-top: 0;
+}
+.pkc-transclusion-body > :last-child {
+  margin-bottom: 0;
+}
+
+.pkc-transclusion-fallback {
+  color: var(--c-muted);
+  font-style: italic;
+}
+
+.pkc-transclusion-broken {
+  display: inline-block;
+  color: #c0392b;
+  background: rgba(192,57,43,0.08);
+  border: 1px dashed rgba(192,57,43,0.35);
+  border-radius: var(--radius);
+  padding: 0 0.35em;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+}
+
+/*
+ * Degraded in-embed link — Slice 5-B enforces depth ≤ 1, so any
+ * `entry:` image placed inside an already-embedded body is rendered
+ * as a plain navigate-entry-ref link instead of expanding recursively.
+ */
+.pkc-transclusion-fallback-link {
+  color: var(--c-accent, #4a90e2);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/*
+ * Embedded log articles reuse `.pkc-textlog-log` base styling but drop
+ * the interactive affordances (no id, no flag/copy-anchor buttons in
+ * the embed), so the outer accent bar is the only visual cue.
+ */
+.pkc-transclusion-log .pkc-textlog-timestamp {
+  color: var(--c-muted);
 }

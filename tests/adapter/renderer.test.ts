@@ -2458,11 +2458,18 @@ describe('Action surface consolidation', () => {
     expect(more!.querySelector('[data-pkc-action="export-text-zip"]')).not.toBeNull();
   });
 
-  it('secondary actions for TEXTLOG are inside More… details', () => {
+  it('secondary actions for TEXTLOG are inside More… details (Slice 4-B: no Copy MD)', () => {
+    // Slice 4-B of textlog-viewer-and-linkability-redesign.md removed
+    // Copy MD / Copy Rendered from the TEXTLOG action bar. The rendered
+    // viewer (now driven by buildTextlogDoc with Print + Download HTML
+    // buttons) is the supported output surface for textlogs; CSV+ZIP
+    // remains for structured export.
     render(makeState({ selectedLid: 'e-log' }), root);
     const more = root.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-rich-markdown"]')).toBeNull();
+    expect(more!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="export-textlog-csv-zip"]')).not.toBeNull();
   });
 
@@ -6998,7 +7005,7 @@ describe('Table of Contents (A-3, right pane)', () => {
     expect(root.querySelector('[data-pkc-region="toc"]')).toBeNull();
   });
 
-  it('TEXTLOG: TOC aggregates headings across log entries and tags them with data-pkc-log-id', () => {
+  it('TEXTLOG: TOC emits day → log → heading nodes in desc order', () => {
     const body = JSON.stringify({
       entries: [
         { id: 'log-a', text: '# Morning notes', createdAt: '2026-04-09T10:00:00Z', flags: [] },
@@ -7016,12 +7023,114 @@ describe('Table of Contents (A-3, right pane)', () => {
       },
     ]);
     render(baseState({ container, selectedLid: 'tl-1' }), root);
-    const items = root.querySelectorAll('[data-pkc-region="toc"] [data-pkc-action="toc-jump"]');
-    expect(items.length).toBe(2);
-    expect(items[0]!.getAttribute('data-pkc-log-id')).toBe('log-a');
-    expect(items[0]!.getAttribute('data-pkc-toc-slug')).toBe('morning-notes');
+    const items = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="toc"] [data-pkc-action="toc-jump"]',
+    );
+    // day + (log + heading) × 2 = 5 rows.
+    expect(items.length).toBe(5);
+    // First row is the day node with a targetId pointing at the
+    // day section in the viewer.
+    const li0 = items[0]!.parentElement!;
+    expect(li0.getAttribute('data-pkc-toc-kind')).toBe('day');
+    expect(items[0]!.getAttribute('data-pkc-toc-target-id')).toMatch(/^day-\d{4}-\d{2}-\d{2}$/);
+    // Desc: newer log (log-b) first, then its heading.
+    const li1 = items[1]!.parentElement!;
+    expect(li1.getAttribute('data-pkc-toc-kind')).toBe('log');
     expect(items[1]!.getAttribute('data-pkc-log-id')).toBe('log-b');
-    expect(items[1]!.getAttribute('data-pkc-toc-slug')).toBe('afternoon-section');
+    expect(items[1]!.getAttribute('data-pkc-toc-target-id')).toBe('log-log-b');
+    const li2 = items[2]!.parentElement!;
+    expect(li2.getAttribute('data-pkc-toc-kind')).toBe('heading');
+    expect(items[2]!.getAttribute('data-pkc-log-id')).toBe('log-b');
+    expect(items[2]!.getAttribute('data-pkc-toc-slug')).toBe('afternoon-section');
+    // Then log-a + its heading.
+    expect(items[3]!.getAttribute('data-pkc-log-id')).toBe('log-a');
+    expect(items[3]!.getAttribute('data-pkc-toc-target-id')).toBe('log-log-a');
+    expect(items[4]!.getAttribute('data-pkc-toc-slug')).toBe('morning-notes');
+  });
+
+  it('TEXTLOG: empty body produces no TOC section', () => {
+    const container = containerWith([
+      {
+        lid: 'tl-empty',
+        title: 'Empty Log',
+        body: JSON.stringify({ entries: [] }),
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tl-empty' }), root);
+    expect(root.querySelector('[data-pkc-region="toc"]')).toBeNull();
+  });
+
+  it('TEXTLOG: logs with no markdown headings still produce day + log rows', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-plain', text: 'no headings here', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    });
+    const container = containerWith([
+      {
+        lid: 'tl-plain',
+        title: 'Plain Log',
+        body,
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T10:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tl-plain' }), root);
+    const items = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="toc"] .pkc-toc-item',
+    );
+    expect(items.length).toBe(2);
+    expect(items[0]!.getAttribute('data-pkc-toc-kind')).toBe('day');
+    expect(items[1]!.getAttribute('data-pkc-toc-kind')).toBe('log');
+  });
+
+  it('TEXTLOG: undated logs produce a day-undated target id', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-bad', text: 'broken', createdAt: 'not-a-date', flags: [] },
+      ],
+    });
+    const container = containerWith([
+      {
+        lid: 'tl-undated',
+        title: 'Undated',
+        body,
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T00:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tl-undated' }), root);
+    const dayBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="toc"] [data-pkc-toc-target-id="day-undated"]',
+    );
+    expect(dayBtn).not.toBeNull();
+    expect(dayBtn!.textContent).toBe('Undated');
+  });
+
+  it('TEXTLOG: TOC sets data-pkc-toc-archetype so CSS can scope per-kind chrome', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-a', text: 'hello', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    });
+    const container = containerWith([
+      {
+        lid: 'tl-arche',
+        title: 'Log',
+        body,
+        archetype: 'textlog',
+        created_at: '2026-04-09T00:00:00Z',
+        updated_at: '2026-04-09T10:00:00Z',
+      },
+    ]);
+    render(baseState({ container, selectedLid: 'tl-arche' }), root);
+    const toc = root.querySelector<HTMLElement>('[data-pkc-region="toc"]');
+    expect(toc!.getAttribute('data-pkc-toc-archetype')).toBe('textlog');
   });
 
   it('non-TEXT/TEXTLOG archetypes never get a TOC section', () => {

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bindActions, cleanupBlobUrls, populateInlineAssetPreviews, resolveContainerSandboxDefault } from '@adapter/ui/action-binder';
 import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
@@ -1273,7 +1273,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     const { dispatcher } = mountTextlogContainer([
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
-    const row = root.querySelector<HTMLElement>('.pkc-textlog-row[data-pkc-log-id="log-1"]');
+    const row = root.querySelector<HTMLElement>('.pkc-textlog-log[data-pkc-log-id="log-1"]');
     expect(row).not.toBeNull();
     // Seed a text node inside the row so the dblclick origin is NOT the flag button or asset chip.
     const textEl = row!.querySelector<HTMLElement>('.pkc-textlog-text');
@@ -1288,7 +1288,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
@@ -1300,12 +1300,30 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const flagBtn = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
     );
     expect(flagBtn).not.toBeNull();
     flagBtn!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     // Flag area must be opted out of the dblclick→edit path.
     expect(dispatcher.getState().phase).toBe('ready');
+  });
+
+  it('clicking the flag button calls preventDefault + stopPropagation (Slice 4-B scroll-jump fix)', () => {
+    // Slice 4-B: the flag toggle path must suppress the native click
+    // (preventDefault) and stop the event from bubbling up to any
+    // ancestor that might shift focus or scroll.  We dispatch a
+    // cancelable click and assert `defaultPrevented` — that's the
+    // observable proxy for both calls having fired.
+    mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const flagBtn = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
+    );
+    expect(flagBtn).not.toBeNull();
+    const evt = new MouseEvent('click', { bubbles: true, cancelable: true });
+    flagBtn!.dispatchEvent(evt);
+    expect(evt.defaultPrevented).toBe(true);
   });
 
   it('the existing Edit button in the action bar still dispatches BEGIN_EDIT', () => {
@@ -1345,7 +1363,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
 
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
@@ -1365,7 +1383,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     expect(dispatcher.getState().editingLid).toBe('tl1');
 
     // Re-render to show editor, then simulate dblclick on the editor area
-    // (there are no .pkc-textlog-row elements in edit mode, but verify no error)
+    // (there are no .pkc-textlog-log elements in edit mode, but verify no error)
     const editorArea = root.querySelector<HTMLElement>('.pkc-textlog-editor');
     if (editorArea) {
       editorArea.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
@@ -1382,7 +1400,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     // The text content may contain rendered markdown children.
     // Target a child of the textlog-text element.
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     expect(textEl).not.toBeNull();
     // Even if we target a child node, closest() should resolve to the row
@@ -1398,7 +1416,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     ]);
     // Enter edit via dblclick
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('editing');
@@ -1433,7 +1451,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
 
     // Enter edit via dblclick
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('editing');
@@ -1549,7 +1567,7 @@ describe('Issue D / B — Reference-string context menu items', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const row = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"]',
     );
     expect(row).not.toBeNull();
     row!.dispatchEvent(
@@ -1598,7 +1616,7 @@ describe('Issue D / B — Reference-string context menu items', () => {
         { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
       ]);
       const row = root.querySelector<HTMLElement>(
-        '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+        '.pkc-textlog-log[data-pkc-log-id="log-1"]',
       );
       row!.dispatchEvent(
         new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
@@ -1827,34 +1845,18 @@ describe('Issue D / D — Markdown source + rich clipboard copy', () => {
     }
   });
 
-  it('Copy MD on a TEXTLOG entry writes the serializeTextlogAsMarkdown output', async () => {
-    let captured: string | null = null;
-    const restore = installClipboard({
-      writeText: (t: string) => {
-        captured = t;
-        return Promise.resolve();
-      },
-    });
-    try {
-      mountTextlogContainer([
-        { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
-        { id: 'log-2', text: 'beta', createdAt: '2026-04-09T10:05:00Z', flags: ['important'] },
-      ]);
-      const btn = root.querySelector<HTMLElement>(
-        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
-      );
-      btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-      expect(captured).not.toBeNull();
-      expect(captured!).toContain('alpha');
-      expect(captured!).toContain('beta');
-      // Important marker must be present on the second heading.
-      expect(captured!).toContain('★');
-      // Two h2 headings.
-      expect(captured!.match(/## /g)?.length).toBe(2);
-    } finally {
-      restore();
-    }
+  it('Copy MD button is not rendered for TEXTLOG entries (Slice 4-B)', () => {
+    // Slice 4-B of textlog-viewer-and-linkability-redesign.md gated
+    // Copy MD / Copy Rendered on `archetype === 'text'`. The TEXTLOG
+    // action bar now ships with viewer / export-csv only, so the
+    // copy-markdown-source button should not exist.
+    mountTextlogContainer([
+      { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const btn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+    );
+    expect(btn).toBeNull();
   });
 
   it('Copy Rendered writes both text/plain and text/html through ClipboardItem', async () => {
@@ -2009,7 +2011,11 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
     }
   });
 
-  it('TEXTLOG entry: Open Viewer flattens via serializeTextlogAsMarkdown', () => {
+  it('TEXTLOG entry: Open Viewer renders day-grouped HTML via buildTextlogDoc', () => {
+    // Slice 4-B switched the TEXTLOG viewer away from the flat
+    // `serializeTextlogAsMarkdown` output. The rendered HTML now
+    // mirrors the live viewer: `<section class="pkc-textlog-day">`
+    // wrappers around `<article class="pkc-textlog-log">` entries.
     const { childDoc, openSpy } = mockChildWindow();
     try {
       mountTextlogContainer([
@@ -2024,8 +2030,11 @@ describe('Issue D / E — Open rendered viewer in new window', () => {
       const html = childDoc.write.mock.calls[0]![0] as string;
       expect(html).toContain('<strong>first</strong>');
       expect(html).toContain('second');
-      // Important ★ marker ends up inside an h2 heading.
-      expect(html).toMatch(/<h2[^>]*>[^<]*★<\/h2>/);
+      // Day grouping + log articles appear.
+      expect(html).toContain('class="pkc-textlog-day"');
+      expect(html).toContain('class="pkc-textlog-log"');
+      // Important flag is surfaced via a data attribute on the article.
+      expect(html).toMatch(/data-pkc-log-important="true"/);
     } finally {
       openSpy.mockRestore();
     }
@@ -7579,9 +7588,13 @@ describe('ActionBinder — TOC jump', () => {
     headingA!.scrollIntoView = spyA;
     headingB!.scrollIntoView = spyB;
 
-    // Click the TOC item tagged with log-b → should call spyB only.
+    // Click the heading TOC item tagged with log-b → should call spyB only.
+    // Scope to the heading-kind row so the log-kind row (which also carries
+    // data-pkc-log-id="log-b") does not match first — the log row would
+    // jump to the article via targetId and bypass the slug scope logic
+    // we're testing here.
     const tocBtn = root.querySelector<HTMLElement>(
-      '[data-pkc-action="toc-jump"][data-pkc-log-id="log-b"]',
+      '[data-pkc-toc-kind="heading"] [data-pkc-action="toc-jump"][data-pkc-log-id="log-b"]',
     );
     expect(tocBtn).not.toBeNull();
     tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -7602,4 +7615,357 @@ describe('ActionBinder — TOC jump', () => {
     // Should not throw.
     expect(() => fake.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
   });
+
+  it('TEXTLOG day node click scrolls to the matching day section via targetId', () => {
+    setupToc('tl-1');
+
+    const daySection = root.querySelector<HTMLElement>('.pkc-textlog-day');
+    expect(daySection).not.toBeNull();
+    const targetId = daySection!.id;
+    expect(targetId).toMatch(/^day-/);
+    const spy = vi.fn();
+    daySection!.scrollIntoView = spy;
+
+    const tocBtn = root.querySelector<HTMLElement>(
+      `[data-pkc-action="toc-jump"][data-pkc-toc-target-id="${targetId}"]`,
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('TEXTLOG log node click scrolls to the matching log article via targetId', () => {
+    setupToc('tl-1');
+
+    const article = root.querySelector<HTMLElement>('#log-log-a');
+    expect(article).not.toBeNull();
+    const spy = vi.fn();
+    article!.scrollIntoView = spy;
+
+    const tocBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="toc-jump"][data-pkc-toc-target-id="log-log-a"]',
+    );
+    expect(tocBtn).not.toBeNull();
+    tocBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── P1 Slice 5-A: navigate-entry-ref (in-app `entry:` link navigation) ──
+//
+// These tests validate the click handler added in `action-binder.ts`
+// for anchors stamped with `data-pkc-action="navigate-entry-ref"` by
+// the markdown renderer. Three concerns are covered:
+//
+//   1. parser integration — entry / log / range / day / legacy / heading
+//      kinds route to the right scroll target and (when the lid differs
+//      from the selected one) dispatch SELECT_ENTRY.
+//   2. broken-ref marking — invalid href syntax and unknown-lid both
+//      stamp `data-pkc-ref-broken="true"` and do NOT navigate.
+//   3. regressions — TOC jump, task checkbox, normal https links, and
+//      the rendered viewer DOM are untouched by the new handler.
+//
+// The renderer's scroll hop is wrapped in requestAnimationFrame so we
+// install a synchronous fake that invokes the callback immediately.
+// The default implementation (both in node's happy-dom and in production)
+// is already async, so this fake is what lets us observe scrollIntoView
+// within the synchronous click handler.
+
+describe('ActionBinder — navigate-entry-ref (P1 Slice 5-A)', () => {
+  const navContainer: Container = {
+    meta: {
+      container_id: 'nav-test', title: 'Nav Test',
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'src',
+        title: 'Source',
+        body:
+          '[go-entry](entry:dst)\n\n' +
+          '[go-log](entry:dst#log/log-a)\n\n' +
+          '[go-range](entry:dst#log/log-a..log-b)\n\n' +
+          '[go-day](entry:dst#day/2026-04-09)\n\n' +
+          '[go-legacy](entry:dst#log-a)\n\n' +
+          '[go-heading](entry:dst#log/log-a/overview)\n\n' +
+          '[broken](entry:not$valid)\n\n' +
+          '[missing](entry:ghost)',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        lid: 'dst',
+        title: 'Destination',
+        body: JSON.stringify({
+          entries: [
+            { id: 'log-a', text: '# Overview\n\nmorning', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+            { id: 'log-b', text: '## afternoon', createdAt: '2026-04-09T14:00:00Z', flags: [] },
+          ],
+        }),
+        archetype: 'textlog',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  // Make requestAnimationFrame synchronous so we can observe
+  // scrollIntoView inside the click handler. Restored after each
+  // test so the spy does not leak into neighbouring describes.
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0 as unknown as number;
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function setupNav(selectedLid: string) {
+    const dispatcher = createDispatcher();
+    const events: DomainEvent[] = [];
+    dispatcher.onEvent((e) => events.push(e));
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: navContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: selectedLid });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher, events };
+  }
+
+  function findAnchor(label: string): HTMLAnchorElement {
+    const anchors = root.querySelectorAll<HTMLAnchorElement>(
+      'a[data-pkc-action="navigate-entry-ref"]',
+    );
+    for (const a of Array.from(anchors)) {
+      if (a.textContent?.trim() === label) return a;
+    }
+    throw new Error(`anchor with text "${label}" not found`);
+  }
+
+  it('renderer stamps navigate-entry-ref on entry: anchors in the viewer', () => {
+    setupNav('src');
+    const anchors = root.querySelectorAll(
+      'a[data-pkc-action="navigate-entry-ref"][data-pkc-entry-ref^="entry:"]',
+    );
+    // All 8 body links start with `entry:`, so validateLink (which
+    // accepts any `entry:...` prefix) passes them through. The
+    // downstream parseEntryRef call at click time is what rejects
+    // grammatically invalid inputs like `entry:not$valid` — the
+    // renderer itself stays permissive.
+    expect(anchors.length).toBe(8);
+  });
+
+  // Entry kind → SELECT_ENTRY, no scroll.
+  it('entry kind: dispatches SELECT_ENTRY for the target lid', () => {
+    const { dispatcher } = setupNav('src');
+    const anchor = findAnchor('go-entry');
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+  });
+
+  it('entry kind: preventDefault so the browser does not try to navigate entry:', () => {
+    setupNav('src');
+    const anchor = findAnchor('go-entry');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchor.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  // Log kind → SELECT_ENTRY + scroll to #log-<logId>.
+  it('log kind: scrolls to the matching log article after selection', () => {
+    const { dispatcher } = setupNav('src');
+    const anchor = findAnchor('go-log');
+    // Spy must be installed AFTER the dispatch-triggered re-render,
+    // so we stub it on first invocation by patching the prototype.
+    const spy = vi.fn();
+    const origProto = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = spy;
+    try {
+      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origProto;
+    }
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+    expect(spy).toHaveBeenCalled();
+    // The target must be the log article with id "log-log-a".
+    const targetArticle = root.querySelector<HTMLElement>('#log-log-a');
+    expect(targetArticle).not.toBeNull();
+  });
+
+  // Day kind → scroll to #day-<yyyy-mm-dd>.
+  it('day kind: scrolls to the matching day section', () => {
+    const { dispatcher } = setupNav('src');
+    const spy = vi.fn();
+    const origProto = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = spy;
+    try {
+      findAnchor('go-day').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origProto;
+    }
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+    expect(spy).toHaveBeenCalled();
+    const daySection = root.querySelector<HTMLElement>('[id^="day-"]');
+    expect(daySection).not.toBeNull();
+  });
+
+  // Range kind → SELECT_ENTRY + scroll to #log-<fromId>.
+  it('range kind: selects the entry and scrolls to the first log of the range', () => {
+    const { dispatcher } = setupNav('src');
+    const spy = vi.fn();
+    const origProto = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = spy;
+    try {
+      findAnchor('go-range').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origProto;
+    }
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+    expect(spy).toHaveBeenCalled();
+  });
+
+  // Legacy kind (`entry:dst#log-a`) → #log-log-a.
+  it('legacy kind: treats the bare fragment as a log id target', () => {
+    const { dispatcher } = setupNav('src');
+    const spy = vi.fn();
+    const origProto = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = spy;
+    try {
+      findAnchor('go-legacy').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origProto;
+    }
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+    expect(spy).toHaveBeenCalled();
+  });
+
+  // Heading kind → scroll slug scoped to owning log row.
+  it('heading kind: scopes the slug lookup to the owning log article', () => {
+    const { dispatcher } = setupNav('src');
+    const spy = vi.fn();
+    const origProto = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = spy;
+    try {
+      findAnchor('go-heading').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = origProto;
+    }
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+    expect(spy).toHaveBeenCalled();
+    // The log-a article should contain an <h1 id="overview">.
+    const logA = root.querySelector<HTMLElement>('[data-pkc-log-id="log-a"]');
+    expect(logA).not.toBeNull();
+    expect(logA!.querySelector('#overview')).not.toBeNull();
+  });
+
+  // Invalid kind → broken marker, no navigation.
+  it('invalid entry: grammar produces a broken-ref marker and does not navigate', () => {
+    const { dispatcher } = setupNav('src');
+    // The renderer's validateLink rejects `entry:not$valid` because the
+    // lid character set is strict. But a malformed entry: link might still
+    // arrive through hand-written HTML or a stale paste. Fabricate a stray
+    // anchor with the interception attribute so the click path is exercised.
+    const fake = document.createElement('a');
+    fake.setAttribute('data-pkc-action', 'navigate-entry-ref');
+    fake.setAttribute('data-pkc-entry-ref', 'entry:not$valid');
+    fake.setAttribute('href', 'entry:not$valid');
+    fake.textContent = 'fake';
+    root.appendChild(fake);
+    const prevLid = dispatcher.getState().selectedLid;
+    fake.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(fake.getAttribute('data-pkc-ref-broken')).toBe('true');
+    expect(dispatcher.getState().selectedLid).toBe(prevLid);
+  });
+
+  // Unknown lid → broken marker, no navigation.
+  it('unknown lid: marks the anchor broken and does not dispatch SELECT_ENTRY', () => {
+    const { dispatcher } = setupNav('src');
+    const anchor = findAnchor('missing');
+    const prevLid = dispatcher.getState().selectedLid;
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(anchor.getAttribute('data-pkc-ref-broken')).toBe('true');
+    expect(dispatcher.getState().selectedLid).toBe(prevLid);
+  });
+
+  it('broken marker is cleared when a once-broken ref resolves on a later click', () => {
+    const { dispatcher } = setupNav('src');
+    // Fabricate an anchor pointing to an existing entry but pre-mark it broken.
+    const fake = document.createElement('a');
+    fake.setAttribute('data-pkc-action', 'navigate-entry-ref');
+    fake.setAttribute('data-pkc-entry-ref', 'entry:dst');
+    fake.setAttribute('href', 'entry:dst');
+    fake.setAttribute('data-pkc-ref-broken', 'true');
+    fake.textContent = 'stale';
+    root.appendChild(fake);
+    fake.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(fake.hasAttribute('data-pkc-ref-broken')).toBe(false);
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+  });
+
+  it('same-lid navigation does NOT re-dispatch SELECT_ENTRY', () => {
+    // Start already on dst; a click to entry:dst should be a no-op dispatch.
+    const { dispatcher, events } = setupNav('dst');
+    // The navContainer body of dst is a textlog, so we need a source anchor.
+    // Fabricate one.
+    const fake = document.createElement('a');
+    fake.setAttribute('data-pkc-action', 'navigate-entry-ref');
+    fake.setAttribute('data-pkc-entry-ref', 'entry:dst');
+    fake.setAttribute('href', 'entry:dst');
+    fake.textContent = 'self';
+    root.appendChild(fake);
+    const evBefore = events.filter((e) => e.type === 'ENTRY_SELECTED').length;
+    fake.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const evAfter = events.filter((e) => e.type === 'ENTRY_SELECTED').length;
+    expect(evAfter).toBe(evBefore);
+    expect(dispatcher.getState().selectedLid).toBe('dst');
+  });
+
+  // ── Regression: unrelated paths unchanged ──
+
+  it('regression: normal https links still get target=_blank and are NOT intercepted', () => {
+    const container: Container = {
+      ...navContainer,
+      entries: [
+        {
+          lid: 'only',
+          title: 'Only',
+          body: '[ext](https://example.com)',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'only' });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+
+    const httpsLink = root.querySelector<HTMLAnchorElement>(
+      'a[href="https://example.com"]',
+    );
+    expect(httpsLink).not.toBeNull();
+    expect(httpsLink!.getAttribute('target')).toBe('_blank');
+    expect(httpsLink!.getAttribute('rel')).toContain('noopener');
+    expect(httpsLink!.hasAttribute('data-pkc-action')).toBe(false);
+  });
+
 });

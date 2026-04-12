@@ -2024,6 +2024,212 @@ describe('Entry Window', () => {
       });
     });
 
+    /*
+     * Slice 4-A: rendered viewer common-builder unification. The entry-
+     * window view pane emits the same day-grouped `<section id="day-…">
+     * <article id="log-…">` tree as the live viewer (textlogPresenter),
+     * driven by `buildTextlogDoc({ order: 'asc' })`. These tests pin
+     * the structural contract so future slices (print, HTML download,
+     * transclusion) can rely on the shared anchors.
+     *
+     * See docs/development/textlog-viewer-and-linkability-redesign.md.
+     */
+    describe('TEXTLOG rendered viewer — day-grouped (Slice 4-A)', () => {
+      it('wraps each day in <section id="day-yyyy-mm-dd"> with a title heading', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const { toLocalDateKey } = await import('../../src/features/textlog/textlog-doc');
+        const iso1 = '2026-04-09T10:00:00.000Z';
+        const iso2 = '2026-04-10T11:00:00.000Z';
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'la', text: 'one', createdAt: iso1, flags: [] },
+            { id: 'lb', text: 'two', createdAt: iso2, flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        const key1 = toLocalDateKey(iso1);
+        const key2 = toLocalDateKey(iso2);
+        expect(viewBody).toContain(`<section class="pkc-textlog-day" id="${`day-${key1}`}"`);
+        expect(viewBody).toContain(`<section class="pkc-textlog-day" id="${`day-${key2}`}"`);
+        expect(viewBody).toContain('pkc-textlog-day-title');
+      });
+
+      it('emits <article id="log-<id>"> with data-pkc-log-id and data-pkc-lid', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: 'hello', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toMatch(
+          /<article class="pkc-textlog-log" id="log-lg1" data-pkc-log-id="lg1" data-pkc-lid="[^"]+"/,
+        );
+      });
+
+      it('uses chronological (asc) ordering for days and logs within a day', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            // storage order: early, later-same-day, next-day-early, next-day-late
+            { id: 'a', text: 'aaa', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+            { id: 'b', text: 'bbb', createdAt: '2026-04-09T14:00:00Z', flags: [] },
+            { id: 'c', text: 'ccc', createdAt: '2026-04-10T09:00:00Z', flags: [] },
+            { id: 'd', text: 'ddd', createdAt: '2026-04-10T18:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        const ia = viewBody.indexOf('id="log-a"');
+        const ib = viewBody.indexOf('id="log-b"');
+        const ic = viewBody.indexOf('id="log-c"');
+        const id = viewBody.indexOf('id="log-d"');
+        expect(ia).toBeGreaterThan(0);
+        expect(ia).toBeLessThan(ib);
+        expect(ib).toBeLessThan(ic);
+        expect(ic).toBeLessThan(id);
+      });
+
+      it('important-flagged logs carry data-pkc-log-important on the article', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'flagged', text: 'urgent', createdAt: '2026-04-09T10:00:00Z', flags: ['important'] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toMatch(
+          /<article[^>]*id="log-flagged"[^>]*data-pkc-log-important="true"/,
+        );
+      });
+
+      it('each article has a log-header containing a timestamp span with ISO title', async () => {
+        const iso = '2026-04-09T10:00:00.000Z';
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: 'body', createdAt: iso, flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('class="pkc-textlog-log-header"');
+        expect(viewBody).toMatch(
+          new RegExp(`pkc-textlog-timestamp" title="${iso.replace(/[.]/g, '\\.')}"`),
+        );
+      });
+
+      it('undated logs (unparseable createdAt) get id="day-undated" with title "Undated"', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'bad', text: 'broken', createdAt: 'not-a-date', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('id="day-undated"');
+        expect(viewBody).toContain('>Undated<');
+      });
+
+      it('wraps everything in <div class="pkc-textlog-document">', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: 'x', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('class="pkc-textlog-document"');
+      });
+
+      it('embeds day-grouped viewer CSS (.pkc-textlog-document / .pkc-textlog-log) in inline styles', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('.pkc-textlog-document');
+        expect(html).toContain('.pkc-textlog-day');
+        expect(html).toContain('.pkc-textlog-log-header');
+      });
+
+      it('heading inside a log body receives an id anchor (markdown-it slug)', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '# Morning Notes', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toMatch(/<h1 id="morning-notes">/);
+      });
+
+      it('TEXT / todo / form / attachment archetypes are not wrapped in the day-grouped document', async () => {
+        const htmlText = await openAndCapture(false, { archetype: 'text', body: '# Hi' });
+        expect(extractBodyView(htmlText)).not.toContain('pkc-textlog-document');
+        const htmlTodo = await openAndCapture(false, {
+          archetype: 'todo',
+          body: JSON.stringify({ status: 'open', description: 'x' }),
+        });
+        expect(extractBodyView(htmlTodo)).not.toContain('pkc-textlog-document');
+      });
+
+      it('empty TEXTLOG still falls back to the <em>(empty)</em> placeholder (no empty document)', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'textlog',
+          body: JSON.stringify({ entries: [] }),
+        });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('(empty)');
+        expect(viewBody).not.toContain('pkc-textlog-document');
+      });
+    });
+
+    /*
+     * Slice 4-A: opener-exposed helper used by the child's
+     * renderBodyView() after a save so the post-save rerender produces
+     * the same day-grouped DOM as the initial parent-side render. Keeps
+     * the day-grouping logic centralized on the parent.
+     */
+    describe('pkcRenderTextlogViewBody opener helper (Slice 4-A)', () => {
+      it('is exposed on window as a function', async () => {
+        await import('../../src/adapter/ui/entry-window');
+        const global = window as unknown as Record<string, unknown>;
+        expect(typeof global.pkcRenderTextlogViewBody).toBe('function');
+      });
+
+      it('produces the same day-grouped HTML shape as the initial render', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        await import('../../src/adapter/ui/entry-window');
+        const global = window as unknown as Record<string, unknown>;
+        const render = global.pkcRenderTextlogViewBody as (
+          lid: string,
+          body: string,
+        ) => string;
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'xx', text: 'hello', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          ],
+        });
+        const out = render('some-lid', body);
+        expect(out).toContain('class="pkc-textlog-document"');
+        expect(out).toContain('id="log-xx"');
+        expect(out).toContain('data-pkc-lid="some-lid"');
+      });
+
+      it('returns (empty) placeholder for an empty textlog body', async () => {
+        await import('../../src/adapter/ui/entry-window');
+        const global = window as unknown as Record<string, unknown>;
+        const render = global.pkcRenderTextlogViewBody as (
+          lid: string,
+          body: string,
+        ) => string;
+        expect(render('lid', '{}')).toContain('(empty)');
+      });
+    });
+
     describe('readonly guard', () => {
       it('applies pointer-events:none to task checkboxes in readonly mode', async () => {
         const html = await openAndCapture(true, {

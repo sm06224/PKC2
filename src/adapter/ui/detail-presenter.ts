@@ -1,6 +1,7 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { expandTransclusions } from './transclusion';
 
 /**
  * DetailPresenter: archetype-specific rendering for the detail view.
@@ -27,12 +28,17 @@ export interface DetailPresenter {
    * @param assets      Container asset store (asset_key → base64). Used by attachment presenter and by markdown asset resolution.
    * @param mimeByKey   Map of asset_key → MIME, built from attachment entries. Used by markdown asset resolution.
    * @param nameByKey   Map of asset_key → attachment name. Used by markdown asset resolution to label non-image chips when the user omits a link label.
+   * @param entries     All container entries — supplied so text-like
+   *                    presenters can resolve `![](entry:...)`
+   *                    transclusions (P1 Slice 5-B). Presenters that
+   *                    don't render markdown ignore this argument.
    */
   renderBody(
     entry: Entry,
     assets?: Record<string, string>,
     mimeByKey?: Record<string, string>,
-    nameByKey?: Record<string, string>
+    nameByKey?: Record<string, string>,
+    entries?: Entry[]
   ): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
@@ -48,6 +54,7 @@ const textPresenter: DetailPresenter = {
     assets?: Record<string, string>,
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
+    entries?: Entry[],
   ): HTMLElement {
     if (!entry.body) {
       const body = document.createElement('pre');
@@ -68,6 +75,18 @@ const textPresenter: DetailPresenter = {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
       body.innerHTML = renderMarkdown(source);
+      // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
+      // markdown renderer. Guarded by `entries` being supplied so
+      // tests / callers without container context still work.
+      if (entries) {
+        expandTransclusions(body, {
+          entries,
+          assets,
+          mimeByKey,
+          nameByKey,
+          hostLid: entry.lid,
+        });
+      }
       return body;
     }
 

@@ -12,7 +12,6 @@ import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlo
 import {
   toggleLogFlag,
   deleteLogEntry,
-  serializeTextlogAsMarkdown,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
@@ -29,6 +28,7 @@ import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import {
   formatDate,
   formatTime,
@@ -126,8 +126,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Task list checkbox: toggle the corresponding `- [ ]`/`- [x]` in
     // the markdown body. Intercept before the generic `[data-pkc-action]`
     // dispatch because rendered checkboxes don't carry that attribute.
+    //
+    // Slice 5-B: a checkbox inside a transclusion subtree carries
+    // `data-pkc-embedded="true"` and `disabled`; the disabled attribute
+    // already suppresses clicks in modern browsers, but the data-attr
+    // guard here is defense in depth against future DOM shuffling.
     const taskCheckbox = rawTarget?.closest<HTMLInputElement>('input[data-pkc-task-index]');
     if (taskCheckbox && root.contains(taskCheckbox)) {
+      if (taskCheckbox.getAttribute('data-pkc-embedded') === 'true') {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       handleTaskCheckboxClick(taskCheckbox);
       return;
@@ -330,9 +339,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (st.readonly) break;
         const ent = st.container?.entries.find((e) => e.lid === lid);
         if (!ent || ent.archetype !== 'textlog') break;
+
+        // Suppress default button action + stop bubbling so the flag
+        // click does not also trigger the article's dblclick→BEGIN_EDIT
+        // path or any ancestor handler that might shift focus / scroll.
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Preserve the scroll position of the center pane across the
+        // full re-render triggered by `QUICK_UPDATE_ENTRY`. The
+        // renderer does `root.innerHTML = ''` on every dispatch, which
+        // would otherwise reset `.pkc-center-content`'s scrollTop to 0
+        // and snap the viewport to the top of the log — surprising for
+        // what should feel like a purely local flag toggle.
+        const scroller = root.querySelector<HTMLElement>('.pkc-center-content');
+        const savedScroll = scroller ? scroller.scrollTop : null;
+
         const log = parseTextlogBody(ent.body);
         const updated = serializeTextlogBody(toggleLogFlag(log, logId, 'important'));
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+
+        if (savedScroll !== null) {
+          requestAnimationFrame(() => {
+            const fresh = root.querySelector<HTMLElement>('.pkc-center-content');
+            if (fresh) fresh.scrollTop = savedScroll;
+          });
+        }
         break;
       }
       case 'delete-log-entry': {
@@ -795,13 +827,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toc-jump': {
+        // Two routing modes:
+        // 1. `data-pkc-toc-target-id` — Slice 3 day / log nodes carry a
+        //    precomputed DOM id (`day-yyyy-mm-dd`, `day-undated`, or
+        //    `log-<id>`). Scroll to that id at document scope — these
+        //    ids are globally unique inside a single viewer render.
+        // 2. `data-pkc-toc-slug` — heading nodes. Scoped to the owning
+        //    `<article data-pkc-log-id>` for TEXTLOG so cross-log slug
+        //    collisions don't jump to the wrong heading. TEXT uses
+        //    document scope.
+        const targetId = target.getAttribute('data-pkc-toc-target-id');
+        if (targetId) {
+          const el = root.querySelector(`#${CSS.escape(targetId)}`);
+          if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+            (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+          break;
+        }
         const slug = target.getAttribute('data-pkc-toc-slug');
         if (!slug) break;
         const logId = target.getAttribute('data-pkc-log-id');
-        // Scope the lookup: when a logId is present (TEXTLOG), only
-        // search inside the owning log row so cross-log-entry slug
-        // collisions don't jump to the wrong heading. Otherwise search
-        // the whole document (TEXT detail / editor preview).
         const scope: ParentNode = logId
           ? (root.querySelector(`[data-pkc-log-id="${CSS.escape(logId)}"]`) ?? root)
           : root;
@@ -809,6 +854,107 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
           (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        break;
+      }
+      case 'navigate-entry-ref': {
+        // P1 Slice 5-A: resolve in-app `entry:` links produced by the
+        // markdown renderer's link_open rule (see
+        // `src/features/markdown/markdown-render.ts`). The anchor carries
+        // `data-pkc-entry-ref="<raw>"` with the exact href string so we
+        // parse the same grammar that `formatEntryRef` emits.
+        //
+        // Routing by ParsedEntryRef.kind:
+        //   entry   → SELECT_ENTRY (no scroll)
+        //   log     → SELECT_ENTRY + scroll to `#log-<logId>`
+        //   range   → SELECT_ENTRY + scroll to `#log-<fromId>` (first log
+        //             of the range — range highlighting is a 5-B concern)
+        //   day     → SELECT_ENTRY + scroll to `#day-<dateKey>`
+        //   heading → SELECT_ENTRY + scroll to `#<slug>` scoped to the
+        //             owning `[data-pkc-log-id=<logId>]` article (mirrors
+        //             toc-jump mode 2 so cross-log slug collisions resolve
+        //             the same way)
+        //   legacy  → SELECT_ENTRY + scroll to `#log-<logId>` (treat the
+        //             bare fragment as a log id, matches what
+        //             `copy-log-line-ref` writes today)
+        //   invalid → no navigation. Mark the anchor with
+        //             `data-pkc-ref-broken="true"` so a click leaves a
+        //             visible breadcrumb even without extra CSS.
+        //
+        // Unknown lid: also no navigation; stamped broken. We look up
+        // the lid in `dispatcher.getState().container.entries`.
+        //
+        // Unknown fragment target (e.g., stale log id): the entry IS
+        // selected, and we try the scroll optimistically. If the
+        // querySelector returns null the viewer simply stays at its
+        // current scroll position — the top of the just-rendered entry.
+        // No broken-ref stamp for this path: the link itself is
+        // syntactically valid and the entry did open.
+        e.preventDefault();
+        const rawRef = target.getAttribute('data-pkc-entry-ref')
+          ?? target.getAttribute('href')
+          ?? '';
+        const parsed = parseEntryRef(rawRef);
+        if (parsed.kind === 'invalid') {
+          target.setAttribute('data-pkc-ref-broken', 'true');
+          break;
+        }
+        const st = dispatcher.getState();
+        const entryExists = !!st.container?.entries.some((en) => en.lid === parsed.lid);
+        if (!entryExists) {
+          target.setAttribute('data-pkc-ref-broken', 'true');
+          break;
+        }
+        // Clear any stale broken marker in case the entry was
+        // (re)created since the last click on this anchor.
+        target.removeAttribute('data-pkc-ref-broken');
+        if (st.selectedLid !== parsed.lid) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid });
+        }
+        // The dispatch triggered a synchronous re-render, but some
+        // layouts (virtualized lists, deferred TEXTLOG builds) settle
+        // on the next frame. A single rAF is enough in practice — the
+        // renderer is synchronous and this is belt-and-braces.
+        const scroll = (selector: string, scope: ParentNode = root): void => {
+          const el = scope.querySelector(selector);
+          if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+            (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        };
+        const raf =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (cb: FrameRequestCallback) => {
+                cb(0 as unknown as number);
+                return 0;
+              };
+        raf(() => {
+          switch (parsed.kind) {
+            case 'entry':
+              // No scroll target — SELECT_ENTRY already scrolled the
+              // center pane to the top of the entry body.
+              break;
+            case 'day':
+              scroll(`#${CSS.escape(`day-${parsed.dateKey}`)}`);
+              break;
+            case 'log':
+              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+              break;
+            case 'range':
+              scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
+              break;
+            case 'legacy':
+              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+              break;
+            case 'heading': {
+              const logEl = root.querySelector(
+                `[data-pkc-log-id="${CSS.escape(parsed.logId)}"]`,
+              );
+              const headingScope: ParentNode = logEl ?? root;
+              scroll(`#${CSS.escape(parsed.slug)}`, headingScope);
+              break;
+            }
+          }
+        });
         break;
       }
     }
@@ -1965,7 +2111,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // right-click on a log row carries sub-entry precision: we want
     // the "copy log line reference" item to be reachable without
     // the user first dismissing the entry-level menu.
-    const textlogRow = rawTarget.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid][data-pkc-log-id]');
+    const textlogRow = rawTarget.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid][data-pkc-log-id]');
     if (textlogRow) {
       const lid = textlogRow.getAttribute('data-pkc-lid');
       const logId = textlogRow.getAttribute('data-pkc-log-id');
@@ -2340,15 +2486,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // The existing Edit button stays untouched so both paths coexist;
     // double-click is the fast path for users who already live inside
     // a log. We intentionally ignore clicks on the flag button, the
-    // timestamp tooltip holder, asset chip anchors, and the append
-    // textarea so the existing single-click handlers on those targets
-    // are not hijacked. The append area sits outside `.pkc-textlog-row`
-    // so it is already out of scope — the exclusions inside the row
-    // are the only ones we need to filter.
+    // copy-anchor button, the timestamp tooltip holder, asset chip
+    // anchors, and the append textarea so the existing single-click
+    // handlers on those targets are not hijacked. The append area
+    // sits outside `.pkc-textlog-log` so it is already out of scope —
+    // the exclusions inside the article are the only ones we need to
+    // filter.
     const rawTarget = e.target as HTMLElement | null;
-    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid]');
+    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid]');
     if (textlogRow) {
       if (rawTarget?.closest('.pkc-textlog-flag-btn')) return;
+      if (rawTarget?.closest('.pkc-textlog-anchor-btn')) return;
       if (rawTarget?.closest('a[href^="#asset-"]')) return;
       const tlLid = textlogRow.getAttribute('data-pkc-lid');
       if (!tlLid) return;
@@ -2660,20 +2808,15 @@ export function flashEntry(root: HTMLElement, lid: string): void {
 }
 
 /**
- * Return the markdown source text for the "Copy MD" and rendered
- * viewer paths. TEXT entries use the body directly. TEXTLOG entries
- * are flattened into a single markdown document via
- * `serializeTextlogAsMarkdown` so log rows become `## timestamp`
- * sections followed by the log text.
+ * Return the markdown source text for the "Copy MD" path.
+ *
+ * Slice 4-B (TEXTLOG Viewer & Linkability Redesign): the legacy
+ * TEXTLOG flatten (`## <ISO>` per log row) path has been removed.
+ * Copy-MD is only surfaced for TEXT archetype in the action bar, so
+ * this helper simply returns `entry.body` — any non-TEXT archetype
+ * accidentally routed here falls back to the raw body verbatim.
  */
 function entryToMarkdownSource(entry: Entry): string {
-  if (entry.archetype === 'textlog') {
-    try {
-      return serializeTextlogAsMarkdown(parseTextlogBody(entry.body));
-    } catch {
-      return entry.body ?? '';
-    }
-  }
   return entry.body ?? '';
 }
 

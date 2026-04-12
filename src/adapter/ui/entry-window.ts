@@ -16,7 +16,8 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
-import { parseTextlogBody } from '../../features/textlog/textlog-body';
+import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
+import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import {
   resolveAssetReferences,
   hasAssetReferences,
@@ -313,6 +314,85 @@ export function pushViewBodyUpdate(
 }
 
 /**
+ * Build the day-grouped TEXTLOG view-body HTML string used by both the
+ * initial parent-side render (`renderViewBody`) and the post-save
+ * rerender paths (`pushTextlogViewBodyUpdate`, child-side
+ * `renderBodyView`).
+ *
+ * Slice 4-A unifies the rendered viewer with the live viewer's common
+ * builder: `buildTextlogDoc(entry, { order: 'asc' })` drives a
+ * `<section id="day-…"><article id="log-…">` tree that matches the
+ * structure emitted by `textlogPresenter.renderBody` (see
+ * `docs/development/textlog-viewer-and-linkability-redesign.md`).
+ *
+ * Differences from the live viewer:
+ *   - `order: 'asc'` — chronological, natural document order.
+ *   - No append area, no flag-toggle / copy-anchor buttons — the
+ *     entry-window view pane is read-oriented; in-place mutation
+ *     happens via the edit pane (structured editor).
+ *   - Asset-reference resolution is NOT applied here. The entry-window
+ *     rendered viewer has historically rendered TEXTLOG as raw
+ *     markdown; Slice 4-A preserves that behavior rather than
+ *     introducing new asset semantics. Asset support for TEXTLOG
+ *     rendered viewer is a separate concern.
+ */
+function buildTextlogViewBodyHtml(lid: string, body: string): string {
+  const stubEntry: Entry = {
+    lid,
+    archetype: 'textlog',
+    title: '',
+    body,
+    created_at: '',
+    updated_at: '',
+  };
+  const doc = buildTextlogDoc(stubEntry, { order: 'asc' });
+  if (doc.sections.length === 0) {
+    return '<em style="color:var(--c-muted)">(empty)</em>';
+  }
+  const parts: string[] = [];
+  parts.push(
+    `<div class="pkc-textlog-document" data-pkc-region="textlog-document">`,
+  );
+  for (const section of doc.sections) {
+    const dayId =
+      section.dateKey === '' ? 'day-undated' : `day-${section.dateKey}`;
+    const dayTitle = section.dateKey === '' ? 'Undated' : section.dateKey;
+    parts.push(
+      `<section class="pkc-textlog-day" id="${escapeForAttr(dayId)}" data-pkc-date-key="${escapeForAttr(section.dateKey)}">`,
+      `<header class="pkc-textlog-day-header"><h2 class="pkc-textlog-day-title">${escapeForHtml(dayTitle)}</h2></header>`,
+    );
+    for (const log of section.logs) {
+      const importantAttr = log.flags.includes('important')
+        ? ' data-pkc-log-important="true"'
+        : '';
+      const bodyHtml = renderMarkdown(log.bodySource || '') || '';
+      parts.push(
+        `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(lid)}"${importantAttr}>`,
+        `<header class="pkc-textlog-log-header">`,
+        `<span class="pkc-textlog-timestamp" title="${escapeForAttr(log.createdAt)}">${escapeForHtml(formatLogTimestampWithSeconds(log.createdAt))}</span>`,
+        `</header>`,
+        `<div class="pkc-textlog-text pkc-md-rendered">${bodyHtml}</div>`,
+        `</article>`,
+      );
+    }
+    parts.push(`</section>`);
+  }
+  parts.push(`</div>`);
+  return parts.join('');
+}
+
+/**
+ * Expose the TEXTLOG view-body builder on the parent window so the
+ * child window's inline `<script>` can re-render its view pane after a
+ * save (`renderBodyView` in the child). Keeping the day-grouping logic
+ * on the parent side avoids duplicating `buildTextlogDoc` /
+ * `formatLogTimestampWithSeconds` / `renderMarkdown` in the child's
+ * inline JS string.
+ */
+(window as unknown as Record<string, unknown>).pkcRenderTextlogViewBody =
+  buildTextlogViewBodyHtml;
+
+/**
  * Push a TEXTLOG view-body update with per-log-entry rendering so the
  * child retains `data-pkc-log-id` markers for task toggle identification.
  */
@@ -322,18 +402,7 @@ export function pushTextlogViewBodyUpdate(
 ): boolean {
   const child = openWindows.get(lid);
   if (!child || child.closed) return false;
-  const log = parseTextlogBody(textlogBody);
-  let html: string;
-  if (log.entries.length === 0) {
-    html = '<em style="color:var(--c-muted)">(empty)</em>';
-  } else {
-    html = log.entries
-      .map((le) => {
-        const rendered = renderMarkdown(le.text || '') || '';
-        return `<div data-pkc-log-id="${le.id}">${rendered}</div>`;
-      })
-      .join('');
-  }
+  const html = buildTextlogViewBodyHtml(lid, textlogBody);
   child.postMessage(
     { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
     '*',
@@ -545,19 +614,11 @@ function renderViewBody(
     case 'form':
       return renderFormCard(entry.body);
     case 'textlog': {
-      // TEXTLOG: render per-log-entry with data-pkc-log-id so the
-      // child-side task-toggle click handler can identify which log
-      // entry a checkbox belongs to.
-      const log = parseTextlogBody(entry.body);
-      if (log.entries.length === 0) {
-        return '<em style="color:var(--c-muted)">(empty)</em>';
-      }
-      return log.entries
-        .map((le) => {
-          const html = renderMarkdown(le.text || '') || '';
-          return `<div data-pkc-log-id="${le.id}">${html}</div>`;
-        })
-        .join('');
+      // TEXTLOG: render as a day-grouped document tree matching the
+      // live viewer (see `buildTextlogViewBodyHtml`). Each log article
+      // carries the `data-pkc-log-id` marker the child-side task-toggle
+      // click handler relies on.
+      return buildTextlogViewBodyHtml(entry.lid, entry.body);
     }
     default: {
       // Text / generic: use the pre-resolved body when the parent
@@ -1153,40 +1214,71 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-task-badge[data-pkc-task-complete="true"] {
   color: var(--c-success);
 }
-/* ── TEXTLOG rendered view ──
- * Mirrors base.css (see docs/development/textlog-readability-hardening.md).
- * grid-areas give each log entry a visible block: flag = row badge,
- * timestamp = header, text = body. DOM order is unchanged so
- * data-pkc-log-id selectors continue to work.
+/* ── TEXTLOG rendered view (day-grouped document) ──
+ * Slice 4-A mirrors base.css (see
+ * docs/development/textlog-viewer-and-linkability-redesign.md). The
+ * rendered viewer emits the same <section id="day-…"><article id="log-…">
+ * structure as the live viewer so anchors and DOM ids line up across
+ * surfaces. DOM order is header → text so plain-text reading starts
+ * with the timestamp.
  */
-.pkc-textlog-view { display: flex; flex-direction: column; gap: 0.5rem; }
-.pkc-textlog-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.pkc-textlog-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas:
-    "flag ts"
-    "flag text";
-  column-gap: 0.5rem;
-  row-gap: 0.25rem;
+.pkc-textlog-document { display: flex; flex-direction: column; gap: 0.75rem; }
+.pkc-textlog-day { display: flex; flex-direction: column; gap: 0.35rem; }
+.pkc-textlog-day-header {
+  padding: 0.15rem 0 0.25rem;
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-textlog-day-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.pkc-textlog-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.5rem 0.5rem 0.6rem;
   border-left: 3px solid var(--c-border);
   font-size: 0.85rem;
 }
-.pkc-textlog-row > .pkc-textlog-flag-btn { grid-area: flag; align-self: start; background: none; border: none; cursor: pointer; color: var(--c-muted); line-height: 1; }
-.pkc-textlog-row > .pkc-textlog-timestamp { grid-area: ts; }
-.pkc-textlog-row > .pkc-textlog-text { grid-area: text; white-space: pre-wrap; word-break: break-word; }
-.pkc-textlog-row + .pkc-textlog-row {
+.pkc-textlog-log + .pkc-textlog-log {
   border-top: 1px solid var(--c-border);
   padding-top: 0.6rem;
 }
-.pkc-textlog-row[data-pkc-log-important="true"] {
+.pkc-textlog-log[data-pkc-log-important="true"] {
   border-left-color: #f5a623;
   border-left-width: 4px;
   background: rgba(245,166,35,0.12);
   padding-left: 0.6rem;
 }
-.pkc-textlog-row[data-pkc-log-important="true"] > .pkc-textlog-flag-btn { color: #f5a623; }
+.pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-text {
+  font-weight: 600;
+  color: var(--c-fg);
+}
+.pkc-textlog-log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pkc-textlog-log .pkc-textlog-timestamp {
+  color: var(--c-muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-top: 0.1rem;
+  cursor: help;
+}
+.pkc-textlog-log[data-pkc-log-important="true"] .pkc-textlog-timestamp {
+  color: #c88a1c;
+}
+.pkc-textlog-text {
+  color: var(--c-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* ── Structured editors (textlog / todo / form) ── */
 .pkc-textlog-editor { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -1650,13 +1742,24 @@ function restoreStructuredEditor() {
 }
 
 /*
- * Render body HTML for view mode. For TEXTLOG, parse the JSON body
- * and render each log entry separately with data-pkc-log-id wrappers
- * (matching the parent's pushTextlogViewBodyUpdate and the initial
- * renderViewBody). For all other archetypes, delegate to renderMd.
+ * Render body HTML for view mode. For TEXTLOG, delegate to the
+ * parent-side day-grouped builder via window.opener so the child's
+ * post-save rerender produces the exact same DOM shape as the initial
+ * renderViewBody and pushTextlogViewBodyUpdate paths. For all other
+ * archetypes, delegate to renderMd.
  */
 function renderBodyView(body) {
   if (entryArchetype !== 'textlog') return renderMd(body);
+  try {
+    if (window.opener && typeof window.opener.pkcRenderTextlogViewBody === 'function') {
+      return window.opener.pkcRenderTextlogViewBody(lid, body);
+    }
+  } catch (_e) { /* cross-origin or closed — fall through */ }
+  /*
+   * Fallback: legacy per-log flat rendering via renderMd. Keeps the
+   * data-pkc-log-id markers so task-toggle continues to work even if
+   * the opener is unavailable; lacks day grouping and log headers.
+   */
   try {
     var parsed = JSON.parse(body);
     if (!parsed.entries || !parsed.entries.length) {
