@@ -457,7 +457,12 @@ describe('Entry-window child dirty state policy for view rerender', () => {
   });
 
   it('textlog entry follows the same clean / dirty policy as text', () => {
-    const child = executeChild({ archetype: 'textlog' });
+    // Provide a valid textlog JSON body so collectStructuredBody() round-trips
+    // correctly when the structured editor fields are untouched (clean state).
+    const textlogBody = JSON.stringify({
+      entries: [{ id: 'log-1', text: 'hello', createdAt: T, flags: [] }],
+    });
+    const child = executeChild({ archetype: 'textlog', body: textlogBody });
     const view = child.$('body-view')!;
 
     // Clean: push applies.
@@ -467,8 +472,13 @@ describe('Entry-window child dirty state policy for view rerender', () => {
     });
     expect(view.innerHTML).toBe('<p>textlog clean push</p>');
 
-    // Dirty: stash + notice.
-    child.setBodyEdit('textlog user edit');
+    // Dirty: modify a structured editor field (not the hidden textarea).
+    const textArea = document.querySelector(
+      '[data-pkc-field="textlog-entry-text"]',
+    ) as HTMLTextAreaElement | null;
+    expect(textArea).not.toBeNull();
+    textArea!.value = 'edited by user';
+
     child.dispatchMessage({
       type: 'pkc-entry-update-view-body',
       viewBody: '<p>textlog stashed</p>',

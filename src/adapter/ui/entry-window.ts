@@ -28,7 +28,9 @@ import {
   classifyPreviewType,
   isSvg,
 } from './attachment-presenter';
-import { parseFormBody } from './form-presenter';
+import { parseFormBody, formPresenter } from './form-presenter';
+import { textlogPresenter } from './textlog-presenter';
+import { todoPresenter } from './todo-presenter';
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -758,6 +760,44 @@ function buildWindowHtml(
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
   const parentVars = getParentCssVars();
 
+  // Generate archetype-specific editor body for structured types.
+  // For textlog/todo/form, use the presenter to produce a structured
+  // editor matching the center pane. For all other archetypes, keep
+  // the existing textarea + Source/Preview tabs.
+  const structuredArchetypes = new Set(['textlog', 'todo', 'form']);
+  const useStructuredEditor = structuredArchetypes.has(entry.archetype);
+  let editorBodyHtml = '';
+  if (useStructuredEditor) {
+    const presenterMap: Record<string, { renderEditorBody: (e: Entry) => HTMLElement }> = {
+      textlog: textlogPresenter,
+      todo: todoPresenter,
+      form: formPresenter,
+    };
+    const presenter = presenterMap[entry.archetype];
+    if (presenter) {
+      const el = presenter.renderEditorBody(entry);
+      // Sync DOM properties → HTML attributes so .outerHTML serializes them.
+      // textarea.value is a DOM property not reflected in outerHTML;
+      // we must write it as textContent (the content between the tags).
+      for (const ta of el.querySelectorAll('textarea')) {
+        ta.textContent = ta.value;
+      }
+      // Sync select.value → selected attribute on the correct option.
+      for (const sel of el.querySelectorAll('select')) {
+        for (const opt of sel.options) {
+          if (opt.value === sel.value) opt.setAttribute('selected', '');
+          else opt.removeAttribute('selected');
+        }
+      }
+      // Sync checkbox .checked → checked attribute.
+      for (const chk of el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+        if (chk.checked) chk.setAttribute('checked', '');
+        else chk.removeAttribute('checked');
+      }
+      editorBodyHtml = el.outerHTML;
+    }
+  }
+
   // Attachment-preview boot data. Only attachment archetype entries
   // carry per-entry bytes (`attachmentData`); everything else leaves
   // this as an empty object and the boot script becomes a no-op.
@@ -1079,6 +1119,55 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-task-badge[data-pkc-task-complete="true"] {
   color: var(--c-success);
 }
+/* ── Structured editors (textlog / todo / form) ── */
+.pkc-textlog-editor { display: flex; flex-direction: column; gap: 0.5rem; }
+.pkc-textlog-edit-row {
+  display: grid; grid-template-columns: auto auto auto 1fr;
+  gap: 0.4rem; align-items: start; padding: 0.4rem;
+  border: 1px solid var(--c-border); border-radius: var(--radius);
+}
+.pkc-textlog-edit-row[data-pkc-deleted="true"] { display: none; }
+.pkc-textlog-flag-label { font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.pkc-textlog-delete-btn {
+  font-size: 0.7rem; padding: 0.1rem 0.3rem;
+  color: var(--c-danger, #ff4444); cursor: pointer;
+  background: none; border: 1px solid var(--c-border); border-radius: var(--radius);
+}
+.pkc-textlog-edit-text {
+  grid-column: 1 / -1; background: var(--c-surface); color: var(--c-fg);
+  border: 1px solid var(--c-border); border-radius: var(--radius);
+  padding: 0.3rem; font-family: var(--font-mono); font-size: 0.85rem; resize: vertical;
+}
+.pkc-textlog-timestamp { font-size: 0.7rem; color: var(--c-muted); white-space: nowrap; }
+.pkc-todo-editor { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+.pkc-todo-status-select {
+  width: auto; max-width: 120px; font-size: 0.8rem; padding: 0.25rem 0.4rem;
+  border: 1px solid var(--c-border); border-radius: var(--radius); background: var(--c-bg);
+  font-family: var(--font-sans); color: var(--c-fg);
+}
+.pkc-todo-date-input {
+  width: auto; max-width: 180px; font-size: 0.8rem; padding: 0.25rem 0.4rem;
+  border: 1px solid var(--c-border); border-radius: var(--radius); background: var(--c-bg);
+  font-family: var(--font-sans); color: var(--c-fg);
+}
+.pkc-todo-archived-label { font-size: 0.85rem; cursor: pointer; }
+.pkc-todo-description-input {
+  width: 100%; font-family: var(--font-mono); font-size: 0.85rem;
+  padding: 0.4rem; border: 1px solid var(--c-border); border-radius: var(--radius);
+  background: var(--c-surface); color: var(--c-fg); resize: vertical;
+}
+.pkc-form-editor { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+.pkc-form-name-input {
+  width: 100%; font-size: 0.85rem; padding: 0.4rem 0.6rem;
+  border: 1px solid var(--c-border); border-radius: var(--radius);
+  font-family: var(--font-sans); color: var(--c-fg); background: var(--c-bg); outline: none;
+}
+.pkc-form-note-input {
+  width: 100%; font-family: var(--font-mono); font-size: 0.85rem;
+  padding: 0.4rem; border: 1px solid var(--c-border); border-radius: var(--radius);
+  background: var(--c-surface); color: var(--c-fg); resize: vertical;
+}
+.pkc-form-check-label { font-size: 0.85rem; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -1105,12 +1194,13 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
         <input type="text" class="pkc-editor-title" id="title-input" value="">
         <span class="pkc-archetype-label">${entry.archetype}</span>
       </div>
-      <div class="pkc-tab-bar" id="tab-bar">
+${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</div>
+      <textarea class="pkc-editor-body" id="body-edit" rows="10" style="display:none"></textarea>` : `      <div class="pkc-tab-bar" id="tab-bar">
         <span class="pkc-tab" id="tab-source" data-pkc-active="true" onclick="showTab('source')">Source</span>
         <span class="pkc-tab" id="tab-preview" onclick="showTab('preview')">Preview</span>
       </div>
       <textarea class="pkc-editor-body" id="body-edit" rows="10"></textarea>
-      <div class="pkc-view-body pkc-md-rendered" id="body-preview" style="display:none"></div>
+      <div class="pkc-view-body pkc-md-rendered" id="body-preview" style="display:none"></div>`}
     </div>
   </div>
 
@@ -1129,6 +1219,7 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
 var currentMode = 'view';
 var lid = ${escapeForScript(entry.lid)};
 var entryArchetype = ${escapeForScript(entry.archetype)};
+var useStructuredEditor = ${useStructuredEditor ? 'true' : 'false'};
 var originalTitle = ${escapeForScript(entry.title)};
 var originalBody = ${escapeForScript(entry.body)};
 
@@ -1360,10 +1451,14 @@ bootAttachmentPreview();
  * cancel or save. This is acceptable and keeps the policy simple.
  */
 function isEntryDirty() {
-  var bodyEl = document.getElementById('body-edit');
   var titleEl = document.getElementById('title-input');
-  if (!bodyEl || !titleEl) return false;
-  return bodyEl.value !== originalBody || titleEl.value !== originalTitle;
+  if (!titleEl) return false;
+  if (titleEl.value !== originalTitle) return true;
+  if (useStructuredEditor) {
+    return collectStructuredBody() !== originalBody;
+  }
+  var bodyEl = document.getElementById('body-edit');
+  return bodyEl ? bodyEl.value !== originalBody : false;
 }
 
 /*
@@ -1381,6 +1476,105 @@ function showPendingViewNotice() {
 function hidePendingViewNotice() {
   var el = document.getElementById('pending-view-notice');
   if (el) el.style.display = 'none';
+}
+
+/*
+ * Collect body from structured editor fields. Mirrors the center pane's
+ * collectBody pattern for each archetype. Returns the serialized body
+ * string ready for the save protocol.
+ */
+function collectStructuredBody() {
+  if (entryArchetype === 'textlog') {
+    var hiddenBody = document.querySelector('[data-pkc-field="body"]');
+    var original = { entries: [] };
+    try { original = JSON.parse(hiddenBody ? hiddenBody.value : '{}'); } catch (_e) {}
+    var origMap = {};
+    for (var k = 0; k < original.entries.length; k++) {
+      origMap[original.entries[k].id] = original.entries[k];
+    }
+    var rows = document.querySelectorAll('.pkc-textlog-edit-row');
+    var entries = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row.getAttribute('data-pkc-deleted') === 'true') continue;
+      var logId = row.getAttribute('data-pkc-log-id');
+      var textarea = row.querySelector('[data-pkc-field="textlog-entry-text"]');
+      var flagChk = row.querySelector('[data-pkc-field="textlog-flag"]');
+      var text = textarea ? textarea.value : '';
+      var flags = flagChk && flagChk.checked ? ['important'] : [];
+      var orig = origMap[logId] || {};
+      entries.push({ id: logId, text: text, createdAt: orig.createdAt || new Date().toISOString(), flags: flags });
+    }
+    entries.reverse();
+    return JSON.stringify({ entries: entries });
+  }
+  if (entryArchetype === 'todo') {
+    var statusEl = document.querySelector('[data-pkc-field="todo-status"]');
+    var descEl = document.querySelector('[data-pkc-field="todo-description"]');
+    var dateEl = document.querySelector('[data-pkc-field="todo-date"]');
+    var archivedEl = document.querySelector('[data-pkc-field="todo-archived"]');
+    var obj = { status: statusEl && statusEl.value === 'done' ? 'done' : 'open', description: descEl ? descEl.value : '' };
+    if (dateEl && dateEl.value) obj.date = dateEl.value;
+    if (archivedEl && archivedEl.checked) obj.archived = true;
+    return JSON.stringify(obj);
+  }
+  if (entryArchetype === 'form') {
+    var nameEl = document.querySelector('[data-pkc-field="form-name"]');
+    var noteEl = document.querySelector('[data-pkc-field="form-note"]');
+    var checkedEl = document.querySelector('[data-pkc-field="form-checked"]');
+    return JSON.stringify({ name: nameEl ? nameEl.value : '', note: noteEl ? noteEl.value : '', checked: checkedEl ? checkedEl.checked : false });
+  }
+  return document.getElementById('body-edit').value;
+}
+
+/*
+ * Restore structured editor fields to their original values on cancel.
+ */
+function restoreStructuredEditor() {
+  try {
+    if (entryArchetype === 'textlog') {
+      var parsed = JSON.parse(originalBody);
+      if (!parsed.entries) return;
+      /* Remove any deletion markers and restore original content */
+      var rows = document.querySelectorAll('.pkc-textlog-edit-row');
+      var origMap = {};
+      var reversed = parsed.entries.slice().reverse();
+      for (var k = 0; k < reversed.length; k++) origMap[reversed[k].id] = reversed[k];
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        row.removeAttribute('data-pkc-deleted');
+        row.style.display = '';
+        var logId = row.getAttribute('data-pkc-log-id');
+        var orig = origMap[logId];
+        if (orig) {
+          var ta = row.querySelector('[data-pkc-field="textlog-entry-text"]');
+          if (ta) ta.value = orig.text || '';
+          var fl = row.querySelector('[data-pkc-field="textlog-flag"]');
+          if (fl) fl.checked = (orig.flags || []).indexOf('important') >= 0;
+        }
+      }
+    }
+    if (entryArchetype === 'todo') {
+      var todo = JSON.parse(originalBody);
+      var s = document.querySelector('[data-pkc-field="todo-status"]');
+      if (s) s.value = todo.status || 'open';
+      var d = document.querySelector('[data-pkc-field="todo-description"]');
+      if (d) d.value = todo.description || '';
+      var dt = document.querySelector('[data-pkc-field="todo-date"]');
+      if (dt) dt.value = todo.date || '';
+      var ar = document.querySelector('[data-pkc-field="todo-archived"]');
+      if (ar) ar.checked = !!todo.archived;
+    }
+    if (entryArchetype === 'form') {
+      var form = JSON.parse(originalBody);
+      var n = document.querySelector('[data-pkc-field="form-name"]');
+      if (n) n.value = form.name || '';
+      var nt = document.querySelector('[data-pkc-field="form-note"]');
+      if (nt) nt.value = form.note || '';
+      var ch = document.querySelector('[data-pkc-field="form-checked"]');
+      if (ch) ch.checked = !!form.checked;
+    }
+  } catch (_e) {}
 }
 
 /*
@@ -1462,7 +1656,7 @@ function enterEdit() {
   document.getElementById('btn-cancel').style.display = '';
   document.getElementById('action-bar').setAttribute('data-pkc-editing', 'true');
   document.getElementById('bar-status').textContent = '✎ Editing';
-  showTab('source');
+  if (!useStructuredEditor) showTab('source');
 }
 
 function cancelEdit() {
@@ -1474,7 +1668,11 @@ function cancelEdit() {
   document.getElementById('btn-cancel').style.display = 'none';
   document.getElementById('action-bar').removeAttribute('data-pkc-editing');
   document.getElementById('bar-status').textContent = '';
-  document.getElementById('body-edit').value = originalBody;
+  if (useStructuredEditor) {
+    restoreStructuredEditor();
+  } else {
+    document.getElementById('body-edit').value = originalBody;
+  }
   document.getElementById('title-input').value = originalTitle;
   /*
    * The user just discarded in-progress edits — body-edit and
@@ -1538,7 +1736,7 @@ function renderMd(text) {
 
 function saveEntry() {
   var title = document.getElementById('title-input').value;
-  var body = document.getElementById('body-edit').value;
+  var body = useStructuredEditor ? collectStructuredBody() : document.getElementById('body-edit').value;
   window.opener.postMessage({ type: 'pkc-entry-save', lid: lid, title: title, body: body }, '*');
   document.getElementById('status').textContent = 'Saving...';
 }
@@ -1546,7 +1744,7 @@ function saveEntry() {
 window.addEventListener('message', function(e) {
   if (e.data && e.data.type === 'pkc-entry-saved') {
     originalTitle = document.getElementById('title-input').value;
-    originalBody = document.getElementById('body-edit').value;
+    originalBody = useStructuredEditor ? collectStructuredBody() : document.getElementById('body-edit').value;
     /* Update the view-pane body to reflect saved content */
     document.getElementById('title-display').textContent = originalTitle;
     document.getElementById('body-view').innerHTML = renderBodyView(originalBody);
@@ -1642,6 +1840,19 @@ window.addEventListener('message', function(e) {
 });
 /* Derive initial task badge from the rendered body */
 updateTaskBadge();
+/* TEXTLOG delete button handler — mark row as deleted and hide it */
+if (useStructuredEditor && entryArchetype === 'textlog') {
+  document.addEventListener('click', function(ev) {
+    var btn = ev.target;
+    if (!btn || !btn.getAttribute) return;
+    if (btn.getAttribute('data-pkc-field') !== 'textlog-delete') return;
+    var row = btn.closest('.pkc-textlog-edit-row');
+    if (row) {
+      row.setAttribute('data-pkc-deleted', 'true');
+      row.style.display = 'none';
+    }
+  });
+}
 ${!readonly && startEditing ? "/* Auto-enter edit mode on open */\nenterEdit();" : ''}
 </script>
 </body>

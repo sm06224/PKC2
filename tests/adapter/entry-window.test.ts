@@ -2236,10 +2236,12 @@ describe('Entry Window', () => {
     describe('badge update hook points', () => {
       it('calls updateTaskBadge on initial load', async () => {
         const html = await openAndCapture();
-        // After message listener, before auto-edit
-        const listenerEnd = html.lastIndexOf('});');
-        const initBadgeCall = html.indexOf('updateTaskBadge()', listenerEnd);
-        expect(initBadgeCall).toBeGreaterThan(-1);
+        // The init badge call appears after the message listener setup,
+        // identified by the "Derive initial task badge" comment.
+        expect(html).toContain('/* Derive initial task badge from the rendered body */');
+        const commentPos = html.indexOf('Derive initial task badge');
+        const nextLine = html.indexOf('updateTaskBadge()', commentPos);
+        expect(nextLine).toBeGreaterThan(commentPos);
       });
 
       it('calls updateTaskBadge in pkc-entry-update-view-body handler (clean path)', async () => {
@@ -2420,6 +2422,166 @@ describe('Entry Window', () => {
         // update-view-body handler sets innerHTML directly from e.data.viewBody, not renderBodyView
         expect(handlerSection).toContain('e.data.viewBody');
         expect(handlerSection).not.toContain('renderBodyView');
+      });
+    });
+  });
+
+  // ── Structured editor for TEXTLOG / TODO / FORM ──
+
+  describe('Structured editor', () => {
+    describe('TEXTLOG structured editor', () => {
+      it('renders per-log-entry textareas instead of raw JSON textarea', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: 'First entry', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: 'Second entry', createdAt: '2026-01-02T00:00:00Z', flags: ['important'] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        // Structured editor present
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-textlog-editor');
+        expect(html).toContain('pkc-textlog-edit-row');
+        expect(html).toContain('data-pkc-log-id="lg1"');
+        expect(html).toContain('data-pkc-log-id="lg2"');
+        expect(html).toContain('data-pkc-field="textlog-entry-text"');
+      });
+
+      it('has delete buttons for each log entry', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [{ id: 'lg1', text: 'Entry', createdAt: '2026-01-01T00:00:00Z', flags: [] }],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('data-pkc-field="textlog-delete"');
+        expect(html).toContain('pkc-textlog-delete-btn');
+      });
+
+      it('hides Source/Preview tab bar for TEXTLOG', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({ entries: [] });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        // Tab bar should not be present for structured editors
+        const editPane = html.slice(html.indexOf('id="edit-pane"'));
+        expect(editPane).not.toContain('id="tab-bar"');
+      });
+
+      it('has hidden body field with original body', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [{ id: 'lg1', text: 'Entry', createdAt: '2026-01-01T00:00:00Z', flags: [] }],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('data-pkc-field="body"');
+      });
+
+      it('includes TEXTLOG editor CSS in inline styles', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('.pkc-textlog-editor');
+        expect(html).toContain('.pkc-textlog-edit-row');
+        expect(html).toContain('.pkc-textlog-delete-btn');
+      });
+    });
+
+    describe('TODO structured editor', () => {
+      it('renders status select, date input, description textarea', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Buy groceries', date: '2099-12-31' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-todo-editor');
+        expect(html).toContain('data-pkc-field="todo-status"');
+        expect(html).toContain('data-pkc-field="todo-description"');
+        expect(html).toContain('data-pkc-field="todo-date"');
+        expect(html).toContain('data-pkc-field="todo-archived"');
+      });
+
+      it('hides Source/Preview tab bar for TODO', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Test' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        const editPane = html.slice(html.indexOf('id="edit-pane"'));
+        expect(editPane).not.toContain('id="tab-bar"');
+      });
+
+      it('includes TODO editor CSS in inline styles', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Test' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('.pkc-todo-editor');
+        expect(html).toContain('.pkc-todo-status-select');
+      });
+    });
+
+    describe('FORM structured editor', () => {
+      it('renders name input, note textarea, checked checkbox', async () => {
+        const formBody = JSON.stringify({ name: 'John', note: 'Some note', checked: true });
+        const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-form-editor');
+        expect(html).toContain('data-pkc-field="form-name"');
+        expect(html).toContain('data-pkc-field="form-note"');
+        expect(html).toContain('data-pkc-field="form-checked"');
+      });
+
+      it('includes FORM editor CSS in inline styles', async () => {
+        const formBody = JSON.stringify({ name: 'Test', note: '', checked: false });
+        const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+        expect(html).toContain('.pkc-form-editor');
+        expect(html).toContain('.pkc-form-name-input');
+      });
+    });
+
+    describe('TEXT keeps existing textarea editor', () => {
+      it('uses textarea and Source/Preview tabs for TEXT', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
+        expect(html).not.toContain('id="structured-editor"');
+        expect(html).toContain('id="tab-bar"');
+        expect(html).toContain('id="body-edit"');
+      });
+
+      it('uses textarea for attachment', async () => {
+        const attBody = JSON.stringify({ name: 'file.txt', mime: 'text/plain' });
+        const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+        expect(html).not.toContain('id="structured-editor"');
+        expect(html).toContain('id="tab-bar"');
+      });
+    });
+
+    describe('child-side functions', () => {
+      it('has collectStructuredBody function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function collectStructuredBody()');
+      });
+
+      it('has restoreStructuredEditor function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function restoreStructuredEditor()');
+      });
+
+      it('useStructuredEditor is true for textlog', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('var useStructuredEditor = true');
+      });
+
+      it('useStructuredEditor is true for todo', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: '' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('var useStructuredEditor = true');
+      });
+
+      it('useStructuredEditor is false for text', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('var useStructuredEditor = false');
+      });
+
+      it('saveEntry uses collectStructuredBody for structured editors', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('useStructuredEditor ? collectStructuredBody()');
+      });
+
+      it('has TEXTLOG delete button click handler', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain("data-pkc-field') !== 'textlog-delete'");
+        expect(html).toContain("data-pkc-deleted', 'true'");
       });
     });
   });
