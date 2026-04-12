@@ -86,6 +86,12 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 62 | `entry-window-structured-editor-parity.md` | Entry window structured editor parity | 2026-04-12 | TEXTLOG/todo/form の entry window 編集を raw JSON → presenter ベース構造化エディタに修正。`syncDomPropertiesToHtml()` で outerHTML シリアライズ前の DOM property→HTML 同期契約を確立。TEXTLOG save 後 per-log-entry 再描画修正。テスト 19+11 件。 |
 | 63 | `ui-readability-and-editor-sizing-hardening.md` | UI readability & editor sizing hardening (Slices A + B + C) | 2026-04-12 | Slice B: PDF / HTML sandbox preview に `position: relative; z-index: 10000` で CRT scanline overlay を除外。Slice C: center pane textarea `rows = max(15, lineCount+3)` + entry window 非構造化 textarea を `data-pkc-viewport-sized` + `data-pkc-wide` で viewport 追従。Slice A: `:root` に `--font-body` / `--radius-sm` / `--c-text` / `--c-text-dim` を定義、`.pkc-md-rendered` line-height 1.45、`pre` 1.35。テスト 10+4+6+11 = 31 件。 |
 
+## Stabilization Phase — 2026-04-12
+
+`project-priority-refresh.md` の棚卸し結果、直近のユーザ指摘は全て閉じ、残り候補は
+いずれも「今やる妥当性が薄い」状態。**新規実装よりもユーザからの新たな痛み待ちが妥当**
+と判定。以下の CANDIDATE 群は参照目的で保持する（優先度の昇格は新規報告後に行う）。
+
 ## CANDIDATE — Next Feature
 
 ### Keyboard Navigation — Completion Snapshot
