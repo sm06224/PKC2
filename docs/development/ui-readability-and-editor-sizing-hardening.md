@@ -9,11 +9,11 @@ Created: 2026-04-12
 
 3 つの UX 問題を 3 slice に分離して修正する。
 
-| Slice | 問題 | 性質 | 優先度 |
-|-------|------|------|--------|
-| B | Sandbox PDF に CRT scanline overlay が乗る | バグ | 最高 |
-| C | 編集モード textarea のサイズ追従が不自然 | UX 不具合 | 高 |
-| A | Markdown rendered HTML の行間/密度 | UX 改善 | 中 |
+| Slice | 問題 | 性質 | 優先度 | Status |
+|-------|------|------|--------|--------|
+| B | Sandbox PDF に CRT scanline overlay が乗る | バグ | 最高 | **COMPLETED** |
+| C | 編集モード textarea のサイズ追従が不自然 | UX 不具合 | 高 | CANDIDATE |
+| A | Markdown rendered HTML の行間/密度 | UX 改善 | 中 | CANDIDATE |
 
 実装順: B → C → A
 
