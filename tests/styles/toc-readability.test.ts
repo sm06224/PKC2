@@ -3,17 +3,21 @@
  *
  * The right-pane TEXTLOG / TEXT TOC has three node kinds (day / log /
  * heading).  Earlier light-mode fix retargeted day/log to the
- * `--c-toc-secondary` token but left headings at the generic
- * `.pkc-toc-link` fallback (`--c-text, inherit`) and left the
- * "Contents" label at `--c-muted` (~4.37:1 against the warm beige
- * sidebar).  The tests below lock in:
+ * `--c-toc-secondary` token but the user still reported the rows read
+ * as faint at the 0.72rem mono size.  This iteration:
  *
  *   1. heading rows use the strongest body-text token explicitly
  *   2. day / log rows use `--c-toc-secondary`
  *   3. the "Contents" label uses `--c-toc-secondary` (not `--c-muted`)
- *   4. the light-mode value of `--c-toc-secondary` is the
- *      WCAG-AAA-passing `#3d3830` ink
- *   5. dark-mode token definitions remain untouched (no regression)
+ *   4. the light-mode value of `--c-toc-secondary` is darkened to
+ *      `#26221b` (~13:1 contrast against the #f0ebe0 beige) so
+ *      hierarchy is carried by weight/size, not by color faintness
+ *   5. both light-theme scopes explicitly declare `--c-text: #1a1a14`
+ *      (belt-and-braces against lazy `var(--c-fg)` substitution)
+ *   6. theme-scoped hard overrides pin concrete hex on the TOC link
+ *      elements so any custom-property chain break cannot make the
+ *      TOC fall back to a faint color
+ *   7. dark-mode token definitions remain untouched (no regression)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -55,16 +59,55 @@ describe('TOC light-mode readability', () => {
     expect(labelBlock![0]).not.toMatch(/color:\s*var\(--c-muted\)/);
   });
 
-  it('light media query defines --c-toc-secondary: #3d3830', () => {
-    // Locks in the ~9:1 contrast value against the #f0ebe0 beige bg.
+  it('light media query defines --c-toc-secondary: #26221b (darker ink)', () => {
+    // Locks in the ~13:1 contrast value against the #f0ebe0 beige bg.
+    // The earlier #3d3830 value reads as washed-out at 0.72rem mono —
+    // hierarchy is now carried by weight/size only.
     expect(baseCss).toMatch(
-      /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root\s*\{[\s\S]*?--c-toc-secondary:\s*#3d3830/,
+      /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root\s*\{[\s\S]*?--c-toc-secondary:\s*#26221b/,
     );
   });
 
-  it('manual light theme (#pkc-root[data-pkc-theme="light"]) defines --c-toc-secondary: #3d3830', () => {
+  it('manual light theme (#pkc-root[data-pkc-theme="light"]) defines --c-toc-secondary: #26221b', () => {
     expect(baseCss).toMatch(
-      /#pkc-root\[data-pkc-theme="light"\]\s*\{[\s\S]*?--c-toc-secondary:\s*#3d3830/,
+      /#pkc-root\[data-pkc-theme="light"\]\s*\{[\s\S]*?--c-toc-secondary:\s*#26221b/,
+    );
+  });
+
+  it('light media query explicitly binds --c-text: #1a1a14 (no lazy var chain)', () => {
+    // Belt-and-braces: the earlier fix relied on
+    // `--c-text: var(--c-fg)` resolving lazily at computed-value time,
+    // which could silently break if a future refactor wrapped the TOC
+    // in a container that redefined `--c-fg`.  Pin the concrete hex.
+    expect(baseCss).toMatch(
+      /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root\s*\{[\s\S]*?--c-text:\s*#1a1a14/,
+    );
+  });
+
+  it('manual light theme explicitly binds --c-text: #1a1a14', () => {
+    expect(baseCss).toMatch(
+      /#pkc-root\[data-pkc-theme="light"\]\s*\{[\s\S]*?--c-text:\s*#1a1a14/,
+    );
+  });
+
+  it('light media query pins day/log TOC link color via hard-override hex', () => {
+    // Hard override neutralises any cascade edge case
+    // (`all: unset`, specificity quirks) that could leak a faint
+    // inherited color into the TOC.
+    expect(baseCss).toMatch(
+      /@media\s*\(prefers-color-scheme:\s*light\)\s*\{[\s\S]*?\.pkc-toc-item\[data-pkc-toc-kind="log"\]\s*>\s*\.pkc-toc-link[\s\S]*?color:\s*#26221b/,
+    );
+  });
+
+  it('manual light theme pins day/log TOC link color via hard-override hex', () => {
+    expect(baseCss).toMatch(
+      /#pkc-root\[data-pkc-theme="light"\]\s*\.pkc-toc-item\[data-pkc-toc-kind="log"\]\s*>\s*\.pkc-toc-link[\s\S]*?\{\s*color:\s*#26221b/,
+    );
+  });
+
+  it('manual light theme pins heading TOC link color to body-text hex', () => {
+    expect(baseCss).toMatch(
+      /#pkc-root\[data-pkc-theme="light"\]\s*\.pkc-toc-item\[data-pkc-toc-kind="heading"\]\s*>\s*\.pkc-toc-link[\s\S]*?color:\s*#1a1a14/,
     );
   });
 
