@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyFileSize,
   fileSizeWarningMessage,
+  isFileTooLarge,
   totalAssetBytes,
   assetCount,
   hasAssets,
@@ -11,6 +12,7 @@ import {
   zipRecommendation,
   SIZE_WARN_SOFT,
   SIZE_WARN_HEAVY,
+  SIZE_REJECT_HARD,
 } from '../../src/adapter/ui/guardrails';
 import type { Container } from '../../src/core/model/container';
 
@@ -54,6 +56,25 @@ describe('guardrails', () => {
     it('returns heavy at 5 MB threshold', () => {
       expect(classifyFileSize(SIZE_WARN_HEAVY)).toBe('heavy');
       expect(classifyFileSize(10_000_000)).toBe('heavy');
+      expect(classifyFileSize(SIZE_REJECT_HARD - 1)).toBe('heavy');
+    });
+
+    it('returns reject at SIZE_REJECT_HARD threshold', () => {
+      expect(classifyFileSize(SIZE_REJECT_HARD)).toBe('reject');
+      expect(classifyFileSize(SIZE_REJECT_HARD + 1)).toBe('reject');
+      expect(classifyFileSize(1024 * 1024 * 1024)).toBe('reject'); // 1 GB
+    });
+  });
+
+  describe('isFileTooLarge', () => {
+    it('returns false for files below SIZE_REJECT_HARD', () => {
+      expect(isFileTooLarge(0)).toBe(false);
+      expect(isFileTooLarge(SIZE_WARN_HEAVY)).toBe(false);
+      expect(isFileTooLarge(SIZE_REJECT_HARD - 1)).toBe(false);
+    });
+    it('returns true at and above SIZE_REJECT_HARD', () => {
+      expect(isFileTooLarge(SIZE_REJECT_HARD)).toBe(true);
+      expect(isFileTooLarge(1024 * 1024 * 1024)).toBe(true); // 1 GB
     });
   });
 
@@ -75,6 +96,23 @@ describe('guardrails', () => {
       expect(msg).not.toBeNull();
       expect(msg).toContain('⚠');
       expect(msg).toContain('external storage');
+    });
+
+    it('returns reject warning at SIZE_REJECT_HARD and above', () => {
+      const msg = fileSizeWarningMessage(SIZE_REJECT_HARD);
+      expect(msg).not.toBeNull();
+      expect(msg).toContain('⛔');
+      expect(msg).toContain('cannot attach');
+      // Must mention external storage as the recommended escape hatch
+      expect(msg).toMatch(/externally|external/i);
+    });
+
+    it('reject message gives a stable hint about the 250 MB ceiling', () => {
+      // The exact byte count is an implementation detail, but the
+      // message should contain a human-readable size of the limit so
+      // the user knows how much to trim.
+      const msg = fileSizeWarningMessage(1024 * 1024 * 1024);
+      expect(msg).toContain('250');
     });
   });
 

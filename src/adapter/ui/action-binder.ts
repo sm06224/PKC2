@@ -14,6 +14,7 @@ import {
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import { isFileTooLarge, fileSizeWarningMessage } from './guardrails';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
@@ -2357,6 +2358,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const file = imageItem.getAsFile();
     if (!file) return;
 
+    // Hard reject oversized pastes BEFORE any FileReader allocation —
+    // otherwise a multi-hundred-MB clipboard image OOMs the tab.
+    // See docs/development/attachment-size-limits.md.
+    if (isFileTooLarge(file.size)) {
+      e.preventDefault();
+      console.warn(`[PKC2] Paste rejected: ${fileSizeWarningMessage(file.size)}`);
+      alert(fileSizeWarningMessage(file.size) ?? 'File too large.');
+      return;
+    }
+
     // Check if we're in a markdown-capable textarea
     const target = e.target;
     const isTextarea = target instanceof HTMLTextAreaElement && isMarkdownTextarea(target);
@@ -2422,7 +2433,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           updateTextEditPreview(freshTextarea);
         }
       };
-      reader.onerror = () => { pasteInProgress = false; };
+      reader.onerror = () => {
+        pasteInProgress = false;
+        // Paste conversion failed — most commonly because the source
+        // was too large for btoa/ArrayBuffer allocation. Surface it
+        // instead of silently dropping the paste.
+        const msg = `Paste failed to read "${name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
+        console.warn(`[PKC2] ${msg}`);
+        alert(msg);
+      };
       reader.readAsArrayBuffer(file);
       return;
     }
@@ -3547,7 +3566,20 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
  * Flow: CREATE_ENTRY → COMMIT_EDIT (with body metadata + assets) → CREATE_RELATION (if folder context)
  */
 function processFileAttachment(file: File, contextFolder: string | undefined, dispatcher: Dispatcher): void {
+  // Hard reject oversized drops before allocating any ArrayBuffer.
+  // See docs/development/attachment-size-limits.md.
+  if (isFileTooLarge(file.size)) {
+    const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+    console.warn(`[PKC2] Drop rejected: ${msg}`);
+    alert(msg);
+    return;
+  }
   const reader = new FileReader();
+  reader.onerror = () => {
+    const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
+    console.warn(`[PKC2] ${msg}`);
+    alert(msg);
+  };
   reader.onload = () => {
     const arrayBuffer = reader.result as ArrayBuffer;
     const bytes = new Uint8Array(arrayBuffer);
