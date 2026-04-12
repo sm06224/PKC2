@@ -2320,4 +2320,107 @@ describe('Entry Window', () => {
       });
     });
   });
+
+  // ── TEXTLOG save re-render fix ──
+
+  describe('TEXTLOG save re-render', () => {
+    describe('renderBodyView function', () => {
+      it('child script contains renderBodyView function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function renderBodyView(body)');
+      });
+
+      it('entryArchetype variable is set for TEXTLOG', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('var entryArchetype = "textlog"');
+      });
+
+      it('entryArchetype variable is set for TEXT', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('var entryArchetype = "text"');
+      });
+
+      it('renderBodyView parses TEXTLOG JSON and renders per-log-entry with data-pkc-log-id', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        // The function should JSON.parse and wrap each entry with data-pkc-log-id
+        expect(html).toContain("JSON.parse(body)");
+        expect(html).toContain('data-pkc-log-id');
+        expect(html).toContain("le.id");
+      });
+
+      it('renderBodyView falls back to renderMd for non-textlog archetypes', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('function renderBodyView(body)');
+        // For non-textlog, it returns renderMd(body)
+        expect(html).toContain("if (entryArchetype !== 'textlog') return renderMd(body)");
+      });
+    });
+
+    describe('save handler uses renderBodyView', () => {
+      it('pkc-entry-saved handler calls renderBodyView instead of renderMd', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        // The saved handler should use renderBodyView(originalBody) not renderMd(originalBody)
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const savedSection = html.slice(savedHandler, nextHandler);
+        expect(savedSection).toContain('renderBodyView(originalBody)');
+        expect(savedSection).not.toContain('renderMd(originalBody)');
+      });
+    });
+
+    describe('TEXTLOG initial render has per-log-entry structure', () => {
+      it('TEXTLOG initial body-view has data-pkc-log-id wrappers', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: '- [ ] Open', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('data-pkc-log-id="lg1"');
+        expect(viewBody).toContain('data-pkc-log-id="lg2"');
+        expect(viewBody).toContain('pkc-task-checkbox');
+      });
+    });
+
+    describe('regression', () => {
+      it('TEXT save handler still uses renderBodyView (delegates to renderMd)', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const savedSection = html.slice(savedHandler, nextHandler);
+        // TEXT also goes through renderBodyView, which delegates to renderMd for non-textlog
+        expect(savedSection).toContain('renderBodyView(originalBody)');
+      });
+
+      it('entry window task toggle click handler is still present', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [ ] Task', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+      });
+
+      it('entry window badge function is still present', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function updateTaskBadge()');
+      });
+
+      it('update-view-body handler is unchanged (uses pre-rendered HTML from parent)', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        const viewBodyHandler = html.indexOf("type === 'pkc-entry-update-view-body'");
+        const handlerEnd = html.indexOf('});', viewBodyHandler);
+        const handlerSection = html.slice(viewBodyHandler, handlerEnd);
+        // update-view-body handler sets innerHTML directly from e.data.viewBody, not renderBodyView
+        expect(handlerSection).toContain('e.data.viewBody');
+        expect(handlerSection).not.toContain('renderBodyView');
+      });
+    });
+  });
 });

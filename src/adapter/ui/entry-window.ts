@@ -1128,6 +1128,7 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
 <script>
 var currentMode = 'view';
 var lid = ${escapeForScript(entry.lid)};
+var entryArchetype = ${escapeForScript(entry.archetype)};
 var originalTitle = ${escapeForScript(entry.title)};
 var originalBody = ${escapeForScript(entry.body)};
 
@@ -1383,6 +1384,31 @@ function hidePendingViewNotice() {
 }
 
 /*
+ * Render body HTML for view mode. For TEXTLOG, parse the JSON body
+ * and render each log entry separately with data-pkc-log-id wrappers
+ * (matching the parent's pushTextlogViewBodyUpdate and the initial
+ * renderViewBody). For all other archetypes, delegate to renderMd.
+ */
+function renderBodyView(body) {
+  if (entryArchetype !== 'textlog') return renderMd(body);
+  try {
+    var parsed = JSON.parse(body);
+    if (!parsed.entries || !parsed.entries.length) {
+      return '<em style="color:var(--c-muted)">(empty)</em>';
+    }
+    var parts = [];
+    for (var i = 0; i < parsed.entries.length; i++) {
+      var le = parsed.entries[i];
+      var html = renderMd(le.text || '') || '';
+      parts.push('<div data-pkc-log-id="' + le.id + '">' + html + '</div>');
+    }
+    return parts.join('');
+  } catch (_e) {
+    return renderMd(body);
+  }
+}
+
+/*
  * Derive task completion badge from the visible #body-view DOM.
  * Counts .pkc-task-checkbox elements to produce a done/total badge.
  * Called after every body-view innerHTML update (init, push, save, flush).
@@ -1523,7 +1549,7 @@ window.addEventListener('message', function(e) {
     originalBody = document.getElementById('body-edit').value;
     /* Update the view-pane body to reflect saved content */
     document.getElementById('title-display').textContent = originalTitle;
-    document.getElementById('body-view').innerHTML = renderMd(originalBody);
+    document.getElementById('body-view').innerHTML = renderBodyView(originalBody);
     updateTaskBadge();
     document.getElementById('status').textContent = 'Saved.';
     setTimeout(function() { document.getElementById('status').textContent = ''; }, 2000);
