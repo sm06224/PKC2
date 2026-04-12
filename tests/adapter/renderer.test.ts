@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, renderContextMenu, renderDetachedPanel } from '@adapter/ui/renderer';
+import { render, renderContextMenu, renderDetachedPanel, buildStorageProfileOverlay } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
@@ -7165,5 +7165,215 @@ describe('Table of Contents (A-3, right pane)', () => {
     expect(body).not.toBeNull();
     expect(body!.querySelector('#introduction')).not.toBeNull();
     expect(body!.querySelector('#details')).not.toBeNull();
+  });
+});
+
+describe('Storage Profile dialog (renderer)', () => {
+  const baseProfileState = (
+    container: Container | null,
+    overrides: Partial<AppState> = {},
+  ): AppState => ({
+    phase: 'ready',
+    container,
+    selectedLid: null,
+    editingLid: null,
+    error: null,
+    embedded: false,
+    pendingOffers: [],
+    importPreview: null,
+    batchImportPreview: null,
+    searchQuery: '',
+    archetypeFilter: null,
+    tagFilter: null,
+    sortKey: 'created_at',
+    sortDirection: 'desc',
+    exportMode: null,
+    exportMutability: null,
+    readonly: false,
+    lightSource: false,
+    showArchived: false,
+    viewMode: 'detail' as const,
+    calendarYear: 2026,
+    calendarMonth: 4,
+    multiSelectedLids: [],
+    batchImportResult: null,
+    collapsedFolders: [],
+    ...overrides,
+  });
+
+  const T0 = '2026-01-01T00:00:00Z';
+
+  function makeProfileContainer(partial: Partial<Container> = {}): Container {
+    return {
+      meta: {
+        container_id: 'c-profile',
+        title: 'Profile',
+        created_at: T0,
+        updated_at: T0,
+        schema_version: 1,
+      },
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets: {},
+      ...partial,
+    };
+  }
+
+  function attachmentEntryWithKey(lid: string, key: string, title: string): Entry {
+    return {
+      lid,
+      title,
+      body: JSON.stringify({
+        name: `${key}.bin`,
+        mime: 'application/octet-stream',
+        asset_key: key,
+      }),
+      archetype: 'attachment',
+      created_at: T0,
+      updated_at: T0,
+    };
+  }
+
+  function base64Of(bytes: number): string {
+    const quads = Math.ceil(bytes / 3);
+    return 'A'.repeat(quads * 4 - 2) + '==';
+  }
+
+  // The overlay is not mounted per-render (mounted on demand by
+  // action-binder at click time) to keep the hot render path cheap.
+  // The tests below therefore exercise `buildStorageProfileOverlay`
+  // directly for content assertions, and `render()` only for the
+  // launch button contract in the shell menu.
+
+  it('does not mount the overlay into the shell on every render', () => {
+    render(baseProfileState(makeProfileContainer()), root);
+    // Overlay is absent until the user clicks the launcher — this
+    // pins the per-render cost guarantee.
+    expect(
+      root.querySelector('[data-pkc-region="storage-profile"]'),
+    ).toBeNull();
+  });
+
+  it('exposes a "Storage Profile" launch button in the shell menu Data Maintenance section', () => {
+    render(baseProfileState(makeProfileContainer()), root);
+    const section = root.querySelector('[data-pkc-region="shell-menu-maintenance"]');
+    expect(section).not.toBeNull();
+    const btn = section!.querySelector('[data-pkc-action="show-storage-profile"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toContain('Storage Profile');
+  });
+
+  it('launch button is hidden in readonly mode (section itself is gated)', () => {
+    render(baseProfileState(makeProfileContainer(), { readonly: true }), root);
+    expect(
+      root.querySelector('[data-pkc-region="shell-menu-maintenance"]'),
+    ).toBeNull();
+    expect(
+      root.querySelector('[data-pkc-action="show-storage-profile"]'),
+    ).toBeNull();
+  });
+
+  it('buildStorageProfileOverlay emits the hedged estimate note and a close button', () => {
+    const overlay = buildStorageProfileOverlay(makeProfileContainer());
+    expect(overlay.getAttribute('data-pkc-region')).toBe('storage-profile');
+    expect(overlay.classList.contains('pkc-storage-profile-overlay')).toBe(true);
+    expect(overlay.querySelector('.pkc-storage-profile-card')).not.toBeNull();
+    expect(overlay.textContent!.toLowerCase()).toContain('estimate');
+    expect(
+      overlay.querySelector('[data-pkc-action="close-storage-profile"]'),
+    ).not.toBeNull();
+  });
+
+  it('summary surfaces total asset count and total size', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e1', 'k1', 'Alpha')],
+        assets: { k1: base64Of(1500) },
+      }),
+    );
+    const summary = overlay.querySelector(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary).not.toBeNull();
+    expect(summary!.getAttribute('data-pkc-asset-count')).toBe('1');
+    expect(Number(summary!.getAttribute('data-pkc-total-bytes'))).toBeGreaterThan(
+      1000,
+    );
+    expect(summary!.textContent).toContain('Alpha');
+  });
+
+  it('renders one row per byte-carrying entry in the top list', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [
+          attachmentEntryWithKey('e1', 'k1', 'Small'),
+          attachmentEntryWithKey('e2', 'k2', 'Big'),
+        ],
+        assets: {
+          k1: base64Of(300),
+          k2: base64Of(8000),
+        },
+      }),
+    );
+    const rows = overlay.querySelectorAll('[data-pkc-region="storage-profile-row"]');
+    expect(rows.length).toBe(2);
+    // Biggest first — sort order is preserved in the rendered DOM.
+    expect(rows[0]!.textContent).toContain('Big');
+    expect(rows[1]!.textContent).toContain('Small');
+  });
+
+  it('row carries the entry lid, archetype, and raw byte count as attributes', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e-unique', 'k-unique', 'Lone')],
+        assets: { 'k-unique': base64Of(500) },
+      }),
+    );
+    const row = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-row"]',
+    );
+    expect(row).not.toBeNull();
+    expect(row!.getAttribute('data-pkc-lid')).toBe('e-unique');
+    expect(row!.getAttribute('data-pkc-archetype')).toBe('attachment');
+    expect(Number(row!.getAttribute('data-pkc-subtree-bytes'))).toBeGreaterThan(0);
+  });
+
+  it('empty container renders zero-total summary and an empty-list note', () => {
+    const overlay = buildStorageProfileOverlay(makeProfileContainer());
+    const summary = overlay.querySelector(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary!.getAttribute('data-pkc-asset-count')).toBe('0');
+    expect(summary!.getAttribute('data-pkc-total-bytes')).toBe('0');
+    const topSection = overlay.querySelector(
+      '[data-pkc-region="storage-profile-top"]',
+    );
+    expect(topSection!.textContent!.toLowerCase()).toContain('no entries');
+  });
+
+  it('renders a neutral "no container" note when container is null', () => {
+    const overlay = buildStorageProfileOverlay(null);
+    expect(overlay.textContent).toContain('No container');
+    // No summary or rows regions are rendered in this branch.
+    expect(
+      overlay.querySelector('[data-pkc-region="storage-profile-summary"]'),
+    ).toBeNull();
+    expect(
+      overlay.querySelector('[data-pkc-region="storage-profile-top"]'),
+    ).toBeNull();
+  });
+
+  it('flags orphan bytes in the summary when assets are present but unreferenced', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [],
+        assets: { 'ast-floating': base64Of(200) },
+      }),
+    );
+    const summary = overlay.querySelector(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary!.textContent!.toLowerCase()).toContain('orphan');
   });
 });

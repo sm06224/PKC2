@@ -3053,6 +3053,144 @@
   margin-top: 0.25rem;
 }
 
+/* ── Storage Profile Dialog ── */
+.pkc-storage-profile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-storage-profile-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1.5rem;
+  max-width: 520px;
+  width: 92%;
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pkc-storage-profile-heading {
+  font-size: 0.9rem;
+  color: var(--c-accent);
+  margin: 0 0 0.25rem 0;
+  font-weight: 600;
+}
+
+.pkc-storage-profile-note {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  line-height: 1.4;
+}
+
+.pkc-storage-profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--c-border);
+}
+
+.pkc-storage-profile-section:first-of-type {
+  border-top: none;
+}
+
+.pkc-storage-profile-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pkc-storage-profile-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.pkc-storage-profile-summary-key {
+  color: var(--c-muted);
+}
+
+.pkc-storage-profile-summary-value {
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+}
+
+.pkc-storage-profile-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pkc-storage-profile-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+
+.pkc-storage-profile-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.pkc-storage-profile-row-icon {
+  flex-shrink: 0;
+}
+
+.pkc-storage-profile-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--c-fg);
+}
+
+.pkc-storage-profile-row-size {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--c-accent);
+}
+
+.pkc-storage-profile-row-detail {
+  font-size: 0.65rem;
+  color: var(--c-muted);
+}
+
+.pkc-storage-profile-empty {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  padding: 0.4rem 0;
+}
+
+.pkc-storage-profile-close {
+  margin-top: 0.5rem;
+  align-self: flex-end;
+}
+
 /* Collapsed pane states */
 .pkc-sidebar[data-pkc-collapsed="true"] {
   width: 0 !important;

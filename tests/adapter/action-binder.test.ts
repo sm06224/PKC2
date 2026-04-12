@@ -7970,3 +7970,15 @@ describe('ActionBinder — navigate-entry-ref (P1 Slice 5-A)', () => {
 
 });
 
+// ──────────────────────────────────────────────────────────────
+// Storage Profile dialog
+// ──────────────────────────────────────────────────────────────
+//
+// The dialog is mounted on demand by the `show-storage-profile`
+// handler and removed on close. Coverage for the open/close
+// lifecycle lives in `tests/features/asset/storage-profile.test.ts`
+// and `tests/adapter/renderer.test.ts` (for the overlay builder
+// and the launch button). Adding action-binder-specific tests for
+// this surface was intentionally skipped because the existing
+// suite is already at the sandbox memory ceiling.
+

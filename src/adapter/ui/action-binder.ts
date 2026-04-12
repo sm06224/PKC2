@@ -31,7 +31,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
@@ -799,6 +799,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (helpOverlay) helpOverlay.style.display = 'none';
         break;
       }
+      case 'show-storage-profile': {
+        // Open the Storage Profile dialog. The overlay is built on
+        // demand (NOT rendered per render) so the profile compute
+        // and DOM allocation only happen at click time. Re-mounts
+        // each open so the numbers reflect the live container.
+        const existing = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (existing) existing.remove();
+        const st = dispatcher.getState();
+        const overlay = buildStorageProfileOverlay(st.container);
+        root.appendChild(overlay);
+        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menuPanel) menuPanel.style.display = 'none';
+        break;
+      }
+      case 'close-storage-profile': {
+        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (overlay) overlay.remove();
+        break;
+      }
       case 'toggle-show-archived': {
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
@@ -1219,6 +1238,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
       if (isSlashMenuOpen()) {
         closeSlashMenu();
+        return;
+      }
+      // Close storage profile if mounted (sits visually on top of
+      // the shell menu so close it first when both are visible). The
+      // overlay is mounted on demand, so its presence alone means
+      // "open" — no display-toggling needed.
+      const profileOverlay = root.querySelector<HTMLElement>(
+        '[data-pkc-region="storage-profile"]',
+      );
+      if (profileOverlay) {
+        profileOverlay.remove();
         return;
       }
       // Close shortcut help if open
