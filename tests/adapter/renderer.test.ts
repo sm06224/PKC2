@@ -6757,3 +6757,166 @@ describe('Shell Menu Data Maintenance (orphan asset cleanup UI)', () => {
     expect(summary!.getAttribute('data-pkc-asset-total')).toBe('2');
   });
 });
+
+// ── Task completion badge ──
+
+describe('Task completion badge', () => {
+  let root: HTMLElement;
+
+  beforeEach(() => {
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    registerPresenter('todo', todoPresenter);
+    registerPresenter('form', formPresenter);
+    registerPresenter('attachment', attachmentPresenter);
+  });
+
+  function baseState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: null,
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+      ...overrides,
+    };
+  }
+
+  function containerWith(entries: Entry[]): Container {
+    return { meta: mockContainer.meta, entries, relations: [], revisions: [], assets: {} };
+  }
+
+  describe('sidebar badge', () => {
+    it('shows task badge for TEXT entry with tasks', () => {
+      const container = containerWith([
+        { lid: 'tx1', title: 'Tasks', body: '- [ ] A\n- [x] B\n- [ ] C', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const badge = root.querySelector('[data-pkc-lid="tx1"] .pkc-task-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('1/3');
+    });
+
+    it('does not show task badge when no tasks exist', () => {
+      const container = containerWith([
+        { lid: 'tx2', title: 'No tasks', body: '# Hello', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const badge = root.querySelector('[data-pkc-lid="tx2"] .pkc-task-badge');
+      expect(badge).toBeNull();
+    });
+
+    it('sets data-pkc-task-complete on li when all tasks are done', () => {
+      const container = containerWith([
+        { lid: 'tx3', title: 'All Done', body: '- [x] A\n- [x] B', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const li = root.querySelector('[data-pkc-lid="tx3"]');
+      expect(li!.getAttribute('data-pkc-task-complete')).toBe('true');
+      const badge = li!.querySelector('.pkc-task-badge');
+      expect(badge!.textContent).toBe('2/2');
+    });
+
+    it('does not set data-pkc-task-complete when tasks are partial', () => {
+      const container = containerWith([
+        { lid: 'tx4', title: 'Partial', body: '- [x] A\n- [ ] B', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const li = root.querySelector('[data-pkc-lid="tx4"]');
+      expect(li!.getAttribute('data-pkc-task-complete')).toBeNull();
+    });
+
+    it('shows task badge for TEXTLOG entry with tasks across log entries', () => {
+      const body = JSON.stringify({
+        entries: [
+          { id: 'lg1', text: '- [ ] X\n- [x] Y', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          { id: 'lg2', text: '- [x] Z', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+        ],
+      });
+      const container = containerWith([
+        { lid: 'tl1', title: 'Log', body, archetype: 'textlog', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const badge = root.querySelector('[data-pkc-lid="tl1"] .pkc-task-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('2/3');
+    });
+
+    it('does not show task badge for todo archetype', () => {
+      const container = containerWith([
+        { lid: 'td1', title: 'Todo', body: '{"status":"open","description":"task"}', archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container }), root);
+      const badge = root.querySelector('[data-pkc-lid="td1"] .pkc-task-badge');
+      expect(badge).toBeNull();
+    });
+
+    it('coexists with revision badge', () => {
+      const container: Container = {
+        meta: mockContainer.meta,
+        entries: [
+          { lid: 'tx5', title: 'With History', body: '- [x] Done', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        ],
+        relations: [],
+        revisions: [
+          { id: 'rev1', entry_lid: 'tx5', snapshot: '{}', created_at: '2026-01-01T01:00:00Z' },
+        ],
+        assets: {},
+      };
+      render(baseState({ container }), root);
+      const li = root.querySelector('[data-pkc-lid="tx5"]');
+      expect(li!.querySelector('.pkc-task-badge')).not.toBeNull();
+      expect(li!.querySelector('.pkc-revision-badge')).not.toBeNull();
+    });
+  });
+
+  describe('detail pane badge', () => {
+    it('shows task badge in detail pane title row for TEXT entry', () => {
+      const container = containerWith([
+        { lid: 'tx6', title: 'Detail', body: '- [ ] A\n- [x] B', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container, selectedLid: 'tx6' }), root);
+      const titleRow = root.querySelector('.pkc-view-title-row');
+      const badge = titleRow?.querySelector('.pkc-task-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('1/2');
+    });
+
+    it('does not show task badge in detail pane for entry without tasks', () => {
+      const container = containerWith([
+        { lid: 'tx7', title: 'No tasks', body: 'Plain text', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container, selectedLid: 'tx7' }), root);
+      const titleRow = root.querySelector('.pkc-view-title-row');
+      const badge = titleRow?.querySelector('.pkc-task-badge');
+      expect(badge).toBeNull();
+    });
+
+    it('shows task badge in detail pane for TEXTLOG entry', () => {
+      const body = JSON.stringify({
+        entries: [
+          { id: 'lg1', text: '- [x] Done\n- [ ] Pending', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+        ],
+      });
+      const container = containerWith([
+        { lid: 'tl2', title: 'Log Detail', body, archetype: 'textlog', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container, selectedLid: 'tl2' }), root);
+      const titleRow = root.querySelector('.pkc-view-title-row');
+      const badge = titleRow?.querySelector('.pkc-task-badge');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe('1/2');
+    });
+
+    it('sets data-pkc-task-complete on badge when all tasks are done', () => {
+      const container = containerWith([
+        { lid: 'tx8', title: 'All Done', body: '- [x] A\n- [x] B', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]);
+      render(baseState({ container, selectedLid: 'tx8' }), root);
+      const badge = root.querySelector('.pkc-view-title-row .pkc-task-badge');
+      expect(badge!.getAttribute('data-pkc-task-complete')).toBe('true');
+    });
+  });
+});

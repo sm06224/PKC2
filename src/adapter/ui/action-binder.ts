@@ -25,9 +25,10 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { isDescendant, getStructuralParent } from '../../features/relation/tree';
+import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
+import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap } from './renderer';
-import { openEntryWindow, type EntryWindowAssetContext } from './entry-window';
+import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import {
   formatDate,
@@ -1024,7 +1025,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Arrow Up / Arrow Down: move selection through sidebar entries
+    // Arrow Up / Arrow Down: move selection through sidebar entries (or kanban column)
     if (
       (e.key === 'ArrowDown' || e.key === 'ArrowUp')
       && !mod
@@ -1044,6 +1045,123 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
 
       if (!state.container) return;
+
+      // Calendar mode: Arrow Up/Down = ±1 week (same weekday)
+      if (state.viewMode === 'calendar') {
+        const calendar = root.querySelector('[data-pkc-region="calendar-view"]');
+        if (!calendar) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+
+        // Collect all date cells in DOM (chronological) order
+        const dateCells = Array.from(calendar.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+
+        // Find which date cell contains the selected entry
+        let currentCellIdx = -1;
+        for (let i = 0; i < dateCells.length; i++) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (state.selectedLid && lids.includes(state.selectedLid)) {
+            currentCellIdx = i;
+            break;
+          }
+        }
+
+        if (currentCellIdx < 0) {
+          // selectedLid not visible in calendar → select first calendar todo
+          for (const cell of dateCells) {
+            const items = cell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+            const lids = Array.from(items)
+              .map((el) => el.getAttribute('data-pkc-lid')!)
+              .filter((lid) => containerLids.has(lid));
+            if (lids.length > 0) {
+              e.preventDefault();
+              dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+              return;
+            }
+          }
+          return; // no todos in calendar
+        }
+
+        // Date arithmetic: ±7 days, scanning forward until month boundary
+        const currentDateStr = dateCells[currentCellIdx]!.getAttribute('data-pkc-date')!;
+        const [cy, cm, cd] = currentDateStr.split('-').map(Number) as [number, number, number];
+        const step = e.key === 'ArrowDown' ? 7 : -7;
+        const baseDate = new Date(Date.UTC(cy, cm - 1, cd));
+
+        for (let offset = step; ; offset += step) {
+          const target = new Date(baseDate);
+          target.setUTCDate(target.getUTCDate() + offset);
+          const tk = `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(target.getUTCDate()).padStart(2, '0')}`;
+
+          const targetCell = calendar.querySelector<HTMLElement>(`[data-pkc-date="${tk}"]`);
+          if (!targetCell) return; // past month boundary → no-op
+
+          const targetItems = targetCell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const targetLids = Array.from(targetItems)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (targetLids.length > 0) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: targetLids[0]! });
+            return;
+          }
+          // target date has no todos — continue scanning ±7
+        }
+      }
+
+      // Kanban mode: navigate within column
+      if (state.viewMode === 'kanban') {
+        const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
+        if (!kanban) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+        const columns = kanban.querySelectorAll<HTMLElement>('[data-pkc-kanban-drop-target]');
+        if (columns.length === 0) return;
+
+        // Find which column contains the selected card
+        let currentCol: HTMLElement | null = null;
+        let currentLids: string[] = [];
+        let currentIdx = -1;
+        for (const col of columns) {
+          const cards = col.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(cards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (state.selectedLid && lids.includes(state.selectedLid)) {
+            currentCol = col;
+            currentLids = lids;
+            currentIdx = lids.indexOf(state.selectedLid);
+            break;
+          }
+        }
+
+        if (!currentCol) {
+          // selectedLid not visible in kanban → select first card in open column
+          const openCol = columns[0];
+          if (!openCol) return;
+          const openCards = openCol.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const openLids = Array.from(openCards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (openLids.length === 0) return;
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: openLids[0]! });
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          if (currentIdx >= currentLids.length - 1) return; // at end
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: currentLids[currentIdx + 1]! });
+        } else {
+          if (currentIdx <= 0) return; // at start
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: currentLids[currentIdx - 1]! });
+        }
+        return;
+      }
+
       const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
       if (!sidebar) return;
       const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
@@ -1074,7 +1192,41 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Arrow Left / Arrow Right: collapse / expand folder in sidebar
+    // Ctrl+Arrow Left / Right: kanban status move (directional)
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.viewMode === 'kanban'
+      && state.container
+      && !state.readonly
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'todo') return;
+      const todo = parseTodoBody(entry.body);
+      const currentIdx = KANBAN_COLUMNS.findIndex((c) => c.status === todo.status);
+      if (currentIdx < 0) return;
+      const targetIdx = e.key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1;
+      if (targetIdx < 0 || targetIdx >= KANBAN_COLUMNS.length) return;
+      const targetStatus = KANBAN_COLUMNS[targetIdx]!.status;
+      if (todo.status === targetStatus) return;
+      const updated = serializeTodoBody({ ...todo, status: targetStatus });
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: updated });
+      return;
+    }
+
+    // Arrow Left / Arrow Right: calendar day / kanban cross-column / collapse/expand folder in sidebar
     if (
       (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && !mod && !e.shiftKey && !e.altKey
@@ -1091,8 +1243,100 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       ) {
         return;
       }
+
+      // Calendar mode: Arrow Left/Right = previous/next day with todos
+      if (state.viewMode === 'calendar') {
+        const calendar = root.querySelector('[data-pkc-region="calendar-view"]');
+        if (!calendar) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+
+        const dateCells = Array.from(calendar.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+
+        // Find index of cell containing selectedLid
+        let currentCellIdx = -1;
+        for (let i = 0; i < dateCells.length; i++) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (lids.includes(state.selectedLid)) {
+            currentCellIdx = i;
+            break;
+          }
+        }
+
+        if (currentCellIdx < 0) return; // selectedLid not visible in calendar → no-op
+
+        // Scan in direction for next date cell with todos
+        const step = e.key === 'ArrowLeft' ? -1 : 1;
+        for (let i = currentCellIdx + step; i >= 0 && i < dateCells.length; i += step) {
+          const items = dateCells[i]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(items)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          if (lids.length > 0) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+            return;
+          }
+        }
+        return; // no more dates with todos in direction → no-op
+      }
+
+      // Kanban mode: cross-column navigation
+      if (state.viewMode === 'kanban') {
+        const kanban = root.querySelector('[data-pkc-region="kanban-view"]');
+        if (!kanban) return;
+        const containerLids = new Set(state.container.entries.map((en) => en.lid));
+        const columnEls = kanban.querySelectorAll<HTMLElement>('[data-pkc-kanban-drop-target]');
+        if (columnEls.length === 0) return;
+
+        // Build column lid arrays
+        const colLids: string[][] = [];
+        let currentColIdx = -1;
+        let currentCardIdx = -1;
+        for (let ci = 0; ci < columnEls.length; ci++) {
+          const cards = columnEls[ci]!.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+          const lids = Array.from(cards)
+            .map((el) => el.getAttribute('data-pkc-lid')!)
+            .filter((lid) => containerLids.has(lid));
+          colLids.push(lids);
+          const idx = lids.indexOf(state.selectedLid);
+          if (idx >= 0) {
+            currentColIdx = ci;
+            currentCardIdx = idx;
+          }
+        }
+
+        if (currentColIdx < 0) return; // selected card not visible in kanban
+
+        const targetColIdx = e.key === 'ArrowLeft' ? currentColIdx - 1 : currentColIdx + 1;
+        if (targetColIdx < 0 || targetColIdx >= colLids.length) return; // at edge
+        const targetLids = colLids[targetColIdx]!;
+        if (targetLids.length === 0) return; // target column empty
+
+        // Clamp index to target column length
+        const targetCardIdx = Math.min(currentCardIdx, targetLids.length - 1);
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: targetLids[targetCardIdx]! });
+        return;
+      }
+
       const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
-      if (!entry || entry.archetype !== 'folder') return;
+      if (!entry) return;
+
+      // Non-folder: Arrow Left moves to parent, Arrow Right is no-op
+      if (entry.archetype !== 'folder') {
+        if (e.key === 'ArrowLeft') {
+          const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
+          if (parent) {
+            e.preventDefault();
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+          }
+        }
+        return;
+      }
+
       const isCollapsed = state.collapsedFolders.includes(state.selectedLid);
       if (e.key === 'ArrowRight' && isCollapsed) {
         e.preventDefault();
@@ -1106,6 +1350,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (parent) {
           e.preventDefault();
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parent.lid });
+        }
+      } else if (e.key === 'ArrowRight' && !isCollapsed) {
+        // Already expanded — select first child
+        const child = getFirstStructuralChild(state.container.relations, state.container.entries, state.selectedLid);
+        if (child) {
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: child.lid });
         }
       }
       return;
@@ -1129,6 +1380,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       e.preventDefault();
       dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: state.selectedLid });
+      return;
+    }
+
+    // Space: toggle todo status in kanban mode
+    if (
+      e.key === ' '
+      && !mod && !e.shiftKey && !e.altKey
+      && state.phase !== 'editing'
+      && state.selectedLid
+      && state.viewMode === 'kanban'
+      && state.container
+    ) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'submit')
+        || target?.isContentEditable
+      ) {
+        return;
+      }
+      const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
+      if (!entry || entry.archetype !== 'todo') return;
+      const todo = parseTodoBody(entry.body);
+      const toggled = serializeTodoBody({
+        ...todo,
+        status: todo.status === 'done' ? 'open' : 'done',
+      });
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: toggled });
       return;
     }
 
@@ -2001,6 +2282,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       !!state.lightSource,
       assetContext,
       (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+      (toggleLid, taskIndex, logId) => {
+        const st = dispatcher.getState();
+        if (st.readonly) return;
+        if (!st.container) return;
+        const ent = st.container.entries.find((e) => e.lid === toggleLid);
+        if (!ent) return;
+
+        if (ent.archetype === 'textlog' && logId) {
+          const log = parseTextlogBody(ent.body);
+          const logEntry = log.entries.find((le) => le.id === logId);
+          if (!logEntry) return;
+          const toggled = toggleTaskItem(logEntry.text, taskIndex);
+          if (toggled === null) return;
+          logEntry.text = toggled;
+          const newBody = serializeTextlogBody(log);
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: toggleLid, body: newBody });
+          pushTextlogViewBodyUpdate(toggleLid, newBody);
+        } else {
+          const toggled = toggleTaskItem(ent.body, taskIndex);
+          if (toggled === null) return;
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: toggleLid, body: toggled });
+          // Resolve asset references before pushing, matching the initial render path
+          const ctx = buildEntryPreviewCtx(ent, st.container);
+          const resolved = ctx && hasAssetReferences(toggled)
+            ? resolveAssetReferences(toggled, ctx)
+            : toggled;
+          pushViewBodyUpdate(toggleLid, resolved);
+        }
+      },
       shouldStartEditing,
     );
   }
@@ -2186,7 +2496,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (hasMarkdownSyntax(resolved)) {
       preview.innerHTML = renderMarkdown(resolved);
     } else {
-      preview.textContent = src;
+      preview.innerHTML = '';
+      const pre = document.createElement('pre');
+      pre.className = 'pkc-view-body';
+      pre.textContent = src;
+      preview.appendChild(pre);
     }
   }
 

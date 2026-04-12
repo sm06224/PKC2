@@ -1857,4 +1857,732 @@ describe('Entry Window', () => {
       expect(html).toMatch(/function revokeAllBlobUrls[\s\S]*?pkcActiveBlobUrls = \[\]/);
     });
   });
+
+  // ── Entry window interactive task toggle ──
+
+  describe('Entry window task toggle', () => {
+    describe('child-side click handler', () => {
+      it('child script intercepts checkbox clicks and posts pkc-entry-task-toggle to parent', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B',
+        });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+        expect(html).toContain('window.opener.postMessage');
+      });
+
+      it('child script calls preventDefault on checkbox click', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        // The click handler must prevent the default checkbox toggle so
+        // the DOM stays in sync with the parent's source of truth.
+        expect(html).toContain("e.preventDefault()");
+        // Specifically in the task-toggle branch
+        expect(html).toMatch(/data-pkc-task-index[\s\S]*?e\.preventDefault\(\)/);
+      });
+
+      it('child script reads logId from closest data-pkc-log-id ancestor', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        expect(html).toContain("closest('[data-pkc-log-id]')");
+      });
+    });
+
+    describe('parent message handling — pkc-entry-task-toggle', () => {
+      it('routes task-toggle messages to onTaskToggle callback', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry({ archetype: 'text', body: '- [ ] Task' });
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: entry.lid, taskIndex: 0, logId: null },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).toHaveBeenCalledWith(entry.lid, 0, null);
+      });
+
+      it('routes task-toggle messages with logId for TEXTLOG', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry({ archetype: 'textlog', body: '{}' });
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: entry.lid, taskIndex: 1, logId: 'log-abc' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).toHaveBeenCalledWith(entry.lid, 1, 'log-abc');
+      });
+
+      it('ignores task-toggle messages when onTaskToggle is omitted', async () => {
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        openEntryWindow(makeEntry() as never, false, vi.fn(), false);
+
+        // Should not throw
+        expect(() => {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              data: { type: 'pkc-entry-task-toggle', lid: 'e-x', taskIndex: 0, logId: null },
+              source: childWindow as unknown as Window,
+            }),
+          );
+        }).not.toThrow();
+      });
+
+      it('ignores task-toggle messages with non-numeric taskIndex', async () => {
+        const onTaskToggle = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        openEntryWindow(
+          makeEntry() as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          undefined,
+          onTaskToggle,
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-task-toggle', lid: 'e-x', taskIndex: 'bad' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onTaskToggle).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('TEXTLOG view body rendering', () => {
+      it('renders TEXTLOG entries with per-log-entry data-pkc-log-id wrappers', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'log1', text: '- [ ] Alpha', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'log2', text: '- [x] Beta', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('data-pkc-log-id="log1"');
+        expect(viewBody).toContain('data-pkc-log-id="log2"');
+        expect(viewBody).toContain('Alpha');
+        expect(viewBody).toContain('Beta');
+      });
+
+      it('renders empty TEXTLOG as (empty)', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({ entries: [] });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('(empty)');
+      });
+
+      it('TEXTLOG task checkboxes have data-pkc-task-index within their log-id wrapper', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'log1', text: '- [ ] Do it', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        // The checkbox should be inside the log-id wrapper
+        expect(viewBody).toMatch(/data-pkc-log-id="log1"[\s\S]*?data-pkc-task-index="0"/);
+      });
+    });
+
+    describe('readonly guard', () => {
+      it('applies pointer-events:none to task checkboxes in readonly mode', async () => {
+        const html = await openAndCapture(true, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).toContain('.pkc-task-checkbox { pointer-events: none;');
+        expect(html).toContain('opacity: 0.6');
+      });
+
+      it('does NOT apply pointer-events:none in non-readonly mode', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).not.toContain('.pkc-task-checkbox { pointer-events: none;');
+      });
+    });
+
+    describe('pushTextlogViewBodyUpdate', () => {
+      it('sends per-log-entry HTML to the child window', async () => {
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow, pushTextlogViewBodyUpdate, ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG } =
+          await import('../../src/adapter/ui/entry-window');
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+
+        const entry = makeEntry({ archetype: 'textlog', body: '{}' });
+        openEntryWindow(entry as never, false, vi.fn(), false);
+
+        const newBody = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const result = pushTextlogViewBodyUpdate(entry.lid, newBody);
+        expect(result).toBe(true);
+
+        const call = (childWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+          (c: unknown[]) => (c[0] as { type: string }).type === ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG,
+        );
+        expect(call).toBeDefined();
+        const payload = call![0] as { viewBody: string };
+        expect(payload.viewBody).toContain('data-pkc-log-id="lg1"');
+        expect(payload.viewBody).toContain('Done');
+      });
+
+      it('returns false when no child window is open for the lid', async () => {
+        const { pushTextlogViewBodyUpdate } = await import('../../src/adapter/ui/entry-window');
+        const result = pushTextlogViewBodyUpdate('nonexistent-lid', '{}');
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('regression — existing entry window features', () => {
+      it('pkc-entry-save still routes to onSave callback', async () => {
+        const onSave = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry();
+        openEntryWindow(
+          entry as never,
+          false,
+          onSave,
+          false,
+          undefined,
+          undefined,
+          vi.fn(), // onTaskToggle present
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-save', lid: entry.lid, title: 'New Title', body: 'New body' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onSave).toHaveBeenCalledWith(entry.lid, 'New Title', 'New body', expect.any(String));
+      });
+
+      it('pkc-entry-download-asset still routes to onDownloadAsset callback', async () => {
+        const onDownloadAsset = vi.fn();
+        const { childWindow } = setupWindowOpenMock();
+        const { openEntryWindow } = await import('../../src/adapter/ui/entry-window');
+        const entry = makeEntry();
+        openEntryWindow(
+          entry as never,
+          false,
+          vi.fn(),
+          false,
+          undefined,
+          onDownloadAsset,
+          vi.fn(), // onTaskToggle present
+        );
+
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'pkc-entry-download-asset', assetKey: 'ast-check' },
+            source: childWindow as unknown as Window,
+          }),
+        );
+
+        expect(onDownloadAsset).toHaveBeenCalledWith('ast-check');
+      });
+    });
+  });
+
+  // ── Entry window task completion badge ──
+
+  describe('Entry window task completion badge', () => {
+    describe('badge display', () => {
+      it('TEXT entry with tasks shows badge element in title row', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B\n- [ ] Task C',
+        });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('TEXTLOG entry with tasks shows badge element in title row', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done item', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: '- [ ] Open item', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('TEXT entry with no tasks still renders badge element (hidden by script)', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: 'No tasks here, just plain text.',
+        });
+        // Badge element exists but starts with display:none
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('style="display:none"');
+      });
+
+      it('todo archetype renders badge element (hidden — no checkboxes in todo card)', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Buy groceries' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        // Badge element present but todo card has no .pkc-task-checkbox, so script hides it
+        expect(html).toContain('id="task-badge"');
+      });
+
+      it('badge element is inside view title row, not in edit pane', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        const viewPaneStart = html.indexOf('<div id="view-pane">');
+        const editPaneStart = html.indexOf('<div id="edit-pane"');
+        const badgePos = html.indexOf('id="task-badge"');
+        expect(badgePos).toBeGreaterThan(viewPaneStart);
+        expect(badgePos).toBeLessThan(editPaneStart);
+      });
+
+      it('badge comes after archetype label in title row', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task',
+        });
+        const archetypePos = html.indexOf('pkc-archetype-label');
+        const badgePos = html.indexOf('id="task-badge"');
+        expect(badgePos).toBeGreaterThan(archetypePos);
+      });
+    });
+
+    describe('badge CSS', () => {
+      it('includes .pkc-task-badge CSS in inline styles', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('.pkc-task-badge');
+        expect(html).toContain('font-size: 0.7rem');
+      });
+
+      it('includes complete-state CSS rule', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('data-pkc-task-complete="true"');
+        expect(html).toContain('var(--c-success)');
+      });
+    });
+
+    describe('updateTaskBadge function', () => {
+      it('child script contains updateTaskBadge function', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain('function updateTaskBadge()');
+      });
+
+      it('updateTaskBadge queries .pkc-task-checkbox elements', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain(".querySelectorAll('.pkc-task-checkbox')");
+      });
+
+      it('updateTaskBadge sets data-pkc-task-complete when all done', async () => {
+        const html = await openAndCapture();
+        expect(html).toContain("setAttribute('data-pkc-task-complete', 'true')");
+      });
+
+      it('updateTaskBadge hides badge when no checkboxes found', async () => {
+        const html = await openAndCapture();
+        // When checkboxes.length === 0, badge is hidden
+        expect(html).toMatch(/checkboxes\.length === 0[\s\S]*?badge\.style\.display = 'none'/);
+      });
+    });
+
+    describe('badge update hook points', () => {
+      it('calls updateTaskBadge on initial load', async () => {
+        const html = await openAndCapture();
+        // The init badge call appears after the message listener setup,
+        // identified by the "Derive initial task badge" comment.
+        expect(html).toContain('/* Derive initial task badge from the rendered body */');
+        const commentPos = html.indexOf('Derive initial task badge');
+        const nextLine = html.indexOf('updateTaskBadge()', commentPos);
+        expect(nextLine).toBeGreaterThan(commentPos);
+      });
+
+      it('calls updateTaskBadge in pkc-entry-update-view-body handler (clean path)', async () => {
+        const html = await openAndCapture();
+        // In the view body update handler, after innerHTML assignment
+        const viewBodyHandler = html.indexOf("type === 'pkc-entry-update-view-body'");
+        expect(viewBodyHandler).toBeGreaterThan(-1);
+        const handlerEnd = html.indexOf('}', html.indexOf('hidePendingViewNotice()', viewBodyHandler));
+        const badgeCall = html.indexOf('updateTaskBadge()', viewBodyHandler);
+        expect(badgeCall).toBeGreaterThan(viewBodyHandler);
+        expect(badgeCall).toBeLessThan(handlerEnd + 50);
+      });
+
+      it('calls updateTaskBadge in pkc-entry-saved handler', async () => {
+        const html = await openAndCapture();
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        expect(savedHandler).toBeGreaterThan(-1);
+        // updateTaskBadge() should appear between the saved handler start and the next handler
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const badgeCall = html.indexOf('updateTaskBadge()', savedHandler);
+        expect(badgeCall).toBeGreaterThan(savedHandler);
+        expect(badgeCall).toBeLessThan(nextHandler);
+      });
+
+      it('calls updateTaskBadge in flushPendingViewBody', async () => {
+        const html = await openAndCapture();
+        const flushFn = html.indexOf('function flushPendingViewBody()');
+        expect(flushFn).toBeGreaterThan(-1);
+        // updateTaskBadge() should appear inside flushPendingViewBody
+        const nextFn = html.indexOf('function ', flushFn + 30);
+        const badgeCall = html.indexOf('updateTaskBadge()', flushFn);
+        expect(badgeCall).toBeGreaterThan(flushFn);
+        expect(badgeCall).toBeLessThan(nextFn);
+      });
+    });
+
+    describe('guard / regression', () => {
+      it('no new protocol message types added', async () => {
+        const html = await openAndCapture();
+        // Only the known message types should appear as handler conditions
+        const messageTypes = [
+          'pkc-entry-saved',
+          'pkc-entry-conflict',
+          'pkc-entry-update-preview-ctx',
+          'pkc-entry-update-view-body',
+        ];
+        for (const msgType of messageTypes) {
+          expect(html).toContain(msgType);
+        }
+        // No new badge-specific protocol
+        expect(html).not.toContain('pkc-entry-update-task-badge');
+        expect(html).not.toContain('pkc-entry-badge');
+      });
+
+      it('task toggle click handler is still present', async () => {
+        const html = await openAndCapture(false, {
+          archetype: 'text',
+          body: '- [ ] Task A',
+        });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+      });
+
+      it('readonly entry still renders badge element', async () => {
+        const html = await openAndCapture(true, {
+          archetype: 'text',
+          body: '- [ ] Task A\n- [x] Task B',
+        });
+        expect(html).toContain('id="task-badge"');
+        expect(html).toContain('class="pkc-task-badge"');
+      });
+
+      it('attachment archetype entry window is unaffected by badge', async () => {
+        const attBody = JSON.stringify({ name: 'report.pdf', mime: 'application/pdf', size: 102400, asset_key: 'a1' });
+        const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+        expect(html).toContain('data-pkc-ew-card="attachment"');
+        expect(html).toContain('id="task-badge"');
+      });
+    });
+  });
+
+  // ── TEXTLOG save re-render fix ──
+
+  describe('TEXTLOG save re-render', () => {
+    describe('renderBodyView function', () => {
+      it('child script contains renderBodyView function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function renderBodyView(body)');
+      });
+
+      it('entryArchetype variable is set for TEXTLOG', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('var entryArchetype = "textlog"');
+      });
+
+      it('entryArchetype variable is set for TEXT', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('var entryArchetype = "text"');
+      });
+
+      it('renderBodyView parses TEXTLOG JSON and renders per-log-entry with data-pkc-log-id', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        // The function should JSON.parse and wrap each entry with data-pkc-log-id
+        expect(html).toContain("JSON.parse(body)");
+        expect(html).toContain('data-pkc-log-id');
+        expect(html).toContain("le.id");
+      });
+
+      it('renderBodyView falls back to renderMd for non-textlog archetypes', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('function renderBodyView(body)');
+        // For non-textlog, it returns renderMd(body)
+        expect(html).toContain("if (entryArchetype !== 'textlog') return renderMd(body)");
+      });
+    });
+
+    describe('save handler uses renderBodyView', () => {
+      it('pkc-entry-saved handler calls renderBodyView instead of renderMd', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        // The saved handler should use renderBodyView(originalBody) not renderMd(originalBody)
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const savedSection = html.slice(savedHandler, nextHandler);
+        expect(savedSection).toContain('renderBodyView(originalBody)');
+        expect(savedSection).not.toContain('renderMd(originalBody)');
+      });
+    });
+
+    describe('TEXTLOG initial render has per-log-entry structure', () => {
+      it('TEXTLOG initial body-view has data-pkc-log-id wrappers', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [x] Done', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: '- [ ] Open', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        const viewBody = extractBodyView(html);
+        expect(viewBody).toContain('data-pkc-log-id="lg1"');
+        expect(viewBody).toContain('data-pkc-log-id="lg2"');
+        expect(viewBody).toContain('pkc-task-checkbox');
+      });
+    });
+
+    describe('regression', () => {
+      it('TEXT save handler still uses renderBodyView (delegates to renderMd)', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
+        const savedHandler = html.indexOf("type === 'pkc-entry-saved'");
+        const nextHandler = html.indexOf("type === 'pkc-entry-conflict'", savedHandler);
+        const savedSection = html.slice(savedHandler, nextHandler);
+        // TEXT also goes through renderBodyView, which delegates to renderMd for non-textlog
+        expect(savedSection).toContain('renderBodyView(originalBody)');
+      });
+
+      it('entry window task toggle click handler is still present', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: '- [ ] Task', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain("type: 'pkc-entry-task-toggle'");
+        expect(html).toContain('data-pkc-task-index');
+      });
+
+      it('entry window badge function is still present', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function updateTaskBadge()');
+      });
+
+      it('update-view-body handler is unchanged (uses pre-rendered HTML from parent)', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        const viewBodyHandler = html.indexOf("type === 'pkc-entry-update-view-body'");
+        const handlerEnd = html.indexOf('});', viewBodyHandler);
+        const handlerSection = html.slice(viewBodyHandler, handlerEnd);
+        // update-view-body handler sets innerHTML directly from e.data.viewBody, not renderBodyView
+        expect(handlerSection).toContain('e.data.viewBody');
+        expect(handlerSection).not.toContain('renderBodyView');
+      });
+    });
+  });
+
+  // ── Structured editor for TEXTLOG / TODO / FORM ──
+
+  describe('Structured editor', () => {
+    describe('TEXTLOG structured editor', () => {
+      it('renders per-log-entry textareas instead of raw JSON textarea', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [
+            { id: 'lg1', text: 'First entry', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+            { id: 'lg2', text: 'Second entry', createdAt: '2026-01-02T00:00:00Z', flags: ['important'] },
+          ],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        // Structured editor present
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-textlog-editor');
+        expect(html).toContain('pkc-textlog-edit-row');
+        expect(html).toContain('data-pkc-log-id="lg1"');
+        expect(html).toContain('data-pkc-log-id="lg2"');
+        expect(html).toContain('data-pkc-field="textlog-entry-text"');
+      });
+
+      it('has delete buttons for each log entry', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [{ id: 'lg1', text: 'Entry', createdAt: '2026-01-01T00:00:00Z', flags: [] }],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('data-pkc-field="textlog-delete"');
+        expect(html).toContain('pkc-textlog-delete-btn');
+      });
+
+      it('hides Source/Preview tab bar for TEXTLOG', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({ entries: [] });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        // Tab bar should not be present for structured editors
+        const editPane = html.slice(html.indexOf('id="edit-pane"'));
+        expect(editPane).not.toContain('id="tab-bar"');
+      });
+
+      it('has hidden body field with original body', async () => {
+        const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+        const body = serializeTextlogBody({
+          entries: [{ id: 'lg1', text: 'Entry', createdAt: '2026-01-01T00:00:00Z', flags: [] }],
+        });
+        const html = await openAndCapture(false, { archetype: 'textlog', body });
+        expect(html).toContain('data-pkc-field="body"');
+      });
+
+      it('includes TEXTLOG editor CSS in inline styles', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('.pkc-textlog-editor');
+        expect(html).toContain('.pkc-textlog-edit-row');
+        expect(html).toContain('.pkc-textlog-delete-btn');
+      });
+    });
+
+    describe('TODO structured editor', () => {
+      it('renders status select, date input, description textarea', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Buy groceries', date: '2099-12-31' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-todo-editor');
+        expect(html).toContain('data-pkc-field="todo-status"');
+        expect(html).toContain('data-pkc-field="todo-description"');
+        expect(html).toContain('data-pkc-field="todo-date"');
+        expect(html).toContain('data-pkc-field="todo-archived"');
+      });
+
+      it('hides Source/Preview tab bar for TODO', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Test' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        const editPane = html.slice(html.indexOf('id="edit-pane"'));
+        expect(editPane).not.toContain('id="tab-bar"');
+      });
+
+      it('includes TODO editor CSS in inline styles', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: 'Test' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('.pkc-todo-editor');
+        expect(html).toContain('.pkc-todo-status-select');
+      });
+    });
+
+    describe('FORM structured editor', () => {
+      it('renders name input, note textarea, checked checkbox', async () => {
+        const formBody = JSON.stringify({ name: 'John', note: 'Some note', checked: true });
+        const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+        expect(html).toContain('id="structured-editor"');
+        expect(html).toContain('pkc-form-editor');
+        expect(html).toContain('data-pkc-field="form-name"');
+        expect(html).toContain('data-pkc-field="form-note"');
+        expect(html).toContain('data-pkc-field="form-checked"');
+      });
+
+      it('includes FORM editor CSS in inline styles', async () => {
+        const formBody = JSON.stringify({ name: 'Test', note: '', checked: false });
+        const html = await openAndCapture(false, { archetype: 'form', body: formBody });
+        expect(html).toContain('.pkc-form-editor');
+        expect(html).toContain('.pkc-form-name-input');
+      });
+    });
+
+    describe('TEXT keeps existing textarea editor', () => {
+      it('uses textarea and Source/Preview tabs for TEXT', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
+        expect(html).not.toContain('id="structured-editor"');
+        expect(html).toContain('id="tab-bar"');
+        expect(html).toContain('id="body-edit"');
+      });
+
+      it('uses textarea for attachment', async () => {
+        const attBody = JSON.stringify({ name: 'file.txt', mime: 'text/plain' });
+        const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+        expect(html).not.toContain('id="structured-editor"');
+        expect(html).toContain('id="tab-bar"');
+      });
+    });
+
+    describe('child-side functions', () => {
+      it('has collectStructuredBody function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function collectStructuredBody()');
+      });
+
+      it('has restoreStructuredEditor function', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('function restoreStructuredEditor()');
+      });
+
+      it('useStructuredEditor is true for textlog', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('var useStructuredEditor = true');
+      });
+
+      it('useStructuredEditor is true for todo', async () => {
+        const todoBody = JSON.stringify({ status: 'open', description: '' });
+        const html = await openAndCapture(false, { archetype: 'todo', body: todoBody });
+        expect(html).toContain('var useStructuredEditor = true');
+      });
+
+      it('useStructuredEditor is false for text', async () => {
+        const html = await openAndCapture(false, { archetype: 'text', body: 'hello' });
+        expect(html).toContain('var useStructuredEditor = false');
+      });
+
+      it('saveEntry uses collectStructuredBody for structured editors', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain('useStructuredEditor ? collectStructuredBody()');
+      });
+
+      it('has TEXTLOG delete button click handler', async () => {
+        const html = await openAndCapture(false, { archetype: 'textlog', body: '{}' });
+        expect(html).toContain("data-pkc-field') !== 'textlog-delete'");
+        expect(html).toContain("data-pkc-deleted', 'true'");
+      });
+    });
+  });
 });

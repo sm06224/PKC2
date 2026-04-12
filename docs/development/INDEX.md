@@ -74,21 +74,79 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 50 | `keyboard-navigation-phase2-enter.md` | Keyboard navigation Phase 2 (Enter) | 2026-04-11 | Enter で選択中エントリの編集開始。既存 BEGIN_EDIT 再利用。reducer/renderer 変更なし。テスト 12 件。 |
 | 51 | `keyboard-navigation-phase3-tree.md` | Keyboard navigation Phase 3 (Arrow Left/Right) | 2026-04-11 | Arrow Left/Right で folder の折りたたみ/展開。TOGGLE_FOLDER_COLLAPSE 再利用。sidebar 限定。テスト 18 件。 |
 | 52 | `keyboard-navigation-phase4-parent.md` | Keyboard navigation Phase 4 (Arrow Left → parent) | 2026-04-11 | collapsed folder で Arrow Left → 親フォルダ選択。getStructuralParent 再利用。テスト 15 件。 |
+| 53 | `keyboard-navigation-phase5-child.md` | Keyboard navigation Phase 5 (Arrow Right → child) | 2026-04-11 | expanded folder で Arrow Right → 最初の子を選択。getFirstStructuralChild 新規追加。テスト 16 件。 |
+| 54 | `keyboard-navigation-phase6-nonfolder-parent.md` | Keyboard navigation Phase 6 (non-folder Left → parent) | 2026-04-11 | non-folder entry で Arrow Left → 親フォルダ選択。archetype guard 緩和のみ。テスト 15 件。 |
+| 55 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Kanban view で Arrow Up/Down (列内) + Left/Right (列間) navigation。viewMode 分岐で sidebar 不変。テスト 24 件。 |
+| 56 | `calendar-kanban-keyboard-navigation.md` | Calendar keyboard Phase 1 (Arrow navigation) | 2026-04-11 | Calendar view で Arrow Left/Right (日移動) + Up/Down (週移動)。空セル/空週スキップ。月境界 no-op。テスト 24 件。 |
+| 57 | `calendar-kanban-keyboard-navigation.md` | Kanban keyboard Phase 2 (Space status toggle) | 2026-04-11 | Kanban view で Space → todo status toggle。QUICK_UPDATE_ENTRY 再利用。multi-select 非対応。テスト 15 件。 |
+| 58 | `entry-window-interactive-task-toggle.md` | Entry window interactive task toggle | 2026-04-11 | entry window 内 task checkbox を click → 親 `QUICK_UPDATE_ENTRY` → `pushViewBodyUpdate` で反映。TEXTLOG は per-log-entry 描画 + `data-pkc-log-id` で識別。readonly CSS guard。protocol 追加: `pkc-entry-task-toggle`。テスト 16 件。 |
+| 59 | `task-completion-badge.md` | Task completion badge (sidebar + detail pane) | 2026-04-11 | TEXT/TEXTLOG の task list 進捗を sidebar + detail pane に `done/total` badge 表示。`countTaskProgress()` pure helper。TEXTLOG は全 log entry 合算。task 0 件は非表示。全完了は success 色。テスト 26 件。 |
+| 60 | `kanban-keyboard-phase3-ctrl-arrow.md` | Kanban keyboard Phase 3 (Ctrl+Arrow status move) | 2026-04-11 | Kanban view で Ctrl+Arrow Left/Right により todo status を列方向に変更。KANBAN_COLUMNS 参照。QUICK_UPDATE_ENTRY 再利用。single selection のみ。テスト 18 件。 |
+| 61 | `entry-window-task-completion-badge.md` | Entry window task completion badge | 2026-04-12 | entry window view title row に `done/total` badge 追加。child 側で `#body-view` DOM から `.pkc-task-checkbox` をカウントして導出。protocol 変更なし。parent 側変更なし。4 経路で同期（init/push/save/flush）。テスト 16 件。 |
 
 ## CANDIDATE — Next Feature
 
-multi-select 系は Phase 2-D を除き実質完成。2-D は Ctrl+click で代替可能なため緊急度低。新規機能ラインへの移行も妥当。
+### Keyboard Navigation — Completion Snapshot
 
-| # | 候補 | ユーザ価値 | コスト | リスク | 備考 |
-|---|------|----------|--------|--------|------|
-| 1 | Phase 2-D: SELECT_RANGE 表示順対応 | 中 — Shift+click が Calendar/Kanban で直感通りに動く | 中 (表示順取得 helper + reducer 拡張) | 中 — ビュー依存ロジック追加 | Ctrl+click で代替可能。設計負債だが実害は小さい |
+**Sidebar** (Phase 1–6): 完成
 
-### 脱落候補と理由
+| Phase | Key | Action | Status |
+|-------|-----|--------|--------|
+| 1 | Arrow Up/Down | sidebar navigation | COMPLETED |
+| 2 | Enter | begin edit | COMPLETED |
+| 3 | Arrow Left/Right | collapse/expand | COMPLETED |
+| 4 | Arrow Left (collapsed folder) | move to parent | COMPLETED |
+| 5 | Arrow Right (expanded folder) | select first child | COMPLETED |
+| 6 | Arrow Left (non-folder) | move to parent | COMPLETED |
 
-| 候補 | 脱落理由 |
+**Kanban** (Phase 1 + 2 + 3): 完成
+
+| Key | Action | Status |
+|-----|--------|--------|
+| Arrow Up/Down | 列内移動 | COMPLETED |
+| Arrow Left/Right | 列間移動 (index clamp) | COMPLETED |
+| Space | status toggle (open ↔ done) | COMPLETED |
+| Ctrl+Arrow Left/Right | status move (directional) | COMPLETED |
+
+**Calendar** (Phase 1): 完成
+
+| Key | Action | Status |
+|-----|--------|--------|
+| Arrow Left/Right | 日移動 (空セルスキップ) | COMPLETED |
+| Arrow Up/Down | 週移動 (±7 days, 空週スキップ) | COMPLETED |
+
+**Summary**:
+- Sidebar tree keyboard navigation は Phase 1–6 で完成
+- Kanban keyboard Phase 1 (navigation) + Phase 2 (Space toggle) + Phase 3 (Ctrl+Arrow status move) 完了
+- Calendar keyboard Phase 1 (navigation) 完了 — 日移動 + 週移動、月内限定
+- 全 3 view で navigation 完成 + Kanban は action 操作も完成
+- テスト合計 172 件（Sidebar 91 + Kanban 57 + Calendar 24）
+
+### Keyboard Navigation — Not Implemented
+
+- Calendar Phase 2 (month wrap, empty cell cursor)
+- Shift+Arrow range selection
+
+### Next Candidates
+
+| | Calendar Phase 2 (month wrap) | Shift+Arrow range selection |
+|---|---|---|
+| ユーザ価値 | 低 — Phase 1 で主要操作は完了 | 中 — keyboard multi-select |
+| コスト | 中 — re-render + 新 state 候補 | 高 — multiSelectedLids 統合 |
+| リスク | 中 — scope 膨張 (wrap 範囲) | 高 — Phase 2-D 未解決 |
+| 妥当性 | △ — 必要性が薄い | △ — 前提が未整備 |
+
+設計: `calendar-kanban-keyboard-navigation.md` §9
+
+### 保留候補
+
+| 候補 | 保留理由 |
 |------|---------|
-| Sidebar multi-DnD | structural relation の cycle detection 複雑化。action bar の BULK_MOVE で代替可能 |
-| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と構造的に衝突。着手前に設計変更議論が必要。コスト/リスクが見合わない |
+| Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能。設計負債だが実害小 |
+| Sidebar multi-DnD | structural relation の cycle detection 複雑化。BULK_MOVE で代替可能 |
+| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突。設計変更議論が先 |
+| Calendar Phase 2 (month wrap) | 必要性が薄い。Phase 1 で主要操作は完了 |
+| Shift+Arrow range selection | Phase 2-D 未解決。前提が未整備 |
 
 ## Close Audit Summary
 

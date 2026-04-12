@@ -28,6 +28,7 @@ import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -1132,6 +1133,17 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
     }
   }
 
+  // Task completion badge
+  const taskProgress = countTaskProgress(entry);
+  if (taskProgress) {
+    const taskBadge = createElement('span', 'pkc-task-badge');
+    taskBadge.textContent = `${taskProgress.done}/${taskProgress.total}`;
+    if (taskProgress.done === taskProgress.total) {
+      li.setAttribute('data-pkc-task-complete', 'true');
+    }
+    li.appendChild(taskBadge);
+  }
+
   // History indicator
   if (state.container) {
     const revCount = getRevisionCount(state.container, entry.lid);
@@ -1649,6 +1661,18 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   archLabel.setAttribute('data-pkc-archetype', entry.archetype);
   archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   titleRow.appendChild(archLabel);
+
+  // Task completion badge in title row
+  const viewTaskProgress = countTaskProgress(entry);
+  if (viewTaskProgress) {
+    const viewTaskBadge = createElement('span', 'pkc-task-badge');
+    viewTaskBadge.textContent = `${viewTaskProgress.done}/${viewTaskProgress.total}`;
+    if (viewTaskProgress.done === viewTaskProgress.total) {
+      viewTaskBadge.setAttribute('data-pkc-task-complete', 'true');
+    }
+    titleRow.appendChild(viewTaskBadge);
+  }
+
   view.appendChild(titleRow);
 
   // Breadcrumb: show parent folder path + current entry

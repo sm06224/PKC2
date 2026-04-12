@@ -106,3 +106,8 @@ handleKeydown:
   Arrow Down で移動すればよく、自動選択は予期しない挙動になりうる。
 - **tree grid 型の完全 keyboard UX**: WAI-ARIA tree grid pattern は
   将来の検討対象だが、今回のスコープ外。
+
+> **Note (2026-04-11)**:
+> 以下の項目は後続フェーズで実装済み:
+> - 親ノードへの移動 → Phase 4 (`keyboard-navigation-phase4-parent.md`)
+> - 子ノードの選択 → Phase 5 (`keyboard-navigation-phase5-child.md`)

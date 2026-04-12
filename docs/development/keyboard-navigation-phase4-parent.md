@@ -24,6 +24,9 @@ Created: 2026-04-11
 - multi-select keyboard 拡張
 - non-folder entry に対する parent 移動
 
+> **Note (2026-04-11)**:
+> 「Arrow Right で子の先頭へ移動」は Phase 5 で実装済み (`keyboard-navigation-phase5-child.md`)。
+
 ---
 
 ## B. Source of Truth

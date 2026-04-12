@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findTaskItems, toggleTaskItem } from '../../../src/features/markdown/markdown-task-list';
+import { findTaskItems, toggleTaskItem, countTaskProgress } from '../../../src/features/markdown/markdown-task-list';
 
 describe('findTaskItems', () => {
   it('returns empty array for empty body', () => {
@@ -180,5 +180,106 @@ describe('toggleTaskItem', () => {
     expect(checked).toBe('- [x] Task');
     const unchecked = toggleTaskItem(checked!, 0);
     expect(unchecked).toBe('- [ ] Task');
+  });
+});
+
+describe('countTaskProgress', () => {
+  it('TEXT: returns null for empty body', () => {
+    expect(countTaskProgress({ archetype: 'text', body: '' })).toBeNull();
+  });
+
+  it('TEXT: returns null for body with no tasks', () => {
+    expect(countTaskProgress({ archetype: 'text', body: '# Title\nSome text' })).toBeNull();
+  });
+
+  it('TEXT: counts partial completion', () => {
+    expect(countTaskProgress({
+      archetype: 'text',
+      body: '- [ ] Buy milk\n- [x] Write code\n- [ ] Deploy',
+    })).toEqual({ done: 1, total: 3 });
+  });
+
+  it('TEXT: counts all complete', () => {
+    expect(countTaskProgress({
+      archetype: 'text',
+      body: '- [x] A\n- [x] B',
+    })).toEqual({ done: 2, total: 2 });
+  });
+
+  it('TEXT: counts all incomplete', () => {
+    expect(countTaskProgress({
+      archetype: 'text',
+      body: '- [ ] A\n- [ ] B\n- [ ] C',
+    })).toEqual({ done: 0, total: 3 });
+  });
+
+  it('TEXT: excludes tasks in fenced code blocks', () => {
+    expect(countTaskProgress({
+      archetype: 'text',
+      body: '- [ ] Real\n```\n- [ ] Fake\n```\n- [x] Also real',
+    })).toEqual({ done: 1, total: 2 });
+  });
+
+  it('TEXTLOG: aggregates across all log entries', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'a', text: '- [ ] Task 1\n- [x] Task 2', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+        { id: 'b', text: '- [x] Task 3', createdAt: '2026-01-02T00:00:00Z', flags: [] },
+      ],
+    });
+    expect(countTaskProgress({ archetype: 'textlog', body })).toEqual({ done: 2, total: 3 });
+  });
+
+  it('TEXTLOG: returns null when no log entries have tasks', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'a', text: 'Just text', createdAt: '2026-01-01T00:00:00Z', flags: [] },
+      ],
+    });
+    expect(countTaskProgress({ archetype: 'textlog', body })).toBeNull();
+  });
+
+  it('TEXTLOG: returns null for empty entries', () => {
+    const body = JSON.stringify({ entries: [] });
+    expect(countTaskProgress({ archetype: 'textlog', body })).toBeNull();
+  });
+
+  it('TEXTLOG: handles invalid JSON gracefully', () => {
+    expect(countTaskProgress({ archetype: 'textlog', body: 'not json' })).toBeNull();
+  });
+
+  it('todo archetype returns null', () => {
+    expect(countTaskProgress({
+      archetype: 'todo',
+      body: JSON.stringify({ status: 'open', description: '- [ ] task' }),
+    })).toBeNull();
+  });
+
+  it('form archetype returns null', () => {
+    expect(countTaskProgress({
+      archetype: 'form',
+      body: JSON.stringify({ name: 'test' }),
+    })).toBeNull();
+  });
+
+  it('attachment archetype returns null', () => {
+    expect(countTaskProgress({
+      archetype: 'attachment',
+      body: JSON.stringify({ name: 'a.txt' }),
+    })).toBeNull();
+  });
+
+  it('generic archetype is treated like text', () => {
+    expect(countTaskProgress({
+      archetype: 'generic',
+      body: '- [x] Done\n- [ ] Pending',
+    })).toEqual({ done: 1, total: 2 });
+  });
+
+  it('folder archetype is treated like text', () => {
+    expect(countTaskProgress({
+      archetype: 'folder',
+      body: '- [x] A',
+    })).toEqual({ done: 1, total: 1 });
   });
 });

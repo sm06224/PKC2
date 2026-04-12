@@ -88,6 +88,26 @@ export function getStructuralParent(
 }
 
 /**
+ * Get the first structural child of a folder entry, if any.
+ * Mirror of {@link getStructuralParent} — scans relations for the
+ * first `structural` relation where `from === parentLid` and returns
+ * the corresponding entry. Child order follows relation iteration order.
+ */
+export function getFirstStructuralChild(
+  relations: readonly Relation[],
+  entries: readonly Entry[],
+  parentLid: string,
+): Entry | null {
+  for (const r of relations) {
+    if (r.kind === 'structural' && r.from === parentLid) {
+      const child = entries.find((e) => e.lid === r.to);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+/**
  * Get the breadcrumb path (ancestors) for an entry.
  * Returns array from root ancestor to immediate parent (excludes self).
  */
