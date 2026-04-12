@@ -26,6 +26,25 @@ Category: A. Immediate UX Improvements
 Tests: 23 (TOC extractor) + 4 (heading id injection) + 6 (renderer
 integration) + 3 (action-binder click routing) = 36 new tests.
 
+### Intentional scope limits
+
+The following are deliberate design decisions, **not** bugs or extraction
+misses. Do not "fix" them without a fresh spec / issue:
+
+- **h1–h3 only**. h4/h5/h6 headings are skipped by both the extractor
+  and the renderer's id injection. Deeper nesting rarely helps at the
+  TOC level and would make the right pane noisy. If h4+ becomes
+  necessary, open a new issue rather than extending `TocLevel` silently.
+- **TEXTLOG = flat aggregated TOC**. Each log entry's headings are
+  appended in order, tagged with `logId`. There is intentionally no
+  per-log-entry sub-TOC UI — the goal is overview, not fine-grained
+  navigation.
+- **entry window does not render the TOC**. The minimal scope is the
+  detail view's right meta pane only. Extending to the entry window is a
+  separate issue (entry window has its own pane geometry constraints).
+- **No anchor / deep-link URL**. `#slug` is never reflected in the
+  browser URL; the TOC is an in-page navigation aid only.
+
 ---
 
 ## 1. 短い結論

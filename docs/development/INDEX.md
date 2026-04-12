@@ -164,12 +164,17 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 ### Category A — Immediate UX Improvements (`docs/development/`)
 
-| # | File | Topic |
-|---|------|-------|
-| A-1 | `textlog-readability-hardening.md` | TEXTLOG 境界/日付/秒表示 |
-| A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit |
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| A-1 | `textlog-readability-hardening.md` | TEXTLOG 境界/日付/秒表示 | **COMPLETED 2026-04-12** |
+| A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit | STANDBY |
 | A-3 | `table-of-contents-right-pane.md` | 右ペイン TOC | **COMPLETED 2026-04-12** |
-| A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット |
+| A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット | **NEXT IF PAIN REMAINS** |
+
+**Stabilization re-entry (2026-04-12)**: A-1 + A-3 で「読める / 俯瞰できる」
+まで到達。A-4 は自然な次候補だが必須ではない。ユーザが A-1 / A-3 を実際に
+触って「まだ探しにくい」という痛みが残った場合のみ着手する。そうでなければ
+停止し、新たな痛み待ちに戻る。
 
 ### Category B — Markdown / Rendering Extensions (`docs/development/markdown-extensions/`)
 

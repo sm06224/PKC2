@@ -1,8 +1,28 @@
 # Search UX — Partial Reach Links
 
-Status: CANDIDATE
+Status: CONDITIONAL — NEXT IF PAIN REMAINS (2026-04-12)
 Created: 2026-04-12
 Category: A. Immediate UX Improvements
+
+## Trigger
+
+A-1（TEXTLOG readability）と A-3（右ペイン TOC）で「読める / 俯瞰できる」
+状態に到達した。本 issue は A-1 / A-3 後の**ユーザ体感によって着手可否が
+決まる条件付き候補**であり、現時点では実装対象ではない。
+
+着手条件（どれかが真になったら昇格）:
+
+- A-1 / A-3 を実際に触った上で「entry を特定しても、その中でヒット箇所を
+  探す作業がまだ痛い」という実感が残っている
+- 長文 TEXT / 長期 TEXTLOG で TOC 経由 navigation だけでは足りないシーン
+  が具体的に挙がる
+
+着手を見送る条件:
+
+- TOC + rendered body のスクロールで十分だと感じる
+- 痛みが具体的に言語化できない
+
+見送り時は本 doc を CANDIDATE に戻さず、CONDITIONAL のまま待機する。
 
 ---
 
