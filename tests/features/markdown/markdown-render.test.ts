@@ -13,9 +13,10 @@ describe('renderMarkdown (markdown-it)', () => {
   });
 
   it('renders headings h1 through h6', () => {
-    expect(renderMarkdown('# Title')).toContain('<h1>');
-    expect(renderMarkdown('## Sub')).toContain('<h2>');
-    expect(renderMarkdown('### H3')).toContain('<h3>');
+    // h1–h3 carry a slug `id` attribute (see A-3 TOC). h4–h6 do not.
+    expect(renderMarkdown('# Title')).toMatch(/<h1[ >]/);
+    expect(renderMarkdown('## Sub')).toMatch(/<h2[ >]/);
+    expect(renderMarkdown('### H3')).toMatch(/<h3[ >]/);
     expect(renderMarkdown('#### H4')).toContain('<h4>');
     expect(renderMarkdown('##### H5')).toContain('<h5>');
     expect(renderMarkdown('###### H6')).toContain('<h6>');
@@ -120,7 +121,7 @@ describe('renderMarkdown (markdown-it)', () => {
   it('renders multiple block types', () => {
     const md = '# Heading\n\nA paragraph.\n\n- list item\n\n> quote';
     const html = renderMarkdown(md);
-    expect(html).toContain('<h1>');
+    expect(html).toMatch(/<h1[ >]/);
     expect(html).toContain('<p>');
     expect(html).toContain('<ul>');
     expect(html).toContain('<blockquote>');
@@ -396,5 +397,34 @@ describe('getMarkdownInstance', () => {
     const instance = getMarkdownInstance();
     expect(instance).toBeDefined();
     expect(typeof instance.render).toBe('function');
+  });
+});
+
+describe('heading id injection (A-3 TOC)', () => {
+  it('stamps slug `id` on h1/h2/h3', () => {
+    const html = renderMarkdown('# Introduction\n\n## Details\n\n### Notes');
+    expect(html).toContain('<h1 id="introduction">');
+    expect(html).toContain('<h2 id="details">');
+    expect(html).toContain('<h3 id="notes">');
+  });
+
+  it('does not stamp id on h4/h5/h6', () => {
+    const html = renderMarkdown('#### Deep\n\n##### Deeper\n\n###### Deepest');
+    expect(html).toContain('<h4>');
+    expect(html).toContain('<h5>');
+    expect(html).toContain('<h6>');
+  });
+
+  it('disambiguates duplicate heading slugs within a single render', () => {
+    const html = renderMarkdown('# Overview\n\n# Overview');
+    expect(html).toContain('<h1 id="overview">');
+    expect(html).toContain('<h1 id="overview-1">');
+  });
+
+  it('resets slug collision scope across independent renders', () => {
+    const a = renderMarkdown('# Title');
+    const b = renderMarkdown('# Title');
+    expect(a).toContain('<h1 id="title">');
+    expect(b).toContain('<h1 id="title">');
   });
 });

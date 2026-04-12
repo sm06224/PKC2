@@ -1185,6 +1185,56 @@
   transform: scale(0.95);
 }
 
+/* ── Table of Contents (right-pane TOC, A-3) ── */
+.pkc-toc {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
+}
+
+.pkc-toc-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.pkc-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-toc-item {
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.75rem; }
+.pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.5rem; }
+
+.pkc-toc-link {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  padding: 0.1rem 0.15rem;
+  font-size: 0.75rem;
+  color: var(--c-text, inherit);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+}
+
+.pkc-toc-link:hover,
+.pkc-toc-link:focus-visible {
+  background: var(--c-border);
+  color: var(--c-accent);
+}
+
 /* ── Tags ── */
 .pkc-tags {
   padding: 0.25rem 0;

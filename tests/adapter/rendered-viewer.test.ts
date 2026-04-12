@@ -61,7 +61,7 @@ describe('buildRenderedViewerHtml — TEXT archetype', () => {
     expect(html).toContain('<h1>Greetings</h1>');
     // Rendered markdown appears inside the article wrapper.
     expect(html).toContain('<article class="pkc-viewer-body pkc-md-rendered">');
-    expect(html).toContain('<h1>Hello</h1>');
+    expect(html).toMatch(/<h1[^>]*>Hello<\/h1>/);
     expect(html).toContain('<p>World</p>');
   });
 
@@ -124,12 +124,13 @@ describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
     const entry = textlogEntry();
     const html = buildRenderedViewerHtml(entry, baseContainer());
     // Each log row becomes an `h2` because the serializer emits `## ts`.
-    const h2Count = (html.match(/<h2>/g) ?? []).length;
+    // A-3 TOC stamps an `id` attribute on h1–h3, so match `<h2` loosely.
+    const h2Count = (html.match(/<h2[ >]/g) ?? []).length;
     expect(h2Count).toBe(2);
     // First row's markdown body is rendered as bold.
     expect(html).toContain('<strong>bold</strong>');
     // Second (important) row's heading gets the ★ marker.
-    expect(html).toMatch(/<h2>[^<]*★<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>[^<]*★<\/h2>/);
   });
 
   it('labels the viewer meta line with "Textlog · rendered view (read-only)"', () => {

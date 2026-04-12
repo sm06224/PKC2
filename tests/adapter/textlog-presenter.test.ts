@@ -135,7 +135,7 @@ describe('textlog renderBody', () => {
     // log-3 (markdown heading) is now first due to descending order
     const mdRow = el.querySelectorAll('.pkc-textlog-text')[0];
     expect(mdRow!.classList.contains('pkc-md-rendered')).toBe(true);
-    expect(mdRow!.innerHTML).toContain('<h1>');
+    expect(mdRow!.innerHTML).toMatch(/<h1[ >]/);
   });
 
   // ── Asset reference resolution ──

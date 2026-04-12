@@ -120,7 +120,7 @@ describe('Entry-window view-body rerender foundation', () => {
     const payload = calls[0]![0] as { type: string; viewBody: string };
     expect(payload.type).toBe('pkc-entry-update-view-body');
     // renderMarkdown is applied on the parent side before posting.
-    expect(payload.viewBody).toContain('<h1>');
+    expect(payload.viewBody).toMatch(/<h1[ >]/);
     expect(payload.viewBody).toContain('Fresh heading');
     expect(payload.viewBody).toContain('body text');
   });
@@ -255,7 +255,7 @@ describe('Entry-window view-body rerender foundation', () => {
     const payload = child.postMessage.mock.calls.find(
       (c) => (c[0] as { type?: string })?.type === ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG,
     )![0] as { viewBody: string };
-    expect(payload.viewBody).toContain('<h2>');
+    expect(payload.viewBody).toMatch(/<h2[ >]/);
     expect(payload.viewBody).toContain('Log entry');
   });
 

@@ -146,7 +146,7 @@ describe('TEXT split editor preview — asset resolution', () => {
     render(state, root);
     const preview = root.querySelector('[data-pkc-region="text-edit-preview"]');
     expect(preview).not.toBeNull();
-    expect(preview!.innerHTML).toContain('<h1>');
+    expect(preview!.innerHTML).toMatch(/<h1[ >]/);
     expect(preview!.innerHTML).toContain('data:image/png;base64,');
   });
 

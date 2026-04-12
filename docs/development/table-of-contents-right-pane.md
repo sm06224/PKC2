@@ -1,8 +1,30 @@
 # Table of Contents Right Pane
 
-Status: CANDIDATE
+Status: COMPLETED (2026-04-12)
 Created: 2026-04-12
 Category: A. Immediate UX Improvements
+
+## Implementation summary
+
+- Pure extractor: `src/features/markdown/markdown-toc.ts`
+  (`slugifyHeading`, `makeSlugCounter`, `extractHeadingsFromMarkdown`,
+  `extractTocFromEntry`). Features layer, no browser APIs.
+- Renderer id injection: `markdown-render.ts` stamps an `id` slug on every
+  `h1/h2/h3` via the shared `makeSlugCounter`; env-scoped so renders do
+  not share collision state. `h4–h6` remain unchanged.
+- UI: `renderer.ts#renderTocSection` renders `[data-pkc-region="toc"]`
+  inside the existing right meta pane. Each item is a
+  `<button data-pkc-action="toc-jump" data-pkc-toc-slug data-pkc-log-id?>`
+  with `data-pkc-toc-level` for indent styling.
+- Click → scroll: `action-binder.ts` handles `toc-jump`; lookup is scoped
+  to the owning `[data-pkc-log-id]` row when present so TEXTLOG slug
+  collisions across log entries never misroute.
+- Empty TOC → section is omitted entirely.
+- Scope kept to detail view's right pane — entry window not touched
+  per minimal scope.
+
+Tests: 23 (TOC extractor) + 4 (heading id injection) + 6 (renderer
+integration) + 3 (action-binder click routing) = 36 new tests.
 
 ---
 

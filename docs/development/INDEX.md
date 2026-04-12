@@ -168,7 +168,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 |---|------|-------|
 | A-1 | `textlog-readability-hardening.md` | TEXTLOG 境界/日付/秒表示 |
 | A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit |
-| A-3 | `table-of-contents-right-pane.md` | 右ペイン TOC |
+| A-3 | `table-of-contents-right-pane.md` | 右ペイン TOC | **COMPLETED 2026-04-12** |
 | A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット |
 
 ### Category B — Markdown / Rendering Extensions (`docs/development/markdown-extensions/`)
