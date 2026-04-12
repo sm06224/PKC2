@@ -8,6 +8,7 @@
  */
 
 import { formatDate } from '../datetime/datetime-format';
+import { generateLogId as generateUlidLogId } from './log-id';
 
 export type TextlogFlag = 'important';
 
@@ -171,9 +172,16 @@ export function serializeTextlogAsMarkdown(body: TextlogBody): string {
   return blocks.join('\n\n');
 }
 
-let logIdCounter = 0;
-
+/**
+ * Internal ID generator for newly-created log entries.
+ *
+ * Slice 1 of `textlog-viewer-and-linkability-redesign.md` switched
+ * this from the legacy `log-<ts>-<n>` counter format to ULID.
+ * Existing IDs parsed from stored bodies are **never** rewritten —
+ * `parseTextlogBody` preserves whatever id string the entry already
+ * carries, and the resolver treats both formats as equally valid
+ * opaque tokens.
+ */
 function generateLogId(): string {
-  logIdCounter++;
-  return `log-${Date.now()}-${logIdCounter}`;
+  return generateUlidLogId();
 }
