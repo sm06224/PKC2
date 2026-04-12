@@ -255,6 +255,33 @@
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* ── Inline "Export Now" action inside the save-failure banner.
+ *
+ * Rendered only when callers pass `onExport` to
+ * `showIdbSaveFailureBanner()`.  Sits between the detail text and
+ * the × dismiss so the user sees a clear escape route from a
+ * quota / abort situation without leaving the banner.  Visual
+ * style mirrors the banner's inverted-on-warn colors; the hover /
+ * focus state uses a modestly darker overlay so the button is
+ * obviously actionable.
+ */
+.pkc-idb-warning-action {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pkc-idb-warning-action:hover,
+.pkc-idb-warning-action:focus-visible {
+  background: rgba(0, 0, 0, 0.18);
+}
+
 /* ── Save-failure variant ──
  *
  * Same visual style as the boot-time banner, but offset vertically so
@@ -339,6 +366,32 @@
 .pkc-toast-dismiss:hover,
 .pkc-toast-dismiss:focus-visible {
   background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Inline "Export Now" action inside a toast.
+ *
+ * Rendered only when callers pass `onExport` to `showToast()`.
+ * Sits between the body text and the × dismiss; uses an outlined
+ * chip style rather than a full button so it fits visually inside
+ * the toast without dominating it.  `currentColor` borrow means the
+ * outline automatically inverts for warn / error / info kinds.
+ */
+.pkc-toast-action {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+.pkc-toast-action:hover,
+.pkc-toast-action:focus-visible {
+  background: rgba(0, 0, 0, 0.18);
 }
 
 /* ── Shell layout ── */

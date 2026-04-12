@@ -171,7 +171,19 @@ async function boot(): Promise<void> {
   mountPersistence(dispatcher, {
     store,
     onError: (err) => {
-      showIdbSaveFailureBanner({ reason: classifySaveError(err) });
+      // Surface the failure AND give the user a one-click escape
+      // hatch: "Export Now" inside the banner triggers the existing
+      // BEGIN_EXPORT action so they can back up the container to a
+      // single-HTML file before the next edit is also lost.
+      showIdbSaveFailureBanner({
+        reason: classifySaveError(err),
+        onExport: () =>
+          dispatcher.dispatch({
+            type: 'BEGIN_EXPORT',
+            mode: 'full',
+            mutability: 'editable',
+          }),
+      });
     },
   });
 

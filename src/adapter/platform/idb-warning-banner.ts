@@ -95,6 +95,18 @@ export interface IdbSaveFailureOptions {
   title?: string;
   /** Host element. Defaults to document.body. */
   host?: HTMLElement;
+  /**
+   * If provided, render an inline "Export Now" action link inside
+   * the banner so the user can escape a quota / abort situation
+   * without hunting for the sidebar export menu.  The callback is
+   * invoked directly on click (the banner is hosted outside
+   * `#pkc-root`, so the action-binder delegation cannot see this
+   * element); the button still carries
+   * `data-pkc-action="begin-export"` for parity + test targeting.
+   */
+  onExport?: () => void;
+  /** Label for the export action. Default: "Export Now". */
+  exportLabel?: string;
 }
 
 /**
@@ -128,6 +140,20 @@ export function showIdbSaveFailureBanner(
     if (detail) {
       detail.textContent = buildSaveFailureDetail(opts.reason);
     }
+    // Belt-and-braces: if the first call omitted `onExport` but a
+    // repeat provides one, upgrade the banner by inserting the
+    // action button before the existing dismiss ×.
+    if (
+      opts.onExport &&
+      !existing.querySelector('[data-pkc-action="begin-export"]')
+    ) {
+      const dismissEl = existing.querySelector<HTMLElement>(
+        '[data-pkc-action="dismiss-idb-save-warning"]',
+      );
+      const action = buildExportAction(opts.onExport, opts.exportLabel);
+      if (dismissEl) existing.insertBefore(action, dismissEl);
+      else existing.appendChild(action);
+    }
     return existing;
   }
 
@@ -146,6 +172,10 @@ export function showIdbSaveFailureBanner(
   detail.textContent = buildSaveFailureDetail(opts.reason);
   banner.appendChild(detail);
 
+  if (opts.onExport) {
+    banner.appendChild(buildExportAction(opts.onExport, opts.exportLabel));
+  }
+
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'pkc-idb-warning-dismiss';
@@ -159,6 +189,32 @@ export function showIdbSaveFailureBanner(
 
   host.appendChild(banner);
   return banner;
+}
+
+/**
+ * Build the "Export Now" inline action button that surfaces the
+ * existing BEGIN_EXPORT flow from inside the save-failure banner.
+ * The onclick handler invokes the callback directly; the banner
+ * lives outside `#pkc-root` so the global action-binder delegation
+ * cannot dispatch for us.  Attributes mirror the in-app export
+ * buttons for test targeting + future delegation parity.
+ */
+function buildExportAction(
+  onExport: () => void,
+  label?: string,
+): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pkc-idb-warning-action';
+  btn.setAttribute('data-pkc-action', 'begin-export');
+  btn.setAttribute('data-pkc-export-mode', 'full');
+  btn.setAttribute('data-pkc-export-mutability', 'editable');
+  btn.textContent = label ?? 'Export Now';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onExport();
+  });
+  return btn;
 }
 
 function buildSaveFailureDetail(reason?: string): string {

@@ -2366,7 +2366,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       e.preventDefault();
       const rejectMsg = fileSizeWarningMessage(file.size) ?? 'File too large.';
       console.warn(`[PKC2] Paste rejected: ${rejectMsg}`);
-      showToast({ message: rejectMsg, kind: 'warn' });
+      showToast({
+        message: rejectMsg,
+        kind: 'warn',
+        // Surface a one-click escape hatch — the attachment was
+        // refused because it would bloat the single-HTML product;
+        // exporting the current container BEFORE the user tries
+        // again lets them keep progress.
+        onExport: () =>
+          dispatcher.dispatch({
+            type: 'BEGIN_EXPORT',
+            mode: 'full',
+            mutability: 'editable',
+          }),
+      });
       return;
     }
 
@@ -3573,7 +3586,16 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
   if (isFileTooLarge(file.size)) {
     const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
     console.warn(`[PKC2] Drop rejected: ${msg}`);
-    showToast({ message: msg, kind: 'warn' });
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () =>
+        dispatcher.dispatch({
+          type: 'BEGIN_EXPORT',
+          mode: 'full',
+          mutability: 'editable',
+        }),
+    });
     return;
   }
   const reader = new FileReader();

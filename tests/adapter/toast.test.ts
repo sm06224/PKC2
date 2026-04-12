@@ -158,6 +158,129 @@ describe('showToast', () => {
     expect(host.contains(second)).toBe(true);
   });
 
+  // ── Export Now action ───────────────────────────────────────────────
+  //
+  // When a caller passes `onExport`, the toast should expose a one-click
+  // escape hatch carrying `data-pkc-action="begin-export"`.  The callback
+  // is invoked directly on click because the toast stack lives outside
+  // `#pkc-root` (global action-binder delegation doesn't reach it).
+
+  it('renders no Export Now button when onExport is omitted', () => {
+    const toast = showToast({ message: 'no export', host });
+    expect(
+      toast.querySelector('[data-pkc-action="begin-export"]'),
+    ).toBeNull();
+  });
+
+  it('renders an Export Now button when onExport is provided', () => {
+    const onExport = vi.fn();
+    const toast = showToast({ message: 'with export', host, onExport });
+    const btn = toast.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.classList.contains('pkc-toast-action')).toBe(true);
+    expect(btn!.textContent).toBe('Export Now');
+    expect(btn!.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(btn!.getAttribute('data-pkc-export-mutability')).toBe('editable');
+  });
+
+  it('honours a custom exportLabel', () => {
+    const toast = showToast({
+      message: 'custom label',
+      host,
+      onExport: () => {},
+      exportLabel: 'Download backup',
+    });
+    const btn = toast.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    );
+    expect(btn?.textContent).toBe('Download backup');
+  });
+
+  it('clicking Export Now invokes the callback exactly once', () => {
+    const onExport = vi.fn();
+    const toast = showToast({ message: 'click me', host, onExport });
+    const btn = toast.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    )!;
+    btn.click();
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export Now click does NOT dismiss the toast', () => {
+    const toast = showToast({
+      message: 'still visible',
+      host,
+      onExport: () => {},
+    });
+    toast
+      .querySelector<HTMLButtonElement>('[data-pkc-action="begin-export"]')!
+      .click();
+    expect(host.contains(toast)).toBe(true);
+  });
+
+  it('Export Now button sits between body and dismiss', () => {
+    const toast = showToast({
+      message: 'order',
+      host,
+      onExport: () => {},
+    });
+    const children = Array.from(toast.children) as HTMLElement[];
+    const bodyIdx = children.findIndex((c) =>
+      c.classList.contains('pkc-toast-body'),
+    );
+    const actionIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-action') === 'begin-export',
+    );
+    const dismissIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-action') === 'dismiss-toast',
+    );
+    expect(bodyIdx).toBeGreaterThanOrEqual(0);
+    expect(actionIdx).toBeGreaterThan(bodyIdx);
+    expect(dismissIdx).toBeGreaterThan(actionIdx);
+  });
+
+  it('coalescing does not duplicate the Export Now button', () => {
+    const onExport = vi.fn();
+    const first = showToast({ message: 'dup', host, onExport });
+    const second = showToast({ message: 'dup', host, onExport });
+    expect(second).toBe(first);
+    expect(
+      first.querySelectorAll('[data-pkc-action="begin-export"]').length,
+    ).toBe(1);
+  });
+
+  it('coalescing upgrades a button-less toast when the repeat provides onExport', () => {
+    const first = showToast({ message: 'upgrade', host });
+    expect(
+      first.querySelector('[data-pkc-action="begin-export"]'),
+    ).toBeNull();
+    const onExport = vi.fn();
+    const same = showToast({ message: 'upgrade', host, onExport });
+    expect(same).toBe(first);
+    const btn = first.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    );
+    expect(btn).not.toBeNull();
+    btn!.click();
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export Now button is a keyboard-focusable native <button>', () => {
+    const toast = showToast({
+      message: 'focus',
+      host,
+      onExport: () => {},
+    });
+    const btn = toast.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="begin-export"]',
+    )!;
+    expect(btn.tagName).toBe('BUTTON');
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+  });
+
   it('coexists with the IDB warning banner regions', () => {
     // Pre-existing IDB banner — toast stack must not collide with it.
     const fakeBanner = document.createElement('div');
