@@ -151,9 +151,10 @@ Each `storage-profile-row` carries `data-pkc-lid`,
   button presence + readonly gating, hedged note, close button,
   summary surfacing, top rows, row attributes, empty container,
   null container, orphan badge.
-
-No action-binder open/close tests were added — the existing suite
-is already at the sandbox memory ceiling (see *On-demand mounting*
-above). The `case 'show-storage-profile'` / `close-storage-profile'`
-handlers are covered indirectly via manual QA and the renderer
-builder tests.
+- `tests/adapter/action-binder-navigation.test.ts` — open/close
+  integration (3 tests): launch button mounts the overlay on the
+  root, close button removes it, reopen after close rebuilds a
+  single fresh overlay. Originally deferred because the old
+  monolithic `action-binder.test.ts` had saturated the sandbox
+  memory ceiling; landed after the file was split (see
+  [test-suite-memory-hardening.md](./test-suite-memory-hardening.md)).
