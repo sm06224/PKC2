@@ -13,7 +13,11 @@ import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refre
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
-import { showIdbWarningBanner } from './adapter/platform/idb-warning-banner';
+import {
+  showIdbWarningBanner,
+  showIdbSaveFailureBanner,
+  classifySaveError,
+} from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
@@ -156,8 +160,20 @@ async function boot(): Promise<void> {
   render(dispatcher.getState(), root);
 
   // 6. IDB persistence
+  //
+  // `onError` surfaces runtime save failures (QuotaExceededError,
+  // transaction aborts, generic put() rejections) as a separate
+  // non-blocking banner (`[data-pkc-region="idb-save-warning"]`). The
+  // banner is idempotent per-region, so repeated failures update the
+  // reason string on the existing banner rather than stacking. See
+  // docs/development/idb-availability.md § "Runtime save failure".
   const store = createIDBStore();
-  mountPersistence(dispatcher, { store });
+  mountPersistence(dispatcher, {
+    store,
+    onError: (err) => {
+      showIdbSaveFailureBanner({ reason: classifySaveError(err) });
+    },
+  });
 
   // 6a. IDB availability probe — warn the user if persistence is
   // silently broken (file:// on some browsers, private-browsing, etc.).

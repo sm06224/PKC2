@@ -235,6 +235,21 @@
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* ── Save-failure variant ──
+ *
+ * Same visual style as the boot-time banner, but offset vertically so
+ * that if the boot banner is also visible (e.g. quota exhausted at
+ * boot time AND mid-session) the two banners stack instead of
+ * overlapping. 2.25rem roughly matches the boot banner's rendered
+ * height at the default font size; the slight left/right inset makes
+ * the stacking visually obvious.
+ */
+.pkc-idb-save-warning {
+  top: 2.25rem;
+  left: 0.5rem;
+  right: 0.5rem;
+}
+
 /* ── Shell layout ── */
 .pkc-shell {
   display: flex;
