@@ -34,11 +34,15 @@
      inheritance fallbacks. */
   --c-text: var(--c-fg);
   --c-text-dim: var(--c-muted);
-  /* TOC secondary rows (day / log labels). Dark theme reuses --c-muted;
-     light theme overrides this token below to a darker parchment ink so
-     the rows pass WCAG AA against the warm-beige sidebar background
+  /* TOC secondary rows (day / log labels).
+     Previously aliased to `var(--c-muted)` (#5a6e4a) which only reaches
+     ~3.3:1 against the #0d0f0a terminal bg — below WCAG AA for normal
+     text at the 0.72rem mono size used by day/log rows.  Pinned to a
+     brighter muted PIP-Boy green (~8.2:1) so the rows pass AA without
+     losing the "quieter than --c-fg" hierarchy.  Light theme overrides
+     this token below to a darker parchment ink for the same reason
      (see docs/development/textlog-viewer-and-linkability-redesign.md). */
-  --c-toc-secondary: var(--c-muted);
+  --c-toc-secondary: #9ab37e;
   /* Slice 5-C: live-viewer range highlight + range-embed marker.
      A low-alpha accent tint layered on top of the normal log
      background so it coexists with the important-flag tint (orange).
@@ -139,7 +143,9 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
-  --c-toc-secondary: var(--c-muted);
+  /* See the `:root` block for the rationale — #5a6e4a (aliased via
+     `--c-muted`) fails WCAG AA on the dark terminal bg. */
+  --c-toc-secondary: #9ab37e;
   --c-range-active-bg: rgba(51, 255, 102, 0.08);
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
   --glow: 0 0 6px rgba(51,255,102,0.15);
