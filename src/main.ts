@@ -19,6 +19,11 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import {
+  estimateStorage,
+  bootWarningMessage,
+} from './adapter/platform/storage-estimate';
+import { showToast } from './adapter/ui/toast';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
@@ -199,6 +204,33 @@ async function boot(): Promise<void> {
       );
       showIdbWarningBanner({ reason: status.reason });
     }
+  });
+
+  // 6b. Storage capacity preflight — best-effort read of
+  // `navigator.storage.estimate()` so we can warn BEFORE a save
+  // or large attachment hits the browser quota wall. Non-blocking;
+  // silent on engines that don't expose the API; sticky toast (no
+  // auto-dismiss) with an Export Now escape hatch when triggered.
+  // See docs/development/idb-availability.md § "Storage capacity
+  // preflight".
+  void estimateStorage().then((result) => {
+    const msg = bootWarningMessage(result);
+    if (!msg) return;
+    console.warn(`[PKC2] Storage preflight: ${msg}`);
+    showToast({
+      message: msg,
+      kind: 'warn',
+      // Keep the toast visible until the user acts — the boot-time
+      // warning is a "you might want to export now" hint, not a
+      // transient event.
+      autoDismissMs: 0,
+      onExport: () =>
+        dispatcher.dispatch({
+          type: 'BEGIN_EXPORT',
+          mode: 'full',
+          mutability: 'editable',
+        }),
+    });
   });
 
   // 7. Export handler: when phase becomes 'exporting', run export (async for compression)

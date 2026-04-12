@@ -14,8 +14,12 @@ import {
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
-import { isFileTooLarge, fileSizeWarningMessage } from './guardrails';
+import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { showToast } from './toast';
+import {
+  estimateStorage,
+  attachmentWarningMessage,
+} from '../platform/storage-estimate';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
@@ -2383,6 +2387,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Storage-capacity preflight — for heavy (≥5 MB) paste attempts,
+    // consult navigator.storage.estimate() asynchronously. The paste
+    // itself is NOT blocked; the warning surfaces alongside the
+    // attempt so the user knows the save may fail and has a one-
+    // click export path. Silent on engines without the API.
+    preflightStorageWarn(file, dispatcher);
+
     // Check if we're in a markdown-capable textarea
     const target = e.target;
     const isTextarea = target instanceof HTMLTextAreaElement && isMarkdownTextarea(target);
@@ -3577,6 +3588,42 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
 }
 
 /**
+ * Storage-capacity preflight helper — shared by the paste and drop
+ * attachment entry points.  For files at or above the "heavy" band
+ * (≥ 5 MB) we consult `navigator.storage.estimate()` asynchronously
+ * and surface a non-blocking toast with an Export Now escape hatch
+ * when free space is tight relative to the file.
+ *
+ * Design notes:
+ *   - Skips small files so the surface is not noisy — a 200 KB
+ *     screenshot would never sensibly trigger a quota warning.
+ *   - Never blocks: the underlying paste / drop proceeds in parallel;
+ *     the warning arrives alongside the FileReader work.
+ *   - Stays silent on engines where the API is absent or throws —
+ *     `estimateStorage()` already encapsulates that fallback.
+ *   - Toast coalescing (identical message) prevents a storm when
+ *     the user retries with the same file.
+ */
+function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
+  if (file.size < SIZE_WARN_HEAVY) return;
+  void estimateStorage().then((result) => {
+    const msg = attachmentWarningMessage(result, file.size);
+    if (!msg) return;
+    console.warn(`[PKC2] Storage preflight (attachment): ${msg}`);
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () =>
+        dispatcher.dispatch({
+          type: 'BEGIN_EXPORT',
+          mode: 'full',
+          mutability: 'editable',
+        }),
+    });
+  });
+}
+
+/**
  * Process a dropped file: create an attachment entry and commit it immediately.
  * Flow: CREATE_ENTRY → COMMIT_EDIT (with body metadata + assets) → CREATE_RELATION (if folder context)
  */
@@ -3598,6 +3645,11 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
     });
     return;
   }
+
+  // Storage-capacity preflight — for heavy (≥5 MB) drops, surface
+  // a quota warning alongside the attempt. Does not block the drop.
+  preflightStorageWarn(file, dispatcher);
+
   const reader = new FileReader();
   reader.onerror = () => {
     const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
