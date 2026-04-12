@@ -1273,7 +1273,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     const { dispatcher } = mountTextlogContainer([
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
-    const row = root.querySelector<HTMLElement>('.pkc-textlog-row[data-pkc-log-id="log-1"]');
+    const row = root.querySelector<HTMLElement>('.pkc-textlog-log[data-pkc-log-id="log-1"]');
     expect(row).not.toBeNull();
     // Seed a text node inside the row so the dblclick origin is NOT the flag button or asset chip.
     const textEl = row!.querySelector<HTMLElement>('.pkc-textlog-text');
@@ -1288,7 +1288,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
@@ -1300,7 +1300,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const flagBtn = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-flag-btn',
     );
     expect(flagBtn).not.toBeNull();
     flagBtn!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
@@ -1345,7 +1345,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
 
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('ready');
@@ -1365,7 +1365,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     expect(dispatcher.getState().editingLid).toBe('tl1');
 
     // Re-render to show editor, then simulate dblclick on the editor area
-    // (there are no .pkc-textlog-row elements in edit mode, but verify no error)
+    // (there are no .pkc-textlog-log elements in edit mode, but verify no error)
     const editorArea = root.querySelector<HTMLElement>('.pkc-textlog-editor');
     if (editorArea) {
       editorArea.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
@@ -1382,7 +1382,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     // The text content may contain rendered markdown children.
     // Target a child of the textlog-text element.
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     expect(textEl).not.toBeNull();
     // Even if we target a child node, closest() should resolve to the row
@@ -1398,7 +1398,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
     ]);
     // Enter edit via dblclick
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('editing');
@@ -1433,7 +1433,7 @@ describe('Issue D / A — TEXTLOG row dblclick enters edit mode', () => {
 
     // Enter edit via dblclick
     const textEl = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"] .pkc-textlog-text',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
     );
     textEl!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     expect(dispatcher.getState().phase).toBe('editing');
@@ -1549,7 +1549,7 @@ describe('Issue D / B — Reference-string context menu items', () => {
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const row = root.querySelector<HTMLElement>(
-      '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+      '.pkc-textlog-log[data-pkc-log-id="log-1"]',
     );
     expect(row).not.toBeNull();
     row!.dispatchEvent(
@@ -1598,7 +1598,7 @@ describe('Issue D / B — Reference-string context menu items', () => {
         { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
       ]);
       const row = root.querySelector<HTMLElement>(
-        '.pkc-textlog-row[data-pkc-log-id="log-1"]',
+        '.pkc-textlog-log[data-pkc-log-id="log-1"]',
       );
       row!.dispatchEvent(
         new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),

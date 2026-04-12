@@ -29,10 +29,53 @@ const sampleBody: TextlogBody = {
 // ── renderBody ──
 
 describe('textlog renderBody', () => {
-  it('renders log entries as timeline rows', () => {
+  it('renders log entries as timeline articles', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const rows = el.querySelectorAll('.pkc-textlog-row');
-    expect(rows.length).toBe(3);
+    const logs = el.querySelectorAll('.pkc-textlog-log');
+    expect(logs.length).toBe(3);
+  });
+
+  it('wraps logs in a day-grouped document with <section> per day', () => {
+    // Slice 2 contract: the live viewer replaces the flat list with
+    // `.pkc-textlog-document` → `.pkc-textlog-day` → `.pkc-textlog-log`.
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const doc = el.querySelector('.pkc-textlog-document');
+    expect(doc).not.toBeNull();
+    const days = el.querySelectorAll('.pkc-textlog-day');
+    // sampleBody has three logs on the same day.
+    expect(days.length).toBe(1);
+  });
+
+  it('gives each day section a yyyy-mm-dd id and each log a log-<id> id', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody));
+    const day = el.querySelector<HTMLElement>('.pkc-textlog-day');
+    expect(day!.id).toMatch(/^day-\d{4}-\d{2}-\d{2}$/);
+    const articles = el.querySelectorAll<HTMLElement>('.pkc-textlog-log');
+    for (const a of articles) {
+      expect(a.id).toMatch(/^log-/);
+    }
+  });
+
+  it("applies desc order to BOTH day sections AND logs within each day", () => {
+    const multiDay: TextlogBody = {
+      entries: [
+        { id: 'a', text: 't1', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'b', text: 't2', createdAt: '2026-04-09T11:00:00Z', flags: [] },
+        { id: 'c', text: 't3', createdAt: '2026-04-10T09:00:00Z', flags: [] },
+        { id: 'd', text: 't4', createdAt: '2026-04-10T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(makeEntry(multiDay));
+    const days = Array.from(
+      el.querySelectorAll<HTMLElement>('.pkc-textlog-day'),
+    ).map((s) => s.getAttribute('data-pkc-date-key'));
+    // Newest day first.
+    expect(days).toEqual(['2026-04-10', '2026-04-09']);
+    // Newest log first inside each day.
+    const logs = Array.from(
+      el.querySelectorAll<HTMLElement>('.pkc-textlog-log'),
+    ).map((a) => a.getAttribute('data-pkc-log-id'));
+    expect(logs).toEqual(['d', 'c', 'b', 'a']);
   });
 
   it('shows empty state with guidance hint when no entries', () => {
@@ -82,18 +125,19 @@ describe('textlog renderBody', () => {
 
   it('marks important entries with data attribute', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const rows = el.querySelectorAll('.pkc-textlog-row');
-    expect(rows[0]!.getAttribute('data-pkc-log-important')).toBeNull();
-    expect(rows[1]!.getAttribute('data-pkc-log-important')).toBe('true');
+    const logs = el.querySelectorAll('.pkc-textlog-log');
+    // Desc order: log-3 (no flag), log-2 (important), log-1 (no flag).
+    expect(logs[0]!.getAttribute('data-pkc-log-important')).toBeNull();
+    expect(logs[1]!.getAttribute('data-pkc-log-important')).toBe('true');
   });
 
-  it('each row carries data-pkc-lid so dblclick → BEGIN_EDIT can resolve the owning entry', () => {
+  it('each article carries data-pkc-lid so dblclick → BEGIN_EDIT can resolve the owning entry', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-owner'));
-    const rows = el.querySelectorAll<HTMLElement>('.pkc-textlog-row');
-    expect(rows.length).toBe(3);
-    for (const r of rows) {
-      expect(r.getAttribute('data-pkc-lid')).toBe('tl-owner');
-      expect(r.getAttribute('data-pkc-log-id')).toBeTruthy();
+    const logs = el.querySelectorAll<HTMLElement>('.pkc-textlog-log');
+    expect(logs.length).toBe(3);
+    for (const a of logs) {
+      expect(a.getAttribute('data-pkc-lid')).toBe('tl-owner');
+      expect(a.getAttribute('data-pkc-log-id')).toBeTruthy();
     }
   });
 
@@ -211,13 +255,38 @@ describe('textlog renderBody', () => {
     expect(row!.innerHTML).toContain('data:image/png;base64,');
   });
 
-  it('marks important row with the data attribute used for visibility styling', () => {
+  it('marks important article with the data attribute used for visibility styling', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const important = el.querySelector('.pkc-textlog-row[data-pkc-log-important="true"]');
+    const important = el.querySelector('.pkc-textlog-log[data-pkc-log-important="true"]');
     expect(important).not.toBeNull();
-    // The important row still has its normal flag button and text children.
+    // The important article still has its normal flag button and text children.
     expect(important!.querySelector('.pkc-textlog-flag-btn')).not.toBeNull();
     expect(important!.querySelector('.pkc-textlog-text')).not.toBeNull();
+  });
+
+  it('exposes a copy-anchor button per article so users can grab `entry:<lid>#log/<id>` refs', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-owner'));
+    const anchors = el.querySelectorAll<HTMLElement>(
+      '.pkc-textlog-log [data-pkc-action="copy-log-line-ref"]',
+    );
+    expect(anchors.length).toBe(3);
+    for (const a of anchors) {
+      expect(a.getAttribute('data-pkc-lid')).toBe('tl-owner');
+      expect(a.getAttribute('data-pkc-log-id')).toBeTruthy();
+    }
+  });
+
+  it('places logs with unparseable timestamps into a dedicated "day-undated" section', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'bad', text: 'broken', createdAt: 'not-a-date', flags: [] },
+        { id: 'ok', text: 'ok', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(makeEntry(body));
+    const undated = el.querySelector('#day-undated');
+    expect(undated).not.toBeNull();
+    expect(undated!.querySelector('.pkc-textlog-log')!.getAttribute('data-pkc-log-id')).toBe('bad');
   });
 
   // ── Non-image asset chip rendering in log entries ──
@@ -312,18 +381,22 @@ describe('textlog renderBody', () => {
     expect(rows[1]!.textContent).toBe('just plain text');
   });
 
-  // ── A-1 structural block-ization ──
+  // ── Slice 2 structure ──
 
-  it('DOM order within each row is [flag, timestamp, text] so grid-areas can place them', () => {
+  it('article layout is <header>(flag, ts, anchor) then .pkc-textlog-text', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
-    const rows = el.querySelectorAll<HTMLElement>('.pkc-textlog-row');
-    for (const row of rows) {
-      const children = Array.from(row.children) as HTMLElement[];
-      // Unchanged DOM order keeps data-pkc-log-id / data-pkc-action
-      // selectors working regardless of grid-template-areas placement.
-      expect(children[0]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
-      expect(children[1]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
-      expect(children[2]!.classList.contains('pkc-textlog-text')).toBe(true);
+    const articles = el.querySelectorAll<HTMLElement>('.pkc-textlog-log');
+    for (const art of articles) {
+      const children = Array.from(art.children) as HTMLElement[];
+      expect(children[0]!.classList.contains('pkc-textlog-log-header')).toBe(true);
+      expect(children[1]!.classList.contains('pkc-textlog-text')).toBe(true);
+      const headerKids = Array.from(children[0]!.children) as HTMLElement[];
+      // Header order is [flag, timestamp, anchor]. Flag and anchor are
+      // both buttons — disambiguate by data-pkc-action so the assertion
+      // survives future cosmetic tweaks to child classes.
+      expect(headerKids[0]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
+      expect(headerKids[1]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
+      expect(headerKids[2]!.getAttribute('data-pkc-action')).toBe('copy-log-line-ref');
     }
   });
 });

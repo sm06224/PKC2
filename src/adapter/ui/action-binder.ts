@@ -1965,7 +1965,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // right-click on a log row carries sub-entry precision: we want
     // the "copy log line reference" item to be reachable without
     // the user first dismissing the entry-level menu.
-    const textlogRow = rawTarget.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid][data-pkc-log-id]');
+    const textlogRow = rawTarget.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid][data-pkc-log-id]');
     if (textlogRow) {
       const lid = textlogRow.getAttribute('data-pkc-lid');
       const logId = textlogRow.getAttribute('data-pkc-log-id');
@@ -2340,15 +2340,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // The existing Edit button stays untouched so both paths coexist;
     // double-click is the fast path for users who already live inside
     // a log. We intentionally ignore clicks on the flag button, the
-    // timestamp tooltip holder, asset chip anchors, and the append
-    // textarea so the existing single-click handlers on those targets
-    // are not hijacked. The append area sits outside `.pkc-textlog-row`
-    // so it is already out of scope — the exclusions inside the row
-    // are the only ones we need to filter.
+    // copy-anchor button, the timestamp tooltip holder, asset chip
+    // anchors, and the append textarea so the existing single-click
+    // handlers on those targets are not hijacked. The append area
+    // sits outside `.pkc-textlog-log` so it is already out of scope —
+    // the exclusions inside the article are the only ones we need to
+    // filter.
     const rawTarget = e.target as HTMLElement | null;
-    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-row[data-pkc-lid]');
+    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid]');
     if (textlogRow) {
       if (rawTarget?.closest('.pkc-textlog-flag-btn')) return;
+      if (rawTarget?.closest('.pkc-textlog-anchor-btn')) return;
       if (rawTarget?.closest('a[href^="#asset-"]')) return;
       const tlLid = textlogRow.getAttribute('data-pkc-lid');
       if (!tlLid) return;
