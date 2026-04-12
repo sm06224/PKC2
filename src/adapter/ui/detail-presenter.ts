@@ -86,7 +86,10 @@ const textPresenter: DetailPresenter = {
     bodyArea.value = entry.body;
     bodyArea.setAttribute('data-pkc-field', 'body');
     bodyArea.className = 'pkc-editor-body';
-    bodyArea.rows = 10;
+    // Slice C: height follows body line count (min 15, +3 buffer for comfortable editing).
+    // See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C.
+    const lineCount = entry.body ? entry.body.split('\n').length : 0;
+    bodyArea.rows = Math.max(15, lineCount + 3);
     wrapper.appendChild(bodyArea);
 
     // Resize handle between editor and preview

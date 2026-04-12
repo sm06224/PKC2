@@ -749,6 +749,37 @@ function escapeForHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Sync DOM properties to HTML attributes/content so that `.outerHTML`
+ * serializes form element values correctly.
+ *
+ * Background: presenters set `textarea.value`, `select.value`, and
+ * `checkbox.checked` as DOM properties. These are NOT reflected in
+ * `.outerHTML` output. Since entry-window injects editor HTML via
+ * `document.write(outerHTML)`, the values are lost without this step.
+ *
+ * This is not a bug workaround — it is the serialization contract for
+ * any DOM tree that will be injected into entry-window via outerHTML.
+ *
+ * If new form element types are added to presenters (e.g. radio,
+ * contenteditable), this function must be extended.
+ */
+function syncDomPropertiesToHtml(root: HTMLElement): void {
+  for (const ta of root.querySelectorAll('textarea')) {
+    ta.textContent = ta.value;
+  }
+  for (const sel of root.querySelectorAll('select')) {
+    for (const opt of sel.options) {
+      if (opt.value === sel.value) opt.setAttribute('selected', '');
+      else opt.removeAttribute('selected');
+    }
+  }
+  for (const chk of root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+    if (chk.checked) chk.setAttribute('checked', '');
+    else chk.removeAttribute('checked');
+  }
+}
+
 function buildWindowHtml(
   entry: Entry,
   readonly: boolean,
@@ -776,24 +807,7 @@ function buildWindowHtml(
     const presenter = presenterMap[entry.archetype];
     if (presenter) {
       const el = presenter.renderEditorBody(entry);
-      // Sync DOM properties → HTML attributes so .outerHTML serializes them.
-      // textarea.value is a DOM property not reflected in outerHTML;
-      // we must write it as textContent (the content between the tags).
-      for (const ta of el.querySelectorAll('textarea')) {
-        ta.textContent = ta.value;
-      }
-      // Sync select.value → selected attribute on the correct option.
-      for (const sel of el.querySelectorAll('select')) {
-        for (const opt of sel.options) {
-          if (opt.value === sel.value) opt.setAttribute('selected', '');
-          else opt.removeAttribute('selected');
-        }
-      }
-      // Sync checkbox .checked → checked attribute.
-      for (const chk of el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
-        if (chk.checked) chk.setAttribute('checked', '');
-        else chk.removeAttribute('checked');
-      }
+      syncDomPropertiesToHtml(el);
       editorBodyHtml = el.outerHTML;
     }
   }
@@ -842,6 +856,9 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 0.75rem 1rem;
+  /* Slice C: flex column so edit-pane (data-pkc-wide) can flex:1 fill height. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── View title row (mirrors center pane) ── */
@@ -921,6 +938,15 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 
 /* ── Editor (mirrors center pane) ── */
 .pkc-editor { max-width: 720px; }
+/* Slice C: non-structured edit pane follows pane/viewport instead of 720px cap.
+   See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C. */
+.pkc-editor[data-pkc-wide="true"] {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 .pkc-editor-title-row {
   display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.35rem;
 }
@@ -938,6 +964,14 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   padding: 0.4rem 0.5rem; border: 1px solid var(--c-border); border-radius: var(--radius);
   margin-bottom: 0.5rem; resize: vertical; line-height: 1.5; outline: none;
   min-height: 120px; background: var(--c-bg); color: var(--c-fg);
+}
+/* Slice C: non-structured dblclick editor textarea follows viewport height.
+   flex:1 fills the edit-pane column; min-height ensures usable size when
+   the pane column is short (e.g., on very small windows).
+   See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C. */
+.pkc-editor-body[data-pkc-viewport-sized="true"] {
+  flex: 1;
+  min-height: calc(100vh - 12rem);
 }
 .pkc-editor-body:focus {
   border-color: var(--c-accent);
@@ -1189,7 +1223,7 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
     </div>
 
     <!-- Edit mode (hidden initially) -->
-    <div id="edit-pane" class="pkc-editor" style="display:none">
+    <div id="edit-pane" class="pkc-editor"${useStructuredEditor ? '' : ' data-pkc-wide="true"'} style="display:none">
       <div class="pkc-editor-title-row">
         <input type="text" class="pkc-editor-title" id="title-input" value="">
         <span class="pkc-archetype-label">${entry.archetype}</span>
@@ -1199,7 +1233,7 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
         <span class="pkc-tab" id="tab-source" data-pkc-active="true" onclick="showTab('source')">Source</span>
         <span class="pkc-tab" id="tab-preview" onclick="showTab('preview')">Preview</span>
       </div>
-      <textarea class="pkc-editor-body" id="body-edit" rows="10"></textarea>
+      <textarea class="pkc-editor-body" id="body-edit" data-pkc-viewport-sized="true"></textarea>
       <div class="pkc-view-body pkc-md-rendered" id="body-preview" style="display:none"></div>`}
     </div>
   </div>
