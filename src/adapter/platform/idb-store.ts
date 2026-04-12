@@ -268,6 +268,85 @@ export function createIDBStore(): ContainerStore {
   };
 }
 
+// ── Availability probe ──────────────────────
+//
+// IDB may be silently broken in certain runtime conditions:
+//   - Some browsers disable IDB on `file://` (notably older Firefox,
+//     some mobile configurations, and private-browsing modes).
+//   - Private / incognito modes can return a functional-looking
+//     IDB that throws on `open()` or on the first transaction.
+//   - Quota-exhausted / corrupted databases can open but fail on read.
+//
+// We probe at boot so the UI can warn the user instead of
+// silently falling back to pkc-data. The probe tries a full
+// open → write → read → close cycle on a tiny disposable store.
+// On failure it returns the underlying reason so callers can surface
+// a diagnostic message; they never throw.
+
+export interface IDBAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+const PROBE_DB_NAME = 'pkc2-probe';
+const PROBE_STORE = 'probe';
+
+export async function probeIDBAvailability(): Promise<IDBAvailability> {
+  if (typeof indexedDB === 'undefined' || indexedDB === null) {
+    return { available: false, reason: 'indexedDB is undefined in this runtime' };
+  }
+  return new Promise<IDBAvailability>((resolve) => {
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open(PROBE_DB_NAME, 1);
+    } catch (err) {
+      resolve({ available: false, reason: `open() threw: ${String(err)}` });
+      return;
+    }
+    req.onupgradeneeded = () => {
+      try {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PROBE_STORE)) {
+          db.createObjectStore(PROBE_STORE);
+        }
+      } catch (err) {
+        // Fall through to onerror / onsuccess — best-effort.
+        console.warn('[PKC2] IDB probe upgrade failed:', err);
+      }
+    };
+    req.onerror = () => {
+      resolve({ available: false, reason: String(req.error?.message ?? req.error ?? 'unknown') });
+    };
+    req.onblocked = () => {
+      resolve({ available: false, reason: 'open() blocked' });
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const tx = db.transaction(PROBE_STORE, 'readwrite');
+        const store = tx.objectStore(PROBE_STORE);
+        store.put(1, '__probe__');
+        const getReq = store.get('__probe__');
+        getReq.onsuccess = () => {
+          db.close();
+          resolve({ available: getReq.result === 1 });
+        };
+        getReq.onerror = () => {
+          db.close();
+          resolve({ available: false, reason: 'probe read failed' });
+        };
+      } catch (err) {
+        try {
+          db.close();
+        } catch {
+          /* ignore */
+        }
+        resolve({ available: false, reason: `probe txn failed: ${String(err)}` });
+      }
+    };
+  });
+}
+
 // ── In-memory mock (for tests and SSR) ───────
 
 export function createMemoryStore(): ContainerStore {

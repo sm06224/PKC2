@@ -193,6 +193,48 @@
   color: var(--c-danger);
 }
 
+/* ── IDB availability warning banner (non-blocking) ──
+ *
+ * Shown at the top of the viewport when `probeIDBAvailability()`
+ * returns unavailable (see docs/development/idb-availability.md).
+ * The banner lives OUTSIDE the state-driven render cycle so it
+ * never disappears on re-render.
+ */
+.pkc-idb-warning {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 0.4rem 0.75rem;
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.pkc-idb-warning-title {
+  font-weight: 700;
+}
+.pkc-idb-warning-detail {
+  flex: 1;
+}
+.pkc-idb-warning-dismiss {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.5rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+.pkc-idb-warning-dismiss:hover,
+.pkc-idb-warning-dismiss:focus-visible {
+  background: rgba(0, 0, 0, 0.15);
+}
+
 /* ── Shell layout ── */
 .pkc-shell {
   display: flex;
@@ -1217,7 +1259,11 @@
 .pkc-toc-label {
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--c-muted);
+  /* Use the TOC-scoped secondary token (darker ink in light mode) so the
+     "Contents" label passes WCAG AA against the warm-beige sidebar. The
+     generic `--c-muted` (#6b6558 @ light) only reaches ~4.37:1 which
+     reads as washed-out next to the adjacent log/day rows.  */
+  color: var(--c-toc-secondary);
   display: block;
   margin-bottom: 0.15rem;
 }
@@ -1260,6 +1306,16 @@
   color: var(--c-toc-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
+}
+
+/*
+ * Heading rows stand out as the primary navigation targets — use the
+ * strongest body-text color explicitly so the previous fix's token chain
+ * (which only covered day/log) does not leave headings at the weaker
+ * fallback value.
+ */
+.pkc-toc-item[data-pkc-toc-kind="heading"] > .pkc-toc-link {
+  color: var(--c-text);
 }
 
 .pkc-toc-link {
@@ -2280,6 +2336,15 @@
   background: rgba(255,68,68,0.1);
   color: var(--c-danger);
   border: 1px solid rgba(255,68,68,0.3);
+}
+
+/* Hard-reject variant: visually strongest because the file was
+ * refused outright — the commit path cannot proceed. */
+.pkc-guardrail-reject {
+  background: rgba(255,68,68,0.18);
+  color: var(--c-danger);
+  border: 1px solid var(--c-danger);
+  font-weight: 600;
 }
 
 /* ── Event Log ── */

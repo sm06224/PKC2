@@ -1,6 +1,6 @@
 import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
-import { classifyFileSize, fileSizeWarningMessage } from './guardrails';
+import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guardrails';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -400,6 +400,29 @@ export const attachmentPresenter: DetailPresenter = {
     fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0];
       if (!file) return;
+
+      // Hard reject: refuse files above SIZE_REJECT_HARD before any
+      // heap allocation. Without this, readAsDataURL on a 1 GB file
+      // peaks at ~3 GB heap and reliably OOMs Chromium. We show the
+      // same warning channel but mark the input invalid so the
+      // commit path cannot proceed with stale hidden-field values.
+      // See docs/development/attachment-size-limits.md.
+      if (isFileTooLarge(file.size)) {
+        sizeWarning.textContent = fileSizeWarningMessage(file.size) ?? '';
+        sizeWarning.className = 'pkc-guardrail-warning pkc-guardrail-reject';
+        sizeWarning.setAttribute('data-pkc-attachment-rejected', 'true');
+        sizeWarning.style.display = '';
+        // Clear any previously-populated data so a prior valid
+        // selection cannot be accidentally committed.
+        dataField.value = '';
+        sizeField.value = '';
+        nameField.value = '';
+        // Drop the file selection so the user must re-pick.
+        fileInput.value = '';
+        return;
+      }
+      sizeWarning.removeAttribute('data-pkc-attachment-rejected');
+
       nameField.value = file.name;
       mimeField.value = file.type || 'application/octet-stream';
       // Generate new asset key for new file
@@ -425,6 +448,18 @@ export const attachmentPresenter: DetailPresenter = {
         const base64 = result.split(',')[1] ?? '';
         dataField.value = base64;
         sizeField.value = String(estimateSize(base64));
+      };
+      // Surface FileReader failures (memory exhaustion, permission
+      // denied, etc.) instead of leaving the hidden fields empty.
+      reader.onerror = () => {
+        sizeWarning.textContent =
+          `⛔ Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. ` +
+          `The file may be too large or the browser may have run out of memory.`;
+        sizeWarning.className = 'pkc-guardrail-warning pkc-guardrail-reject';
+        sizeWarning.setAttribute('data-pkc-attachment-rejected', 'true');
+        sizeWarning.style.display = '';
+        dataField.value = '';
+        sizeField.value = '';
       };
       reader.readAsDataURL(file);
     });

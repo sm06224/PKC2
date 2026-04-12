@@ -3,13 +3,33 @@ import type { Container } from '../../core/model/container';
 // --- Thresholds (bytes) ---
 export const SIZE_WARN_SOFT = 1 * 1024 * 1024;  // 1 MB
 export const SIZE_WARN_HEAVY = 5 * 1024 * 1024;  // 5 MB
+/**
+ * Hard reject threshold. Above this size the attachment pipeline
+ * refuses to accept the file because:
+ *   - `readAsDataURL` / `readAsArrayBuffer` allocates the whole file
+ *     into JS heap, peaking at roughly 2–3× the source size once
+ *     base64 encoding doubles the working set (File bytes +
+ *     ArrayBuffer copy + base64 string). A 250 MB file already hits
+ *     ~750 MB peak; anything approaching 1 GB reliably OOMs Chromium
+ *     on typical desktop configurations.
+ *   - base64 encoding expands the payload by ~33%, so 250 MB source →
+ *     ~333 MB in `Container.assets` → re-serialized into the single
+ *     HTML product again, doubling the on-disk footprint.
+ *   - IDB `put()` does not stream; the full base64 string must be
+ *     materialised in one shot and can silently hit per-origin
+ *     quotas on some browsers.
+ * See docs/development/attachment-size-limits.md for the full audit.
+ */
+export const SIZE_REJECT_HARD = 250 * 1024 * 1024;  // 250 MB
 
-export type SizeWarningLevel = 'none' | 'soft' | 'heavy';
+export type SizeWarningLevel = 'none' | 'soft' | 'heavy' | 'reject';
 
 /**
- * Classify file size into warning level.
+ * Classify file size into a warning level.  `reject` means the
+ * attachment pipeline MUST refuse the file — see SIZE_REJECT_HARD.
  */
 export function classifyFileSize(bytes: number): SizeWarningLevel {
+  if (bytes >= SIZE_REJECT_HARD) return 'reject';
   if (bytes >= SIZE_WARN_HEAVY) return 'heavy';
   if (bytes >= SIZE_WARN_SOFT) return 'soft';
   return 'none';
@@ -22,6 +42,9 @@ export function classifyFileSize(bytes: number): SizeWarningLevel {
 export function fileSizeWarningMessage(bytes: number): string | null {
   const level = classifyFileSize(bytes);
   const sizeStr = formatSizeForWarning(bytes);
+  if (level === 'reject') {
+    return `⛔ File is ${sizeStr}. PKC2 cannot attach files over ${formatSizeForWarning(SIZE_REJECT_HARD)} because the single-HTML embedding would exceed browser memory limits. Store the file externally and link to it instead.`;
+  }
   if (level === 'heavy') {
     return `⚠ File is ${sizeStr}. Large files significantly increase export size and may slow down operations. Consider using external storage.`;
   }
@@ -29,6 +52,15 @@ export function fileSizeWarningMessage(bytes: number): string | null {
     return `File is ${sizeStr}. Files over 1 MB increase export size. ZIP Package export is recommended for large attachments.`;
   }
   return null;
+}
+
+/**
+ * Returns true when the file size is above SIZE_REJECT_HARD and the
+ * attachment pipeline must refuse it. Convenience wrapper so callers
+ * do not have to re-classify the level themselves.
+ */
+export function isFileTooLarge(bytes: number): boolean {
+  return bytes >= SIZE_REJECT_HARD;
 }
 
 // --- Export guardrails ---

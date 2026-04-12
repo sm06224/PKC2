@@ -12,7 +12,8 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { mountEventLog } from './adapter/ui/event-log';
-import { createIDBStore } from './adapter/platform/idb-store';
+import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
+import { showIdbWarningBanner } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
@@ -157,6 +158,20 @@ async function boot(): Promise<void> {
   // 6. IDB persistence
   const store = createIDBStore();
   mountPersistence(dispatcher, { store });
+
+  // 6a. IDB availability probe — warn the user if persistence is
+  // silently broken (file:// on some browsers, private-browsing, etc.).
+  // Non-blocking: boot continues regardless, the banner just signals
+  // that changes won't survive a reload.
+  // See docs/development/idb-availability.md.
+  void probeIDBAvailability().then((status) => {
+    if (!status.available) {
+      console.warn(
+        `[PKC2] IndexedDB unavailable — persistence disabled. Reason: ${status.reason ?? 'unknown'}`,
+      );
+      showIdbWarningBanner({ reason: status.reason });
+    }
+  });
 
   // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
   dispatcher.onState((state) => {
