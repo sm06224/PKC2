@@ -1118,8 +1118,34 @@ body {
   font-weight: 600;
 }
 
-/* ── Task checkbox: interactive in view mode, disabled when readonly ── */
-.pkc-task-checkbox { cursor: pointer; }
+/* ── Task list polish: hanging indent + completed styling.
+   Mirrors base.css .pkc-md-rendered task rules so the popped entry
+   window renders task lists identically to the main pane. */
+.pkc-md-rendered li.pkc-task-item {
+  list-style: none;
+  margin-left: -1.2em;
+  padding-left: 1.5em;
+  position: relative;
+}
+.pkc-md-rendered li.pkc-task-item::marker { content: ''; }
+.pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+.pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+  position: absolute;
+  left: 0.15em;
+  top: 0.3em;
+  margin: 0;
+}
+.pkc-md-rendered .pkc-task-checkbox { cursor: pointer; accent-color: var(--c-accent); }
+.pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item ul,
+.pkc-md-rendered li.pkc-task-item ol { color: var(--c-fg); text-decoration: none; }
 ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacity: 0.6; }' : ''}
 
 /* ── Editor (mirrors center pane) ── */

@@ -1110,20 +1110,49 @@
   opacity: 0.85;
 }
 
-/* ── Phase 2: task lists ── */
+/* ── Phase 2: task lists ──
+   Hanging-indent layout: the checkbox is pulled out of the text flow
+   so multi-line wrapped text aligns under the first glyph instead of
+   re-wrapping under the checkbox. Completed state is derived purely
+   from :checked via :has(), so the markdown-it output does not need
+   to know about completion. Both the tight variant (checkbox is a
+   direct child of li) and the loose variant (checkbox nested inside
+   a leading <p>) are covered. */
 .pkc-md-rendered li.pkc-task-item {
   list-style: none;
   margin-left: -1.2em;
-  padding-left: 0;
+  padding-left: 1.5em;
+  position: relative;
 }
 .pkc-md-rendered li.pkc-task-item::marker {
   content: '';
 }
+.pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+.pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+  position: absolute;
+  left: 0.15em;
+  top: 0.3em;
+  margin: 0;
+}
 .pkc-md-rendered .pkc-task-checkbox {
-  margin-right: 0.35em;
-  vertical-align: -0.08em;
   cursor: pointer;
   accent-color: var(--c-accent);
+}
+/* Completed state: line-through + mild dim. Scoped so nested child
+   lists (ul/ol inside a completed li) stay at the normal color —
+   otherwise completing a parent visually strikes all subtasks too. */
+.pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item ul,
+.pkc-md-rendered li.pkc-task-item ol {
+  color: var(--c-fg);
+  text-decoration: none;
 }
 /* Edit preview: checkboxes are non-interactive (edit the source instead) */
 .pkc-text-edit-preview .pkc-task-checkbox {

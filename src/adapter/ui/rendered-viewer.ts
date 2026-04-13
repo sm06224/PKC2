@@ -258,6 +258,34 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-text li { margin: 0.05em 0; }
     .pkc-textlog-text blockquote { margin: 0.25em 0; }
     .pkc-textlog-text pre { margin: 0.25em 0; }
+    /* Task list polish: hanging-indent + completed styling. Mirrors
+       base.css but uses hardcoded colors because the exported
+       standalone HTML does not carry the runtime theme variables. */
+    .pkc-md-rendered li.pkc-task-item {
+      list-style: none;
+      margin-left: -1.2em;
+      padding-left: 1.5em;
+      position: relative;
+    }
+    .pkc-md-rendered li.pkc-task-item::marker { content: ''; }
+    .pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+    .pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+      position: absolute;
+      left: 0.15em;
+      top: 0.3em;
+      margin: 0;
+    }
+    .pkc-md-rendered .pkc-task-checkbox { pointer-events: none; cursor: default; }
+    .pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+      color: #777;
+      text-decoration: line-through;
+    }
+    .pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+      color: #777;
+      text-decoration: line-through;
+    }
+    .pkc-md-rendered li.pkc-task-item ul,
+    .pkc-md-rendered li.pkc-task-item ol { color: #222; text-decoration: none; }
     /* Two-column layout with a sticky TOC sidebar.
        The sidebar pins to the top of the viewport so the outline
        stays visible while the reader scrolls through long bodies.
