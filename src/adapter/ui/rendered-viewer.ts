@@ -85,9 +85,16 @@ export function buildRenderedViewerHtml(
                    "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
       background: #fafafa;
       color: #222;
-      line-height: 1.65;
+      /* Prose density aligned with the main app (which runs at 1.4 body
+         / 1.4 .pkc-md-rendered). The previous 1.65 felt loose, read by
+         users as "A4-print-optimised" even on screen. Print below can
+         loosen slightly for paper breathing room. */
+      line-height: 1.5;
       padding: 2.5rem 1.5rem;
     }
+    /* Explicitly pin the rendered markdown density so it cannot drift
+       from the main-app .pkc-md-rendered baseline if body changes. */
+    article.pkc-viewer-body { line-height: 1.4; }
     main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
       border-bottom: 1px solid #ddd;
@@ -216,6 +223,10 @@ export function buildRenderedViewerHtml(
          wider clamp above; print keeps the original 48rem measure so
          saved PDFs / physical prints lay out predictably. */
       main { max-width: 48rem; }
+      /* Paper tolerates a touch more breathing room than screen.
+         Keeps print output close to its historical appearance while
+         the screen default stays dense. */
+      article.pkc-viewer-body { line-height: 1.5; }
       header.pkc-viewer-header { border-bottom-color: #000; }
       .pkc-viewer-toolbar { display: none; }
       .pkc-textlog-day { break-inside: avoid; }

@@ -964,6 +964,9 @@ body {
 .pkc-md-rendered {
   font-family: var(--font-sans);
   white-space: normal;
+  /* Pin the same 1.4 baseline as main base.css .pkc-md-rendered, so
+     prose density cannot drift from the center pane if body changes. */
+  line-height: 1.4;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {

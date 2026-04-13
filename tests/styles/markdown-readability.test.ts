@@ -36,17 +36,21 @@ describe('Slice A: Markdown readability — CSS variables', () => {
   });
 });
 
-describe('Slice A: Markdown readability — line-height', () => {
-  it('.pkc-md-rendered has explicit line-height: 1.45 (tighter than view-body 1.5)', () => {
+describe('Markdown readability — line-height (screen-first density pass)', () => {
+  it('.pkc-md-rendered has explicit line-height: 1.4 (body-aligned)', () => {
     // Match the .pkc-md-rendered base rule (first occurrence — the
     // element rule, not descendant rules like `.pkc-md-rendered h1`).
+    // Tightened from 1.45 → 1.4 so markdown prose reads at the same
+    // density as the surrounding app chrome (body is 1.4).
     const rule = baseCss.match(/\.pkc-md-rendered\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(rule).toMatch(/line-height:\s*1\.45/);
+    expect(rule).toMatch(/line-height:\s*1\.4(?!\d)/);
   });
 
-  it('.pkc-md-rendered pre has line-height: 1.35 (dense code block)', () => {
+  it('.pkc-md-rendered pre has line-height: 1.3 (dense code block)', () => {
+    // Tightened from 1.35 → 1.3 to keep code blocks visibly denser
+    // than prose even after the prose line-height drop.
     const preRule = baseCss.match(/\.pkc-md-rendered\s+pre\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(preRule).toMatch(/line-height:\s*1\.35/);
+    expect(preRule).toMatch(/line-height:\s*1\.3(?!\d)/);
   });
 });
 

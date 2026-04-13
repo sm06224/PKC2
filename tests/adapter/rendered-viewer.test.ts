@@ -192,6 +192,39 @@ describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
   });
 });
 
+// ── Screen-first prose density ──
+// Rendered viewer previously ran at `body { line-height: 1.65 }` which
+// users read as "too airy" on screen. The density pass aligns it with
+// the main app (body 1.4 / `.pkc-md-rendered` 1.4) and pins
+// `article.pkc-viewer-body` to 1.4 explicitly so it cannot drift.
+describe('buildRenderedViewerHtml — prose density', () => {
+  it('body line-height is tightened toward the main-app baseline', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    // The body rule should carry a screen line-height below the old
+    // 1.65. Pin 1.5 directly — this is the documented screen value.
+    const bodyRule = html.match(/\n\s*body\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(bodyRule).toMatch(/line-height:\s*1\.5(?!\d)/);
+    // And the old looser value must not re-appear at body scope.
+    expect(bodyRule).not.toMatch(/line-height:\s*1\.65/);
+  });
+
+  it('article.pkc-viewer-body pins line-height 1.4 to match the main app', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    expect(html).toMatch(
+      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.4(?!\d)[^}]*\}/,
+    );
+  });
+
+  it('print block loosens the body article to 1.5 for paper breathing room', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/);
+    expect(printBlock).not.toBeNull();
+    expect(printBlock![0]).toMatch(
+      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.5(?!\d)[^}]*\}/,
+    );
+  });
+});
+
 // ── Screen-first width policy ──
 // See the width-policy comment block above the `style` template in
 // `src/adapter/ui/rendered-viewer.ts` for the design rationale.

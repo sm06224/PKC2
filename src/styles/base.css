@@ -1044,10 +1044,11 @@
 .pkc-md-rendered {
   font-family: var(--font-body);
   white-space: normal;
-  /* Slice A: slightly tighter than the view-body base (1.5) for better
-     scanning of prose, lists, and task items.
-     See docs/development/ui-readability-and-editor-sizing-hardening.md §3-A. */
-  line-height: 1.45;
+  /* Aligns with the app body line-height (1.4) so markdown prose reads
+     at the same density as the rest of the UI. Previously 1.45, which
+     made markdown-rendered blocks feel slightly more airy than the
+     surrounding chrome; users consistently read this as "loose". */
+  line-height: 1.4;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
@@ -1073,9 +1074,10 @@
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 0.35em 0;
-  /* Slice A: tighter line-height for fenced code blocks — code is scanned
-     by structure and benefits from higher information density. */
-  line-height: 1.35;
+  /* Fenced code blocks are scanned by structure and benefit from
+     higher information density than prose. Kept tighter than the
+     prose line-height above. */
+  line-height: 1.3;
 }
 .pkc-md-rendered pre code {
   background: none;
