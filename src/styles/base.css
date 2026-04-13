@@ -4379,6 +4379,103 @@
   justify-content: flex-end;
 }
 
+/* Slice 5: Preview modal for TEXT → TEXTLOG. */
+
+.pkc-text-to-textlog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.pkc-text-to-textlog-panel {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  width: min(48rem, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.pkc-text-to-textlog-heading {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.pkc-text-to-textlog-summary {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.pkc-text-to-textlog-mode {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.pkc-text-to-textlog-mode-option {
+  cursor: pointer;
+}
+
+.pkc-text-to-textlog-title {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.95rem;
+}
+
+.pkc-text-to-textlog-list {
+  flex: 1;
+  min-height: 6rem;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0.4rem 1.2rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  font-size: 0.85rem;
+}
+
+.pkc-text-to-textlog-log {
+  padding: 0.2rem 0;
+}
+
+.pkc-text-to-textlog-log-meta {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.pkc-text-to-textlog-log-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkc-text-to-textlog-empty {
+  list-style: none;
+  font-style: italic;
+  opacity: 0.7;
+  padding: 0.5rem 0;
+}
+
+.pkc-text-to-textlog-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
 /* TEXTLOG editor */
 
 .pkc-textlog-editor {

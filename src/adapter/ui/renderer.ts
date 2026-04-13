@@ -2025,6 +2025,19 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
         moreContent.appendChild(exportBtn);
       }
 
+      // Slice 5: TEXT → TEXTLOG conversion trigger. Only surface when
+      // the entry is editable — confirming the preview dispatches
+      // CREATE_ENTRY + COMMIT_EDIT, so read-only containers have
+      // nothing to offer.
+      if (entry.archetype === 'text' && canEdit) {
+        const toLogBtn = createElement('button', 'pkc-btn pkc-action-text-to-textlog');
+        toLogBtn.setAttribute('data-pkc-action', 'open-text-to-textlog-preview');
+        toLogBtn.setAttribute('data-pkc-lid', entry.lid);
+        toLogBtn.setAttribute('title', 'この TEXT を分割して新しい TEXTLOG を作成');
+        toLogBtn.textContent = '📝 → TEXTLOG';
+        moreContent.appendChild(toLogBtn);
+      }
+
       // TEXT-only: download a markdown + assets bundle.
       if (entry.archetype === 'text') {
         const compactLabel = createElement('label', 'pkc-action-export-compact-label');

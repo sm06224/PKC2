@@ -52,6 +52,14 @@ import {
 } from './textlog-preview-modal';
 import { textlogToText } from '../../features/textlog/textlog-to-text';
 import {
+  openTextToTextlogModal,
+  closeTextToTextlogModal,
+  setTextToTextlogSplitMode,
+  getTextToTextlogCommitData,
+  isTextToTextlogModalOpen,
+} from './text-to-textlog-modal';
+import type { TextToTextlogSplitMode } from '../../features/text/text-to-textlog';
+import {
   buildStorageProfile,
   formatStorageProfileCsv,
   storageProfileCsvFilename,
@@ -501,6 +509,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // back — is no longer stuck in selection mode.
         closeTextlogPreviewModal();
         cancelTextlogSelection();
+        break;
+      }
+      // ── Slice 5: TEXT → TEXTLOG conversion ────────────
+      case 'open-text-to-textlog-preview': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'text') break;
+        if (st.readonly) break;
+        openTextToTextlogModal(root, ent, 'heading');
+        break;
+      }
+      case 'cancel-text-to-textlog': {
+        closeTextToTextlogModal();
+        break;
+      }
+      case 'confirm-text-to-textlog': {
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const data = getTextToTextlogCommitData();
+        if (!data) break;
+        // Spec §3.3 (v1 only): always create a NEW TEXTLOG. Existing
+        // CREATE_ENTRY + COMMIT_EDIT pipeline, no new dispatcher action.
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'textlog', title: data.title });
+        const newLid = dispatcher.getState().editingLid;
+        if (newLid) {
+          dispatcher.dispatch({
+            type: 'COMMIT_EDIT',
+            lid: newLid,
+            title: data.title,
+            body: data.body,
+          });
+        }
+        closeTextToTextlogModal();
         break;
       }
       case 'toggle-sandbox-attr': {
@@ -1507,6 +1549,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeTextlogPreviewModal();
         return;
       }
+      // Slice 5: same priority treatment for the TEXT → TEXTLOG modal.
+      if (isTextToTextlogModalOpen()) {
+        closeTextToTextlogModal();
+        return;
+      }
       // Slice 4: leaving selection mode is a single-key action per
       // the spec (§2.1). Only trigger when we're not inside another
       // overlay and not currently editing.
@@ -2066,6 +2113,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (!isTextlogSelectionModeActive(selLid)) return;
       toggleTextlogLogSelection(logId);
       render(dispatcher.getState(), root);
+      return;
+    }
+
+    // Slice 5: TEXT → TEXTLOG split-mode radio. Re-runs the pure
+    // function and re-renders the preview body in place.
+    if (field === 'text-to-textlog-mode') {
+      if (!(target as HTMLInputElement).checked) return;
+      const mode = target.getAttribute('data-pkc-mode') as TextToTextlogSplitMode | null;
+      if (mode !== 'heading' && mode !== 'hr') return;
+      setTextToTextlogSplitMode(mode);
     }
   }
 
