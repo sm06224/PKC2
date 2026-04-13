@@ -140,26 +140,97 @@ function newestLidOfArchetype(
   return null;
 }
 
-describe('create-entry auto-placement — todo', () => {
-  it('places a new todo under the selected folder', () => {
+/**
+ * Find a child folder of `parentLid` whose title equals `title`.
+ * Used to prove that the reducer reused or created an archetype
+ * subfolder under the context folder.
+ */
+function findChildFolderByTitle(
+  dispatcher: ReturnType<typeof createDispatcher>,
+  parentLid: string,
+  title: string,
+): string | null {
+  const c = dispatcher.getState().container!;
+  const entryMap = new Map(c.entries.map((e) => [e.lid, e]));
+  for (const rel of c.relations) {
+    if (rel.kind !== 'structural') continue;
+    if (rel.from !== parentLid) continue;
+    const child = entryMap.get(rel.to);
+    if (!child || child.archetype !== 'folder') continue;
+    if (child.title === title) return child.lid;
+  }
+  return null;
+}
+
+function countChildFoldersByTitle(
+  dispatcher: ReturnType<typeof createDispatcher>,
+  parentLid: string,
+  title: string,
+): number {
+  const c = dispatcher.getState().container!;
+  const entryMap = new Map(c.entries.map((e) => [e.lid, e]));
+  let n = 0;
+  for (const rel of c.relations) {
+    if (rel.kind !== 'structural') continue;
+    if (rel.from !== parentLid) continue;
+    const child = entryMap.get(rel.to);
+    if (!child || child.archetype !== 'folder') continue;
+    if (child.title === title) n++;
+  }
+  return n;
+}
+
+describe('create-entry auto-placement — todo routes into TODOS subfolder', () => {
+  it('creates a TODOS child under the selected folder and places the todo there', () => {
     const { dispatcher } = setup('fld');
     clickCreate('todo');
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
     expect(newLid).not.toBeNull();
-    expect(placementParent(dispatcher, newLid!)).toBe('fld');
+    const todosLid = findChildFolderByTitle(dispatcher, 'fld', 'TODOS');
+    expect(todosLid).not.toBeNull();
+    expect(placementParent(dispatcher, newLid!)).toBe(todosLid);
   });
 
-  it('places a new todo under the parent folder of the selected entry', () => {
+  it('creates a TODOS child under the parent folder when a non-folder is selected', () => {
     const { dispatcher } = setup('note');
     clickCreate('todo');
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
-    expect(placementParent(dispatcher, newLid!)).toBe('fld');
+    const todosLid = findChildFolderByTitle(dispatcher, 'fld', 'TODOS');
+    expect(todosLid).not.toBeNull();
+    expect(placementParent(dispatcher, newLid!)).toBe(todosLid);
+  });
+
+  it('reuses an existing TODOS subfolder rather than creating a duplicate', () => {
+    const { dispatcher } = setup('fld');
+    // First todo: TODOS created lazily.
+    clickCreate('todo');
+    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'fld' });
+    // Second todo: must reuse the same TODOS folder.
+    clickCreate('todo');
+    const count = countChildFoldersByTitle(dispatcher, 'fld', 'TODOS');
+    expect(count).toBe(1);
+  });
+
+  it('skips the subfolder layer when the context folder is itself titled TODOS', () => {
+    const { dispatcher } = setup('fld');
+    // Make a TODOS folder and select it.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'folder', title: 'TODOS', parentFolder: 'fld' });
+    const todosLid = dispatcher.getState().selectedLid!;
+    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: todosLid });
+    clickCreate('todo');
+    const newLid = newestLidOfArchetype(dispatcher, 'todo');
+    // The todo goes directly into the TODOS folder — no TODOS/TODOS.
+    expect(placementParent(dispatcher, newLid!)).toBe(todosLid);
+    expect(countChildFoldersByTitle(dispatcher, todosLid, 'TODOS')).toBe(0);
   });
 
   it('leaves a new todo at root when the selected entry has no folder ancestor', () => {
     const { dispatcher } = setup('root-note');
     clickCreate('todo');
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
+    // Root fallback: no context folder → no TODOS auto-create.
     expect(placementParent(dispatcher, newLid!)).toBeNull();
   });
 
@@ -171,34 +242,43 @@ describe('create-entry auto-placement — todo', () => {
   });
 });
 
-describe('create-entry auto-placement — attachment', () => {
-  it('places a new attachment under the parent folder of the selected entry', () => {
+describe('create-entry auto-placement — attachment routes into ASSETS subfolder', () => {
+  it('creates an ASSETS child under the parent folder and places the attachment there', () => {
     const { dispatcher } = setup('note');
     clickCreate('attachment');
     const newLid = newestLidOfArchetype(dispatcher, 'attachment');
-    expect(placementParent(dispatcher, newLid!)).toBe('fld');
+    const assetsLid = findChildFolderByTitle(dispatcher, 'fld', 'ASSETS');
+    expect(assetsLid).not.toBeNull();
+    expect(placementParent(dispatcher, newLid!)).toBe(assetsLid);
+  });
+
+  it('reuses an existing ASSETS subfolder', () => {
+    const { dispatcher } = setup('fld');
+    clickCreate('attachment');
+    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'fld' });
+    clickCreate('attachment');
+    expect(countChildFoldersByTitle(dispatcher, 'fld', 'ASSETS')).toBe(1);
   });
 });
 
 describe('create-entry auto-placement — regression guards', () => {
-  it('explicit data-pkc-context-folder wins over auto-resolution (todo)', () => {
-    // Even though selection resolves to `fld`, the button says "put
-    // this specific one somewhere else" — explicit context must win.
+  it('explicit data-pkc-context-folder still triggers TODOS subfolder creation (todo)', () => {
+    // Explicit context overrides WHICH folder is used for the context,
+    // but the TODOS subfolder layer still applies — the policy is
+    // "todos belong in TODOS wherever they land".
     const { dispatcher } = setup('note');
-    // Register a second folder to route into. CREATE_ENTRY lands the
-    // state in `editing`, so cancel back to `ready` before firing the
-    // next UI action (the action-binder itself is the SUT here, not
-    // this setup step).
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'folder', title: 'Other' });
     const otherFolderLid = dispatcher.getState().selectedLid!;
     dispatcher.dispatch({ type: 'CANCEL_EDIT' });
-    // Re-select the original note so auto-resolution would route to
-    // `fld` — we want to prove that the explicit contextFolder beats
-    // that choice.
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'note' });
     clickCreate('todo', { contextFolder: otherFolderLid });
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
-    expect(placementParent(dispatcher, newLid!)).toBe(otherFolderLid);
+    const todosLid = findChildFolderByTitle(dispatcher, otherFolderLid, 'TODOS');
+    expect(todosLid).not.toBeNull();
+    expect(placementParent(dispatcher, newLid!)).toBe(todosLid);
+    // `fld` must NOT have been touched — the explicit context won.
+    expect(findChildFolderByTitle(dispatcher, 'fld', 'TODOS')).toBeNull();
   });
 
   it('non-auto archetypes (text) are unaffected — land wherever they used to', () => {
@@ -206,14 +286,19 @@ describe('create-entry auto-placement — regression guards', () => {
     clickCreate('text');
     const newLid = newestLidOfArchetype(dispatcher, 'text');
     // text / textlog / folder / form are NOT in the auto set — they
-    // stay at root when no explicit context-folder was given.
+    // stay at root when no explicit context-folder was given and no
+    // subfolder is ever created for them.
     expect(placementParent(dispatcher, newLid!)).toBeNull();
+    expect(findChildFolderByTitle(dispatcher, 'fld', 'TODOS')).toBeNull();
+    expect(findChildFolderByTitle(dispatcher, 'fld', 'ASSETS')).toBeNull();
   });
 
-  it('non-auto archetypes still honour explicit data-pkc-context-folder', () => {
+  it('non-auto archetypes honour explicit data-pkc-context-folder without subfolder routing', () => {
     const { dispatcher } = setup('note');
     clickCreate('text', { contextFolder: 'fld' });
     const newLid = newestLidOfArchetype(dispatcher, 'text');
+    // Text goes directly into `fld` — no subfolder layer for text.
     expect(placementParent(dispatcher, newLid!)).toBe('fld');
+    expect(findChildFolderByTitle(dispatcher, 'fld', 'TODOS')).toBeNull();
   });
 });

@@ -29,7 +29,7 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
 import { buildSubsetContainer } from '../../features/container/build-subset';
-import { resolveAutoPlacementFolder } from '../../features/relation/auto-placement';
+import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -224,21 +224,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const contextFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
         // Auto-placement is opt-in per archetype: incidental objects
         // (todo, attachment) inherit the caller's folder context so
-        // they stop scattering across root. Primary documents (text,
-        // textlog, folder, form) keep the "root unless explicit" rule.
-        const autoPlacementArchetypes: readonly ArchetypeId[] = ['todo', 'attachment'];
+        // they stop scattering across root, and are further routed
+        // into an archetype-specific subfolder (TODOS / ASSETS) inside
+        // that context. Primary documents (text, textlog, folder,
+        // form) keep the "root unless explicit" rule.
+        const subfolderName = getSubfolderNameForArchetype(arch);
         const preState = dispatcher.getState();
         const autoPlacementFolder =
-          !contextFolder &&
-          autoPlacementArchetypes.includes(arch) &&
-          preState.container
+          !contextFolder && subfolderName && preState.container
             ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
             : null;
-        // Placement must be passed atomically into CREATE_ENTRY:
-        // CREATE_ENTRY transitions into `editing` phase, where a
-        // follow-up CREATE_RELATION would be blocked by the reducer.
+        // Placement (parent + subfolder) must be passed atomically
+        // into CREATE_ENTRY: CREATE_ENTRY transitions into `editing`
+        // phase, where follow-up CREATE_RELATION / CREATE_ENTRY would
+        // be blocked by the reducer.
         const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title, parentFolder });
+        const ensureSubfolder =
+          parentFolder && subfolderName ? subfolderName : undefined;
+        dispatcher.dispatch({
+          type: 'CREATE_ENTRY',
+          archetype: arch,
+          title,
+          parentFolder,
+          ensureSubfolder,
+        });
         break;
       }
       case 'delete-entry':
