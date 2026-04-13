@@ -317,4 +317,36 @@ describe('buildRenderedViewerHtml — Table of Contents', () => {
     const html = buildRenderedViewerHtml(textEntry('just body with **no** headings'), baseContainer());
     expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
   });
+
+  // ── Sticky sidebar layout ──
+  // When a TOC exists, the viewer wraps the body in a flex layout
+  // with an <aside class="pkc-toc-sidebar"> so readers can always
+  // see / jump to the outline while scrolling.
+  it('wraps TEXT-with-TOC in a pkc-viewer-layout + sticky aside', () => {
+    const html = buildRenderedViewerHtml(
+      textEntry('# A\n\n## B\n\nbody'),
+      baseContainer(),
+    );
+    expect(html).toContain('<div class="pkc-viewer-layout">');
+    expect(html).toMatch(
+      /<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">/,
+    );
+    // The CSS rule pinning position:sticky on the sidebar must be present.
+    expect(html).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*sticky/);
+    // A narrow-viewport media query collapses the layout back to one column.
+    expect(html).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[^}]*\.pkc-viewer-layout\s*\{\s*flex-direction:\s*column/);
+  });
+
+  it('does NOT wrap a no-TOC TEXT entry in pkc-viewer-layout', () => {
+    const html = buildRenderedViewerHtml(textEntry('headingless body'), baseContainer());
+    expect(html).not.toContain('<div class="pkc-viewer-layout">');
+    expect(html).not.toContain('pkc-toc-sidebar" data-pkc-region="toc-sidebar"');
+  });
+
+  it('collapses the sidebar in @media print so the TOC prints as a front index', () => {
+    const html = buildRenderedViewerHtml(textlogEntry(), baseContainer());
+    const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+    expect(printBlock).toMatch(/\.pkc-viewer-layout\s*\{\s*display:\s*block/);
+    expect(printBlock).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*static/);
+  });
 });

@@ -1027,6 +1027,47 @@ body {
 .pkc-md-rendered a { color: var(--c-accent); text-decoration: underline; }
 .pkc-md-rendered table { border-collapse: collapse; margin: 0.35em 0; }
 .pkc-md-rendered th, .pkc-md-rendered td { border: 1px solid var(--c-border); padding: 0.3em 0.5em; }
+/* Two-column view layout with a sticky TOC sidebar.
+   The TOC sidebar pins to the top of the scroll container
+   (.pkc-window-content scrolls, not body), so the outline stays
+   on screen while the reader scrolls through long TEXT / TEXTLOG
+   bodies. Clicking a TOC link uses native anchor scrolling —
+   no JS needed. Falls back to a single column below 640px so
+   the sidebar does not steal horizontal space on narrow windows. */
+#view-pane[data-pkc-has-toc="true"] {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.pkc-toc-sidebar {
+  flex: 0 0 14rem;
+  position: sticky;
+  /* Stick just below the top padding of .pkc-window-content so the
+     TOC header is not clipped by the scroll container's padding. */
+  top: 0.25rem;
+  align-self: flex-start;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+.pkc-toc-sidebar .pkc-toc.pkc-toc-preview {
+  /* Inside the sidebar the nav fills the column and does not need
+     its own bottom margin (the sidebar itself provides the gap). */
+  margin: 0;
+}
+.pkc-viewer-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  #view-pane[data-pkc-has-toc="true"] { flex-direction: column; }
+  .pkc-toc-sidebar {
+    flex: 0 0 auto;
+    position: static;
+    max-height: none;
+    width: 100%;
+  }
+}
+
 /* Preview-surface Table of Contents. Mirrors base.css .pkc-toc
    so the popped-out preview exposes the same heading / day / log
    navigation the right pane carries. Anchors are native href to
@@ -1366,7 +1407,12 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 /* TEXTLOG-scoped markdown density override — see base.css for the
    rationale. Kept in parity so popped-out TEXTLOG viewers read at
    the same density as the in-app view. */
-.pkc-textlog-text.pkc-md-rendered { line-height: 1.3; }
+/* Match TEXT density. See base.css for the full rationale —
+   .pkc-textlog-text sets white-space: pre-wrap (for raw logs),
+   but rendered-markdown logs must use white-space: normal or the
+   newlines markdown-it emits between block tags render as blank
+   lines. */
+.pkc-textlog-text.pkc-md-rendered { line-height: 1.35; white-space: normal; }
 .pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
 .pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
 .pkc-textlog-text p { margin: 0.2em 0; }
@@ -1439,14 +1485,23 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
     <!-- View mode (initial state) -->
-    <div id="view-pane">
-      <div class="pkc-view-title-row">
-        <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
-        <span class="pkc-archetype-label">${entry.archetype}</span>
-        <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
+    <!--
+      Two-column layout when a TOC is available: a sticky sidebar on
+      the left (scrolls the TOC itself when it overflows) and the
+      title/body as the main column. When the TOC is empty (archetypes
+      with no index-worthy content, headingless TEXT) the sidebar is
+      omitted entirely and the main column fills the width.
+    -->
+    <div id="view-pane"${tocHtml ? ' data-pkc-has-toc="true"' : ''}>
+      ${tocHtml ? `<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">${tocHtml}</aside>` : ''}
+      <div class="pkc-viewer-main">
+        <div class="pkc-view-title-row">
+          <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
+          <span class="pkc-archetype-label">${entry.archetype}</span>
+          <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
+        </div>
+        <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
       </div>
-      ${tocHtml}
-      <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
     </div>
 
     <!-- Edit mode (hidden initially) -->

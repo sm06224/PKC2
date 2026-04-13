@@ -4166,7 +4166,17 @@
   /* A hair tighter than the global .pkc-md-rendered (1.35). Log
      entries are usually short; denser line-height pulls the log
      block together and keeps TEXTLOG visibly denser than TEXT. */
-  line-height: 1.3;
+  line-height: 1.35;
+  /* CRITICAL density fix: `.pkc-textlog-text` sets
+     `white-space: pre-wrap` (so that plain-text logs preserve
+     newlines). When the log body goes through the markdown
+     renderer, `pre-wrap` also preserves the `\n` characters
+     markdown-it emits between block tags (`</p>\n<p>…`), which
+     show up as BLANK LINES between paragraphs and read as
+     dramatically looser prose than TEXT. Pin `normal` here so
+     rendered-markdown logs match TEXT density. Plain-text logs
+     (no `.pkc-md-rendered`) keep `pre-wrap` untouched. */
+  white-space: normal;
 }
 .pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
 .pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }

@@ -245,17 +245,46 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-text > :first-child { margin-top: 0; }
     .pkc-textlog-text > :last-child { margin-bottom: 0; }
     /* TEXTLOG-scoped markdown density — mirrors base.css. Log
-       articles pack tight, so prose line-height and block margins
-       are pulled in a notch. TEXT entries in the same exported
-       document are unaffected (this selector only matches log
-       bodies). */
-    .pkc-textlog-text.pkc-md-rendered { line-height: 1.3; }
+       articles pack tight; the big density fix here is flipping
+       white-space back to normal so markdown-it inter-block
+       newlines do not render as literal blank lines between
+       paragraphs (which was making TEXTLOG feel far looser than
+       TEXT). TEXT entries in the same exported document are
+       unaffected — this selector only matches log bodies. */
+    .pkc-textlog-text.pkc-md-rendered { line-height: 1.35; white-space: normal; }
     .pkc-textlog-text p { margin: 0.2em 0; }
     .pkc-textlog-text ul,
     .pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
     .pkc-textlog-text li { margin: 0.05em 0; }
     .pkc-textlog-text blockquote { margin: 0.25em 0; }
     .pkc-textlog-text pre { margin: 0.25em 0; }
+    /* Two-column layout with a sticky TOC sidebar.
+       The sidebar pins to the top of the viewport so the outline
+       stays visible while the reader scrolls through long bodies.
+       Body is the scroll container (no intermediate overflow box)
+       so position: sticky works against the window viewport.
+       Below 720px the layout collapses to a single column and the
+       TOC returns to a top-of-document block. */
+    .pkc-viewer-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+    .pkc-toc-sidebar {
+      flex: 0 0 16rem;
+      position: sticky;
+      top: 1rem;
+      align-self: flex-start;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+    }
+    .pkc-toc-sidebar .pkc-toc.pkc-toc-preview { margin: 0; }
+    .pkc-viewer-main { flex: 1 1 auto; min-width: 0; }
+    @media (max-width: 720px) {
+      .pkc-viewer-layout { flex-direction: column; }
+      .pkc-toc-sidebar {
+        flex: 0 0 auto;
+        position: static;
+        max-height: none;
+        width: 100%;
+      }
+    }
     /* Preview-surface Table of Contents — print-safe, standalone
        colours (no main-app theme vars in exported HTML). */
     .pkc-toc.pkc-toc-preview {
@@ -321,6 +350,16 @@ export function buildRenderedViewerHtml(
          page for long exports. Drop the background tint so it
          prints cleanly on white paper. */
       .pkc-toc.pkc-toc-preview { background: transparent; border-color: #000; }
+      /* Print collapses the two-column layout so the TOC prints
+         as a front-of-document index and the body flows normally
+         across pages. Sticky + column flow behave badly in print. */
+      .pkc-viewer-layout { display: block; }
+      .pkc-toc-sidebar {
+        position: static;
+        max-height: none;
+        width: 100%;
+        margin-bottom: 1rem;
+      }
       .pkc-textlog-day { break-inside: avoid; }
       .pkc-textlog-log { break-inside: avoid; }
     }
@@ -374,10 +413,22 @@ export function buildRenderedViewerHtml(
     `<h1>${title}</h1>`,
     `<div class="pkc-viewer-meta">${archetypeLabel} · rendered view (read-only)</div>`,
     '</header>',
-    tocHtml,
-    '<article class="pkc-viewer-body pkc-md-rendered">',
-    bodyHtml,
-    '</article>',
+    // Two-column layout when a TOC is present: sticky sidebar on
+    // the left, content on the right. When the TOC is empty (e.g.
+    // a headingless TEXT body) the wrapper collapses and the
+    // article fills the column — no empty sidebar shows up.
+    tocHtml
+      ? '<div class="pkc-viewer-layout">'
+        + `<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">${tocHtml}</aside>`
+        + '<div class="pkc-viewer-main">'
+        + '<article class="pkc-viewer-body pkc-md-rendered">'
+        + bodyHtml
+        + '</article>'
+        + '</div>'
+        + '</div>'
+      : '<article class="pkc-viewer-body pkc-md-rendered">'
+        + bodyHtml
+        + '</article>',
     '</main>',
     `<script data-pkc-viewer-script>${script}</script>`,
     '</body>',

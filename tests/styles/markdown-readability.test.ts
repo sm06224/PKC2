@@ -89,11 +89,25 @@ describe('TEXTLOG-scoped markdown density override', () => {
   // are pulled in a notch ONLY when scoped by `.pkc-textlog-text`.
   // TEXT entries (above tests) stay at the current defaults.
 
-  it('.pkc-textlog-text.pkc-md-rendered uses a denser line-height than prose', () => {
-    // TEXTLOG sits one notch below TEXT (1.3 vs 1.35) so log grids
-    // stay visibly denser than plain prose.
+  it('.pkc-textlog-text.pkc-md-rendered matches TEXT prose line-height (1.35)', () => {
+    // TEXTLOG used to be pulled below TEXT (1.3 vs 1.35), but that
+    // masked the real density bug: .pkc-textlog-text set
+    // `white-space: pre-wrap`, which preserved markdown-it's
+    // inter-block `\n` characters as literal blank lines. Once the
+    // compound selector forces `white-space: normal`, TEXT and
+    // TEXTLOG read at the same density, so line-height pins to
+    // 1.35 to match TEXT exactly.
     expect(baseCss).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.3(?!\d)/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35(?!\d)/,
+    );
+  });
+
+  it('.pkc-textlog-text.pkc-md-rendered forces white-space: normal', () => {
+    // Without this override, markdown-it output like `</p>\n<p>…`
+    // would render blank lines because .pkc-textlog-text (declared
+    // later than .pkc-md-rendered) sets `white-space: pre-wrap`.
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*white-space:\s*normal/,
     );
   });
 
@@ -155,9 +169,12 @@ describe('TEXTLOG density parity across entry-window and rendered-viewer', () =>
     'utf-8',
   );
 
-  it('entry-window.ts inlines .pkc-textlog-text.pkc-md-rendered line-height: 1.3', () => {
+  it('entry-window.ts inlines .pkc-textlog-text.pkc-md-rendered line-height: 1.35 + white-space: normal', () => {
     expect(entryWindow).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.3(?!\d)/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35(?!\d)/,
+    );
+    expect(entryWindow).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*white-space:\s*normal/,
     );
   });
 
@@ -168,9 +185,12 @@ describe('TEXTLOG density parity across entry-window and rendered-viewer', () =>
     );
   });
 
-  it('rendered-viewer.ts inlines the same TEXTLOG-scoped line-height', () => {
+  it('rendered-viewer.ts inlines the same TEXTLOG-scoped line-height + white-space', () => {
     expect(renderedViewer).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{\s*line-height:\s*1\.3(?!\d)/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35(?!\d)/,
+    );
+    expect(renderedViewer).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*white-space:\s*normal/,
     );
   });
 

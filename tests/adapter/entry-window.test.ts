@@ -49,7 +49,9 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
  * like `data-pkc-ew-preview-type` as literal strings.
  */
 function extractBodyView(html: string): string {
-  const start = html.indexOf('<div id="view-pane">');
+  // Accept either `<div id="view-pane">` or `<div id="view-pane" …>`
+  // (the TOC-sidebar layout adds `data-pkc-has-toc` after `id=`).
+  const start = html.indexOf('<div id="view-pane"');
   if (start < 0) return html;
   const end = html.indexOf('<div id="edit-pane"', start);
   return html.slice(start, end < 0 ? html.length : end);
@@ -2901,6 +2903,37 @@ describe('Entry Window', () => {
       const html = await openAndCapture(false, { archetype: 'text', body: '# Title' });
       expect(html).toContain('.pkc-toc.pkc-toc-preview');
       expect(html).toContain('.pkc-toc-preview .pkc-toc-link');
+    });
+
+    // ── Sticky sidebar layout ──
+    // The popped view wraps the TOC in an <aside class="pkc-toc-sidebar">
+    // that uses position:sticky so readers can jump back to the outline
+    // at any scroll position. CSS is scoped via
+    // `#view-pane[data-pkc-has-toc="true"]` so only TOC-bearing archetypes
+    // get the flex layout; no-TOC entries keep the original single-column.
+    it('wraps the view pane in a flex layout with aside sidebar when TOC is present', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# A\n\n## B' });
+      expect(html).toContain('<div id="view-pane" data-pkc-has-toc="true">');
+      expect(html).toContain('<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">');
+      expect(html).toContain('<div class="pkc-viewer-main">');
+      // The sticky / sidebar CSS block must be inlined.
+      expect(html).toMatch(/#view-pane\[data-pkc-has-toc="true"\]\s*\{[^}]*display:\s*flex/);
+      expect(html).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*sticky/);
+    });
+
+    it('does NOT add the data-pkc-has-toc attribute when there is no TOC', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'plain body' });
+      // The CSS block references the attribute selector by string;
+      // check for the actual element attribute form instead.
+      expect(html).toContain('<div id="view-pane">');
+      expect(html).not.toContain('<div id="view-pane" data-pkc-has-toc');
+      // And no sidebar <aside> should be emitted.
+      expect(html).not.toContain('<aside class="pkc-toc-sidebar"');
+    });
+
+    it('collapses to a single column under narrow viewports via media query', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# A' });
+      expect(html).toMatch(/@media\s*\(max-width:\s*640px\)\s*\{[^}]*#view-pane\[data-pkc-has-toc="true"\]\s*\{\s*flex-direction:\s*column/);
     });
   });
 });
