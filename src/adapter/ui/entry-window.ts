@@ -1373,17 +1373,18 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
  * surfaces. DOM order is header → text so plain-text reading starts
  * with the timestamp.
  */
-.pkc-textlog-document { display: flex; flex-direction: column; gap: 0.75rem; }
-.pkc-textlog-day { display: flex; flex-direction: column; gap: 0.35rem; }
+.pkc-textlog-document { display: flex; flex-direction: column; gap: 1.25rem; }
+.pkc-textlog-day { display: flex; flex-direction: column; gap: 0.5rem; }
+.pkc-textlog-day + .pkc-textlog-day { margin-top: 0.5rem; }
 .pkc-textlog-day-header {
-  padding: 0.15rem 0 0.25rem;
+  padding: 0.3rem 0 0.35rem;
   border-bottom: 1px solid var(--c-border);
 }
 .pkc-textlog-day-title {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  color: var(--c-muted);
+  color: var(--c-fg);
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
 }
@@ -1396,7 +1397,7 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   font-size: 0.85rem;
 }
 .pkc-textlog-log + .pkc-textlog-log {
-  border-top: 1px solid var(--c-border);
+  border-top: 1px dashed var(--c-border);
   padding-top: 0.6rem;
 }
 .pkc-textlog-log[data-pkc-log-important="true"] {

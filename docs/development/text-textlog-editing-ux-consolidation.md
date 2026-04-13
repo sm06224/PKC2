@@ -131,7 +131,7 @@ handleKeydown
 ├── Ctrl+Enter in TEXTLOG append → append-log-entry
 ├── Ctrl+S in editing → COMMIT_EDIT
 ├── Ctrl+D/T/... in editing → date/time shortcuts
-├── ? key → shortcut help toggle
+├── Ctrl+? / ⌘+? → shortcut help toggle
 └── Escape → overlay close → cancel edit → deselect（段階的）
 ```
 

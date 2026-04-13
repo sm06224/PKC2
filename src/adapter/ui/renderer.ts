@@ -946,28 +946,93 @@ function renderExportImportInline(state: AppState): HTMLElement {
 
   const content = createElement('div', 'pkc-eip-content');
 
-  // Export Full (editable) — most common
+  // ── Data menu layout ──
+  //
+  // Three visually separated groups so the user can distinguish
+  // "HTML distribution" from "ZIP interchange" from "Import":
+  //
+  //   [Share — standalone HTML, openable without PKC2]
+  //     Export │ Light │ 📤 Selected as HTML
+  //   ──
+  //   [Archive — ZIP, re-importable into PKC2]
+  //     ZIP │ TEXTLOGs? │ TEXTs? │ Mixed? │ 📦 Selected (TEXT/TEXTLOG)
+  //   ──
+  //   [Import]
+  //     Import │ 📥 Textlog │ 📥 Text │ 📥 Entry │ 📥 Batch
+  //
+  // Rationale: the two "Selected" buttons live in different groups
+  // and carry different icons — 📤 (share HTML) vs 📦 (ZIP package)
+  // — so they read as distinct workflows rather than variants of
+  // the same action. See docs/development/selected-entry-html-clone-export.md.
+
+  const selectedEntry = state.selectedLid
+    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+    : undefined;
+
+  // --- Group 1: Share (standalone HTML, openable without PKC2) ---
+
+  // Export Full (editable) — full container as standalone HTML
   const exportBtn = createElement('button', 'pkc-btn pkc-btn-create');
   exportBtn.setAttribute('data-pkc-action', 'begin-export');
   exportBtn.setAttribute('data-pkc-export-mode', 'full');
   exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  exportBtn.setAttribute('title', '全データを HTML でエクスポート（編集可能）');
+  exportBtn.setAttribute(
+    'title',
+    '全データを配布用 HTML でエクスポート（相手に PKC2 不要・単体で開ける・編集可能）',
+  );
   exportBtn.textContent = 'Export';
   content.appendChild(exportBtn);
 
-  // Export Light (editable)
+  // Export Light (editable) — same as Full but strips assets
   const lightBtn = createElement('button', 'pkc-btn pkc-btn-create');
   lightBtn.setAttribute('data-pkc-action', 'begin-export');
   lightBtn.setAttribute('data-pkc-export-mode', 'light');
   lightBtn.setAttribute('data-pkc-export-mutability', 'editable');
-  lightBtn.setAttribute('title', 'アセットなし HTML エクスポート（軽量版）');
+  lightBtn.setAttribute(
+    'title',
+    'アセットなしの軽量な配布用 HTML をエクスポート（相手に PKC2 不要・単体で開ける）',
+  );
   lightBtn.textContent = 'Light';
   content.appendChild(lightBtn);
 
-  // ZIP Export
+  // Selected-entry HTML clone export — produces a stand-alone `.html`
+  // that the recipient can open without PKC2. Subset logic
+  // (referenced entries, owned attachments, reachable assets,
+  // ancestor folders) lives in `buildSubsetContainer`. Enabled for
+  // any entry — unlike ZIP bundle formats, the HTML clone does not
+  // require an archetype-specific builder.
+  const selectedHtmlBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  selectedHtmlBtn.setAttribute('data-pkc-action', 'export-selected-entry-html');
+  if (selectedEntry) {
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリと関連アセット / 参照エントリのみを含む配布用 HTML を生成（相手に PKC2 不要・単体で開ける）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  } else {
+    (selectedHtmlBtn as HTMLButtonElement).disabled = true;
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリのみを含む配布用 HTML を生成（エントリ選択時のみ有効・相手に PKC2 不要）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  }
+  content.appendChild(selectedHtmlBtn);
+
+  // Group separator: Share (HTML) → Archive (ZIP)
+  const sepShareZip = createElement('span', 'pkc-eip-sep');
+  sepShareZip.textContent = '|';
+  content.appendChild(sepShareZip);
+
+  // --- Group 2: Archive (ZIP, re-importable into PKC2) ---
+
+  // ZIP Export — full container ZIP for re-import
   const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
   zipBtn.setAttribute('data-pkc-action', 'export-zip');
-  zipBtn.setAttribute('title', '.pkc2.zip パッケージとしてエクスポート');
+  zipBtn.setAttribute(
+    'title',
+    '.pkc2.zip パッケージとしてエクスポート（別 PKC2 への再インポート・データ交換用）',
+  );
   zipBtn.textContent = 'ZIP';
   content.appendChild(zipBtn);
 
@@ -978,7 +1043,10 @@ function renderExportImportInline(state: AppState): HTMLElement {
   if (hasTextlogs) {
     const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
     textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
-    textlogsBtn.setAttribute('title', '全テキストログをまとめて ZIP エクスポート');
+    textlogsBtn.setAttribute(
+      'title',
+      '全テキストログをまとめて ZIP エクスポート（再インポート用）',
+    );
     textlogsBtn.textContent = 'TEXTLOGs';
     content.appendChild(textlogsBtn);
   }
@@ -990,7 +1058,10 @@ function renderExportImportInline(state: AppState): HTMLElement {
   if (hasTexts) {
     const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
     textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
-    textsBtn.setAttribute('title', '全テキストをまとめて ZIP エクスポート');
+    textsBtn.setAttribute(
+      'title',
+      '全テキストをまとめて ZIP エクスポート（再インポート用）',
+    );
     textsBtn.textContent = 'TEXTs';
     content.appendChild(textsBtn);
   }
@@ -1001,19 +1072,21 @@ function renderExportImportInline(state: AppState): HTMLElement {
   if (hasTextlogs || hasTexts) {
     const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
     mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
-    mixedBtn.setAttribute('title', '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip)');
+    mixedBtn.setAttribute(
+      'title',
+      '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip・再インポート用)',
+    );
     mixedBtn.textContent = 'Mixed';
     content.appendChild(mixedBtn);
   }
 
-  // Selected-only export — a top-level "share what I'm looking at"
+  // Selected-only ZIP — "hand the single entry to another PKC2 user"
   // affordance. Enabled only when the current selection points at a
   // text / textlog entry (the two archetypes that have round-trippable
   // .text.zip / .textlog.zip bundle formats). Disabled otherwise so
   // the user gets an inert, labeled button instead of a no-op surprise.
-  const selectedEntry = state.selectedLid
-    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
-    : undefined;
+  // Icon is 📦 (package) — distinct from 📤 (share HTML) above so the
+  // two "Selected" buttons read as different workflows.
   const selectedShareable = selectedEntry?.archetype === 'text'
     || selectedEntry?.archetype === 'textlog';
   const selectedBtn = createElement('button', 'pkc-btn pkc-btn-create');
@@ -1022,45 +1095,20 @@ function renderExportImportInline(state: AppState): HTMLElement {
     const kind = selectedEntry.archetype === 'text' ? 'TEXT' : 'TEXTLOG';
     selectedBtn.setAttribute(
       'title',
-      `選択中の ${kind} エントリを単独 ZIP パッケージとしてエクスポート（相手の PKC2 に再インポート可）`,
+      `選択中の ${kind} エントリを単独 ZIP パッケージとしてエクスポート（別 PKC2 への再インポート用）`,
     );
-    selectedBtn.textContent = `📤 Selected (${kind})`;
+    selectedBtn.textContent = `📦 Selected (${kind})`;
   } else {
     (selectedBtn as HTMLButtonElement).disabled = true;
     selectedBtn.setAttribute(
       'title',
-      '選択中のエントリを ZIP で個別出力（TEXT / TEXTLOG 選択時のみ有効）',
+      '選択中のエントリを単独 ZIP で個別出力（TEXT / TEXTLOG 選択時のみ有効・再インポート用）',
     );
-    selectedBtn.textContent = '📤 Selected';
+    selectedBtn.textContent = '📦 Selected';
   }
   content.appendChild(selectedBtn);
 
-  // Selected-entry HTML clone export. Distinct from the ZIP button
-  // above: that produces a `.text.zip` / `.textlog.zip` for re-import
-  // into another PKC2; this produces a stand-alone `.html` that the
-  // recipient can open without having PKC2 at all. Subset logic
-  // (referenced entries, owned attachments, reachable assets,
-  // ancestor folders) lives in `buildSubsetContainer`. Enabled for
-  // any entry — unlike ZIP bundle formats, the HTML clone does not
-  // require an archetype-specific builder.
-  const selectedHtmlBtn = createElement('button', 'pkc-btn pkc-btn-create');
-  selectedHtmlBtn.setAttribute('data-pkc-action', 'export-selected-entry-html');
-  if (selectedEntry) {
-    selectedHtmlBtn.setAttribute(
-      'title',
-      '選択中のエントリと関連アセット / 参照エントリのみを含む自己完結 HTML を生成（相手に PKC2 が不要）',
-    );
-    selectedHtmlBtn.textContent = '📤 Selected as HTML';
-  } else {
-    (selectedHtmlBtn as HTMLButtonElement).disabled = true;
-    selectedHtmlBtn.setAttribute(
-      'title',
-      '選択中のエントリのみを含む自己完結 HTML を生成（エントリ選択時のみ有効）',
-    );
-    selectedHtmlBtn.textContent = '📤 Selected as HTML';
-  }
-  content.appendChild(selectedHtmlBtn);
-
+  // Group separator: Archive (ZIP) → Import
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);

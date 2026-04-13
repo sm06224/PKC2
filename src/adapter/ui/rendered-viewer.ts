@@ -220,6 +220,7 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-day-title {
       margin: 0;
       font-size: 0.95rem;
+      font-weight: 600;
       font-family: "SFMono-Regular", Consolas, monospace;
       color: #4a4030;
     }

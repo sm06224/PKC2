@@ -4031,25 +4031,38 @@
 .pkc-textlog-document {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1.25rem;
 }
 
 .pkc-textlog-day {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
+}
+
+/* Chapter break between day sections. First day sits flush with the
+   append area; every subsequent day picks up a small top margin so
+   days read as distinct "pages" in a notebook rather than one
+   continuous wall of logs. Pairs with the tighter intra-day gap. */
+.pkc-textlog-day + .pkc-textlog-day {
+  margin-top: 0.5rem;
 }
 
 .pkc-textlog-day-header {
-  padding: 0.15rem 0 0.25rem;
+  padding: 0.3rem 0 0.35rem;
   border-bottom: 1px solid var(--c-border);
 }
 
+/* Day title polish: promoted from a muted sub-label to a legible
+   heading. Size up to 0.95rem, color swapped from --c-muted to
+   --c-fg so it reads as a heading rather than a caption. Still
+   mono with a light letter-spacing to keep the terminal/notebook
+   tone — no card, no icon, no background tint. */
 .pkc-textlog-day-title {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  color: var(--c-muted);
+  color: var(--c-fg);
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
 }
@@ -4073,8 +4086,12 @@
   transition: background-color 0.15s ease;
 }
 
+/* Inter-log separator within a day: dashed so it reads as a softer
+   "new entry" break. The day-header bottom border stays solid so
+   day boundaries visually outrank inter-log boundaries — solid
+   (chapter) > dashed (entry) is the same hierarchy a notebook uses. */
 .pkc-textlog-log + .pkc-textlog-log {
-  border-top: 1px solid var(--c-border);
+  border-top: 1px dashed var(--c-border);
   padding-top: 0.6rem;
 }
 
