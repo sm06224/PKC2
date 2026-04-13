@@ -23,7 +23,22 @@ export type UserAction =
   | { type: 'BEGIN_EDIT'; lid: string }
   | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string; assets?: Record<string, string> }
   | { type: 'CANCEL_EDIT' }
-  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string }
+  /**
+   * CREATE_ENTRY — create a new entry and (optionally) place it under
+   * a structural parent folder.
+   *
+   * Contract:
+   * - Creates the entry, selects it, and moves to `editing` phase.
+   * - When `parentFolder` is a valid folder lid in the current
+   *   container, a structural relation (`parentFolder → new lid`) is
+   *   added in the same reduction and a `RELATION_CREATED` event is
+   *   emitted. Missing / unknown / non-folder ids silently fall back
+   *   to root placement — the caller is expected to pre-resolve.
+   * - Atomic placement matters here because CREATE_ENTRY itself moves
+   *   the state machine into `editing`, where a follow-up
+   *   CREATE_RELATION would be blocked.
+   */
+  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string }
   | { type: 'DELETE_ENTRY'; lid: string }
   | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
@@ -118,10 +133,15 @@ export type UserAction =
    * - Blocked when readonly or container is absent.
    * - Creates a new attachment entry with the given asset data.
    * - Merges the asset into container.assets.
-   * - Auto-creates an "ASSETS" folder as a sibling of contextLid if
-   *   one does not already exist, and places the attachment in it.
+   * - Places the attachment under the structural-parent folder of
+   *   `contextLid` (or under `contextLid` itself if it is a folder),
+   *   via `resolveAutoPlacementFolder`. When no folder ancestor
+   *   exists, the attachment lands at root — no "ASSETS" folder is
+   *   auto-created. See
+   *   docs/development/auto-folder-placement-for-generated-entries.md.
    * - Does NOT change phase, editingLid, or selectedLid.
-   * - Emits ENTRY_CREATED + RELATION_CREATED events.
+   * - Emits ENTRY_CREATED; RELATION_CREATED only when a target folder
+   *   is resolved.
    */
   | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string }
   /**
