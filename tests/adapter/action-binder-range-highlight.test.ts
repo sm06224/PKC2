@@ -187,11 +187,16 @@ describe('ActionBinder — range highlight (P1 Slice 5-C)', () => {
 
   it('range click scrolls to the topmost log of the range (canonical + reverse agree)', () => {
     setupRange('src');
+    // Capture only log-scoped scrolls — the renderer may also scroll
+    // the sidebar entry on SELECT_ENTRY (see renderer.ts), which is a
+    // separate, legitimate call that would otherwise pollute this
+    // range-scroll assertion.
     const captured: Array<string | null> = [];
     const origProto = HTMLElement.prototype.scrollIntoView;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
-      captured.push(this.getAttribute('data-pkc-log-id'));
+      const logId = this.getAttribute('data-pkc-log-id');
+      if (logId !== null) captured.push(logId);
     } as any;
     try {
       findAnchor('fwd').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

@@ -101,6 +101,29 @@ Properties:
 - Cycle-safe: a `visited` set terminates malformed graphs.
 - Depth-bounded at 32.
 
+### Sidebar scroll-into-view on re-render
+
+Auto-expand makes the selected entry visible in the DOM, but a long
+tree may still scroll it off-screen. `render()` therefore calls
+`scrollIntoView({ block: 'nearest', inline: 'nearest' })` on the
+sidebar's `[data-pkc-selected="true"]` node whenever the selection
+has changed since the previous render.
+
+Properties:
+
+- `block: 'nearest'` makes already-visible selections a no-op — no
+  jitter on filter / sort / collapse-toggle re-renders.
+- No `smooth` option. Instant snap reads as "the app put my eyes
+  where I already intended to look", not "the app is animating for
+  me".
+- A `data-pkc-last-scrolled-lid` memo on the root element suppresses
+  redundant scrolls on same-selection re-renders.
+- Sidebar-scoped selector: kanban / calendar selections do not
+  trigger sidebar scroll unless the same lid also appears as a tree
+  entry (which it does in the normal case).
+- Defensive: missing sidebar, missing selected node, or null selection
+  → no-op.
+
 ## CSV export
 
 Read-only persistence of the current profile. The overlay mounts an

@@ -121,6 +121,52 @@ export function render(state: AppState, root: HTMLElement): void {
       root.appendChild(renderShell(state));
       break;
   }
+
+  // Post-render: if the current selection changed since the last
+  // render, nudge the sidebar tree node into view.  Pairs with the
+  // ancestor auto-expand in the SELECT_ENTRY reducer — together they
+  // close the "selected but not visible" gap for Storage Profile
+  // jumps, entry-ref clicks, calendar / kanban taps, and anything
+  // else that dispatches SELECT_ENTRY from outside the tree.
+  scrollSelectedSidebarNodeIntoView(state, root);
+}
+
+/**
+ * Scroll the sidebar's `[data-pkc-selected="true"]` node into view
+ * when `state.selectedLid` has changed since the previous render.
+ *
+ * - `block: 'nearest'` + `inline: 'nearest'` → browsers treat an
+ *   already-visible element as a no-op (no jitter on re-renders).
+ * - No `smooth` option: instant snap keeps the feeling of "the app
+ *   just moved my eyes to where I looked" rather than "the app is
+ *   animating for me".
+ * - A `data-pkc-last-scrolled-lid` memo on the root element
+ *   suppresses redundant calls on same-selection re-renders
+ *   (e.g. filter / sort / collapse toggles that don't move the
+ *   selection). Survives DOM replacement because it lives on the
+ *   root element, which `render` does not recreate.
+ * - Scoped to the sidebar region so center-pane selections (kanban
+ *   cards, calendar cells) don't trigger sidebar scroll.
+ */
+function scrollSelectedSidebarNodeIntoView(
+  state: AppState,
+  root: HTMLElement,
+): void {
+  if (!state.selectedLid) {
+    delete root.dataset.pkcLastScrolledLid;
+    return;
+  }
+  if (root.dataset.pkcLastScrolledLid === state.selectedLid) return;
+  const sidebar = root.querySelector<HTMLElement>(
+    '[data-pkc-region="sidebar"]',
+  );
+  if (!sidebar) return;
+  const node = sidebar.querySelector<HTMLElement>(
+    `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
+  );
+  if (!node) return;
+  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
 
 function renderInitializing(): HTMLElement {
