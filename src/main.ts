@@ -28,6 +28,7 @@ import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
+import { pickEntryPackageTarget } from './adapter/platform/entry-package-router';
 import { importTextlogBundle } from './adapter/platform/textlog-bundle';
 import { importTextBundle } from './adapter/platform/text-bundle';
 import {
@@ -270,6 +271,12 @@ async function boot(): Promise<void> {
   // per nested bundle. Failure-atomic: if any nested bundle fails to
   // parse, nothing is dispatched.
   mountBatchImportHandler(root, dispatcher);
+
+  // 8a'''. Unified single-entry package import handler — auto-detects
+  // `.text.zip` vs `.textlog.zip` by filename and delegates to the
+  // existing dedicated importers by re-dispatching a synthetic click.
+  // See docs/development/selected-entry-export-and-reimport.md.
+  mountEntryPackageImportHandler(root);
 
   // 8b. ZIP export handler: direct async export (no phase transition needed)
   mountZipExportHandler(root, dispatcher);
@@ -848,6 +855,71 @@ function mountBatchImportHandler(root: HTMLElement, dispatcher: Dispatcher): voi
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="dismiss-batch-import-result"]');
     if (!target) return;
     dispatcher.dispatch({ type: 'DISMISS_BATCH_IMPORT_RESULT' });
+  });
+}
+
+/**
+ * Mount the unified single-entry package import handler.
+ *
+ * Clicking the Data menu's `📥 Entry` button opens a single file
+ * picker that accepts both `.text.zip` and `.textlog.zip`. The file
+ * chosen is then routed to the dedicated text / textlog importer by
+ * re-dispatching a synthetic click on the corresponding hidden input
+ * — no duplicated import logic, no reducer change.
+ *
+ * Routing rules (filename only, parsed right-to-left):
+ *   - ends with `.text.zip`    → text bundle importer
+ *   - ends with `.textlog.zip` → textlog bundle importer
+ *   - otherwise: surface a toast-style console warning (no dispatch).
+ *
+ * The dedicated importers already assert their own manifest.format
+ * guard, so a mis-named file still fails closed with a helpful error.
+ */
+function mountEntryPackageImportHandler(root: HTMLElement): void {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.zip,.text.zip,.textlog.zip,application/zip';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('data-pkc-role', 'import-entry-package-input');
+  document.body.appendChild(fileInput);
+
+  root.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-action="import-entry-package"]',
+    );
+    if (!target) return;
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    // Route by filename — the dedicated importers' hidden file inputs
+    // already accept DataTransfer-style uploads via `.files` assignment,
+    // but the cleanest cross-browser path is to re-open the matching
+    // picker with a programmatic click after staging the file.
+    const target = pickEntryPackageTarget(file.name);
+    if (!target) {
+      console.warn(
+        `[PKC2] Entry package import: unrecognized extension for "${file.name}". Expected .text.zip or .textlog.zip.`,
+      );
+      return;
+    }
+    // Hand the file off by assigning it to the target's hidden input
+    // and firing its change event. Keeps the dispatch / dedupe logic
+    // owned by the dedicated handler.
+    const targetInput = document.querySelector<HTMLInputElement>(
+      `input[data-pkc-role="${target}"]`,
+    );
+    if (!targetInput) {
+      console.warn(`[PKC2] Entry package import: target input "${target}" not mounted.`);
+      return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    targetInput.files = dt.files;
+    targetInput.dispatchEvent(new Event('change'));
   });
 }
 

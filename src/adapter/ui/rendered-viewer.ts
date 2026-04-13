@@ -66,6 +66,16 @@ export function buildRenderedViewerHtml(
   // the app UI. We favour a readable body width, a sane mono font
   // for code, and a clean `@media print` rule that strips backgrounds
   // and hides the toolbar.
+  //
+  // Width policy (screen-first):
+  //   - On screen `main` grows with the viewport:
+  //       clamp(40rem, 90vw, 72rem)
+  //     i.e. it is never narrower than ~40rem (the A5-ish floor),
+  //     scales naturally with the viewport, and caps at 72rem so
+  //     ultra-wide monitors still hold a readable measure.
+  //   - Under `@media print` the cap reverts to 48rem — A4 body
+  //     width — so paper output stays dense and laid out like the
+  //     original print-target design.
   const style = `
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
@@ -78,7 +88,7 @@ export function buildRenderedViewerHtml(
       line-height: 1.65;
       padding: 2.5rem 1.5rem;
     }
-    main { max-width: 48rem; margin: 0 auto; }
+    main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
       border-bottom: 1px solid #ddd;
       margin-bottom: 1.5rem;
@@ -202,6 +212,10 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-text > :last-child { margin-bottom: 0; }
     @media print {
       body { background: #fff; padding: 0; color: #000; }
+      /* Restore A4-ish body width for paper output. Screen gets the
+         wider clamp above; print keeps the original 48rem measure so
+         saved PDFs / physical prints lay out predictably. */
+      main { max-width: 48rem; }
       header.pkc-viewer-header { border-bottom-color: #000; }
       .pkc-viewer-toolbar { display: none; }
       .pkc-textlog-day { break-inside: avoid; }

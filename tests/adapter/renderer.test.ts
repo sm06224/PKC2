@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, renderContextMenu, renderDetachedPanel, buildStorageProfileOverlay } from '@adapter/ui/renderer';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
@@ -2198,10 +2198,15 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Collapsed behind <details>: export + light + zip + TEXTs + Mixed + import + textlog + text + batch
-    // (Reset moved to shell menu maintenance section)
+    // Collapsed behind <details>: export + light + zip + TEXTs + Mixed + Selected + "Selected as HTML" + import + textlog + text + Entry + batch
+    // (Reset moved to shell menu maintenance section;
+    //  `📤 Selected` and `📥 Entry` added for selected-only export /
+    //  unified single-entry import — see
+    //  docs/development/selected-entry-export-and-reimport.md;
+    //  `📤 Selected as HTML` added for selected-entry subset clone
+    //  export — see docs/development/selected-entry-html-clone-export.md)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(9);
+    expect(btns.length).toBe(12);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -6546,6 +6551,12 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Escape');
     expect(overlay!.textContent).toContain('multi-select');
     expect(overlay!.textContent).toContain('Range select');
+    // Help-overlay toggle is now Ctrl+? / ⌘+? (bare `?` was removed so
+    // it stops hijacking ordinary text input). See
+    // `action-binder-keyboard.test.ts › Shortcut help overlay` for the
+    // keydown behavior; here we just pin the visible label.
+    expect(overlay!.textContent).toContain('Ctrl+? / ⌘+?');
+    expect(overlay!.textContent).toContain('Close (Esc / Ctrl+?)');
     // Contains date/time shortcut group and entries
     expect(overlay!.textContent).toContain('Date/Time (edit mode)');
     expect(overlay!.textContent).toContain('Ctrl+;');
@@ -7469,5 +7480,149 @@ describe('Storage Profile dialog (renderer)', () => {
     expect(
       summary!.querySelector('[data-pkc-action="select-from-storage-profile"]'),
     ).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Sidebar scroll-into-view on SELECT_ENTRY
+// ─────────────────────────────────────────────────────────────
+// Pairs with the ancestor auto-expand in the SELECT_ENTRY reducer.
+// After the tree layout is rebuilt, `render` looks up the selected
+// sidebar entry and calls `scrollIntoView({ block: 'nearest' })` so
+// jumps from Storage Profile / entry-ref / calendar / kanban don't
+// leave the target off-screen.
+
+describe('Sidebar scroll-into-view', () => {
+  function scrollState(selectedLid: string | null): AppState {
+    return {
+      phase: 'ready', container: mockContainer,
+      selectedLid,
+      editingLid: null, error: null, embedded: false, pendingOffers: [],
+      importPreview: null, batchImportPreview: null, searchQuery: '',
+      archetypeFilter: null, tagFilter: null,
+      sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null,
+      readonly: false, lightSource: false, showArchived: false,
+      viewMode: 'detail' as const,
+      calendarYear: 2026, calendarMonth: 4,
+      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+    };
+  }
+
+  it('calls scrollIntoView({ block: "nearest" }) on the selected sidebar node', () => {
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      render(scrollState('e1'), root);
+      // Spy catches all HTMLElement.scrollIntoView calls; at least one
+      // call must be the sidebar entry with the documented options.
+      const sidebarCalls = scrollSpy.mock.calls.filter(([opts]) => {
+        return opts && typeof opts === 'object'
+          && (opts as ScrollIntoViewOptions).block === 'nearest';
+      });
+      expect(sidebarCalls.length).toBeGreaterThanOrEqual(1);
+      // The `this` binding of the call must be the selected entry <li>.
+      const callIndex = scrollSpy.mock.calls.findIndex(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      );
+      const targetEl = scrollSpy.mock.instances[callIndex] as unknown as HTMLElement;
+      expect(targetEl.getAttribute('data-pkc-lid')).toBe('e1');
+      expect(targetEl.getAttribute('data-pkc-selected')).toBe('true');
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it('does NOT call scrollIntoView when no entry is selected', () => {
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      render(scrollState(null), root);
+      const nearestCalls = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      );
+      expect(nearestCalls.length).toBe(0);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it('does NOT call scrollIntoView when the sidebar has no selected node', () => {
+    // Selected lid references a phantom entry that does not exist in
+    // the container — the sidebar therefore has no matching DOM node.
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      render(scrollState('ghost-lid'), root);
+      const nearestCalls = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      );
+      expect(nearestCalls.length).toBe(0);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it('does NOT re-scroll on back-to-back renders with the same selectedLid', () => {
+    // Prevents jitter when SORT_BY / TOGGLE_SHOW_ARCHIVED / folder
+    // collapse or any other non-selection change triggers a re-render.
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      render(scrollState('e1'), root);
+      const firstCount = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      ).length;
+      render(scrollState('e1'), root);
+      const secondCount = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      ).length;
+      expect(secondCount).toBe(firstCount);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it('re-scrolls when the selection actually moves between renders', () => {
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      render(scrollState('e1'), root);
+      const afterFirst = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      ).length;
+      render(scrollState('e2'), root);
+      const afterSecond = scrollSpy.mock.calls.filter(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      ).length;
+      expect(afterSecond).toBe(afterFirst + 1);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it('does NOT scroll the sidebar for a kanban-card-only selection in center pane', () => {
+    // The kanban card also carries `data-pkc-selected="true"` but
+    // lives in `[data-pkc-region="kanban-view"]`, not the sidebar.
+    // The selector is sidebar-scoped so such selections should not
+    // trigger scrolling — unless the same lid also appears as a tree
+    // entry, which is the normal case.  In that case it IS scrolled
+    // (tree visibility wins) — this test pins only the selector scope.
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => undefined);
+    try {
+      // Select e1; it exists in the tree so it DOES scroll — but
+      // assert via the targeted element's region ancestor, not just
+      // any selected-marked node.
+      render(scrollState('e1'), root);
+      const callIndex = scrollSpy.mock.calls.findIndex(([opts]) =>
+        opts && (opts as ScrollIntoViewOptions).block === 'nearest',
+      );
+      const targetEl = scrollSpy.mock.instances[callIndex] as unknown as HTMLElement;
+      // Ancestor must be the sidebar — the scroll is strictly tree-scoped.
+      expect(targetEl.closest('[data-pkc-region="sidebar"]')).not.toBeNull();
+    } finally {
+      scrollSpy.mockRestore();
+    }
   });
 });

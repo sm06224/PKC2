@@ -101,6 +101,29 @@ Properties:
 - Cycle-safe: a `visited` set terminates malformed graphs.
 - Depth-bounded at 32.
 
+### Sidebar scroll-into-view on re-render
+
+Auto-expand makes the selected entry visible in the DOM, but a long
+tree may still scroll it off-screen. `render()` therefore calls
+`scrollIntoView({ block: 'nearest', inline: 'nearest' })` on the
+sidebar's `[data-pkc-selected="true"]` node whenever the selection
+has changed since the previous render.
+
+Properties:
+
+- `block: 'nearest'` makes already-visible selections a no-op — no
+  jitter on filter / sort / collapse-toggle re-renders.
+- No `smooth` option. Instant snap reads as "the app put my eyes
+  where I already intended to look", not "the app is animating for
+  me".
+- A `data-pkc-last-scrolled-lid` memo on the root element suppresses
+  redundant scrolls on same-selection re-renders.
+- Sidebar-scoped selector: kanban / calendar selections do not
+  trigger sidebar scroll unless the same lid also appears as a tree
+  entry (which it does in the normal case).
+- Defensive: missing sidebar, missing selected node, or null selection
+  → no-op.
+
 ## CSV export
 
 Read-only persistence of the current profile. The overlay mounts an
@@ -219,6 +242,31 @@ entries.
 Summary row carries `data-pkc-asset-count` + `data-pkc-total-bytes`.
 Each `storage-profile-row` carries `data-pkc-lid`,
 `data-pkc-archetype`, and `data-pkc-subtree-bytes`.
+
+## Overlay focus-visible convergence
+
+The Storage Profile row button's focus ring (`outline: 2px solid
+var(--c-accent); outline-offset: -2px;`) doubles as the reference
+pattern for overlay keyboard-focus visibility across the app. Two
+classes that had no ring before — `.pkc-btn-small` (used by shell
+menu close, shortcut help close, Storage Profile close/export,
+maintenance buttons, many inline edit/clear buttons) and
+`.pkc-detached-close` (icon-only × on detached windows) — now share
+the same accent ring. Convention:
+
+- Full-width row buttons: `outline-offset: -2px` (ring hugs the card
+  border from the inside).
+- Standalone buttons: `outline-offset: 1px` (ring sits just outside
+  the button rect).
+- Icon-only buttons with no border in resting state
+  (`.pkc-detached-close`): `outline-offset: 2px` plus an explicit
+  `border-radius` so the ring reads as a rounded pill.
+- Destructive `.pkc-btn-danger` keeps its own `--c-danger` ring so
+  it stays visually distinct even under keyboard focus.
+
+Light / dark parity is automatic: `--c-accent` is defined in both
+theme scopes, so no media-query branch is needed. Regression guard
+lives in `tests/styles/overlay-focus-visible.test.ts`.
 
 ## Tests
 

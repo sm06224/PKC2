@@ -191,3 +191,30 @@ describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
     expect(html).toMatch(/a\.download\s*=\s*"hello-world-\d{8}\.text\.html"/);
   });
 });
+
+// ── Screen-first width policy ──
+// See the width-policy comment block above the `style` template in
+// `src/adapter/ui/rendered-viewer.ts` for the design rationale.
+describe('buildRenderedViewerHtml — screen-first body width', () => {
+  it('main element uses a viewport-scaling clamp instead of a fixed A4 cap', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    // A viewport-scaling clamp keeps the measure wide on screen.
+    // The exact bounds are documented in rendered-viewer.ts; we pin
+    // the SHAPE (clamp with a vw middle term) rather than the numeric
+    // bounds so minor tuning stays test-friendly.
+    expect(html).toMatch(/main\s*\{\s*max-width:\s*clamp\([^)]*vw[^)]*\)/);
+    // The old, unconditional A4-ish 48rem cap should no longer be the
+    // default on-screen width rule.
+    expect(html).not.toMatch(/main\s*\{\s*max-width:\s*48rem;\s*margin:\s*0\s*auto/);
+  });
+
+  it('restores the A4-ish 48rem cap under @media print for paper output', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    // Grab just the @media print block and confirm the narrower cap
+    // is re-applied inside it (so saved PDFs / physical prints stay
+    // laid out like the original A4 target).
+    const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/);
+    expect(printBlock).not.toBeNull();
+    expect(printBlock![0]).toMatch(/main\s*\{\s*max-width:\s*48rem;?\s*\}/);
+  });
+});

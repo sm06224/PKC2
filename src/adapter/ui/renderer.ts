@@ -121,6 +121,52 @@ export function render(state: AppState, root: HTMLElement): void {
       root.appendChild(renderShell(state));
       break;
   }
+
+  // Post-render: if the current selection changed since the last
+  // render, nudge the sidebar tree node into view.  Pairs with the
+  // ancestor auto-expand in the SELECT_ENTRY reducer — together they
+  // close the "selected but not visible" gap for Storage Profile
+  // jumps, entry-ref clicks, calendar / kanban taps, and anything
+  // else that dispatches SELECT_ENTRY from outside the tree.
+  scrollSelectedSidebarNodeIntoView(state, root);
+}
+
+/**
+ * Scroll the sidebar's `[data-pkc-selected="true"]` node into view
+ * when `state.selectedLid` has changed since the previous render.
+ *
+ * - `block: 'nearest'` + `inline: 'nearest'` → browsers treat an
+ *   already-visible element as a no-op (no jitter on re-renders).
+ * - No `smooth` option: instant snap keeps the feeling of "the app
+ *   just moved my eyes to where I looked" rather than "the app is
+ *   animating for me".
+ * - A `data-pkc-last-scrolled-lid` memo on the root element
+ *   suppresses redundant calls on same-selection re-renders
+ *   (e.g. filter / sort / collapse toggles that don't move the
+ *   selection). Survives DOM replacement because it lives on the
+ *   root element, which `render` does not recreate.
+ * - Scoped to the sidebar region so center-pane selections (kanban
+ *   cards, calendar cells) don't trigger sidebar scroll.
+ */
+function scrollSelectedSidebarNodeIntoView(
+  state: AppState,
+  root: HTMLElement,
+): void {
+  if (!state.selectedLid) {
+    delete root.dataset.pkcLastScrolledLid;
+    return;
+  }
+  if (root.dataset.pkcLastScrolledLid === state.selectedLid) return;
+  const sidebar = root.querySelector<HTMLElement>(
+    '[data-pkc-region="sidebar"]',
+  );
+  if (!sidebar) return;
+  const node = sidebar.querySelector<HTMLElement>(
+    `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
+  );
+  if (!node) return;
+  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
 
 function renderInitializing(): HTMLElement {
@@ -617,7 +663,7 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
     { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
-    { key: '?', desc: 'Toggle this help' },
+    { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
     { key: 'Shift+Click', desc: 'Range select' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
@@ -652,7 +698,7 @@ function renderShortcutHelp(): HTMLElement {
 
   const closeBtn = createElement('button', 'pkc-btn-small');
   closeBtn.setAttribute('data-pkc-action', 'close-shortcut-help');
-  closeBtn.textContent = 'Close (Esc / ?)';
+  closeBtn.textContent = 'Close (Esc / Ctrl+?)';
   card.appendChild(closeBtn);
 
   overlay.appendChild(card);
@@ -960,6 +1006,61 @@ function renderExportImportInline(state: AppState): HTMLElement {
     content.appendChild(mixedBtn);
   }
 
+  // Selected-only export — a top-level "share what I'm looking at"
+  // affordance. Enabled only when the current selection points at a
+  // text / textlog entry (the two archetypes that have round-trippable
+  // .text.zip / .textlog.zip bundle formats). Disabled otherwise so
+  // the user gets an inert, labeled button instead of a no-op surprise.
+  const selectedEntry = state.selectedLid
+    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+    : undefined;
+  const selectedShareable = selectedEntry?.archetype === 'text'
+    || selectedEntry?.archetype === 'textlog';
+  const selectedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  selectedBtn.setAttribute('data-pkc-action', 'export-selected-entry');
+  if (selectedShareable && selectedEntry) {
+    const kind = selectedEntry.archetype === 'text' ? 'TEXT' : 'TEXTLOG';
+    selectedBtn.setAttribute(
+      'title',
+      `選択中の ${kind} エントリを単独 ZIP パッケージとしてエクスポート（相手の PKC2 に再インポート可）`,
+    );
+    selectedBtn.textContent = `📤 Selected (${kind})`;
+  } else {
+    (selectedBtn as HTMLButtonElement).disabled = true;
+    selectedBtn.setAttribute(
+      'title',
+      '選択中のエントリを ZIP で個別出力（TEXT / TEXTLOG 選択時のみ有効）',
+    );
+    selectedBtn.textContent = '📤 Selected';
+  }
+  content.appendChild(selectedBtn);
+
+  // Selected-entry HTML clone export. Distinct from the ZIP button
+  // above: that produces a `.text.zip` / `.textlog.zip` for re-import
+  // into another PKC2; this produces a stand-alone `.html` that the
+  // recipient can open without having PKC2 at all. Subset logic
+  // (referenced entries, owned attachments, reachable assets,
+  // ancestor folders) lives in `buildSubsetContainer`. Enabled for
+  // any entry — unlike ZIP bundle formats, the HTML clone does not
+  // require an archetype-specific builder.
+  const selectedHtmlBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  selectedHtmlBtn.setAttribute('data-pkc-action', 'export-selected-entry-html');
+  if (selectedEntry) {
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリと関連アセット / 参照エントリのみを含む自己完結 HTML を生成（相手に PKC2 が不要）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  } else {
+    (selectedHtmlBtn as HTMLButtonElement).disabled = true;
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリのみを含む自己完結 HTML を生成（エントリ選択時のみ有効）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  }
+  content.appendChild(selectedHtmlBtn);
+
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);
@@ -984,6 +1085,20 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
   importTextBtn.textContent = '📥 Text';
   content.appendChild(importTextBtn);
+
+  // Unified single-entry package import — accepts .text.zip OR
+  // .textlog.zip and routes internally based on filename. Sister
+  // affordance to the "📤 Selected" export above, so users who
+  // received a single shared entry don't have to first identify
+  // which archetype they were handed.
+  const importEntryBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importEntryBtn.setAttribute('data-pkc-action', 'import-entry-package');
+  importEntryBtn.setAttribute(
+    'title',
+    '.text.zip または .textlog.zip を自動判別して新規エントリとしてインポート',
+  );
+  importEntryBtn.textContent = '📥 Entry';
+  content.appendChild(importEntryBtn);
 
   // Import batch bundle (container-wide / folder-scoped)
   const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
