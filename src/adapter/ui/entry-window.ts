@@ -1308,6 +1308,18 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* TEXTLOG-scoped markdown density override — see base.css for the
+   rationale. Kept in parity so popped-out TEXTLOG viewers read at
+   the same density as the in-app view. */
+.pkc-textlog-text.pkc-md-rendered { line-height: 1.35; }
+.pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
+.pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
+.pkc-textlog-text p { margin: 0.2em 0; }
+.pkc-textlog-text ul,
+.pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+.pkc-textlog-text li { margin: 0.05em 0; }
+.pkc-textlog-text blockquote { margin: 0.25em 0; }
+.pkc-textlog-text pre { margin: 0.25em 0; }
 
 /* ── Structured editors (textlog / todo / form) ── */
 .pkc-textlog-editor { display: flex; flex-direction: column; gap: 0.5rem; }

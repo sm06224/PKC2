@@ -4150,6 +4150,30 @@
   word-break: break-word;
 }
 
+/* ── TEXTLOG-scoped markdown density override ──
+ *
+ * TEXTLOG bodies render inside a grid of per-log articles with
+ * timestamps, day headers and inter-log borders. The default
+ * .pkc-md-rendered spacing (tuned for a standalone TEXT entry)
+ * reads as loose in that context. Tighten prose line-height,
+ * paragraph / list / blockquote / pre margins ONLY inside a log
+ * body. TEXT entries are untouched — these rules scope on
+ * `.pkc-textlog-text`, which appears only on log-body divs.
+ * See docs/development/textlog-markdown-density.md. */
+.pkc-textlog-text.pkc-md-rendered {
+  /* A hair tighter than the global 1.4. Log entries are usually
+     short; denser line-height pulls the log block together. */
+  line-height: 1.35;
+}
+.pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
+.pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
+.pkc-textlog-text p { margin: 0.2em 0; }
+.pkc-textlog-text ul,
+.pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+.pkc-textlog-text li { margin: 0.05em 0; }
+.pkc-textlog-text blockquote { margin: 0.25em 0; }
+.pkc-textlog-text pre { margin: 0.25em 0; }
+
 .pkc-textlog-empty {
   color: var(--c-muted);
   padding: 1.25rem 0 0.75rem;

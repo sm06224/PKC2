@@ -79,3 +79,104 @@ describe('Slice A: regression guards', () => {
     expect(baseCss).toMatch(/\.pkc-md-rendered\s+li\s*\{\s*margin:\s*0\.15em 0/);
   });
 });
+
+describe('TEXTLOG-scoped markdown density override', () => {
+  // These tests pin TEXTLOG-only tightening (Task G): log bodies
+  // render inside a tight per-log grid, so prose margins/line-height
+  // are pulled in a notch ONLY when scoped by `.pkc-textlog-text`.
+  // TEXT entries (above tests) stay at the current defaults.
+
+  it('.pkc-textlog-text.pkc-md-rendered uses a denser line-height than prose', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35(?!\d)/,
+    );
+  });
+
+  it('first/last child margin reset is present (no stray margin-top on log bodies)', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*>\s*:first-child\s*\{\s*margin-top:\s*0/,
+    );
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*>\s*:last-child\s*\{\s*margin-bottom:\s*0/,
+    );
+  });
+
+  it('TEXTLOG paragraphs use margin 0.2em 0 (tighter than global 0.35em)', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\s+p\s*\{\s*margin:\s*0\.2em 0/,
+    );
+  });
+
+  it('TEXTLOG lists use margin 0.2em 0 and padding-left 1.3em (pulled in)', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\s+ol\s*\{\s*margin:\s*0\.2em 0;\s*padding-left:\s*1\.3em/,
+    );
+  });
+
+  it('TEXTLOG list items margin 0.05em 0 (denser than 0.15em)', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\s+li\s*\{\s*margin:\s*0\.05em 0/,
+    );
+  });
+
+  it('TEXTLOG blockquote / pre margin 0.25em 0', () => {
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\s+blockquote\s*\{\s*margin:\s*0\.25em 0/,
+    );
+    expect(baseCss).toMatch(
+      /\.pkc-textlog-text\s+pre\s*\{\s*margin:\s*0\.25em 0/,
+    );
+  });
+
+  it('TEXT-side base rules remain untouched (no regression)', () => {
+    // Global paragraph margin stays at 0.35em (TEXT density).
+    expect(baseCss).toMatch(/\.pkc-md-rendered\s+p\s*\{\s*margin:\s*0\.35em 0/);
+    // Global li margin stays at 0.15em.
+    expect(baseCss).toMatch(/\.pkc-md-rendered\s+li\s*\{\s*margin:\s*0\.15em 0/);
+    // Global line-height stays at 1.4.
+    const rule = baseCss.match(/\.pkc-md-rendered\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/line-height:\s*1\.4(?!\d)/);
+  });
+});
+
+describe('TEXTLOG density parity across entry-window and rendered-viewer', () => {
+  // Parity guards: the popped entry window and the exported
+  // standalone HTML must carry the same TEXTLOG density rules so
+  // a log reads at identical tightness in every surface.
+  const entryWindow = readFileSync(
+    resolve(__dirname, '../../src/adapter/ui/entry-window.ts'),
+    'utf-8',
+  );
+  const renderedViewer = readFileSync(
+    resolve(__dirname, '../../src/adapter/ui/rendered-viewer.ts'),
+    'utf-8',
+  );
+
+  it('entry-window.ts inlines .pkc-textlog-text.pkc-md-rendered line-height: 1.35', () => {
+    expect(entryWindow).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35/,
+    );
+  });
+
+  it('entry-window.ts tightens log paragraph/list margins', () => {
+    expect(entryWindow).toMatch(/\.pkc-textlog-text\s+p\s*\{\s*margin:\s*0\.2em 0/);
+    expect(entryWindow).toMatch(
+      /\.pkc-textlog-text\s+li\s*\{\s*margin:\s*0\.05em 0/,
+    );
+  });
+
+  it('rendered-viewer.ts inlines the same TEXTLOG-scoped line-height', () => {
+    expect(renderedViewer).toMatch(
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{\s*line-height:\s*1\.35/,
+    );
+  });
+
+  it('rendered-viewer.ts tightens log paragraph and list item margins', () => {
+    expect(renderedViewer).toMatch(
+      /\.pkc-textlog-text\s+p\s*\{\s*margin:\s*0\.2em 0/,
+    );
+    expect(renderedViewer).toMatch(
+      /\.pkc-textlog-text\s+li\s*\{\s*margin:\s*0\.05em 0/,
+    );
+  });
+});

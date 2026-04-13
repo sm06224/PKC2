@@ -237,6 +237,18 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-log-flag { color: #c07000; }
     .pkc-textlog-text > :first-child { margin-top: 0; }
     .pkc-textlog-text > :last-child { margin-bottom: 0; }
+    /* TEXTLOG-scoped markdown density — mirrors base.css. Log
+       articles pack tight, so prose line-height and block margins
+       are pulled in a notch. TEXT entries in the same exported
+       document are unaffected (this selector only matches log
+       bodies). */
+    .pkc-textlog-text.pkc-md-rendered { line-height: 1.35; }
+    .pkc-textlog-text p { margin: 0.2em 0; }
+    .pkc-textlog-text ul,
+    .pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+    .pkc-textlog-text li { margin: 0.05em 0; }
+    .pkc-textlog-text blockquote { margin: 0.25em 0; }
+    .pkc-textlog-text pre { margin: 0.25em 0; }
     @media print {
       body { background: #fff; padding: 0; color: #000; }
       /* Restore A4-ish body width for paper output. Screen gets the
