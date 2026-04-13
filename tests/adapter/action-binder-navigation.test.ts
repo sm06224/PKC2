@@ -727,5 +727,126 @@ describe('ActionBinder — Storage Profile dialog', () => {
     expect(createSpy).not.toHaveBeenCalled();
     createSpy.mockRestore();
   });
+
+  // ── Row → direct-jump to entry ──
+  //
+  // Storage Profile surfaces the heaviest entries. The row itself is a
+  // <button> that dispatches `select-from-storage-profile`, which reuses
+  // SELECT_ENTRY and then removes the overlay — so the user lands on
+  // the entry they just saw in the capacity list.
+
+  function setupJumpContainer() {
+    // Container with one byte-carrying attachment so profile.rows is
+    // non-empty and the row button is actually rendered.
+    const c: Container = {
+      meta: {
+        container_id: 'jump-test', title: 'Jump Test',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+      },
+      entries: [
+        {
+          lid: 'hot-1',
+          title: 'Heavy Entry',
+          body: JSON.stringify({ name: 'big.bin', mime: 'application/octet-stream', asset_key: 'k-hot' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      relations: [],
+      revisions: [],
+      assets: { 'k-hot': 'AAAA' },
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  it('clicking a profile row dispatches SELECT_ENTRY and removes the overlay', () => {
+    const dispatcher = setupJumpContainer();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const rowBtn = root.querySelector<HTMLButtonElement>(
+      'button[data-pkc-action="select-from-storage-profile"][data-pkc-lid="hot-1"]',
+    );
+    expect(rowBtn).not.toBeNull();
+
+    rowBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // SELECT_ENTRY was applied …
+    expect(dispatcher.getState().selectedLid).toBe('hot-1');
+    // … and the overlay is gone, so the user sees the detail view.
+    expect(
+      root.querySelector('[data-pkc-region="storage-profile"]'),
+    ).toBeNull();
+  });
+
+  it('jump click to an unknown lid is a no-op — overlay stays open, selection unchanged', () => {
+    const dispatcher = setupJumpContainer();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const prevLid = dispatcher.getState().selectedLid;
+
+    // Inject a rogue button referencing a lid that does NOT exist —
+    // simulates a stale profile row or a malformed DOM injection.
+    const rogue = document.createElement('button');
+    rogue.setAttribute('data-pkc-action', 'select-from-storage-profile');
+    rogue.setAttribute('data-pkc-lid', 'does-not-exist');
+    const overlay = root.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile"]',
+    )!;
+    overlay.appendChild(rogue);
+
+    rogue.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Selection must not move to a non-existent lid …
+    expect(dispatcher.getState().selectedLid).toBe(prevLid);
+    // … and the overlay must still be on screen so the user can recover.
+    expect(
+      root.querySelector('[data-pkc-region="storage-profile"]'),
+    ).not.toBeNull();
+  });
+
+  it('jump does NOT regress close or Export CSV — all three actions coexist', () => {
+    // Guards against a refactor where one action-binder case swallows
+    // the event from another (e.g. if the jump handler forgot to match
+    // `data-pkc-lid` precisely and intercepted the close / export
+    // clicks). Exercise every action path once in succession.
+    const dispatcher = setupJumpContainer();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Export CSV button is present and functional (spy download).
+    const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="export-storage-profile-csv"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    createSpy.mockRestore();
+    revokeSpy.mockRestore();
+    clickSpy.mockRestore();
+
+    // Close still works after a row is present alongside the export btn.
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="close-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(
+      root.querySelector('[data-pkc-region="storage-profile"]'),
+    ).toBeNull();
+    // Close alone must NOT select anything.
+    expect(dispatcher.getState().selectedLid).not.toBe('hot-1');
+  });
 });
 

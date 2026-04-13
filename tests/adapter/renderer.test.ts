@@ -7424,4 +7424,50 @@ describe('Storage Profile dialog (renderer)', () => {
       overlay.querySelector('[data-pkc-action="export-storage-profile-csv"]'),
     ).toBeNull();
   });
+
+  it('each row mounts a focusable select trigger with data-pkc-action and data-pkc-lid', () => {
+    // The row is a <button> so Enter/Space work natively without a
+    // bespoke keydown handler. `closest('[data-pkc-action]')` in the
+    // binder resolves to this button from any inner span.
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e-hot', 'k-hot', 'Hot')],
+        assets: { 'k-hot': base64Of(1000) },
+      }),
+    );
+    const row = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-row"]',
+    );
+    expect(row).not.toBeNull();
+    const trigger = row!.querySelector<HTMLButtonElement>(
+      'button[data-pkc-action="select-from-storage-profile"]',
+    );
+    expect(trigger).not.toBeNull();
+    expect(trigger!.tagName).toBe('BUTTON');
+    expect(trigger!.getAttribute('data-pkc-lid')).toBe('e-hot');
+    // Rendered text (icon / title / size / detail) lives inside the
+    // button so the entire row surface is the click target.
+    expect(trigger!.textContent).toContain('Hot');
+  });
+
+  it('does not mount a select trigger on the summary or orphan areas', () => {
+    // Only row elements carry a `select-from-storage-profile` action.
+    // Summary and orphan bands have no owner entry to jump to.
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e1', 'k1', 'Alpha')],
+        assets: {
+          k1: base64Of(500),
+          'k-floating': base64Of(200),
+        },
+      }),
+    );
+    const summary = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary).not.toBeNull();
+    expect(
+      summary!.querySelector('[data-pkc-action="select-from-storage-profile"]'),
+    ).toBeNull();
+  });
 });

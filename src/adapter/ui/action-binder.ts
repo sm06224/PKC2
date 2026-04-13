@@ -823,6 +823,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (overlay) overlay.remove();
         break;
       }
+      case 'select-from-storage-profile': {
+        // Direct-jump from the Storage Profile row to the underlying
+        // entry. Read-only: re-uses SELECT_ENTRY; no deletion or
+        // data-model mutation. Overlay is closed only when the entry
+        // still exists — a stale profile (rare: container swap between
+        // render and click) leaves the dialog intact so the user can
+        // recover without losing context.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const exists = st.container.entries.some((entry) => entry.lid === lid);
+        if (!exists) break;
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (overlay) overlay.remove();
+        break;
+      }
       case 'export-storage-profile-csv': {
         // Read-only: compute the profile for the live container, render
         // it as CSV, and trigger a download. No deletion, no mutation,

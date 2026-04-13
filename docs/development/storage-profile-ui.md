@@ -60,6 +60,26 @@ adapter/ui/action-binder.ts
                                            CSV, triggers a Blob download
 ```
 
+## Row → direct-jump to entry
+
+Each row is a real `<button>` with
+`data-pkc-action="select-from-storage-profile"` and
+`data-pkc-lid="<lid>"`. Clicking (or pressing Enter/Space while
+focused) dispatches `SELECT_ENTRY` and removes the overlay so the
+user lands on the entry they just saw in the capacity picture.
+
+Guards:
+
+- No `data-pkc-lid` → no-op.
+- `lid` not found in `container.entries` → no-op, overlay stays open
+  (recovery path: the user can scroll / close manually).
+- Uses the existing `SELECT_ENTRY` action — no new reducer case, no
+  AppState surface change.
+- Folder rows jump to the folder entry (same `SELECT_ENTRY` semantics
+  as clicking a folder in the tree).
+- The summary / orphan areas do NOT carry this action; they have no
+  single owner entry to jump to.
+
 ## CSV export
 
 Read-only persistence of the current profile. The overlay mounts an
@@ -173,6 +193,7 @@ entries.
 | Action `show-storage-profile`           | Launch button               |
 | Action `close-storage-profile`          | Close button inside overlay |
 | Action `export-storage-profile-csv`     | Export CSV button           |
+| Action `select-from-storage-profile`    | Row `<button>` — jump target |
 
 Summary row carries `data-pkc-asset-count` + `data-pkc-total-bytes`.
 Each `storage-profile-row` carries `data-pkc-lid`,
@@ -191,14 +212,19 @@ Each `storage-profile-row` carries `data-pkc-lid`,
   pass-through sort, aggregator-integration round-trip, and
   `storageProfileCsvFilename` zero-padded timestamp format.
 - `tests/adapter/renderer.test.ts` — `buildStorageProfileOverlay`
-  unit coverage (10 tests): hidden-by-render contract, launch
-  button presence + readonly gating, hedged note, close button,
-  summary surfacing, top rows, row attributes, empty container,
-  null container, orphan badge.
-- `tests/adapter/action-binder-navigation.test.ts` — open/close
-  integration (3 tests): launch button mounts the overlay on the
-  root, close button removes it, reopen after close rebuilds a
-  single fresh overlay. Originally deferred because the old
-  monolithic `action-binder.test.ts` had saturated the sandbox
-  memory ceiling; landed after the file was split (see
+  unit coverage: hidden-by-render contract, launch button presence +
+  readonly gating, hedged note, close button, summary surfacing, top
+  rows, row attributes, empty container, null container, orphan
+  badge, Export CSV button gating, row `<button>` carries
+  `select-from-storage-profile` + `data-pkc-lid`, summary has no
+  jump trigger.
+- `tests/adapter/action-binder-navigation.test.ts` — open/close +
+  jump + CSV integration: launch mounts overlay, close removes it,
+  reopen rebuilds fresh, CSV click creates Blob+anchor, empty
+  profile omits CSV + ignores rogue click, row click dispatches
+  `SELECT_ENTRY` and closes overlay, stale/unknown lid is inert and
+  keeps overlay open, three actions coexist without cross-interference.
+  Originally deferred because the old monolithic `action-binder.test.ts`
+  had saturated the sandbox memory ceiling; landed after the file was
+  split (see
   [test-suite-memory-hardening.md](./test-suite-memory-hardening.md)).

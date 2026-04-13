@@ -834,6 +834,18 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     li.setAttribute('data-pkc-archetype', row.archetype);
     li.setAttribute('data-pkc-subtree-bytes', String(row.subtreeBytes));
 
+    // Each row is a real <button> so Enter/Space work without a
+    // bespoke keydown handler. The button carries data-pkc-action +
+    // data-pkc-lid; closest() in action-binder resolves both from any
+    // nested span (icon / title / size / detail).
+    const trigger = createElement('button', 'pkc-storage-profile-row-button');
+    trigger.setAttribute('data-pkc-action', 'select-from-storage-profile');
+    trigger.setAttribute('data-pkc-lid', row.lid);
+    trigger.setAttribute(
+      'title',
+      'Open this entry and close the Storage Profile dialog',
+    );
+
     const head = createElement('span', 'pkc-storage-profile-row-head');
     const icon = createElement('span', 'pkc-storage-profile-row-icon');
     icon.textContent = archetypeIcon(row.archetype);
@@ -847,7 +859,7 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     size.textContent = formatBytes(row.subtreeBytes);
     size.setAttribute('title', `${row.subtreeBytes} bytes`);
     head.appendChild(size);
-    li.appendChild(head);
+    trigger.appendChild(head);
 
     const detail = createElement('span', 'pkc-storage-profile-row-detail');
     const parts: string[] = [];
@@ -862,8 +874,9 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
       parts.push(`largest ${formatBytes(row.largestAssetBytes)}`);
     }
     detail.textContent = parts.join(' · ');
-    li.appendChild(detail);
+    trigger.appendChild(detail);
 
+    li.appendChild(trigger);
     table.appendChild(li);
   }
   section.appendChild(table);
