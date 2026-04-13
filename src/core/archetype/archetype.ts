@@ -3,6 +3,9 @@ import type { ArchetypeId, Entry } from '../model/record';
 /**
  * Archetype interface: defines how an Entry's body is parsed,
  * serialized, and displayed for a given archetype.
+ *
+ * Canonical spec: `docs/spec/body-formats.md` (archetype-specific body contracts)
+ * and `docs/spec/data-model.md` §4 (ArchetypeId enumeration).
  */
 export interface Archetype<TView = unknown> {
   id: ArchetypeId;

@@ -3,6 +3,8 @@ import type { Relation } from './relation';
 
 /**
  * Container metadata. Persistent.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §2.
  */
 export interface ContainerMeta {
   container_id: string;
@@ -21,6 +23,11 @@ export interface ContainerMeta {
 
 /**
  * Revision: tracks a historical snapshot of an Entry. Persistent.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §6.
+ * `snapshot` is `JSON.stringify(Entry)` of the pre-mutation state.
+ * See `parseRevisionSnapshot` in `core/operations/container-ops.ts`
+ * for the parse contract (§6.4).
  */
 export interface Revision {
   id: string;
@@ -33,6 +40,8 @@ export interface Revision {
  * Container: the top-level persistent aggregate.
  * Holds all Entries, Relations, Revisions, and Assets.
  * This is what gets serialized to pkc-data.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §1.
  */
 export interface Container {
   meta: ContainerMeta;

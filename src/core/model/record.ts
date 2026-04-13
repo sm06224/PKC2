@@ -1,5 +1,8 @@
 /**
  * Archetype ID: discriminated union for type-safe dispatch.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §4
+ * Body format per archetype: `docs/spec/body-formats.md`
  */
 export type ArchetypeId =
   | 'text'
@@ -19,6 +22,9 @@ export type ArchetypeId =
  * runtime-only state (selection, editing) belongs in AppState.
  *
  * body is always a string — Archetype layer interprets it.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §3
+ * Body format per archetype: `docs/spec/body-formats.md`
  */
 export interface Entry {
   lid: string;
