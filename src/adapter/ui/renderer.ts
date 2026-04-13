@@ -1006,6 +1006,35 @@ function renderExportImportInline(state: AppState): HTMLElement {
     content.appendChild(mixedBtn);
   }
 
+  // Selected-only export — a top-level "share what I'm looking at"
+  // affordance. Enabled only when the current selection points at a
+  // text / textlog entry (the two archetypes that have round-trippable
+  // .text.zip / .textlog.zip bundle formats). Disabled otherwise so
+  // the user gets an inert, labeled button instead of a no-op surprise.
+  const selectedEntry = state.selectedLid
+    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+    : undefined;
+  const selectedShareable = selectedEntry?.archetype === 'text'
+    || selectedEntry?.archetype === 'textlog';
+  const selectedBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  selectedBtn.setAttribute('data-pkc-action', 'export-selected-entry');
+  if (selectedShareable && selectedEntry) {
+    const kind = selectedEntry.archetype === 'text' ? 'TEXT' : 'TEXTLOG';
+    selectedBtn.setAttribute(
+      'title',
+      `選択中の ${kind} エントリを単独 ZIP パッケージとしてエクスポート（相手の PKC2 に再インポート可）`,
+    );
+    selectedBtn.textContent = `📤 Selected (${kind})`;
+  } else {
+    (selectedBtn as HTMLButtonElement).disabled = true;
+    selectedBtn.setAttribute(
+      'title',
+      '選択中のエントリを ZIP で個別出力（TEXT / TEXTLOG 選択時のみ有効）',
+    );
+    selectedBtn.textContent = '📤 Selected';
+  }
+  content.appendChild(selectedBtn);
+
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);
@@ -1030,6 +1059,20 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
   importTextBtn.textContent = '📥 Text';
   content.appendChild(importTextBtn);
+
+  // Unified single-entry package import — accepts .text.zip OR
+  // .textlog.zip and routes internally based on filename. Sister
+  // affordance to the "📤 Selected" export above, so users who
+  // received a single shared entry don't have to first identify
+  // which archetype they were handed.
+  const importEntryBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  importEntryBtn.setAttribute('data-pkc-action', 'import-entry-package');
+  importEntryBtn.setAttribute(
+    'title',
+    '.text.zip または .textlog.zip を自動判別して新規エントリとしてインポート',
+  );
+  importEntryBtn.textContent = '📥 Entry';
+  content.appendChild(importEntryBtn);
 
   // Import batch bundle (container-wide / folder-scoped)
   const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');

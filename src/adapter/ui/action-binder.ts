@@ -599,6 +599,57 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         triggerZipDownload(built.blob, built.filename);
         break;
       }
+      case 'export-selected-entry': {
+        // "Share what I'm looking at right now" — a top-level Data-menu
+        // affordance that routes the currently selected entry through
+        // the existing single-entry bundle exporters.
+        //
+        // - TEXT   → `.text.zip`    via `buildTextBundle`
+        // - TEXTLOG → `.textlog.zip` via `buildTextlogBundle`
+        // - anything else: no-op + toast (the button is gated in the
+        //   renderer too; this is belt-and-braces against stale state).
+        //
+        // Both targets are round-trippable through the existing
+        // `import-text-bundle` / `import-textlog-bundle` flows, so the
+        // user can hand the ZIP to a peer and the peer can re-hydrate it
+        // into their own PKC2 as a fresh entry (+ attachments). No
+        // reducer change, no new action type, no new file format — this
+        // is pure UI discoverability polish.
+        const st = dispatcher.getState();
+        const selLid = st.selectedLid;
+        if (!selLid || !st.container) {
+          showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
+          break;
+        }
+        const ent = st.container.entries.find((en) => en.lid === selLid);
+        if (!ent) {
+          showToast({ kind: 'info', message: 'Selected entry is no longer available.', autoDismissMs: 2400 });
+          break;
+        }
+        if (ent.archetype !== 'text' && ent.archetype !== 'textlog') {
+          showToast({
+            kind: 'info',
+            message: `Cannot export ${ent.archetype}: only TEXT / TEXTLOG entries are shareable as packages.`,
+            autoDismissMs: 3600,
+          });
+          break;
+        }
+        const built = ent.archetype === 'text'
+          ? buildTextBundle(ent, st.container)
+          : buildTextlogBundle(ent, st.container);
+        if (built.manifest.missing_asset_count > 0) {
+          const msg = [
+            `このエントリには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+            'このまま ZIP を出力しますか？',
+            '',
+            '- assets/ フォルダには欠損キーは含まれません',
+            '- manifest.json の missing_asset_keys に記録されます',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        triggerZipDownload(built.blob, built.filename);
+        break;
+      }
       case 'export-textlogs-container': {
         // Container-wide TEXTLOG export. Bundles all textlog entries
         // in the container into a single ZIP containing individual
