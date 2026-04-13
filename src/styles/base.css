@@ -1408,6 +1408,22 @@
   transform: scale(0.95);
 }
 
+/*
+ * Overlay / dialog focus-visible convergence.
+ *
+ * `.pkc-btn-small` is used as the primary small-button across every
+ * overlay (shell menu close, shortcut help close, Storage Profile
+ * export/close, Data Maintenance buttons, theme toggles, etc.). Before
+ * this rule the small variant silently inherited *no* focus-visible
+ * ring — keyboard users could land on any of these buttons without a
+ * visible signal. Match the canonical `.pkc-btn` pattern so the ring
+ * reads identically in light and dark modes via `--c-accent`.
+ */
+.pkc-btn-small:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
 /* ── Table of Contents (right-pane TOC, A-3) ── */
 .pkc-toc {
   padding: 0.25rem 0;
@@ -2820,6 +2836,19 @@
 
 .pkc-detached-close:active {
   transform: scale(0.85);
+}
+
+/*
+ * Detached-window close button lives outside the `.pkc-btn*` family
+ * (it's an icon-only × with no border in normal state), so it needs
+ * its own focus-visible rule rather than inheriting. Offset 2px to
+ * clear the 1.1rem glyph without clipping; accent color keeps the
+ * ring consistent with the rest of the overlay stack.
+ */
+.pkc-detached-close:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
 }
 
 .pkc-detached-content {
