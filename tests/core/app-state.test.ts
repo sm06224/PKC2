@@ -2051,6 +2051,16 @@ describe('sort', () => {
 });
 
 // ── PASTE_ATTACHMENT ────────────────────────
+//
+// Auto-folder-placement (archetype subfolder pass):
+//   - the attachment inherits the context folder of the pasting entry
+//   - inside that context folder, an `ASSETS` subfolder is created or
+//     reused; the attachment is placed there
+//   - if the context folder itself is titled `ASSETS`, the subfolder
+//     layer is skipped (no nested ASSETS/ASSETS)
+//   - if the context is at root, the attachment lands at root too —
+//     no root-level ASSETS is ever auto-created
+// See docs/development/auto-folder-placement-for-generated-entries.md.
 
 describe('PASTE_ATTACHMENT', () => {
   const pasteAction = {
@@ -2063,52 +2073,40 @@ describe('PASTE_ATTACHMENT', () => {
     contextLid: 'e1',
   };
 
+  function findAttachment(state: AppState) {
+    return state.container!.entries.find(
+      (e) => e.title === 'screenshot.png' && e.archetype === 'attachment',
+    );
+  }
+
   it('creates attachment entry and merges asset without changing phase', () => {
     const s = readyState();
     const { state } = reduce(s, pasteAction);
     expect(state.phase).toBe('ready');
     expect(state.editingLid).toBeNull();
     expect(state.selectedLid).toBe(s.selectedLid);
-    // Asset merged
     expect(state.container!.assets['att-test-001']).toBe('base64data');
-    // Attachment entry created
-    const att = state.container!.entries.find((e) => e.title === 'screenshot.png' && e.archetype === 'attachment');
+    const att = findAttachment(state);
     expect(att).not.toBeUndefined();
     expect(JSON.parse(att!.body).asset_key).toBe('att-test-001');
   });
 
-  it('auto-creates ASSETS folder at root when context entry is at root', () => {
+  it('places the attachment at root when the paste context is at root', () => {
     const s = readyState();
     const { state } = reduce(s, pasteAction);
-    const assetsFolder = state.container!.entries.find(
-      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
-    );
-    expect(assetsFolder).not.toBeUndefined();
-    // ASSETS folder should have no structural parent (root level)
+    const att = findAttachment(state);
     const hasParent = state.container!.relations.some(
-      (r) => r.kind === 'structural' && r.to === assetsFolder!.lid,
+      (r) => r.kind === 'structural' && r.to === att!.lid,
     );
     expect(hasParent).toBe(false);
-  });
-
-  it('places attachment inside ASSETS folder', () => {
-    const s = readyState();
-    const { state } = reduce(s, pasteAction);
-    const assetsFolder = state.container!.entries.find(
+    // No root-level ASSETS auto-create when the context is root.
+    const newAssetsAtRoot = state.container!.entries.filter(
       (e) => e.title === 'ASSETS' && e.archetype === 'folder',
     );
-    const att = state.container!.entries.find(
-      (e) => e.title === 'screenshot.png' && e.archetype === 'attachment',
-    );
-    expect(assetsFolder).not.toBeUndefined();
-    expect(att).not.toBeUndefined();
-    const rel = state.container!.relations.find(
-      (r) => r.kind === 'structural' && r.from === assetsFolder!.lid && r.to === att!.lid,
-    );
-    expect(rel).not.toBeUndefined();
+    expect(newAssetsAtRoot.length).toBe(0);
   });
 
-  it('reuses existing ASSETS folder at root level', () => {
+  it('ignores a pre-existing ASSETS folder at root (no longer special-cased)', () => {
     const containerWithFolder: Container = {
       ...mockContainer,
       entries: [
@@ -2118,15 +2116,21 @@ describe('PASTE_ATTACHMENT', () => {
     };
     const s: AppState = { ...readyState(), container: containerWithFolder };
     const { state } = reduce(s, pasteAction);
-    // Should NOT create a second ASSETS folder
+    // Existing data untouched.
     const assetsFolders = state.container!.entries.filter(
       (e) => e.title === 'ASSETS' && e.archetype === 'folder',
     );
     expect(assetsFolders.length).toBe(1);
-    expect(assetsFolders[0]!.lid).toBe('af1');
+    // The new attachment was NOT routed into it — context was root, so
+    // no auto-placement.
+    const att = findAttachment(state);
+    const intoAssets = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'af1' && r.to === att!.lid,
+    );
+    expect(intoAssets).toBeUndefined();
   });
 
-  it('creates ASSETS folder inside parent when context entry is in a folder', () => {
+  it('creates an ASSETS subfolder inside the context folder and places the attachment there', () => {
     const containerInFolder: Container = {
       ...mockContainer,
       entries: [
@@ -2139,15 +2143,103 @@ describe('PASTE_ATTACHMENT', () => {
     };
     const s: AppState = { ...readyState(), container: containerInFolder };
     const { state } = reduce(s, pasteAction);
-    const assetsFolder = state.container!.entries.find(
+    // An ASSETS folder was lazily created under `parent-f`.
+    const assets = state.container!.entries.find(
       (e) => e.title === 'ASSETS' && e.archetype === 'folder',
     );
-    expect(assetsFolder).not.toBeUndefined();
-    // ASSETS folder should be a child of parent-f
-    const parentRel = state.container!.relations.find(
-      (r) => r.kind === 'structural' && r.from === 'parent-f' && r.to === assetsFolder!.lid,
+    expect(assets).not.toBeUndefined();
+    const parentLinksAssets = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'parent-f' && r.to === assets!.lid,
     );
-    expect(parentRel).not.toBeUndefined();
+    expect(parentLinksAssets).not.toBeUndefined();
+    // The attachment is inside the newly created ASSETS.
+    const att = findAttachment(state);
+    const rel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === assets!.lid && r.to === att!.lid,
+    );
+    expect(rel).not.toBeUndefined();
+  });
+
+  it('reuses an existing ASSETS subfolder rather than creating a duplicate', () => {
+    const containerWithAssets: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'parent-f', title: 'Project', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'existing-assets', title: 'ASSETS', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'parent-f', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'parent-f', to: 'existing-assets', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerWithAssets };
+    const { state } = reduce(s, pasteAction);
+    // No new ASSETS folder — the existing one was reused.
+    const assetsUnderParent = state.container!.relations.filter(
+      (r) =>
+        r.kind === 'structural' &&
+        r.from === 'parent-f' &&
+        state.container!.entries.find(
+          (e) => e.lid === r.to && e.title === 'ASSETS' && e.archetype === 'folder',
+        ),
+    );
+    expect(assetsUnderParent.length).toBe(1);
+    // Attachment lives in the existing ASSETS.
+    const att = findAttachment(state);
+    const rel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'existing-assets' && r.to === att!.lid,
+    );
+    expect(rel).not.toBeUndefined();
+  });
+
+  it('places the attachment directly in the selected folder when the context IS a folder', () => {
+    const containerWithFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'fld', title: 'Project', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerWithFolder };
+    const { state } = reduce(s, { ...pasteAction, contextLid: 'fld' });
+    // Context is `fld` itself (a folder). ASSETS subfolder is created
+    // inside it and the attachment placed there.
+    const assets = state.container!.entries.find(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assets).not.toBeUndefined();
+    const assetsUnderFld = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'fld' && r.to === assets!.lid,
+    );
+    expect(assetsUnderFld).not.toBeUndefined();
+    const att = findAttachment(state);
+    const attRel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === assets!.lid && r.to === att!.lid,
+    );
+    expect(attRel).not.toBeUndefined();
+  });
+
+  it('skips the ASSETS subfolder layer when the context folder is already titled ASSETS', () => {
+    const containerInAssets: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'assets-fld', title: 'ASSETS', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: containerInAssets };
+    const { state } = reduce(s, { ...pasteAction, contextLid: 'assets-fld' });
+    // No nested ASSETS/ASSETS.
+    const assetsFolders = state.container!.entries.filter(
+      (e) => e.title === 'ASSETS' && e.archetype === 'folder',
+    );
+    expect(assetsFolders.length).toBe(1);
+    const att = findAttachment(state);
+    const rel = state.container!.relations.find(
+      (r) => r.kind === 'structural' && r.from === 'assets-fld' && r.to === att!.lid,
+    );
+    expect(rel).not.toBeUndefined();
   });
 
   it('works during editing phase without disrupting edit state', () => {
@@ -2164,15 +2256,30 @@ describe('PASTE_ATTACHMENT', () => {
     expect(state.container!.assets['att-test-001']).toBe('base64data');
   });
 
-  it('emits ENTRY_CREATED and RELATION_CREATED events', () => {
-    const s = readyState();
-    const { events } = reduce(s, pasteAction);
-    const entryCreated = events.filter((e) => e.type === 'ENTRY_CREATED');
-    const relCreated = events.filter((e) => e.type === 'RELATION_CREATED');
-    // At minimum: ASSETS folder creation + attachment creation
-    expect(entryCreated.length).toBeGreaterThanOrEqual(2);
-    // At minimum: attachment → ASSETS folder relation
-    expect(relCreated.length).toBeGreaterThanOrEqual(1);
+  it('emits events matching placement: 1 ENTRY_CREATED at root, 2 + 2 when subfolder is lazily created', () => {
+    // Root context → just the attachment.
+    const sRoot = readyState();
+    const { events: rootEvents } = reduce(sRoot, pasteAction);
+    expect(rootEvents.filter((e) => e.type === 'ENTRY_CREATED').length).toBe(1);
+    expect(rootEvents.filter((e) => e.type === 'RELATION_CREATED').length).toBe(0);
+
+    // Inside-a-folder context with no ASSETS yet → ASSETS folder +
+    // attachment (2 ENTRY_CREATED), plus 2 RELATION_CREATED
+    // (parent→ASSETS, ASSETS→attachment).
+    const containerInFolder: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'parent-f', title: 'Project', body: '', archetype: 'folder', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'parent-f', to: 'e1', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const sFolder: AppState = { ...readyState(), container: containerInFolder };
+    const { events: folderEvents } = reduce(sFolder, pasteAction);
+    expect(folderEvents.filter((e) => e.type === 'ENTRY_CREATED').length).toBe(2);
+    expect(folderEvents.filter((e) => e.type === 'RELATION_CREATED').length).toBe(2);
   });
 
   it('is blocked when readonly', () => {

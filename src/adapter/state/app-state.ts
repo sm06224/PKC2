@@ -23,6 +23,7 @@ import {
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
+import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -267,9 +268,61 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CREATE_ENTRY': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
-      const lid = generateLid();
       const ts = now();
-      const container = addEntry(state.container, lid, action.archetype, action.title, ts);
+      let container = state.container;
+      const events: DomainEvent[] = [];
+
+      // Atomic placement. CREATE_ENTRY transitions into `editing`,
+      // after which CREATE_RELATION / CREATE_ENTRY are blocked — so
+      // any structural parent (and any lazy-created subfolder) must be
+      // wired here. A missing / unknown / non-folder `parentFolder`
+      // silently falls back to root; `ensureSubfolder` is ignored in
+      // that case (we don't auto-create root-level bucket folders).
+      let placementParentLid: string | null = null;
+      if (action.parentFolder) {
+        const parent = container.entries.find((e) => e.lid === action.parentFolder);
+        if (parent && parent.archetype === 'folder') {
+          placementParentLid = parent.lid;
+          // Lazy subfolder resolution: reuse an existing child folder
+          // with the target title if present, otherwise create one in
+          // the same reduction. Skip the layer entirely when the
+          // context folder already carries the target title — avoids
+          // nesting like `TODOS/TODOS`.
+          const sub = action.ensureSubfolder;
+          if (sub && sub.length > 0 && parent.title !== sub) {
+            const existing = findSubfolder(container, parent.lid, sub);
+            if (existing) {
+              placementParentLid = existing;
+            } else {
+              const subLid = generateLid();
+              container = addEntry(container, subLid, 'folder', sub, ts);
+              events.push({ type: 'ENTRY_CREATED', lid: subLid, archetype: 'folder' });
+              const subRelId = generateLid();
+              container = addRelation(container, subRelId, parent.lid, subLid, 'structural', ts);
+              events.push({
+                type: 'RELATION_CREATED', id: subRelId,
+                from: parent.lid, to: subLid, kind: 'structural',
+              });
+              placementParentLid = subLid;
+            }
+          }
+        }
+      }
+
+      const lid = generateLid();
+      container = addEntry(container, lid, action.archetype, action.title, ts);
+      events.push({ type: 'ENTRY_CREATED', lid, archetype: action.archetype });
+
+      if (placementParentLid) {
+        const relId = generateLid();
+        container = addRelation(container, relId, placementParentLid, lid, 'structural', ts);
+        events.push({
+          type: 'RELATION_CREATED', id: relId,
+          from: placementParentLid, to: lid, kind: 'structural',
+        });
+      }
+
+      events.push({ type: 'EDIT_BEGUN', lid });
       const next: AppState = {
         ...state,
         container,
@@ -278,13 +331,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         editingLid: lid,
         viewMode: 'detail',
       };
-      return {
-        state: next,
-        events: [
-          { type: 'ENTRY_CREATED', lid, archetype: action.archetype },
-          { type: 'EDIT_BEGUN', lid },
-        ],
-      };
+      return { state: next, events };
     }
     case 'DELETE_ENTRY': {
       if (state.readonly) return blocked(state, action);
@@ -887,49 +934,40 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const events: DomainEvent[] = [];
       let container = state.container;
 
-      // 1. Find structural parent of contextLid (same level)
-      let parentFolderLid: string | null = null;
-      for (const r of container.relations) {
-        if (r.kind === 'structural' && r.to === action.contextLid) {
-          const parent = container.entries.find((e) => e.lid === r.from);
-          if (parent) { parentFolderLid = parent.lid; break; }
-        }
-      }
+      // Auto-placement: inherit the current context's folder and
+      // route the attachment into an `ASSETS` subfolder inside it. See
+      // docs/development/auto-folder-placement-for-generated-entries.md.
+      const contextFolderLid = resolveAutoPlacementFolder(container, action.contextLid);
 
-      // 2. Find or create ASSETS folder at that level
-      let assetsFolderLid: string | null = null;
-      for (const e of container.entries) {
-        if (e.archetype !== 'folder' || e.title !== 'ASSETS') continue;
-        if (parentFolderLid === null) {
-          // Context is at root — ASSETS folder must also be at root (no structural parent)
-          const hasParent = container.relations.some(
-            (r) => r.kind === 'structural' && r.to === e.lid,
-          );
-          if (!hasParent) { assetsFolderLid = e.lid; break; }
+      // Resolve final placement parent: skip the subfolder layer when
+      // the context is already titled ASSETS; otherwise reuse existing
+      // ASSETS child or create one in the same reduction.
+      let placementParentLid: string | null = null;
+      if (contextFolderLid) {
+        const contextFolder = container.entries.find((e) => e.lid === contextFolderLid);
+        const subName = 'ASSETS';
+        if (contextFolder && contextFolder.title === subName) {
+          placementParentLid = contextFolderLid;
         } else {
-          // Context is inside a folder — ASSETS must be a child of same parent
-          const isChild = container.relations.some(
-            (r) => r.kind === 'structural' && r.from === parentFolderLid && r.to === e.lid,
-          );
-          if (isChild) { assetsFolderLid = e.lid; break; }
+          const existing = findSubfolder(container, contextFolderLid, subName);
+          if (existing) {
+            placementParentLid = existing;
+          } else {
+            const subLid = generateLid();
+            container = addEntry(container, subLid, 'folder', subName, ts);
+            events.push({ type: 'ENTRY_CREATED', lid: subLid, archetype: 'folder' });
+            const subRelId = generateLid();
+            container = addRelation(container, subRelId, contextFolderLid, subLid, 'structural', ts);
+            events.push({
+              type: 'RELATION_CREATED', id: subRelId,
+              from: contextFolderLid, to: subLid, kind: 'structural',
+            });
+            placementParentLid = subLid;
+          }
         }
       }
 
-      if (!assetsFolderLid) {
-        // Create ASSETS folder
-        assetsFolderLid = generateLid();
-        container = addEntry(container, assetsFolderLid, 'folder', 'ASSETS', ts);
-        events.push({ type: 'ENTRY_CREATED', lid: assetsFolderLid, archetype: 'folder' });
-
-        // Place it under the same parent as contextLid
-        if (parentFolderLid) {
-          const relId = generateLid();
-          container = addRelation(container, relId, parentFolderLid, assetsFolderLid, 'structural', ts);
-          events.push({ type: 'RELATION_CREATED', id: relId, from: parentFolderLid, to: assetsFolderLid, kind: 'structural' });
-        }
-      }
-
-      // 3. Create attachment entry (no phase transition)
+      // Create attachment entry (no phase transition).
       const attachmentLid = generateLid();
       const bodyMeta = JSON.stringify({
         name: action.name,
@@ -942,10 +980,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       container = mergeAssets(container, { [action.assetKey]: action.assetData });
       events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
 
-      // 4. Place attachment inside ASSETS folder
-      const attRelId = generateLid();
-      container = addRelation(container, attRelId, assetsFolderLid, attachmentLid, 'structural', ts);
-      events.push({ type: 'RELATION_CREATED', id: attRelId, from: assetsFolderLid, to: attachmentLid, kind: 'structural' });
+      // Place the attachment under the resolved folder. When no
+      // context folder exists (selection at root / unresolved), no
+      // structural relation is added and the attachment lands at root
+      // — preserving the historical root-fallback path and avoiding
+      // any root-level auto-ASSETS bucket.
+      if (placementParentLid) {
+        const attRelId = generateLid();
+        container = addRelation(container, attRelId, placementParentLid, attachmentLid, 'structural', ts);
+        events.push({ type: 'RELATION_CREATED', id: attRelId, from: placementParentLid, to: attachmentLid, kind: 'structural' });
+      }
 
       const next: AppState = { ...state, container };
       return { state: next, events };

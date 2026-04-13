@@ -5,6 +5,7 @@ import {
   extractHeadingsFromMarkdown,
   extractTocFromEntry,
   makeLogLabel,
+  renderStaticTocHtml,
 } from '../../../src/features/markdown/markdown-toc';
 import type { TocNode } from '../../../src/features/markdown/markdown-toc';
 import type { Entry } from '../../../src/core/model/record';
@@ -300,5 +301,69 @@ describe('makeLogLabel', () => {
 
   it('returns the raw ISO string when the timestamp is unparseable', () => {
     expect(makeLogLabel('not-a-date', 'body')).toContain('not-a-date');
+  });
+});
+
+// ── renderStaticTocHtml ──
+
+describe('renderStaticTocHtml', () => {
+  it('returns empty string when there are no nodes', () => {
+    expect(renderStaticTocHtml([])).toBe('');
+  });
+
+  it('emits a <nav class="pkc-toc pkc-toc-preview"> wrapper with a Contents label', () => {
+    const nodes = extractTocFromEntry(makeEntry('text', '# A\n## B'));
+    const html = renderStaticTocHtml(nodes);
+    expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+    expect(html).toContain('>Contents<');
+    expect(html).toContain('data-pkc-region="toc"');
+  });
+
+  it('heading nodes link to #slug (native anchors)', () => {
+    const nodes = extractTocFromEntry(
+      makeEntry('text', '# First Heading\n## Nested'),
+    );
+    const html = renderStaticTocHtml(nodes);
+    expect(html).toContain('href="#first-heading"');
+    expect(html).toContain('href="#nested"');
+    expect(html).toContain('data-pkc-toc-kind="heading"');
+    expect(html).toContain('data-pkc-toc-level="1"');
+    expect(html).toContain('data-pkc-toc-level="2"');
+  });
+
+  it('TEXTLOG day nodes link to #day-<key>, log nodes to #log-<id>', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'l1', text: '# H1', createdAt: '2026-04-10T10:00:00.000Z', flags: [] },
+      ],
+    });
+    const nodes = extractTocFromEntry(makeEntry('textlog', body));
+    const html = renderStaticTocHtml(nodes);
+    const day = nodes.find((n): n is Extract<TocNode, { kind: 'day' }> => n.kind === 'day')!;
+    // dateKey depends on the local TZ of the test runner — assert via
+    // the extracted key rather than a hardcoded value.
+    expect(html).toContain(`href="#day-${day.dateKey}"`);
+    expect(html).toContain('href="#log-l1"');
+    expect(html).toContain('data-pkc-toc-kind="day"');
+    expect(html).toContain('data-pkc-toc-kind="log"');
+    // Headings inside a log use the raw slug (matches markdown-render).
+    expect(html).toContain('href="#h1"');
+  });
+
+  it('HTML-escapes node text so headings cannot inject markup', () => {
+    const nodes = extractTocFromEntry(
+      makeEntry('text', '# <script>alert("x")</script>'),
+    );
+    const html = renderStaticTocHtml(nodes);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('produces a single <ul class="pkc-toc-list"> with one <li> per node', () => {
+    const nodes = extractTocFromEntry(makeEntry('text', '# A\n# B\n# C'));
+    const html = renderStaticTocHtml(nodes);
+    const liCount = (html.match(/<li\s/g) || []).length;
+    expect(liCount).toBe(3);
+    expect(html.match(/<ul class="pkc-toc-list">/g)?.length).toBe(1);
   });
 });

@@ -16,6 +16,7 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { extractTocFromEntry, renderStaticTocHtml } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import {
@@ -580,9 +581,18 @@ function getParentCssVars(): string {
     '--c-bg', '--c-fg', '--c-accent', '--c-accent-dim', '--c-accent-fg',
     '--c-border', '--c-hover', '--c-danger', '--c-muted', '--c-surface',
     '--c-success', '--c-warn', '--c-warn-fg',
+    '--c-text', '--c-text-dim', '--c-info',
     '--font-sans', '--font-mono',
     '--radius', '--radius-lg', '--radius-sm',
     '--shadow-sm', '--glow', '--transition-fast',
+    // Syntax-highlight token colors — forward them so fenced code
+    // blocks inside a popped-out entry window match the main-app
+    // palette (see styles/base.css and
+    // docs/development/markdown-code-block-highlighting.md).
+    '--c-tok-comment', '--c-tok-string', '--c-tok-keyword',
+    '--c-tok-number', '--c-tok-builtin', '--c-tok-variable',
+    '--c-tok-type', '--c-tok-attr', '--c-tok-tag', '--c-tok-meta',
+    '--c-tok-ins', '--c-tok-del', '--c-tok-hunk',
   ];
   const style = getComputedStyle(document.documentElement);
   const lines: string[] = [];
@@ -850,6 +860,10 @@ function buildWindowHtml(
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
+  // Static TOC HTML for TEXT / TEXTLOG — the extractor returns `[]`
+  // for other archetypes so this is just `''` there. Every anchor
+  // is a native `href="#id"` so scroll works without any JS.
+  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry as Entry));
   const parentVars = getParentCssVars();
 
   // Generate archetype-specific editor body for structured types.
@@ -964,6 +978,9 @@ body {
 .pkc-md-rendered {
   font-family: var(--font-sans);
   white-space: normal;
+  /* Pin the same 1.35 baseline as main base.css .pkc-md-rendered,
+     so prose density cannot drift from the center pane. */
+  line-height: 1.35;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
@@ -984,6 +1001,23 @@ body {
   border-radius: 2px; overflow-x: auto; margin: 0.35em 0;
 }
 .pkc-md-rendered pre code { background: none; padding: 0; font-size: 0.8rem; }
+/* Syntax highlight tokens — inherits colors from the main window
+   via getParentCssVars(). Kept in sync with styles/base.css. */
+.pkc-md-rendered pre code .pkc-tok-comment { color: var(--c-tok-comment); font-style: italic; }
+.pkc-md-rendered pre code .pkc-tok-string { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-keyword { color: var(--c-tok-keyword); font-weight: 600; }
+.pkc-md-rendered pre code .pkc-tok-number { color: var(--c-tok-number); }
+.pkc-md-rendered pre code .pkc-tok-builtin { color: var(--c-tok-builtin); }
+.pkc-md-rendered pre code .pkc-tok-variable { color: var(--c-tok-variable); }
+.pkc-md-rendered pre code .pkc-tok-type { color: var(--c-tok-type); }
+.pkc-md-rendered pre code .pkc-tok-attr { color: var(--c-tok-attr); }
+.pkc-md-rendered pre code .pkc-tok-punct { color: var(--c-text-dim); }
+.pkc-md-rendered pre code .pkc-tok-regex { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-tag { color: var(--c-tok-tag); }
+.pkc-md-rendered pre code .pkc-tok-meta { color: var(--c-tok-meta); }
+.pkc-md-rendered pre code .pkc-tok-ins { color: var(--c-tok-ins); }
+.pkc-md-rendered pre code .pkc-tok-del { color: var(--c-tok-del); }
+.pkc-md-rendered pre code .pkc-tok-hunk { color: var(--c-tok-hunk); font-weight: 600; }
 .pkc-md-rendered blockquote {
   border-left: 3px solid var(--c-accent); padding-left: 0.75em;
   margin: 0.35em 0; color: var(--c-muted);
@@ -993,8 +1027,125 @@ body {
 .pkc-md-rendered a { color: var(--c-accent); text-decoration: underline; }
 .pkc-md-rendered table { border-collapse: collapse; margin: 0.35em 0; }
 .pkc-md-rendered th, .pkc-md-rendered td { border: 1px solid var(--c-border); padding: 0.3em 0.5em; }
-/* ── Task checkbox: interactive in view mode, disabled when readonly ── */
-.pkc-task-checkbox { cursor: pointer; }
+/* Two-column view layout with a sticky TOC sidebar.
+   The TOC sidebar pins to the top of the scroll container
+   (.pkc-window-content scrolls, not body), so the outline stays
+   on screen while the reader scrolls through long TEXT / TEXTLOG
+   bodies. Clicking a TOC link uses native anchor scrolling —
+   no JS needed. Falls back to a single column below 640px so
+   the sidebar does not steal horizontal space on narrow windows. */
+#view-pane[data-pkc-has-toc="true"] {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.pkc-toc-sidebar {
+  flex: 0 0 14rem;
+  position: sticky;
+  /* Stick just below the top padding of .pkc-window-content so the
+     TOC header is not clipped by the scroll container's padding. */
+  top: 0.25rem;
+  align-self: flex-start;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+.pkc-toc-sidebar .pkc-toc.pkc-toc-preview {
+  /* Inside the sidebar the nav fills the column and does not need
+     its own bottom margin (the sidebar itself provides the gap). */
+  margin: 0;
+}
+.pkc-viewer-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  #view-pane[data-pkc-has-toc="true"] { flex-direction: column; }
+  .pkc-toc-sidebar {
+    flex: 0 0 auto;
+    position: static;
+    max-height: none;
+    width: 100%;
+  }
+}
+
+/* Preview-surface Table of Contents. Mirrors base.css .pkc-toc
+   so the popped-out preview exposes the same heading / day / log
+   navigation the right pane carries. Anchors are native href to
+   #id, so click scrolls via the browsers default anchor behaviour. */
+.pkc-toc.pkc-toc-preview {
+  padding: 0.35rem 0.5rem;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  font-size: 0.8rem;
+}
+.pkc-toc-preview .pkc-toc-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  margin-bottom: 0.2rem;
+}
+.pkc-toc-preview .pkc-toc-list { list-style: none; margin: 0; padding: 0; }
+.pkc-toc-preview .pkc-toc-item { margin: 0; padding: 0; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.75rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.5rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="4"] { padding-left: 2.25rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="5"] { padding-left: 3rem; }
+.pkc-toc-preview .pkc-toc-link {
+  display: block;
+  padding: 0.08rem 0.25rem;
+  color: var(--c-fg);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+}
+.pkc-toc-preview .pkc-toc-link:hover,
+.pkc-toc-preview .pkc-toc-link:focus-visible {
+  background: var(--c-border);
+  color: var(--c-accent);
+}
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
+  font-weight: 600;
+}
+
+/* ── Task list polish: hanging indent + completed styling.
+   Mirrors base.css .pkc-md-rendered task rules so the popped entry
+   window renders task lists identically to the main pane. */
+.pkc-md-rendered li.pkc-task-item {
+  list-style: none;
+  margin-left: -1.2em;
+  padding-left: 1.5em;
+  position: relative;
+}
+.pkc-md-rendered li.pkc-task-item::marker { content: ''; }
+.pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+.pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+  position: absolute;
+  left: 0.15em;
+  top: 0.3em;
+  margin: 0;
+}
+.pkc-md-rendered .pkc-task-checkbox { cursor: pointer; accent-color: var(--c-accent); }
+.pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item ul,
+.pkc-md-rendered li.pkc-task-item ol { color: var(--c-fg); text-decoration: none; }
 ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacity: 0.6; }' : ''}
 
 /* ── Editor (mirrors center pane) ── */
@@ -1279,6 +1430,23 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* TEXTLOG-scoped markdown density override — see base.css for the
+   rationale. Kept in parity so popped-out TEXTLOG viewers read at
+   the same density as the in-app view. */
+/* Match TEXT density. See base.css for the full rationale —
+   .pkc-textlog-text sets white-space: pre-wrap (for raw logs),
+   but rendered-markdown logs must use white-space: normal or the
+   newlines markdown-it emits between block tags render as blank
+   lines. */
+.pkc-textlog-text.pkc-md-rendered { line-height: 1.35; white-space: normal; }
+.pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
+.pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
+.pkc-textlog-text p { margin: 0.2em 0; }
+.pkc-textlog-text ul,
+.pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+.pkc-textlog-text li { margin: 0.05em 0; }
+.pkc-textlog-text blockquote { margin: 0.25em 0; }
+.pkc-textlog-text pre { margin: 0.25em 0; }
 
 /* ── Structured editors (textlog / todo / form) ── */
 .pkc-textlog-editor { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -1343,13 +1511,23 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
     <!-- View mode (initial state) -->
-    <div id="view-pane">
-      <div class="pkc-view-title-row">
-        <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
-        <span class="pkc-archetype-label">${entry.archetype}</span>
-        <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
+    <!--
+      Two-column layout when a TOC is available: a sticky sidebar on
+      the left (scrolls the TOC itself when it overflows) and the
+      title/body as the main column. When the TOC is empty (archetypes
+      with no index-worthy content, headingless TEXT) the sidebar is
+      omitted entirely and the main column fills the width.
+    -->
+    <div id="view-pane"${tocHtml ? ' data-pkc-has-toc="true"' : ''}>
+      ${tocHtml ? `<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">${tocHtml}</aside>` : ''}
+      <div class="pkc-viewer-main">
+        <div class="pkc-view-title-row">
+          <h2 class="pkc-view-title" id="title-display">${escapedTitle}</h2>
+          <span class="pkc-archetype-label">${entry.archetype}</span>
+          <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
+        </div>
+        <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
       </div>
-      <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
     </div>
 
     <!-- Edit mode (hidden initially) -->

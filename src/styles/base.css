@@ -1044,10 +1044,13 @@
 .pkc-md-rendered {
   font-family: var(--font-body);
   white-space: normal;
-  /* Slice A: slightly tighter than the view-body base (1.5) for better
-     scanning of prose, lists, and task items.
-     See docs/development/ui-readability-and-editor-sizing-hardening.md §3-A. */
-  line-height: 1.45;
+  /* Center-pane prose density. Tightened progressively:
+     1.45 → 1.4 → 1.35. The app body is 1.4 but markdown paragraphs
+     accumulate top/bottom margin on every block-level child, which
+     reads looser than body prose at the same line-height. Pulling
+     the baseline down by 0.05 gives prose the same visual weight
+     as surrounding chrome without losing readability. */
+  line-height: 1.35;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
@@ -1073,9 +1076,10 @@
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 0.35em 0;
-  /* Slice A: tighter line-height for fenced code blocks — code is scanned
-     by structure and benefits from higher information density. */
-  line-height: 1.35;
+  /* Fenced code blocks are scanned by structure and benefit from
+     higher information density than prose. Kept tighter than the
+     prose line-height above. */
+  line-height: 1.3;
 }
 .pkc-md-rendered pre code {
   background: none;
@@ -1106,20 +1110,49 @@
   opacity: 0.85;
 }
 
-/* ── Phase 2: task lists ── */
+/* ── Phase 2: task lists ──
+   Hanging-indent layout: the checkbox is pulled out of the text flow
+   so multi-line wrapped text aligns under the first glyph instead of
+   re-wrapping under the checkbox. Completed state is derived purely
+   from :checked via :has(), so the markdown-it output does not need
+   to know about completion. Both the tight variant (checkbox is a
+   direct child of li) and the loose variant (checkbox nested inside
+   a leading <p>) are covered. */
 .pkc-md-rendered li.pkc-task-item {
   list-style: none;
   margin-left: -1.2em;
-  padding-left: 0;
+  padding-left: 1.5em;
+  position: relative;
 }
 .pkc-md-rendered li.pkc-task-item::marker {
   content: '';
 }
+.pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+.pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+  position: absolute;
+  left: 0.15em;
+  top: 0.3em;
+  margin: 0;
+}
 .pkc-md-rendered .pkc-task-checkbox {
-  margin-right: 0.35em;
-  vertical-align: -0.08em;
   cursor: pointer;
   accent-color: var(--c-accent);
+}
+/* Completed state: line-through + mild dim. Scoped so nested child
+   lists (ul/ol inside a completed li) stay at the normal color —
+   otherwise completing a parent visually strikes all subtasks too. */
+.pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+  color: var(--c-muted);
+  text-decoration: line-through;
+}
+.pkc-md-rendered li.pkc-task-item ul,
+.pkc-md-rendered li.pkc-task-item ol {
+  color: var(--c-fg);
+  text-decoration: none;
 }
 /* Edit preview: checkboxes are non-interactive (edit the source instead) */
 .pkc-text-edit-preview .pkc-task-checkbox {
@@ -1148,6 +1181,91 @@
 .pkc-md-rendered pre code[class*="language-"] {
   display: block;
 }
+
+/* ── Fenced code block syntax highlighting ──
+   Token classes are emitted by features/markdown/code-highlight.ts.
+   Colors are bound to per-theme CSS variables so dark (PIP-Boy) and
+   light (parchment) themes remain consistent with the rest of the
+   UI. No single color is hard-coded — every token references the
+   existing palette or a token-specific alias defined on `:root`.
+   See docs/development/markdown-code-block-highlighting.md. */
+:root {
+  --c-tok-comment: var(--c-text-dim);
+  --c-tok-string: #d49a3b;
+  --c-tok-keyword: var(--c-accent);
+  --c-tok-number: #c8a6ff;
+  --c-tok-builtin: #6ec1ff;
+  --c-tok-variable: #ff9a4a;
+  --c-tok-type: #4ad9b0;
+  --c-tok-attr: #e0c068;
+  --c-tok-tag: var(--c-accent);
+  --c-tok-meta: var(--c-text-dim);
+  --c-tok-ins: #6fbf73;
+  --c-tok-del: #e06060;
+  --c-tok-hunk: var(--c-info);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --c-tok-comment: #7a6e55;
+    --c-tok-string: #8a5a00;
+    --c-tok-keyword: #1a6b35;
+    --c-tok-number: #5d3c9a;
+    --c-tok-builtin: #0f4c81;
+    --c-tok-variable: #a83f00;
+    --c-tok-type: #117260;
+    --c-tok-attr: #6a5400;
+    --c-tok-tag: #1a6b35;
+    --c-tok-meta: #6b6558;
+    --c-tok-ins: #1e7a36;
+    --c-tok-del: #a01a1a;
+    --c-tok-hunk: #1f3c91;
+  }
+}
+#pkc-root[data-pkc-theme="light"] {
+  --c-tok-comment: #7a6e55;
+  --c-tok-string: #8a5a00;
+  --c-tok-keyword: #1a6b35;
+  --c-tok-number: #5d3c9a;
+  --c-tok-builtin: #0f4c81;
+  --c-tok-variable: #a83f00;
+  --c-tok-type: #117260;
+  --c-tok-attr: #6a5400;
+  --c-tok-tag: #1a6b35;
+  --c-tok-meta: #6b6558;
+  --c-tok-ins: #1e7a36;
+  --c-tok-del: #a01a1a;
+  --c-tok-hunk: #1f3c91;
+}
+#pkc-root[data-pkc-theme="dark"] {
+  --c-tok-comment: var(--c-text-dim);
+  --c-tok-string: #d49a3b;
+  --c-tok-keyword: var(--c-accent);
+  --c-tok-number: #c8a6ff;
+  --c-tok-builtin: #6ec1ff;
+  --c-tok-variable: #ff9a4a;
+  --c-tok-type: #4ad9b0;
+  --c-tok-attr: #e0c068;
+  --c-tok-tag: var(--c-accent);
+  --c-tok-meta: var(--c-text-dim);
+  --c-tok-ins: #6fbf73;
+  --c-tok-del: #e06060;
+  --c-tok-hunk: var(--c-info);
+}
+.pkc-md-rendered pre code .pkc-tok-comment { color: var(--c-tok-comment); font-style: italic; }
+.pkc-md-rendered pre code .pkc-tok-string { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-keyword { color: var(--c-tok-keyword); font-weight: 600; }
+.pkc-md-rendered pre code .pkc-tok-number { color: var(--c-tok-number); }
+.pkc-md-rendered pre code .pkc-tok-builtin { color: var(--c-tok-builtin); }
+.pkc-md-rendered pre code .pkc-tok-variable { color: var(--c-tok-variable); }
+.pkc-md-rendered pre code .pkc-tok-type { color: var(--c-tok-type); }
+.pkc-md-rendered pre code .pkc-tok-attr { color: var(--c-tok-attr); }
+.pkc-md-rendered pre code .pkc-tok-punct { color: var(--c-text-dim); }
+.pkc-md-rendered pre code .pkc-tok-regex { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-tag { color: var(--c-tok-tag); }
+.pkc-md-rendered pre code .pkc-tok-meta { color: var(--c-tok-meta); }
+.pkc-md-rendered pre code .pkc-tok-ins { color: var(--c-tok-ins); }
+.pkc-md-rendered pre code .pkc-tok-del { color: var(--c-tok-del); }
+.pkc-md-rendered pre code .pkc-tok-hunk { color: var(--c-tok-hunk); font-weight: 600; }
 
 /* ── Non-image asset chips ──
    Rendered by the asset resolver when the markdown source contains a
@@ -4062,6 +4180,41 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── TEXTLOG-scoped markdown density override ──
+ *
+ * TEXTLOG bodies render inside a grid of per-log articles with
+ * timestamps, day headers and inter-log borders. The default
+ * .pkc-md-rendered spacing (tuned for a standalone TEXT entry)
+ * reads as loose in that context. Tighten prose line-height,
+ * paragraph / list / blockquote / pre margins ONLY inside a log
+ * body. TEXT entries are untouched — these rules scope on
+ * `.pkc-textlog-text`, which appears only on log-body divs.
+ * See docs/development/textlog-markdown-density.md. */
+.pkc-textlog-text.pkc-md-rendered {
+  /* A hair tighter than the global .pkc-md-rendered (1.35). Log
+     entries are usually short; denser line-height pulls the log
+     block together and keeps TEXTLOG visibly denser than TEXT. */
+  line-height: 1.35;
+  /* CRITICAL density fix: `.pkc-textlog-text` sets
+     `white-space: pre-wrap` (so that plain-text logs preserve
+     newlines). When the log body goes through the markdown
+     renderer, `pre-wrap` also preserves the `\n` characters
+     markdown-it emits between block tags (`</p>\n<p>…`), which
+     show up as BLANK LINES between paragraphs and read as
+     dramatically looser prose than TEXT. Pin `normal` here so
+     rendered-markdown logs match TEXT density. Plain-text logs
+     (no `.pkc-md-rendered`) keep `pre-wrap` untouched. */
+  white-space: normal;
+}
+.pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
+.pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
+.pkc-textlog-text p { margin: 0.2em 0; }
+.pkc-textlog-text ul,
+.pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+.pkc-textlog-text li { margin: 0.05em 0; }
+.pkc-textlog-text blockquote { margin: 0.25em 0; }
+.pkc-textlog-text pre { margin: 0.25em 0; }
 
 .pkc-textlog-empty {
   color: var(--c-muted);

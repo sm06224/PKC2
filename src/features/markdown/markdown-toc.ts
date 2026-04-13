@@ -214,6 +214,51 @@ export function extractTocFromEntry(entry: Entry): TocNode[] {
 }
 
 /**
+ * Render a TocNode list as a self-contained static HTML string for
+ * standalone preview surfaces (entry-window popped preview, exported
+ * rendered-viewer HTML). Callers that already build DOM (the main-app
+ * center pane) keep using `renderTocSection` in the renderer.
+ *
+ * Every item is a native `<a href="#target">` so scroll works without
+ * any inline JS. Jump targets:
+ *
+ *   - `heading` → `#<slug>` — stamped on h1/h2/h3 by markdown-render.
+ *   - `day`     → `#day-<dateKey>` (or `#day-undated`) — emitted on
+ *                 `<section class="pkc-textlog-day">` by the textlog
+ *                 document builders.
+ *   - `log`     → `#log-<id>` — emitted on `<article class="pkc-textlog-log">`.
+ *
+ * Returns `''` when `nodes` is empty so callers can conditionally
+ * include the section with a truthiness check.
+ */
+export function renderStaticTocHtml(nodes: readonly TocNode[]): string {
+  if (nodes.length === 0) return '';
+  const esc = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const items = nodes
+    .map((n) => {
+      const href = n.kind === 'heading' ? `#${n.slug}` : `#${n.targetId}`;
+      return (
+        `<li class="pkc-toc-item" data-pkc-toc-kind="${n.kind}"` +
+        ` data-pkc-toc-level="${n.level}">` +
+        `<a class="pkc-toc-link" href="${esc(href)}">${esc(n.text)}</a>` +
+        `</li>`
+      );
+    })
+    .join('');
+  return (
+    `<nav class="pkc-toc pkc-toc-preview" data-pkc-region="toc">` +
+    `<span class="pkc-toc-label">Contents</span>` +
+    `<ul class="pkc-toc-list">${items}</ul>` +
+    `</nav>`
+  );
+}
+
+/**
  * Build the short label shown for a `log` node in the TOC.
  *
  * Uses the first non-empty line of the log body (trimmed and truncated

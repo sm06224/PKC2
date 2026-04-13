@@ -192,6 +192,42 @@ describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
   });
 });
 
+// ── Screen-first prose density ──
+// Rendered viewer previously ran at `body { line-height: 1.65 }` which
+// users read as "too airy" on screen. The density pass aligns it with
+// the main app (body 1.4 / `.pkc-md-rendered` 1.4) and pins
+// `article.pkc-viewer-body` to 1.4 explicitly so it cannot drift.
+describe('buildRenderedViewerHtml — prose density', () => {
+  it('body line-height is tightened toward the main-app baseline', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    // The body rule should carry a screen line-height below the old
+    // 1.65. Pin 1.5 directly — this is the documented screen value.
+    const bodyRule = html.match(/\n\s*body\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(bodyRule).toMatch(/line-height:\s*1\.5(?!\d)/);
+    // And the old looser value must not re-appear at body scope.
+    expect(bodyRule).not.toMatch(/line-height:\s*1\.65/);
+  });
+
+  it('article.pkc-viewer-body pins line-height 1.35 to match the main app', () => {
+    // Tightened alongside the main-app .pkc-md-rendered baseline
+    // (1.4 → 1.35). Keeps exported HTML at the same density as the
+    // live center pane.
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    expect(html).toMatch(
+      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.35(?!\d)[^}]*\}/,
+    );
+  });
+
+  it('print block loosens the body article to 1.5 for paper breathing room', () => {
+    const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
+    const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/);
+    expect(printBlock).not.toBeNull();
+    expect(printBlock![0]).toMatch(
+      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.5(?!\d)[^}]*\}/,
+    );
+  });
+});
+
 // ── Screen-first width policy ──
 // See the width-policy comment block above the `style` template in
 // `src/adapter/ui/rendered-viewer.ts` for the design rationale.
@@ -216,5 +252,101 @@ describe('buildRenderedViewerHtml — screen-first body width', () => {
     const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/);
     expect(printBlock).not.toBeNull();
     expect(printBlock![0]).toMatch(/main\s*\{\s*max-width:\s*48rem;?\s*\}/);
+  });
+});
+
+// ── Table of Contents in exported preview ──
+// Both TEXT and TEXTLOG entries must carry a static <nav class="pkc-toc
+// pkc-toc-preview"> at the top of the exported HTML so readers can jump
+// to headings (TEXT) or day / log / heading layers (TEXTLOG) without
+// any JavaScript — anchors are native href="#id".
+describe('buildRenderedViewerHtml — Table of Contents', () => {
+  it('emits pkc-toc-preview nav for a TEXT entry with h1/h2/h3', () => {
+    const html = buildRenderedViewerHtml(
+      textEntry('# Alpha\n\n## Beta\n\n### Gamma\n\nbody'),
+      baseContainer(),
+    );
+    expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+    expect(html).toContain('data-pkc-region="toc"');
+    expect(html).toContain('>Contents<');
+    expect(html).toContain('href="#alpha"');
+    expect(html).toContain('href="#beta"');
+    expect(html).toContain('href="#gamma"');
+  });
+
+  it('emits day / log anchors for a TEXTLOG entry', () => {
+    const html = buildRenderedViewerHtml(textlogEntry(), baseContainer());
+    expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+    // textlogEntry() logs are dated 2026-04-09.
+    expect(html).toContain('href="#day-2026-04-09"');
+    expect(html).toContain('href="#log-log-1"');
+    expect(html).toContain('href="#log-log-2"');
+  });
+
+  it('omits the TOC section entirely for an entry with no TOC-producing content', () => {
+    // An attachment archetype produces no headings / logs, so the TOC
+    // helper returns '' and the nav must not appear.
+    const container = baseContainer({
+      entries: [
+        {
+          lid: 'att',
+          title: 'photo',
+          body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 10, asset_key: 'a1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { a1: 'AAAA' },
+    });
+    const attEntry: Entry = {
+      lid: 'att',
+      title: 'photo',
+      body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 10, asset_key: 'a1' }),
+      archetype: 'attachment',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    const html = buildRenderedViewerHtml(attEntry, container);
+    // CSS declarations mentioning the class still ship; what must be
+    // absent is the actual <nav> element (checked via the class attr).
+    expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+  });
+
+  it('omits the TOC section for a TEXT entry with no headings', () => {
+    const html = buildRenderedViewerHtml(textEntry('just body with **no** headings'), baseContainer());
+    expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+  });
+
+  // ── Sticky sidebar layout ──
+  // When a TOC exists, the viewer wraps the body in a flex layout
+  // with an <aside class="pkc-toc-sidebar"> so readers can always
+  // see / jump to the outline while scrolling.
+  it('wraps TEXT-with-TOC in a pkc-viewer-layout + sticky aside', () => {
+    const html = buildRenderedViewerHtml(
+      textEntry('# A\n\n## B\n\nbody'),
+      baseContainer(),
+    );
+    expect(html).toContain('<div class="pkc-viewer-layout">');
+    expect(html).toMatch(
+      /<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">/,
+    );
+    // The CSS rule pinning position:sticky on the sidebar must be present.
+    expect(html).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*sticky/);
+    // A narrow-viewport media query collapses the layout back to one column.
+    expect(html).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[^}]*\.pkc-viewer-layout\s*\{\s*flex-direction:\s*column/);
+  });
+
+  it('does NOT wrap a no-TOC TEXT entry in pkc-viewer-layout', () => {
+    const html = buildRenderedViewerHtml(textEntry('headingless body'), baseContainer());
+    expect(html).not.toContain('<div class="pkc-viewer-layout">');
+    expect(html).not.toContain('pkc-toc-sidebar" data-pkc-region="toc-sidebar"');
+  });
+
+  it('collapses the sidebar in @media print so the TOC prints as a front index', () => {
+    const html = buildRenderedViewerHtml(textlogEntry(), baseContainer());
+    const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+    expect(printBlock).toMatch(/\.pkc-viewer-layout\s*\{\s*display:\s*block/);
+    expect(printBlock).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*static/);
   });
 });

@@ -33,6 +33,10 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import {
+  extractTocFromEntry,
+  renderStaticTocHtml,
+} from '../../features/markdown/markdown-toc';
+import {
   resolveAssetReferences,
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
@@ -58,6 +62,9 @@ export function buildRenderedViewerHtml(
   const title = escapeForHtml(entry.title || '(untitled)');
   const archetypeLabel = entry.archetype === 'textlog' ? 'Textlog' : 'Text';
   const bodyHtml = buildBodyHtml(entry, container);
+  // Static TOC HTML for TEXT / TEXTLOG. Empty string for other
+  // archetypes. Native-anchor navigation — no JS needed.
+  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry));
   const exportedAt = new Date().toISOString();
   const filename = buildDownloadFilename(entry, exportedAt);
 
@@ -85,9 +92,16 @@ export function buildRenderedViewerHtml(
                    "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
       background: #fafafa;
       color: #222;
-      line-height: 1.65;
+      /* Prose density aligned with the main app (which runs at 1.4 body
+         / 1.4 .pkc-md-rendered). The previous 1.65 felt loose, read by
+         users as "A4-print-optimised" even on screen. Print below can
+         loosen slightly for paper breathing room. */
+      line-height: 1.5;
       padding: 2.5rem 1.5rem;
     }
+    /* Explicitly pin the rendered markdown density so it cannot drift
+       from the main-app .pkc-md-rendered baseline if body changes. */
+    article.pkc-viewer-body { line-height: 1.35; }
     main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
       border-bottom: 1px solid #ddd;
@@ -152,6 +166,26 @@ export function buildRenderedViewerHtml(
       padding: 0.08em 0.36em;
       border-radius: 3px;
     }
+    /* Syntax highlight tokens — print-safe shades that stay legible
+       on both screen and paper. Kept self-contained here because the
+       exported HTML is a standalone document without access to the
+       main app's theme variables. See
+       docs/development/markdown-code-block-highlighting.md. */
+    article.pkc-viewer-body pre code .pkc-tok-comment { color: #6a737d; font-style: italic; }
+    article.pkc-viewer-body pre code .pkc-tok-string { color: #8a5a00; }
+    article.pkc-viewer-body pre code .pkc-tok-keyword { color: #1a6b35; font-weight: 600; }
+    article.pkc-viewer-body pre code .pkc-tok-number { color: #5d3c9a; }
+    article.pkc-viewer-body pre code .pkc-tok-builtin { color: #0f4c81; }
+    article.pkc-viewer-body pre code .pkc-tok-variable { color: #a83f00; }
+    article.pkc-viewer-body pre code .pkc-tok-type { color: #117260; }
+    article.pkc-viewer-body pre code .pkc-tok-attr { color: #6a5400; }
+    article.pkc-viewer-body pre code .pkc-tok-punct { color: #586069; }
+    article.pkc-viewer-body pre code .pkc-tok-regex { color: #8a5a00; }
+    article.pkc-viewer-body pre code .pkc-tok-tag { color: #1a6b35; }
+    article.pkc-viewer-body pre code .pkc-tok-meta { color: #6a737d; }
+    article.pkc-viewer-body pre code .pkc-tok-ins { color: #1e7a36; }
+    article.pkc-viewer-body pre code .pkc-tok-del { color: #a01a1a; }
+    article.pkc-viewer-body pre code .pkc-tok-hunk { color: #1f3c91; font-weight: 600; }
     article.pkc-viewer-body img { max-width: 100%; height: auto; }
     article.pkc-viewer-body blockquote {
       border-left: 4px solid #ccc;
@@ -210,14 +244,150 @@ export function buildRenderedViewerHtml(
     .pkc-textlog-log-flag { color: #c07000; }
     .pkc-textlog-text > :first-child { margin-top: 0; }
     .pkc-textlog-text > :last-child { margin-bottom: 0; }
+    /* TEXTLOG-scoped markdown density — mirrors base.css. Log
+       articles pack tight; the big density fix here is flipping
+       white-space back to normal so markdown-it inter-block
+       newlines do not render as literal blank lines between
+       paragraphs (which was making TEXTLOG feel far looser than
+       TEXT). TEXT entries in the same exported document are
+       unaffected — this selector only matches log bodies. */
+    .pkc-textlog-text.pkc-md-rendered { line-height: 1.35; white-space: normal; }
+    .pkc-textlog-text p { margin: 0.2em 0; }
+    .pkc-textlog-text ul,
+    .pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
+    .pkc-textlog-text li { margin: 0.05em 0; }
+    .pkc-textlog-text blockquote { margin: 0.25em 0; }
+    .pkc-textlog-text pre { margin: 0.25em 0; }
+    /* Task list polish: hanging-indent + completed styling. Mirrors
+       base.css but uses hardcoded colors because the exported
+       standalone HTML does not carry the runtime theme variables. */
+    .pkc-md-rendered li.pkc-task-item {
+      list-style: none;
+      margin-left: -1.2em;
+      padding-left: 1.5em;
+      position: relative;
+    }
+    .pkc-md-rendered li.pkc-task-item::marker { content: ''; }
+    .pkc-md-rendered li.pkc-task-item > .pkc-task-checkbox,
+    .pkc-md-rendered li.pkc-task-item > p:first-child > .pkc-task-checkbox:first-child {
+      position: absolute;
+      left: 0.15em;
+      top: 0.3em;
+      margin: 0;
+    }
+    .pkc-md-rendered .pkc-task-checkbox { pointer-events: none; cursor: default; }
+    .pkc-md-rendered li.pkc-task-item:has(> .pkc-task-checkbox:checked) {
+      color: #777;
+      text-decoration: line-through;
+    }
+    .pkc-md-rendered li.pkc-task-item:has(> p:first-child > .pkc-task-checkbox:checked) > p:first-child {
+      color: #777;
+      text-decoration: line-through;
+    }
+    .pkc-md-rendered li.pkc-task-item ul,
+    .pkc-md-rendered li.pkc-task-item ol { color: #222; text-decoration: none; }
+    /* Two-column layout with a sticky TOC sidebar.
+       The sidebar pins to the top of the viewport so the outline
+       stays visible while the reader scrolls through long bodies.
+       Body is the scroll container (no intermediate overflow box)
+       so position: sticky works against the window viewport.
+       Below 720px the layout collapses to a single column and the
+       TOC returns to a top-of-document block. */
+    .pkc-viewer-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+    .pkc-toc-sidebar {
+      flex: 0 0 16rem;
+      position: sticky;
+      top: 1rem;
+      align-self: flex-start;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+    }
+    .pkc-toc-sidebar .pkc-toc.pkc-toc-preview { margin: 0; }
+    .pkc-viewer-main { flex: 1 1 auto; min-width: 0; }
+    @media (max-width: 720px) {
+      .pkc-viewer-layout { flex-direction: column; }
+      .pkc-toc-sidebar {
+        flex: 0 0 auto;
+        position: static;
+        max-height: none;
+        width: 100%;
+      }
+    }
+    /* Preview-surface Table of Contents — print-safe, standalone
+       colours (no main-app theme vars in exported HTML). */
+    .pkc-toc.pkc-toc-preview {
+      padding: 0.5rem 0.75rem;
+      margin: 0 0 1.25rem;
+      border: 1px solid #d8d2c2;
+      border-radius: 4px;
+      background: #fbf9f1;
+      font-size: 0.88rem;
+    }
+    .pkc-toc-preview .pkc-toc-label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #6a604a;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .pkc-toc-preview .pkc-toc-list { list-style: none; margin: 0; padding: 0; }
+    .pkc-toc-preview .pkc-toc-item { margin: 0; padding: 0; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.9rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.8rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="4"] { padding-left: 2.7rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="5"] { padding-left: 3.6rem; }
+    .pkc-toc-preview .pkc-toc-link {
+      display: block;
+      padding: 0.1rem 0.3rem;
+      color: #222;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 2px;
+    }
+    .pkc-toc-preview .pkc-toc-link:hover,
+    .pkc-toc-preview .pkc-toc-link:focus-visible {
+      background: #ece6d5;
+      color: #1a6b35;
+    }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+      color: #6a604a;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.78rem;
+    }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
+      font-weight: 600;
+    }
     @media print {
       body { background: #fff; padding: 0; color: #000; }
       /* Restore A4-ish body width for paper output. Screen gets the
          wider clamp above; print keeps the original 48rem measure so
          saved PDFs / physical prints lay out predictably. */
       main { max-width: 48rem; }
+      /* Paper tolerates a touch more breathing room than screen.
+         Keeps print output close to its historical appearance while
+         the screen default stays dense. */
+      article.pkc-viewer-body { line-height: 1.5; }
       header.pkc-viewer-header { border-bottom-color: #000; }
       .pkc-viewer-toolbar { display: none; }
+      /* Keep the TOC in printed output — it doubles as an index
+         page for long exports. Drop the background tint so it
+         prints cleanly on white paper. */
+      .pkc-toc.pkc-toc-preview { background: transparent; border-color: #000; }
+      /* Print collapses the two-column layout so the TOC prints
+         as a front-of-document index and the body flows normally
+         across pages. Sticky + column flow behave badly in print. */
+      .pkc-viewer-layout { display: block; }
+      .pkc-toc-sidebar {
+        position: static;
+        max-height: none;
+        width: 100%;
+        margin-bottom: 1rem;
+      }
       .pkc-textlog-day { break-inside: avoid; }
       .pkc-textlog-log { break-inside: avoid; }
     }
@@ -271,9 +441,22 @@ export function buildRenderedViewerHtml(
     `<h1>${title}</h1>`,
     `<div class="pkc-viewer-meta">${archetypeLabel} · rendered view (read-only)</div>`,
     '</header>',
-    '<article class="pkc-viewer-body pkc-md-rendered">',
-    bodyHtml,
-    '</article>',
+    // Two-column layout when a TOC is present: sticky sidebar on
+    // the left, content on the right. When the TOC is empty (e.g.
+    // a headingless TEXT body) the wrapper collapses and the
+    // article fills the column — no empty sidebar shows up.
+    tocHtml
+      ? '<div class="pkc-viewer-layout">'
+        + `<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">${tocHtml}</aside>`
+        + '<div class="pkc-viewer-main">'
+        + '<article class="pkc-viewer-body pkc-md-rendered">'
+        + bodyHtml
+        + '</article>'
+        + '</div>'
+        + '</div>'
+      : '<article class="pkc-viewer-body pkc-md-rendered">'
+        + bodyHtml
+        + '</article>',
     '</main>',
     `<script data-pkc-viewer-script>${script}</script>`,
     '</body>',

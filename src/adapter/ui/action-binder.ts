@@ -29,6 +29,7 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
 import { buildSubsetContainer } from '../../features/container/build-subset';
+import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -217,17 +218,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Text';
-        // Determine context folder: if currently selected entry is a folder, or
-        // if currently selected entry is inside a folder, use that as parent
+        // Explicit context from a "+ New" button inside a folder row.
+        // When present, it always wins — the user asked specifically
+        // for that folder.
         const contextFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
-        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: arch, title });
-        // After creation, place the new entry in the context folder
-        if (contextFolder) {
-          const newState = dispatcher.getState();
-          if (newState.selectedLid) {
-            dispatcher.dispatch({ type: 'CREATE_RELATION', from: contextFolder, to: newState.selectedLid, kind: 'structural' });
-          }
-        }
+        // Auto-placement is opt-in per archetype: incidental objects
+        // (todo, attachment) inherit the caller's folder context so
+        // they stop scattering across root, and are further routed
+        // into an archetype-specific subfolder (TODOS / ASSETS) inside
+        // that context. Primary documents (text, textlog, folder,
+        // form) keep the "root unless explicit" rule.
+        const subfolderName = getSubfolderNameForArchetype(arch);
+        const preState = dispatcher.getState();
+        const autoPlacementFolder =
+          !contextFolder && subfolderName && preState.container
+            ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
+            : null;
+        // Placement (parent + subfolder) must be passed atomically
+        // into CREATE_ENTRY: CREATE_ENTRY transitions into `editing`
+        // phase, where follow-up CREATE_RELATION / CREATE_ENTRY would
+        // be blocked by the reducer.
+        const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
+        const ensureSubfolder =
+          parentFolder && subfolderName ? subfolderName : undefined;
+        dispatcher.dispatch({
+          type: 'CREATE_ENTRY',
+          archetype: arch,
+          title,
+          parentFolder,
+          ensureSubfolder,
+        });
         break;
       }
       case 'delete-entry':
@@ -2629,7 +2649,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const ref = `![${name}](asset:${assetKey})`;
         const newValue = currentValue.slice(0, cursorPos) + ref + currentValue.slice(cursorPos);
 
-        // Dispatch PASTE_ATTACHMENT — creates attachment + ASSETS folder.
+        // Dispatch PASTE_ATTACHMENT — creates the attachment and
+        // auto-places it under the context folder (no dedicated
+        // ASSETS folder any more; see
+        // docs/development/auto-folder-placement-for-generated-entries.md).
         // This triggers synchronous re-render which replaces the textarea
         // in the DOM, making the old reference stale.
         dispatcher.dispatch({

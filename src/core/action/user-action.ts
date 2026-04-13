@@ -23,7 +23,35 @@ export type UserAction =
   | { type: 'BEGIN_EDIT'; lid: string }
   | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string; assets?: Record<string, string> }
   | { type: 'CANCEL_EDIT' }
-  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string }
+  /**
+   * CREATE_ENTRY — create a new entry and (optionally) place it under
+   * a structural parent folder, possibly routed through a lazily
+   * created subfolder.
+   *
+   * Contract:
+   * - Creates the entry, selects it, and moves to `editing` phase.
+   * - When `parentFolder` is a valid folder lid in the current
+   *   container, a structural relation (`parentFolder → new lid`) is
+   *   added in the same reduction and a `RELATION_CREATED` event is
+   *   emitted. Missing / unknown / non-folder ids silently fall back
+   *   to root placement — the caller is expected to pre-resolve.
+   * - When `ensureSubfolder` is a non-empty title AND `parentFolder`
+   *   resolves to a real folder, the reducer looks for an existing
+   *   child folder of `parentFolder` with exactly that title. If
+   *   found, the new entry is placed inside it. If not found, a new
+   *   folder with that title is created under `parentFolder` in the
+   *   same reduction and the new entry is placed inside it. If
+   *   `parentFolder` itself already has title === `ensureSubfolder`,
+   *   the subfolder layer is skipped (no nested `TODOS/TODOS`).
+   * - When `parentFolder` does not resolve (root fallback),
+   *   `ensureSubfolder` is ignored — incidentals at root are still
+   *   allowed to land at root, we don't auto-create root-level
+   *   bucket folders.
+   * - Atomic placement matters here because CREATE_ENTRY itself moves
+   *   the state machine into `editing`, where follow-up
+   *   CREATE_RELATION / CREATE_ENTRY would be blocked.
+   */
+  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string; ensureSubfolder?: string }
   | { type: 'DELETE_ENTRY'; lid: string }
   | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
@@ -118,10 +146,18 @@ export type UserAction =
    * - Blocked when readonly or container is absent.
    * - Creates a new attachment entry with the given asset data.
    * - Merges the asset into container.assets.
-   * - Auto-creates an "ASSETS" folder as a sibling of contextLid if
-   *   one does not already exist, and places the attachment in it.
+   * - Places the attachment under an `ASSETS` subfolder of the
+   *   resolved context folder (or under the context folder itself if
+   *   it is already titled `ASSETS`). The context folder is
+   *   `resolveAutoPlacementFolder(container, contextLid)`. If no
+   *   `ASSETS` child exists under the context folder, one is created
+   *   in the same reduction. When no context folder resolves
+   *   (selection at root / unresolved), the attachment lands at root
+   *   — no root-level `ASSETS` is auto-created. See
+   *   docs/development/auto-folder-placement-for-generated-entries.md.
    * - Does NOT change phase, editingLid, or selectedLid.
-   * - Emits ENTRY_CREATED + RELATION_CREATED events.
+   * - Emits ENTRY_CREATED; RELATION_CREATED only when a target folder
+   *   is resolved.
    */
   | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string }
   /**

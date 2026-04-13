@@ -49,7 +49,9 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
  * like `data-pkc-ew-preview-type` as literal strings.
  */
 function extractBodyView(html: string): string {
-  const start = html.indexOf('<div id="view-pane">');
+  // Accept either `<div id="view-pane">` or `<div id="view-pane" …>`
+  // (the TOC-sidebar layout adds `data-pkc-has-toc` after `id=`).
+  const start = html.indexOf('<div id="view-pane"');
   if (start < 0) return html;
   const end = html.indexOf('<div id="edit-pane"', start);
   return html.slice(start, end < 0 ? html.length : end);
@@ -2843,6 +2845,95 @@ describe('Entry Window', () => {
       const match = html.match(/\.pkc-window-content\s*\{[^}]*\}/)?.[0] ?? '';
       expect(match).toContain('display: flex');
       expect(match).toContain('flex-direction: column');
+    });
+  });
+
+  // ── Table of Contents in popped preview ──
+  // The popped "More..." window now emits a static <nav class="pkc-toc
+  // pkc-toc-preview"> at the top of the view pane so readers can jump
+  // to headings (TEXT) or day/log/heading layers (TEXTLOG). The TOC is
+  // omitted when an entry has no TOC-producing content (attachment,
+  // todo, form, headingless text), since an empty nav would be noise.
+  describe('Table of Contents in popped preview', () => {
+    it('emits pkc-toc-preview nav for a TEXT entry with headings', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: '# Alpha\n\n## Beta\n\n### Gamma\n\nbody',
+      });
+      expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+      expect(html).toContain('data-pkc-region="toc"');
+      expect(html).toContain('href="#alpha"');
+      expect(html).toContain('href="#beta"');
+      expect(html).toContain('href="#gamma"');
+    });
+
+    it('emits day / log anchors for a TEXTLOG entry', async () => {
+      const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+      const body = serializeTextlogBody({
+        entries: [
+          { id: 'log-a', text: 'first', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          { id: 'log-b', text: 'second', createdAt: '2026-04-10T11:00:00Z', flags: [] },
+        ],
+      });
+      const html = await openAndCapture(false, { archetype: 'textlog', body });
+      expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+      expect(html).toContain('href="#day-2026-04-09"');
+      expect(html).toContain('href="#day-2026-04-10"');
+      expect(html).toContain('href="#log-log-a"');
+      expect(html).toContain('href="#log-log-b"');
+    });
+
+    it('omits the TOC section for a TEXT entry with no headings', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: 'just body with **no** headings',
+      });
+      // CSS declarations referencing the class still ship; check for
+      // the actual <nav> via its class attribute.
+      expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+    });
+
+    it('omits the TOC section for an attachment entry', async () => {
+      const attBody = JSON.stringify({ name: 'a.pdf', mime: 'application/pdf', size: 100, asset_key: 'k' });
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+    });
+
+    it('includes pkc-toc-preview CSS block so the nav is styled', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# Title' });
+      expect(html).toContain('.pkc-toc.pkc-toc-preview');
+      expect(html).toContain('.pkc-toc-preview .pkc-toc-link');
+    });
+
+    // ── Sticky sidebar layout ──
+    // The popped view wraps the TOC in an <aside class="pkc-toc-sidebar">
+    // that uses position:sticky so readers can jump back to the outline
+    // at any scroll position. CSS is scoped via
+    // `#view-pane[data-pkc-has-toc="true"]` so only TOC-bearing archetypes
+    // get the flex layout; no-TOC entries keep the original single-column.
+    it('wraps the view pane in a flex layout with aside sidebar when TOC is present', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# A\n\n## B' });
+      expect(html).toContain('<div id="view-pane" data-pkc-has-toc="true">');
+      expect(html).toContain('<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">');
+      expect(html).toContain('<div class="pkc-viewer-main">');
+      // The sticky / sidebar CSS block must be inlined.
+      expect(html).toMatch(/#view-pane\[data-pkc-has-toc="true"\]\s*\{[^}]*display:\s*flex/);
+      expect(html).toMatch(/\.pkc-toc-sidebar\s*\{[^}]*position:\s*sticky/);
+    });
+
+    it('does NOT add the data-pkc-has-toc attribute when there is no TOC', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: 'plain body' });
+      // The CSS block references the attribute selector by string;
+      // check for the actual element attribute form instead.
+      expect(html).toContain('<div id="view-pane">');
+      expect(html).not.toContain('<div id="view-pane" data-pkc-has-toc');
+      // And no sidebar <aside> should be emitted.
+      expect(html).not.toContain('<aside class="pkc-toc-sidebar"');
+    });
+
+    it('collapses to a single column under narrow viewports via media query', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# A' });
+      expect(html).toMatch(/@media\s*\(max-width:\s*640px\)\s*\{[^}]*#view-pane\[data-pkc-has-toc="true"\]\s*\{\s*flex-direction:\s*column/);
     });
   });
 });
