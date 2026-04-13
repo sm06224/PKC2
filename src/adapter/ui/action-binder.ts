@@ -1313,8 +1313,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
-    // ? key: toggle shortcut help (only when not editing text)
-    if (e.key === '?' && state.phase !== 'editing') {
+    // Ctrl+? / ⌘+?: toggle shortcut help. A bare `?` used to open the
+    // overlay, but that collides with normal text entry (especially in
+    // IMEs and markdown editing where `?` is a common character) —
+    // requiring a modifier makes the shortcut opt-in and safe to press
+    // while typing. Still guarded by phase !== 'editing' for parity
+    // with the previous behavior.
+    if (
+      (e.ctrlKey || e.metaKey)
+      && e.key === '?'
+      && state.phase !== 'editing'
+    ) {
+      e.preventDefault();
       const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
       if (helpOverlay) helpOverlay.style.display = helpOverlay.style.display === 'none' ? '' : 'none';
       return;

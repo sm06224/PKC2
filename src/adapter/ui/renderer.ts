@@ -663,7 +663,7 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
     { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
-    { key: '?', desc: 'Toggle this help' },
+    { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
     { key: 'Shift+Click', desc: 'Range select' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
@@ -698,7 +698,7 @@ function renderShortcutHelp(): HTMLElement {
 
   const closeBtn = createElement('button', 'pkc-btn-small');
   closeBtn.setAttribute('data-pkc-action', 'close-shortcut-help');
-  closeBtn.textContent = 'Close (Esc / ?)';
+  closeBtn.textContent = 'Close (Esc / Ctrl+?)';
   card.appendChild(closeBtn);
 
   overlay.appendChild(card);

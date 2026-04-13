@@ -2613,3 +2613,67 @@ describe('Calendar keyboard navigation (Phase 1)', () => {
   });
 });
 
+// ─── Shortcut-help toggle (Ctrl+?) ────────────────────────────
+describe('Shortcut help overlay: Ctrl+? toggle', () => {
+  function setupHelp() {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher };
+  }
+
+  function overlay() {
+    return root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+  }
+
+  it('bare `?` does NOT open the shortcut help overlay', () => {
+    setupHelp();
+    expect(overlay()!.style.display).toBe('none');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+
+    // still hidden — plain `?` must not disturb typing
+    expect(overlay()!.style.display).toBe('none');
+  });
+
+  it('Ctrl+? opens the overlay, Ctrl+? again closes it', () => {
+    setupHelp();
+    expect(overlay()!.style.display).toBe('none');
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
+    );
+    expect(overlay()!.style.display).toBe('');
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
+    );
+    expect(overlay()!.style.display).toBe('none');
+  });
+
+  it('⌘+? opens the overlay (mac)', () => {
+    setupHelp();
+    expect(overlay()!.style.display).toBe('none');
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '?', metaKey: true, shiftKey: true, bubbles: true }),
+    );
+    expect(overlay()!.style.display).toBe('');
+  });
+
+  it('Ctrl+? is inert while in editing phase (keeps typing uninterrupted)', () => {
+    const { dispatcher } = setupHelp();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
+    );
+
+    expect(overlay()!.style.display).toBe('none');
+  });
+});

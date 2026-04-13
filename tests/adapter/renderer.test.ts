@@ -6549,6 +6549,12 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Escape');
     expect(overlay!.textContent).toContain('multi-select');
     expect(overlay!.textContent).toContain('Range select');
+    // Help-overlay toggle is now Ctrl+? / ⌘+? (bare `?` was removed so
+    // it stops hijacking ordinary text input). See
+    // `action-binder-keyboard.test.ts › Shortcut help overlay` for the
+    // keydown behavior; here we just pin the visible label.
+    expect(overlay!.textContent).toContain('Ctrl+? / ⌘+?');
+    expect(overlay!.textContent).toContain('Close (Esc / Ctrl+?)');
     // Contains date/time shortcut group and entries
     expect(overlay!.textContent).toContain('Date/Time (edit mode)');
     expect(overlay!.textContent).toContain('Ctrl+;');
