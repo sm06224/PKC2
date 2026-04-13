@@ -240,7 +240,7 @@ function buildEmbedSection(
 
   if (parsed.kind === 'entry') {
     if (target.archetype === 'todo') {
-      renderTodoEmbed(body, target);
+      renderTodoEmbed(body, target, ctx);
     } else {
       renderEntryEmbed(body, target, ctx);
     }
@@ -319,21 +319,31 @@ function renderEntryEmbed(
 }
 
 /**
- * Render a TODO entry embed. Slice 2 keeps the description as raw text
- * so Slice 3 (markdown化) can swap the description path without
- * touching this DOM scaffold.
+ * Render a TODO entry embed.
  *
  * DOM contract:
- *   <div class="pkc-transclusion-body">
+ *   <div class="pkc-transclusion-body pkc-todo-embed">
  *     <div class="pkc-todo-embed-meta">
  *       <span class="pkc-todo-embed-status" data-pkc-todo-status="open|done">[ ]</span>
  *       <span class="pkc-todo-embed-date" ?>2026-04-20</span>
  *       <span class="pkc-todo-embed-archived" ?>Archived</span>
  *     </div>
- *     <div class="pkc-todo-embed-description">…raw text…</div>
+ *     <div class="pkc-todo-embed-description (pkc-md-rendered)?">…</div>
  *   </div>
+ *
+ * Slice 3: description is now markdown-rendered when it contains
+ * markdown syntax (headings, lists, entry/asset refs, transclusions)
+ * — matching the live TODO presenter. Plain single-line descriptions
+ * keep the lightweight textContent path so layout stays compact.
+ * The nested `expandTransclusions` call runs with `embedded: true` and
+ * extends the `embedChain` so a description that embeds another entry
+ * is cut by the same cycle/depth guard as TEXT / TEXTLOG embeds.
  */
-function renderTodoEmbed(body: HTMLElement, target: Entry): void {
+function renderTodoEmbed(
+  body: HTMLElement,
+  target: Entry,
+  ctx: TransclusionContext,
+): void {
   body.classList.add('pkc-todo-embed');
   const todo = parseTodoBody(target.body ?? '');
 
@@ -363,13 +373,30 @@ function renderTodoEmbed(body: HTMLElement, target: Entry): void {
   body.appendChild(meta);
 
   if (todo.description.trim().length > 0) {
-    // Slice 2: description is rendered as raw text (textContent) so
-    // the visual matches the live todo-presenter. Slice 3 swaps this
-    // single call to `renderMarkdown` without changing the surrounding
-    // DOM. Keep the wrapper class stable so CSS survives that switch.
+    let source = todo.description;
+    if (ctx.assets && ctx.mimeByKey && hasAssetReferences(source)) {
+      source = resolveAssetReferences(source, {
+        assets: ctx.assets,
+        mimeByKey: ctx.mimeByKey,
+        nameByKey: ctx.nameByKey,
+      });
+    }
     const desc = document.createElement('div');
     desc.className = 'pkc-todo-embed-description';
-    desc.textContent = todo.description;
+    if (hasMarkdownSyntax(source)) {
+      desc.classList.add('pkc-md-rendered');
+      desc.innerHTML = renderMarkdown(source);
+      stripSubtreeIds(desc);
+      disableSubtreeTaskCheckboxes(desc);
+      expandTransclusions(desc, {
+        ...ctx,
+        hostLid: target.lid,
+        embedded: true,
+        embedChain: extendEmbedChain(ctx.embedChain, ctx.hostLid, target.lid),
+      });
+    } else {
+      desc.textContent = todo.description;
+    }
     body.appendChild(desc);
   }
 }

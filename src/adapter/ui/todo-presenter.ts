@@ -7,13 +7,25 @@ import {
   isTodoPastDue,
 } from '../../features/todo/todo-body';
 import type { TodoBody } from '../../features/todo/todo-body';
+import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import {
+  resolveAssetReferences,
+  hasAssetReferences,
+} from '../../features/markdown/asset-resolver';
+import { expandTransclusions } from './transclusion';
 
 // Re-export from features layer so existing adapter-internal consumers keep working.
 export { parseTodoBody, serializeTodoBody, formatTodoDate, isTodoPastDue };
 export type { TodoBody };
 
 export const todoPresenter: DetailPresenter = {
-  renderBody(entry: Entry): HTMLElement {
+  renderBody(
+    entry: Entry,
+    assets?: Record<string, string>,
+    mimeByKey?: Record<string, string>,
+    nameByKey?: Record<string, string>,
+    entries?: Entry[],
+  ): HTMLElement {
     const todo = parseTodoBody(entry.body);
     const container = document.createElement('div');
     container.className = 'pkc-todo-view';
@@ -52,10 +64,9 @@ export const todoPresenter: DetailPresenter = {
     }
 
     if (todo.description) {
-      const desc = document.createElement('span');
-      desc.className = 'pkc-todo-description';
-      desc.textContent = todo.description;
-      right.appendChild(desc);
+      right.appendChild(
+        renderTodoDescription(todo.description, entry, assets, mimeByKey, nameByKey, entries),
+      );
     }
 
     container.appendChild(right);
@@ -133,3 +144,52 @@ export const todoPresenter: DetailPresenter = {
     return serializeTodoBody({ status, description, date, archived });
   },
 };
+
+/**
+ * Render the TODO description for view mode.
+ *
+ * Slice 3: description now goes through the same markdown pipeline as
+ * TEXT bodies when the content contains markdown syntax (asset refs,
+ * entry refs, headings, lists, etc.). Plain single-line descriptions
+ * keep the lightweight `<span>` path so they don't gain `<p>` wrappers
+ * or block-level spacing.
+ *
+ * DOM contract:
+ *   plain  → <span class="pkc-todo-description">…</span>
+ *   md     → <div class="pkc-todo-description pkc-md-rendered">…</div>
+ *
+ * The editor path is unchanged — `renderEditorBody` still emits a
+ * textarea over the raw description string.
+ */
+function renderTodoDescription(
+  description: string,
+  entry: Entry,
+  assets?: Record<string, string>,
+  mimeByKey?: Record<string, string>,
+  nameByKey?: Record<string, string>,
+  entries?: Entry[],
+): HTMLElement {
+  let source = description;
+  if (assets && mimeByKey && hasAssetReferences(source)) {
+    source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
+  }
+  if (hasMarkdownSyntax(source)) {
+    const desc = document.createElement('div');
+    desc.className = 'pkc-todo-description pkc-md-rendered';
+    desc.innerHTML = renderMarkdown(source);
+    if (entries) {
+      expandTransclusions(desc, {
+        entries,
+        assets,
+        mimeByKey,
+        nameByKey,
+        hostLid: entry.lid,
+      });
+    }
+    return desc;
+  }
+  const desc = document.createElement('span');
+  desc.className = 'pkc-todo-description';
+  desc.textContent = description;
+  return desc;
+}

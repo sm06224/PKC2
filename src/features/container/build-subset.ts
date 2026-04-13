@@ -11,14 +11,16 @@
  *
  *   1. The root entry is always included.
  *   2. Every `entry:<lid>` reference in a TEXT body, a TEXTLOG log
- *      entry's text, or a TODO description (including transclusion
- *      `![](entry:lid)` and link `[label](entry:lid)` forms, plus any
- *      fragment variant) pulls the target entry into the subset,
- *      recursively. TODO description scanning was added in P1 Slice 2
- *      so the closure remains correct once Slice 3 switches the
- *      description render path to markdown.
+ *      entry's text, a TODO description, or a FOLDER description
+ *      (including transclusion `![](entry:lid)` and link
+ *      `[label](entry:lid)` forms, plus any fragment variant) pulls
+ *      the target entry into the subset, recursively. TODO description
+ *      scanning was added in P1 Slice 2 and FOLDER description
+ *      scanning in P1 Slice 3, matching the markdown render surfaces
+ *      on the viewer side.
  *   3. Every `asset:<key>` reference in a TEXT body, a TEXTLOG log
- *      entry's text, or a TODO description contributes the key.
+ *      entry's text, a TODO description, or a FOLDER description
+ *      contributes the key.
  *      Attachment entries whose `asset_key` matches a contributed key
  *      are pulled into the subset too so the recipient keeps MIME /
  *      display-name metadata.
@@ -239,6 +241,14 @@ function collectScannableBodies(entry: Entry): string[] {
   if (entry.archetype === 'todo') {
     const parsed = parseTodoBody(entry.body);
     return parsed.description.length > 0 ? [parsed.description] : [];
+  }
+  if (entry.archetype === 'folder') {
+    // Folder descriptions are plain strings (no JSON wrapper) per
+    // `adapter/ui/folder-presenter.ts`. Slice 3 markdown-renders the
+    // body in the viewer, so any `entry:` / `asset:` refs in it must
+    // close the subset too. The regex-based extractors tolerate
+    // non-markdown input and simply return an empty set.
+    return typeof entry.body === 'string' && entry.body.length > 0 ? [entry.body] : [];
   }
   return [];
 }

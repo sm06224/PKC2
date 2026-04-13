@@ -199,23 +199,35 @@ slice 3 で TODO description が markdown になると、そこに `entry:<lid>`
 これにより、slice 3 で description を markdown render に切り替えた瞬間、
 subset closure も clone export も「description 内の ref」を正しく追跡できる。
 
-## 5. TODO / FOLDER description の markdown 化 (slice 3)
+## 5. TODO / FOLDER description の markdown 化 (slice 3、**実装済**)
 
 ### 5.1 TODO description
 
-- `todo-presenter` の viewer path で `renderMarkdown(todoBody.description)`
-  に切り替える
+- `todo-presenter.ts::renderBody` の description 描画に
+  `renderDescription` ヘルパを導入。`hasMarkdownSyntax(source)` がヒット
+  したときのみ `<div class="pkc-todo-description pkc-md-rendered">` に
+  切り替え、plain 1 行は従来どおり `<span class="pkc-todo-description">`
+  のまま。
+- markdown パスでは `resolveAssetReferences` → `renderMarkdown` →
+  `expandTransclusions` を走らせる。description 内の
+  `![x](entry:<lid>)` は depth ≤ 1 の規則どおり、live view では
+  1 段の embed が作れるが、TODO embed の中 (`renderTodoEmbed`) では
+  `embedded: true` + `embedChain` が引き継がれて `depth` / `cycle`
+  placeholder になる。
 - editor は textarea 維持 (raw markdown 文字列を編集)
-- save 時は raw markdown 文字列として `TodoBody.description` に保存。
-  **既存 schema 変更なし**。
-- 既存 plain text は markdown として render しても意味が変わらないはず
-  (heading / list 記法を意図せず含まない前提)。test で pin する。
+- `TodoBody.description` schema 変更なし。
 
 ### 5.2 FOLDER description
 
-- `folder-presenter` の viewer path を同様に差し替え
-- editor は textarea 維持
-- embed 対象化は slice 3 には含めない (link は従来通り)
+- `folder-presenter.ts::renderBody` を同様に差し替え。markdown 検出時
+  は `<div class="pkc-view-body pkc-md-rendered">`、plain の場合は
+  従来の `<pre class="pkc-view-body">` を維持。
+- editor は textarea 維持。
+- embed 対象化は slice 3 には含めない (folder を `![](entry:...)` の
+  target にしたときは引き続き link fallback `reason="archetype"`)。
+- `buildSubsetContainer.collectScannableBodies` に FOLDER branch を
+  追加 (body 文字列をそのまま scan)。folder description の `entry:` /
+  `asset:` 参照は HTML-clone export の closure に含まれる。
 
 ### 5.3 既存データ互換性
 
@@ -228,12 +240,15 @@ markdown 化により見た目が変わり得る文字列:
 - URL → 自動 linkify
 - `*bold*` / `_italic_` → 強調
 
-既存 plain text で上記記法を **意図せず**含むケースへの対策:
+**方針** (Slice 3 で採用済):
 
-- slice 3 投入前に、開発環境で container snapshot を scan して影響エントリ
-  数を見積もる (dev-only task、production migration は含まない)
-- 影響が 1% 未満と判定されたら素直に markdown 化する
-- 影響が大きい場合のみ、opt-in の escape option を別途検討 (v1 では無し)
+- migration は行わない。raw 文字列は editor の textarea で従来どおり
+  保存され、viewer だけが markdown render するので破壊的ではない。
+- `hasMarkdownSyntax()` が false を返す plain 1 行 (例:「Buy milk」)
+  は従来 DOM (`<span>` / `<pre>`) を維持する。これにより regression
+  を最小化。
+- 衝突が問題になる場合のみ、opt-in escape option を別 slice で検討
+  (現時点では未着手)。
 
 ### 5.4 標準 HTML エクスポートへの影響
 

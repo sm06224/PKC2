@@ -640,6 +640,122 @@ describe('expandTransclusions — TODO embed (Slice 2)', () => {
     expect(blocked).not.toBeNull();
     expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('self');
   });
+
+  // ── Slice 3: TODO description is markdown-rendered in the embed ──
+
+  it('TODO embed description with markdown syntax is rendered as markdown', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '# Heading\n\n- first\n- second',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const desc = root.querySelector('.pkc-todo-embed-description');
+    expect(desc).not.toBeNull();
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(true);
+    expect(desc!.querySelector('h1')).not.toBeNull();
+    expect(desc!.querySelectorAll('li').length).toBe(2);
+  });
+
+  it('TODO embed with plain description keeps textContent path (no pkc-md-rendered class)', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'write report' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const desc = root.querySelector('.pkc-todo-embed-description');
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(false);
+    expect(desc!.textContent).toBe('write report');
+  });
+
+  it('entry: ref inside a TODO embed description becomes a blocked placeholder (depth ≤ 1)', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '# T\n\nsee ![x](entry:other)',
+      }),
+      {
+        lid: 'other',
+        archetype: 'text',
+        title: 'Other',
+        body: 'body',
+        created_at: '',
+        updated_at: '',
+      },
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const outer = root.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:t1"]');
+    expect(outer).not.toBeNull();
+    // Inner embed is depth 2 — must be blocked, not recursed.
+    expect(
+      outer!.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:other"]'),
+    ).toBeNull();
+    const blocked = outer!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('depth');
+  });
+
+  it('cycle via TODO description (host → A-todo → host) is classified as "cycle"', () => {
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+      makeTodoEntry('A', {
+        status: 'open',
+        description: '# back\n\n![x](entry:host)',
+      }, 'A'),
+    ];
+    const root = makeBodyEl('![](entry:A)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const a = root.querySelector('section[data-pkc-embed-source="entry:A"]');
+    expect(a).not.toBeNull();
+    const blocked = a!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('cycle');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:host');
+  });
+
+  it('task checkboxes inside a TODO embed description are disabled + marked embedded', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '- [ ] subtask\n- [x] done',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const inputs = root.querySelectorAll<HTMLInputElement>('.pkc-todo-embed-description input.pkc-task-checkbox');
+    expect(inputs.length).toBe(2);
+    for (const cb of Array.from(inputs)) {
+      expect(cb.hasAttribute('disabled')).toBe(true);
+      expect(cb.getAttribute('data-pkc-embedded')).toBe('true');
+    }
+  });
+
+  it('asset: reference inside a TODO embed description resolves to a data URL', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: 'check ![pic](asset:ast-1)',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, {
+      entries,
+      hostLid: 'host',
+      assets: { 'ast-1': 'AAAA' },
+      mimeByKey: { 'ast-1': 'image/png' },
+    });
+    const img = root.querySelector('.pkc-todo-embed-description img');
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+  });
 });
 
 // ─────────────────────────────────────────────────────
