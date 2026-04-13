@@ -34,7 +34,31 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
+import { render, renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
+import {
+  beginSelection as beginTextlogSelection,
+  cancelSelection as cancelTextlogSelection,
+  toggleLogSelection as toggleTextlogLogSelection,
+  isSelectionModeActive as isTextlogSelectionModeActive,
+  getActiveSelectionLid as getActiveTextlogSelectionLid,
+  getSelectedLogIds as getSelectedTextlogLogIds,
+} from './textlog-selection';
+import {
+  openTextlogPreviewModal,
+  closeTextlogPreviewModal,
+  getTextlogPreviewTitle,
+  getTextlogPreviewBody,
+  isTextlogPreviewModalOpen,
+} from './textlog-preview-modal';
+import { textlogToText } from '../../features/textlog/textlog-to-text';
+import {
+  openTextToTextlogModal,
+  closeTextToTextlogModal,
+  setTextToTextlogSplitMode,
+  getTextToTextlogCommitData,
+  isTextToTextlogModalOpen,
+} from './text-to-textlog-modal';
+import type { TextToTextlogSplitMode } from '../../features/text/text-to-textlog';
 import {
   buildStorageProfile,
   formatStorageProfileCsv,
@@ -411,6 +435,114 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const log = parseTextlogBody(ent.body);
         const updated = serializeTextlogBody(deleteLogEntry(log, logId));
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        break;
+      }
+      // ── Slice 4: TEXTLOG → TEXT conversion ────────────
+      case 'begin-textlog-selection': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        beginTextlogSelection(lid);
+        // Full viewer re-render so the toolbar + per-log checkboxes
+        // reflect the freshly-entered mode. No dispatch is emitted
+        // because selection is local UI state, not reducer state.
+        render(dispatcher.getState(), root);
+        break;
+      }
+      case 'cancel-textlog-selection': {
+        cancelTextlogSelection();
+        closeTextlogPreviewModal();
+        render(dispatcher.getState(), root);
+        break;
+      }
+      case 'open-textlog-to-text-preview': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        if (!isTextlogSelectionModeActive(lid)) break;
+        const selection = getSelectedTextlogLogIds();
+        if (selection.size === 0) break;
+        const result = textlogToText(ent, selection);
+        openTextlogPreviewModal(root, {
+          title: result.title,
+          body: result.body,
+          emittedCount: result.emittedCount,
+          skippedEmptyCount: result.skippedEmptyCount,
+          sourceLid: ent.lid,
+        });
+        break;
+      }
+      case 'cancel-textlog-to-text': {
+        // Close the modal but keep the selection-mode state so the
+        // user can tweak their selection and open preview again
+        // without losing checked boxes.
+        closeTextlogPreviewModal();
+        break;
+      }
+      case 'confirm-textlog-to-text': {
+        const srcLid = target.getAttribute('data-pkc-source-lid') ?? '';
+        if (!srcLid) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const title = getTextlogPreviewTitle();
+        const body = getTextlogPreviewBody();
+        if (title === null || body === null) break;
+        // Spec §2.3: new TEXT entry via existing CREATE_ENTRY +
+        // COMMIT_EDIT pipeline. No new dispatcher actions.
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title });
+        const newLid = dispatcher.getState().editingLid;
+        if (newLid) {
+          dispatcher.dispatch({
+            type: 'COMMIT_EDIT',
+            lid: newLid,
+            title,
+            body,
+          });
+        }
+        // Tear down the selection mode + modal before the next
+        // render so the user returns to a clean viewer. The
+        // COMMIT_EDIT dispatch above already triggered one render
+        // for the new TEXT; we follow with an explicit render so
+        // the source TEXTLOG's toolbar — should the user navigate
+        // back — is no longer stuck in selection mode.
+        closeTextlogPreviewModal();
+        cancelTextlogSelection();
+        break;
+      }
+      // ── Slice 5: TEXT → TEXTLOG conversion ────────────
+      case 'open-text-to-textlog-preview': {
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'text') break;
+        if (st.readonly) break;
+        openTextToTextlogModal(root, ent, 'heading');
+        break;
+      }
+      case 'cancel-text-to-textlog': {
+        closeTextToTextlogModal();
+        break;
+      }
+      case 'confirm-text-to-textlog': {
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const data = getTextToTextlogCommitData();
+        if (!data) break;
+        // Spec §3.3 (v1 only): always create a NEW TEXTLOG. Existing
+        // CREATE_ENTRY + COMMIT_EDIT pipeline, no new dispatcher action.
+        dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'textlog', title: data.title });
+        const newLid = dispatcher.getState().editingLid;
+        if (newLid) {
+          dispatcher.dispatch({
+            type: 'COMMIT_EDIT',
+            lid: newLid,
+            title: data.title,
+            body: data.body,
+          });
+        }
+        closeTextToTextlogModal();
         break;
       }
       case 'toggle-sandbox-attr': {
@@ -1408,8 +1540,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Slice 6: pane re-toggle shortcuts. `Ctrl/⌘+\` toggles the
+    // sidebar (left pane), `Ctrl+Shift+\` (or `⌘+Shift+\`) toggles the
+    // meta pane (right pane). Both go through the same `togglePane`
+    // helper that powers the existing data-pkc-action triggers, so
+    // keyboard and tray-icon paths stay in sync. Suppressed while any
+    // text input has focus so `\` keeps its literal meaning during
+    // typing — pane shortcuts never clobber editing.
+    if (mod && e.key === '\\') {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      return;
+    }
+
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Slice 4: close the TEXTLOG preview modal first if open, so a
+      // single Esc press returns the user to selection mode (matches
+      // the symmetry "Esc closes the topmost overlay").
+      if (isTextlogPreviewModalOpen()) {
+        closeTextlogPreviewModal();
+        return;
+      }
+      // Slice 5: same priority treatment for the TEXT → TEXTLOG modal.
+      if (isTextToTextlogModalOpen()) {
+        closeTextToTextlogModal();
+        return;
+      }
+      // Slice 4: leaving selection mode is a single-key action per
+      // the spec (§2.1). Only trigger when we're not inside another
+      // overlay and not currently editing.
+      if (getActiveTextlogSelectionLid() && state.phase !== 'editing') {
+        cancelTextlogSelection();
+        render(dispatcher.getState(), root);
+        return;
+      }
       // Close asset picker if open (handled above via handleAssetPickerKeydown, safety net)
       if (isAssetPickerOpen()) {
         closeAssetPicker();
@@ -1949,6 +2122,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (policy === 'strict' || policy === 'relaxed') {
         dispatcher.dispatch({ type: 'SET_SANDBOX_POLICY', policy });
       }
+    }
+
+    // Slice 4: TEXTLOG → TEXT selection-mode checkbox toggle.
+    // Updates module-local state and re-renders so the toolbar
+    // count label + Convert button enabled state stay in sync.
+    if (field === 'textlog-select') {
+      const logId = target.getAttribute('data-pkc-log-id');
+      const selLid = target.getAttribute('data-pkc-lid');
+      if (!logId || !selLid) return;
+      if (!isTextlogSelectionModeActive(selLid)) return;
+      toggleTextlogLogSelection(logId);
+      render(dispatcher.getState(), root);
+      return;
+    }
+
+    // Slice 5: TEXT → TEXTLOG split-mode radio. Re-runs the pure
+    // function and re-renders the preview body in place.
+    if (field === 'text-to-textlog-mode') {
+      if (!(target as HTMLInputElement).checked) return;
+      const mode = target.getAttribute('data-pkc-mode') as TextToTextlogSplitMode | null;
+      if (mode !== 'heading' && mode !== 'hr') return;
+      setTextToTextlogSplitMode(mode);
     }
   }
 
@@ -2815,6 +3010,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (rawTarget?.closest('a[href^="#asset-"]')) return;
       const tlLid = textlogRow.getAttribute('data-pkc-lid');
       if (!tlLid) return;
+      // Slice 4: do NOT open the log editor when the user is in
+      // selection mode. Double-clicks inside a log article in that
+      // mode are expected to either toggle selection (via the
+      // checkbox) or do nothing — definitely not to transition into
+      // editing, which would silently drop the in-flight selection.
+      if (isTextlogSelectionModeActive(tlLid)) {
+        e.preventDefault();
+        return;
+      }
       const state = dispatcher.getState();
       if (state.phase !== 'ready' || state.readonly) return;
       const ent = state.container?.entries.find((en) => en.lid === tlLid);

@@ -5,6 +5,18 @@
 **本 doc の責任**: 変換規則 / 分割単位 / backlink / 選択 UI / 非可逆部分の
 扱い / 可逆性の境界を確定させる。実装コードは含まない。
 
+**実装状況**:
+- §2 TEXTLOG → TEXT は **Slice 4 で実装済み**
+  (`src/features/textlog/textlog-to-text.ts` 純粋関数 +
+  `src/adapter/ui/textlog-selection.ts` / `textlog-preview-modal.ts` /
+  `textlog-presenter.ts` / `action-binder.ts`)。
+- §3 TEXT → TEXTLOG は **Slice 5 で実装済み (v1 範囲)**
+  (`src/features/text/text-to-textlog.ts` 純粋関数 +
+  `src/adapter/ui/text-to-textlog-modal.ts` +
+  `renderer.ts` 上の trigger + `action-binder.ts`)。v1 は「新規 TEXTLOG
+  作成のみ」「`heading` / `hr` 二択」「先頭に meta log を 1 件」に固定。
+  既存 TEXTLOG への append・段落自動分割は §3.1 の通り対象外。
+
 ## 1. 概要
 
 TEXTLOG と TEXT を双方向に変換する。両方向とも以下を守る:
@@ -125,13 +137,18 @@ backlink を追記する」オプション。v1 では対象外。
 
 以下のみサポート:
 
-- **ATX heading 単位** (`#` または `##` のいずれかを user が選ぶ)
+- **ATX heading 単位** (`#` / `##` / `###` のいずれかが出現した行で区切る。
+  heading 行自身は分割後の segment 先頭に残す。`####` 以降は本文扱い)
 - **手動分割** (`---` 水平線を user が事前に挿入、変換時の区切りとして使用)
+
+**実装**: モードは preview modal 内の radio 択一 (`heading` / `hr`)。
+両モードとも **fenced code block (`\`\`\`` / `~~~`) 内の記号は無視**する
+ので、サンプルコード中の見出しや区切り線が誤爆しない。
 
 対象外 (v1):
 
 - 段落自動分割 (空行区切り) — 雑すぎて事故るため禁止
-- heading と manual の併用
+- heading と manual の併用 (radio で片方のみ選択)
 - `---` 以外の分割マーカー
 
 ### 3.2 出力 TEXTLOG entry 1 件あたりの形
@@ -147,12 +164,16 @@ backlink を追記する」オプション。v1 では対象外。
 
 変換時に user が 2 択:
 
-1. **新規 TEXTLOG 作成**: title の初期値は `<元 TEXT title> (textlog)`。
-2. **既存 TEXTLOG に append**: dropdown で選択。既存 `APPEND_LOG` 相当の
-   dispatcher action を繰り返し発火。
+1. **新規 TEXTLOG 作成**: title の初期値は
+   `<元 TEXT title> — log import <YYYY-MM-DD>`
+   (Slice 4 `log extract` と対を成す命名)。
+2. **既存 TEXTLOG に append**: 将来拡張として残す。v1 は実装しない。
 
-append の原子性: v1 では「部分 append を許容する」。途中失敗時は既に
-append した log はそのまま残す。失敗率が低く、UI で差分確認できるため。
+**v1 実装**: 上記 1 のみ。既存の `CREATE_ENTRY` + `COMMIT_EDIT` pipeline
+を再利用して新規 entry を生成する。新しい dispatcher action は追加しない。
+
+append の原子性: v1 では対応しない。将来導入時は「部分 append を許容する」
+方針で検討する。
 
 ### 3.4 元 TEXT 側への変更
 

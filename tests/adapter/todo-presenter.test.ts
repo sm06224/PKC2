@@ -401,3 +401,119 @@ describe('presenter registry integration', () => {
     expect(p).not.toBe(todoPresenter);
   });
 });
+
+// ─────────────────────────────────────────────────────
+// Slice 3: description markdown rendering
+// ─────────────────────────────────────────────────────
+
+describe('todoPresenter — description markdown (Slice 3)', () => {
+  function makeTodoWith(description: string, lid = 'todo1'): Entry {
+    return {
+      lid,
+      title: 'T',
+      body: JSON.stringify({ status: 'open', description }),
+      archetype: 'todo',
+      created_at: '',
+      updated_at: '',
+    };
+  }
+
+  it('plain-text description stays on the <span> path', () => {
+    // Plain "Buy milk" has no markdown syntax → legacy span render.
+    const el = todoPresenter.renderBody(makeTodoWith('Buy milk'));
+    const desc = el.querySelector('.pkc-todo-description');
+    expect(desc!.tagName).toBe('SPAN');
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(false);
+    expect(desc!.textContent).toBe('Buy milk');
+  });
+
+  it('markdown description renders on a <div> with pkc-md-rendered', () => {
+    const el = todoPresenter.renderBody(
+      makeTodoWith('# heading\n\n- item 1\n- item 2'),
+      undefined,
+      undefined,
+      undefined,
+      [],
+    );
+    const desc = el.querySelector('.pkc-todo-description');
+    expect(desc!.tagName).toBe('DIV');
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(true);
+    expect(desc!.querySelector('h1')).not.toBeNull();
+    expect(desc!.querySelectorAll('li').length).toBe(2);
+  });
+
+  it('entry: link in description resolves via navigate-entry-ref', () => {
+    const entries: Entry[] = [
+      makeTodoWith('see [ref](entry:other)', 'todo1'),
+      { lid: 'other', title: 'Other', body: '', archetype: 'text', created_at: '', updated_at: '' },
+    ];
+    const el = todoPresenter.renderBody(entries[0]!, {}, {}, {}, entries);
+    const link = el.querySelector('a[href="entry:other"]');
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('data-pkc-action')).toBe('navigate-entry-ref');
+  });
+
+  it('entry: image in description expands to an embedded section', () => {
+    const entries: Entry[] = [
+      makeTodoWith('# todo\n\n![x](entry:target)', 'todo1'),
+      {
+        lid: 'target',
+        title: 'Target',
+        body: '# T\n\nbody',
+        archetype: 'text',
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const el = todoPresenter.renderBody(entries[0]!, {}, {}, {}, entries);
+    const section = el.querySelector('section.pkc-transclusion');
+    expect(section).not.toBeNull();
+    expect(section!.getAttribute('data-pkc-embed-source')).toBe('entry:target');
+  });
+
+  it('asset: image in description resolves to a data URL', () => {
+    // asset-resolver rewrites `asset:k` to `data:<mime>;base64,<body>`.
+    const assets = { 'ast-1': 'AAAA' };
+    const mimeByKey = { 'ast-1': 'image/png' };
+    const el = todoPresenter.renderBody(
+      makeTodoWith('see ![pic](asset:ast-1)'),
+      assets,
+      mimeByKey,
+      {},
+      [],
+    );
+    const img = el.querySelector('.pkc-todo-description img');
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('self-embed inside the description renders a blocked placeholder', () => {
+    // Same cycle guard as Slice 2 — self-ref must block, not loop.
+    const entries: Entry[] = [
+      makeTodoWith('# me\n\n![x](entry:todo1)', 'todo1'),
+    ];
+    const el = todoPresenter.renderBody(entries[0]!, {}, {}, {}, entries);
+    const blocked = el.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('self');
+  });
+
+  it('task checkbox inside description is NOT disabled on the live view path', () => {
+    // The disable-when-embedded rule only applies inside a transclusion.
+    // The live TODO view keeps task lists interactive (though PKC2
+    // currently doesn't wire a handler for description-level task
+    // lists — the checkbox remains a regular input).
+    const el = todoPresenter.renderBody(
+      makeTodoWith('- [ ] subtask\n- [x] done subtask'),
+      undefined,
+      undefined,
+      undefined,
+      [],
+    );
+    const inputs = el.querySelectorAll<HTMLInputElement>('.pkc-todo-description input');
+    expect(inputs.length).toBe(2);
+    for (const cb of Array.from(inputs)) {
+      expect(cb.hasAttribute('disabled')).toBe(false);
+    }
+  });
+});

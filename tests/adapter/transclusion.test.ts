@@ -254,18 +254,22 @@ describe('expandTransclusions — fallback', () => {
     root.innerHTML =
       '<div class="pkc-transclusion-placeholder" data-pkc-embed-ref="entry:not$valid" data-pkc-embed-alt=""></div>';
     expandTransclusions(root, { entries, hostLid: 'host' });
-    const broken = root.querySelector('.pkc-transclusion-broken');
-    expect(broken).not.toBeNull();
-    expect(broken!.getAttribute('data-pkc-ref-broken')).toBe('true');
-    expect(broken!.getAttribute('data-pkc-embed-ref')).toBe('entry:not$valid');
+    // Slice 2: unified blocked placeholder replaces the old
+    // `.pkc-transclusion-broken`. Reason taxonomy is pinned by the
+    // `(embed-blocked: reasons)` describe block further down.
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('invalid');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:not$valid');
   });
 
-  it('missing entry → broken placeholder', () => {
+  it('missing entry → blocked placeholder', () => {
     const root = makeBodyEl('![](entry:ghost)');
     expandTransclusions(root, { entries, hostLid: 'host' });
-    const broken = root.querySelector('.pkc-transclusion-broken');
-    expect(broken).not.toBeNull();
-    expect(broken!.getAttribute('data-pkc-embed-ref')).toBe('entry:ghost');
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('missing');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:ghost');
   });
 
   it('missing log in otherwise-valid textlog → fallback message inside embed', () => {
@@ -294,16 +298,20 @@ describe('expandTransclusions — fallback', () => {
     expect(section!.querySelector('article.pkc-transclusion-log')).toBeNull();
   });
 
-  it('self-embed → degrades to navigate link (no infinite recursion)', () => {
-    // hostLid matches the embed target → self-embed.
+  it('self-embed → blocked placeholder with reason="self" (no infinite recursion)', () => {
+    // hostLid matches the embed target → self-embed. Slice 2 unifies the
+    // fallback UX: self-embed is no longer a link — it is a visible
+    // placeholder that names itself so the author notices the ref is
+    // pointing at the host entry.
     const root = makeBodyEl('![](entry:host)');
     expandTransclusions(root, { entries, hostLid: 'host' });
-    // No section embedded; link fallback instead.
+    // No section embedded and no link fallback — just the blocked marker.
     expect(root.querySelector('section.pkc-transclusion')).toBeNull();
-    const link = root.querySelector('a.pkc-transclusion-fallback-link');
-    expect(link).not.toBeNull();
-    expect(link!.getAttribute('data-pkc-action')).toBe('navigate-entry-ref');
-    expect(link!.getAttribute('data-pkc-entry-ref')).toBe('entry:host');
+    expect(root.querySelector('a.pkc-transclusion-fallback-link')).toBeNull();
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('self');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:host');
   });
 
   it('heading-form ref → link fallback (headings are not embed targets)', () => {
@@ -314,11 +322,12 @@ describe('expandTransclusions — fallback', () => {
     expect(link).not.toBeNull();
   });
 
-  it('nested embed (depth > 1) → inner ref degrades to link', () => {
+  it('nested embed (depth > 1) → inner ref becomes a blocked placeholder (reason="depth")', () => {
     // Spec: only one level of embed is allowed. An `entry:` image
     // that appears inside a body that is already being embedded must
-    // degrade to a plain navigate link instead of recursively
-    // expanding into another section.
+    // be cut — Slice 2 turns it into a visible "nested embed blocked"
+    // placeholder rather than a silent link, so authors can spot the
+    // nested ref in the embedded preview.
     const withNested: Entry[] = [
       ...entries,
       {
@@ -343,17 +352,25 @@ describe('expandTransclusions — fallback', () => {
     // The outer expansion must produce a section (depth 1 — allowed).
     const outer = root.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:outer"]');
     expect(outer).not.toBeNull();
-    // Inside outer, `![](entry:inner)` is a second-level embed → link fallback,
-    // NOT another section.
+    // Inside outer, `![](entry:inner)` is a second-level embed → blocked
+    // placeholder with reason="depth" (NOT cycle — inner is not an
+    // ancestor of outer on the embed chain).
     expect(
       outer!.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:inner"]'),
     ).toBeNull();
-    expect(outer!.querySelector('a.pkc-transclusion-fallback-link')).not.toBeNull();
+    const blocked = outer!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('depth');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:inner');
   });
 
-  it('cycle (A → B → A) is cut by the depth guard', () => {
-    // A embeds B; B embeds A. With depth ≤ 1 the second-level embed
-    // of B inside A's body degrades to a link so we never recurse.
+  it('cycle (A → B → A) is cut — inner B-embed becomes a blocked placeholder (reason="depth")', () => {
+    // A embeds B; B embeds A. Only the outer A embeds (depth 1). Inside
+    // A's body the `![](entry:B)` is depth 2 → blocked. Because B is not
+    // yet on the ancestor chain at that point (the chain holds
+    // host → A), the nested B ref is cut as `depth`, not `cycle`. The
+    // cycle case only fires when the nested ref re-enters an ancestor;
+    // see the next test for the A → B → A shape that triggers it.
     const cyclic: Entry[] = [
       ...entries,
       {
@@ -377,10 +394,40 @@ describe('expandTransclusions — fallback', () => {
     expandTransclusions(root, { entries: cyclic, hostLid: 'host' });
     const a = root.querySelector('section[data-pkc-embed-source="entry:A"]');
     expect(a).not.toBeNull();
-    // Inside A, `![](entry:B)` is a second-level embed → degrades to a link
-    // rather than recursing (and potentially embedding A again).
+    // Inside A, `![](entry:B)` is depth 2 → blocked, not re-embedded.
     expect(a!.querySelector('section[data-pkc-embed-source="entry:B"]')).toBeNull();
-    expect(a!.querySelector('a.pkc-transclusion-fallback-link')).not.toBeNull();
+    const blocked = a!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('depth');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:B');
+  });
+
+  it('cycle (A → host) is classified as reason="cycle" when the nested target is on the embed chain', () => {
+    // Host embeds A; A embeds host (the ancestor). Inside A's body, the
+    // nested `![](entry:host)` points back at an ancestor that IS on the
+    // embed chain (host → A). That makes it a genuine cycle, not a
+    // depth overrun, and it must surface as reason="cycle" so the
+    // author can tell the two apart.
+    const cyclic: Entry[] = [
+      ...entries,
+      {
+        lid: 'A',
+        archetype: 'text',
+        title: 'A',
+        body: '# A\n\n![](entry:host)',
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const root = makeBodyEl('![](entry:A)');
+    expandTransclusions(root, { entries: cyclic, hostLid: 'host' });
+    const a = root.querySelector('section[data-pkc-embed-source="entry:A"]');
+    expect(a).not.toBeNull();
+    // Inside A, `![](entry:host)` must be a cycle-blocked placeholder.
+    const blocked = a!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('cycle');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:host');
   });
 });
 
@@ -467,5 +514,372 @@ describe('expandTransclusions — regressions', () => {
     const backlink = root.querySelector('a.pkc-transclusion-source');
     expect(backlink!.textContent).toContain('Work log');
     expect(backlink!.textContent).toContain('log/log-b');
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// 5. TODO embed (Slice 2)
+// ─────────────────────────────────────────────────────
+
+describe('expandTransclusions — TODO embed (Slice 2)', () => {
+  function makeTodoEntry(
+    lid: string,
+    todo: { status: 'open' | 'done'; description: string; date?: string; archived?: boolean },
+    title = 'Todo',
+  ): Entry {
+    const body: Record<string, unknown> = {
+      status: todo.status,
+      description: todo.description,
+    };
+    if (todo.date) body.date = todo.date;
+    if (todo.archived) body.archived = true;
+    return {
+      lid,
+      archetype: 'todo',
+      title,
+      body: JSON.stringify(body),
+      created_at: '',
+      updated_at: '',
+    };
+  }
+
+  it('embed of an open todo → renders [ ] status and description', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'write report' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const section = root.querySelector('section.pkc-transclusion');
+    expect(section).not.toBeNull();
+    expect(section!.getAttribute('data-pkc-embed-archetype')).toBe('todo');
+    expect(section!.classList.contains('pkc-transclusion-todo')).toBe(true);
+    const status = section!.querySelector('.pkc-todo-embed-status');
+    expect(status!.getAttribute('data-pkc-todo-status')).toBe('open');
+    expect(status!.textContent).toBe('[ ]');
+    expect(section!.querySelector('.pkc-todo-embed-description')!.textContent).toBe('write report');
+  });
+
+  it('embed of a done todo → renders [x] status', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'done', description: 'done it' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const status = root.querySelector('.pkc-todo-embed-status');
+    expect(status!.getAttribute('data-pkc-todo-status')).toBe('done');
+    expect(status!.textContent).toBe('[x]');
+  });
+
+  it('todo with a date → renders the formatted date in the meta row', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'd', date: '2026-04-20' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const dateEl = root.querySelector('.pkc-todo-embed-date');
+    expect(dateEl).not.toBeNull();
+    // Locale-dependent formatting — just assert it contains the year/month/day digits.
+    expect(dateEl!.textContent).toMatch(/2026/);
+    expect(dateEl!.textContent).toMatch(/4/);
+    expect(dateEl!.textContent).toMatch(/20/);
+  });
+
+  it('todo without a date → no date span rendered', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'd' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('.pkc-todo-embed-date')).toBeNull();
+  });
+
+  it('archived todo → archived badge is rendered', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'done', description: 'd', archived: true }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('.pkc-todo-embed-archived')).not.toBeNull();
+  });
+
+  it('non-archived todo → archived badge is NOT rendered', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'd' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('.pkc-todo-embed-archived')).toBeNull();
+  });
+
+  it('todo with empty description → description div is omitted', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: '' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('.pkc-todo-embed-description')).toBeNull();
+    // Meta row still present (status is always there).
+    expect(root.querySelector('.pkc-todo-embed-meta')).not.toBeNull();
+  });
+
+  it('self-embed of a todo → blocked placeholder (reason="self")', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('host', { status: 'open', description: 'd' }, 'Host todo'),
+    ];
+    const root = makeBodyEl('![](entry:host)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('section.pkc-transclusion')).toBeNull();
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('self');
+  });
+
+  // ── Slice 3: TODO description is markdown-rendered in the embed ──
+
+  it('TODO embed description with markdown syntax is rendered as markdown', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '# Heading\n\n- first\n- second',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const desc = root.querySelector('.pkc-todo-embed-description');
+    expect(desc).not.toBeNull();
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(true);
+    expect(desc!.querySelector('h1')).not.toBeNull();
+    expect(desc!.querySelectorAll('li').length).toBe(2);
+  });
+
+  it('TODO embed with plain description keeps textContent path (no pkc-md-rendered class)', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', { status: 'open', description: 'write report' }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const desc = root.querySelector('.pkc-todo-embed-description');
+    expect(desc!.classList.contains('pkc-md-rendered')).toBe(false);
+    expect(desc!.textContent).toBe('write report');
+  });
+
+  it('entry: ref inside a TODO embed description becomes a blocked placeholder (depth ≤ 1)', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '# T\n\nsee ![x](entry:other)',
+      }),
+      {
+        lid: 'other',
+        archetype: 'text',
+        title: 'Other',
+        body: 'body',
+        created_at: '',
+        updated_at: '',
+      },
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const outer = root.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:t1"]');
+    expect(outer).not.toBeNull();
+    // Inner embed is depth 2 — must be blocked, not recursed.
+    expect(
+      outer!.querySelector('section.pkc-transclusion[data-pkc-embed-source="entry:other"]'),
+    ).toBeNull();
+    const blocked = outer!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('depth');
+  });
+
+  it('cycle via TODO description (host → A-todo → host) is classified as "cycle"', () => {
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+      makeTodoEntry('A', {
+        status: 'open',
+        description: '# back\n\n![x](entry:host)',
+      }, 'A'),
+    ];
+    const root = makeBodyEl('![](entry:A)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const a = root.querySelector('section[data-pkc-embed-source="entry:A"]');
+    expect(a).not.toBeNull();
+    const blocked = a!.querySelector('.pkc-embed-blocked');
+    expect(blocked).not.toBeNull();
+    expect(blocked!.getAttribute('data-pkc-embed-blocked-reason')).toBe('cycle');
+    expect(blocked!.getAttribute('data-pkc-embed-ref')).toBe('entry:host');
+  });
+
+  it('task checkboxes inside a TODO embed description are disabled + marked embedded', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: '- [ ] subtask\n- [x] done',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const inputs = root.querySelectorAll<HTMLInputElement>('.pkc-todo-embed-description input.pkc-task-checkbox');
+    expect(inputs.length).toBe(2);
+    for (const cb of Array.from(inputs)) {
+      expect(cb.hasAttribute('disabled')).toBe(true);
+      expect(cb.getAttribute('data-pkc-embedded')).toBe('true');
+    }
+  });
+
+  it('asset: reference inside a TODO embed description resolves to a data URL', () => {
+    const entries: Entry[] = [
+      makeTodoEntry('t1', {
+        status: 'open',
+        description: 'check ![pic](asset:ast-1)',
+      }),
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:t1)');
+    expandTransclusions(root, {
+      entries,
+      hostLid: 'host',
+      assets: { 'ast-1': 'AAAA' },
+      mimeByKey: { 'ast-1': 'image/png' },
+    });
+    const img = root.querySelector('.pkc-todo-embed-description img');
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// 6. embed fallback — archetype gating (Slice 2)
+// ─────────────────────────────────────────────────────
+
+describe('expandTransclusions — archetype gating (Slice 2)', () => {
+  function makeHost(): Entry {
+    return { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' };
+  }
+
+  it('folder archetype → link fallback with reason="archetype"', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      { lid: 'f1', archetype: 'folder', title: 'A folder', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:f1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('section.pkc-transclusion')).toBeNull();
+    const link = root.querySelector('a.pkc-transclusion-fallback-link');
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('data-pkc-embed-fallback-reason')).toBe('archetype');
+    expect(link!.getAttribute('data-pkc-embed-fallback-archetype')).toBe('folder');
+    expect(link!.getAttribute('data-pkc-action')).toBe('navigate-entry-ref');
+    expect(link!.getAttribute('data-pkc-entry-ref')).toBe('entry:f1');
+  });
+
+  it('attachment archetype → link fallback with reason="archetype"', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      {
+        lid: 'a1',
+        archetype: 'attachment',
+        title: 'file.bin',
+        body: JSON.stringify({ asset_key: 'k', mime: 'application/octet-stream', name: 'file.bin' }),
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const root = makeBodyEl('![](entry:a1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    expect(root.querySelector('section.pkc-transclusion')).toBeNull();
+    const link = root.querySelector('a.pkc-transclusion-fallback-link');
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('data-pkc-embed-fallback-reason')).toBe('archetype');
+    expect(link!.getAttribute('data-pkc-embed-fallback-archetype')).toBe('attachment');
+  });
+
+  it('generic archetype → link fallback with reason="archetype"', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      { lid: 'g1', archetype: 'generic', title: 'G', body: 'body', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:g1)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const link = root.querySelector('a.pkc-transclusion-fallback-link');
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('data-pkc-embed-fallback-reason')).toBe('archetype');
+    expect(link!.getAttribute('data-pkc-embed-fallback-archetype')).toBe('generic');
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// 7. blocked placeholder text (exact vocabulary pin — Slice 2)
+// ─────────────────────────────────────────────────────
+//
+// The placeholder vocabulary is a user-visible contract. These tests
+// pin each reason's exact text so it cannot drift without an explicit
+// spec update. See
+// docs/development/embedded-preview-and-cycle-guard.md §4.2.
+
+describe('expandTransclusions — blocked placeholder text vocabulary (Slice 2)', () => {
+  it('invalid → "(invalid entry ref: <ref>)"', () => {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<div class="pkc-transclusion-placeholder" data-pkc-embed-ref="entry:not$valid" data-pkc-embed-alt=""></div>';
+    expandTransclusions(root, { entries: [], hostLid: 'host' });
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked!.textContent).toBe('(invalid entry ref: entry:not$valid)');
+  });
+
+  it('missing → "(missing entry: <lid>)"', () => {
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:ghost)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked!.textContent).toBe('(missing entry: ghost)');
+  });
+
+  it('self → "(self embed blocked: entry:<lid>)"', () => {
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:host)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked!.textContent).toBe('(self embed blocked: entry:host)');
+  });
+
+  it('depth → "(nested embed blocked: entry:<lid>)"', () => {
+    // `outer` needs a body that `hasMarkdownSyntax` recognizes so the
+    // embed pipeline re-runs `expandTransclusions` on it. A heading
+    // plus the transclusion image is the minimal nudge.
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+      { lid: 'outer', archetype: 'text', title: 'O', body: '# O\n\n![x](entry:inner)', created_at: '', updated_at: '' },
+      { lid: 'inner', archetype: 'text', title: 'I', body: 'i', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:outer)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked!.textContent).toBe('(nested embed blocked: entry:inner)');
+  });
+
+  it('cycle → "(cyclic embed blocked: entry:<lid>)"', () => {
+    const entries: Entry[] = [
+      { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' },
+      { lid: 'A', archetype: 'text', title: 'A', body: '# A\n\n![x](entry:host)', created_at: '', updated_at: '' },
+    ];
+    const root = makeBodyEl('![](entry:A)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+    const blocked = root.querySelector('.pkc-embed-blocked');
+    expect(blocked!.textContent).toBe('(cyclic embed blocked: entry:host)');
   });
 });

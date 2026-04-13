@@ -252,6 +252,258 @@ describe('buildSubsetContainer — relation filtering', () => {
   });
 });
 
+// Helper for TODO entries — the body is JSON per the schema in
+// `src/features/todo/todo-body.ts`.
+function makeTodoBody(description: string, status: 'open' | 'done' = 'open'): string {
+  return JSON.stringify({ status, description });
+}
+
+describe('buildSubsetContainer — TODO description scan (Slice 2 pre-positioning)', () => {
+  // Slice 2 extends `collectScannableBodies` to scan TODO descriptions
+  // for `entry:` and `asset:` references. That scan is currently a
+  // pre-position for Slice 3 (description markdown render), but the
+  // closure side already has to be right — otherwise a TODO embed
+  // exported via the selected-entry HTML clone would miss its referenced
+  // targets.
+
+  it('pulls entries referenced from a TODO description (link form)', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root todo',
+          body: makeTodoBody('follow-up on [B](entry:b)'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+        { lid: 'b', title: 'B', body: 'body-b', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'z', title: 'Z', body: 'unrelated', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    const lids = r.container.entries.map((e) => e.lid).sort();
+    expect(lids).toEqual(['b', 'root']);
+  });
+
+  it('pulls entries referenced via bare `entry:<lid>` tokens in a TODO description', () => {
+    // The regex in extract-entry-refs matches bare tokens too, so a
+    // pasted ref inside a description still counts toward the closure.
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: makeTodoBody('see entry:b and entry:c for context'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+        { lid: 'b', title: 'B', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    const lids = r.container.entries.map((e) => e.lid).sort();
+    expect(lids).toEqual(['b', 'c', 'root']);
+  });
+
+  it('pulls assets referenced via `asset:<key>` tokens in a TODO description', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: makeTodoBody('attach ![pic](asset:ast-1)'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      assets: { 'ast-1': 'base64-aaa', 'ast-2': 'base64-bbb' },
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(Object.keys(r.container.assets)).toEqual(['ast-1']);
+    expect(r.container.assets['ast-2']).toBeUndefined();
+  });
+
+  it('closes transitively — TODO description → TEXT body → another TODO', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: makeTodoBody('chain via [text](entry:mid)'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          lid: 'mid',
+          title: 'Mid',
+          body: 'further [todo](entry:leaf)',
+          archetype: 'text',
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          lid: 'leaf',
+          title: 'Leaf',
+          body: makeTodoBody('plain'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    const lids = r.container.entries.map((e) => e.lid).sort();
+    expect(lids).toEqual(['leaf', 'mid', 'root']);
+  });
+
+  it('TODO with an empty description does not add anything beyond the root', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: makeTodoBody(''),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+        { lid: 'b', title: 'B', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(r.container.entries.map((e) => e.lid)).toEqual(['root']);
+  });
+
+  it('records missing entries referenced from a TODO description', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: makeTodoBody('see [ghost](entry:ghost)'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(Array.from(r.missingEntryLids)).toEqual(['ghost']);
+  });
+});
+
+describe('buildSubsetContainer — FOLDER description scan (Slice 3)', () => {
+  // Slice 3 markdown-renders folder descriptions in the viewer. The
+  // closure must follow suit: entry: / asset: refs in a folder body
+  // have to be pulled into the HTML-clone subset, otherwise the
+  // exported clone would show broken links / images.
+
+  it('pulls entries referenced from a FOLDER description', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root folder',
+          body: '# Overview\n\nsee [T](entry:target)',
+          archetype: 'folder',
+          created_at: '',
+          updated_at: '',
+        },
+        { lid: 'target', title: 'T', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'zz', title: 'Z', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    const lids = r.container.entries.map((e) => e.lid).sort();
+    expect(lids).toEqual(['root', 'target']);
+  });
+
+  it('pulls assets referenced from a FOLDER description', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'Root',
+          body: 'notes ![pic](asset:ast-1)',
+          archetype: 'folder',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      assets: { 'ast-1': 'AAAA', 'ast-2': 'BBBB' },
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(Object.keys(r.container.assets)).toEqual(['ast-1']);
+  });
+
+  it('FOLDER with empty body adds nothing beyond the root', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'root', title: 'R', body: '', archetype: 'folder', created_at: '', updated_at: '' },
+        { lid: 'zz', title: 'Z', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(r.container.entries.map((e) => e.lid)).toEqual(['root']);
+  });
+
+  it('closes transitively — FOLDER description → TEXT body → TODO', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'F',
+          body: 'see [M](entry:mid)',
+          archetype: 'folder',
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          lid: 'mid',
+          title: 'M',
+          body: 'and [L](entry:leaf)',
+          archetype: 'text',
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          lid: 'leaf',
+          title: 'L',
+          body: makeTodoBody('plain'),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    const lids = r.container.entries.map((e) => e.lid).sort();
+    expect(lids).toEqual(['leaf', 'mid', 'root']);
+  });
+
+  it('records missing entries referenced from a FOLDER description', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'root',
+          title: 'F',
+          body: 'missing [g](entry:ghost)',
+          archetype: 'folder',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'root')!;
+    expect(Array.from(r.missingEntryLids)).toEqual(['ghost']);
+  });
+});
+
 describe('buildSubsetContainer — end-to-end invariants', () => {
   it('output has no dangling relations and no asset keys missing from assets map (except explicitly-tracked missing set)', () => {
     const c = makeContainer({

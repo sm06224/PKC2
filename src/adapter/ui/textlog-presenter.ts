@@ -12,6 +12,11 @@ import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import {
+  isSelectionModeActive,
+  isLogSelected,
+  getSelectionSize,
+} from './textlog-selection';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
@@ -59,6 +64,17 @@ export const textlogPresenter: DetailPresenter = {
   ): HTMLElement {
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
+    container.setAttribute('data-pkc-lid', entry.lid);
+
+    // Slice 4 (TEXTLOG → TEXT): selection-mode toolbar. Always
+    // rendered so there is a stable hook for the action bar; the
+    // toolbar's appearance changes based on whether this entry is
+    // currently in selection mode.
+    const selecting = isSelectionModeActive(entry.lid);
+    if (selecting) {
+      container.setAttribute('data-pkc-textlog-selecting', 'true');
+    }
+    container.appendChild(renderSelectionToolbar(entry.lid, selecting));
 
     // Append area pinned to top of center pane
     const appendArea = document.createElement('div');
@@ -125,7 +141,7 @@ export const textlogPresenter: DetailPresenter = {
 
       for (const log of section.logs) {
         sectionEl.appendChild(
-          renderLogArticle(entry.lid, log, assets, mimeByKey, nameByKey, entries),
+          renderLogArticle(entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting),
         );
       }
       docEl.appendChild(sectionEl);
@@ -276,6 +292,7 @@ function renderLogArticle(
   mimeByKey?: Record<string, string>,
   nameByKey?: Record<string, string>,
   entries?: Entry[],
+  selecting = false,
 ): HTMLElement {
   const article = document.createElement('article');
   article.className = 'pkc-textlog-log';
@@ -288,9 +305,30 @@ function renderLogArticle(
   if (log.flags.includes('important')) {
     article.setAttribute('data-pkc-log-important', 'true');
   }
+  if (selecting && isLogSelected(log.id)) {
+    article.setAttribute('data-pkc-log-selected', 'true');
+  }
 
   const header = document.createElement('header');
   header.className = 'pkc-textlog-log-header';
+
+  // Slice 4: checkbox shown only while selection mode is active for
+  // this TEXTLOG. Pre-checked when the module-local selection set
+  // already contains this id (restores state across re-renders).
+  if (selecting) {
+    const selectLabel = document.createElement('label');
+    selectLabel.className = 'pkc-textlog-select-label';
+    selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
+    const selectCheck = document.createElement('input');
+    selectCheck.type = 'checkbox';
+    selectCheck.className = 'pkc-textlog-select-check';
+    selectCheck.setAttribute('data-pkc-field', 'textlog-select');
+    selectCheck.setAttribute('data-pkc-lid', lid);
+    selectCheck.setAttribute('data-pkc-log-id', log.id);
+    selectCheck.checked = isLogSelected(log.id);
+    selectLabel.appendChild(selectCheck);
+    header.appendChild(selectLabel);
+  }
 
   const flagBtn = document.createElement('button');
   flagBtn.className = 'pkc-textlog-flag-btn';
@@ -353,4 +391,59 @@ function renderLogArticle(
   article.appendChild(textEl);
 
   return article;
+}
+
+/**
+ * Toolbar for the TEXTLOG → TEXT conversion flow (Slice 4).
+ *
+ * Always rendered above the log document so the `Begin log selection`
+ * entry point lives inside the viewer (not the outer action bar, which
+ * is shared across archetypes). The toolbar re-renders with the rest
+ * of the TEXTLOG view on every dispatch; state continuity is kept by
+ * reading from `textlog-selection` at render time.
+ */
+function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'pkc-textlog-select-toolbar';
+  bar.setAttribute('data-pkc-region', 'textlog-select-toolbar');
+
+  if (!selecting) {
+    const beginBtn = document.createElement('button');
+    beginBtn.className = 'pkc-btn pkc-textlog-select-begin';
+    beginBtn.setAttribute('data-pkc-action', 'begin-textlog-selection');
+    beginBtn.setAttribute('data-pkc-lid', lid);
+    beginBtn.setAttribute('title', 'Select logs to extract into a new TEXT entry');
+    beginBtn.textContent = 'Begin log selection';
+    bar.appendChild(beginBtn);
+    return bar;
+  }
+
+  const count = getSelectionSize();
+
+  const countLabel = document.createElement('span');
+  countLabel.className = 'pkc-textlog-select-count';
+  countLabel.setAttribute('data-pkc-region', 'textlog-select-count');
+  countLabel.textContent = `${count} ${count === 1 ? 'log' : 'logs'} selected`;
+  bar.appendChild(countLabel);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'pkc-btn pkc-textlog-select-cancel';
+  cancelBtn.setAttribute('data-pkc-action', 'cancel-textlog-selection');
+  cancelBtn.setAttribute('title', 'Exit selection mode (Esc)');
+  cancelBtn.textContent = 'Cancel';
+  bar.appendChild(cancelBtn);
+
+  const convertBtn = document.createElement('button');
+  convertBtn.className = 'pkc-btn pkc-btn-create pkc-textlog-select-convert';
+  convertBtn.setAttribute('data-pkc-action', 'open-textlog-to-text-preview');
+  convertBtn.setAttribute('data-pkc-lid', lid);
+  convertBtn.setAttribute('title', 'Preview the TEXT extract, then commit');
+  convertBtn.textContent = 'Convert to TEXT →';
+  if (count === 0) {
+    convertBtn.setAttribute('disabled', 'true');
+    convertBtn.setAttribute('data-pkc-disabled', 'true');
+  }
+  bar.appendChild(convertBtn);
+
+  return bar;
 }
