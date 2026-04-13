@@ -150,7 +150,11 @@ describe('Selected-only export — Data menu button gating', () => {
     const btn = exportSelectedBtn();
     expect(btn).not.toBeNull();
     expect(btn!.disabled).toBe(true);
-    expect(btn!.textContent).toBe('📤 Selected');
+    // Icon bumped from 📤 to 📦 (package) to disambiguate the ZIP
+    // interchange workflow from the 📤 "Selected as HTML" share
+    // button that lives in the same Data menu. See
+    // docs/development/selected-entry-html-clone-export.md.
+    expect(btn!.textContent).toBe('📦 Selected');
   });
 
   it('folder selected → button stays disabled (unshareable archetype)', () => {
@@ -167,7 +171,7 @@ describe('Selected-only export — Data menu button gating', () => {
     const btn = exportSelectedBtn();
     expect(btn).not.toBeNull();
     expect(btn!.disabled).toBe(false);
-    expect(btn!.textContent).toBe('📤 Selected (TEXT)');
+    expect(btn!.textContent).toBe('📦 Selected (TEXT)');
   });
 
   it('textlog entry selected → button is enabled and labeled TEXTLOG', () => {
@@ -176,7 +180,7 @@ describe('Selected-only export — Data menu button gating', () => {
     const btn = exportSelectedBtn();
     expect(btn).not.toBeNull();
     expect(btn!.disabled).toBe(false);
-    expect(btn!.textContent).toBe('📤 Selected (TEXTLOG)');
+    expect(btn!.textContent).toBe('📦 Selected (TEXTLOG)');
   });
 });
 

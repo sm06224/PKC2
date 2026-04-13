@@ -160,5 +160,65 @@ simply sees a valid smaller container.
   invariants.
 - `tests/adapter/action-binder-selected-entry-html-export.test.ts` —
   5 tests covering UI gating (3) and click-to-download wiring (2).
+- `tests/adapter/renderer-export-grouping.test.ts` — 19 tests
+  pinning the Share / Archive / Import grouping contract, icon
+  assignment (📤 vs 📦), and the title-text distinction between
+  "配布用 HTML / PKC2 不要" and "再インポート用 ZIP".
 - Existing coverage this feature rides on: `tests/adapter/exporter.test.ts`
   (70+ cases on the unchanged clone pipeline).
+
+## Data menu grouping
+
+The Data menu is laid out as three visually separated groups so
+the two distinct export workflows read as different affordances
+rather than variants of one action:
+
+```
+┌─ Share — standalone HTML, openable without PKC2 ───────┐
+│  Export │ Light │ 📤 Selected as HTML                   │
+└─────────────────────────────────────────────────────────┘
+                         │ (visible separator)
+┌─ Archive — ZIP, re-importable into PKC2 ───────────────┐
+│  ZIP │ [TEXTLOGs] │ [TEXTs] │ [Mixed] │                 │
+│  📦 Selected (TEXT/TEXTLOG)                             │
+└─────────────────────────────────────────────────────────┘
+                         │ (visible separator)
+┌─ Import ───────────────────────────────────────────────┐
+│  Import │ 📥 Textlog │ 📥 Text │ 📥 Entry │ 📥 Batch    │
+└─────────────────────────────────────────────────────────┘
+```
+
+Icon convention:
+- 📤 **Share** — produces HTML the recipient can open **without
+  PKC2**. No recipient setup, no round-trip.
+- 📦 **Package** — produces a ZIP bundle intended to be
+  **re-imported** into another PKC2. Carries the full data model,
+  round-trips.
+- 📥 **Import** — ingests external bundles.
+
+The two "Selected" buttons in particular must not be confused:
+
+| Button | Icon | Produces | Recipient needs PKC2? |
+|---|---|---|---|
+| `📤 Selected as HTML` | share | Subset `.html` (stand-alone) | ❌ |
+| `📦 Selected (TEXT/TEXTLOG)` | package | `.text.zip` / `.textlog.zip` | ✅ |
+
+Both exports use selection (`state.selectedLid`), but:
+- `📤 Selected as HTML` is enabled for **any** archetype (subset
+  container builder is archetype-agnostic).
+- `📦 Selected (…)` is enabled only for **text / textlog** because
+  only those archetypes have round-trippable ZIP bundle formats.
+
+Disabled-state titles explicitly tell the user why the button is
+inert and which selection would enable it.
+
+### Why grouping and not one dropdown
+
+The Data menu already uses a `<details>` to collapse everything
+behind a single `Data…` summary. Collapsing the exports further
+into a nested popup would add one more click for the most common
+actions (`Export`, `Import`) without reducing visual noise
+meaningfully. Spatial grouping + icon differentiation conveys the
+workflow difference at a glance while keeping every affordance
+one click away. See `tests/adapter/renderer-export-grouping.test.ts`
+for the pinned grouping contract.
