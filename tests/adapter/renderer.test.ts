@@ -6565,9 +6565,9 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Ctrl+:');
     expect(overlay!.textContent).toContain('Ctrl+D');
     expect(overlay!.textContent).toContain('ISO 8601');
-    // Has group separator elements (Date/Time + Slash Commands)
+    // Has group separator elements (Panes + Date/Time + Slash Commands)
     const groups = overlay!.querySelectorAll('.pkc-shortcut-group');
-    expect(groups.length).toBe(2);
+    expect(groups.length).toBe(3);
     // Contains slash command section
     expect(overlay!.textContent).toContain('Slash Commands');
     expect(overlay!.textContent).toContain('input assist menu');

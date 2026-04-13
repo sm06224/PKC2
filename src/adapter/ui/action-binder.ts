@@ -1540,6 +1540,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Slice 6: pane re-toggle shortcuts. `Ctrl/⌘+\` toggles the
+    // sidebar (left pane), `Ctrl+Shift+\` (or `⌘+Shift+\`) toggles the
+    // meta pane (right pane). Both go through the same `togglePane`
+    // helper that powers the existing data-pkc-action triggers, so
+    // keyboard and tray-icon paths stay in sync. Suppressed while any
+    // text input has focus so `\` keeps its literal meaning during
+    // typing — pane shortcuts never clobber editing.
+    if (mod && e.key === '\\') {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      return;
+    }
+
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
       // Slice 4: close the TEXTLOG preview modal first if open, so a
