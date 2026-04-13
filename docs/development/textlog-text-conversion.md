@@ -5,6 +5,13 @@
 **本 doc の責任**: 変換規則 / 分割単位 / backlink / 選択 UI / 非可逆部分の
 扱い / 可逆性の境界を確定させる。実装コードは含まない。
 
+**実装状況**:
+- §2 TEXTLOG → TEXT は **Slice 4 で実装済み**
+  (`src/features/textlog/textlog-to-text.ts` 純粋関数 +
+  `src/adapter/ui/textlog-selection.ts` / `textlog-preview-modal.ts` /
+  `textlog-presenter.ts` / `action-binder.ts`)。
+- §3 TEXT → TEXTLOG は未実装 (Slice 5 で扱う)。
+
 ## 1. 概要
 
 TEXTLOG と TEXT を双方向に変換する。両方向とも以下を守る:
