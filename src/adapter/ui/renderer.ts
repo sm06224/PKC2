@@ -1035,6 +1035,32 @@ function renderExportImportInline(state: AppState): HTMLElement {
   }
   content.appendChild(selectedBtn);
 
+  // Selected-entry HTML clone export. Distinct from the ZIP button
+  // above: that produces a `.text.zip` / `.textlog.zip` for re-import
+  // into another PKC2; this produces a stand-alone `.html` that the
+  // recipient can open without having PKC2 at all. Subset logic
+  // (referenced entries, owned attachments, reachable assets,
+  // ancestor folders) lives in `buildSubsetContainer`. Enabled for
+  // any entry — unlike ZIP bundle formats, the HTML clone does not
+  // require an archetype-specific builder.
+  const selectedHtmlBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  selectedHtmlBtn.setAttribute('data-pkc-action', 'export-selected-entry-html');
+  if (selectedEntry) {
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリと関連アセット / 参照エントリのみを含む自己完結 HTML を生成（相手に PKC2 が不要）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  } else {
+    (selectedHtmlBtn as HTMLButtonElement).disabled = true;
+    selectedHtmlBtn.setAttribute(
+      'title',
+      '選択中のエントリのみを含む自己完結 HTML を生成（エントリ選択時のみ有効）',
+    );
+    selectedHtmlBtn.textContent = '📤 Selected as HTML';
+  }
+  content.appendChild(selectedHtmlBtn);
+
   const sep = createElement('span', 'pkc-eip-sep');
   sep.textContent = '|';
   content.appendChild(sep);

@@ -27,6 +27,8 @@ import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bun
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
+import { exportContainerAsHtml } from '../platform/exporter';
+import { buildSubsetContainer } from '../../features/container/build-subset';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -648,6 +650,62 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           if (!confirm(msg)) break;
         }
         triggerZipDownload(built.blob, built.filename);
+        break;
+      }
+      case 'export-selected-entry-html': {
+        // "Hand off a self-contained PKC2 to someone who doesn't have
+        // one" — top-level Data-menu affordance. Reuses the existing
+        // `exportContainerAsHtml` clone pipeline so the recipient
+        // gets the same runtime, same shell, same UI — just with a
+        // container that only carries the selected entry plus
+        // everything transitively needed to render and navigate it
+        // (referenced entries, owned attachments, reachable assets,
+        // ancestor folders). Distinct from `export-selected-entry`:
+        // that builds a `.text.zip` / `.textlog.zip` for re-import,
+        // this builds a `.pkc2.html` for direct viewing / editing.
+        const st = dispatcher.getState();
+        const selLid = st.selectedLid;
+        if (!selLid || !st.container) {
+          showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
+          break;
+        }
+        const subset = buildSubsetContainer(st.container, selLid);
+        if (!subset) {
+          showToast({ kind: 'info', message: 'Selected entry is no longer available.', autoDismissMs: 2400 });
+          break;
+        }
+        if (subset.missingAssetKeys.size > 0) {
+          const msg = [
+            `選択中エントリが参照するアセットのうち、${subset.missingAssetKeys.size} 件が見つかりません。`,
+            'このまま HTML を生成しますか？',
+            '',
+            '- 見つからないアセットは埋め込まれません',
+            '- 本文の参照は壊れた状態で残ります（送信側と同じ見え方）',
+          ].join('\n');
+          if (!confirm(msg)) break;
+        }
+        // Override the subset's container title with the entry title so
+        // (a) the recipient's browser tab shows the entry name and
+        // (b) `generateExportFilename` derives its slug from the same
+        // string instead of the source container's title.
+        const rootEntry = subset.container.entries.find((e) => e.lid === selLid);
+        const entryTitle = rootEntry?.title?.trim() || 'entry';
+        const retitledSubset: Container = {
+          ...subset.container,
+          meta: { ...subset.container.meta, title: entryTitle },
+        };
+        exportContainerAsHtml(retitledSubset, {
+          mode: 'full',
+          mutability: 'editable',
+        }).then((result) => {
+          if (!result.success) {
+            showToast({
+              kind: 'error',
+              message: `HTML エクスポートに失敗しました: ${result.error ?? 'unknown'}`,
+              autoDismissMs: 4000,
+            });
+          }
+        });
         break;
       }
       case 'export-textlogs-container': {

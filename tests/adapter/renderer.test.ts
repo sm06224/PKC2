@@ -2198,13 +2198,15 @@ describe('Renderer', () => {
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
-    // Collapsed behind <details>: export + light + zip + TEXTs + Mixed + Selected + import + textlog + text + Entry + batch
+    // Collapsed behind <details>: export + light + zip + TEXTs + Mixed + Selected + "Selected as HTML" + import + textlog + text + Entry + batch
     // (Reset moved to shell menu maintenance section;
     //  `📤 Selected` and `📥 Entry` added for selected-only export /
     //  unified single-entry import — see
-    //  docs/development/selected-entry-export-and-reimport.md)
+    //  docs/development/selected-entry-export-and-reimport.md;
+    //  `📤 Selected as HTML` added for selected-entry subset clone
+    //  export — see docs/development/selected-entry-html-clone-export.md)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(11);
+    expect(btns.length).toBe(12);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
