@@ -1654,6 +1654,134 @@ describe('sort', () => {
     expect(state.viewMode).toBe('detail');
   });
 
+  // ── SELECT_ENTRY auto-expand ancestors ───────────────
+  //
+  // When an entry is selected from outside the tree (Storage Profile
+  // jump, entry-ref click, calendar / kanban tap), its ancestor
+  // folders may still be collapsed — the selected entry would be
+  // invisible in the sidebar.  SELECT_ENTRY therefore removes any
+  // ancestor folder lids from `collapsedFolders` so the selection is
+  // always rendered.
+
+  function containerWithFolderTree(): Container {
+    // root(folder) → mid(folder) → leaf(text)
+    return {
+      meta: {
+        container_id: 'tree', title: 'Tree',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+      },
+      entries: [
+        {
+          lid: 'root', title: 'Root', body: '',
+          archetype: 'folder',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          lid: 'mid', title: 'Mid', body: '',
+          archetype: 'folder',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          lid: 'leaf', title: 'Leaf', body: '',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      relations: [
+        {
+          id: 'r1', kind: 'structural', from: 'root', to: 'mid',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 'r2', kind: 'structural', from: 'mid', to: 'leaf',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  it('SELECT_ENTRY expands ancestor folders that were collapsed', () => {
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    expect(state.selectedLid).toBe('leaf');
+    // Both ancestor folders are now expanded so `leaf` is visible.
+    expect(state.collapsedFolders).toEqual([]);
+  });
+
+  it('SELECT_ENTRY preserves unrelated collapsed folders', () => {
+    // Two disjoint subtrees share `collapsedFolders`; selecting in
+    // one must not reset the user's explicit collapse of the other.
+    const container: Container = {
+      ...containerWithFolderTree(),
+      entries: [
+        ...containerWithFolderTree().entries,
+        {
+          lid: 'other', title: 'Other', body: '',
+          archetype: 'folder',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid', 'other'],
+    };
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    expect(state.collapsedFolders).toEqual(['other']);
+  });
+
+  it('SELECT_ENTRY is a no-op on collapsedFolders when no ancestor was collapsed', () => {
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['unrelated'],
+    };
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    // Reference-equal when nothing matched — downstream listeners
+    // can use `===` to skip work.
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
+  });
+
+  it('SELECT_ENTRY with no container does not attempt tree walking', () => {
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container: null,
+      collapsedFolders: ['root'],
+    };
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    // container is null so the walk is skipped entirely.
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
+    expect(state.selectedLid).toBe('leaf');
+  });
+
+  it('SELECT_ENTRY on a root entry leaves collapsedFolders untouched', () => {
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    // `root` itself has no parent so no ancestor expansion happens.
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'root' });
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
+  });
+
   // ── Multi-select ──────────────────────────
 
   it('SELECT_ENTRY clears multiSelectedLids', () => {

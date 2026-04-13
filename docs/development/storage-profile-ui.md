@@ -80,6 +80,27 @@ Guards:
 - The summary / orphan areas do NOT carry this action; they have no
   single owner entry to jump to.
 
+### Tree auto-expand on SELECT_ENTRY
+
+To close the "selected but hidden under a collapsed folder" gap, the
+`SELECT_ENTRY` reducer computes the selected entry's ancestor folder
+chain (`getAncestorFolderLids` in `features/relation/tree.ts`) and
+removes those lids from `state.collapsedFolders`. The effect is that
+a Storage Profile jump (or any other external selection source:
+entry-ref click, calendar / kanban tap) always leaves the target
+entry visible in the tree.
+
+Properties:
+
+- Applies to every `SELECT_ENTRY`, not just Storage Profile — "selected
+  entries are visible" is a sane cross-feature invariant rather than a
+  per-feature branch.
+- Reference-equal no-op when no ancestor was collapsed (downstream
+  `===` checks on `collapsedFolders` keep working).
+- Skips non-folder ancestors (archetype filter).
+- Cycle-safe: a `visited` set terminates malformed graphs.
+- Depth-bounded at 32.
+
 ## CSV export
 
 Read-only persistence of the current profile. The overlay mounts an

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTree, getStructuralParent, getBreadcrumb, getAvailableFolders, isDescendant,
-  collectDescendantLids,
+  collectDescendantLids, getAncestorFolderLids,
 } from '@features/relation/tree';
 import type { Relation } from '@core/model/relation';
 import type { Entry } from '@core/model/record';
@@ -283,5 +283,67 @@ describe('collectDescendantLids', () => {
     const result = collectDescendantLids(relations, 'a');
     expect(result.has('b')).toBe(true);
     expect(result.has('a')).toBe(true); // circular back to a is recorded
+  });
+});
+
+describe('getAncestorFolderLids', () => {
+  it('returns empty for a root entry with no structural parent', () => {
+    const entries = [makeEntry('root', 'Root')];
+    expect(getAncestorFolderLids([], entries, 'root')).toEqual([]);
+  });
+
+  it('returns the folder chain from nearest parent outward', () => {
+    // Graph: root-folder → mid-folder → leaf (text entry)
+    // Nearest → farthest: ['mid-folder', 'root-folder'].
+    const entries = [
+      makeEntry('root-folder', 'Root', 'folder'),
+      makeEntry('mid-folder', 'Mid', 'folder'),
+      makeEntry('leaf', 'Leaf', 'text'),
+    ];
+    const relations = [
+      makeRelation('r1', 'root-folder', 'mid-folder'),
+      makeRelation('r2', 'mid-folder', 'leaf'),
+    ];
+    expect(getAncestorFolderLids(relations, entries, 'leaf')).toEqual([
+      'mid-folder',
+      'root-folder',
+    ]);
+  });
+
+  it('skips non-folder ancestors', () => {
+    // A text entry cannot be a folder — if something weird happens
+    // and a text appears in the parent chain, it must not contribute
+    // a collapsible lid (it has no collapsed-folder semantics).
+    const entries = [
+      makeEntry('root-folder', 'Root', 'folder'),
+      makeEntry('mid-text', 'Mid (non-folder)', 'text'),
+      makeEntry('leaf', 'Leaf', 'text'),
+    ];
+    const relations = [
+      makeRelation('r1', 'root-folder', 'mid-text'),
+      makeRelation('r2', 'mid-text', 'leaf'),
+    ];
+    // root-folder is a valid ancestor; mid-text is silently skipped.
+    expect(getAncestorFolderLids(relations, entries, 'leaf')).toEqual([
+      'root-folder',
+    ]);
+  });
+
+  it('is cycle-safe: parent chain pointing back to self short-circuits', () => {
+    // Malformed graph: a → b → a. Walk must terminate, not loop.
+    const entries = [
+      makeEntry('a', 'A', 'folder'),
+      makeEntry('b', 'B', 'folder'),
+    ];
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'a'),
+    ];
+    // From b, parent is a; a's parent is b (already visited) — stop.
+    expect(getAncestorFolderLids(relations, entries, 'b')).toEqual(['a']);
+  });
+
+  it('no-ops on a missing lid with no relations', () => {
+    expect(getAncestorFolderLids([], [], 'ghost')).toEqual([]);
   });
 });
