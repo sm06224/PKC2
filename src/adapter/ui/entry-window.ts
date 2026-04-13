@@ -580,9 +580,18 @@ function getParentCssVars(): string {
     '--c-bg', '--c-fg', '--c-accent', '--c-accent-dim', '--c-accent-fg',
     '--c-border', '--c-hover', '--c-danger', '--c-muted', '--c-surface',
     '--c-success', '--c-warn', '--c-warn-fg',
+    '--c-text', '--c-text-dim', '--c-info',
     '--font-sans', '--font-mono',
     '--radius', '--radius-lg', '--radius-sm',
     '--shadow-sm', '--glow', '--transition-fast',
+    // Syntax-highlight token colors — forward them so fenced code
+    // blocks inside a popped-out entry window match the main-app
+    // palette (see styles/base.css and
+    // docs/development/markdown-code-block-highlighting.md).
+    '--c-tok-comment', '--c-tok-string', '--c-tok-keyword',
+    '--c-tok-number', '--c-tok-builtin', '--c-tok-variable',
+    '--c-tok-type', '--c-tok-attr', '--c-tok-tag', '--c-tok-meta',
+    '--c-tok-ins', '--c-tok-del', '--c-tok-hunk',
   ];
   const style = getComputedStyle(document.documentElement);
   const lines: string[] = [];
@@ -987,6 +996,23 @@ body {
   border-radius: 2px; overflow-x: auto; margin: 0.35em 0;
 }
 .pkc-md-rendered pre code { background: none; padding: 0; font-size: 0.8rem; }
+/* Syntax highlight tokens — inherits colors from the main window
+   via getParentCssVars(). Kept in sync with styles/base.css. */
+.pkc-md-rendered pre code .pkc-tok-comment { color: var(--c-tok-comment); font-style: italic; }
+.pkc-md-rendered pre code .pkc-tok-string { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-keyword { color: var(--c-tok-keyword); font-weight: 600; }
+.pkc-md-rendered pre code .pkc-tok-number { color: var(--c-tok-number); }
+.pkc-md-rendered pre code .pkc-tok-builtin { color: var(--c-tok-builtin); }
+.pkc-md-rendered pre code .pkc-tok-variable { color: var(--c-tok-variable); }
+.pkc-md-rendered pre code .pkc-tok-type { color: var(--c-tok-type); }
+.pkc-md-rendered pre code .pkc-tok-attr { color: var(--c-tok-attr); }
+.pkc-md-rendered pre code .pkc-tok-punct { color: var(--c-text-dim); }
+.pkc-md-rendered pre code .pkc-tok-regex { color: var(--c-tok-string); }
+.pkc-md-rendered pre code .pkc-tok-tag { color: var(--c-tok-tag); }
+.pkc-md-rendered pre code .pkc-tok-meta { color: var(--c-tok-meta); }
+.pkc-md-rendered pre code .pkc-tok-ins { color: var(--c-tok-ins); }
+.pkc-md-rendered pre code .pkc-tok-del { color: var(--c-tok-del); }
+.pkc-md-rendered pre code .pkc-tok-hunk { color: var(--c-tok-hunk); font-weight: 600; }
 .pkc-md-rendered blockquote {
   border-left: 3px solid var(--c-accent); padding-left: 0.75em;
   margin: 0.35em 0; color: var(--c-muted);

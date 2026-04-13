@@ -159,6 +159,26 @@ export function buildRenderedViewerHtml(
       padding: 0.08em 0.36em;
       border-radius: 3px;
     }
+    /* Syntax highlight tokens — print-safe shades that stay legible
+       on both screen and paper. Kept self-contained here because the
+       exported HTML is a standalone document without access to the
+       main app's theme variables. See
+       docs/development/markdown-code-block-highlighting.md. */
+    article.pkc-viewer-body pre code .pkc-tok-comment { color: #6a737d; font-style: italic; }
+    article.pkc-viewer-body pre code .pkc-tok-string { color: #8a5a00; }
+    article.pkc-viewer-body pre code .pkc-tok-keyword { color: #1a6b35; font-weight: 600; }
+    article.pkc-viewer-body pre code .pkc-tok-number { color: #5d3c9a; }
+    article.pkc-viewer-body pre code .pkc-tok-builtin { color: #0f4c81; }
+    article.pkc-viewer-body pre code .pkc-tok-variable { color: #a83f00; }
+    article.pkc-viewer-body pre code .pkc-tok-type { color: #117260; }
+    article.pkc-viewer-body pre code .pkc-tok-attr { color: #6a5400; }
+    article.pkc-viewer-body pre code .pkc-tok-punct { color: #586069; }
+    article.pkc-viewer-body pre code .pkc-tok-regex { color: #8a5a00; }
+    article.pkc-viewer-body pre code .pkc-tok-tag { color: #1a6b35; }
+    article.pkc-viewer-body pre code .pkc-tok-meta { color: #6a737d; }
+    article.pkc-viewer-body pre code .pkc-tok-ins { color: #1e7a36; }
+    article.pkc-viewer-body pre code .pkc-tok-del { color: #a01a1a; }
+    article.pkc-viewer-body pre code .pkc-tok-hunk { color: #1f3c91; font-weight: 600; }
     article.pkc-viewer-body img { max-width: 100%; height: auto; }
     article.pkc-viewer-body blockquote {
       border-left: 4px solid #ccc;

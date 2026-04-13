@@ -42,7 +42,10 @@ describe('renderMarkdown (markdown-it)', () => {
     const html = renderMarkdown(md);
     expect(html).toContain('<pre>');
     expect(html).toContain('<code');
-    expect(html).toContain('const x = 1;');
+    // After highlighting, `const` and `1` are wrapped in spans; strip tags
+    // to recover the visible source text.
+    const text = html.replace(/<[^>]+>/g, '');
+    expect(text).toContain('const x = 1;');
   });
 
   it('renders unordered lists', () => {
@@ -154,6 +157,43 @@ describe('renderMarkdown (markdown-it)', () => {
   it('does not add language class when no language specified', () => {
     const html = renderMarkdown('```\nplain\n```');
     expect(html).not.toContain('class="language-');
+  });
+
+  // ── Fenced code block syntax highlighting ──
+  // Inner-HTML spans are produced by the code-highlight helper;
+  // these tests just verify the markdown-it wire-up is live and
+  // that unknown / absent languages still fall back cleanly.
+  it('highlights fenced code blocks for known languages (js)', () => {
+    const html = renderMarkdown('```js\nconst x = 1;\n```');
+    expect(html).toContain('class="language-js"');
+    expect(html).toContain('pkc-tok-keyword'); // const
+    expect(html).toContain('pkc-tok-number');  // 1
+  });
+
+  it('highlights fenced code blocks via language aliases (ts)', () => {
+    const html = renderMarkdown('```ts\ninterface Foo { bar: string }\n```');
+    expect(html).toContain('class="language-ts"');
+    expect(html).toContain('pkc-tok-keyword'); // interface
+    expect(html).toContain('pkc-tok-type');    // string
+  });
+
+  it('falls back to plain <pre><code> for unknown languages (no tokens emitted)', () => {
+    const html = renderMarkdown('```brainfuck\n++>++<-\n```');
+    expect(html).toContain('class="language-brainfuck"');
+    expect(html).not.toContain('pkc-tok-');
+  });
+
+  it('falls back to plain <pre><code> when no language is specified', () => {
+    const html = renderMarkdown('```\nplain line\n```');
+    expect(html).not.toContain('pkc-tok-');
+  });
+
+  it('still escapes HTML inside highlighted fenced blocks (no XSS leak)', () => {
+    const html = renderMarkdown('```js\nconst s = "<script>alert(1)</script>";\n```');
+    // Raw `<script>` must NOT be present anywhere in the output —
+    // only its escaped form.
+    expect(html).not.toMatch(/<script>alert/);
+    expect(html).toContain('&lt;script&gt;');
   });
 
   // ── Phase 2: task lists ──

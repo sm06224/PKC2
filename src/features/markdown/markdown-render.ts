@@ -25,13 +25,24 @@
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import { makeSlugCounter } from './markdown-toc';
+import { highlightCode, isHighlightable } from './code-highlight';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
   linkify: true,        // Auto-convert URL-like text to links
   typographer: true,    // Smart quotes, em-dash, etc.
   breaks: true,         // Convert \n to <br> for easier editing
-  langPrefix: 'language-', // Code block language class prefix (for future highlighting)
+  langPrefix: 'language-', // Code block language class prefix (for highlighting token selectors)
+  // Fenced code block syntax highlighting. We return already-escaped
+  // HTML for known languages; markdown-it then wraps it in
+  // `<pre><code class="language-xxx">...</code></pre>`. For unknown
+  // / empty languages, returning an empty string lets markdown-it
+  // fall back to its default escape-and-wrap behaviour — preserving
+  // the historical plain appearance. See code-highlight.ts.
+  highlight: (str, lang) => {
+    if (!isHighlightable(lang)) return '';
+    return highlightCode(str, lang);
+  },
 });
 
 // ── Link hardening ────────────────────────────────────
