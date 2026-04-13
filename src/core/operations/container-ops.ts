@@ -262,6 +262,11 @@ export function getRevisionCount(
 /**
  * Parse a revision's snapshot back into an Entry.
  * Returns null if the snapshot is malformed.
+ *
+ * Canonical spec: `docs/spec/data-model.md` §6.4 (snapshot parse contract).
+ * Validation is intentionally loose — only `lid`, `title`, `body`
+ * are re-verified as strings. `archetype` and timestamps are trusted
+ * from the JSON shape (current implementation).
  */
 export function parseRevisionSnapshot(revision: Revision): Entry | null {
   try {

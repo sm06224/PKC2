@@ -1,0 +1,867 @@
+# PKC2 データモデル仕様書
+
+**Status**: 正本（canonical）
+**Last updated**: 2026-04-13（Slice 6 完了時点）
+**Supersedes**: `docs/planning/17_保存再水和可搬モデル.md` の該当章は本文書を参照
+**Related**: `docs/spec/body-formats.md`（archetype 別 body 契約）
+
+---
+
+## 0. この文書の位置づけ
+
+PKC2 のデータは「Container」という単一の永続集約で表現される。
+本文書は **Container とその構成要素の JSON schema・不変条件・互換性方針** の正本である。
+
+- **保証される契約 (Guaranteed Contract)**: どのバージョンでも守られる
+- **現状実装の詳細 (Current Implementation)**: 現在そう動くだけで、将来変更し得る
+
+この 2 種類を必ず区別して記述する。
+曖昧な箇所は「未規定」または「現状実装依存」と明記する。
+
+---
+
+## 1. Container — 最上位永続集約
+
+Container は PKC2 のすべての永続データを包む唯一の集約 (aggregate root)。
+実装: `src/core/model/container.ts`
+
+### 1.1 Schema（TypeScript 表記）
+
+```typescript
+interface Container {
+  meta: ContainerMeta;
+  entries: Entry[];
+  relations: Relation[];
+  revisions: Revision[];
+  assets: { [key: string]: string };
+}
+```
+
+### 1.2 JSON 形式（保証契約）
+
+```json
+{
+  "meta":      { /* ContainerMeta */ },
+  "entries":   [ /* Entry[] */ ],
+  "relations": [ /* Relation[] */ ],
+  "revisions": [ /* Revision[] */ ],
+  "assets":    { "<key>": "<base64-string>" }
+}
+```
+
+- 5 フィールドすべて **必須**（空配列 `[]` / 空オブジェクト `{}` は許可、欠落は不可）
+- 追加フィールドを持つ Container を import する場合、既知フィールドのみ採用される（ignore by default）
+- **current implementation**: `importer.ts:164-167` が `revisions` 欠落時のみ `[]` で補填する互換処理を実装している。他フィールドの補填は無い。
+
+---
+
+## 2. ContainerMeta — Container 識別とバージョン
+
+実装: `src/core/model/container.ts:7-20`
+
+### 2.1 Schema
+
+```typescript
+interface ContainerMeta {
+  container_id: string;                // 一意識別子 (cid)
+  title: string;                       // ユーザー可視タイトル
+  created_at: string;                  // ISO 8601
+  updated_at: string;                  // ISO 8601
+  schema_version: number;              // 現状 1 (固定)
+  sandbox_policy?: 'strict' | 'relaxed';  // 添付プレビューのサンドボックス既定
+}
+```
+
+### 2.2 フィールド契約
+
+| フィールド | 型 | 必須 | 契約 |
+|-----------|-----|-----|-----|
+| `container_id` | string | ✓ | Container の一意識別子 (cid)。ZIP import 時は新しい cid が採番される（`zip-package.ts:182`）。HTML import 時は source 側の cid を保持する |
+| `title` | string | ✓ | ユーザーが編集可能な表示タイトル。空文字列許可 |
+| `created_at` | ISO8601 string | ✓ | Container 作成時刻。caller が供給（core は `Date.now()` を呼ばない） |
+| `updated_at` | ISO8601 string | ✓ | 直近の mutation 時刻。各種 `addEntry` / `updateEntry` / `addRelation` で自動更新 |
+| `schema_version` | number | ✓ | **現状 1 固定**。`src/runtime/release-meta.ts:91` の `SCHEMA_VERSION` と一致する。import 時に不一致なら `SCHEMA_MISMATCH` で拒否（`importer.ts:115-120`） |
+| `sandbox_policy` | `'strict'` \| `'relaxed'` | optional | 添付（HTML/SVG）プレビュー時の iframe sandbox 既定値。absent → **'strict' 扱い**（`allow-same-origin` のみ）。per-entry `sandbox_allow` が最優先 |
+
+### 2.3 未規定 / 曖昧な点
+
+- `title` の最大長: 制限なし（current implementation）
+- `schema_version` の migration 規約: **未規定**。現状は厳格一致のみで、upgrade path が設計されていない
+- `container_id` の生成規則: 実装依存（current: timestamp + random base36）。保証される性質は**一意性のみ**
+
+---
+
+## 3. Entry — 基本データ単位
+
+実装: `src/core/model/record.ts:23-30`
+
+### 3.1 Schema
+
+```typescript
+interface Entry {
+  lid: string;          // Local ID: Container 内で一意
+  title: string;        // ユーザー可視タイトル
+  body: string;         // archetype が解釈する文字列
+  archetype: ArchetypeId;
+  created_at: string;   // ISO 8601
+  updated_at: string;   // ISO 8601
+}
+```
+
+### 3.2 フィールド契約
+
+| フィールド | 型 | 必須 | 契約 |
+|-----------|-----|-----|-----|
+| `lid` | string | ✓ | **Local ID**。Container 内で一意。他 Container に移植する際は衝突解決が必要（current: import は full replace のみのため発生せず） |
+| `title` | string | ✓ | 空文字列許可。archetype により自動派生される場合がある（`Archetype.deriveTitle(entry)`） |
+| `body` | string | ✓ | **常に string**。archetype が JSON として解釈するか markdown として解釈するかは `body-formats.md` 参照 |
+| `archetype` | ArchetypeId | ✓ | §4 参照。未知値の場合は `'generic'` にフォールバック（`archetype.ts:22`） |
+| `created_at` | ISO8601 | ✓ | 生成時刻。caller 供給 |
+| `updated_at` | ISO8601 | ✓ | 更新時刻。mutation 時に自動更新 |
+
+### 3.3 不変条件
+
+- `lid` は作成後**変更不可**（immutable）
+- `archetype` は作成後**変更不可**（archetype 変換は新規 Entry 生成 + 旧 Entry 削除で行う。例: TEXT→TEXTLOG, TEXTLOG→TEXT）
+- `body` は**必ず string**（null / undefined / object 不可）。空文字列 `""` は許可
+
+### 3.4 削除ポリシー
+
+- **物理削除**（tombstone なし）
+- 削除前に Revision snapshot を残す（§6 参照）
+- `removeEntry(container, lid)` は関連 `Relation`（`from === lid` または `to === lid`）も同時に削除する（`container-ops.ts:75-85`）
+
+---
+
+## 4. ArchetypeId — Entry の種別
+
+実装: `src/core/model/record.ts:4-12`
+
+### 4.1 列挙
+
+```typescript
+type ArchetypeId =
+  | 'text'       // markdown 文書
+  | 'textlog'    // 時系列ログ (JSON)
+  | 'todo'       // ToDo 項目 (JSON)
+  | 'form'       // 固定 3 フィールド form (JSON)
+  | 'attachment' // ファイル添付 (JSON + assets)
+  | 'folder'     // 構造コンテナ (markdown description)
+  | 'generic'    // フォールバック
+  | 'opaque';    // 未解釈の予約型
+```
+
+### 4.2 契約
+
+- この 8 種は **追加可能**（将来の拡張）だが、**削除・改名不可**
+- 新 archetype の追加は schema_version を上げずに行ってよい（optional、後方互換）
+- 未知 archetype を含む Container を import した場合:
+  - **current implementation**: そのまま保持される。`getArchetype()` が `'generic'` にフォールバックして描画を継続する
+  - **guaranteed contract**: 未知 archetype は **無害化され破棄されない**
+
+### 4.3 archetype 別 body 契約
+
+`body` の形式は archetype ごとに異なる。詳細は `docs/spec/body-formats.md` を参照。
+
+| archetype | body 形式 | 正本 |
+|-----------|----------|------|
+| text | raw markdown string | body-formats §2 |
+| textlog | `JSON.stringify({ entries: TextlogEntry[] })` | body-formats §3 |
+| todo | `JSON.stringify({ status, description, date?, archived? })` | body-formats §4 |
+| form | `JSON.stringify({ name, note, checked })` | body-formats §5 |
+| attachment | `JSON.stringify({ name, mime, size?, asset_key?, data?, sandbox_allow? })` | body-formats §6 |
+| folder | raw markdown description string | body-formats §7 |
+| generic | 未解釈 string | body-formats §8 |
+| opaque | 予約。現状 generic と同等 | body-formats §8 |
+
+---
+
+## 5. Relation — Entry 間の型付き関係
+
+実装: `src/core/model/relation.ts`
+
+### 5.1 Schema
+
+```typescript
+interface Relation {
+  id: string;                // 一意識別子 (rid)
+  from: string;              // source Entry.lid
+  to: string;                // target Entry.lid
+  kind: RelationKind;
+  created_at: string;        // ISO 8601
+  updated_at: string;        // ISO 8601
+}
+
+type RelationKind =
+  | 'structural'   // folder membership（親子構造）
+  | 'categorical'  // tag 分類
+  | 'semantic'     // 意味的参照
+  | 'temporal';    // 時系列順序
+```
+
+### 5.2 フィールド契約
+
+| フィールド | 型 | 必須 | 契約 |
+|-----------|-----|-----|-----|
+| `id` | string | ✓ | Relation の一意識別子 (rid)。同一 `(from, to, kind)` の重複登録を許容するかは未規定 |
+| `from` | string | ✓ | source Entry の `lid`。対応 Entry が存在しない場合は**dangling relation** |
+| `to` | string | ✓ | target Entry の `lid`。対応 Entry が存在しない場合は**dangling relation** |
+| `kind` | RelationKind | ✓ | 4 種のみ。未知 kind は import 時の挙動未規定 |
+
+### 5.3 RelationKind 意味論
+
+| kind | 用途 | Entry type 制約 | 例 |
+|------|-----|----------------|-----|
+| `structural` | 親子構造（フォルダ所属） | from は通常 folder。階層を形成 | folder → child entry |
+| `categorical` | タグ / カテゴリ分類 | from は被タグ Entry、to はタグ Entry | entry → tag entry |
+| `semantic` | 意味的参照（see also） | 制約なし | entry → referenced entry |
+| `temporal` | 時系列順序 | 制約なし | earlier → later |
+
+### 5.4 Dangling Relation 方針
+
+- **Entry 削除時**: `removeEntry()` が当該 Entry を含む Relation を**自動削除**する（`container-ops.ts:80-82`）
+- **Import 後の dangling**: import 側で参照先 Entry が欠落している Relation は**残存する可能性がある**。current implementation は検出/削除を行わない
+- **guaranteed contract**: dangling relation は **壊れた状態ではなく "未解決参照" として扱う**。UI 側でフィルタ/表示しない扱いが原則
+
+### 5.5 不変条件
+
+- 同一 `id` の重複は不可
+- `from === to`（自己参照）は許可（current implementation、意味論は UI 側の解釈に任せる）
+- `updated_at >= created_at`
+
+---
+
+## 6. Revision — 履歴スナップショット
+
+実装: `src/core/model/container.ts:25-30`, `src/core/operations/container-ops.ts:179-281`
+
+### 6.1 Schema
+
+```typescript
+interface Revision {
+  id: string;          // Revision の一意識別子
+  entry_lid: string;   // 対応 Entry の lid
+  snapshot: string;    // JSON.stringify(Entry) の前状態 (pre-mutation)
+  created_at: string;  // ISO 8601
+}
+```
+
+### 6.2 フィールド契約
+
+| フィールド | 型 | 必須 | 契約 |
+|-----------|-----|-----|-----|
+| `id` | string | ✓ | 一意識別子 |
+| `entry_lid` | string | ✓ | スナップショット対象 Entry の `lid`。当該 Entry が削除済みでも残存する |
+| `snapshot` | string | ✓ | **JSON.stringify(Entry) の文字列**（§6.4 参照） |
+| `created_at` | ISO8601 | ✓ | スナップショット時刻 |
+
+### 6.3 いつ snapshot が作られるか
+
+`src/core/operations/container-ops.ts:181-197` の policy に従う。
+
+| 契機 | snapshot | 備考 |
+|------|---------|-----|
+| `COMMIT_EDIT` | ✓ | 更新前の Entry を保存 |
+| `DELETE_ENTRY` | ✓ | 削除前の Entry を保存（物理削除の代替履歴） |
+| `QUICK_UPDATE_ENTRY` | ✓ | `app-state.ts` reducer 内で snapshot を取得してから update |
+| `CREATE_ENTRY` | ✗ | 作成前は何も無い |
+| `ACCEPT_OFFER` | ✗ | 外部受信による新規作成扱い |
+| `SYS_IMPORT_COMPLETE` | ✗ | Container 丸ごと置換。import 側の revisions が引き継がれる |
+| `BULK_DELETE` / `BULK_SET_STATUS` / `BULK_SET_DATE` | ✗（既知不足） | P1 候補: bulk 操作に snapshot が無い非対称性 |
+
+### 6.4 snapshot の形式契約
+
+#### 6.4.1 保証契約 (Guaranteed Contract)
+
+- `snapshot` は **JSON.stringify された Entry オブジェクトの文字列** である
+- parse 結果が以下をすべて満たせば **valid snapshot**:
+  - `typeof parsed === 'object' && parsed !== null`
+  - `typeof parsed.lid === 'string'`
+  - `typeof parsed.title === 'string'`
+  - `typeof parsed.body === 'string'`
+- 上記を満たさない場合 `parseRevisionSnapshot(rev)` は `null` を返す（実装: `container-ops.ts:266-281`）
+
+#### 6.4.2 現状実装の詳細 (Current Implementation)
+
+- `snapshot = JSON.stringify(entry)` をそのまま格納（`container-ops.ts:220`）
+- parse 時に `archetype` / `created_at` / `updated_at` は **型検証されない**（存在しなくても lid/title/body さえ string なら valid 扱い）
+- restore は `parseRevisionSnapshot` で取り出した `title` / `body` のみを `updateEntry` で上書きする（`container-ops.ts:371-372`）
+  - `archetype` は **restore 対象の現 Entry（または `restoreDeletedEntry` で re-create する Entry）のもの**を使う
+  - `created_at` / `updated_at` は restore 実行時刻に進む（rewind ではない）
+
+#### 6.4.3 既知の曖昧点（P0-2 で検証すべき）
+
+1. **未知 archetype snapshot の扱い**: `snapshot` が `archetype: 'unknown-future-type'` を含む場合、`parseRevisionSnapshot` は pass するが restore 時に archetype 情報が失われる
+2. **null body の snapshot**: 古い Entry で `body` が null として格納されていた場合の挙動は未検証
+3. **巨大 body (MB 級 markdown)**: JSON.stringify のメモリ消費が非線形に増える点は未検証
+4. **snapshot 内の相互参照 (asset key, entry ref)**: snapshot は Entry のみで、asset / relation は含まない。restore で参照切れが発生し得る
+
+### 6.5 Restore の forward-mutation 原則
+
+`container-ops.ts:328-345` に明記。
+
+- restore は **rewind ではない**
+- 現 Entry 状態を **先に snapshot してから** revision 内容で上書き
+- `updated_at` は restore 実行時刻に進む
+- revision は**削除・上書きされない**（履歴保全）
+- **restore されないもの**: relations、runtime state（pendingOffers / importPreview / phase / selection）
+
+### 6.6 Trash purge
+
+`purgeTrash(container)` は削除済み Entry（`entries` に存在せず `revisions` のみ持つ lid）の revision をすべて物理削除する。
+
+- 呼出契機: `SYS_PURGE_TRASH` 相当の明示操作のみ（current: UI から到達経路を確認要）
+- guaranteed: **存命中の Entry の revision は purge の対象外**
+
+---
+
+## 7. Assets — バイナリデータ辞書
+
+実装: `src/core/model/container.ts:42`, `src/core/operations/container-ops.ts:116-146`
+
+### 7.1 Schema
+
+```typescript
+interface Container {
+  // ...
+  assets: { [key: string]: string };
+}
+```
+
+- **key**: opaque string（asset key）
+- **value**: base64 文字列、またはフォーム化された文字列（§7.3 参照）
+
+### 7.2 Asset key の契約
+
+| 項目 | 契約 |
+|-----|-----|
+| 文字集合 (guaranteed) | **非空文字列**。decode 不可能な文字を含まないこと |
+| 文字集合 (reference safety) | markdown 参照 `![](asset:<key>)` / `[](asset:<key>)` で安全にマッチするのは `[A-Za-z0-9_-]+`（`asset-resolver.ts:84` の `SAFE_KEY_RE`）。これ以外の文字を含む key は参照時に解決されない可能性がある |
+| 一意性 | 同一 Container 内で一意 |
+| 生成規則 (current impl) | `attachment-presenter.ts:112-115` の `generateAssetKey()`: `ast-<ts-base36>-<rand-base36>` |
+| lifetime | Entry と別ライフサイクル。Entry を削除しても asset は自動削除されない（**ガベージコレクション機構は現状なし**） |
+
+### 7.3 Asset value のエンコーディング
+
+asset value は「どこにあるか」で形式が決まる。
+
+| 文脈 | value 形式 | 根拠 |
+|------|----------|-----|
+| **IDB 保存** | base64 string | `persistence.ts` / `idb-store.ts` |
+| **runtime memory** | base64 string | IDB からロード直後 |
+| **HTML Light export** | `{}` 固定（assets 省略） | `exporter.ts:78-79` |
+| **HTML Full export (圧縮対応環境)** | gzip+base64 string | `compression.ts:95-107`。`export_meta.asset_encoding = 'gzip+base64'` |
+| **HTML Full export (非圧縮環境)** | base64 string（フォールバック） | `compression.ts:98-100`。`export_meta.asset_encoding = 'base64'` |
+| **ZIP package** | **raw binary**（.bin ファイル） | `zip-package.ts:101-104`。container.json 側の `assets` は `{}` |
+| **text bundle / textlog bundle** | assets zip に同梱される raw binary | sister bundle 仕様（`text-bundle.ts` / `textlog-bundle.ts`） |
+
+### 7.4 IDB での格納実態
+
+`idb-store.ts`（DB `pkc2`, version `2`）:
+
+- `containers` store: Container を `assets: {}` にしてから保存（`save()` で strip）
+- `assets` store: per-cid + per-key で個別保存
+- `__default__` key: current default cid へのポインタ
+
+load 時に `assets` store から rehydrate されて `container.assets` に復元される。
+
+### 7.5 未規定 / 曖昧点
+
+- asset 内容の最大サイズ（current: guardrail 側で warn、reject はしない）
+- content-hash による dedup: **未実装**。同一バイナリが複数 key で重複保持され得る
+- 複数 ZIP import 時の key 衝突検出: **未実装**（P0-5 対象）
+
+---
+
+## 8. 識別子 (ID) とタイムスタンプの共通規約
+
+### 8.1 識別子の階層
+
+| 名前 | 略称 | スコープ | 格納先 | 保証 |
+|------|-----|---------|-------|-----|
+| Container ID | **cid** | グローバル（ユーザー視点で一意） | `ContainerMeta.container_id` | 同一ユーザー環境で一意 |
+| Local Entry ID | **lid** | Container 内で一意 | `Entry.lid` | Container 内で一意、作成後 immutable |
+| Relation ID | **rid** | Container 内で一意 | `Relation.id` | Container 内で一意 |
+| Revision ID | — | Container 内で一意 | `Revision.id` | Container 内で一意 |
+| Asset Key | **key** | Container 内で一意 | `assets[key]` | §7.2 参照 |
+| Log Entry ID | — | TEXTLOG body 内で一意 | `TextlogEntry.id` | ULID (26 char Crockford Base32) もしくは legacy |
+
+### 8.2 prev_rid / hash の扱い
+
+**重要**: データモデル上、**Revision は chain を成さない**。
+各 Revision は独立した snapshot であり、`prev_rid` や content `hash` フィールドは **存在しない**。
+
+（将来 branch/restore history UI を強化する際に追加余地あり。現状は `Revision[]` を `entry_lid` + `created_at` でフィルタ・ソートして履歴として扱う。）
+
+### 8.3 Revision chain の代替: created_at sort
+
+`getEntryRevisions(container, lid)` は `entry_lid` 一致の Revision を `created_at` 昇順で返す（`container-ops.ts:232-239`）。この順序が履歴の意味での「古い → 新しい」である。
+
+- **保証契約**: 同一 `entry_lid` の revisions は `created_at` で一意に順序付けられる
+- **曖昧点**: 同一ミリ秒で複数 revision が作られた場合の副順序は未規定
+
+### 8.4 タイムスタンプ規約
+
+- 形式: **ISO 8601 文字列**（例: `"2026-04-13T12:34:56.789Z"`）
+- 生成: **caller が供給**（core は `Date.now()` を呼ばない。`container-ops.ts` 冒頭 JSDoc 参照）
+- 比較: 文字列比較可能（ISO 8601 は lexicographic に時系列順）
+- タイムゾーン: UTC 推奨。ただし TEXTLOG の `createdAt` はローカルタイム由来も許容（`toLocalDateKey` で day bucketing）
+
+### 8.5 Log Entry ID (TEXTLOG 内)
+
+実装: `src/features/textlog/log-id.ts`
+
+- **新規**: 26 char Crockford Base32 **ULID**（48-bit timestamp + 80-bit randomness）
+- **legacy**: 旧形式 `log-<ts>-<n>` などを**書き換えない**（そのまま保持）
+- resolver は ULID / legacy を同等の opaque token として扱う
+- chronological 順序は **storage 順序が source of truth**（ID sort から推測しない）
+
+---
+
+## 9. IDB (Workspace) 保存レイアウト
+
+実装: `src/adapter/platform/idb-store.ts`, `src/adapter/platform/persistence.ts`
+
+### 9.1 IndexedDB 構造
+
+```
+Database:  'pkc2'    (DB_NAME)
+Version:   2         (DB_VERSION)
+
+Object Stores:
+├── 'containers'
+│   ├── key = cid              value = Container (ただし assets は {} に stripped)
+│   └── key = '__default__'    value = { cid: string }  (current default pointer)
+│
+└── 'assets'
+    └── key = `${cid}:${assetKey}`   value = base64 string
+```
+
+### 9.2 保存契約
+
+- **container.assets は IDB に直接格納しない**。`save()` が strip してから書く
+- `assets` store は **per-cid + per-key** で個別 PUT
+- `loadDefault()` / `load(cid)` が `assets` store から集めて reassemble
+
+### 9.3 debounce と flush
+
+- mutation event → 300ms debounce → `store.save()`（`persistence.ts:52`）
+- `pagehide` 時に `flushPending()` を発火（`persistence.ts:163`）
+- `lightSource` フラグ付き state は IDB 保存**しない**（Light export で asset が空の Container が IDB を上書きするのを防ぐ、`persistence.ts:113-114`）
+
+### 9.4 Migration
+
+- v0 → v1: `containers` store 作成
+- v1 → v2: `assets` store 作成 + 既存 `container.assets` を assets store へ移動
+- 将来の migration は `openDB()` 内の `onupgradeneeded` で明示的に記述する規約
+
+### 9.5 未規定 / 曖昧点
+
+- **multi-cid Workspace**: 現状は `__default__` の単一 cid のみ使用（複数 Workspace 切替は UI 未露出）
+- **asset ガベージコレクション**: 参照されなくなった asset の自動削除は**未実装**
+- **storage quota 対応**: warning のみ（`storage-estimate.ts`）
+
+---
+
+## 10. HTML Export 契約（Portable HTML）
+
+実装: `src/adapter/platform/exporter.ts`, `src/adapter/platform/importer.ts`
+関連: `src/runtime/contract.ts` (SLOT), `src/runtime/release-meta.ts` (ReleaseMeta)
+
+### 10.1 HTML の slot 契約
+
+```
+<html data-pkc-app data-pkc-version data-pkc-schema data-pkc-timestamp data-pkc-kind>
+  <head>
+    <style id="pkc-styles"> ... </style>
+    <style id="pkc-theme">  ... </style>
+  </head>
+  <body>
+    <div id="pkc-root"></div>
+    <script id="pkc-data" type="application/json"> ... </script>
+    <script id="pkc-meta" type="application/json"> ... </script>
+    <script id="pkc-core"> ... </script>
+  </body>
+</html>
+```
+
+6 slots (`SLOT` in `runtime/contract.ts`):
+- `pkc-root`: mount point (DOM)
+- `pkc-data`: Container + export_meta（JSON）
+- `pkc-meta`: ReleaseMeta（JSON）
+- `pkc-core`: 実行可能な JS bundle
+- `pkc-styles`: コンパイル済み CSS
+- `pkc-theme`: theme overrides
+
+### 10.2 pkc-data の形式
+
+```json
+{
+  "container":   { /* Container */ },
+  "export_meta": { /* ExportMeta */ }
+}
+```
+
+- `</script>` は `<\/script>` にエスケープして埋め込む（`exporter.ts:90`）
+- import 側は `<\/script>` → `</script>` に戻す（`importer.ts:138`）
+
+### 10.3 ExportMeta
+
+```typescript
+interface ExportMeta {
+  mode: 'light' | 'full';
+  mutability: 'editable' | 'readonly';
+  asset_encoding?: 'base64' | 'gzip+base64';
+}
+```
+
+| フィールド | 値 | 意味 |
+|-----------|-----|-----|
+| `mode: 'light'` | — | `container.assets = {}` に置換。asset_encoding は省略 |
+| `mode: 'full'` | — | `container.assets` を compress して埋込。`asset_encoding` で形式を記録 |
+| `mutability: 'editable'` | default | 編集可能な成果物 |
+| `mutability: 'readonly'` | — | 閲覧専用 UI。Rehydrate で Workspace に昇格可能 |
+| `asset_encoding: 'base64'` | — | 非圧縮環境フォールバック |
+| `asset_encoding: 'gzip+base64'` | — | CompressionStream 使用で圧縮済み |
+
+### 10.4 ReleaseMeta
+
+`src/runtime/release-meta.ts` 参照。
+
+- `app: 'pkc2'` 固定
+- `schema: 1`（`SCHEMA_VERSION`）。import 時に不一致で拒否
+- `code_integrity: "sha256:<hex>"` — pkc-core 改竄検出（warn レベル）
+- `source_commit: "<short-sha>"` または `"<short-sha>+dirty"` または `"unknown"`
+- `capabilities: string[]` — `'core'`, `'idb'`, `'export'`, `'record-offer'` 等
+
+### 10.5 Import 時の検証
+
+`importer.ts` が行う検証:
+
+1. HTML parse error チェック
+2. `pkc-meta` の存在と JSON parse
+3. `meta.app === 'pkc2'`
+4. `meta.schema === SCHEMA_VERSION` (厳格一致)
+5. `pkc-data` の存在と JSON parse
+6. `container.meta.container_id` と `container.meta.title` が string
+7. `entries` / `relations` が array
+8. `revisions` が欠落または array（欠落時は `[]` 補填）
+9. asset_encoding が `'gzip+base64'` なら decompress
+
+### 10.6 拒否される入力
+
+- `MISSING_PKC_META`, `MISSING_PKC_DATA`
+- `INVALID_APP_ID`, `SCHEMA_MISMATCH`
+- `INVALID_CONTAINER`
+- `PARSE_ERROR`, `FILE_READ_ERROR`
+
+---
+
+## 11. ZIP Export 契約（Portable Package）
+
+実装: `src/adapter/platform/zip-package.ts`
+関連: `docs/development/zip-export-contract.md`
+
+### 11.1 ZIP 構造
+
+```
+<name>.pkc2.zip
+├── manifest.json        — パッケージ識別情報
+├── container.json       — Container（ただし assets: {}）
+└── assets/
+    ├── <key1>.bin       — 生バイナリ（base64 decode 済み）
+    ├── <key2>.bin
+    └── ...
+```
+
+### 11.2 manifest.json
+
+```typescript
+interface PackageManifest {
+  format: 'pkc2-package';     // 固定
+  version: 1;                  // 現状 1
+  exported_at: string;         // ISO 8601
+  source_cid: string;          // export 元の container_id
+  entry_count: number;
+  relation_count: number;
+  revision_count: number;
+  asset_count: number;
+}
+```
+
+### 11.3 ZIP 形式の詳細
+
+- **ZIP stored mode**（method 0、圧縮なし）を採用
+- 理由: 外部 deflate 実装を bundle に含めないため（単一 HTML 成果物契約）
+- 大半の asset（画像・PDF・既圧縮）は再圧縮の利得が小さく、text JSON は absolute size が小さい
+- per-entry `mtime` は MS-DOS date/time で export timestamp（1980-01-01 デフォルト回避）
+
+### 11.4 Import 時の挙動
+
+- `manifest.format === 'pkc2-package'` と `version === 1` を検証
+- `container.json` を parse
+- `container.meta.container_id` / `title` が string で `entries` / `relations` が array であることを検証
+- `assets/<key>.bin` を順次読み、base64 にエンコードして `assets[key]` に格納
+- **新しい cid を採番**して `container.meta.container_id` を置換（source と衝突を避けるため）
+- `updated_at` は import 時刻に進む
+- revisions は「array なら維持、欠落なら `[]`」
+
+### 11.5 ZIP Import で失われる情報
+
+- **source_cid**（manifest に記録されるが復元は不可。新 cid が振られる）
+- 旧 cid を参照していた外部リンク（URL 直書きの entry ref 等）
+
+### 11.6 失敗時のエラーメッセージ
+
+- `Missing manifest.json in ZIP`
+- `Invalid format: expected "pkc2-package", got "<x>"`
+- `Unsupported version: <n>`
+- `Missing container.json in ZIP`
+- `Invalid container: missing meta fields`
+- `Invalid container: missing entries array`
+- `Invalid container: missing relations array`
+
+---
+
+## 12. HTML Export vs ZIP Export の契約境界
+
+### 12.1 本質的な違い
+
+| 観点 | HTML (Portable HTML) | ZIP (Portable Package) |
+|------|---------------------|-----------------------|
+| **成果物種別** | self-executing artifact | data-only artifact |
+| **コード同梱** | ✓（pkc-core, pkc-styles, pkc-core に bundle 埋込） | ✗（コード無し） |
+| **開いた時の挙動** | ブラウザで開けばそのまま PKC2 が動く | PKC2 に import する必要あり |
+| **主用途** | 配布、閲覧、Rehydrate による Workspace 取込 | バックアップ、移行、外部ツール処理 |
+| **最小サイズ** | 数十 KB〜（Light モード） | 数 KB〜（小 Container） |
+| **Asset 格納** | base64 または gzip+base64 を JSON 内埋込 | 生バイナリを個別 `.bin` ファイル |
+| **バイナリ効率** | base64 で 33% 膨張 + 圧縮可（gzip） | 生バイナリで 0% 膨張、ZIP stored で再圧縮なし |
+
+### 12.2 使い分け決定木（保証契約レベル）
+
+```
+配布・共有したい?
+├── Yes → HTML
+│   ├── テキストだけで十分? → HTML Light (editable or readonly)
+│   └── 添付も含めたい?     → HTML Full (editable or readonly)
+│
+└── バックアップ・移行?
+    ├── 大容量 asset を効率的に扱いたい → ZIP
+    └── 単一 Entry だけ持ち出したい     → text-bundle (.text.zip) / textlog-bundle (.textlog.zip)
+```
+
+### 12.3 往復 (round-trip) 可能性
+
+| 経路 | cid 保持 | revisions 保持 | assets 保持 | body/relations 保持 |
+|-----|---------|---------------|------------|-------------------|
+| HTML Light export → import | ✓ | ✓ | ✗（空に） | body=✓ / relations=✓ |
+| HTML Full export → import | ✓ | ✓ | ✓ | ✓ |
+| ZIP export → import | ✗（新 cid） | ✓ | ✓ | ✓ |
+
+**注**: 「保持」は**バイト完全一致**を意味しない。`updated_at` は import 時刻に進む、pretty-print される、revisions の順序は `created_at` sort 依存、など境界は P0-2 round-trip テストで明確化する。
+
+### 12.4 両形式で共通する原則
+
+- Container のみが永続。runtime state（phase / selection / editing）は**決して埋め込まれない**
+- コード（pkc-core）は runtime version と source_commit を pkc-meta に記録するが、HTML ファイル自体の SHA は記録しない（code_integrity は pkc-core 部分のみ）
+- import は **full replace**（merge は未実装）
+
+---
+
+## 13. Sister Bundle 契約（単一 Entry 可搬形式）
+
+実装: `src/adapter/platform/text-bundle.ts`, `src/adapter/platform/textlog-bundle.ts`, `src/adapter/platform/mixed-bundle.ts`, `src/adapter/platform/folder-export.ts`, `src/adapter/platform/entry-package-router.ts`
+
+### 13.1 対象
+
+単一 Entry または部分 closure を持ち出す形式。Container 全体ではない。
+
+| 拡張子 | 対象 | 用途 |
+|-------|-----|-----|
+| `.text.zip` | 単一 TEXT entry + 参照 assets | markdown ドキュメント単体のバックアップ／配布 |
+| `.textlog.zip` | 単一 TEXTLOG entry + 参照 assets | ログファイル単体の持ち出し |
+| `.mixed.zip` | folder closure or selected entries | folder 単位エクスポート |
+| `.texts.zip` | 複数 TEXT 一括 | container-wide TEXT export |
+
+### 13.2 Import ルーティング
+
+`entry-package-router.ts` が filename の末尾で判定:
+- `.textlog.zip` → textlog importer
+- `.text.zip` → text importer
+- それ以外（`.pkc2.zip` / `.texts.zip` / `.mixed.zip`）→ 専用の batch import 経路
+
+### 13.3 build-subset の closure 計算
+
+実装: `src/features/container/build-subset.ts`
+
+- root LID から reachable な Entry 集合を計算
+- MAX_REF_ITERATIONS = 10,000、MAX_ANCESTOR_DEPTH = 32 のガード
+- attachment entry を収集し、対応 asset key を map
+- TODO / FOLDER body（markdown 化された description）も scan して entry refs / asset refs を辿る（Slice 3 / Slice 6 で closure 対応）
+- missing asset key は manifest に report
+- **revisions は空にリセット**（subset 外の Entry の履歴が漏れるのを防ぐ、`build-subset.ts:202-203`）
+
+### 13.4 Compact mode
+
+text / textlog bundle には **compact mode** がある。
+壊れた asset 参照（`asset:key` で key が present でない）は以下のように markdown を書き換える:
+
+- `![alt](asset:<missing>)` → `alt`
+- `[label](asset:<missing>)` → `label`
+
+（実装: `text-markdown.ts:64-74` の `compactMarkdownAgainst`）
+
+### 13.5 未規定 / 曖昧点
+
+- build-subset の **cycle guard**: includedLids set で de-dup されるが、A→B→A のような相互参照チェーンの closure テストは未網羅（P0-2 / P1-8 候補）
+- subset 内に dangling relation が残る可能性（external reference 整合性チェックなし）
+
+---
+
+## 14. データモデル不変条件
+
+### 14.1 Container レベル
+
+- **I-C1**: `meta` / `entries` / `relations` / `revisions` / `assets` の 5 フィールドは常に存在（空でもよい）
+- **I-C2**: `meta.container_id` は Container の生涯にわたって変化しない（ZIP import による新 cid 採番を除く。それは「新 Container」）
+- **I-C3**: `meta.schema_version` は現状 `1` 固定。migration なしに変更不可
+- **I-C4**: `meta.updated_at` はいかなる mutation 後も前回値以上
+
+### 14.2 Entry レベル
+
+- **I-E1**: `lid` は Container 内で一意
+- **I-E2**: `lid` と `archetype` は作成後 immutable
+- **I-E3**: `body` は常に string（JSON parse される archetype でも、格納値は string）
+- **I-E4**: `created_at <= updated_at`
+
+### 14.3 Relation レベル
+
+- **I-R1**: `id` は Container 内で一意
+- **I-R2**: `removeEntry(lid)` は対応 Relation（from または to が lid）を同時削除する
+- **I-R3**: dangling relation（from / to の Entry が存在しない）は **runtime 側でフィルタする前提**。データ層では許容
+
+### 14.4 Revision レベル
+
+- **I-V1**: `entry_lid` が指す Entry が削除されても Revision は残存する（物理削除の代替履歴）
+- **I-V2**: `snapshot` は `JSON.stringify(Entry)` の形式を取る（§6.4）
+- **I-V3**: restore は forward mutation（rewind ではない）。revision は決して削除・上書きされない
+- **I-V4**: `purgeTrash` は存命中 Entry の revision を削除しない
+
+### 14.5 Assets レベル
+
+- **I-A1**: asset key は Container 内で一意
+- **I-A2**: IDB / runtime 上は常に base64。gzip+base64 は HTML Full 内のみ
+- **I-A3**: Entry 削除で asset は自動削除されない（orphan 化し得る）
+
+### 14.6 Import/Export レベル
+
+- **I-IO1**: Import は full replace（merge なし）
+- **I-IO2**: runtime state（phase / selectedLid / editingLid / pendingOffers / importPreview / multiSelectedLids 等）は一切埋め込まれない
+- **I-IO3**: HTML Full と ZIP の body / relations / revisions は logical equivalence（バイト完全一致は非保証、pretty-print や順序は変わり得る）
+
+---
+
+## 15. 後方互換性と Migration 原則
+
+### 15.1 基本方針
+
+1. **Additive only**: 新フィールドは必ず optional で追加
+2. **Never remove / rename**: 既存フィールド・値の削除や改名は禁止（schema_version を上げる場合のみ可）
+3. **Unknown fields are ignored**: 未知フィールドを含む Container を読み込む場合、既知のみ採用
+4. **Legacy formats auto-migrate on next save**: 読込時は legacy を許容、次回 save 時に新形式で書き出す (lazy migration)
+
+### 15.2 確立済み migration パターン
+
+| 項目 | legacy | new | migration | 責務 |
+|-----|-------|-----|-----------|-----|
+| **attachment body** | `{ name, mime, data }` （data inline base64） | `{ name, mime, size, asset_key }` + `container.assets[asset_key]` | lazy migration on next save | `attachment-presenter.ts` |
+| **TEXTLOG log id** | `log-<ts>-<n>` | ULID (26 char Crockford Base32) | **never rewritten**（旧 ID 保持） | `log-id.ts`, `textlog-body.ts` |
+| **todo body** | plain string | JSON `{status, description, ...}` | parse が fallback して `{status:'open', description: body}` を返す | `todo-body.ts:36-39` |
+| **IDB schema** | v1: container.assets 直格納 | v2: assets store 分離 | `onupgradeneeded` で自動移行 | `idb-store.ts` |
+| **revisions 欠落** | 旧 export で欠落 | 必須 array | import 時に `[]` 補填 | `importer.ts:164-167` |
+
+### 15.3 schema_version の昇格ルール
+
+- 現状 `SCHEMA_VERSION = 1`（`release-meta.ts:91`）
+- schema_version を上げる条件: **既存フィールドの削除・改名・型変更**を行う場合のみ
+- 昇格時は `onupgradeneeded` 相当の migration path を import 側にも用意する（**現状未設計**）
+
+### 15.4 禁止される変更（P0-P1 期間中）
+
+以下は破壊的変更であり、現段階では**禁止**:
+
+- `ContainerMeta.container_id` の必須性を外す
+- `Entry.body` を `string` 以外の型にする
+- `ArchetypeId` の既存値を削除・改名
+- `RelationKind` の既存値を削除・改名
+- `Revision.snapshot` の形式を JSON.stringify 以外に変更
+- `export_meta.mode` / `asset_encoding` の既存値を削除・改名
+- `manifest.format: 'pkc2-package'` 識別子の変更
+- SLOT ID（`pkc-root`, `pkc-data`, `pkc-meta`, `pkc-core`, `pkc-styles`, `pkc-theme`）の改名
+
+### 15.5 拡張の余地（P2 候補）
+
+- 新 archetype（`complex`, `document-set`, `spreadsheet` 等）の追加: **schema_version 据え置きで可能**
+- `Revision` への `prev_rid` / `content_hash` フィールド追加: optional なら schema 据え置きで可能
+- `ContainerMeta` への locale / timezone フィールド追加: optional なら可能
+- merge import の実装: schema 据え置きで可能（conflict resolution 戦略要設計）
+
+---
+
+## 16. 既知の曖昧点（P0-2 round-trip で検証すべき）
+
+以下は**仕様として未規定または実装依存**。次段 P0-2 の round-trip テストで挙動を固定し、必要なら契約化する。
+
+### 16.1 Revision 関連
+- [ ] snapshot に含まれる `archetype` と restore 先の `archetype` が異なるケース（発生し得るか / 起きた場合の挙動）
+- [ ] snapshot の `body` が null / undefined / object だった場合（旧 Container を想定）
+- [ ] 同一ミリ秒 created_at 複数 revision の副順序
+
+### 16.2 Relation 関連
+- [ ] 同一 `(from, to, kind)` の重複 Relation の扱い
+- [ ] dangling relation（from / to の Entry が存在しない）が import/export で残るか消えるか
+- [ ] `from === to`（自己参照）が UI でどう解釈されるか
+
+### 16.3 Asset 関連
+- [ ] asset key が `[A-Za-z0-9_-]+` の範囲外の文字（例: 日本語、スペース）を含む場合の参照解決
+- [ ] 同一 base64 内容が複数 key で重複保持される場合のサイズ膨張
+- [ ] orphan asset（どの Entry からも参照されない）の検出 / 削除
+- [ ] ZIP import 時の asset key 衝突（P0-5 で解決）
+
+### 16.4 Export / Import 関連
+- [ ] HTML Full → ZIP 経由 → HTML Full で container が logical equivalent か
+- [ ] ZIP import で新 cid が振られた Container を再度 HTML export した時の `updated_at` / `created_at` の値
+- [ ] Light export → import → Full export の asset 欠落状態の扱い（`lightSource` フラグの永続化）
+- [ ] `export_meta` 欠落の古い HTML を import した場合のフォールバック挙動
+- [ ] `revisions` が undefined の旧 Container import で `[]` 補填が確実か
+- [ ] pretty-print（`JSON.stringify(..., null, 2)`）と minify の混在耐性
+
+### 16.5 Schema migration 関連
+- [ ] schema_version = 2 を持つ未来 Container を現行（schema=1）で読んだ場合の挙動（現状 `SCHEMA_MISMATCH`）
+- [ ] schema_version = 0 を持つ旧 Container（存在しうるか要調査）
+
+### 16.6 Transclusion / Embed 関連（body-formats と横断）
+- [ ] entry ref で削除済み Entry を指す場合の placeholder
+- [ ] depth > 1 の embed chain の完全遮断契約
+- [ ] self-reference / cycle の検出境界
+
+---
+
+## 17. 関連文書
+
+- `docs/spec/body-formats.md` — archetype 別 body 契約
+- `docs/planning/17_保存再水和可搬モデル.md` — 4 系統モデル（Workspace/HTML/ZIP/Template）
+- `docs/planning/13_基盤方針追補_release契約.md` — HTML slot 契約
+- `docs/planning/18_運用ガイド_export_import_rehydrate.md` — 利用手順
+- `docs/development/zip-export-contract.md` — ZIP stored mode の根拠
+- `docs/development/entry-transformation-and-embedded-preview.md` — TEXT/TEXTLOG 変換と embed
+- `docs/planning/HANDOVER_SLICE6.md` — 次段計画
+
+---
+
+## 18. 変更履歴
+
+| 日付 | 変更 |
+|------|-----|
+| 2026-04-13 | 初版作成（P0-1、Slice 6 完了時点の実装を正本化） |
+
