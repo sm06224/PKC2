@@ -208,10 +208,13 @@ describe('buildRenderedViewerHtml — prose density', () => {
     expect(bodyRule).not.toMatch(/line-height:\s*1\.65/);
   });
 
-  it('article.pkc-viewer-body pins line-height 1.4 to match the main app', () => {
+  it('article.pkc-viewer-body pins line-height 1.35 to match the main app', () => {
+    // Tightened alongside the main-app .pkc-md-rendered baseline
+    // (1.4 → 1.35). Keeps exported HTML at the same density as the
+    // live center pane.
     const html = buildRenderedViewerHtml(textEntry('body'), baseContainer());
     expect(html).toMatch(
-      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.4(?!\d)[^}]*\}/,
+      /article\.pkc-viewer-body\s*\{\s*line-height:\s*1\.35(?!\d)[^}]*\}/,
     );
   });
 
@@ -249,5 +252,69 @@ describe('buildRenderedViewerHtml — screen-first body width', () => {
     const printBlock = html.match(/@media print\s*\{[\s\S]*?\n\s*\}/);
     expect(printBlock).not.toBeNull();
     expect(printBlock![0]).toMatch(/main\s*\{\s*max-width:\s*48rem;?\s*\}/);
+  });
+});
+
+// ── Table of Contents in exported preview ──
+// Both TEXT and TEXTLOG entries must carry a static <nav class="pkc-toc
+// pkc-toc-preview"> at the top of the exported HTML so readers can jump
+// to headings (TEXT) or day / log / heading layers (TEXTLOG) without
+// any JavaScript — anchors are native href="#id".
+describe('buildRenderedViewerHtml — Table of Contents', () => {
+  it('emits pkc-toc-preview nav for a TEXT entry with h1/h2/h3', () => {
+    const html = buildRenderedViewerHtml(
+      textEntry('# Alpha\n\n## Beta\n\n### Gamma\n\nbody'),
+      baseContainer(),
+    );
+    expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+    expect(html).toContain('data-pkc-region="toc"');
+    expect(html).toContain('>Contents<');
+    expect(html).toContain('href="#alpha"');
+    expect(html).toContain('href="#beta"');
+    expect(html).toContain('href="#gamma"');
+  });
+
+  it('emits day / log anchors for a TEXTLOG entry', () => {
+    const html = buildRenderedViewerHtml(textlogEntry(), baseContainer());
+    expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+    // textlogEntry() logs are dated 2026-04-09.
+    expect(html).toContain('href="#day-2026-04-09"');
+    expect(html).toContain('href="#log-log-1"');
+    expect(html).toContain('href="#log-log-2"');
+  });
+
+  it('omits the TOC section entirely for an entry with no TOC-producing content', () => {
+    // An attachment archetype produces no headings / logs, so the TOC
+    // helper returns '' and the nav must not appear.
+    const container = baseContainer({
+      entries: [
+        {
+          lid: 'att',
+          title: 'photo',
+          body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 10, asset_key: 'a1' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { a1: 'AAAA' },
+    });
+    const attEntry: Entry = {
+      lid: 'att',
+      title: 'photo',
+      body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 10, asset_key: 'a1' }),
+      archetype: 'attachment',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    const html = buildRenderedViewerHtml(attEntry, container);
+    // CSS declarations mentioning the class still ship; what must be
+    // absent is the actual <nav> element (checked via the class attr).
+    expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+  });
+
+  it('omits the TOC section for a TEXT entry with no headings', () => {
+    const html = buildRenderedViewerHtml(textEntry('just body with **no** headings'), baseContainer());
+    expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
   });
 });

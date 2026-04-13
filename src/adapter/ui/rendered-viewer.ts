@@ -33,6 +33,10 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import {
+  extractTocFromEntry,
+  renderStaticTocHtml,
+} from '../../features/markdown/markdown-toc';
+import {
   resolveAssetReferences,
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
@@ -58,6 +62,9 @@ export function buildRenderedViewerHtml(
   const title = escapeForHtml(entry.title || '(untitled)');
   const archetypeLabel = entry.archetype === 'textlog' ? 'Textlog' : 'Text';
   const bodyHtml = buildBodyHtml(entry, container);
+  // Static TOC HTML for TEXT / TEXTLOG. Empty string for other
+  // archetypes. Native-anchor navigation — no JS needed.
+  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry));
   const exportedAt = new Date().toISOString();
   const filename = buildDownloadFilename(entry, exportedAt);
 
@@ -94,7 +101,7 @@ export function buildRenderedViewerHtml(
     }
     /* Explicitly pin the rendered markdown density so it cannot drift
        from the main-app .pkc-md-rendered baseline if body changes. */
-    article.pkc-viewer-body { line-height: 1.4; }
+    article.pkc-viewer-body { line-height: 1.35; }
     main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
       border-bottom: 1px solid #ddd;
@@ -242,13 +249,62 @@ export function buildRenderedViewerHtml(
        are pulled in a notch. TEXT entries in the same exported
        document are unaffected (this selector only matches log
        bodies). */
-    .pkc-textlog-text.pkc-md-rendered { line-height: 1.35; }
+    .pkc-textlog-text.pkc-md-rendered { line-height: 1.3; }
     .pkc-textlog-text p { margin: 0.2em 0; }
     .pkc-textlog-text ul,
     .pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
     .pkc-textlog-text li { margin: 0.05em 0; }
     .pkc-textlog-text blockquote { margin: 0.25em 0; }
     .pkc-textlog-text pre { margin: 0.25em 0; }
+    /* Preview-surface Table of Contents — print-safe, standalone
+       colours (no main-app theme vars in exported HTML). */
+    .pkc-toc.pkc-toc-preview {
+      padding: 0.5rem 0.75rem;
+      margin: 0 0 1.25rem;
+      border: 1px solid #d8d2c2;
+      border-radius: 4px;
+      background: #fbf9f1;
+      font-size: 0.88rem;
+    }
+    .pkc-toc-preview .pkc-toc-label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #6a604a;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .pkc-toc-preview .pkc-toc-list { list-style: none; margin: 0; padding: 0; }
+    .pkc-toc-preview .pkc-toc-item { margin: 0; padding: 0; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.9rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.8rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="4"] { padding-left: 2.7rem; }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="5"] { padding-left: 3.6rem; }
+    .pkc-toc-preview .pkc-toc-link {
+      display: block;
+      padding: 0.1rem 0.3rem;
+      color: #222;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 2px;
+    }
+    .pkc-toc-preview .pkc-toc-link:hover,
+    .pkc-toc-preview .pkc-toc-link:focus-visible {
+      background: #ece6d5;
+      color: #1a6b35;
+    }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+      color: #6a604a;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.78rem;
+    }
+    .pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
+      font-weight: 600;
+    }
     @media print {
       body { background: #fff; padding: 0; color: #000; }
       /* Restore A4-ish body width for paper output. Screen gets the
@@ -261,6 +317,10 @@ export function buildRenderedViewerHtml(
       article.pkc-viewer-body { line-height: 1.5; }
       header.pkc-viewer-header { border-bottom-color: #000; }
       .pkc-viewer-toolbar { display: none; }
+      /* Keep the TOC in printed output — it doubles as an index
+         page for long exports. Drop the background tint so it
+         prints cleanly on white paper. */
+      .pkc-toc.pkc-toc-preview { background: transparent; border-color: #000; }
       .pkc-textlog-day { break-inside: avoid; }
       .pkc-textlog-log { break-inside: avoid; }
     }
@@ -314,6 +374,7 @@ export function buildRenderedViewerHtml(
     `<h1>${title}</h1>`,
     `<div class="pkc-viewer-meta">${archetypeLabel} · rendered view (read-only)</div>`,
     '</header>',
+    tocHtml,
     '<article class="pkc-viewer-body pkc-md-rendered">',
     bodyHtml,
     '</article>',

@@ -37,13 +37,16 @@ describe('Slice A: Markdown readability — CSS variables', () => {
 });
 
 describe('Markdown readability — line-height (screen-first density pass)', () => {
-  it('.pkc-md-rendered has explicit line-height: 1.4 (body-aligned)', () => {
+  it('.pkc-md-rendered has explicit line-height: 1.35 (tightened prose)', () => {
     // Match the .pkc-md-rendered base rule (first occurrence — the
     // element rule, not descendant rules like `.pkc-md-rendered h1`).
-    // Tightened from 1.45 → 1.4 so markdown prose reads at the same
-    // density as the surrounding app chrome (body is 1.4).
+    // Progressively tightened 1.45 → 1.4 → 1.35: markdown paragraphs
+    // accumulate margins on every block-level child, which reads
+    // looser than plain body prose at the same line-height. Pulling
+    // the baseline down by another 0.05 brings markdown density in
+    // line with surrounding chrome.
     const rule = baseCss.match(/\.pkc-md-rendered\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(rule).toMatch(/line-height:\s*1\.4(?!\d)/);
+    expect(rule).toMatch(/line-height:\s*1\.35(?!\d)/);
   });
 
   it('.pkc-md-rendered pre has line-height: 1.3 (dense code block)', () => {
@@ -87,8 +90,10 @@ describe('TEXTLOG-scoped markdown density override', () => {
   // TEXT entries (above tests) stay at the current defaults.
 
   it('.pkc-textlog-text.pkc-md-rendered uses a denser line-height than prose', () => {
+    // TEXTLOG sits one notch below TEXT (1.3 vs 1.35) so log grids
+    // stay visibly denser than plain prose.
     expect(baseCss).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35(?!\d)/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.3(?!\d)/,
     );
   });
 
@@ -128,14 +133,12 @@ describe('TEXTLOG-scoped markdown density override', () => {
     );
   });
 
-  it('TEXT-side base rules remain untouched (no regression)', () => {
-    // Global paragraph margin stays at 0.35em (TEXT density).
+  it('TEXT-side margin rules remain untouched (only line-height ratcheted)', () => {
+    // Global paragraph margin stays at 0.35em (TEXT density — margins
+    // give prose breathing room; line-height was tightened instead).
     expect(baseCss).toMatch(/\.pkc-md-rendered\s+p\s*\{\s*margin:\s*0\.35em 0/);
     // Global li margin stays at 0.15em.
     expect(baseCss).toMatch(/\.pkc-md-rendered\s+li\s*\{\s*margin:\s*0\.15em 0/);
-    // Global line-height stays at 1.4.
-    const rule = baseCss.match(/\.pkc-md-rendered\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(rule).toMatch(/line-height:\s*1\.4(?!\d)/);
   });
 });
 
@@ -152,9 +155,9 @@ describe('TEXTLOG density parity across entry-window and rendered-viewer', () =>
     'utf-8',
   );
 
-  it('entry-window.ts inlines .pkc-textlog-text.pkc-md-rendered line-height: 1.35', () => {
+  it('entry-window.ts inlines .pkc-textlog-text.pkc-md-rendered line-height: 1.3', () => {
     expect(entryWindow).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.35/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{[^}]*line-height:\s*1\.3(?!\d)/,
     );
   });
 
@@ -167,7 +170,7 @@ describe('TEXTLOG density parity across entry-window and rendered-viewer', () =>
 
   it('rendered-viewer.ts inlines the same TEXTLOG-scoped line-height', () => {
     expect(renderedViewer).toMatch(
-      /\.pkc-textlog-text\.pkc-md-rendered\s*\{\s*line-height:\s*1\.35/,
+      /\.pkc-textlog-text\.pkc-md-rendered\s*\{\s*line-height:\s*1\.3(?!\d)/,
     );
   });
 

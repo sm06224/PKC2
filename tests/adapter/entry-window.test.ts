@@ -2845,4 +2845,62 @@ describe('Entry Window', () => {
       expect(match).toContain('flex-direction: column');
     });
   });
+
+  // ── Table of Contents in popped preview ──
+  // The popped "More..." window now emits a static <nav class="pkc-toc
+  // pkc-toc-preview"> at the top of the view pane so readers can jump
+  // to headings (TEXT) or day/log/heading layers (TEXTLOG). The TOC is
+  // omitted when an entry has no TOC-producing content (attachment,
+  // todo, form, headingless text), since an empty nav would be noise.
+  describe('Table of Contents in popped preview', () => {
+    it('emits pkc-toc-preview nav for a TEXT entry with headings', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: '# Alpha\n\n## Beta\n\n### Gamma\n\nbody',
+      });
+      expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+      expect(html).toContain('data-pkc-region="toc"');
+      expect(html).toContain('href="#alpha"');
+      expect(html).toContain('href="#beta"');
+      expect(html).toContain('href="#gamma"');
+    });
+
+    it('emits day / log anchors for a TEXTLOG entry', async () => {
+      const { serializeTextlogBody } = await import('../../src/features/textlog/textlog-body');
+      const body = serializeTextlogBody({
+        entries: [
+          { id: 'log-a', text: 'first', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+          { id: 'log-b', text: 'second', createdAt: '2026-04-10T11:00:00Z', flags: [] },
+        ],
+      });
+      const html = await openAndCapture(false, { archetype: 'textlog', body });
+      expect(html).toContain('class="pkc-toc pkc-toc-preview"');
+      expect(html).toContain('href="#day-2026-04-09"');
+      expect(html).toContain('href="#day-2026-04-10"');
+      expect(html).toContain('href="#log-log-a"');
+      expect(html).toContain('href="#log-log-b"');
+    });
+
+    it('omits the TOC section for a TEXT entry with no headings', async () => {
+      const html = await openAndCapture(false, {
+        archetype: 'text',
+        body: 'just body with **no** headings',
+      });
+      // CSS declarations referencing the class still ship; check for
+      // the actual <nav> via its class attribute.
+      expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+    });
+
+    it('omits the TOC section for an attachment entry', async () => {
+      const attBody = JSON.stringify({ name: 'a.pdf', mime: 'application/pdf', size: 100, asset_key: 'k' });
+      const html = await openAndCapture(false, { archetype: 'attachment', body: attBody });
+      expect(html).not.toContain('class="pkc-toc pkc-toc-preview"');
+    });
+
+    it('includes pkc-toc-preview CSS block so the nav is styled', async () => {
+      const html = await openAndCapture(false, { archetype: 'text', body: '# Title' });
+      expect(html).toContain('.pkc-toc.pkc-toc-preview');
+      expect(html).toContain('.pkc-toc-preview .pkc-toc-link');
+    });
+  });
 });

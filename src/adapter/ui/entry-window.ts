@@ -16,6 +16,7 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { extractTocFromEntry, renderStaticTocHtml } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import {
@@ -859,6 +860,10 @@ function buildWindowHtml(
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
+  // Static TOC HTML for TEXT / TEXTLOG — the extractor returns `[]`
+  // for other archetypes so this is just `''` there. Every anchor
+  // is a native `href="#id"` so scroll works without any JS.
+  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry as Entry));
   const parentVars = getParentCssVars();
 
   // Generate archetype-specific editor body for structured types.
@@ -973,9 +978,9 @@ body {
 .pkc-md-rendered {
   font-family: var(--font-sans);
   white-space: normal;
-  /* Pin the same 1.4 baseline as main base.css .pkc-md-rendered, so
-     prose density cannot drift from the center pane if body changes. */
-  line-height: 1.4;
+  /* Pin the same 1.35 baseline as main base.css .pkc-md-rendered,
+     so prose density cannot drift from the center pane. */
+  line-height: 1.35;
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
@@ -1022,6 +1027,56 @@ body {
 .pkc-md-rendered a { color: var(--c-accent); text-decoration: underline; }
 .pkc-md-rendered table { border-collapse: collapse; margin: 0.35em 0; }
 .pkc-md-rendered th, .pkc-md-rendered td { border: 1px solid var(--c-border); padding: 0.3em 0.5em; }
+/* Preview-surface Table of Contents. Mirrors base.css .pkc-toc
+   so the popped-out preview exposes the same heading / day / log
+   navigation the right pane carries. Anchors are native href to
+   #id, so click scrolls via the browsers default anchor behaviour. */
+.pkc-toc.pkc-toc-preview {
+  padding: 0.35rem 0.5rem;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  font-size: 0.8rem;
+}
+.pkc-toc-preview .pkc-toc-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  margin-bottom: 0.2rem;
+}
+.pkc-toc-preview .pkc-toc-list { list-style: none; margin: 0; padding: 0; }
+.pkc-toc-preview .pkc-toc-item { margin: 0; padding: 0; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="2"] { padding-left: 0.75rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="3"] { padding-left: 1.5rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="4"] { padding-left: 2.25rem; }
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-level="5"] { padding-left: 3rem; }
+.pkc-toc-preview .pkc-toc-link {
+  display: block;
+  padding: 0.08rem 0.25rem;
+  color: var(--c-fg);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+}
+.pkc-toc-preview .pkc-toc-link:hover,
+.pkc-toc-preview .pkc-toc-link:focus-visible {
+  background: var(--c-border);
+  color: var(--c-accent);
+}
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.pkc-toc-preview .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link {
+  font-weight: 600;
+}
+
 /* ── Task checkbox: interactive in view mode, disabled when readonly ── */
 .pkc-task-checkbox { cursor: pointer; }
 ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacity: 0.6; }' : ''}
@@ -1311,7 +1366,7 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 /* TEXTLOG-scoped markdown density override — see base.css for the
    rationale. Kept in parity so popped-out TEXTLOG viewers read at
    the same density as the in-app view. */
-.pkc-textlog-text.pkc-md-rendered { line-height: 1.35; }
+.pkc-textlog-text.pkc-md-rendered { line-height: 1.3; }
 .pkc-textlog-text.pkc-md-rendered > :first-child { margin-top: 0; }
 .pkc-textlog-text.pkc-md-rendered > :last-child { margin-bottom: 0; }
 .pkc-textlog-text p { margin: 0.2em 0; }
@@ -1390,6 +1445,7 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
         <span class="pkc-archetype-label">${entry.archetype}</span>
         <span class="pkc-task-badge" id="task-badge" style="display:none"></span>
       </div>
+      ${tocHtml}
       <div class="pkc-view-body pkc-md-rendered" id="body-view">${renderedBody}</div>
     </div>
 
