@@ -231,7 +231,9 @@ for inline calc while Ctrl+Enter keeps its append meaning.
 3. Ctrl+Enter in `textlog-append-text` → log entry append.
 4. Ctrl+S save.
 5. Date/time shortcuts.
-6. `?` / Escape / Ctrl+N global shortcuts.
+6. `Ctrl+?` / Escape / Ctrl+N global shortcuts. (Was bare `?`;
+   moved to `Ctrl+?` so the `?` key stays usable during IME /
+   markdown typing.)
 
 ### Future extension candidates
 
