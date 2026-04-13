@@ -10,14 +10,18 @@
  * Reachability rules:
  *
  *   1. The root entry is always included.
- *   2. Every `entry:<lid>` reference in a TEXT body or TEXTLOG log
- *      entry's text (including transclusion `![](entry:lid)` and link
- *      `[label](entry:lid)` forms, plus any fragment variant) pulls
- *      the target entry into the subset, recursively.
- *   3. Every `asset:<key>` reference in a TEXT body or TEXTLOG log
- *      entry's text contributes the key. Attachment entries whose
- *      `asset_key` matches a contributed key are pulled into the
- *      subset too so the recipient keeps MIME / display-name metadata.
+ *   2. Every `entry:<lid>` reference in a TEXT body, a TEXTLOG log
+ *      entry's text, or a TODO description (including transclusion
+ *      `![](entry:lid)` and link `[label](entry:lid)` forms, plus any
+ *      fragment variant) pulls the target entry into the subset,
+ *      recursively. TODO description scanning was added in P1 Slice 2
+ *      so the closure remains correct once Slice 3 switches the
+ *      description render path to markdown.
+ *   3. Every `asset:<key>` reference in a TEXT body, a TEXTLOG log
+ *      entry's text, or a TODO description contributes the key.
+ *      Attachment entries whose `asset_key` matches a contributed key
+ *      are pulled into the subset too so the recipient keeps MIME /
+ *      display-name metadata.
  *   4. Structural ancestor folders of every included entry are added
  *      so the tree path used by breadcrumbs, storage-profile jumps,
  *      and `SELECT_ENTRY` auto-expand still resolves.
@@ -46,6 +50,7 @@ import type { Relation } from '../../core/model/relation';
 import { extractAssetReferences } from '../markdown/asset-resolver';
 import { extractEntryReferences } from '../entry-ref/extract-entry-refs';
 import { parseTextlogBody } from '../textlog/textlog-body';
+import { parseTodoBody } from '../todo/todo-body';
 import { getStructuralParent } from '../relation/tree';
 
 /** Maximum ancestor-walk depth. Matches `getAncestorFolderLids`. */
@@ -214,6 +219,9 @@ export function buildSubsetContainer(
  *
  * - `text`: the body is markdown — one string.
  * - `textlog`: each log row's `text` field is markdown — N strings.
+ * - `todo`: the parsed `description` field (Slice 2 pre-positions this
+ *   scan so the subset closure stays correct once Slice 3 switches
+ *   the description render path from raw text to markdown).
  * - everything else: no markdown references contributed.
  */
 function collectScannableBodies(entry: Entry): string[] {
@@ -227,6 +235,10 @@ function collectScannableBodies(entry: Entry): string[] {
       if (typeof row.text === 'string' && row.text.length > 0) out.push(row.text);
     }
     return out;
+  }
+  if (entry.archetype === 'todo') {
+    const parsed = parseTodoBody(entry.body);
+    return parsed.description.length > 0 ? [parsed.description] : [];
   }
   return [];
 }

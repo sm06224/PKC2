@@ -4380,15 +4380,53 @@
   font-style: italic;
 }
 
-.pkc-transclusion-broken {
+/*
+ * Unified "blocked embed" placeholder — Slice 2 replaces the older
+ * `.pkc-transclusion-broken` cue. One visual vocabulary for every
+ * reason the expander refused to recurse (self / cycle / depth /
+ * missing / invalid). Styling is intentionally restrained so the
+ * cue reads as an inline note rather than an error banner.
+ */
+.pkc-embed-blocked {
   display: inline-block;
-  color: #c0392b;
-  background: rgba(192,57,43,0.08);
-  border: 1px dashed rgba(192,57,43,0.35);
+  color: var(--c-muted);
+  background: var(--c-subtle-bg, rgba(0,0,0,0.04));
+  border: 1px dashed var(--c-subtle-border, rgba(0,0,0,0.18));
   border-radius: var(--radius);
   padding: 0 0.35em;
   font-size: 0.9em;
   font-family: var(--font-mono);
+  font-style: normal;
+}
+
+/*
+ * TODO embed body — Slice 2 adds TODO to the embed surface. The
+ * meta line carries status / date / archived badges; the description
+ * is rendered as raw text for now (Slice 3 switches to markdown
+ * without touching this CSS).
+ */
+.pkc-todo-embed-meta {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  font-size: 0.9em;
+  color: var(--c-muted);
+}
+.pkc-todo-embed-status {
+  font-family: var(--font-mono);
+}
+.pkc-todo-embed-status[data-pkc-todo-status="done"] {
+  color: var(--c-accent, #4a90e2);
+}
+.pkc-todo-embed-date {
+  font-variant-numeric: tabular-nums;
+}
+.pkc-todo-embed-archived {
+  font-style: italic;
+}
+.pkc-todo-embed-description {
+  margin-top: 0.3em;
+  white-space: pre-wrap;
 }
 
 /*
