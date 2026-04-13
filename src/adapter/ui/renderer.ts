@@ -703,20 +703,42 @@ export function buildStorageProfileOverlay(
     'Estimate based on embedded assets and asset references. Actual browser storage usage may differ.';
   card.appendChild(note);
 
-  if (!container) {
+  // Compute profile once and reuse for summary + rows + Export CSV
+  // button gating. `profile === null` corresponds to the no-container
+  // shell below.
+  const profile = container ? buildStorageProfile(container) : null;
+  if (!profile) {
     const empty = createElement('div', 'pkc-storage-profile-empty');
     empty.textContent = 'No container loaded.';
     card.appendChild(empty);
   } else {
-    const profile = buildStorageProfile(container);
     card.appendChild(renderStorageProfileSummary(profile));
     card.appendChild(renderStorageProfileRows(profile));
   }
 
+  // Action row: Export CSV (read-only persist-out) + Close. The CSV
+  // button is only mounted when the container has at least one
+  // byte-contributing row — an empty profile has nothing to export,
+  // and hiding the button keeps the dialog noise-free.
+  const actionsRow = createElement('div', 'pkc-storage-profile-actions');
+  if (profile && profile.rows.length > 0) {
+    const exportBtn = createElement(
+      'button',
+      'pkc-btn-small pkc-storage-profile-export',
+    );
+    exportBtn.setAttribute('data-pkc-action', 'export-storage-profile-csv');
+    exportBtn.textContent = '⬇ Export CSV';
+    exportBtn.setAttribute(
+      'title',
+      'Download the current profile rows as CSV for external analysis. Read-only.',
+    );
+    actionsRow.appendChild(exportBtn);
+  }
   const closeBtn = createElement('button', 'pkc-btn-small pkc-storage-profile-close');
   closeBtn.setAttribute('data-pkc-action', 'close-storage-profile');
   closeBtn.textContent = 'Close (Esc)';
-  card.appendChild(closeBtn);
+  actionsRow.appendChild(closeBtn);
+  card.appendChild(actionsRow);
 
   overlay.appendChild(card);
   return overlay;
@@ -812,6 +834,18 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     li.setAttribute('data-pkc-archetype', row.archetype);
     li.setAttribute('data-pkc-subtree-bytes', String(row.subtreeBytes));
 
+    // Each row is a real <button> so Enter/Space work without a
+    // bespoke keydown handler. The button carries data-pkc-action +
+    // data-pkc-lid; closest() in action-binder resolves both from any
+    // nested span (icon / title / size / detail).
+    const trigger = createElement('button', 'pkc-storage-profile-row-button');
+    trigger.setAttribute('data-pkc-action', 'select-from-storage-profile');
+    trigger.setAttribute('data-pkc-lid', row.lid);
+    trigger.setAttribute(
+      'title',
+      'Open this entry and close the Storage Profile dialog',
+    );
+
     const head = createElement('span', 'pkc-storage-profile-row-head');
     const icon = createElement('span', 'pkc-storage-profile-row-icon');
     icon.textContent = archetypeIcon(row.archetype);
@@ -825,7 +859,7 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     size.textContent = formatBytes(row.subtreeBytes);
     size.setAttribute('title', `${row.subtreeBytes} bytes`);
     head.appendChild(size);
-    li.appendChild(head);
+    trigger.appendChild(head);
 
     const detail = createElement('span', 'pkc-storage-profile-row-detail');
     const parts: string[] = [];
@@ -840,8 +874,9 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
       parts.push(`largest ${formatBytes(row.largestAssetBytes)}`);
     }
     detail.textContent = parts.join(' · ');
-    li.appendChild(detail);
+    trigger.appendChild(detail);
 
+    li.appendChild(trigger);
     table.appendChild(li);
   }
   section.appendChild(table);

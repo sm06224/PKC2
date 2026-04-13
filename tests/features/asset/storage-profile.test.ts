@@ -3,7 +3,11 @@ import {
   buildStorageProfile,
   estimateBase64Size,
   formatBytes,
+  formatStorageProfileCsv,
+  storageProfileCsvFilename,
+  STORAGE_PROFILE_CSV_COLUMNS,
 } from '@features/asset/storage-profile';
+import type { StorageProfile, EntryStorageRow } from '@features/asset/storage-profile';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import type { Relation } from '@core/model/relation';
@@ -388,5 +392,166 @@ describe('buildStorageProfile', () => {
     });
     const profile = buildStorageProfile(container);
     expect(profile.rows[0]!.largestAssetBytes).toBeGreaterThanOrEqual(9_998);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// formatStorageProfileCsv + storageProfileCsvFilename
+// ────────────────────────────────────────────────────────────────────
+//
+// CSV export is read-only and must mirror the UI view exactly:
+//   - column order is fixed by STORAGE_PROFILE_CSV_COLUMNS
+//   - row order reuses `profile.rows` (already sorted subtreeBytes
+//     desc, title asc)
+//   - comma / quote / newline are escaped per RFC 4180
+//   - UTF-8 BOM is prepended so Excel opens Japanese titles
+//     correctly, CRLF line endings for spreadsheet compatibility.
+
+function makeRow(partial: Partial<EntryStorageRow> & { lid: string }): EntryStorageRow {
+  return {
+    lid: partial.lid,
+    title: partial.title ?? partial.lid,
+    archetype: partial.archetype ?? 'text',
+    ownedCount: partial.ownedCount ?? 0,
+    referencedCount: partial.referencedCount ?? 0,
+    selfBytes: partial.selfBytes ?? 0,
+    subtreeBytes: partial.subtreeBytes ?? 0,
+    largestAssetBytes: partial.largestAssetBytes ?? 0,
+  };
+}
+
+function makeProfile(rows: EntryStorageRow[]): StorageProfile {
+  return {
+    summary: {
+      assetCount: 0,
+      totalBytes: 0,
+      largestAsset: null,
+      largestAssetOwnerTitle: null,
+      largestEntry: rows[0] ?? null,
+    },
+    rows,
+    orphanBytes: 0,
+    orphanCount: 0,
+  };
+}
+
+describe('formatStorageProfileCsv', () => {
+  it('emits a UTF-8 BOM + CRLF-terminated header in the fixed column order', () => {
+    const csv = formatStorageProfileCsv(makeProfile([]));
+    expect(csv.charCodeAt(0)).toBe(0xfeff); // BOM
+    const withoutBom = csv.slice(1);
+    const firstLine = withoutBom.split('\r\n')[0];
+    expect(firstLine).toBe(STORAGE_PROFILE_CSV_COLUMNS.join(','));
+    // Header-only output still ends with a CRLF.
+    expect(csv.endsWith('\r\n')).toBe(true);
+  });
+
+  it('emits one data line per row in profile.rows order', () => {
+    const profile = makeProfile([
+      makeRow({
+        lid: 'a',
+        title: 'Alpha',
+        archetype: 'attachment',
+        ownedCount: 2,
+        referencedCount: 1,
+        selfBytes: 500,
+        subtreeBytes: 500,
+        largestAssetBytes: 400,
+      }),
+      makeRow({
+        lid: 'b',
+        title: 'Beta',
+        archetype: 'folder',
+        ownedCount: 0,
+        referencedCount: 0,
+        selfBytes: 0,
+        subtreeBytes: 300,
+        largestAssetBytes: 0,
+      }),
+    ]);
+    const csv = formatStorageProfileCsv(profile).slice(1); // strip BOM
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe(STORAGE_PROFILE_CSV_COLUMNS.join(','));
+    expect(lines[1]).toBe('a,Alpha,attachment,2,1,500,500,400');
+    expect(lines[2]).toBe('b,Beta,folder,0,0,0,300,0');
+    // Trailing empty element after final CRLF.
+    expect(lines[3]).toBe('');
+    expect(lines.length).toBe(4);
+  });
+
+  it('escapes fields that contain comma, double-quote, or newline per RFC 4180', () => {
+    const profile = makeProfile([
+      makeRow({ lid: 'c1', title: 'has, comma' }),
+      makeRow({ lid: 'c2', title: 'has "quote" marks' }),
+      makeRow({ lid: 'c3', title: 'line\nbreak' }),
+      makeRow({ lid: 'c4', title: 'crlf\r\ninside' }),
+      makeRow({ lid: 'c5', title: 'plain' }),
+    ]);
+    const csv = formatStorageProfileCsv(profile).slice(1);
+    const lines = csv.split('\r\n');
+    // lines[0] is header
+    expect(lines[1]!.startsWith('c1,"has, comma",')).toBe(true);
+    // Embedded quote doubled.
+    expect(lines[2]!.startsWith('c2,"has ""quote"" marks",')).toBe(true);
+    // Newline inside quoted field — consumes one extra split slot.
+    // Instead of re-splitting the whole string, assert the field appears.
+    expect(csv).toContain('c3,"line\nbreak",');
+    expect(csv).toContain('c4,"crlf\r\ninside",');
+    // Plain value left unquoted.
+    expect(lines[lines.length - 2]).toBe('c5,plain,text,0,0,0,0,0');
+  });
+
+  it('reuses profile.rows order verbatim (callers are responsible for sorting)', () => {
+    // Intentionally unsorted rows — the formatter must NOT re-sort.
+    const profile = makeProfile([
+      makeRow({ lid: 'small', title: 'small', subtreeBytes: 10 }),
+      makeRow({ lid: 'big', title: 'big', subtreeBytes: 1000 }),
+    ]);
+    const csv = formatStorageProfileCsv(profile).slice(1);
+    const lines = csv.split('\r\n');
+    expect(lines[1]!.startsWith('small,')).toBe(true);
+    expect(lines[2]!.startsWith('big,')).toBe(true);
+  });
+
+  it('matches buildStorageProfile sort order when the profile comes from the aggregator', () => {
+    // End-to-end regression: run the real aggregator and confirm the
+    // CSV rows come out in UI order (subtreeBytes desc, title asc).
+    const container = makeContainer({
+      entries: [
+        makeEntry({
+          lid: 'att-small',
+          title: 'Small',
+          archetype: 'attachment',
+          body: JSON.stringify({ name: 's.bin', mime: 'application/octet-stream', asset_key: 'k-s' }),
+        }),
+        makeEntry({
+          lid: 'att-big',
+          title: 'Big',
+          archetype: 'attachment',
+          body: JSON.stringify({ name: 'b.bin', mime: 'application/octet-stream', asset_key: 'k-b' }),
+        }),
+      ],
+      assets: {
+        'k-s': base64OfSize(100),
+        'k-b': base64OfSize(10_000),
+      },
+    });
+    const profile = buildStorageProfile(container);
+    const csv = formatStorageProfileCsv(profile).slice(1);
+    const lines = csv.split('\r\n');
+    expect(lines[1]!.startsWith('att-big,')).toBe(true);
+    expect(lines[2]!.startsWith('att-small,')).toBe(true);
+  });
+});
+
+describe('storageProfileCsvFilename', () => {
+  it('builds a timestamped filename in pkc-storage-profile-yyyymmdd-hhmmss.csv form', () => {
+    const d = new Date(2026, 3, 12, 22, 30, 15); // 2026-04-12 22:30:15 local
+    expect(storageProfileCsvFilename(d)).toBe('pkc-storage-profile-20260412-223015.csv');
+  });
+
+  it('zero-pads each component', () => {
+    const d = new Date(2026, 0, 5, 9, 7, 3); // 2026-01-05 09:07:03 local
+    expect(storageProfileCsvFilename(d)).toBe('pkc-storage-profile-20260105-090703.csv');
   });
 });

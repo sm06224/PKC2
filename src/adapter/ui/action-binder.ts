@@ -32,6 +32,11 @@ import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
+import {
+  buildStorageProfile,
+  formatStorageProfileCsv,
+  storageProfileCsvFilename,
+} from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
@@ -816,6 +821,47 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'close-storage-profile': {
         const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
         if (overlay) overlay.remove();
+        break;
+      }
+      case 'select-from-storage-profile': {
+        // Direct-jump from the Storage Profile row to the underlying
+        // entry. Read-only: re-uses SELECT_ENTRY; no deletion or
+        // data-model mutation. Overlay is closed only when the entry
+        // still exists — a stale profile (rare: container swap between
+        // render and click) leaves the dialog intact so the user can
+        // recover without losing context.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const exists = st.container.entries.some((entry) => entry.lid === lid);
+        if (!exists) break;
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
+        if (overlay) overlay.remove();
+        break;
+      }
+      case 'export-storage-profile-csv': {
+        // Read-only: compute the profile for the live container, render
+        // it as CSV, and trigger a download. No deletion, no mutation,
+        // no reducer dispatch — this is a pure information carry-out.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const profile = buildStorageProfile(st.container);
+        if (profile.rows.length === 0) break;
+        const csv = formatStorageProfileCsv(profile);
+        const filename = storageProfileCsvFilename();
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (a.parentNode) a.parentNode.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
         break;
       }
       case 'toggle-show-archived': {

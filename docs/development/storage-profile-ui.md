@@ -20,13 +20,18 @@ dialog tells them *where the weight is* so they can export, split, or
 Deliberately NOT in scope:
 
 - No delete button
-- No export button
 - No externalization / externalized-asset store
 - No auto-optimization
-- No reducer changes (`show-storage-profile` and
-  `close-storage-profile` are pure DOM toggles)
+- No reducer changes (`show-storage-profile`,
+  `close-storage-profile`, and `export-storage-profile-csv` are pure
+  DOM / download operations — no AppState mutations)
 - No new persistent AppState fields
 - No data-model changes
+
+In scope: **read-only CSV export** of the same rows the UI displays,
+so the user can persist the capacity picture externally for
+comparison over time. The CSV path reuses `buildStorageProfile` — no
+duplicate aggregation logic.
 
 ## Architecture
 
@@ -46,11 +51,87 @@ adapter/ui/renderer.ts
                                              fully-populated overlay
 
 adapter/ui/action-binder.ts
-├── case 'show-storage-profile'  — builds overlay via
-│                                  buildStorageProfileOverlay(container)
-│                                  and appends to root
-└── case 'close-storage-profile' — removes the overlay from root
+├── case 'show-storage-profile'          — builds overlay via
+│                                          buildStorageProfileOverlay(container)
+│                                          and appends to root
+├── case 'close-storage-profile'         — removes the overlay from root
+└── case 'export-storage-profile-csv'    — rebuilds profile from the
+                                           current container, formats
+                                           CSV, triggers a Blob download
 ```
+
+## Row → direct-jump to entry
+
+Each row is a real `<button>` with
+`data-pkc-action="select-from-storage-profile"` and
+`data-pkc-lid="<lid>"`. Clicking (or pressing Enter/Space while
+focused) dispatches `SELECT_ENTRY` and removes the overlay so the
+user lands on the entry they just saw in the capacity picture.
+
+Guards:
+
+- No `data-pkc-lid` → no-op.
+- `lid` not found in `container.entries` → no-op, overlay stays open
+  (recovery path: the user can scroll / close manually).
+- Uses the existing `SELECT_ENTRY` action — no new reducer case, no
+  AppState surface change.
+- Folder rows jump to the folder entry (same `SELECT_ENTRY` semantics
+  as clicking a folder in the tree).
+- The summary / orphan areas do NOT carry this action; they have no
+  single owner entry to jump to.
+
+### Tree auto-expand on SELECT_ENTRY
+
+To close the "selected but hidden under a collapsed folder" gap, the
+`SELECT_ENTRY` reducer computes the selected entry's ancestor folder
+chain (`getAncestorFolderLids` in `features/relation/tree.ts`) and
+removes those lids from `state.collapsedFolders`. The effect is that
+a Storage Profile jump (or any other external selection source:
+entry-ref click, calendar / kanban tap) always leaves the target
+entry visible in the tree.
+
+Properties:
+
+- Applies to every `SELECT_ENTRY`, not just Storage Profile — "selected
+  entries are visible" is a sane cross-feature invariant rather than a
+  per-feature branch.
+- Reference-equal no-op when no ancestor was collapsed (downstream
+  `===` checks on `collapsedFolders` keep working).
+- Skips non-folder ancestors (archetype filter).
+- Cycle-safe: a `visited` set terminates malformed graphs.
+- Depth-bounded at 32.
+
+## CSV export
+
+Read-only persistence of the current profile. The overlay mounts an
+`Export CSV` button in a shared actions row next to `Close (Esc)`
+whenever `profile.rows.length > 0` (empty / orphan-only / no-container
+shells omit the button — there is nothing to export).
+
+Pipeline:
+
+```
+buildStorageProfile(container) → profile.rows (already sorted)
+formatStorageProfileCsv(profile) → "\uFEFFheader\r\nrow\r\n..."
+Blob([csv], { type: 'text/csv;charset=utf-8' })
+URL.createObjectURL → <a download=filename> → click → revoke
+```
+
+- Columns (in order): `lid, title, archetype, ownedCount,
+  referencedCount, selfBytes, subtreeBytes, largestAssetBytes`.
+- Sort order: same as the UI (`subtreeBytes` desc, tie-break `title`
+  asc). The CSV walks `profile.rows` — no re-sort.
+- Filename: `pkc-storage-profile-yyyymmdd-hhmmss.csv` (local time,
+  zero-padded).
+- Encoding: UTF-8 with BOM + CRLF so Excel correctly detects encoding
+  for non-ASCII titles and respects row breaks.
+- Escape: RFC 4180 — fields containing `,`, `"`, `\r`, or `\n` are
+  wrapped in double quotes with embedded `"` doubled.
+- Read-only: the handler never touches the container or dispatches
+  state-mutating actions.
+- Double guard: even if the button is hidden, the handler
+  short-circuits on `!container` and `rows.length === 0` to stay inert
+  against rogue clicks.
 
 ### Ownership rule (one owner per asset)
 
@@ -132,6 +213,8 @@ entries.
 | `storage-profile-row`                   | One entry row               |
 | Action `show-storage-profile`           | Launch button               |
 | Action `close-storage-profile`          | Close button inside overlay |
+| Action `export-storage-profile-csv`     | Export CSV button           |
+| Action `select-from-storage-profile`    | Row `<button>` — jump target |
 
 Summary row carries `data-pkc-asset-count` + `data-pkc-total-bytes`.
 Each `storage-profile-row` carries `data-pkc-lid`,
@@ -139,22 +222,30 @@ Each `storage-profile-row` carries `data-pkc-lid`,
 
 ## Tests
 
-- `tests/features/asset/storage-profile.test.ts` — pure aggregator
-  (18 tests): `estimateBase64Size` boundaries, `formatBytes` unit
-  thresholds, empty / orphan-only / attachment / text-fallback
-  ownership, attachment-vs-text ownership contest, folder subtree
-  rollup, sort order, largest-asset / largest-entry summary,
-  malformed-JSON graceful handling, reference-count tally,
-  missing-asset refs dropped, `largestAssetBytes` tracking.
+- `tests/features/asset/storage-profile.test.ts` — pure aggregator +
+  CSV formatter (25 tests): `estimateBase64Size` boundaries,
+  `formatBytes` unit thresholds, empty / orphan-only / attachment /
+  text-fallback ownership, attachment-vs-text ownership contest,
+  folder subtree rollup, sort order, largest-asset / largest-entry
+  summary, malformed-JSON graceful handling, reference-count tally,
+  missing-asset refs dropped, `largestAssetBytes` tracking, plus
+  CSV: BOM+CRLF header, row emission order, RFC 4180 escape,
+  pass-through sort, aggregator-integration round-trip, and
+  `storageProfileCsvFilename` zero-padded timestamp format.
 - `tests/adapter/renderer.test.ts` — `buildStorageProfileOverlay`
-  unit coverage (10 tests): hidden-by-render contract, launch
-  button presence + readonly gating, hedged note, close button,
-  summary surfacing, top rows, row attributes, empty container,
-  null container, orphan badge.
-- `tests/adapter/action-binder-navigation.test.ts` — open/close
-  integration (3 tests): launch button mounts the overlay on the
-  root, close button removes it, reopen after close rebuilds a
-  single fresh overlay. Originally deferred because the old
-  monolithic `action-binder.test.ts` had saturated the sandbox
-  memory ceiling; landed after the file was split (see
+  unit coverage: hidden-by-render contract, launch button presence +
+  readonly gating, hedged note, close button, summary surfacing, top
+  rows, row attributes, empty container, null container, orphan
+  badge, Export CSV button gating, row `<button>` carries
+  `select-from-storage-profile` + `data-pkc-lid`, summary has no
+  jump trigger.
+- `tests/adapter/action-binder-navigation.test.ts` — open/close +
+  jump + CSV integration: launch mounts overlay, close removes it,
+  reopen rebuilds fresh, CSV click creates Blob+anchor, empty
+  profile omits CSV + ignores rogue click, row click dispatches
+  `SELECT_ENTRY` and closes overlay, stale/unknown lid is inert and
+  keeps overlay open, three actions coexist without cross-interference.
+  Originally deferred because the old monolithic `action-binder.test.ts`
+  had saturated the sandbox memory ceiling; landed after the file was
+  split (see
   [test-suite-memory-hardening.md](./test-suite-memory-hardening.md)).

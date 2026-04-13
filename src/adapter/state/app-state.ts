@@ -22,6 +22,7 @@ import {
 } from '../../core/operations/container-ops';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
+import { getAncestorFolderLids } from '../../features/relation/tree';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -218,7 +219,34 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
 function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SELECT_ENTRY': {
-      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: [] };
+      // Auto-expand ancestor folders so the newly selected entry is
+      // actually visible in the tree. This closes the "selected but
+      // hidden under a collapsed folder" gap for Storage Profile /
+      // entry-ref / calendar / kanban jumps. Pure read against the
+      // container — no mutation, no new action type, and no-op when
+      // no ancestors are collapsed (state.collapsedFolders reference
+      // is preserved for downstream `===` checks).
+      let collapsedFolders = state.collapsedFolders;
+      if (state.container && state.collapsedFolders.length > 0) {
+        const ancestorFolders = getAncestorFolderLids(
+          state.container.relations,
+          state.container.entries,
+          action.lid,
+        );
+        if (ancestorFolders.length > 0) {
+          const ancestorSet = new Set(ancestorFolders);
+          const filtered = state.collapsedFolders.filter((l) => !ancestorSet.has(l));
+          if (filtered.length !== state.collapsedFolders.length) {
+            collapsedFolders = filtered;
+          }
+        }
+      }
+      const next: AppState = {
+        ...state,
+        selectedLid: action.lid,
+        multiSelectedLids: [],
+        collapsedFolders,
+      };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
     }
     case 'DESELECT_ENTRY': {

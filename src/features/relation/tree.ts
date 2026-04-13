@@ -129,6 +129,38 @@ export function getBreadcrumb(
 }
 
 /**
+ * Walk the structural parent chain from `lid` upward and return the
+ * lids of every ancestor that is itself a folder. Used to auto-expand
+ * ancestors when `SELECT_ENTRY` is dispatched, so that Storage Profile
+ * / entry-ref / calendar / kanban jumps land visibly inside the tree.
+ *
+ * Non-folder ancestors are silently skipped — only folder lids are
+ * meaningful for `collapsedFolders` membership.
+ *
+ * Cycle-safe: a `visited` set breaks walks on malformed graphs.
+ * Depth-bounded at `maxDepth` to match practical tree-build limits.
+ */
+export function getAncestorFolderLids(
+  relations: readonly Relation[],
+  entries: readonly Entry[],
+  lid: string,
+  maxDepth = 32,
+): string[] {
+  const out: string[] = [];
+  const visited = new Set<string>([lid]);
+  let current = lid;
+  for (let i = 0; i < maxDepth; i++) {
+    const parent = getStructuralParent(relations, entries, current);
+    if (!parent) break;
+    if (visited.has(parent.lid)) break;
+    visited.add(parent.lid);
+    if (parent.archetype === 'folder') out.push(parent.lid);
+    current = parent.lid;
+  }
+  return out;
+}
+
+/**
  * Check whether `candidateDescendant` is a descendant of `ancestorLid`
  * via structural relations. Used by DnD to prevent circular moves.
  */
