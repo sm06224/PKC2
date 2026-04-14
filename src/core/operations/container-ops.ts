@@ -264,25 +264,73 @@ export function getRevisionCount(
  * Returns null if the snapshot is malformed.
  *
  * Canonical spec: `docs/spec/data-model.md` §6.4 (snapshot parse contract).
- * Validation is intentionally loose — only `lid`, `title`, `body`
- * are re-verified as strings. `archetype` and timestamps are trusted
- * from the JSON shape (current implementation).
+ *
+ * Strict failure contract (P0-4, 2026-04-13):
+ *   Returns a non-null Entry only when EVERY field below holds.
+ *   Any failure yields `null`; callers never see a partially-valid
+ *   Entry, and restore paths can therefore trust every field.
+ *
+ *   - snapshot is valid JSON AND parses to a non-null plain object
+ *   - `lid` is a NON-EMPTY string
+ *   - `title` is a string (empty allowed)
+ *   - `body` is a string (empty allowed)
+ *   - `archetype` is one of the 8 known `ArchetypeId` values
+ *     (unknown archetype strings — e.g. a future value or a typo in
+ *     hand-crafted data — are rejected; do NOT silently coerce to
+ *     `'generic'` at parse time)
+ *   - `created_at` is a string (any string; ISO 8601 is expected but
+ *     not strictly validated at this layer)
+ *   - `updated_at` is a string
+ *
+ *   Extra fields are tolerated and preserved on the returned Entry
+ *   object — this keeps the parse lossless for future additive
+ *   schema extensions.
+ *
+ * Pre-P0-4 behaviour accepted snapshots that were missing
+ * `archetype` / `created_at` / `updated_at`, or that carried an
+ * unknown archetype value. That was a silent corruption vector: a
+ * subsequent `restoreDeletedEntry` would re-create the Entry with
+ * the bogus archetype. The stricter parse closes that vector.
  */
 export function parseRevisionSnapshot(revision: Revision): Entry | null {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(revision.snapshot);
-    if (
-      typeof parsed === 'object' && parsed !== null &&
-      typeof parsed.lid === 'string' &&
-      typeof parsed.title === 'string' &&
-      typeof parsed.body === 'string'
-    ) {
-      return parsed as Entry;
-    }
-    return null;
+    parsed = JSON.parse(revision.snapshot);
   } catch {
     return null;
   }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.lid !== 'string' || obj.lid.length === 0) return null;
+  if (typeof obj.title !== 'string') return null;
+  if (typeof obj.body !== 'string') return null;
+  if (!isKnownArchetype(obj.archetype)) return null;
+  if (typeof obj.created_at !== 'string') return null;
+  if (typeof obj.updated_at !== 'string') return null;
+  return obj as unknown as Entry;
+}
+
+/**
+ * Closed set of archetype identifiers accepted by the strict parse.
+ * Kept co-located with `parseRevisionSnapshot` so any future
+ * addition to `ArchetypeId` is a one-place change here plus the
+ * union in `core/model/record.ts`.
+ */
+const KNOWN_ARCHETYPES: ReadonlySet<ArchetypeId> = new Set<ArchetypeId>([
+  'text',
+  'textlog',
+  'todo',
+  'form',
+  'attachment',
+  'folder',
+  'generic',
+  'opaque',
+]);
+
+function isKnownArchetype(value: unknown): value is ArchetypeId {
+  return typeof value === 'string' && KNOWN_ARCHETYPES.has(value as ArchetypeId);
 }
 
 /**
@@ -352,7 +400,21 @@ export function purgeTrash(container: Container): { container: Container; purged
 /**
  * Restore an existing entry from a revision snapshot.
  * Snapshots the current state first, then overwrites with revision content.
- * Returns unchanged container if entry or revision not found or snapshot malformed.
+ *
+ * Failure contract (P0-4, 2026-04-13) — any of the following returns
+ * the input `container` unchanged. None of them produces a silent
+ * mutation, and each one is independently covered by core tests:
+ *
+ *   - `revisionId` is not present in `container.revisions`
+ *   - The matching revision's snapshot fails
+ *     `parseRevisionSnapshot` (see that function's strict contract)
+ *   - `lid` is not present in `container.entries`
+ *   - The existing entry's `archetype` differs from the snapshot's
+ *     `archetype`. Spec I-E2 forbids mutating `archetype`, so an
+ *     archetype mismatch means the snapshot was produced for a
+ *     DIFFERENT entry identity — restoring its title/body into the
+ *     current entry would corrupt the body format (e.g. writing a
+ *     TODO JSON body into a TEXT entry). The restore is rejected.
  */
 export function restoreEntry(
   container: Container,
@@ -370,6 +432,13 @@ export function restoreEntry(
   const existing = container.entries.find((e) => e.lid === lid);
   if (!existing) return container;
 
+  // Archetype-mismatch guard. `parseRevisionSnapshot` already
+  // validates the snapshot's archetype against the known set; here
+  // we additionally require that it matches the live entry's
+  // archetype so we never overwrite a TEXT body with a TODO JSON
+  // or vice versa.
+  if (existing.archetype !== restored.archetype) return container;
+
   // Snapshot current state before restoring
   const snapshotted = snapshotEntry(container, lid, snapshotRevId, now);
 
@@ -380,7 +449,23 @@ export function restoreEntry(
 /**
  * Restore a deleted entry from a revision snapshot.
  * Re-creates the entry with its original lid, then applies revision content.
- * Returns unchanged container if revision not found or snapshot malformed.
+ *
+ * Failure contract (P0-4, 2026-04-13) — any of the following returns
+ * the input `container` unchanged:
+ *
+ *   - `revisionId` is not present in `container.revisions`
+ *   - The snapshot fails the strict `parseRevisionSnapshot` check
+ *     (non-JSON, non-object, missing lid/title/body, unknown or
+ *     missing archetype, missing timestamps — see that function's
+ *     JSDoc for the full list)
+ *   - The entry `restored.lid` already exists in `container.entries`
+ *     — this function is scoped to deleted-entry restore. Use
+ *     `restoreEntry` for the existing-entry path.
+ *
+ * Because `parseRevisionSnapshot` is strict, `restored.archetype` is
+ * guaranteed to be one of the 8 known `ArchetypeId` values. The
+ * `addEntry` call therefore cannot introduce an invalid archetype
+ * into the container.
  */
 export function restoreDeletedEntry(
   container: Container,

@@ -24,6 +24,7 @@ import {
   bootWarningMessage,
 } from './adapter/platform/storage-estimate';
 import { showToast } from './adapter/ui/toast';
+import { summarizeZipImportWarnings } from './adapter/ui/zip-import-warnings';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
@@ -469,6 +470,23 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
           },
         });
         console.log(`[PKC2] ZIP import preview: ${result.source} (${result.container.entries.length} entries, ${Object.keys(result.container.assets).length} assets)`);
+        // Surface ZIP import warnings (P0-5 → UI).
+        //
+        // Success is not blocked; the preview dispatch above already
+        // moved the user forward. The toast is a non-blocking
+        // affordance so the user is told "some parts of the ZIP
+        // needed adjustments" — think of it as the ZIP-layer
+        // equivalent of a spell-checker squiggle. Operators get the
+        // full structured detail on the console so post-hoc audits
+        // do not lose information. See `docs/spec/data-model.md`
+        // §11.7 for the collision policy the warnings describe.
+        const summary = summarizeZipImportWarnings(result.warnings);
+        if (summary.summary) {
+          showToast({ message: summary.summary, kind: 'warn' });
+          for (const line of summary.details) {
+            console.warn(`[PKC2] ZIP import warning: ${line}`);
+          }
+        }
       } else {
         console.warn(`[PKC2] ZIP import failed: ${result.error}`);
         dispatcher.dispatch({ type: 'SYS_ERROR', error: `ZIP import failed: ${result.error}` });

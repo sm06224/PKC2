@@ -271,30 +271,53 @@ interface Revision {
 
 ### 6.4 snapshot の形式契約
 
-#### 6.4.1 保証契約 (Guaranteed Contract)
+#### 6.4.1 保証契約 (Guaranteed Contract) — **Tightened 2026-04-13 (P0-4)**
 
 - `snapshot` は **JSON.stringify された Entry オブジェクトの文字列** である
-- parse 結果が以下をすべて満たせば **valid snapshot**:
-  - `typeof parsed === 'object' && parsed !== null`
-  - `typeof parsed.lid === 'string'`
-  - `typeof parsed.title === 'string'`
-  - `typeof parsed.body === 'string'`
-- 上記を満たさない場合 `parseRevisionSnapshot(rev)` は `null` を返す（実装: `container-ops.ts:266-281`）
+- `parseRevisionSnapshot(rev)` は次を **すべて**満たすときに限り非 null を返す:
+  - JSON.parse が成功し、結果が `null` でない plain object（配列も不可）
+  - `typeof parsed.lid === 'string'` **かつ非空**
+  - `typeof parsed.title === 'string'`（空文字列は許容）
+  - `typeof parsed.body === 'string'`（空文字列は許容）
+  - `parsed.archetype` が **§4 で列挙された 8 種のいずれか**（`'text' | 'textlog' | 'todo' | 'form' | 'attachment' | 'folder' | 'generic' | 'opaque'`）
+  - `typeof parsed.created_at === 'string'`
+  - `typeof parsed.updated_at === 'string'`
+- 上記を満たさない場合 `parseRevisionSnapshot(rev)` は `null` を返す
+- **追加フィールドは保存される**（将来の additive schema 拡張のための透過性）
+- caller（`restoreEntry` / `restoreDeletedEntry`）は `null` を受けたら container を**無変更で返す**（silent mutation しない）
 
-#### 6.4.2 現状実装の詳細 (Current Implementation)
+#### 6.4.2 Restore 時の追加 guard — **P0-4**
 
-- `snapshot = JSON.stringify(entry)` をそのまま格納（`container-ops.ts:220`）
-- parse 時に `archetype` / `created_at` / `updated_at` は **型検証されない**（存在しなくても lid/title/body さえ string なら valid 扱い）
-- restore は `parseRevisionSnapshot` で取り出した `title` / `body` のみを `updateEntry` で上書きする（`container-ops.ts:371-372`）
-  - `archetype` は **restore 対象の現 Entry（または `restoreDeletedEntry` で re-create する Entry）のもの**を使う
-  - `created_at` / `updated_at` は restore 実行時刻に進む（rewind ではない）
+- **`restoreEntry`**: 既存 entry の `archetype` と snapshot の `archetype` が**一致しない場合は restore を拒否**（input container を無変更で返す）。
+  - 根拠: §14.2 I-E2（archetype は immutable）。archetype mismatch は「別アイデンティティの snapshot」を示すため、title/body を上書きすると body format が壊れる（例: TEXT の body に TODO JSON が書き込まれる）
+- **`restoreDeletedEntry`**: `parseRevisionSnapshot` の strict 契約により archetype は 8 種の既知値が保証される。`addEntry(container, lid, archetype, ...)` に不正値が流入する silent 経路は閉じられている
 
-#### 6.4.3 既知の曖昧点（P0-2 で検証すべき）
+#### 6.4.3 既知の曖昧点（P0-2 → P0-4 で解決／未解決）
 
-1. **未知 archetype snapshot の扱い**: `snapshot` が `archetype: 'unknown-future-type'` を含む場合、`parseRevisionSnapshot` は pass するが restore 時に archetype 情報が失われる
-2. **null body の snapshot**: 古い Entry で `body` が null として格納されていた場合の挙動は未検証
-3. **巨大 body (MB 級 markdown)**: JSON.stringify のメモリ消費が非線形に増える点は未検証
-4. **snapshot 内の相互参照 (asset key, entry ref)**: snapshot は Entry のみで、asset / relation は含まない。restore で参照切れが発生し得る
+- [x] **未知 archetype snapshot の扱い** → P0-4 で parse レベル reject に変更（silent 'generic' fallback は発生しない）
+- [x] **restore 時の archetype mismatch による body 形式破壊** → P0-4 で `restoreEntry` が明示的に拒否
+- [ ] **null body の snapshot**: parse は reject（body は string 必須）。ただし**実際に null body の snapshot が生成される経路は `snapshotEntry` には存在しない**（`Entry.body: string` 型制約のため）。hand-crafted / 古い migration データのみが対象
+- [ ] **巨大 body (MB 級 markdown)**: JSON.stringify のメモリ消費が非線形に増える点は未計測
+- [ ] **snapshot 内の相互参照 (asset key, entry ref)**: snapshot は Entry のみで、asset / relation は含まない。restore で参照切れが発生し得る（by design — revision は entry-level snapshot であり graph ではない）
+
+#### 6.4.4 Failure contract まとめ（表）
+
+| 入力 | parseRevisionSnapshot | restoreEntry | restoreDeletedEntry |
+|-----|---------------------|-------------|-------------------|
+| 非 JSON 文字列 | `null` | 無変更 | 無変更 |
+| JSON だが array / number / null | `null` | 無変更 | 無変更 |
+| lid 欠落・空文字列・非 string | `null` | 無変更 | 無変更 |
+| title / body 欠落・非 string | `null` | 無変更 | 無変更 |
+| archetype 欠落 | `null` (P0-4) | 無変更 | 無変更 |
+| archetype が未知文字列 (`'bogus'`) | `null` (P0-4) | 無変更 | 無変更 |
+| archetype 非 string | `null` (P0-4) | 無変更 | 無変更 |
+| created_at / updated_at 欠落 | `null` (P0-4) | 無変更 | 無変更 |
+| 全フィールド valid、既存 entry と archetype 一致 | Entry | restore 成功 | — |
+| 全フィールド valid、既存 entry と archetype mismatch | Entry | **無変更 (P0-4)** | — |
+| 全フィールド valid、lid が存在しない (deleted) | Entry | 無変更 | restore 成功 |
+| 全フィールド valid、lid が existing | Entry | restore 成功 | **無変更**（restoreEntry の職分） |
+
+**silent corruption は上記すべての経路で遮断されている**（P0-4 完了時点）。
 
 ### 6.5 Restore の forward-mutation 原則
 
@@ -852,8 +875,8 @@ text / textlog bundle には **compact mode** がある。
 以下は**仕様として未規定または実装依存**。次段 P0-2 の round-trip テストで挙動を固定し、必要なら契約化する。
 
 ### 16.1 Revision 関連
-- [ ] snapshot に含まれる `archetype` と restore 先の `archetype` が異なるケース（発生し得るか / 起きた場合の挙動）
-- [ ] snapshot の `body` が null / undefined / object だった場合（旧 Container を想定）
+- [x] **snapshot に含まれる `archetype` と restore 先の `archetype` が異なるケース → §6.4.2 で解決（P0-4, 2026-04-13）**
+- [x] **snapshot の `body` が null / undefined / object だった場合 → §6.4.1 strict parse で reject（P0-4）**
 - [ ] 同一ミリ秒 created_at 複数 revision の副順序
 
 ### 16.2 Relation 関連

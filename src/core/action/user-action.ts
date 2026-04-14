@@ -171,7 +171,48 @@ export type UserAction =
    * - Invalid values are treated as 'strict'.
    * - Emits no domain event (meta-only change, no entry mutation).
    */
-  | { type: 'SET_SANDBOX_POLICY'; policy: 'strict' | 'relaxed' };
+  | { type: 'SET_SANDBOX_POLICY'; policy: 'strict' | 'relaxed' }
+  // ── P1-1: TEXTLOG → TEXT selection + TEXT → TEXTLOG modal ──────
+  /**
+   * BEGIN_TEXTLOG_SELECTION — enter log-selection mode for a TEXTLOG.
+   *
+   * Contract (P1-1, 2026-04-13):
+   * - `lid` must resolve to a `textlog` archetype entry. Other
+   *   archetypes are blocked.
+   * - Replaces any previously-active selection (only one TEXTLOG
+   *   may own selection mode at a time).
+   * - Initial `selectedLogIds` is empty.
+   * - Does NOT change phase / selectedLid / editingLid.
+   * - Emits no DomainEvent (pure UI state).
+   */
+  | { type: 'BEGIN_TEXTLOG_SELECTION'; lid: string }
+  /**
+   * TOGGLE_TEXTLOG_LOG_SELECTION — flip a single log id in / out of
+   * the active selection set.
+   *
+   * Contract (P1-1):
+   * - No-op when `textlogSelection` is null.
+   * - Duplicates ignored: membership is a set, not a list.
+   */
+  | { type: 'TOGGLE_TEXTLOG_LOG_SELECTION'; logId: string }
+  /** CANCEL_TEXTLOG_SELECTION — exit log-selection mode (no-op when inactive). */
+  | { type: 'CANCEL_TEXTLOG_SELECTION' }
+  /**
+   * OPEN_TEXT_TO_TEXTLOG_MODAL — open the TEXT → TEXTLOG preview modal
+   * for a given TEXT source entry.
+   *
+   * Contract (P1-1):
+   * - Blocked when readonly.
+   * - `sourceLid` must resolve to a `text` archetype entry.
+   * - Default `splitMode` is 'heading' when omitted.
+   * - Opening while a modal is already present replaces it (only one
+   *   preview modal at a time).
+   */
+  | { type: 'OPEN_TEXT_TO_TEXTLOG_MODAL'; sourceLid: string; splitMode?: 'heading' | 'hr' }
+  /** SET_TEXT_TO_TEXTLOG_SPLIT_MODE — update split mode; no-op when modal closed. */
+  | { type: 'SET_TEXT_TO_TEXTLOG_SPLIT_MODE'; splitMode: 'heading' | 'hr' }
+  /** CLOSE_TEXT_TO_TEXTLOG_MODAL — close the modal (no-op when closed). */
+  | { type: 'CLOSE_TEXT_TO_TEXTLOG_MODAL' };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];
