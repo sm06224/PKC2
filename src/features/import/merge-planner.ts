@@ -261,11 +261,12 @@ function rewriteAssetReferences(
  */
 function mintMergedLid(used: Set<string>, now: string): string {
   const stamp = normalizeStamp(now);
-  let seq = 1;
-  while (true) {
+  // eslint no-constant-condition: this loop is guaranteed to
+  // terminate because `used` is a finite Set and we only add to
+  // it; seq monotonically increases until a free slot is found.
+  for (let seq = 1; ; seq++) {
     const candidate = `m-${stamp}-${seq}`;
     if (!used.has(candidate)) return candidate;
-    seq++;
   }
 }
 
@@ -280,11 +281,10 @@ function mintMergedAssetKey(
   now: string,
 ): string {
   const stamp = normalizeStamp(now);
-  let seq = 1;
-  while (true) {
+  // See mintMergedLid for the termination argument.
+  for (let seq = 1; ; seq++) {
     const candidate = `${importedKey}-m${stamp}-${seq}`;
     if (!used.has(candidate)) return candidate;
-    seq++;
   }
 }
 
