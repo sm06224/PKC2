@@ -54,6 +54,60 @@ export interface ZipImportSuccess {
   container: Container;
   manifest: PackageManifest;
   source: string;
+  /**
+   * Non-fatal findings discovered while parsing the ZIP. Absent when
+   * the input was clean (empty-array semantics — never `[]`).
+   *
+   * Canonical spec: `docs/spec/data-model.md` §11.7 (ZIP import
+   * collision policy).
+   *
+   * A populated `warnings` array indicates that something in the ZIP
+   * was duplicated, malformed, or suspicious but recoverable. The
+   * import still succeeded; the caller decides whether to surface
+   * the warnings to the user.
+   */
+  warnings?: ZipImportWarning[];
+}
+
+/**
+ * Category of a ZIP import warning.
+ *
+ * - `DUPLICATE_ASSET_SAME_CONTENT`: two ZIP entries target the same
+ *   asset key and carry byte-identical content. Deduplicated; no
+ *   data risk.
+ * - `DUPLICATE_ASSET_CONFLICT`: two entries target the same asset
+ *   key but carry DIFFERENT bytes. First occurrence wins; the
+ *   conflict is reported loudly so the caller never has to guess.
+ * - `DUPLICATE_MANIFEST`: `manifest.json` appeared more than once.
+ *   First occurrence wins.
+ * - `DUPLICATE_CONTAINER_JSON`: `container.json` appeared more than
+ *   once. First occurrence wins.
+ * - `INVALID_ASSET_KEY`: the `assets/<key>.bin` filename yields a
+ *   key that would be unsafe or ambiguous (empty, path-traversal
+ *   segment, embedded `/` or `\`). The entry is skipped; no asset
+ *   is stored under that key.
+ */
+export type ZipImportWarningCode =
+  | 'DUPLICATE_ASSET_SAME_CONTENT'
+  | 'DUPLICATE_ASSET_CONFLICT'
+  | 'DUPLICATE_MANIFEST'
+  | 'DUPLICATE_CONTAINER_JSON'
+  | 'INVALID_ASSET_KEY';
+
+/**
+ * A single non-fatal finding emitted during ZIP import.
+ *
+ * `kept: 'first'` means the first occurrence of the duplicate was
+ * retained and subsequent ones discarded. `kept: null` is reserved
+ * for entries that were skipped entirely (e.g. `INVALID_ASSET_KEY`).
+ */
+export interface ZipImportWarning {
+  code: ZipImportWarningCode;
+  message: string;
+  /** Present when the warning pertains to a specific asset key. */
+  key?: string;
+  /** Which copy, if any, was retained. */
+  kept: 'first' | null;
 }
 
 export interface ZipImportFailure {
@@ -137,11 +191,24 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
     const buffer = await file.arrayBuffer();
     const entries = parseZip(new Uint8Array(buffer));
 
-    // 1. Read and validate manifest
-    const manifestEntry = entries.find((e) => e.name === 'manifest.json');
-    if (!manifestEntry) {
+    // Accumulated non-fatal findings (docs/spec/data-model.md §11.7).
+    // Populated only when the ZIP carries duplicates / invalid keys.
+    const warnings: ZipImportWarning[] = [];
+
+    // 1. Read and validate manifest. First occurrence wins; additional
+    //    manifest.json entries are flagged via DUPLICATE_MANIFEST.
+    const manifestEntries = entries.filter((e) => e.name === 'manifest.json');
+    if (manifestEntries.length === 0) {
       return { ok: false, error: 'Missing manifest.json in ZIP' };
     }
+    if (manifestEntries.length > 1) {
+      warnings.push({
+        code: 'DUPLICATE_MANIFEST',
+        message: `ZIP contained ${manifestEntries.length} manifest.json entries; kept the first.`,
+        kept: 'first',
+      });
+    }
+    const manifestEntry = manifestEntries[0]!;
     const manifest = JSON.parse(bytesToText(manifestEntry.data)) as Partial<PackageManifest>;
     if (manifest.format !== 'pkc2-package') {
       return { ok: false, error: `Invalid format: expected "pkc2-package", got "${manifest.format}"` };
@@ -150,11 +217,19 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
       return { ok: false, error: `Unsupported version: ${manifest.version}` };
     }
 
-    // 2. Read container
-    const containerEntry = entries.find((e) => e.name === 'container.json');
-    if (!containerEntry) {
+    // 2. Read container. First-wins policy mirrors manifest.json.
+    const containerEntries = entries.filter((e) => e.name === 'container.json');
+    if (containerEntries.length === 0) {
       return { ok: false, error: 'Missing container.json in ZIP' };
     }
+    if (containerEntries.length > 1) {
+      warnings.push({
+        code: 'DUPLICATE_CONTAINER_JSON',
+        message: `ZIP contained ${containerEntries.length} container.json entries; kept the first.`,
+        kept: 'first',
+      });
+    }
+    const containerEntry = containerEntries[0]!;
     const container = JSON.parse(bytesToText(containerEntry.data)) as Container;
 
     // 3. Validate minimum container shape
@@ -168,14 +243,46 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
       return { ok: false, error: 'Invalid container: missing relations array' };
     }
 
-    // 4. Read assets
+    // 4. Read assets with collision detection (spec §11.7).
+    //    Rules:
+    //      - First occurrence wins; silent overwrite is forbidden.
+    //      - Duplicate key + identical bytes → DUPLICATE_ASSET_SAME_CONTENT
+    //      - Duplicate key + differing bytes → DUPLICATE_ASSET_CONFLICT
+    //      - Invalid key (empty, path-traversal, `/`, `\`) → INVALID_ASSET_KEY
+    //      - Different keys with identical bytes are both kept (no dedup).
     const assets: Record<string, string> = {};
+    const firstAssetBytes = new Map<string, Uint8Array>();
     const assetPrefix = 'assets/';
     for (const entry of entries) {
-      if (entry.name.startsWith(assetPrefix) && entry.name.endsWith('.bin')) {
-        const key = entry.name.slice(assetPrefix.length, -4); // strip "assets/" and ".bin"
-        assets[key] = bytesToBase64(entry.data);
+      if (!entry.name.startsWith(assetPrefix) || !entry.name.endsWith('.bin')) continue;
+      const key = entry.name.slice(assetPrefix.length, -4); // strip "assets/" and ".bin"
+
+      if (isInvalidAssetKey(key)) {
+        warnings.push({
+          code: 'INVALID_ASSET_KEY',
+          message: `Skipped "${entry.name}": asset key ${JSON.stringify(key)} is not safe.`,
+          key,
+          kept: null,
+        });
+        continue;
       }
+
+      const prev = firstAssetBytes.get(key);
+      if (prev) {
+        const same = bytesEqual(prev, entry.data);
+        warnings.push({
+          code: same ? 'DUPLICATE_ASSET_SAME_CONTENT' : 'DUPLICATE_ASSET_CONFLICT',
+          message: same
+            ? `Duplicate asset key "${key}" with identical content; deduplicated.`
+            : `Duplicate asset key "${key}" with differing content; kept the first occurrence.`,
+          key,
+          kept: 'first',
+        });
+        continue;
+      }
+
+      firstAssetBytes.set(key, entry.data);
+      assets[key] = bytesToBase64(entry.data);
     }
 
     // 5. Reassemble container with assets and new cid
@@ -192,12 +299,16 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
       revisions: Array.isArray(container.revisions) ? container.revisions : [],
     };
 
-    return {
+    const result: ZipImportSuccess = {
       ok: true,
       container: restored,
       manifest: manifest as PackageManifest,
       source: file.name,
     };
+    if (warnings.length > 0) {
+      result.warnings = warnings;
+    }
+    return result;
   } catch (e) {
     return { ok: false, error: `ZIP import failed: ${String(e)}` };
   }
@@ -566,6 +677,38 @@ function generateCid(): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 10);
   return `${ts}-${rand}`;
+}
+
+/**
+ * Reject asset keys that are empty, path-traversal segments, or
+ * carry embedded path separators. Called while parsing the
+ * `assets/<key>.bin` entries — filenames that produce one of these
+ * keys are skipped and recorded as `INVALID_ASSET_KEY` warnings.
+ *
+ * Inner dots (e.g. `key.with.dots`) are INTENTIONALLY allowed —
+ * spec §11.7 explicitly scopes this check to path-safety, not to
+ * the narrower `SAFE_KEY_RE` markdown reference range documented
+ * in §7.2.
+ */
+function isInvalidAssetKey(key: string): boolean {
+  if (key.length === 0) return true;
+  if (key === '.' || key === '..') return true;
+  if (key.includes('/') || key.includes('\\')) return true;
+  return false;
+}
+
+/**
+ * Byte-level equality for two Uint8Arrays. Returns `true` when the
+ * arrays have identical length and identical values at every index.
+ * Used by collision detection to distinguish
+ * `DUPLICATE_ASSET_SAME_CONTENT` from `DUPLICATE_ASSET_CONFLICT`.
+ */
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 /**

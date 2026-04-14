@@ -2,14 +2,14 @@
  * Entry-window live refresh wiring.
  *
  * Subscribes to dispatcher state changes and, whenever the container's
- * `assets` object identity changes, pushes a freshly-built preview
- * resolver context into every currently-open entry-window child for a
- * text / textlog entry.
+ * `assets` OR `entries` object identity changes, pushes a freshly-built
+ * preview resolver context into every currently-open entry-window child
+ * for a text / textlog entry.
  *
  * This is the adapter-side glue that connects the A sub-item of
  * "Entry-window live refresh wiring + state/resource hardening" —
- * attachment add / remove in the main window → Preview tab resolver
- * update in any open entry-window child.
+ * attachment add / remove / metadata-edit in the main window → Preview
+ * tab resolver update in any open entry-window child.
  *
  * Scope & invariants (must stay true):
  *   - Only the child's edit-mode Preview resolver is refreshed. The
@@ -17,10 +17,13 @@
  *   - Only `text` / `textlog` archetypes receive a push — for
  *     attachment / todo / form entries `buildEntryPreviewCtx` returns
  *     `undefined` and this wiring becomes a no-op for them.
- *   - Identity comparison (`prev.assets !== next.assets`) is
- *     sufficient because the reducer always replaces the `assets`
- *     object when it mutates (COMMIT_EDIT's asset merge path,
- *     ENTRY_DELETED's asset_key removal). No deep diff is needed.
+ *   - Identity comparison (`prev.assets !== next.assets` OR
+ *     `prev.entries !== next.entries`) is sufficient because the
+ *     reducer always replaces those arrays/objects when they mutate.
+ *     No deep diff is needed. The `entries` gate was added in P1-2
+ *     (2026-04-13) so attachment METADATA edits (mime/name) also
+ *     propagate into the child's preview resolver, not just
+ *     body-side asset merges.
  *   - This is NOT a generic cross-window sync bus — it listens to
  *     state changes only and writes directly to the private
  *     entry-window postMessage protocol via `pushPreviewContextUpdate`.
@@ -47,10 +50,17 @@ import {
 export function wireEntryWindowLiveRefresh(dispatcher: Dispatcher): () => void {
   return dispatcher.onState((state, prev) => {
     const nextContainer = state.container;
-    const prevAssets = prev.container?.assets;
-    const nextAssets = nextContainer?.assets;
     if (!nextContainer) return;
-    if (prevAssets === nextAssets) return;
+    const prevAssets = prev.container?.assets;
+    const nextAssets = nextContainer.assets;
+    const prevEntries = prev.container?.entries;
+    const nextEntries = nextContainer.entries;
+    // Trigger on either assets OR entries identity change. Both are
+    // legitimate drivers of the Preview resolver context:
+    //   - assets: the raw data the resolver maps keys to.
+    //   - entries: the attachment metadata (mime, display name) that
+    //     `buildEntryPreviewCtx` derives from attachment entries.
+    if (prevAssets === nextAssets && prevEntries === nextEntries) return;
 
     const openLids = getOpenEntryWindowLids();
     if (openLids.length === 0) return;
