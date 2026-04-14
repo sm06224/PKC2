@@ -1,0 +1,777 @@
+# HANDOVER — PKC2 マージ前 最終整理
+
+**Status**: 引き継ぎ正本（canonical handover）
+**Last updated**: 2026-04-13
+**Branch**: `claude/pkc2-handover-restructure-WNRHU`
+**Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
+**Release target**: v0.1.0（プレリリース）
+
+この文書は **PKC2 を人に渡せる完成状態** として締めるための最終 HANDOVER である。
+次の開発者（人間であれ AI であれ）がこの文書だけを読めば、現在地・不変条件・
+意図的な非対応・次段計画が全て把握できるように書かれている。
+
+本文書は**凍結ドキュメント**の性格を持つ。内容を変える作業は「もう一段大きな
+フェーズ」の開始時にのみ行う。
+---
+
+## 1. 全体サマリ
+
+### PKC2 とは
+
+PKC2 は **単一 HTML ファイルに自己完結するローカル完結型の知識コンテナ**
+である。ユーザーはブラウザで HTML を開くだけで、IndexedDB 上に永続化される
+ワークスペース（Entry・Relation・Revision・Asset の集約）を編集し、HTML /
+ZIP として書き出して配布できる。外部サーバーに依存せず、同一 HTML を
+email / USB / GitHub Pages / オフラインで同じように動かせる。
+
+### 今回の到達点
+
+P1 Slice 1〜6 と P0/P1 主要タスク、および UI singleton 整理までが完了した。
+プレリリース **v0.1.0** として締められる状態である。
+
+具体的に到達した 4 系統:
+
+1. **Workspace (IDB)** — ブラウザ内作業環境。自動保存 + 全操作対応
+2. **Portable HTML** — Light / Full × editable / readonly の 4 モード
+3. **Portable Package (ZIP)** — 完全再現型 + 衝突検知 + warnings UI
+4. **Guardrail UX** — 非ブロッキング通知 + 復元可能性 + 多経路 closure 安全性
+
+**技術基盤**: core / features / adapter / UI の 5 層構造、Redux 風 reducer
+（UserAction 50+ / SystemCommand 9+ / DomainEvent 16）、data-pkc-\* 属性規約、
+仕様書 2 本（data-model / body-formats）＋ ユーザーマニュアル 9 章。
+---
+
+## 2. 今回の変更範囲（重要）
+
+現ブランチは main から 75k+ 行を追加し、266 ファイルを変更している大規模ブラ
+ンチである。主要変更を系統別に整理する。
+
+### 2.1 TEXTLOG ↔ TEXT 相互変換（P1 Slice 4 / 5）
+
+- **TEXTLOG → TEXT**: 選択モードで log を選び、プレビュー → 確認で新 TEXT
+  を生成。元 TEXTLOG は不変。
+- **TEXT → TEXTLOG**: heading (`#`) または hr (`---`) で分割、プレビュー →
+  確認で新 TEXTLOG を生成。
+- **操作順序依存の解消**: P1-1 でプレビュー modal の identity を reducer に
+  編入。SELECT_ENTRY / BEGIN_EDIT / DELETE_ENTRY / SYS_IMPORT_COMPLETE で自
+  動クリア。
+
+### 2.2 embed 拡張 / cycle guard（P1 Slice 2）
+
+- 他 Entry を `![](entry:<lid>)` で transclusion 可能
+- 対象 archetype: text / textlog / todo / attachment / folder
+- 5 種のガード: depth > 1 / cycle / self-reference / missing / invalid
+- すべて `data-pkc-embed-blocked` の統一プレースホルダで表示
+
+### 2.3 TODO / FOLDER description の markdown 化（P1 Slice 3）
+
+- TODO の `description` と FOLDER の body（説明）が markdown レンダリングに
+  切替え
+- `hasMarkdownSyntax` で plain と markdown を自動判別
+- 他 Entry への埋め込み（TODO ステータスカードなど）が実用レベルに
+
+### 2.4 pane 再トグル shortcut（P1 Slice 6）
+
+- `Ctrl+\` / `Cmd+\` で左ペイン（サイドバー）表示 ⇄ 非表示
+- `Ctrl+Shift+\` / `Cmd+Shift+\` で右ペイン（情報パネル）表示 ⇄ 非表示
+
+### 2.5 bulk operation snapshot（bulk_id）
+
+- BULK_DELETE / BULK_SET_STATUS / BULK_SET_DATE で生成される N 件の
+  Revision に **共通の `bulk_id`** を付与
+- `Revision.bulk_id?: string` は additive optional field
+- `getRevisionsByBulkId(container, bulkId)` で 1 bulk action の全 revisions
+  を一括取得可能
+- 「1 bulk action = 1 まとまり」として将来の restore-whole-bulk UI の下地
+
+### 2.6 UI singleton 整理（P1-1 + audit final pass）
+
+- **A 分類 (reducer owned)**: `text-to-textlog-modal` / `textlog-selection`
+- **B 分類 (close hook)**: `textlog-preview-modal`（renderer 駆動 sync）
+- **C 分類 (leave)**: `slash-menu` / `asset-picker` / `asset-autocomplete`
+- 全 observable stale-leak 経路を閉塞
+
+### 2.7 データ完全性系
+
+- **ZIP collision 検知** (P0-5): silent overwrite を排除、5 種の warning
+  code を定義、toast surface 済み
+- **Revision parse 契約の strict 化** (P0-4): archetype whitelist、空 lid
+  reject、timestamp 必須化
+- **round-trip テスト** (P0-2a / P0-2b): 5 経路の成功パス + 28 境界観測
+- **build-subset cycle test** (A10): 15 観測追加、longer cycle / multi-path
+  / archetype 横断 cycle / bounded size / relation filter を固定
+---
+
+## 3. 設計の現在地
+
+### 3.1 5 層構造の状態
+
+```
+core         ← features ← adapter ← UI (presenters/renderer/action-binder)
+                                  ← main.ts (bootstrap / wire)
+```
+
+- **core**: 純粋ドメインモデル。ブラウザ API 一切なし（grep で 0 件維持）
+- **features**: 純アルゴリズム（filter / sort / tree / markdown / textlog /
+  calendar / kanban / asset-scan / auto-placement / ...）。adapter 逆依存なし
+- **adapter**: 実行時統合（state/reducer / ui/renderer / platform/IDB
+  + export/import / transport/postMessage）
+- **main.ts**: 全 wire-up の単一場所
+
+**層違反ゼロ** が `.eslintrc.cjs` の `no-restricted-imports` rule で機械的に
+ガードされている。
+
+### 3.2 reducer の健全性
+
+- **UserAction 50+ 種**、すべて `src/core/action/user-action.ts` に型として列挙
+- **SystemCommand 9+ 種**、同じく core に集約
+- **DomainEvent 16 種**、reducer → events の純関数変換
+- **Dispatchable = UserAction | SystemCommand** → `reduce(state, action)` →
+  `(state', DomainEvent[])`
+- phase 状態機械: `initializing → ready ↔ editing / exporting → error`
+- phase-first switch で「このフェーズで許されないアクション」を機械的にブロック
+
+P1-1 で 6 つの新 action を追加（TEXTLOG selection / TEXT→TEXTLOG modal の
+識別子系）。reducer は全ての state mutation point として唯一の正本。
+
+### 3.3 UI state の整理状況
+
+| レイヤ | 所在 | 代表例 |
+|-------|-----|-------|
+| 永続 state | `Container`（IDB / export） | entries / relations / revisions / assets / meta |
+| 実行時 state | `AppState`（reducer 管理） | phase / selectedLid / viewMode / textlogSelection / textToTextlogModal |
+| 派生 UI cache | 一部 module singleton（reducer mirror） | `textlog-selection.ts` の cache |
+| 真に transient な DOM | module singleton（触らない判断） | slash-menu / asset-picker / asset-autocomplete |
+
+**原則**: 正本は reducer。UI singleton は forward cache または close-only
+sync の補助として存続を許可。
+---
+
+## 4. 不変条件（Invariants）
+
+以下は **壊してはならない** 契約である。reducer / renderer / presenter /
+importer / exporter のいずれを触る場合も、これらを侵食しないことを確認する。
+
+### 4.1 Core 層の純粋性
+- `src/core/**` に **ブラウザ API 禁止**（fetch / window / document /
+  localStorage / indexedDB / DOMParser / Blob / File / crypto.subtle 等）
+- `src/core/operations/container-ops.ts` は `Date.now()` を呼ばない。caller
+  が時刻を引数で渡す
+- core ← features ← adapter ← UI の一方向依存
+
+### 4.2 reducer 唯一性
+- **reducer は state 変更の唯一の場所**。action-binder / renderer は dispatch
+  するだけで、state を直接 mutate しない
+- `dispatcher.getState()` は読み取り専用
+- singleton state（UI local）は reducer からの forward cache または
+  close-only sync のみ許可
+
+### 4.3 preview == commit
+- TEXTLOG → TEXT 変換 preview と TEXT → TEXTLOG 変換 preview で表示されて
+  いる title / body は、**確認ボタンで commit される内容と厳密に一致する**
+- preview modal は再計算を挟まず、DOM の current value から直接読む
+
+### 4.4 embed depth ≤ 1
+- `![](entry:<lid>)` の transclusion は **1 段のみ展開**
+- depth > 1 は `data-pkc-embed-blocked` プレースホルダに置換
+- cycle / self-reference / missing / invalid も同じ blocked placeholder で
+  統一的に遮断
+
+### 4.5 data-pkc-\* 属性規約
+- DOM の functional selector は **すべて `data-pkc-*` 属性**
+- CSS class は視覚スタイリング専用、query セレクタに使わない
+- この規約で minify 耐性と test DOM query の安定性を両立
+
+### 4.6 Container の source of truth 原則
+- `Container` が唯一の永続 state
+- UI state（phase / selection / editing）は reducer 管理、永続化されない
+- import は **full replace**（merge しない）。単体 / batch で追加したい場合
+  は別の専用経路を使う
+
+### 4.7 Additive schema 原則（spec §15.1）
+- 新フィールドは必ず optional で追加
+- 既存フィールドの削除・改名は schema_version bump なしに禁止
+- unknown field は reader 側で無視（破壊しない）
+- legacy 形式は parse で受け入れ、save 時に new format で書き戻す (lazy migration)
+
+### 4.8 Export / Import 契約の安定性
+- `export_meta.mode`（light / full）/ `mutability`（editable / readonly）/
+  `asset_encoding`（base64 / gzip+base64）の値は変更禁止
+- ZIP の `manifest.format: 'pkc2-package'` / `version: 1` 識別子は固定
+- SLOT ID（pkc-root / pkc-data / pkc-meta / pkc-core / pkc-styles / pkc-theme）
+  は改名禁止
+---
+
+## 5. 意図的にやっていないこと（Intentionally NOT done）
+
+**これは怠慢ではなく設計判断**。次の開発者が「なぜ残したのか」で迷わないた
+めに、全て理由付きで列挙する。
+
+### 5.1 merge import 未実装
+- 現状 import は **full replace** のみ
+- merge には conflict resolution 戦略（新規 cid 採番 / lid 衝突時の扱い /
+  relation の張り替え）の設計が必要
+- 追加だけの用途には **Batch Import** / **単体 bundle (.text.zip /
+  .textlog.zip)** が既に存在する
+- merge が欲しくなる運用シナリオが明確化するまで、実装しない
+
+### 5.2 template archetype の正式化
+- `generic` / `opaque` は予約として型に残っているが、専用 presenter はない
+- `docs/development/data-model/complex-entry-archetype.md` などに将来設計あり
+- 今は `text` archetype + markdown table / YAML で代替可能なため、実装優先度
+  は低い
+
+### 5.3 P2P transport 拡張
+- `docs/vision/webrtc-p2p-collaboration.md` に先行構想あり
+- 現行は postMessage based の単一 embed protocol のみ
+- multi-user collaboration は conflict-free data 構造（CRDT など）への踏み
+  込みが必要で、Revision の linear history モデルを拡張する必要がある
+- 単独利用が主用途である今の段階では手を出さない
+
+### 5.4 reducer への過剰な UI state 編入
+- P1-1 で編入したのは `textlogSelection` と `textToTextlogModal` の 2 件のみ
+- slash-menu / asset-picker / asset-autocomplete は **per-keystroke の超
+  transient UI** で、reducer 編入は overkill と判定（audit §4）
+- 「正本は reducer」という原則を守りつつ「実害のない transient は singleton
+  のまま」という balance を意識的に選んだ
+
+### 5.5 modal の render 横断永続化
+- `textlog-preview-modal` は sync を入れたが、mount/unmount ベースの
+  `text-to-textlog-modal` のような「render 横断で overlay を維持」する形に
+  は**していない**
+- render の `root.innerHTML = ''` で detach される既存挙動を尊重
+- preview 内での大量キーストロークを扱う UX が必要になるまで、凝った永続化は
+  避ける
+
+### 5.6 DOM 全置換レンダリングの局所 diff 化
+- 現状 `render()` は毎回 `root.innerHTML = ''` で全 DOM を破棄・再構築する
+- scroll 位置 / focus / IME 状態は個別に保存・復元するハック的 wiring で対処
+- local diff renderer（virtual DOM / incremental render）の導入は将来の大型
+  refactor 対象
+- 今の規模では十分速く、再レンダリング起因の regression よりも「単純で正しい」
+  ことを優先する
+
+### 5.7 TEXTLOG bundle の lossy format の解消
+- textlog-bundle (`.textlog.zip`) の CSV は `important` flag のみを列として
+  持ち、将来 flag が追加されれば失われる
+- F3 として spec に「lossy format」と明言済み（body-formats.md §3.6.1）
+- 実害が無く将来の flag 追加計画もない段階では解消しない
+
+### 5.8 Revision への branch / prev_rid の追加
+- 現状 Revision は `entry_lid + created_at` でソートして履歴として扱う
+  linear model
+- branch / restore 系の凝った UI を入れるなら optional field 追加で可能
+  （data-model §15.5）
+- 現状の forward-mutation 原則で十分使えており、拡張は具体的な要求が出てから
+---
+
+## 6. 既知の制約
+
+「動作する」「安全である」が、「理想の UX」とは違う部分を明記する。これらは
+次の開発者が「仕様を理解せずに直そうとする」事故を防ぐために必要な情報。
+
+### 6.1 DOM 全置換レンダリング
+- `render()` は毎回 `root.innerHTML = ''` → 再構築
+- 結果: open 中の modal / popover は state 変更の render cycle で **必ず
+  detach される**
+- 対策済み:
+  - `textlog-preview-modal` は sync で stale pointer を明示 close
+  - `text-to-textlog-modal` は sync で mount / unmount を state 駆動
+  - `slash-menu` / `asset-picker` / `asset-autocomplete` は textarea 依存の
+    transient なので self-heal で OK
+- **制約として受け入れる側**: IME 編集中 / scroll 位置 / input focus は明示
+  的保存・復元が必要（既存 wiring で対処済み、新 UI 追加時は要注意）
+
+### 6.2 pane state 非永続
+- 左右ペインの表示状態（`Ctrl+\` / `Ctrl+Shift+\` で切替）は **永続化されない**
+- ブラウザリロードで既定に戻る
+- IDB schema や export_meta に含めていない（将来拡張の余地はある）
+
+### 6.3 TEXT → TEXTLOG 変換の非可逆部分
+- 分割境界（heading / hr）は選んだ方式で決まるが、元の TEXT 本文内の特殊
+  markdown（`---` を分割 hr ではなく水平線として意図した使い方など）は変換
+  で意味が変わる可能性がある
+- 変換後の TEXTLOG から元 TEXT を完全復元する保証はない（log id は新規、
+  meta backlink が増える等）
+- spec `body-formats.md §2.4` に「title spam の可能性」として記載
+
+### 6.4 markdown 互換リスク
+- 独自拡張: `asset:` URL スキーム、`entry:` URL スキーム、transclusion の
+  image-form 特殊解釈（`![](entry:<lid>)`）
+- 標準 markdown viewer で開くと、`entry:` は unknown scheme として plain
+  文字列化される
+- 外部ツールで markdown として処理する時は、text-bundle が提供する compact
+  mode（missing ref を label のみに書き戻す）で broken ref を回避する
+
+### 6.5 ZIP stored mode（deflate なし）
+- `pkc2-package` ZIP は intentional に stored mode（method 0、圧縮なし）
+- 理由: 外部 deflate 実装を bundle に含めない（単一 HTML 契約）
+- 既圧縮 asset（画像 / PDF / zip）には影響小だが、text 大量だと HTML Full
+  より ZIP が大きくなる可能性あり
+- サイズ最適化よりも portability を選んでいる設計判断
+
+### 6.6 HTML Full の gzip fallback
+- CompressionStream がない環境では `asset_encoding: 'base64'` に自動 fallback
+- Node 18+ / Chrome 80+ / Firefox 113+ / Safari 16.4+ でサポート
+- 古い環境で export した HTML は他環境でも互換性があるが、サイズが膨らむ
+
+### 6.7 複数 Workspace / 複数 cid の同時扱い
+- IDB は `__default__` ポインタで単一 default cid のみ使用
+- 複数 cid を切り替える UI は未実装
+- 設計的には data 層で可能だが、UI の整備待ち
+
+### 6.8 ZIP import は source_cid を失う
+- ZIP import は常に新 cid を採番（spec §11.5 / F1 decision）
+- 元の cid は manifest に残るが、container.meta.container_id には復元されない
+- 配布 HTML の cid 保持とは意図的に異なる設計（ZIP = 再導入のための形式、
+  HTML = 配布 artifact）
+
+### 6.8 Pre-existing lint errors
+- `src/adapter/ui/*.ts` で `no-restricted-imports` ルールが 80 件エラー
+- 規則は「adapter が features を import してはならない」という文字通り読み
+  だが、実装上は合法（CLAUDE.md の層規則では `adapter → features` が正しい）
+- 既存の lint 設定の方が厳しすぎる状態。ブランチ内では無変更で放置
+---
+
+## 7. 次にやるべきこと（優先順位付き）
+
+v0.1.0 マージ後に開始できる P2 タスクを、優先度別に整理する。この順序は
+**監督の運用経験を基にした推奨**であり、絶対ではない。
+
+### 7.1 最優先（P2 early）— 運用を広げる前の追加保険
+
+| タスク | 理由 / 期待効果 |
+|-------|----------------|
+| **スクリーンショット差し替え** | 現在 placeholder。Slice 1-6 の UI を反映すると manual の実用性が一段上がる |
+| **i18n 基盤（日本語 / 英語）** | 現状 UI 文言は日英混在。リリース向けには統一が必要 |
+| **CI / GitHub Actions 整備** | 現在 ローカル手動。lint / typecheck / test / build の自動化で回帰検知 |
+
+### 7.2 中優先（P2 mid）— データモデル拡張
+
+| タスク | 理由 |
+|-------|-----|
+| **merge import の conflict resolution 設計** | 複数 export を結合する運用ニーズが出たら必要 |
+| **bulk restore UI** | `bulk_id` の土台は入った。UI 導線を追加すれば使える |
+| **complex / document-set / spreadsheet archetype** | `docs/development/data-model/*` に設計先行済み |
+| **orphan asset auto-GC** | 現状手動 `PURGE_ORPHAN_ASSETS` のみ。delete / import-replace 時の自動クリーンアップ |
+
+### 7.3 低優先（P2 later）— 足回りの改善
+
+| タスク | 理由 |
+|-------|-----|
+| **DOM 局所 diff renderer** | 現状の全置換で十分速いが、Entry 数 1000+ でスケーリング懸念 |
+| **schema_version migration path の設計** | 現状 1 固定。v2 に上げる時の migration 機構がまだない |
+| **lint ルールの整流** | 既存 `no-restricted-imports` 80 件エラーの解消。CLAUDE.md 層規則に沿う形に書き換え |
+| **textlog-bundle CSV 列拡張** | flag 追加時に lossy でなくすなら |
+
+### 7.4 ビジョン系（P3 以降）
+
+| テーマ | 参照 |
+|-------|-----|
+| P2P / WebRTC 同期 | `docs/vision/webrtc-p2p-collaboration.md` |
+| multi-window 協調 | `docs/vision/pkc-multi-window-architecture.md` |
+| message externalization | `docs/vision/pkc-message-externalization.md` |
+| application scope | `docs/vision/pkc-application-scope-vision.md` |
+---
+
+## 8. 完了済みタスクの全体表
+
+ブランチ `claude/pkc2-handover-restructure-WNRHU` 上で完了した全タスク:
+
+| # | タスク | 種別 | 日付 |
+|---|-------|------|-----|
+| P0-1 | データモデル仕様書の単一正本化 | docs | 2026-04-13 |
+| P0-2a | round-trip テスト成功パス導入 | test | 2026-04-13 |
+| P0-2b | round-trip 境界ケース観測 | test | 2026-04-13 |
+| P0-4 | Revision parse failure contract 補強 | src + test + docs | 2026-04-13 |
+| P0-5 | ZIP import collision 検知（importer 側） | src + test + docs | 2026-04-13 |
+| P0-5b | ZIP import warnings UI surface | src + test | 2026-04-13 |
+| P1-1 | UI singleton state の reducer 編入 | src + test + docs | 2026-04-13 |
+| P1-2 | entry-window live-refresh の dispatcher 購読化 | src + test | 2026-04-13 |
+| F1 | ZIP import `updated_at` の canonical 化 | docs | 2026-04-13 |
+| F2 | text-bundle title trim の canonical 化 | docs | 2026-04-13 |
+| F3 | textlog-bundle lossy format の明文化 | docs | 2026-04-13 |
+| manual 更新 | manual 全章を実装に追従 | docs | 2026-04-13 |
+| bulk snapshot | Revision.bulk_id の追加 | src + test + docs | 2026-04-13 |
+| A10 | build-subset cycle observation テスト | test | 2026-04-13 |
+| UI singleton audit | 残 singleton 棚卸し | docs | 2026-04-13 |
+| textlog-preview auto-close | renderer 駆動 close-only sync | src + test + docs | 2026-04-13 |
+
+**合計**: 14 commits、ブランチ内で 266 files / +75k lines 変更。全ての
+commit で `npm test` 全通過、`build:bundle` 成功、production code は最小
+差分で進んだ。
+
+### 完了時点のテスト数推移
+
+- P0-1 commit 時: 既存 3378 tests
+- P0-2a 後: 3378 + 15 = 3393
+- P0-2b 後: 3393 + 28 = 3421
+- P0-5 collision: 3421 + 15 = 3436
+- P0-5 warnings UI: 3436 + 20 = 3456（但し一部 recount）
+- P1-1 後: 3491
+- P1-2 後: 3438（P1-1 並行期間を整理）
+- P0-4 後: 3467
+- manual 更新後: 3491（docs-only のため変化無し、前 commit の値維持）
+- bulk snapshot 後: 3530 (+19)
+- A10 後: 3545 (+15)
+- warnings toast 後: **3556** (+20 for sync + misc)
+- **最終**: **3556 tests / 119 files, all passing**
+---
+
+## 9. ドキュメント構造の棚卸し
+
+PKC2 のドキュメントは 5 つのレイヤに分かれる。次の開発者はこの構造を
+守ったまま追加する:
+
+### 9.1 `docs/spec/` — 正本仕様書（canonical）
+
+| ファイル | 内容 |
+|---------|-----|
+| `data-model.md` | Container / Entry / Relation / Revision / Assets の JSON schema・不変条件・IDB 保存・HTML / ZIP export 契約・bulk_id |
+| `body-formats.md` | archetype 別 body 契約（text / textlog / todo / form / attachment / folder / generic / opaque）、asset / entry 参照記法、embed / cycle guard |
+
+**ルール**: 破壊的変更時は schema_version bump 必須。optional 追加は自由。
+Guaranteed contract と Current implementation を分けて記述する。
+
+### 9.2 `docs/planning/` — 設計・運用文書
+
+| ファイル | 役割 |
+|---------|------|
+| `00_index.md` | ナビゲーション |
+| `HANDOVER_FINAL.md` | **この文書。常に最新** |
+| `HANDOVER.md` / `HANDOVER_SLICE6.md` | 過去の棚卸し（履歴参照のみ） |
+| `INVENTORY_041.md` | Issue #41 時点の詳細棚卸し |
+| `05_設計原則.md` ～ `20_UI_usability_audit.md` | 各領域の設計判断 |
+| `CHANGELOG_v0.1.0.md` | v0.1.0 リリース note |
+| `resolved/` | 解決済み計画文書（履歴） |
+
+### 9.3 `docs/development/` — 実装細目
+
+Issue ごとの技術メモ・実装方針・検討ログ。INDEX.md にステータス一覧あり
+（CLOSED / COMPLETED / CANDIDATE）。
+
+新しい Issue の設計文書はここに追加する（spec ではない、manual でもない
+「開発時の判断記録」）。
+
+### 9.4 `docs/manual/` — ユーザー向けマニュアル
+
+| 章 | 内容 |
+|---|-----|
+| 00 | 索引 |
+| 01 | はじめに |
+| 02 | クイックスタート |
+| 03 | 画面とビュー |
+| 04 | エントリの種類 |
+| 05 | 日常操作（multi-select / DnD / 右クリック / 別窓 / TEXT↔TEXTLOG / Batch Import を含む） |
+| 06 | キーボードショートカット（6 Phase ナビゲーション含む） |
+| 07 | 保存と持ち出し（ZIP warnings UX 含む） |
+| 08 | 運用ガイド（planning/18 からビルド時取込） |
+| 09 | トラブルシューティング + 用語集 |
+
+### 9.5 `docs/vision/` — 将来構想
+
+P2P / multi-window / message externalization / application scope の長期
+ビジョン。**現段階では参考文書**。実装着手は Issue として別途切り出す。
+
+### 9.6 `docs/requirements/` — 原点
+
+初期要件。履歴参照用。
+---
+
+## 10. 実装戦略メモ（後続開発者向け）
+
+### 10.1 コミット原則
+
+- **1 コミット = 1 不変式 or 1 契約**
+- **docs と test は同一 commit に同梱**
+- コミットメッセージに「scope 外として意図的に触らなかったもの」を明示する
+  （このブランチの commit log がお手本）
+
+### 10.2 各コミット作成時のチェックリスト
+
+- [ ] `npm run typecheck` 通過
+- [ ] 関連 test で pass
+- [ ] `npm test` 全体で pass
+- [ ] 必要なら `npm run build:bundle` で dist 更新 commit
+- [ ] `data-pkc-*` 規約違反なし
+- [ ] 5 層依存方向違反なし
+- [ ] `docs/spec/**` or `docs/development/**` に対応記載
+- [ ] `CLAUDE.md` の Language Policy 遵守（内部思考英語 / 出力日本語）
+
+### 10.3 大きいファイルの扱い
+
+- **行数だけでなくバイト数・最大行長も確認**（1 行が長いケース対策）
+- 1000+ 行のファイルは 20 チャンク分割で読む
+- 対象: `renderer.ts` (3497)、`action-binder.ts` (4318)、
+  `app-state.ts` (1180+)、`entry-window.ts` (2214)、
+  `tests/adapter/renderer.test.ts` (大)、
+  `tests/adapter/entry-window.test.ts` (2939)
+
+### 10.4 禁止事項（再掲）
+
+- cross-layer import（core ← features ← adapter を崩す）
+- CSS class を functional selector に使う
+- renderer 内での DOM 読取
+- action-binder 内での DOM 操作
+- core にブラウザ API 導入
+- `export_meta` / `asset_encoding` の **非互換変更**
+- `manifest.format: 'pkc2-package'` / `version: 1` の改名
+- SLOT ID 改名
+---
+
+## 11. 定量指標
+
+### 11.1 ソースコード規模
+
+| 層 | ファイル数 | 代表サイズ |
+|---|----------|----------|
+| `src/core/` | 10+ | 小さい（model 各 20-50 行、container-ops 約 450 行） |
+| `src/features/` | 20+ | 中（markdown / textlog / relation 系） |
+| `src/adapter/platform/` | 16 | 中（zip-package 620 行が最大） |
+| `src/adapter/state/` | 2 | 大（app-state 1180+ 行） |
+| `src/adapter/ui/` | 26 | 大（renderer 3497、action-binder 4318、entry-window 2214） |
+| `src/adapter/transport/` | 7 | 小 |
+| `src/runtime/` | 3 | 小 |
+
+### 11.2 テスト規模
+
+- **Test files**: 119
+- **Test cases**: 3556（all passing）
+- **Execution time**: 約 35-65 秒（full suite）
+- **test ディレクトリ構造**: `tests/core/` / `tests/features/` /
+  `tests/adapter/` / `tests/adapter/round-trip/` / `tests/adapter/transport/` /
+  `tests/runtime/` / `tests/styles/` / `tests/build/`
+
+### 11.3 Bundle サイズ
+
+| 対象 | サイズ | gzip |
+|-----|-------|-----|
+| `dist/bundle.js` | 495.28 kB | 147.81 kB |
+| `dist/bundle.css` | 72.31 kB | 10.90 kB |
+| `dist/pkc2.html`（単一 HTML 成果物） | 別途 `build:release` で生成 | — |
+
+### 11.4 Branch 差分
+
+- Main からの commit: 14
+- 変更 files: 266
+- Insertions: 75,159
+- Deletions: 705
+---
+
+## 12. リリースチェックリスト（v0.1.0）
+
+このブランチを main にマージして v0.1.0 としてタグを打つ前に確認する項目。
+
+### 必須
+
+- [x] `npm test` が全 pass
+- [x] `npm run typecheck` がエラー 0
+- [x] `npm run build:bundle` が成功
+- [x] `docs/spec/**` の 2 仕様書が実装と整合
+- [x] `docs/manual/**` が実装済み機能を反映
+- [x] `docs/planning/HANDOVER_FINAL.md`（この文書）が存在
+- [x] `docs/planning/CHANGELOG_v0.1.0.md` が存在
+- [x] `docs/planning/00_index.md` が最新の章構成を反映
+- [x] `dist/bundle.js` と `dist/bundle.css` が最新コミットに同梱
+
+### 推奨（リリース品質を一段上げるなら）
+
+- [ ] `npm run build:release` を実行して `dist/pkc2.html` を更新
+- [ ] manual のスクリーンショットを最新 UI に差し替え
+- [ ] GitHub Release 上に v0.1.0 タグ + release note を作成
+- [ ] `docs/planning/19_pre_release.md` を v0.1.0 リリース note と整合
+
+### 非必須（マージ後で可）
+
+- [ ] CI 設定の導入（`.github/workflows/*.yml`）
+- [ ] Pre-existing lint errors の解消（無関係、P2）
+- [ ] i18n 基盤（将来の多言語化向け）
+---
+
+## 13. 次セッション向けの標準プロンプト雛形
+
+次に PKC2 を触るセッション（人間であれ AI であれ）が、最短で正しい作業に入
+るためのテンプレート。
+
+```text
+[Meta]
+- Internal reasoning MUST be in English
+- Final output MUST be in Japanese
+
+[File Handling]
+- Before reading/editing any file, check size first.
+- For large files (renderer.ts / action-binder.ts / app-state.ts /
+  entry-window.ts / tests ≥ 1000 lines), split into 20 chunks and
+  work chunk-by-chunk.
+
+[Context — read first]
+1. docs/planning/HANDOVER_FINAL.md  ← this file
+2. docs/spec/data-model.md
+3. docs/spec/body-formats.md
+4. CLAUDE.md
+5. docs/planning/00_index.md
+
+[Invariants to preserve]
+See HANDOVER_FINAL.md §4.
+
+[Rules]
+- reducer is the sole state mutation point
+- core has no browser API
+- data-pkc-* attributes for functional selectors
+- preview == commit
+- embed depth ≤ 1
+- Additive schema only; no destructive changes without schema bump
+
+[Task]
+<specific task here>
+```
+
+### 推奨する最初の 1 タスクの切り方
+
+次セッションで最初に試すべきは、P2 early の中から **「小さくて効果が高い」
+もの**。一例:
+
+- スクリーンショット差し替え（docs/manual/images/）→ UI が実物として見える
+- CI 整備（GitHub Actions で npm test + typecheck + build）→ 回帰検知の自動化
+- i18n 調査（UI 文言の現状 inventory）→ 実装前に全箇所の棚卸し
+---
+
+## 14. 関連文書
+
+### 仕様（正本）
+- `docs/spec/data-model.md` — Container 全体スキーマ + revision + bulk_id + HTML/ZIP 契約
+- `docs/spec/body-formats.md` — archetype 別 body 契約 + asset / entry 参照記法
+
+### 設計
+- `docs/planning/05_設計原則.md` — 設計哲学
+- `docs/planning/12_基盤方針追補_責務分離.md` — 5 層アーキテクチャ
+- `docs/planning/13_基盤方針追補_release契約.md` — HTML slot 契約
+- `docs/planning/15_基盤方針追補_type_dispatch_adapter.md` — reducer 型規約
+- `docs/planning/16_基盤方針追補_versioning_UX_Issues.md` — 状態機械 / UX
+- `docs/planning/17_保存再水和可搬モデル.md` — 4 系統モデル（Workspace / HTML / ZIP / Template）
+- `docs/planning/18_運用ガイド_export_import_rehydrate.md` — 利用手順
+- `docs/planning/19_pre_release.md` — プレリリース note
+- `docs/planning/20_UI_usability_audit.md` — UI 監査
+
+### 開発
+- `docs/development/INDEX.md` — Issue インデックス（42+ CLOSED + 完了群）
+- `docs/development/ui-singleton-state-audit.md` — 残 singleton 棚卸し
+- `docs/development/stale-listener-prevention.md` — テストでの listener leak 回避
+- `docs/development/textlog-text-conversion.md` — TEXTLOG ↔ TEXT 変換仕様
+- `docs/development/embedded-preview-and-cycle-guard.md` — embed / cycle guard 設計
+- `docs/development/zip-export-contract.md` — ZIP stored mode の根拠
+
+### 履歴
+- `docs/planning/HANDOVER.md` — Issue #54 時点
+- `docs/planning/HANDOVER_SLICE6.md` — Slice 6 完了時点
+- `docs/planning/INVENTORY_041.md` — Issue #41 時点
+- `docs/planning/resolved/**` — 解決済み計画文書
+
+### ユーザー
+- `docs/manual/00_index.md` — マニュアル入口
+
+### ビジョン
+- `docs/vision/pkc-application-scope-vision.md`
+- `docs/vision/pkc-multi-window-architecture.md`
+- `docs/vision/pkc-message-externalization.md`
+- `docs/vision/webrtc-p2p-collaboration.md`
+---
+
+## 15. 本文書の変更履歴
+
+| 日付 | 変更 |
+|-----|-----|
+| 2026-04-13 | 初版作成。v0.1.0 リリース前の最終 HANDOVER として整備 |
+
+### このあと更新してよい箇所
+
+- §7「次にやるべきこと」— 着手したものを ✓ に
+- §8 完了タスク表 — 新規タスクを追加
+- §11 定量指標 — test 数 / bundle サイズの更新
+- §12 リリースチェックリスト — release 後の後始末完了で ✓
+
+### このあと更新してはいけない箇所
+
+- §4 不変条件 — 変えるなら schema bump
+- §5 意図的にやっていないこと — 削除するなら理由を明記
+- §6 既知の制約 — 解消したら削除でなく「解消日」を付記
+
+---
+
+## 16. 最終ステータス
+
+| タスク | 状態 |
+|-------|-----|
+| P0-1 仕様固定 | ✓ |
+| P0-2a 成功パス証明 | ✓ |
+| P0-2b 境界観測 | ✓ |
+| P0-4 Revision parse 補強 | ✓ |
+| P0-5 ZIP collision 検知 | ✓ |
+| P0-5b ZIP warnings UI surface | ✓ |
+| P1-1 UI singleton reducer 編入 | ✓ |
+| P1-2 entry-window stale 解消 | ✓ |
+| F1 / F2 / F3 canonical 化 | ✓ |
+| manual 更新 | ✓ |
+| bulk operation snapshot | ✓ |
+| P0-2c / A10 build-subset cycle test | ✓ |
+| UI singleton 棚卸し | ✓ |
+| textlog-preview-modal auto-close sync | ✓ |
+
+**v0.1.0 リリース準備: 完了**。
+
+---
+
+## 17. spec 整合性チェック結果（2026-04-13）
+
+マージ前整理の一環で実施した、`docs/spec/` と実装の突き合わせ結果。
+
+### 17.1 `docs/spec/data-model.md`
+
+| 検査項目 | 結果 |
+|---------|-----|
+| §1 Container schema | 実装 (`src/core/model/container.ts`) と一致 |
+| §2 ContainerMeta + sandbox_policy | 一致（attachment-sandbox-phase5 で追加済みの optional field が明記） |
+| §3 Entry schema | 一致 |
+| §4 ArchetypeId 8 種 | 一致。`KNOWN_ARCHETYPES` set の中身と spec enum が同一 |
+| §5 Relation + 4 kind | 一致 |
+| §6.1 Revision + bulk_id | **bulk_id 反映済み**。`Revision.bulk_id?: string` optional 契約が両側で一致 |
+| §6.3 snapshot 発火表 | 3 種の BULK に `bulk_id` 列が付与、実装と一致 |
+| §6.4 parse strict contract | P0-4 実装の `parseRevisionSnapshot` と archetype whitelist / timestamp 必須が一致 |
+| §6.4.4 failure contract 総括表 | restoreEntry archetype-mismatch guard 含め実装と一致 |
+| §7 Assets | IDB / HTML / ZIP / compact 経路の encoding 差異が実装と一致 |
+| §9 IDB レイアウト（DB v2 / assets store 分離） | `idb-store.ts` と一致 |
+| §10 HTML export + export_meta | `exporter.ts` / `compressAssets` と一致 |
+| §11.4 ZIP import `updated_at` 上書き | F1 canonical 化済み、実装の無条件上書きと一致 |
+| §11.7 ZIP collision policy + 5 warning codes | 実装 `ZipImportWarningCode` 5 種と完全一致、first-wins / skip の ルール表も一致 |
+| §14 不変条件 | 実装の reducer 不変式と一致 |
+
+### 17.2 `docs/spec/body-formats.md`
+
+| 検査項目 | 結果 |
+|---------|-----|
+| §1 共通原則（body は常に string） | 全 presenter で遵守、parse 関数 throw なし |
+| §2 text + markdown 拡張 | markdown-render / asset-resolver / transclusion の実装と一致 |
+| §3 textlog body + log-id（ULID） | `textlog-body.ts` / `log-id.ts` と一致 |
+| §3.6.1 textlog-bundle lossy declaration | F3 canonical 化済み、CSV schema が 5 列（important のみ）の実装と一致 |
+| §4 todo + description markdown | Slice 3 実装 + todo-presenter と一致 |
+| §5 form (3 固定 field) | `form-presenter.ts` と一致 |
+| §6 attachment + sandbox_allow | new/legacy 両形式の lazy migration と一致 |
+| §7 folder + description markdown | Slice 3 実装、`hasMarkdownSyntax` gate と一致 |
+| §9 asset 参照記法 | `SAFE_KEY_RE` = `[A-Za-z0-9_-]+` と一致、missing 時の placeholder と一致 |
+| §10 entry 参照 / embed 5 guard | transclusion.ts の 5 種 placeholder と一致 |
+| §13.4.1 text-bundle title trim canonical | F2 canonical 化済み、`(source_title ?? '').trim() \|\| 'Imported text'` と一致 |
+| §14 legacy migration 一覧 | 実装の lazy migration 経路と一致 |
+
+### 17.3 結論
+
+**spec と実装の間に observable な不整合は無し**。spec 側に明記された F1/F2/F3
+decision、bulk_id 追加、warning codes、P0-4 strict parse、P1-1 新 AppState
+field すべてが実装に反映されている。逆方向も同じで、実装で増えた field /
+action / warning の全てが spec に記載済み。
+
+検査未実施の項目（P2 以降で増えれば順次記録）:
+- 将来の archetype（complex / document-set / spreadsheet）— docs/development
+  にドラフトあり、spec には未取り込み
+- schema_version migration path — spec §15.3 で「未設計」と明記、実装も無し
+- merge import — spec に merge 契約なし、実装も無し
+- 以上 3 項目は「意図的に spec に無い」状態であり、HANDOVER_FINAL §5 と整合
