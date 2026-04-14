@@ -272,7 +272,7 @@ describe('textlog-preview-modal sync — reducer-driven auto-close', () => {
 
 describe('textlog-preview-modal sync — regression guards', () => {
   it('existing closeTextlogPreviewModal() helper still works (explicit close)', () => {
-    const _ = bootstrapWithOpenPreview('tl1');
+    bootstrapWithOpenPreview('tl1');
     expect(isTextlogPreviewModalOpen()).toBe(true);
     closeTextlogPreviewModal();
     expect(isTextlogPreviewModalOpen()).toBe(false);
