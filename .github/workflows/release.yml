@@ -1,0 +1,92 @@
+# PKC2 Release — Tier 3-2 (release automation)
+#
+# Triggered when a `v*` tag is pushed (e.g. `v0.1.1`, `v0.2.0`).
+# Builds bundle + single-HTML + manual, then creates a GitHub Release
+# with the two distributable artifacts attached.
+#
+# Scope (intentionally minimal):
+#   - Artifacts: dist/pkc2.html, PKC2-Extensions/pkc2-manual.html
+#   - Title: "<tag>" (e.g. "v0.1.1")
+#   - Body: auto-generated from commit history between tags (gh's
+#     built-in `--generate-notes`). Hand-authored notes from
+#     docs/planning/CHANGELOG_v0.1.0.md are NOT auto-imported here —
+#     they stay docs-only per the CLAUDE.md language policy.
+#
+# Decision (Tier 3-2):
+#   - **Separate file from ci.yml** because triggers differ (tag vs
+#     push/PR), concerns differ (produce vs verify), and the two
+#     should fail independently. A tag-push that fails release
+#     shouldn't poison the commit-level CI status on main, and vice
+#     versa.
+#
+# Pre-release tags (v*-rc, v*-beta, v*-alpha) are published as
+# prerelease so users see them as draft.
+#
+# Non-goals (intentionally deferred):
+#   - Changelog auto-import / semver bump automation
+#   - IDE / web-app upload
+#   - Draft release PR gate
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required by gh release create
+
+jobs:
+  release:
+    name: Build + publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required by `gh release create --generate-notes`
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundle
+        run: npm run build:bundle
+
+      - name: Build release HTML
+        run: npm run build:release
+
+      - name: Build manual HTML
+        run: npm run build:manual
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Prerelease when the tag carries a hyphened qualifier
+          # (v0.2.0-rc.1, v0.1.0-beta, ...).
+          if [[ "${TAG}" == *-* ]]; then
+            echo "prerelease=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            --title "${{ steps.meta.outputs.tag }}" \
+            --generate-notes \
+            ${{ steps.meta.outputs.prerelease }} \
+            dist/pkc2.html \
+            PKC2-Extensions/pkc2-manual.html

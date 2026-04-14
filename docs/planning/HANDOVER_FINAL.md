@@ -1,7 +1,7 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-14（§18.8 Tier 3-1 完了追記）
+**Last updated**: 2026-04-14（§18.9 Tier 3-2 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
@@ -684,6 +684,7 @@ See HANDOVER_FINAL.md §4.
 | 2026-04-13 | 初版作成。v0.1.0 リリース前の最終 HANDOVER として整備 |
 | 2026-04-14 | §18「Tier 2 完了時点の到達状態」を追加（Tier 1-1 / 1-2 / 2-1 / 2-2 / 2-3 の固定、5 つの新不変条件、5 項目の意図的 non-done、Tier 3 方向の列挙）。§1〜§17 は書き換え無し |
 | 2026-04-14 | §18.8「Tier 3-1 完了」を追加（merge import Overlay MVP 実装）。§18.5 A を完了印に更新。§4〜§5 / §6 / §17 は無変更 |
+| 2026-04-14 | §18.9「Tier 3-2 完了」を追加（release automation + bundle size budget + Playwright smoke baseline）。production code への touch 0。詳細は `docs/development/release-automation-and-smoke-baseline.md` |
 
 ### このあと更新してよい箇所
 
@@ -1004,5 +1005,27 @@ Tier 3 優先順位決定（`docs/planning/TIER3_PRIORITIZATION.md`）で
 
 **Tier 3-1 完了**。次は Tier 3-2（release automation + bundle
 size budget + Playwright smoke baseline）。
+
+### 18.9 Tier 3-2 完了（2026-04-14）
+
+`TIER3_PRIORITIZATION.md` で「Tier 3-2 = D + C-1 + C-2 の合併」を
+採用。本節はその完了記録。production code は 1 行も触れず、すべて
+CI / tooling / docs の変更。
+
+| 項目 | 状態 |
+|-----|-----|
+| D. release workflow（`.github/workflows/release.yml`） | ✓ `v*` tag push で GitHub Release 自動作成、`dist/pkc2.html` + `PKC2-Extensions/pkc2-manual.html` を添付、prerelease 判定あり |
+| C-1. bundle size budget（`build/check-bundle-size.cjs` + CI step） | ✓ `dist/bundle.js` 615 KB / `dist/bundle.css` 90 KB を hard fail で enforce。現状 79.8% / 78.5% |
+| C-2. Playwright smoke baseline（`tests/smoke/app-launch.spec.ts` + `.github/workflows/smoke.yml`） | ✓ 1 本の smoke（boot + Text create → editing phase）を別 workflow で実行 |
+| 静的サーバ `scripts/smoke-serve.cjs` | ✓ `npx http-server` の race を回避するための自前 40 行 |
+| `@playwright/test@^1.56.1` を devDep に | ✓ chromium 1194 とバージョン整合 |
+| 採用判断（release 別ファイル / budget hard fail / smoke 1 本 / smoke 別 workflow） | ✓ すべて `docs/development/release-automation-and-smoke-baseline.md` §1-4 に記録 |
+| production code / tests への touch | × 1 行も無し（CI / tooling / docs のみ） |
+| 既存 `ci.yml` の test / build / typecheck step | × 無変更（size budget を最後に追加のみ） |
+| Vitest 既存 122 files / 3607 tests | ✓ regression なし |
+
+**Tier 3-2 完了**。次は Tier 3-3 **再評価セッション**（選定のみ、
+実装ではない）— B / C-3 / C-4 / E のどれに進むかをユーザー要求 /
+実害の観測状況と合わせて棚卸しする。
 
 ---

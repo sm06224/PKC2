@@ -67,3 +67,16 @@ jobs:
 
       - name: Build bundle
         run: npm run build:bundle
+
+      - name: Bundle size budget
+        # Tier 3-2 (2026-04-14): hard fail when dist/bundle.js or
+        # dist/bundle.css exceed a fixed raw-size budget. Budgets are
+        # chosen from the Tier 3-1 baseline (bundle.js 502.81 KB,
+        # bundle.css 72.31 KB) + ~20% headroom so natural feature
+        # churn doesn't immediately red-line CI, but a sudden jump
+        # (e.g. a heavy dep pulled into the wrong layer) surfaces
+        # immediately. Raw size rather than gzip because gzip ratio
+        # varies with content and we want a stable "I added code"
+        # signal. Rationale lives in
+        # docs/development/release-automation-and-smoke-baseline.md.
+        run: node build/check-bundle-size.cjs

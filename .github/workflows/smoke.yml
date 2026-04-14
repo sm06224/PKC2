@@ -1,0 +1,75 @@
+# PKC2 Smoke — Tier 3-2 (Playwright smoke baseline)
+#
+# Minimal end-to-end gate: builds the single-HTML artifact and
+# verifies one user path (boot → create Text entry → enter editing
+# phase) against a real Chromium. Exists to catch regressions that
+# the vitest/happy-dom suite structurally can't see — for example
+# bundle-time minifier breakage, release-builder slot-injection
+# drift, or CSP errors.
+#
+# Decision (Tier 3-2):
+#   - **Separate workflow** from ci.yml. The base CI is sub-1-minute
+#     and must stay fast; Playwright adds browser install
+#     (~1.5 min) which shouldn't block every tier commit.
+#   - Triggered on push to main / release branches + PR to main.
+#     Dev branches (claude/**) still get ci.yml; smoke runs before
+#     merge.
+#   - Runs a single spec (tests/smoke/app-launch.spec.ts). Broader
+#     E2E (TIER3_PRIORITIZATION.md C-3) is deferred to Tier 3-3+.
+#
+# Non-goals: visual regression, cross-browser matrix, video retention.
+
+name: Smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Playwright smoke (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build bundle
+        run: npm run build:bundle
+
+      - name: Build release HTML
+        run: npm run build:release
+
+      - name: Run smoke baseline
+        run: npm run test:smoke
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-failure
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7
