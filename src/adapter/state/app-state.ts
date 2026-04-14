@@ -988,9 +988,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (allSelected.length === 0) return blocked(state, action);
       let container = state.container;
       const ts = now();
+      // Bulk-snapshot policy (2026-04-13): every revision produced
+      // by a single bulk action shares the same `bulk_id` so a
+      // downstream restore UI can group them. Single-entry DELETE
+      // does NOT use a bulk_id — see `snapshotEntry` contract.
+      const bulkId = generateLid();
       for (const lid of allSelected) {
         const revId = generateLid();
-        container = snapshotEntry(container, lid, revId, ts);
+        container = snapshotEntry(container, lid, revId, ts, bulkId);
         container = removeEntry(container, lid);
       }
       const next: AppState = { ...state, container, selectedLid: null, multiSelectedLids: [] };
@@ -1040,6 +1045,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (selected.length === 0) return blocked(state, action);
       let container = state.container;
       const ts = now();
+      // Bulk-snapshot policy: single group id for every per-entry
+      // revision that this action writes. Entries that would be a
+      // no-op (same status already) produce no revision and are NOT
+      // counted — the group only holds the revisions of entries
+      // that actually changed.
+      const bulkId = generateLid();
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
@@ -1047,7 +1058,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         if (todo.status === action.status) continue;
         const updated = serializeTodoBody({ ...todo, status: action.status });
         const revId = generateLid();
-        container = snapshotEntry(container, lid, revId, ts);
+        container = snapshotEntry(container, lid, revId, ts, bulkId);
         container = updateEntry(container, lid, entry.title, updated, ts);
       }
       const next: AppState = { ...state, container, multiSelectedLids: [] };
@@ -1061,6 +1072,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       let container = state.container;
       const ts = now();
       const targetDate = action.date ?? undefined;
+      // Bulk-snapshot policy: see BULK_SET_STATUS above.
+      const bulkId = generateLid();
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
@@ -1068,7 +1081,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         if (todo.date === targetDate) continue;
         const updated = serializeTodoBody({ ...todo, date: targetDate });
         const revId = generateLid();
-        container = snapshotEntry(container, lid, revId, ts);
+        container = snapshotEntry(container, lid, revId, ts, bulkId);
         container = updateEntry(container, lid, entry.title, updated, ts);
       }
       const next: AppState = { ...state, container, multiSelectedLids: [] };
