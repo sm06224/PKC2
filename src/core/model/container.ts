@@ -28,12 +28,25 @@ export interface ContainerMeta {
  * `snapshot` is `JSON.stringify(Entry)` of the pre-mutation state.
  * See `parseRevisionSnapshot` in `core/operations/container-ops.ts`
  * for the parse contract (§6.4).
+ *
+ * `bulk_id` (added 2026-04-13, bulk-snapshot policy) groups together
+ * the revisions produced by a single bulk action — `BULK_DELETE`,
+ * `BULK_SET_STATUS`, `BULK_SET_DATE`. When present, a future UI can
+ * offer "restore the whole bulk" semantics without inferring groups
+ * from timestamps. Absent for single-entry snapshots so the common
+ * path stays unchanged. Additive / backward-compatible per spec
+ * §15.1 and §6.1.
  */
 export interface Revision {
   id: string;
   entry_lid: string;
   snapshot: string;
   created_at: string;
+  /**
+   * Opaque group identifier shared by every revision produced in the
+   * same bulk action. Absent on single-entry snapshots.
+   */
+  bulk_id?: string;
 }
 
 /**

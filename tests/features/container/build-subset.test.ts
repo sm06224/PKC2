@@ -530,3 +530,289 @@ describe('buildSubsetContainer — end-to-end invariants', () => {
     expect(r.container.assets['ast-9']).toBeUndefined();
   });
 });
+
+// ── P0-2c / A10: cycle & multi-path observation tests ──────────
+//
+// Existing suites cover the happy path plus a 2-node (a → b → a)
+// cycle. The tests below pin the remaining observation gaps flagged
+// in the P0-2a inventory:
+//
+//   - longer cycles (3 / 4 nodes)
+//   - multi-path reachability to the same entry
+//   - multi-path reachability to the same asset
+//   - cycles that travel through TODO / FOLDER / TEXTLOG bodies
+//   - missing entry + missing asset refs on the same run
+//   - subset size does not inflate under cycles (de-dup is real)
+//   - relation filter still drops dangling edges when the graph
+//     contains a cycle
+//
+// All tests are phrased to assert the OBSERVED shape of the current
+// implementation. If any assertion fails, the intent is to surface
+// the change and have it reviewed explicitly — not to paper over
+// behaviour with a relaxed oracle.
+
+describe('buildSubsetContainer — longer cycles', () => {
+  it('closes a 3-node cycle (a → b → c → a) without looping', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: 'see [B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: 'see [C](entry:c)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: 'see [A](entry:a)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['a', 'b', 'c']);
+    expect(r.includedLids.size).toBe(3);
+    expect(r.missingEntryLids.size).toBe(0);
+  });
+
+  it('closes a 4-node cycle (a → b → c → d → a)', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[C](entry:c)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'd', title: 'D', body: '[A](entry:a)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.includedLids.size).toBe(4);
+  });
+
+  it('self-reference (a → a) closes cleanly without entering a loop', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: 'self [A](entry:a)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid)).toEqual(['a']);
+    expect(r.includedLids.size).toBe(1);
+  });
+});
+
+describe('buildSubsetContainer — multi-path reachability', () => {
+  it('diamond: a → b, a → c, b → d, c → d — d appears once', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b) [C](entry:c)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'd', title: 'D', body: 'leaf', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['a', 'b', 'c', 'd']);
+    const dOccurrences = r.container.entries.filter((e) => e.lid === 'd').length;
+    expect(dOccurrences).toBe(1);
+  });
+
+  it('diamond + cycle: a → b → d → a, a → c → d — d appears once, graph still closes', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b) [C](entry:c)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'd', title: 'D', body: 'back [A](entry:a)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.includedLids.size).toBe(4);
+  });
+
+  it('same asset referenced from three different entries — single asset entry in subset', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '![](asset:ast-shared) [B](entry:b) [C](entry:c)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '![](asset:ast-shared)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '![](asset:ast-shared)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+      assets: { 'ast-shared': 'shared-bytes' },
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(Object.keys(r.container.assets)).toEqual(['ast-shared']);
+    expect(r.includedAssetKeys.size).toBe(1);
+    expect(r.container.assets['ast-shared']).toBe('shared-bytes');
+  });
+});
+
+describe('buildSubsetContainer — cycles through archetype-specific bodies', () => {
+  it('TEXTLOG row cycle: text → textlog (log text references text) → text', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'doc', title: 'Doc', body: '[Log](entry:log)', archetype: 'text', created_at: '', updated_at: '' },
+        {
+          lid: 'log',
+          title: 'Log',
+          body: JSON.stringify({
+            entries: [
+              { id: 'l1', text: 'see [Doc](entry:doc)', createdAt: '2026-04-13T10:00:00Z', flags: [] },
+              { id: 'l2', text: 'another back-ref [Doc](entry:doc)', createdAt: '2026-04-13T11:00:00Z', flags: [] },
+            ],
+          }),
+          archetype: 'textlog',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'doc')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['doc', 'log']);
+    expect(r.includedLids.size).toBe(2);
+  });
+
+  it('TODO description cycle: text → todo (description references text)', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'doc', title: 'Doc', body: '[Task](entry:task)', archetype: 'text', created_at: '', updated_at: '' },
+        {
+          lid: 'task',
+          title: 'Task',
+          body: JSON.stringify({ status: 'open', description: 'blocked by [Doc](entry:doc)' }),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'doc')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['doc', 'task']);
+  });
+
+  it('FOLDER description cycle: text → folder (description references text)', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'doc', title: 'Doc', body: '[Home](entry:home)', archetype: 'text', created_at: '', updated_at: '' },
+        {
+          lid: 'home',
+          title: 'Home',
+          body: 'Welcome! Jump to [Doc](entry:doc)',
+          archetype: 'folder',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'doc')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['doc', 'home']);
+  });
+
+  it('mixed-archetype cycle: folder → text → todo → folder', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'f', title: 'F', body: '[T](entry:t)', archetype: 'folder', created_at: '', updated_at: '' },
+        { lid: 't', title: 'T', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        {
+          lid: 'd',
+          title: 'D',
+          body: JSON.stringify({ status: 'open', description: 'back to [F](entry:f)' }),
+          archetype: 'todo',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'f')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['d', 'f', 't']);
+    expect(r.includedLids.size).toBe(3);
+  });
+});
+
+describe('buildSubsetContainer — mixed missing refs', () => {
+  it('records both missing entry refs and missing asset refs in one pass', () => {
+    const c = makeContainer({
+      entries: [
+        {
+          lid: 'a',
+          title: 'A',
+          body: 'dangling [B](entry:ghost-entry) and ![](asset:ghost-asset) and ok ![](asset:ast-ok)',
+          archetype: 'text',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      assets: { 'ast-ok': 'present' },
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(Array.from(r.missingEntryLids)).toEqual(['ghost-entry']);
+    expect(Array.from(r.missingAssetKeys)).toEqual(['ghost-asset']);
+    expect(Object.keys(r.container.assets)).toEqual(['ast-ok']);
+  });
+
+  it('missing refs do not break the closure of the reachable part', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[Lost](entry:nowhere)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    expect(r.container.entries.map((e) => e.lid).sort()).toEqual(['a', 'b']);
+    expect(Array.from(r.missingEntryLids)).toEqual(['nowhere']);
+  });
+});
+
+describe('buildSubsetContainer — subset stays bounded under cycles', () => {
+  it('includedLids size never exceeds the number of unique entries in source', () => {
+    const lids = ['n1', 'n2', 'n3', 'n4', 'n5'];
+    const entries = lids.map((lid) => ({
+      lid,
+      title: lid,
+      body: `refs: ${lids.map((t) => `[${t}](entry:${t})`).join(' ')}`,
+      archetype: 'text' as const,
+      created_at: '',
+      updated_at: '',
+    }));
+    const c = makeContainer({ entries });
+    const r = buildSubsetContainer(c, 'n1')!;
+    expect(r.container.entries).toHaveLength(5);
+    expect(r.includedLids.size).toBe(5);
+  });
+
+  it('complete-graph cycle: no entry appears twice in the output', () => {
+    const lids = ['x1', 'x2', 'x3'];
+    const entries = lids.map((lid) => ({
+      lid,
+      title: lid,
+      body: lids.filter((o) => o !== lid).map((o) => `[${o}](entry:${o})`).join(' '),
+      archetype: 'text' as const,
+      created_at: '',
+      updated_at: '',
+    }));
+    const c = makeContainer({ entries });
+    const r = buildSubsetContainer(c, 'x1')!;
+    const seenLids = new Set<string>();
+    for (const e of r.container.entries) {
+      expect(seenLids.has(e.lid), `duplicate lid ${e.lid} in subset`).toBe(false);
+      seenLids.add(e.lid);
+    }
+    expect(seenLids.size).toBe(3);
+  });
+});
+
+describe('buildSubsetContainer — relation filter under cycles', () => {
+  it('cycle + dangling relation: final subset has no dangling relations', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[A](entry:a)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'z', title: 'Z', body: 'unrelated', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+      relations: [
+        { id: 'r-ab', from: 'a', to: 'b', kind: 'semantic', created_at: '', updated_at: '' },
+        { id: 'r-az', from: 'a', to: 'z', kind: 'semantic', created_at: '', updated_at: '' },
+        { id: 'r-za', from: 'z', to: 'a', kind: 'semantic', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, 'a')!;
+    const lids = new Set(r.container.entries.map((e) => e.lid));
+    expect(lids.has('z')).toBe(false);
+    for (const rel of r.container.relations) {
+      expect(lids.has(rel.from)).toBe(true);
+      expect(lids.has(rel.to)).toBe(true);
+    }
+    expect(r.container.relations.map((rr) => rr.id)).toEqual(['r-ab']);
+  });
+});

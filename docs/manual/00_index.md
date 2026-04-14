@@ -45,11 +45,11 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 00 | 索引 | このページ |
 | 01 | はじめに | PKC2 とは何か、設計思想、できること・できないこと |
 | 02 | クイックスタート | 入手からはじめてのエントリ作成まで |
-| 03 | 画面とビュー | サイドバー・詳細ペイン・Detail / Calendar / Kanban ビュー |
-| 04 | エントリの種類 | text / textlog / todo / form / attachment / folder |
-| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン |
-| 06 | キーボードショートカット | ショートカット一覧 |
-| 07 | 保存と持ち出し | IndexedDB と Export の概要 |
+| 03 | 画面とビュー | サイドバー・詳細ペイン・Detail / Calendar / Kanban ビュー・複数選択・DnD・toast |
+| 04 | エントリの種類 | text / textlog / todo / form / attachment / folder（TODO 埋め込み含む） |
+| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み |
+| 06 | キーボードショートカット | 基本・編集・ペイン切替・サイドバー矢印移動・Calendar/Kanban 内移動 |
+| 07 | 保存と持ち出し | IndexedDB と Export の概要・ZIP import 警告 |
 | 08 | 運用ガイド | Export / Import / Rehydrate の詳細と典型シナリオ |
 | 09 | トラブルシューティングと用語集 | 困ったときの対処と用語辞書 |
 

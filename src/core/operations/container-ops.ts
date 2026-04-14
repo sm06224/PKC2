@@ -200,27 +200,38 @@ export function removeRelation(container: Container, id: string): Container {
  * Create a pre-mutation revision snapshot of an entry.
  * The snapshot is the JSON-serialized entry before mutation.
  * Call BEFORE the mutation (update or delete).
+ *
+ * When `bulkId` is supplied, the resulting Revision carries that
+ * identifier so that sibling revisions produced in the same bulk
+ * action can be looked up together via `getRevisionsByBulkId`.
+ * Single-entry mutations MUST pass `undefined` (or omit the
+ * argument) so the common path writes no `bulk_id` field, matching
+ * the spec §6.1 invariant that `bulk_id` is absent on single-entry
+ * snapshots.
  */
 export function snapshotEntry(
   container: Container,
   lid: string,
   revisionId: string,
   now: string,
+  bulkId?: string,
 ): Container {
   const entry = container.entries.find((e) => e.lid === lid);
   if (!entry) return container;
 
+  const revision: Revision = {
+    id: revisionId,
+    entry_lid: lid,
+    snapshot: JSON.stringify(entry),
+    created_at: now,
+  };
+  if (bulkId !== undefined) {
+    revision.bulk_id = bulkId;
+  }
+
   return {
     ...container,
-    revisions: [
-      ...container.revisions,
-      {
-        id: revisionId,
-        entry_lid: lid,
-        snapshot: JSON.stringify(entry),
-        created_at: now,
-      },
-    ],
+    revisions: [...container.revisions, revision],
   };
 }
 
@@ -257,6 +268,27 @@ export function getRevisionCount(
   lid: string,
 ): number {
   return container.revisions.filter((r) => r.entry_lid === lid).length;
+}
+
+/**
+ * Get every revision tagged with the given `bulk_id`, in
+ * `created_at` ascending order. Returns an empty array when no
+ * matching revisions exist.
+ *
+ * Added 2026-04-13 (bulk-snapshot policy). Intended audience is a
+ * future "restore whole bulk" UI that wants to surface the set of
+ * entries affected by a single `BULK_DELETE` / `BULK_SET_STATUS` /
+ * `BULK_SET_DATE`. The current restore helpers still operate on one
+ * entry at a time — this query is the aggregation primitive they
+ * will layer on top of.
+ */
+export function getRevisionsByBulkId(
+  container: Container,
+  bulkId: string,
+): Revision[] {
+  return container.revisions
+    .filter((r) => r.bulk_id === bulkId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
 /**

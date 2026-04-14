@@ -239,10 +239,12 @@ type RelationKind =
 
 ```typescript
 interface Revision {
-  id: string;          // Revision の一意識別子
-  entry_lid: string;   // 対応 Entry の lid
-  snapshot: string;    // JSON.stringify(Entry) の前状態 (pre-mutation)
-  created_at: string;  // ISO 8601
+  id: string;           // Revision の一意識別子
+  entry_lid: string;    // 対応 Entry の lid
+  snapshot: string;     // JSON.stringify(Entry) の前状態 (pre-mutation)
+  created_at: string;   // ISO 8601
+  bulk_id?: string;     // (optional) 同一 bulk action で生成された
+                        //            revisions を束ねる識別子
 }
 ```
 
@@ -254,20 +256,32 @@ interface Revision {
 | `entry_lid` | string | ✓ | スナップショット対象 Entry の `lid`。当該 Entry が削除済みでも残存する |
 | `snapshot` | string | ✓ | **JSON.stringify(Entry) の文字列**（§6.4 参照） |
 | `created_at` | ISO8601 | ✓ | スナップショット時刻 |
+| `bulk_id` | string | optional | 同一 bulk action で作られた revisions を束ねるグループ識別子。単体操作（COMMIT_EDIT / DELETE_ENTRY / QUICK_UPDATE_ENTRY / RESTORE_ENTRY）では**必ず absent**。bulk 操作（BULK_DELETE / BULK_SET_STATUS / BULK_SET_DATE）では**すべて同じ値**で付与される（§6.3 参照） |
 
 ### 6.3 いつ snapshot が作られるか
 
 `src/core/operations/container-ops.ts:181-197` の policy に従う。
 
-| 契機 | snapshot | 備考 |
-|------|---------|-----|
-| `COMMIT_EDIT` | ✓ | 更新前の Entry を保存 |
-| `DELETE_ENTRY` | ✓ | 削除前の Entry を保存（物理削除の代替履歴） |
-| `QUICK_UPDATE_ENTRY` | ✓ | `app-state.ts` reducer 内で snapshot を取得してから update |
-| `CREATE_ENTRY` | ✗ | 作成前は何も無い |
-| `ACCEPT_OFFER` | ✗ | 外部受信による新規作成扱い |
-| `SYS_IMPORT_COMPLETE` | ✗ | Container 丸ごと置換。import 側の revisions が引き継がれる |
-| `BULK_DELETE` / `BULK_SET_STATUS` / `BULK_SET_DATE` | ✗（既知不足） | P1 候補: bulk 操作に snapshot が無い非対称性 |
+| 契機 | snapshot | `bulk_id` | 備考 |
+|------|---------|-----------|-----|
+| `COMMIT_EDIT` | ✓ | absent | 更新前の Entry を保存 |
+| `DELETE_ENTRY` | ✓ | absent | 削除前の Entry を保存（物理削除の代替履歴） |
+| `QUICK_UPDATE_ENTRY` | ✓ | absent | `app-state.ts` reducer 内で snapshot を取得してから update |
+| `RESTORE_ENTRY` | ✓（restore 中の現状態を） | absent | forward-mutation 原則（§6.5）に従い、復元前の現状態を独立 revision として残す |
+| `BULK_DELETE` | ✓（対象 N 件それぞれ） | ✓ 共通値 | 1 bulk action = 1 共通 `bulk_id`、関与 N 件分の revisions |
+| `BULK_SET_STATUS` | ✓（実際に変更されたもののみ） | ✓ 共通値 | status が既に同じ値のものは revision を作らない |
+| `BULK_SET_DATE` | ✓（実際に変更されたもののみ） | ✓ 共通値 | date が既に同じ値のものは revision を作らない |
+| `CREATE_ENTRY` | ✗ | — | 作成前は何も無い |
+| `ACCEPT_OFFER` | ✗ | — | 外部受信による新規作成扱い |
+| `SYS_IMPORT_COMPLETE` | ✗ | — | Container 丸ごと置換。import 側の revisions が引き継がれる |
+
+#### 6.3.1 bulk_id の保証契約
+
+- **集合性**: `getRevisionsByBulkId(container, bulkId)` で 1 bulk action の全 revisions を `created_at` 昇順で取得できる
+- **排他性**: 単体操作は決して `bulk_id` を書かない。グループ検索で単体操作の revision が紛れ込むことはない
+- **一意性**: 同じ `bulk_id` が別 bulk action に再利用されることはない（reducer が毎回 `generateLid()` で新規採番）
+- **parse 非干渉**: `parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は `bulk_id` を一切読まない。個別 entry 単位の復元は bulk 時でも同じ動作
+- **backward compatibility**: `bulk_id` absent の古い Revision は strict parse / restore でこれまで通り動く。optional field 追加のみで破壊的変更なし（§15.1）
 
 ### 6.4 snapshot の形式契約
 

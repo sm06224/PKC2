@@ -104,9 +104,9 @@
 6. **manual 更新の対象範囲確定**
 
 ### その次（P1）
-7. **UI singleton state の reducer 編入**
-8. **entry-window live-refresh の dispatcher 購読化**
-9. **bulk 操作 snapshot 補完**
+7. **UI singleton state の reducer 編入** — ✓ 完了（P1-1, 2026-04-13）
+8. **entry-window live-refresh の dispatcher 購読化** — ✓ 完了（P1-2, 2026-04-13）
+9. **bulk 操作 snapshot 補完** — ✓ 完了（2026-04-13）。3 種の BULK 操作で `bulk_id` により 1 action = 1 グループ化
 
 ### 将来（P2）
 - merge import 設計
