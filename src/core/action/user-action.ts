@@ -59,6 +59,8 @@ export type UserAction =
   | { type: 'ACCEPT_OFFER'; offer_id: string }
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
+  | { type: 'CONFIRM_MERGE_IMPORT'; now: string }
+  | { type: 'SET_IMPORT_MODE'; mode: 'replace' | 'merge' }
   | { type: 'CANCEL_IMPORT' }
   | { type: 'CONFIRM_BATCH_IMPORT' }
   | { type: 'CANCEL_BATCH_IMPORT' }

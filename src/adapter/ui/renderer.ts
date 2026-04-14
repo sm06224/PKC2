@@ -37,6 +37,7 @@ import { resolveAssetReferences, hasAssetReferences } from '../../features/markd
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
+import { planMergeImport } from '../../features/import/merge-planner';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -214,7 +215,7 @@ function renderShell(state: AppState): HTMLElement {
 
   // Import confirmation panel
   if (state.importPreview) {
-    shell.appendChild(renderImportConfirmation(state.importPreview));
+    shell.appendChild(renderImportConfirmation(state.importPreview, state.importMode ?? 'replace', state.container));
   }
 
   // Batch import preview panel
@@ -2697,42 +2698,129 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   return editor;
 }
 
-function renderImportConfirmation(preview: ImportPreviewRef): HTMLElement {
+function renderImportConfirmation(
+  preview: ImportPreviewRef,
+  mode: 'replace' | 'merge',
+  host: Container | null,
+): HTMLElement {
   const panel = createElement('div', 'pkc-import-confirm');
   panel.setAttribute('data-pkc-region', 'import-confirm');
+  panel.setAttribute('data-pkc-import-mode', mode);
 
-  const warning = createElement('div', 'pkc-import-warning');
-  warning.textContent = 'This will fully replace your current data. This is not a merge.';
-  panel.appendChild(warning);
+  // ── Mode radio (Tier 3-1) ──────────────────────
+  // Disabled until host container exists (can't merge into nothing).
+  const canMerge = host !== null;
+  const schemaMismatch =
+    canMerge && host!.meta.schema_version !== preview.container.meta.schema_version;
+
+  const modeGroup = createElement('div', 'pkc-import-mode');
+  modeGroup.setAttribute('data-pkc-region', 'import-mode');
+  modeGroup.setAttribute('role', 'radiogroup');
+
+  const replaceBtn = createElement('button', 'pkc-import-mode-option');
+  replaceBtn.setAttribute('data-pkc-action', 'set-import-mode');
+  replaceBtn.setAttribute('data-pkc-mode', 'replace');
+  replaceBtn.setAttribute('role', 'radio');
+  replaceBtn.setAttribute('aria-checked', mode === 'replace' ? 'true' : 'false');
+  if (mode === 'replace') replaceBtn.setAttribute('data-pkc-mode-selected', 'true');
+  replaceBtn.textContent = 'Replace';
+  modeGroup.appendChild(replaceBtn);
+
+  const mergeBtn = createElement('button', 'pkc-import-mode-option');
+  mergeBtn.setAttribute('data-pkc-action', 'set-import-mode');
+  mergeBtn.setAttribute('data-pkc-mode', 'merge');
+  mergeBtn.setAttribute('role', 'radio');
+  mergeBtn.setAttribute('aria-checked', mode === 'merge' ? 'true' : 'false');
+  if (mode === 'merge') mergeBtn.setAttribute('data-pkc-mode-selected', 'true');
+  if (!canMerge) mergeBtn.setAttribute('disabled', 'true');
+  mergeBtn.textContent = 'Merge (append)';
+  modeGroup.appendChild(mergeBtn);
+
+  panel.appendChild(modeGroup);
+
+  // ── Mode-dependent narrative + summary ─────────
+  if (mode === 'merge') {
+    const warning = createElement('div', 'pkc-import-warning');
+    warning.setAttribute('data-pkc-region', 'import-merge-note');
+    warning.textContent = schemaMismatch
+      ? 'Schema version mismatch — merge is disabled. Switch to Replace or cancel.'
+      : 'Imported entries will be added to the current container. Host entries stay intact.';
+    panel.appendChild(warning);
+  } else {
+    const warning = createElement('div', 'pkc-import-warning');
+    warning.textContent = 'This will fully replace your current data. This is not a merge.';
+    panel.appendChild(warning);
+  }
 
   const summary = createElement('div', 'pkc-import-summary');
   summary.setAttribute('data-pkc-region', 'import-summary');
 
-  const items: [string, string][] = [
-    ['Source', preview.source],
-    ['Title', preview.title],
-    ['Entries', String(preview.entry_count)],
-    ['Revisions', String(preview.revision_count)],
-    ['Schema', `v${preview.schema_version}`],
-  ];
-
-  for (const [label, value] of items) {
-    const row = createElement('div', 'pkc-import-row');
-    const labelEl = createElement('span', 'pkc-import-label');
-    labelEl.textContent = `${label}:`;
-    row.appendChild(labelEl);
-    const valueEl = createElement('span', 'pkc-import-value');
-    valueEl.textContent = value;
-    row.appendChild(valueEl);
-    summary.appendChild(row);
+  if (mode === 'merge' && canMerge) {
+    // Merge summary: 5-line breakdown per spec §7.2.
+    const nowStamp = new Date().toISOString();
+    const plan = planMergeImport(host!, preview.container, nowStamp);
+    if ('error' in plan) {
+      const row = createElement('div', 'pkc-import-row');
+      const label = createElement('span', 'pkc-import-label');
+      label.textContent = 'Error:';
+      const value = createElement('span', 'pkc-import-value');
+      value.textContent = `schema v${host!.meta.schema_version} vs v${preview.container.meta.schema_version} — cannot merge`;
+      row.appendChild(label);
+      row.appendChild(value);
+      summary.appendChild(row);
+    } else {
+      const c = plan.counts;
+      const mergeItems: [string, string][] = [
+        ['Source', preview.source],
+        ['New entries', `+${c.addedEntries}${c.renamedLids > 0 ? ` (${c.renamedLids} renamed)` : ''}`],
+        ['Assets', `+${c.addedAssets} / dedup ${c.dedupedAssets}${c.rehashedAssets > 0 ? ` / rehash ${c.rehashedAssets}` : ''}`],
+        ['Relations', `+${c.addedRelations}${c.droppedRelations > 0 ? ` / drop ${c.droppedRelations}` : ''}`],
+        ['Revisions', `drop ${c.droppedRevisions}`],
+      ];
+      for (const [label, value] of mergeItems) {
+        const row = createElement('div', 'pkc-import-row');
+        const labelEl = createElement('span', 'pkc-import-label');
+        labelEl.textContent = `${label}:`;
+        row.appendChild(labelEl);
+        const valueEl = createElement('span', 'pkc-import-value');
+        valueEl.textContent = value;
+        row.appendChild(valueEl);
+        summary.appendChild(row);
+      }
+    }
+  } else {
+    // Replace summary: classic 5-line preview.
+    const items: [string, string][] = [
+      ['Source', preview.source],
+      ['Title', preview.title],
+      ['Entries', String(preview.entry_count)],
+      ['Revisions', String(preview.revision_count)],
+      ['Schema', `v${preview.schema_version}`],
+    ];
+    for (const [label, value] of items) {
+      const row = createElement('div', 'pkc-import-row');
+      const labelEl = createElement('span', 'pkc-import-label');
+      labelEl.textContent = `${label}:`;
+      row.appendChild(labelEl);
+      const valueEl = createElement('span', 'pkc-import-value');
+      valueEl.textContent = value;
+      row.appendChild(valueEl);
+      summary.appendChild(row);
+    }
   }
   panel.appendChild(summary);
 
   const actions = createElement('div', 'pkc-import-actions');
 
   const confirmBtn = createElement('button', 'pkc-btn-danger');
-  confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
-  confirmBtn.textContent = 'Replace & Import';
+  if (mode === 'merge') {
+    confirmBtn.setAttribute('data-pkc-action', 'confirm-merge-import');
+    confirmBtn.textContent = 'Merge & Import';
+    if (schemaMismatch) confirmBtn.setAttribute('disabled', 'true');
+  } else {
+    confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
+    confirmBtn.textContent = 'Replace & Import';
+  }
   actions.appendChild(confirmBtn);
 
   const cancelBtn = createElement('button', 'pkc-btn');

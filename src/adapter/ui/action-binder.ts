@@ -347,6 +347,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'confirm-import':
         dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
         break;
+      case 'confirm-merge-import':
+        dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+        break;
+      case 'set-import-mode': {
+        const rawMode = target.getAttribute('data-pkc-mode');
+        if (rawMode === 'replace' || rawMode === 'merge') {
+          dispatcher.dispatch({ type: 'SET_IMPORT_MODE', mode: rawMode });
+        }
+        break;
+      }
       case 'cancel-import':
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
         break;

@@ -1,7 +1,7 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-14（§18 Tier 2 完了追記）
+**Last updated**: 2026-04-14（§18.8 Tier 3-1 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
@@ -683,6 +683,7 @@ See HANDOVER_FINAL.md §4.
 |-----|-----|
 | 2026-04-13 | 初版作成。v0.1.0 リリース前の最終 HANDOVER として整備 |
 | 2026-04-14 | §18「Tier 2 完了時点の到達状態」を追加（Tier 1-1 / 1-2 / 2-1 / 2-2 / 2-3 の固定、5 つの新不変条件、5 項目の意図的 non-done、Tier 3 方向の列挙）。§1〜§17 は書き換え無し |
+| 2026-04-14 | §18.8「Tier 3-1 完了」を追加（merge import Overlay MVP 実装）。§18.5 A を完了印に更新。§4〜§5 / §6 / §17 は無変更 |
 
 ### このあと更新してよい箇所
 
@@ -925,6 +926,7 @@ Tier 3 で候補となる方向を列挙する。**順序は未決**（本章の
   `features/import/merge-planner.ts` + 1 reducer action + UI radio
   を追加
 - 前提条件チェックは spec §10 を使う
+- **Tier 3-1 で実装完了（2026-04-14）** — §18.8 参照
 
 #### B. archetype 拡張
 - `docs/development/data-model/complex-entry-archetype.md` /
@@ -977,5 +979,30 @@ Tier 3 で候補となる方向を列挙する。**順序は未決**（本章の
 | production code への touch | Tier 2-1 / 2-2 のみ（Tier 2-3 は docs-only） |
 
 **Tier 2 完了**。次は Tier 3 優先順位決定（別セッション）。
+
+### 18.8 Tier 3-1 完了（2026-04-14）
+
+Tier 3 優先順位決定（`docs/planning/TIER3_PRIORITIZATION.md`）で
+「Tier 3-1 = A. merge import 実装（Overlay MVP）」を採用。本節は
+その完了記録。
+
+| 項目 | 状態 |
+|-----|-----|
+| pure helper `features/import/merge-planner.ts` | ✓ `planMergeImport` / `applyMergePlan` を実装 |
+| reducer action `CONFIRM_MERGE_IMPORT` / `SET_IMPORT_MODE` | ✓ 追加 |
+| domain event `CONTAINER_MERGED` | ✓ 追加 |
+| `AppState.importMode` field | ✓ optional で追加（default `'replace'`） |
+| preview UI の mode radio + 5 行サマリ | ✓ 実装 |
+| I-Merge1（append-only） / I-Merge2（spec-first） | ✓ 維持 |
+| 既存 `CONFIRM_IMPORT` path | ✓ 完全に無変更（regression 0） |
+| orphan auto-GC を merge 経路にも | ✓ I-AutoGC1 の自然な拡張として wiring |
+| spec `data-model.md §14.6 I-IO1b` | ✓ 追記 |
+| spec `merge-import-conflict-resolution.md` status | ✓ "implemented" に昇格（MVP 契約は凍結継続） |
+| テスト 29 件追加（planner 13 / reducer+integration+UI 16） | ✓ 全 pass |
+| 実装詳細メモ `docs/development/merge-import-implementation.md` | ✓ 新規 |
+| Tier 3-1 で「spec 非スコープ」に入れる項目（per-entry 選択 UI / title hash dedup / revision 持ち込み / Policy UI / Staging / schema migration / folder semantic merge / bulk_id 越境 / 1-click revert） | × 1 つも実装せず（spec §8 固定を遵守） |
+
+**Tier 3-1 完了**。次は Tier 3-2（release automation + bundle
+size budget + Playwright smoke baseline）。
 
 ---
