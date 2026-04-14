@@ -91,6 +91,52 @@ export interface AppState {
    * Folders default to expanded. Runtime-only, not persisted.
    */
   collapsedFolders: string[];
+  /**
+   * TEXTLOG → TEXT log-selection mode (Slice 4 / P1-1). Runtime-only.
+   *
+   * `null` (or absent) when no selection is active. The presence of
+   * this object is what the viewer uses to decide whether to render
+   * the selection toolbar + per-log checkboxes. See
+   * `docs/development/textlog-text-conversion.md` §2 and the §6.x
+   * clear-semantics contract added in P1-1 (2026-04-13).
+   *
+   * Optional in the TS surface so existing test fixtures that spell
+   * out AppState by hand remain valid without updates. Reducer paths
+   * always initialize to `null` via `createInitialState()`.
+   */
+  textlogSelection?: TextlogSelectionState | null;
+  /**
+   * TEXT → TEXTLOG preview modal state (Slice 5 / P1-1). Runtime-only.
+   *
+   * `null` (or absent) when the modal is closed. The renderer mounts
+   * / unmounts the modal DOM by observing this field. The user-edited
+   * title is kept in the DOM input during the preview session (not
+   * mirrored here) to keep keystrokes out of the dispatch loop.
+   */
+  textToTextlogModal?: TextToTextlogModalState | null;
+}
+
+/**
+ * Log-selection state for the TEXTLOG → TEXT conversion flow.
+ *
+ * `selectedLogIds` is a plain array (not Set) so the whole AppState
+ * remains serializable — matching every other runtime field that is
+ * expected to survive a `dispatcher.getState()` snapshot. Duplicates
+ * are not allowed; the reducer dedupes on TOGGLE.
+ */
+export interface TextlogSelectionState {
+  activeLid: string;
+  selectedLogIds: string[];
+}
+
+/**
+ * TEXT → TEXTLOG preview modal identity. `splitMode` is the only
+ * input that can be changed while the modal is open; the preview body
+ * itself is recomputed on demand from (source entry × splitMode).
+ */
+export interface TextToTextlogModalState {
+  sourceLid: string;
+  splitMode: 'heading' | 'hr';
 }
 
 /**
@@ -129,6 +175,8 @@ export function createInitialState(): AppState {
     calendarMonth: new Date().getMonth() + 1,
     multiSelectedLids: [],
     collapsedFolders: [],
+    textlogSelection: null,
+    textToTextlogModal: null,
   };
 }
 
@@ -242,26 +290,52 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           }
         }
       }
+      // P1-1: automatic cleanup for transient UI state that is scoped
+      // to a specific entry. Preserving them across a selection change
+      // was the root of several "stale singleton" UX bugs (the
+      // previously-selected TEXTLOG's log selection would keep showing
+      // its check state after the user navigated away). See
+      // `docs/development/textlog-text-conversion.md` §P1-1 clear-rules.
+      const textlogSelection = (state.textlogSelection && state.textlogSelection.activeLid !== action.lid)
+        ? null
+        : state.textlogSelection;
+      const textToTextlogModal = (state.textToTextlogModal && state.textToTextlogModal.sourceLid !== action.lid)
+        ? null
+        : state.textToTextlogModal;
       const next: AppState = {
         ...state,
         selectedLid: action.lid,
         multiSelectedLids: [],
         collapsedFolders,
+        textlogSelection,
+        textToTextlogModal,
       };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
     }
     case 'DESELECT_ENTRY': {
-      const next: AppState = { ...state, selectedLid: null };
+      // P1-1: deselection tears down per-entry transient UI state too.
+      const next: AppState = {
+        ...state,
+        selectedLid: null,
+        textlogSelection: null,
+        textToTextlogModal: null,
+      };
       return { state: next, events: [{ type: 'ENTRY_DESELECTED' }] };
     }
     case 'BEGIN_EDIT': {
       if (state.readonly) return blocked(state, action);
+      // P1-1: BEGIN_EDIT terminates any in-progress transient UI flows
+      // (log selection / preview modal). The user is switching to the
+      // structured editor; carrying over a TEXTLOG selection toolbar
+      // or a dangling preview modal is incoherent.
       const next: AppState = {
         ...state,
         phase: 'editing',
         selectedLid: action.lid,
         editingLid: action.lid,
         viewMode: 'detail',
+        textlogSelection: null,
+        textToTextlogModal: null,
       };
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
@@ -345,7 +419,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const selectedLid = nextSelectedAfterRemove(
         entriesBefore, action.lid, state.selectedLid,
       );
-      const next: AppState = { ...state, container, selectedLid };
+      // P1-1: if the deleted entry was the owner of a transient UI
+      // flow, tear it down. A selection toolbar anchored to a now-
+      // nonexistent lid would render against stale data.
+      const textlogSelection = state.textlogSelection && state.textlogSelection.activeLid === action.lid
+        ? null
+        : state.textlogSelection;
+      const textToTextlogModal = state.textToTextlogModal && state.textToTextlogModal.sourceLid === action.lid
+        ? null
+        : state.textToTextlogModal;
+      const next: AppState = { ...state, container, selectedLid, textlogSelection, textToTextlogModal };
       return { state: next, events: [{ type: 'ENTRY_DELETED', lid: action.lid }] };
     }
     case 'BEGIN_EXPORT': {
@@ -391,6 +474,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         selectedLid: null,
         editingLid: null,
         error: null,
+        // P1-1: container replaced wholesale — any per-entry transient
+        // UI flow is anchored to a lid that likely doesn't exist in
+        // the new container. Clear them defensively.
+        textlogSelection: null,
+        textToTextlogModal: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
       return {
@@ -800,6 +888,66 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         meta: { ...state.container.meta, sandbox_policy: policy, updated_at: ts },
       };
       const next: AppState = { ...state, container };
+      return { state: next, events: [] };
+    }
+    // ── P1-1: TEXTLOG → TEXT selection + TEXT → TEXTLOG modal ──────
+    case 'BEGIN_TEXTLOG_SELECTION': {
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry || entry.archetype !== 'textlog') return blocked(state, action);
+      const next: AppState = {
+        ...state,
+        textlogSelection: { activeLid: action.lid, selectedLogIds: [] },
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_TEXTLOG_LOG_SELECTION': {
+      if (!state.textlogSelection) return blocked(state, action);
+      const { activeLid, selectedLogIds } = state.textlogSelection;
+      const idx = selectedLogIds.indexOf(action.logId);
+      const nextIds = idx >= 0
+        ? selectedLogIds.filter((id) => id !== action.logId)
+        : [...selectedLogIds, action.logId];
+      const next: AppState = {
+        ...state,
+        textlogSelection: { activeLid, selectedLogIds: nextIds },
+      };
+      return { state: next, events: [] };
+    }
+    case 'CANCEL_TEXTLOG_SELECTION': {
+      if (!state.textlogSelection) return blocked(state, action);
+      const next: AppState = { ...state, textlogSelection: null };
+      return { state: next, events: [] };
+    }
+    case 'OPEN_TEXT_TO_TEXTLOG_MODAL': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const source = state.container.entries.find((e) => e.lid === action.sourceLid);
+      if (!source || source.archetype !== 'text') return blocked(state, action);
+      const splitMode = action.splitMode === 'hr' ? 'hr' : 'heading';
+      const next: AppState = {
+        ...state,
+        textToTextlogModal: { sourceLid: action.sourceLid, splitMode },
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_TEXT_TO_TEXTLOG_SPLIT_MODE': {
+      if (!state.textToTextlogModal) return blocked(state, action);
+      const splitMode = action.splitMode === 'hr' ? 'hr' : 'heading';
+      if (splitMode === state.textToTextlogModal.splitMode) {
+        // Identity-preserving no-op — same reference returned so state
+        // listeners can skip redundant re-renders.
+        return { state, events: [] };
+      }
+      const next: AppState = {
+        ...state,
+        textToTextlogModal: { ...state.textToTextlogModal, splitMode },
+      };
+      return { state: next, events: [] };
+    }
+    case 'CLOSE_TEXT_TO_TEXTLOG_MODAL': {
+      if (!state.textToTextlogModal) return blocked(state, action);
+      const next: AppState = { ...state, textToTextlogModal: null };
       return { state: next, events: [] };
     }
     case 'TOGGLE_MULTI_SELECT': {

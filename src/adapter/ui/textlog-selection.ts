@@ -1,114 +1,102 @@
 /**
- * TEXTLOG → TEXT selection mode — module-local UI state.
+ * TEXTLOG → TEXT selection mode — forward cache over AppState (P1-1).
  *
- * Spec: `docs/development/textlog-text-conversion.md` §2.1, §4, §5.
+ * Pre-P1-1 this file owned authoritative state: an action-binder would
+ * call `beginSelection(lid)` etc. to mutate the module singleton, and
+ * `textlog-presenter` would read the same singleton at render time.
+ * That made `selectedLid` change, `BEGIN_EDIT`, `DELETE_ENTRY`, and
+ * `SYS_IMPORT_COMPLETE` carry the risk of leaving the singleton stale
+ * — each site had to remember to call `cancelSelection()` as a
+ * defensive clean-up step.
  *
- * Selection state is deliberately kept **out** of AppState /
- * reducer. The set of currently-selected log ids is transient UI
- * state tied to a single TEXTLOG viewer session: it should not
- * survive a container reload, a selection change, an editor cycle,
- * or an export snapshot. Reducer-level persistence would force us
- * to invent an event for every checkbox click for no durable
- * benefit.
+ * P1-1 (2026-04-13) moves the authoritative state into
+ * `AppState.textlogSelection`:
  *
- * Instead we keep a small singleton here (same pattern as
- * `slash-menu.ts`, `asset-picker.ts`, `asset-autocomplete.ts`).
- * `action-binder` mutates it; `textlog-presenter` reads it at render
- * time so that the next full re-render restores whatever selection
- * was already in progress.
+ *   - The action-binder now dispatches
+ *     `BEGIN_TEXTLOG_SELECTION` / `TOGGLE_TEXTLOG_LOG_SELECTION` /
+ *     `CANCEL_TEXTLOG_SELECTION` and never mutates singleton state.
+ *   - The reducer enforces clear semantics on `SELECT_ENTRY`,
+ *     `DESELECT_ENTRY`, `BEGIN_EDIT`, `DELETE_ENTRY` (when the deleted
+ *     lid matches), and `SYS_IMPORT_COMPLETE` — every stale path is
+ *     closed in one place.
+ *   - This module keeps a small **forward cache** of the latest
+ *     state so the existing reader API (`isSelectionModeActive`,
+ *     `isLogSelected`, `getSelectionSize`, `getActiveSelectionLid`,
+ *     `getSelectedLogIds`) can stay argument-free. The renderer
+ *     calls `syncTextlogSelectionFromState(state)` at the start of
+ *     each render pass so the cache is always current.
  *
- * ## DOM shape emitted when selection mode is active
+ * Scope & invariants:
+ *   - Mutator functions from the pre-P1-1 API
+ *     (`beginSelection`, `cancelSelection`, `toggleLogSelection`) are
+ *     DELETED. Callers must go through `dispatcher.dispatch`.
+ *   - `syncTextlogSelectionFromState` is the only write path into the
+ *     cache. It is pure with respect to state and idempotent.
+ *   - Reader functions are identity-stable with respect to state: two
+ *     calls against the same state reference return equivalent
+ *     results without re-parsing.
  *
- * The toolbar is rendered inside the TEXTLOG viewer (not the outer
- * action bar) because it is scoped to one TEXTLOG at a time and we
- * want its lifecycle to match the viewer's mount / unmount:
- *
- *     <div class="pkc-textlog-view" data-pkc-textlog-selecting>
- *       <div class="pkc-textlog-select-toolbar" ...>
- *         <button data-pkc-action="begin-textlog-selection" ...> (idle only)
- *         <span class="pkc-textlog-select-count"> N logs selected
- *         <button data-pkc-action="cancel-textlog-selection"> Cancel
- *         <button data-pkc-action="open-textlog-to-text-preview"> Convert
- *       </div>
- *       ...
- *       <article class="pkc-textlog-log">
- *         <input type="checkbox" data-pkc-field="textlog-select" ...>
- *         ...
- *       </article>
- *     </div>
- *
- * A single source entry can be in selection mode at a time. Switching
- * the selected entry or dispatching BEGIN_EDIT cancels the mode (the
- * viewer re-renders without the `data-pkc-textlog-selecting`
- * attribute, and `cancelSelection()` is called opportunistically from
- * the action-binder).
+ * Tests:
+ *   - Existing call-site tests that used the mutator API have been
+ *     migrated to dispatch equivalent actions.
+ *   - `__resetSelectionStateForTest` continues to exist as a
+ *     belt-and-braces hatch for tests that bypass the dispatcher.
  */
 
-const state: {
-  activeLid: string | null;
-  selected: Set<string>;
-} = {
-  activeLid: null,
-  selected: new Set(),
-};
+import type { AppState, TextlogSelectionState } from '../state/app-state';
+
+/**
+ * Cached projection of `AppState.textlogSelection`. Always refreshed
+ * by `syncTextlogSelectionFromState` before the renderer walks the
+ * viewer DOM.
+ */
+let cache: TextlogSelectionState | null = null;
+
+/**
+ * Refresh the forward cache from a freshly-reduced `AppState`. Called
+ * by the renderer once per render pass. Safe to call with a `null`
+ * state reference — the cache collapses to `null` in that case.
+ */
+export function syncTextlogSelectionFromState(state: AppState | null): void {
+  cache = state?.textlogSelection ?? null;
+}
 
 /** True when the given TEXTLOG entry currently owns selection mode. */
 export function isSelectionModeActive(lid: string): boolean {
-  return state.activeLid === lid;
+  return cache !== null && cache.activeLid === lid;
 }
 
 /** Lid of the TEXTLOG that currently owns selection mode, or null. */
 export function getActiveSelectionLid(): string | null {
-  return state.activeLid;
+  return cache?.activeLid ?? null;
 }
 
-/** Read-only view of the currently selected log ids. */
+/**
+ * Read-only view of the currently selected log ids. Returns a fresh
+ * `Set` each call so callers can safely iterate / `.has()` without
+ * worrying about cache invalidation — the identity changes only when
+ * `sync*` is next called.
+ */
 export function getSelectedLogIds(): ReadonlySet<string> {
-  return state.selected;
+  return new Set(cache?.selectedLogIds ?? []);
 }
 
 /** Number of logs currently selected. Shown in the toolbar and gate the Convert button. */
 export function getSelectionSize(): number {
-  return state.selected.size;
+  return cache?.selectedLogIds.length ?? 0;
 }
 
 /** True when a specific log id is in the current selection. */
 export function isLogSelected(logId: string): boolean {
-  return state.selected.has(logId);
+  return cache?.selectedLogIds.includes(logId) ?? false;
 }
 
 /**
- * Enter selection mode for the given TEXTLOG entry. Clears any
- * previously active selection (selecting logs from two different
- * TEXTLOGs in the same session is not a use case we support).
- */
-export function beginSelection(lid: string): void {
-  state.activeLid = lid;
-  state.selected = new Set();
-}
-
-/** Exit selection mode. Safe to call when not active. */
-export function cancelSelection(): void {
-  state.activeLid = null;
-  state.selected = new Set();
-}
-
-/** Toggle a single log id in/out of the selection. */
-export function toggleLogSelection(logId: string): void {
-  if (state.selected.has(logId)) {
-    state.selected.delete(logId);
-  } else {
-    state.selected.add(logId);
-  }
-}
-
-/**
- * Reset selection state — used from test fixtures so each test starts
- * from a clean singleton. Not exported via `index.ts` intentionally;
- * production code should only ever use `beginSelection` /
- * `cancelSelection`.
+ * Reset cache state — used from test fixtures that construct DOM
+ * directly without going through the dispatcher (and therefore
+ * without calling `syncTextlogSelectionFromState`). Not exported via
+ * `index.ts` intentionally; production code should never need this.
  */
 export function __resetSelectionStateForTest(): void {
-  state.activeLid = null;
-  state.selected = new Set();
+  cache = null;
 }

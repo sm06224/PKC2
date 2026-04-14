@@ -21,6 +21,8 @@ import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, col
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
+import { syncTextlogSelectionFromState } from './textlog-selection';
+import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
@@ -102,6 +104,14 @@ const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = 
  */
 
 export function render(state: AppState, root: HTMLElement): void {
+  // P1-1: sync reducer-owned transient UI state into the forward
+  // caches used by legacy reader APIs. Must happen BEFORE the DOM
+  // is rebuilt below so presenters see the current selection state.
+  // The caches themselves are never sources of truth — the reducer is.
+  // See src/adapter/ui/textlog-selection.ts and
+  // src/adapter/ui/text-to-textlog-modal.ts for the split.
+  syncTextlogSelectionFromState(state);
+
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
@@ -129,6 +139,12 @@ export function render(state: AppState, root: HTMLElement): void {
   // jumps, entry-ref clicks, calendar / kanban taps, and anything
   // else that dispatches SELECT_ENTRY from outside the tree.
   scrollSelectedSidebarNodeIntoView(state, root);
+
+  // P1-1: reconcile the TEXT → TEXTLOG preview modal with the
+  // authoritative state. Mount / unmount / re-render is decided
+  // purely from `state.textToTextlogModal`. The helper is
+  // responsible for its own DOM idempotency.
+  syncTextToTextlogModalFromState(state, root);
 }
 
 /**
