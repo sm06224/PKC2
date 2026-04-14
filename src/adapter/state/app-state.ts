@@ -467,10 +467,25 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'SYS_IMPORT_COMPLETE': {
+      // Tier 2-1: auto-GC orphan assets on container replacement. The
+      // imported container is the new source of truth; any asset in
+      // its `assets` map that is NOT referenced by one of its own
+      // entries is baggage from the sender side and can be dropped
+      // safely. Because the previous container (and its revisions)
+      // is being thrown away wholesale, there is no restore path
+      // that could surface a purged asset later — which is why
+      // import is the one reducer path where auto-GC is risk-free.
+      // See docs/development/orphan-asset-auto-gc.md.
+      const importedContainer = action.container;
+      const purged = removeOrphanAssets(importedContainer);
+      const purgedCount =
+        purged === importedContainer
+          ? 0
+          : Object.keys(importedContainer.assets).length - Object.keys(purged.assets).length;
       const next: AppState = {
         ...state,
         phase: 'ready',
-        container: action.container,
+        container: purged,
         selectedLid: null,
         editingLid: null,
         error: null,
@@ -481,10 +496,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         textToTextlogModal: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
-      return {
-        state: next,
-        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
-      };
+      const events: DomainEvent[] = [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }];
+      if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
+      return { state: next, events };
     }
     case 'SYS_RECORD_OFFERED': {
       const offer = action.offer as PendingOffer;
@@ -574,10 +588,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!state.importPreview) return blocked(state, action);
       const imported = state.importPreview.container;
       const source = state.importPreview.source;
+      // Tier 2-1: auto-GC orphan assets on import confirmation. See the
+      // SYS_IMPORT_COMPLETE case above for the safety rationale.
+      const purged = removeOrphanAssets(imported);
+      const purgedCount =
+        purged === imported
+          ? 0
+          : Object.keys(imported.assets).length - Object.keys(purged.assets).length;
       const next: AppState = {
         ...state,
         phase: 'ready',
-        container: imported,
+        container: purged,
         selectedLid: null,
         editingLid: null,
         error: null,
@@ -585,10 +606,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         lightSource: false,
       };
       const cid = imported?.meta?.container_id ?? 'unknown';
-      return {
-        state: next,
-        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source }],
-      };
+      const events: DomainEvent[] = [{ type: 'CONTAINER_IMPORTED', container_id: cid, source }];
+      if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
+      return { state: next, events };
     }
     case 'CANCEL_IMPORT': {
       const next: AppState = { ...state, importPreview: null };
@@ -856,9 +876,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'TRASH_PURGED', count: result.purgedCount }] };
     }
     case 'PURGE_ORPHAN_ASSETS': {
-      // Manual orphan asset cleanup. This is the ONE and only place
-      // where `removeOrphanAssets` is wired — no other reducer path
-      // invokes it (no auto-GC on DELETE_ENTRY / COMMIT_EDIT / export).
+      // Manual orphan asset cleanup. This is the user-facing cleanup
+      // button; it runs the same helper as the Tier 2-1 auto-GC on
+      // SYS_IMPORT_COMPLETE / CONFIRM_IMPORT, but from a different
+      // trigger. Every non-import reducer path (DELETE_ENTRY /
+      // COMMIT_EDIT / QUICK_UPDATE_ENTRY / BULK_DELETE / RESTORE_ENTRY)
+      // still leaves orphan cleanup to this manual action — see
+      // docs/development/orphan-asset-auto-gc.md.
       //
       // The helper's identity contract does all the bookkeeping:
       //   - zero orphans → returns the SAME container reference, which
@@ -1238,20 +1262,27 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [{ type: 'CONTAINER_LOADED', container_id: cid }] };
     }
     case 'SYS_IMPORT_COMPLETE': {
+      // Tier 2-1: mirror the reduceReady auto-GC behaviour on the
+      // error-recovery import path so the two paths stay aligned.
+      const importedContainer = action.container;
+      const purged = removeOrphanAssets(importedContainer);
+      const purgedCount =
+        purged === importedContainer
+          ? 0
+          : Object.keys(importedContainer.assets).length - Object.keys(purged.assets).length;
       const next: AppState = {
         ...state,
         phase: 'ready',
-        container: action.container,
+        container: purged,
         selectedLid: null,
         editingLid: null,
         error: null,
         lightSource: false,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
-      return {
-        state: next,
-        events: [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }],
-      };
+      const events: DomainEvent[] = [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }];
+      if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
+      return { state: next, events };
     }
     default:
       return blocked(state, action);

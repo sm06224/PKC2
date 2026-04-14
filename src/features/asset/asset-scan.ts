@@ -63,18 +63,21 @@
  *     - `removeOrphanAssets` is a pure helper that builds a NEW
  *       container with orphans removed, leaving the original
  *       immutable.
- *     - There is NO auto-invocation from the reducer, export
- *       path, or any timer. Callers — future manual cleanup UI,
- *       future reducer path, future export compaction — must
- *       invoke `removeOrphanAssets` explicitly when they want
- *       cleanup to happen.
  *
- *   "When" to clean up is a POLICY question and belongs to a
- *   future Issue, not to this foundation. See
- *   `docs/development/edit-preview-asset-resolution.md`, section
- *   "Orphan asset GC foundation", for the full rationale and the
- *   list of future policy candidates (reducer path / manual
- *   cleanup / export-time compaction).
+ *   Tier 2-1 (2026-04-14) wired ONE narrow auto-invocation site:
+ *   the reducer calls `removeOrphanAssets` on `SYS_IMPORT_COMPLETE`
+ *   and `CONFIRM_IMPORT`, i.e. whenever the container is being
+ *   replaced wholesale. Every other reducer path — DELETE_ENTRY,
+ *   COMMIT_EDIT, QUICK_UPDATE_ENTRY, BULK_DELETE, RESTORE_ENTRY,
+ *   PURGE_TRASH — intentionally does NOT auto-GC, because those
+ *   paths can leave revisions pointing at the purged asset key,
+ *   and a later RESTORE_ENTRY could surface the missing asset. See
+ *   `docs/development/orphan-asset-auto-gc.md` for the full policy
+ *   rationale and the list of "not auto-GC'd" paths.
+ *
+ *   Manual cleanup via `PURGE_ORPHAN_ASSETS` is unchanged and
+ *   remains the user-facing button for cleaning up after normal
+ *   edits / deletes.
  */
 
 import type { Container } from '../../core/model/container';
