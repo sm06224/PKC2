@@ -1,7 +1,7 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-14（§18.9 Tier 3-2 完了追記）
+**Last updated**: 2026-04-14（§18.10 Tier 3-3 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
