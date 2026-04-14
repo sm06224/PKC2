@@ -2024,6 +2024,224 @@ describe('sort', () => {
     expect(state.container!.assets['ast-bound']).toBe('ZZZZ');
   });
 
+  // ── Tier 2-1: auto-GC on container-replacement paths ──────
+  //
+  // The one-and-only reducer paths that auto-invoke
+  // `removeOrphanAssets` are the container-replacement paths:
+  // SYS_IMPORT_COMPLETE (both reduceReady and reduceError) and
+  // CONFIRM_IMPORT. Every other reducer path continues to leave
+  // orphan cleanup to the manual `PURGE_ORPHAN_ASSETS` button —
+  // see `docs/development/orphan-asset-auto-gc.md`.
+  //
+  // These tests pin:
+  //   (a) auto-purge fires when imports contain orphans
+  //   (b) auto-purge is a true no-op (identity preserved) when
+  //       the imported container has zero orphans
+  //   (c) the purge count reaches the domain event listeners
+  //   (d) regression guards for the non-auto paths
+
+  const importedWithOrphans: Container = {
+    meta: {
+      container_id: 'imported', title: 'Imported',
+      created_at: '2026-04-14T00:00:00Z',
+      updated_at: '2026-04-14T00:00:00Z',
+      schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'i1', title: 'keep.png',
+        body: JSON.stringify({
+          name: 'keep.png', mime: 'image/png', size: 4, asset_key: 'ast-keep',
+        }),
+        archetype: 'attachment',
+        created_at: '2026-04-14T00:00:00Z',
+        updated_at: '2026-04-14T00:00:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: { 'ast-keep': 'AAAA', 'ast-orphan-1': 'BBBB', 'ast-orphan-2': 'CCCC' },
+  };
+
+  it('SYS_IMPORT_COMPLETE auto-purges orphan assets from the imported container', () => {
+    const s: AppState = readyState();
+    const { state, events } = reduce(s, {
+      type: 'SYS_IMPORT_COMPLETE',
+      container: importedWithOrphans,
+      source: 'ext.html',
+    });
+    // Referenced asset survives; both orphans are dropped.
+    expect(state.container!.assets['ast-keep']).toBe('AAAA');
+    expect(state.container!.assets['ast-orphan-1']).toBeUndefined();
+    expect(state.container!.assets['ast-orphan-2']).toBeUndefined();
+    expect(Object.keys(state.container!.assets).length).toBe(1);
+    // Both CONTAINER_IMPORTED and ORPHAN_ASSETS_PURGED fire.
+    expect(events).toHaveLength(2);
+    expect(events[0]).toEqual({
+      type: 'CONTAINER_IMPORTED', container_id: 'imported', source: 'ext.html',
+    });
+    expect(events[1]).toEqual({ type: 'ORPHAN_ASSETS_PURGED', count: 2 });
+    // The container identity flipped (new assets map).
+    expect(state.container).not.toBe(importedWithOrphans);
+  });
+
+  it('SYS_IMPORT_COMPLETE is identity-preserving when the imported container has no orphans', () => {
+    const clean: Container = {
+      ...importedWithOrphans,
+      assets: { 'ast-keep': 'AAAA' },
+    };
+    const s: AppState = readyState();
+    const { state, events } = reduce(s, {
+      type: 'SYS_IMPORT_COMPLETE', container: clean, source: 'clean.html',
+    });
+    // No orphans → container reference preserved (removeOrphanAssets
+    // returns the same reference).
+    expect(state.container).toBe(clean);
+    // No ORPHAN_ASSETS_PURGED event; only CONTAINER_IMPORTED.
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('CONTAINER_IMPORTED');
+  });
+
+  function makeImportPreview(container: Container, source: string) {
+    return {
+      title: container.meta.title,
+      container_id: container.meta.container_id,
+      entry_count: container.entries.length,
+      revision_count: container.revisions.length,
+      schema_version: container.meta.schema_version,
+      source,
+      container,
+    };
+  }
+
+  it('CONFIRM_IMPORT auto-purges orphan assets from the preview container', () => {
+    const withPreview: AppState = {
+      ...readyState(),
+      importPreview: makeImportPreview(importedWithOrphans, 'ext.zip'),
+    };
+    const { state, events } = reduce(withPreview, { type: 'CONFIRM_IMPORT' });
+    expect(state.importPreview).toBeNull();
+    expect(Object.keys(state.container!.assets).length).toBe(1);
+    expect(state.container!.assets['ast-keep']).toBe('AAAA');
+    expect(events).toHaveLength(2);
+    expect(events[0]!.type).toBe('CONTAINER_IMPORTED');
+    expect(events[1]).toEqual({ type: 'ORPHAN_ASSETS_PURGED', count: 2 });
+  });
+
+  it('CONFIRM_IMPORT is identity-preserving when the preview container has no orphans', () => {
+    const clean: Container = {
+      ...importedWithOrphans,
+      assets: { 'ast-keep': 'AAAA' },
+    };
+    const withPreview: AppState = {
+      ...readyState(),
+      importPreview: makeImportPreview(clean, 'clean.zip'),
+    };
+    const { state, events } = reduce(withPreview, { type: 'CONFIRM_IMPORT' });
+    expect(state.container).toBe(clean);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('CONTAINER_IMPORTED');
+  });
+
+  it('SYS_IMPORT_COMPLETE from error phase also auto-purges orphan assets', () => {
+    // reduceError has its own SYS_IMPORT_COMPLETE handler (recovery
+    // path). Make sure the same auto-GC behaviour applies.
+    const errorState: AppState = {
+      ...createInitialState(), phase: 'error', error: 'boom',
+    };
+    const { state, events } = reduce(errorState, {
+      type: 'SYS_IMPORT_COMPLETE',
+      container: importedWithOrphans,
+      source: 'recovery.html',
+    });
+    expect(state.phase).toBe('ready');
+    expect(state.container!.assets['ast-keep']).toBe('AAAA');
+    expect(state.container!.assets['ast-orphan-1']).toBeUndefined();
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({ type: 'ORPHAN_ASSETS_PURGED', count: 2 });
+  });
+
+  it('COMMIT_EDIT does NOT auto-purge orphan assets (foundation-only)', () => {
+    // Regression pin. Removing an `asset:` markdown reference by
+    // editing a text body must NOT auto-purge the asset — a later
+    // RESTORE_ENTRY from the revision snapshot could still want to
+    // render it. Manual purge is the only cleanup path for edits.
+    const withRef: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 't1', title: 'Text', body: 'Before ![](asset:ast-bound) after',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-bound': 'ZZZZ' },
+    };
+    // Enter edit mode
+    const editing = reduce(
+      { ...readyState(), container: withRef },
+      { type: 'BEGIN_EDIT', lid: 't1' },
+    ).state;
+    // Commit with the asset reference removed
+    const { state } = reduce(editing, {
+      type: 'COMMIT_EDIT', lid: 't1', title: 'Text', body: 'Now with no asset',
+    });
+    // Asset is still present — cleanup deferred to the manual button.
+    expect(state.container!.assets['ast-bound']).toBe('ZZZZ');
+  });
+
+  it('QUICK_UPDATE_ENTRY does NOT auto-purge orphan assets (foundation-only)', () => {
+    const withRef: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 't1', title: 'Text', body: '![](asset:ast-bound)',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-bound': 'ZZZZ' },
+    };
+    const { state } = reduce(
+      { ...readyState(), container: withRef },
+      { type: 'QUICK_UPDATE_ENTRY', lid: 't1', body: 'no asset anymore' },
+    );
+    expect(state.container!.assets['ast-bound']).toBe('ZZZZ');
+  });
+
+  it('BULK_DELETE does NOT auto-purge orphan assets (foundation-only)', () => {
+    const withAttachments: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'a1', title: 'a.png',
+          body: JSON.stringify({
+            name: 'a.png', mime: 'image/png', size: 1, asset_key: 'ast-a',
+          }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          lid: 'a2', title: 'b.png',
+          body: JSON.stringify({
+            name: 'b.png', mime: 'image/png', size: 1, asset_key: 'ast-b',
+          }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-a': 'AA', 'ast-b': 'BB' },
+    };
+    const { state } = reduce(
+      { ...readyState(), container: withAttachments, multiSelectedLids: ['a1', 'a2'] },
+      { type: 'BULK_DELETE' },
+    );
+    // Both attachments gone, but both assets remain.
+    expect(state.container!.entries.length).toBe(0);
+    expect(state.container!.assets['ast-a']).toBe('AA');
+    expect(state.container!.assets['ast-b']).toBe('BB');
+  });
+
   // ── Folder Collapse ───────────────────────
 
   it('initial state has empty collapsedFolders', () => {

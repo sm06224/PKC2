@@ -695,7 +695,7 @@ interface ZipImportWarning {
 
 #### 11.7.4 「衝突検知」の意味的範囲
 
-本節は **1 つの ZIP ファイル内部**の不整合のみを扱う。current implementation は「複数 ZIP を順次 import した際の累積」を扱わない（import は full replace 契約、§14.1 I-IO1）。複数 ZIP を統合する merge import は **未実装**（P2 候補）。
+本節は **1 つの ZIP ファイル内部**の不整合のみを扱う。current implementation は「複数 ZIP を順次 import した際の累積」を扱わない（import は full replace 契約、§14.1 I-IO1）。複数 ZIP を統合する merge import は **未実装**（P2 候補、設計は `docs/spec/merge-import-conflict-resolution.md` 参照）。
 
 ---
 
@@ -831,7 +831,7 @@ text / textlog bundle には **compact mode** がある。
 
 ### 14.6 Import/Export レベル
 
-- **I-IO1**: Import は full replace（merge なし）
+- **I-IO1**: Import は full replace（merge なし。merge import は P2 候補、設計は `docs/spec/merge-import-conflict-resolution.md`）
 - **I-IO2**: runtime state（phase / selectedLid / editingLid / pendingOffers / importPreview / multiSelectedLids 等）は一切埋め込まれない
 - **I-IO3**: HTML Full と ZIP の body / relations / revisions は logical equivalence（バイト完全一致は非保証、pretty-print や順序は変わり得る）
 
@@ -880,7 +880,7 @@ text / textlog bundle には **compact mode** がある。
 - 新 archetype（`complex`, `document-set`, `spreadsheet` 等）の追加: **schema_version 据え置きで可能**
 - `Revision` への `prev_rid` / `content_hash` フィールド追加: optional なら schema 据え置きで可能
 - `ContainerMeta` への locale / timezone フィールド追加: optional なら可能
-- merge import の実装: schema 据え置きで可能（conflict resolution 戦略要設計）
+- merge import の実装: schema 据え置きで可能（conflict resolution 戦略は `docs/spec/merge-import-conflict-resolution.md` に設計確定済み）
 
 ---
 

@@ -8,6 +8,7 @@ import {
   getRevisionCount,
   getLatestRevision,
   getRestoreCandidates,
+  getRevisionsByBulkId,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
 import type { ArchetypeId } from '../../core/model/record';
@@ -1446,6 +1447,18 @@ function renderSidebar(state: AppState): HTMLElement {
         details.appendChild(purgeBtn);
       }
 
+      // Tier 2-2: pre-compute which deleted-entry revisions belong to
+      // a BULK_DELETE group so we can render a grouped "Restore bulk"
+      // affordance. Only bulk_ids whose group has size > 1 within the
+      // currently-visible trash list count — a solo deleted entry is
+      // indistinguishable from a regular DELETE_ENTRY for UX purposes.
+      const bulkSizeInTrash = new Map<string, number>();
+      for (const rev of candidates) {
+        if (!rev.bulk_id) continue;
+        bulkSizeInTrash.set(rev.bulk_id, (bulkSizeInTrash.get(rev.bulk_id) ?? 0) + 1);
+      }
+      const shownBulkIds = new Set<string>();
+
       for (const rev of candidates) {
         const parsed = parseRevisionSnapshot(rev);
         const item = createElement('div', 'pkc-restore-item');
@@ -1477,6 +1490,30 @@ function renderSidebar(state: AppState): HTMLElement {
         btn.setAttribute('title', 'Restore this deleted entry');
         btn.textContent = 'Restore';
         item.appendChild(btn);
+
+        // Tier 2-2: show "Restore bulk (N)" next to Restore on the
+        // FIRST item of each bulk group. Subsequent items in the
+        // same group still get their per-item Restore but skip the
+        // bulk affordance to keep the list readable.
+        if (
+          !state.readonly
+          && rev.bulk_id
+          && (bulkSizeInTrash.get(rev.bulk_id) ?? 0) > 1
+          && !shownBulkIds.has(rev.bulk_id)
+        ) {
+          const bulkSize = bulkSizeInTrash.get(rev.bulk_id)!;
+          const bulkBtn = createElement('button', 'pkc-btn-small');
+          bulkBtn.setAttribute('data-pkc-action', 'restore-bulk');
+          bulkBtn.setAttribute('data-pkc-bulk-id', rev.bulk_id);
+          bulkBtn.setAttribute('data-pkc-bulk-size', String(bulkSize));
+          bulkBtn.setAttribute(
+            'title',
+            `Restore all ${bulkSize} entries that were deleted together`,
+          );
+          bulkBtn.textContent = `Restore bulk (${bulkSize})`;
+          item.appendChild(bulkBtn);
+          shownBulkIds.add(rev.bulk_id);
+        }
 
         details.appendChild(item);
       }
@@ -2359,6 +2396,26 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
       restoreBtn.setAttribute('title', 'Revert this entry to its previous saved version');
       restoreBtn.textContent = 'Revert';
       revInfo.appendChild(restoreBtn);
+
+      // Tier 2-2: bulk restore. When the latest revision belongs to a
+      // BULK_* operation (bulk_id is set) and affected > 1 entries,
+      // offer to revert the whole bulk in one click. Single-entry
+      // bulks fall back to the regular Revert button only.
+      if (latest.bulk_id) {
+        const bulkRevs = getRevisionsByBulkId(container, latest.bulk_id);
+        if (bulkRevs.length > 1) {
+          const bulkBtn = createElement('button', 'pkc-btn-small');
+          bulkBtn.setAttribute('data-pkc-action', 'restore-bulk');
+          bulkBtn.setAttribute('data-pkc-bulk-id', latest.bulk_id);
+          bulkBtn.setAttribute('data-pkc-bulk-size', String(bulkRevs.length));
+          bulkBtn.setAttribute(
+            'title',
+            `Revert the entire bulk operation that affected ${bulkRevs.length} entries`,
+          );
+          bulkBtn.textContent = `Revert bulk (${bulkRevs.length})`;
+          revInfo.appendChild(bulkBtn);
+        }
+      }
     }
 
     meta.appendChild(revInfo);

@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-12.
+Last updated: 2026-04-14.
 
 ## Status Legend
 
@@ -85,6 +85,9 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 61 | `entry-window-task-completion-badge.md` | Entry window task completion badge | 2026-04-12 | entry window view title row に `done/total` badge 追加。child 側で `#body-view` DOM から `.pkc-task-checkbox` をカウントして導出。protocol 変更なし。parent 側変更なし。4 経路で同期（init/push/save/flush）。テスト 16 件。 |
 | 62 | `entry-window-structured-editor-parity.md` | Entry window structured editor parity | 2026-04-12 | TEXTLOG/todo/form の entry window 編集を raw JSON → presenter ベース構造化エディタに修正。`syncDomPropertiesToHtml()` で outerHTML シリアライズ前の DOM property→HTML 同期契約を確立。TEXTLOG save 後 per-log-entry 再描画修正。テスト 19+11 件。 |
 | 63 | `ui-readability-and-editor-sizing-hardening.md` | UI readability & editor sizing hardening (Slices A + B + C) | 2026-04-12 | Slice B: PDF / HTML sandbox preview に `position: relative; z-index: 10000` で CRT scanline overlay を除外。Slice C: center pane textarea `rows = max(15, lineCount+3)` + entry window 非構造化 textarea を `data-pkc-viewport-sized` + `data-pkc-wide` で viewport 追従。Slice A: `:root` に `--font-body` / `--radius-sm` / `--c-text` / `--c-text-dim` を定義、`.pkc-md-rendered` line-height 1.45、`pre` 1.35。テスト 10+4+6+11 = 31 件。 |
+| 64 | `orphan-asset-auto-gc.md` | Orphan asset auto-GC on container-replacement paths (Tier 2-1) | 2026-04-14 | `removeOrphanAssets` を `SYS_IMPORT_COMPLETE` (reduceReady / reduceError) + `CONFIRM_IMPORT` の 3 経路に wiring。0 件時は identity 維持で既存 integration test を壊さない。非対象経路（DELETE_ENTRY/COMMIT_EDIT/QUICK_UPDATE_ENTRY/BULK_DELETE）は revision restore との整合のため手動掃除に据え置き。テスト 8 件追加。 |
+| 65 | `bulk-restore-ui.md` | Bulk restore UI for BULK_* revisions (Tier 2-2) | 2026-04-14 | `data-pkc-action="restore-bulk"` + `data-pkc-bulk-id` ボタンを meta pane の History と trash panel に追加。action-binder が `getRevisionsByBulkId` で解決 → confirm → N 件の `RESTORE_ENTRY` dispatch（partial-success semantic）。新 reducer action 追加なし。テスト 14 件追加。 |
+| 66 | `../spec/merge-import-conflict-resolution.md` | Merge import conflict resolution — design spec (Tier 2-3, docs-only) | 2026-04-14 | 複数 container の merge import に関する設計仕様を `docs/spec/` に追加。衝突軸 5 種（entry/asset/relation/revision/metadata）を整理、3 案（A: Overlay / B: Policy-driven / C: Staging）を比較して **Option A** を MVP 採用。`features/import/merge-planner.ts` の pure helper と `CONFIRM_MERGE_IMPORT` 1 action 追加で完結。実装・テスト変更なし。data-model.md §11.7.4 / §14.6 / §15.5 に相互リンク追加。 |
 
 ## Stabilization Phase — 2026-04-12
 

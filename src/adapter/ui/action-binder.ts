@@ -4,6 +4,7 @@ import type { ExportMode, ExportMutability } from '../../core/action/user-action
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
 import { type AppState, getAllSelected } from '../state/app-state';
+import { getRevisionsByBulkId } from '../../core/operations/container-ops';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
@@ -296,6 +297,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const revisionId = target.getAttribute('data-pkc-revision-id');
         if (lid && revisionId) {
           dispatcher.dispatch({ type: 'RESTORE_ENTRY', lid, revision_id: revisionId });
+        }
+        break;
+      }
+      case 'restore-bulk': {
+        // Tier 2-2: bulk restore. Resolve all revisions that share the
+        // same bulk_id (produced by BULK_DELETE / BULK_SET_STATUS /
+        // BULK_SET_DATE), confirm with the user, then dispatch one
+        // RESTORE_ENTRY per revision. Partial success is acceptable —
+        // each RESTORE_ENTRY silently skips on archetype mismatch or
+        // stale revision, matching the existing single-restore
+        // semantics.
+        const bulkId = target.getAttribute('data-pkc-bulk-id');
+        if (!bulkId) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const revs = getRevisionsByBulkId(st.container, bulkId);
+        if (revs.length === 0) break;
+        const msg = `このバルク操作の ${revs.length} 件をまとめて元に戻しますか？`;
+        if (!confirm(msg)) break;
+        for (const rev of revs) {
+          dispatcher.dispatch({
+            type: 'RESTORE_ENTRY',
+            lid: rev.entry_lid,
+            revision_id: rev.id,
+          });
         }
         break;
       }
