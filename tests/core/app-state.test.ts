@@ -2102,15 +2102,22 @@ describe('sort', () => {
     expect(events[0]!.type).toBe('CONTAINER_IMPORTED');
   });
 
+  function makeImportPreview(container: Container, source: string) {
+    return {
+      title: container.meta.title,
+      container_id: container.meta.container_id,
+      entry_count: container.entries.length,
+      revision_count: container.revisions.length,
+      schema_version: container.meta.schema_version,
+      source,
+      container,
+    };
+  }
+
   it('CONFIRM_IMPORT auto-purges orphan assets from the preview container', () => {
     const withPreview: AppState = {
       ...readyState(),
-      importPreview: {
-        container: importedWithOrphans,
-        preview: [],
-        source: 'ext.zip',
-        lightSource: false,
-      },
+      importPreview: makeImportPreview(importedWithOrphans, 'ext.zip'),
     };
     const { state, events } = reduce(withPreview, { type: 'CONFIRM_IMPORT' });
     expect(state.importPreview).toBeNull();
@@ -2128,7 +2135,7 @@ describe('sort', () => {
     };
     const withPreview: AppState = {
       ...readyState(),
-      importPreview: { container: clean, preview: [], source: 'clean.zip', lightSource: false },
+      importPreview: makeImportPreview(clean, 'clean.zip'),
     };
     const { state, events } = reduce(withPreview, { type: 'CONFIRM_IMPORT' });
     expect(state.container).toBe(clean);
@@ -2177,7 +2184,7 @@ describe('sort', () => {
     ).state;
     // Commit with the asset reference removed
     const { state } = reduce(editing, {
-      type: 'COMMIT_EDIT', title: 'Text', body: 'Now with no asset',
+      type: 'COMMIT_EDIT', lid: 't1', title: 'Text', body: 'Now with no asset',
     });
     // Asset is still present — cleanup deferred to the manual button.
     expect(state.container!.assets['ast-bound']).toBe('ZZZZ');
@@ -2227,7 +2234,7 @@ describe('sort', () => {
     };
     const { state } = reduce(
       { ...readyState(), container: withAttachments, multiSelectedLids: ['a1', 'a2'] },
-      { type: 'BULK_DELETE', lids: ['a1', 'a2'] },
+      { type: 'BULK_DELETE' },
     );
     // Both attachments gone, but both assets remain.
     expect(state.container!.entries.length).toBe(0);
