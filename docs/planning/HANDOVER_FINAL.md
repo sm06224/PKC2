@@ -326,11 +326,14 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - 配布 HTML の cid 保持とは意図的に異なる設計（ZIP = 再導入のための形式、
   HTML = 配布 artifact）
 
-### 6.8 Pre-existing lint errors
-- `src/adapter/ui/*.ts` で `no-restricted-imports` ルールが 80 件エラー
-- 規則は「adapter が features を import してはならない」という文字通り読み
-  だが、実装上は合法（CLAUDE.md の層規則では `adapter → features` が正しい）
-- 既存の lint 設定の方が厳しすぎる状態。ブランチ内では無変更で放置
+### 6.8 Pre-existing lint errors（**解消済み — Tier 3-3 / 2026-04-14**）
+- 旧: `src/adapter/ui/*.ts` で `no-restricted-imports` ルールが 80+ 件エラー
+- 旧規則は「adapter が features を import してはならない」という文字通り
+  読みだが、実装上は合法（CLAUDE.md の層規則では `adapter → features`
+  が正しい）— 設定側のドリフトで、コードは正しかった
+- **Tier 3-3 で `.eslintrc.cjs` を CLAUDE.md §Architecture に整合させ、
+  91 errors / 9 warnings をゼロ化。CI の lint step は blocking に昇格済み。
+  詳細は `docs/development/lint-baseline-realignment.md`**
 ---
 
 ## 7. 次にやるべきこと（優先順位付き）
@@ -686,6 +689,7 @@ See HANDOVER_FINAL.md §4.
 | 2026-04-14 | §18.8「Tier 3-1 完了」を追加（merge import Overlay MVP 実装）。§18.5 A を完了印に更新。§4〜§5 / §6 / §17 は無変更 |
 | 2026-04-14 | §18.9「Tier 3-2 完了」を追加（release automation + bundle size budget + Playwright smoke baseline）。production code への touch 0。詳細は `docs/development/release-automation-and-smoke-baseline.md` |
 | 2026-04-14 | §18.9 末尾の Tier 3-3 再評価ポインタを追記。`docs/planning/TIER3_3_REEVALUATION.md` を正本として追加（docs-only）。Tier 3-3 = C-4（lint baseline 解消）を採用 |
+| 2026-04-14 | §18.10「Tier 3-3 完了」を追加（lint baseline realignment）。§6.8 を "解消済み" に更新。`.eslintrc.cjs` を CLAUDE.md §Architecture に整合させて 91 errors / 9 warnings をゼロ化、CI の lint step を blocking に昇格。詳細は `docs/development/lint-baseline-realignment.md` |
 
 ### このあと更新してよい箇所
 
@@ -1031,8 +1035,31 @@ CI / tooling / docs の変更。
 
 > **更新 (2026-04-14)**: 再評価セッション完了。選定結果は
 > `docs/planning/TIER3_3_REEVALUATION.md` に正本化済み。採用 =
-> **C-4（lint baseline 解消）**。B / C-3 / E は昇格条件付きで据え
-> 置き。Tier 3-3 実装セッションでは同書 §4 のスコープ / §6 の申し
-> 送りに従う。
+> **C-4（lint baseline 解消）**。Tier 3-3 実装も同日完了（§18.10）。
+
+### 18.10 Tier 3-3 完了（2026-04-14）
+
+`TIER3_3_REEVALUATION.md` で「Tier 3-3 = C-4（lint baseline 解消）」
+を採用。本節はその完了記録。production code logic は変更なし（1 か所
+の `while (true) → for (;;)` 変換のみ、意味同一）。
+
+| 項目 | 状態 |
+|-----|-----|
+| `.eslintrc.cjs` の adapter→features 禁止ルール撤去 | ✓ 83 errors 解消 |
+| `.eslintrc.cjs` に features→adapter 禁止ルール追加 | ✓ CLAUDE.md §Architecture を lint で pin |
+| `.eslintrc.cjs` に runtime→(anything) 禁止ルール追加 | ✓ 将来のドリフト予防 |
+| `no-unused-vars` に `varsIgnorePattern: '^_'` 追加 | ✓ 6 errors 解消 |
+| 9 件の `any` warning を eslint-disable + reason で止血 | ✓ 0 warnings |
+| `ci.yml` の lint step を blocking に昇格 | ✓ `continue-on-error: true` 削除 |
+| `merge-planner.ts` の `while (true)` → `for (let seq = 1; ; seq++)` | ✓ `no-constant-condition` 回避、意味同一 |
+| production code への意味変更 | × 0 件 |
+| 既存 3607 tests + smoke 1 件 | ✓ 全 pass |
+| `§6.8 Pre-existing lint errors` を "解消済み" へ更新 | ✓ |
+
+**これで 6 系統すべてが自動品質ゲートとして blocking に揃った**:
+typecheck / lint / unit / bundle size / UI smoke / release。
+
+**Tier 3-3 完了**。Tier 3-4 は改めて再評価対象（保留 3 群 = B / C-3
+/ E の昇格条件を `TIER3_3_REEVALUATION.md §5` に記録済み）。
 
 ---

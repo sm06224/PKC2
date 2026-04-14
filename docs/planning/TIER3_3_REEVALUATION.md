@@ -1,6 +1,8 @@
 # Tier 3-3 再評価（選定のみ、実装禁止）
 
-**Status**: decision doc（Tier 3-3 着手前の再評価）
+**Status**: decision doc（Tier 3-3 着手前の再評価）— **C-4 採用・同日
+実装完了（2026-04-14）**。実装記録は
+`docs/development/lint-baseline-realignment.md` と HANDOVER_FINAL §18.10。
 **Date**: 2026-04-14
 **Scope**: Tier 3-1 / 3-2 の完了を受けて、保留されていた 4 群
 （B / C-3 / C-4 / E）を **今の実害 + 要求 + 熟度** で再評価し、
