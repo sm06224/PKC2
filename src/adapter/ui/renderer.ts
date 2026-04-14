@@ -23,6 +23,7 @@ import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { syncTextlogSelectionFromState } from './textlog-selection';
 import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
+import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
@@ -145,6 +146,13 @@ export function render(state: AppState, root: HTMLElement): void {
   // purely from `state.textToTextlogModal`. The helper is
   // responsible for its own DOM idempotency.
   syncTextToTextlogModalFromState(state, root);
+
+  // UI singleton audit final pass (2026-04-13): auto-close the
+  // TEXTLOG → TEXT preview modal whenever the authoritative
+  // `textlogSelection` is gone, or whenever the overlay has been
+  // orphaned by the root-level innerHTML wipe above. Pure
+  // housekeeping — never opens, only closes.
+  syncTextlogPreviewModalFromState(state);
 }
 
 /**

@@ -193,16 +193,24 @@ image asset を選択 → markdown 挿入 → close。
 
 ## 5. 分類サマリ
 
-| 対象 | 分類 | 実装コスト | 優先度 |
-|-----|------|-----------|-------|
-| `textlog-preview-modal.ts` | **B**（clear hook 追加） | 低（~30 行 + test） | 中 |
-| `slash-menu.ts` | **C**（現状維持） | 0 | — |
-| `asset-picker.ts` | **C**（現状維持） | 0 | — |
-| `asset-autocomplete.ts` | **C**（現状維持） | 0 | — |
+| 対象 | 分類 | 実装コスト | 優先度 | 状態 |
+|-----|------|-----------|-------|-----|
+| `textlog-preview-modal.ts` | **B**（clear hook 追加） | 低（~30 行 + test） | 中 | ✓ **完了（2026-04-13）** |
+| `slash-menu.ts` | **C**（現状維持） | 0 | — | — |
+| `asset-picker.ts` | **C**（現状維持） | 0 | — | — |
+| `asset-autocomplete.ts` | **C**（現状維持） | 0 | — | — |
 
 P1-1 で処置済み 2 件 (`text-to-textlog-modal.ts`, `textlog-selection.ts`) と
 合わせ、**reducer 編入の新規候補は 0 件**。これは「A 分類対象なし」と表現で
 きる。
+
+**完了の要約** (2026-04-13): `textlog-preview-modal.ts` に
+`syncTextlogPreviewModalFromState(state)` を追加し、`renderer.ts` から 1 行で呼
+び出すようにした。rule (1) 「`state.textlogSelection === null`」と rule (2)
+「`activeModal.isConnected === false`」の 2 条件で close を実行する close-only
+sync。11 件のテスト（SELECT_ENTRY 別 lid / BEGIN_EDIT / DELETE_ENTRY /
+SYS_IMPORT_COMPLETE / 同一 lid 保持 / orphan 自動掃除 + 5 件の regression）で
+固定済み。
 
 ## 6. 今すぐ reducer 編入すべきもの
 

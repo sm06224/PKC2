@@ -16,7 +16,18 @@
  *
  * The module keeps the open panel as a singleton; opening a second
  * one automatically closes the first so we never leak overlays.
+ *
+ * Auto-close sync (2026-04-13, UI singleton audit final pass):
+ *   `syncTextlogPreviewModalFromState` is called from the renderer
+ *   so that reducer-driven teardown events (SELECT_ENTRY to another
+ *   entry, BEGIN_EDIT, DELETE_ENTRY of the textlog, SYS_IMPORT_COMPLETE)
+ *   collapse the module singleton in lock-step with the P1-1
+ *   `textlogSelection` clear rules. This is a pure housekeeping hook
+ *   — it never opens the modal, only closes it when the authoritative
+ *   state says the backing selection has gone away.
  */
+
+import type { AppState } from '../state/app-state';
 
 let activeModal: HTMLElement | null = null;
 
@@ -173,4 +184,53 @@ export function getTextlogPreviewBody(): string | null {
     '[data-pkc-field="textlog-preview-body"]',
   );
   return pre?.textContent ?? null;
+}
+
+/**
+ * Close the modal whenever the reducer has torn down the backing
+ * selection state, or whenever the overlay has been orphaned by a
+ * renderer-driven `root.innerHTML = ''` and the singleton pointer
+ * is still dangling.
+ *
+ * Called by `renderer.ts::render()` after the main DOM has been
+ * rebuilt. Never opens the modal — opening is exclusively the
+ * action-binder's job via `openTextlogPreviewModal`.
+ *
+ * Decision rules (all three independent):
+ *
+ *   1. `state.textlogSelection === null` AND `activeModal !== null`
+ *      The preview is always backed by an active TEXTLOG selection
+ *      (the user must be in selection-mode to open it). P1-1 clears
+ *      `textlogSelection` on SELECT_ENTRY to a different lid, on
+ *      BEGIN_EDIT, on DELETE_ENTRY of the active textlog, and on
+ *      SYS_IMPORT_COMPLETE — so this single check folds all four
+ *      teardown events into one action.
+ *
+ *   2. `activeModal !== null` AND `!activeModal.isConnected`
+ *      The renderer's `root.innerHTML = ''` detaches the overlay
+ *      from the DOM tree, leaving `activeModal` as an orphan
+ *      pointer. Clearing it here so the next `isTextlogPreviewModalOpen`
+ *      returns honest `false` rather than a stale `true`.
+ *
+ *   3. Same-lid SELECT_ENTRY and unrelated state changes keep the
+ *      modal open. This function makes no decision for those cases
+ *      — the `textlogSelection` clear rules above are already the
+ *      authoritative trigger.
+ */
+export function syncTextlogPreviewModalFromState(state: AppState): void {
+  if (activeModal === null) return;
+
+  // Reducer said selection is gone → modal's purpose is gone too.
+  if (!state.textlogSelection) {
+    closeTextlogPreviewModal();
+    return;
+  }
+
+  // Overlay was detached by a whole-root re-render but the close
+  // path never ran (e.g. a dispatch that preserves textlogSelection
+  // yet triggers render). Clean up the stale pointer.
+  if (!activeModal.isConnected) {
+    closeTextlogPreviewModal();
+    return;
+  }
 }
