@@ -1664,7 +1664,11 @@ describe('Multi-DnD drag ghost UX', () => {
     const evt = makeGhostDragEvent('dragstart', card);
     card.dispatchEvent(evt);
 
+    // `any` here bridges the mocked DataTransfer spy installed by
+    // makeGhostDragEvent (see below) with vi's Mock API surface.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
     expect(ghostArg.getAttribute('data-pkc-drag-ghost')).toBe('true');
     expect(ghostArg.textContent).toBe('2 件');
@@ -1680,7 +1684,10 @@ describe('Multi-DnD drag ghost UX', () => {
     const evt = makeGhostDragEvent('dragstart', item);
     item.dispatchEvent(evt);
 
+    // See Kanban-multi-drag case above for the `any` justification.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((evt.dataTransfer as any).setDragImage).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
     expect(ghostArg.textContent).toBe('2 件');
   });
@@ -1694,6 +1701,8 @@ describe('Multi-DnD drag ghost UX', () => {
     const evt = makeGhostDragEvent('dragstart', card);
     card.dispatchEvent(evt);
 
+    // Mock DataTransfer spy — see first case in this file.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((evt.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
   });
 
@@ -1744,6 +1753,8 @@ describe('Multi-DnD drag ghost UX', () => {
     const evt = makeGhostDragEvent('dragstart', card);
     card.dispatchEvent(evt);
 
+    // Mock DataTransfer spy — see first case in this file.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ghostArg = (evt.dataTransfer as any).setDragImage.mock.calls[0][0] as HTMLElement;
     expect(ghostArg.textContent).toBe('3 件');
   });
@@ -1804,6 +1815,8 @@ describe('Multi-DnD drag ghost UX', () => {
     const evt2 = makeGhostDragEvent('dragstart', card2);
     card2.dispatchEvent(evt2);
 
+    // Mock DataTransfer spy — see first case in this file.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((evt2.dataTransfer as any).setDragImage).not.toHaveBeenCalled();
     expect(document.querySelector('[data-pkc-drag-ghost]')).toBeNull();
   });
