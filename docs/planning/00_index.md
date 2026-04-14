@@ -17,12 +17,13 @@
 
 | ファイル | 内容 | 重要度 |
 |---------|------|--------|
-| `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
+| `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER + §18 Tier 2 完了追記（2026-04-14）。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
 | `CHANGELOG_v0.1.0.md` | v0.1.0 の差分 changelog（Added / Changed / Fixed / Internal） | ★★★ |
 | `../spec/data-model.md` | データモデル正本（Container / Entry / Revision + bulk_id / HTML・ZIP export 契約） | ★★★★ |
 | `../spec/body-formats.md` | archetype 別 body 契約 + embed / transclusion 仕様 | ★★★ |
+| `../spec/merge-import-conflict-resolution.md` | merge import 衝突解決の設計正本（Tier 2-3 で凍結、実装は Tier 3） | ★★★ |
 
-これら 4 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
+これら 5 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
 
 ### 第1群: アーキテクチャ（設計の芯）
 
@@ -63,7 +64,9 @@
 
 | 位置 | 内容 |
 |-----|-----|
-| `../development/INDEX.md` | Issue 別実装 note のインデックス（CLOSED / COMPLETED / CANDIDATE） |
+| `../development/INDEX.md` | Issue 別実装 note のインデックス（CLOSED / COMPLETED / CANDIDATE）。Tier 1-1 / 1-2 / 2-1 / 2-2 は COMPLETED に反映済み |
+| `../development/orphan-asset-auto-gc.md` | Tier 2-1 — import 経路に限定した orphan asset auto-GC（2026-04-14） |
+| `../development/bulk-restore-ui.md` | Tier 2-2 — BULK_* revision の 1-click restore UI（2026-04-14） |
 | `../development/ui-singleton-state-audit.md` | 残 singleton 棚卸し（2026-04-13） |
 | `../development/stale-listener-prevention.md` | テスト dispatcher leak 回避 pattern |
 | `../development/textlog-text-conversion.md` | TEXTLOG ↔ TEXT 変換仕様 |

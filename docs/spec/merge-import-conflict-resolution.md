@@ -1,7 +1,10 @@
 # Merge Import — 衝突解決の設計
 
-**Status**: design draft（Tier 2-3 / docs-only）
-**Date**: 2026-04-14
+**Status**: canonical spec（Tier 2-3 で凍結 / 2026-04-14）
+**Positioning**: `docs/spec/` 配下の正本仕様。`HANDOVER_FINAL.md`
+§18.2 の不変条件 **I-Merge1 / I-Merge2** に紐付く凍結ドキュメント。
+Tier 3 での merge import 実装はこの spec を **出発点（spec-first）**
+とする。spec を変更するには schema bump に準ずる意思決定が必要。
 **Scope**: 複数の PKC2 container を 1 つに **merge** するときの衝突
 解決戦略を設計として固める。本ドキュメントは **spec** であって実装
 ではない。コード・テスト・reducer には一切手を入れない。

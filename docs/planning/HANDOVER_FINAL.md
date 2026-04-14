@@ -1,7 +1,7 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-13
+**Last updated**: 2026-04-14（§18 Tier 2 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
@@ -348,12 +348,12 @@ v0.1.0 マージ後に開始できる P2 タスクを、優先度別に整理す
 
 ### 7.2 中優先（P2 mid）— データモデル拡張
 
-| タスク | 理由 |
-|-------|-----|
-| **merge import の conflict resolution 設計** | 複数 export を結合する運用ニーズが出たら必要 |
-| **bulk restore UI** | `bulk_id` の土台は入った。UI 導線を追加すれば使える |
-| **complex / document-set / spreadsheet archetype** | `docs/development/data-model/*` に設計先行済み |
-| **orphan asset auto-GC** | 現状手動 `PURGE_ORPHAN_ASSETS` のみ。delete / import-replace 時の自動クリーンアップ |
+| タスク | 理由 | Tier 2 進捗 |
+|-------|-----|------------|
+| **merge import の conflict resolution 設計** | 複数 export を結合する運用ニーズが出たら必要 | ✓ Tier 2-3 で spec 固定（`docs/spec/merge-import-conflict-resolution.md`）。実装は Tier 3 |
+| **bulk restore UI** | `bulk_id` の土台は入った。UI 導線を追加すれば使える | ✓ Tier 2-2 で実装完了 |
+| **complex / document-set / spreadsheet archetype** | `docs/development/data-model/*` に設計先行済み | — 未着手 |
+| **orphan asset auto-GC** | 現状手動 `PURGE_ORPHAN_ASSETS` のみ。delete / import-replace 時の自動クリーンアップ | ✓ Tier 2-1 で import 経路のみ実装（edit/delete 経路は据え置き） |
 
 ### 7.3 低優先（P2 later）— 足回りの改善
 
@@ -576,16 +576,16 @@ P2P / multi-window / message externalization / application scope の長期
 
 ### 推奨（リリース品質を一段上げるなら）
 
-- [ ] `npm run build:release` を実行して `dist/pkc2.html` を更新
-- [ ] manual のスクリーンショットを最新 UI に差し替え
+- [x] `npm run build:release` を実行して `dist/pkc2.html` を更新
+- [x] manual のスクリーンショットを最新 UI に差し替え — Tier 1-2 で完了（Playwright + IPAGothic）
 - [ ] GitHub Release 上に v0.1.0 タグ + release note を作成
 - [ ] `docs/planning/19_pre_release.md` を v0.1.0 リリース note と整合
 
 ### 非必須（マージ後で可）
 
-- [ ] CI 設定の導入（`.github/workflows/*.yml`）
+- [x] CI 設定の導入（`.github/workflows/*.yml`）— Tier 1-1 で完了（lint は continue-on-error、blocking 化は Tier 3 C 候補）
 - [ ] Pre-existing lint errors の解消（無関係、P2）
-- [ ] i18n 基盤（将来の多言語化向け）
+- [ ] i18n 基盤（将来の多言語化向け）— §18.4.2 で据え置き判断
 ---
 
 ## 13. 次セッション向けの標準プロンプト雛形
@@ -682,6 +682,7 @@ See HANDOVER_FINAL.md §4.
 | 日付 | 変更 |
 |-----|-----|
 | 2026-04-13 | 初版作成。v0.1.0 リリース前の最終 HANDOVER として整備 |
+| 2026-04-14 | §18「Tier 2 完了時点の到達状態」を追加（Tier 1-1 / 1-2 / 2-1 / 2-2 / 2-3 の固定、5 つの新不変条件、5 項目の意図的 non-done、Tier 3 方向の列挙）。§1〜§17 は書き換え無し |
 
 ### このあと更新してよい箇所
 
@@ -775,3 +776,202 @@ action / warning の全てが spec に記載済み。
 - schema_version migration path — spec §15.3 で「未設計」と明記、実装も無し
 - merge import — spec に merge 契約なし、実装も無し
 - 以上 3 項目は「意図的に spec に無い」状態であり、HANDOVER_FINAL §5 と整合
+
+---
+
+## 18. Tier 2 完了時点の到達状態（2026-04-14 締め）
+
+v0.1.0 のマージ後に走った **Tier 1〜Tier 2** の作業をここで正式に
+凍結する。本章は §4〜§7 の **補遺** であり、既存条項を書き換えない。
+
+### 18.1 Tier 1 / Tier 2 の全体サマリ
+
+| Tier | 完了日 | 成果 | 種別 |
+|------|-------|------|------|
+| 1-1 | 2026-04-14 | GitHub Actions CI（typecheck / lint / test / build）導入 | infra |
+| 1-2 | 2026-04-14 | manual 6 枚の placeholder を Playwright 実機キャプチャに差し替え | docs |
+| 2-1 | 2026-04-14 | `removeOrphanAssets` を import 経路 3 箇所に wiring（自動 orphan purge） | src + test + docs |
+| 2-2 | 2026-04-14 | BULK_* revision の 1-click restore UI（meta pane + trash panel） | src + test + docs |
+| 2-3 | 2026-04-14 | merge import 衝突解決の設計 spec を `docs/spec/merge-import-conflict-resolution.md` に固定 | docs-only |
+
+Tier 1 は「v0.1.0 リリース後の運用基盤整備」、Tier 2 は「既存契約
+の中で閉じられる改善 3 点」という切り分けで進めた。いずれも 5 層
+アーキテクチャ / reducer 一元化 / additive schema の **既存不変条件
+を壊していない**。
+
+### 18.2 Tier 2 で追加された不変条件（§4 の補遺）
+
+以下 5 項目は v0.1.x 時点で **固定された契約** として扱う。変更は
+schema bump 相当の大きな意思決定を要する。
+
+#### I-AutoGC1: orphan asset auto-GC は import 経路限定
+- `SYS_IMPORT_COMPLETE`（ready / error 両 reducer）/ `CONFIRM_IMPORT`
+  の 3 経路でのみ `removeOrphanAssets` を自動適用する
+- 識別子: `ORPHAN_ASSETS_PURGED` event、`removeOrphanAssets` 0 件時は
+  identity 維持で既存 round-trip test を壊さない
+- **DELETE_ENTRY / COMMIT_EDIT / QUICK_UPDATE_ENTRY / BULK_DELETE
+  の経路では自動 purge しない**。理由: revision snapshot 経由の
+  `RESTORE_ENTRY` が purge 済み asset を要求した時に復元不能化する
+  ため（`asset-scan.ts` L37-40 の "revisions are NOT reference-counted"
+  契約と整合）
+- 参照: `docs/development/orphan-asset-auto-gc.md`
+
+#### I-AutoGC2: 手動 `PURGE_ORPHAN_ASSETS` は据え置き
+- 既存の手動 action は edit / delete 経路のユーザー起点掃除として
+  残す。自動 GC とは共存する 2 つの GC surface
+
+#### I-Bulk1: bulk_id は grouping tag であり restore identity ではない
+- `Revision.bulk_id?: string` は「同一 bulk 操作で生まれた N 件の
+  snapshot を束ねる tag」
+- 単一 `RESTORE_ENTRY` の対象識別子としては使わない（従来どおり
+  `lid + revision_id` で restore）
+- bulk 単位の restore は **N 回の `RESTORE_ENTRY` dispatch** で実現
+  する（Tier 2-2 の UI 契約）
+- 新 reducer action は追加しない（`RESTORE_BULK` は未導入）
+- 参照: `docs/development/bulk-restore-ui.md` §2
+
+#### I-Merge1: merge import は Overlay (append-only) 契約
+- Tier 3 で実装する merge import は **host 側 entry を absolute に
+  触らない** append-only を MVP 契約とする
+- imported 側の lid は常に新規採番へ rename
+- update / reconcile（上書き / マージ）は **MVP では実装しない**
+- 設計: `docs/spec/merge-import-conflict-resolution.md` §6.2
+
+#### I-Merge2: merge import spec は凍結済みの正本
+- `docs/spec/merge-import-conflict-resolution.md` は Tier 2-3 で正式
+  spec（canonical）として固定
+- Tier 3 実装時にここで扱っていない軸を新しく発見した場合は **spec
+  を先に更新してから実装**する（spec-first）。実装優先で spec を
+  reverse-engineer しない
+- Option A（Overlay）/ B（Policy）/ C（Staging）の trade-off 判断は
+  再議論しない（MVP 採用 = Option A 固定）
+
+### 18.3 Tier 2 で固定された設計判断
+
+| 判断 | 採用 | 不採用 |
+|-----|-----|-------|
+| orphan auto-GC の範囲 | B: 安全な import 経路のみ | A: 全経路自動 / C: 手動のまま |
+| bulk restore UI の実装 | A: UI + 既存 `RESTORE_ENTRY` 多重 dispatch | B: 新 `RESTORE_BULK` reducer action / C: UI だけで handler なし |
+| merge import の MVP 形態 | A: Overlay（append-only） | B: Policy-driven UI / C: Staging container |
+| CI の lint 扱い | B: `continue-on-error` で non-blocking | A: blocking（pre-existing 80 件の lint error で CI 恒常赤化） |
+| manual screenshot の取得 | Playwright + headless chromium + IPAGothic | 手動キャプチャ / SVG モック |
+
+**これらの判断は「再議論対象外」**。新しい要件が出た時は MVP の
+契約に後付け可能か（§9 将来拡張の形）を先に検討する。
+
+### 18.4 Tier 2 で意図的にやらなかったこと（§5 の補遺）
+
+§5 に書かれている一次リストに加えて、Tier 2 進行中に改めて **今は
+やらない** と判断した事項。
+
+#### 18.4.1 merge import の実装（Tier 3 以降）
+- spec は凍結したが実装は着手していない
+- **理由**: 
+  - v0.1.x で実害のある衝突ユースケースが観測されていない
+  - 前提条件（`docs/spec/merge-import-conflict-resolution.md` §10）
+    の確認作業を 1 セッション独立で取る方が安全
+  - Tier 3 の全体優先順位決定を先行させるため、着手は後段
+
+#### 18.4.2 i18n（日英の文言統一基盤）は未着手
+- UI 文言は現状も日英混在のまま
+- **理由**:
+  - 現時点で多言語ユーザーからの要求が出ていない
+  - i18n 基盤の選定（gettext vs key-value table vs runtime lookup）
+    自体が一定の設計工数。着手するなら独立した tier として設計する
+  - v0.1.x の readability は IPAGothic / CSS 調整で許容範囲に到達
+    済み（Tier 2 完了時点）
+
+#### 18.4.3 DOM 局所 diff renderer は未採用
+- renderer は現状 `root.innerHTML = ''` の全置換
+- **理由**:
+  - v0.1.x のエントリ数（典型 100 件未満）では体感遅延が無い
+  - 全置換の単純さが「操作順序バグ抑止を最重要非機能要件とする」
+    という原点方針（requirements 00）と整合
+  - virtual DOM や incremental render の導入は 5 層構造の
+    renderer 層を大きく作り直す refactor で、Tier 3 単発では収ま
+    らない
+
+#### 18.4.4 P2P / WebRTC によるマルチユーザー協調はスコープ外
+- `docs/vision/webrtc-p2p-collaboration.md` に構想はある
+- **理由**:
+  - マルチユーザー対応は CRDT 等の conflict-free データ構造への
+    拡張が必要で、Revision の linear history モデルと構造的に衝突
+    する
+  - 単独利用 + 配布 HTML での "snapshot 共有" が現実的にワークして
+    いる
+  - P2P は v1.x 以降の大型テーマ
+
+#### 18.4.5 multi-cid（同時複数コンテナ）は未対応
+- IDB は `__default__` pointer の単一 cid のみ
+- **理由**:
+  - 現在は export / import の 4 系統で "別コンテナへの移動" が
+    表現できているため、同時存在のメリットが薄い
+  - UI / selection / renderer / persistence の全層に container 参
+    照を引数化する破壊的 refactor になる
+  - Option C（Staging）と同じ invariant 拡張を要するため、merge
+    import 実装後に一緒に検討するのが自然
+
+### 18.5 Tier 3 への橋渡し（優先順位は付けない）
+
+Tier 3 で候補となる方向を列挙する。**順序は未決**（本章の責務は
+「選択肢の固定」であり優先順位決定は別セッション）。
+
+#### A. merge import 実装
+- spec（`docs/spec/merge-import-conflict-resolution.md`）を正本として
+  `features/import/merge-planner.ts` + 1 reducer action + UI radio
+  を追加
+- 前提条件チェックは spec §10 を使う
+
+#### B. archetype 拡張
+- `docs/development/data-model/complex-entry-archetype.md` /
+  `spreadsheet-entry-archetype.md` に先行設計あり
+- 追加時は新 presenter + body-formats spec への §追加
+
+#### C. CI 強化
+- E2E テスト（Playwright baseline）導入
+- bundle size budget（回帰検知）
+- lint blocking 化（pre-existing 80 件 error の解消が前提）
+
+#### D. release automation
+- GitHub Release 自動作成
+- `dist/pkc2.html` 自動アップロード
+- `PKC2-Extensions/pkc2-manual.html` 自動同梱
+
+#### E. 将来構想（P3 以降）
+- P2P / WebRTC 同期
+- multi-window 協調
+- multi-cid UI
+- i18n 基盤
+
+**いずれも「Tier 3 で 1 つずつ決着させる」粒度の切り分けになって
+おり、複合 Tier には跨げない**。
+
+### 18.6 Tier 2 完了後に追加で読むべき文書
+
+新規セッションは §13 の標準プロンプトに加えて以下を読むと、現時点
+の完成面を最短で把握できる:
+
+- `docs/spec/merge-import-conflict-resolution.md` — merge 設計の
+  正本（Tier 3 前提文書）
+- `docs/development/orphan-asset-auto-gc.md` — Tier 2-1 の実装メモ
+- `docs/development/bulk-restore-ui.md` — Tier 2-2 の実装メモ
+- `.github/workflows/ci.yml` — CI の現状（Tier 1-1）
+- `docs/manual/images/README.md` — screenshot 運用（Tier 1-2）
+
+### 18.7 Tier 2 完了確認
+
+| 項目 | 状態 |
+|-----|-----|
+| Tier 1-1 CI workflow | ✓ push / PR で自動走行 |
+| Tier 1-2 manual screenshot | ✓ 6 枚差し替え済み |
+| Tier 2-1 orphan asset auto-GC | ✓ 3 経路 wiring 済み、テスト 8 件追加 |
+| Tier 2-2 bulk restore UI | ✓ meta pane + trash panel に実装、テスト 14 件追加 |
+| Tier 2-3 merge import spec | ✓ canonical spec として固定 |
+| 新不変条件 5 件（I-AutoGC1 / I-AutoGC2 / I-Bulk1 / I-Merge1 / I-Merge2） | ✓ §18.2 に明記 |
+| 意図的 non-done 5 件（merge 実装 / i18n / diff renderer / P2P / multi-cid） | ✓ §18.4 に明記 |
+| 既存 §4 / §5 / §6 の書き換え | × 発生せず（additive のみ） |
+| production code への touch | Tier 2-1 / 2-2 のみ（Tier 2-3 は docs-only） |
+
+**Tier 2 完了**。次は Tier 3 優先順位決定（別セッション）。
+
+---
