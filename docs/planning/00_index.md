@@ -18,6 +18,7 @@
 | ファイル | 内容 | 重要度 |
 |---------|------|--------|
 | `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER + §18 Tier 2 完了追記（2026-04-14）。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
+| `TIER3_PRIORITIZATION.md` | Tier 3 優先順位決定（2026-04-14）。Tier 3-1 = merge import 実装 / Tier 3-2 = release automation + CI 軽量強化 / 保留 = archetype 拡張・広範 E2E・lint baseline・長期ビジョン系 | ★★★ |
 | `CHANGELOG_v0.1.0.md` | v0.1.0 の差分 changelog（Added / Changed / Fixed / Internal） | ★★★ |
 | `../spec/data-model.md` | データモデル正本（Container / Entry / Revision + bulk_id / HTML・ZIP export 契約） | ★★★★ |
 | `../spec/body-formats.md` | archetype 別 body 契約 + embed / transclusion 仕様 | ★★★ |

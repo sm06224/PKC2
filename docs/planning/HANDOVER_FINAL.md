@@ -916,6 +916,10 @@ schema bump 相当の大きな意思決定を要する。
 Tier 3 で候補となる方向を列挙する。**順序は未決**（本章の責務は
 「選択肢の固定」であり優先順位決定は別セッション）。
 
+> **更新 (2026-04-14)**: 優先順位は `docs/planning/TIER3_PRIORITIZATION.md`
+> で確定済み。Tier 3-1 = A（merge import 実装）、Tier 3-2 = D
+> （release automation）+ C の軽量部分。B / C 重い部分 / E は保留。
+
 #### A. merge import 実装
 - spec（`docs/spec/merge-import-conflict-resolution.md`）を正本として
   `features/import/merge-planner.ts` + 1 reducer action + UI radio
