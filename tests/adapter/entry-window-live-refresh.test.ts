@@ -330,14 +330,21 @@ describe('wireEntryWindowLiveRefresh', () => {
     unsub();
   });
 
-  it('does not fire for DELETE_ENTRY because the reducer does not cleanup orphaned assets', () => {
-    // This test documents current reducer behavior:
-    // `removeEntry` only updates entries and relations — it leaves
-    // `container.assets` unchanged. Orphan-asset cleanup is
-    // deliberately out-of-scope for this Issue (see
+  it('fires for DELETE_ENTRY because the entries identity changes (P1-2)', () => {
+    // Original pre-P1-2 assertion was "does NOT fire, because
+    // prev.assets === next.assets". P1-2 (2026-04-13) widened the
+    // gate to also fire on entries-identity change, so any entry
+    // deletion now triggers a push. This is the intended behaviour:
+    // after DELETE_ENTRY the mimeByKey / nameByKey maps (derived
+    // from attachment entries) may have shrunk, and pushing a fresh
+    // preview ctx keeps the child's resolver consistent with the
+    // main window's current truth.
+    //
+    // `removeEntry` still does not touch `container.assets`, so the
+    // raw asset bytes remain — the test also documents that orphan
+    // asset cleanup is still out-of-scope (see
     // docs/development/edit-preview-asset-resolution.md §Live refresh
-    // wiring). Because `prev.assets === next.assets` holds, the live
-    // refresh wiring is (correctly) a no-op for DELETE_ENTRY.
+    // wiring).
     const dispatcher = createDispatcher();
     const textLid = `text-del-${testCounter}`;
     const attLid = `att-del-${testCounter}`;
@@ -386,13 +393,24 @@ describe('wireEntryWindowLiveRefresh', () => {
 
     dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: attLid });
 
-    // The reducer left container.assets identity unchanged — wiring
-    // does not push.
+    // P1-2: entries identity changed → exactly one push fires. The
+    // rebuilt ctx drops `ast-orphan` from nameByKey / mimeByKey
+    // because the attachment entry no longer exists.
     const pushCalls = child.postMessage.mock.calls.filter(
       (call) => (call[0] as { type?: string })?.type === 'pkc-entry-update-preview-ctx',
     );
-    expect(pushCalls.length).toBe(0);
-    // Orphan still present in the state, documenting current behavior.
+    expect(pushCalls.length).toBe(1);
+    const pushedCtx = pushCalls[0]![0] as {
+      previewCtx: {
+        assets: Record<string, string>;
+        mimeByKey: Record<string, string>;
+        nameByKey: Record<string, string>;
+      };
+    };
+    expect(pushedCtx.previewCtx.mimeByKey['ast-orphan']).toBeUndefined();
+    expect(pushedCtx.previewCtx.nameByKey['ast-orphan']).toBeUndefined();
+    // Orphan BYTES still present in container.assets — that is a
+    // separate open concern (orphan asset cleanup not implemented).
     expect(dispatcher.getState().container!.assets['ast-orphan']).toBe('DDDD');
     unsub();
   });

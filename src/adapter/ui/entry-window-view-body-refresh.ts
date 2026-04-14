@@ -1,67 +1,64 @@
 /**
  * Entry-window text / textlog view-body rerender wiring.
  *
- * Subscribes to dispatcher state changes and, whenever the
- * container's `assets` object identity changes, pushes a freshly
+ * Subscribes to dispatcher state changes and, whenever an input that
+ * affects the host's rendered body HTML changes, pushes a freshly
  * resolved view-pane body HTML fragment into every currently-open
- * entry-window child for a text / textlog entry whose saved body
- * contains at least one `asset:` reference.
+ * entry-window child for a text / textlog entry.
+ *
+ * Trigger inputs that drive a push (P1-2, 2026-04-13):
+ *   1. `prev.container.assets !== next.container.assets`
+ *      — existing asset-identity path. When the host body contains at
+ *        least one `asset:` reference, the rendered HTML changes and
+ *        the child must receive an update.
+ *   2. The host entry object itself changed
+ *      (`prev.container.entries.find(lid) !== next.container.entries.find(lid)`)
+ *      — the user or another pipeline edited the host directly. Always
+ *        push, regardless of whether the body contains references,
+ *        because the body text itself may have changed.
+ *   3. `prev.container.entries !== next.container.entries` AND the host
+ *      body contains at least one `entry:` reference
+ *      — a referenced entry changed (e.g. a TODO status toggle while
+ *        the host is embed'ed in a text document). The transclusion
+ *        result depends on the target entry.
  *
  * Companion to `wireEntryWindowLiveRefresh` (Preview wiring). Both
- * modules share the same trigger condition
- * (`prev.assets !== next.assets`) but operate on disjoint parts of
- * the child window:
+ * modules share the same outer gate (assets OR entries identity change)
+ * but operate on disjoint parts of the child window:
  *   - Preview wiring refreshes the edit-mode resolver context via
  *     `pushPreviewContextUpdate` — affects only the Preview tab.
  *   - View wiring (this module) refreshes the view-pane HTML via
  *     `pushViewBodyUpdate` — affects only `#body-view`.
  *
- * They live side-by-side on the same dispatcher and never
- * interfere: each one calls its own dedicated push helper and
- * sends its own dedicated postMessage type. See
- * `docs/development/edit-preview-asset-resolution.md`, section
- * "Text/textlog view rerender wiring", for the full
- * foundation → policy → wiring stack.
- *
- * Dirty-state policy: this wiring always calls
- * `pushViewBodyUpdate` when an asset change affects an open
- * text / textlog child with references. The CHILD decides whether
- * to apply the incoming HTML immediately (clean entry) or stash
- * it in `pendingViewBody` for a later flush (dirty entry). The
- * wiring itself is intentionally dirty-agnostic — it does not
- * inspect the child's edit state and does not short-circuit on
- * dirtiness.
+ * Dirty-state policy: this wiring always calls `pushViewBodyUpdate`
+ * when a trigger fires and the per-entry gate admits the push. The
+ * CHILD decides whether to apply the incoming HTML immediately
+ * (clean entry) or stash it in `pendingViewBody` for a later flush
+ * (dirty entry). The wiring itself is intentionally dirty-agnostic.
  *
  * Archetype filter: only text / textlog entries receive a push.
- * Attachment, todo, form, folder children never receive a
- * view-body update here — those archetypes do not participate in
- * markdown asset resolution. `buildEntryPreviewCtx` already
- * returns `undefined` for non-text/textlog entries as a second
- * line of defense.
+ * `buildEntryPreviewCtx` returns `undefined` for anything else, which
+ * is the archetype gate's last line of defense.
  *
  * No-op conditions (wiring deliberately skips the push):
  *   - No container yet (boot-time state).
- *   - `prev.assets === next.assets` (no identity change).
+ *   - Both `prev.assets === next.assets` AND
+ *     `prev.entries === next.entries` (no relevant identity change).
  *   - Zero currently-open entry-window children.
- *   - The open lid does not match any entry in the new container
- *     (stale / deleted lid).
+ *   - The open lid does not match any entry in the new container.
  *   - The entry's archetype is not text / textlog.
- *   - The entry's body is empty or contains no `asset:` references
- *     — the rendered HTML would be identical to what the child
- *     already shows, so the push would be wasted work.
+ *   - Host entry object identity unchanged AND the body contains no
+ *     refs that would be affected by the asset/entry change that fired.
  *
  * Scope & invariants (must stay true):
  *   - Never bypasses `pushViewBodyUpdate`. All child DOM writes
  *     route through the foundation helper so its postMessage
  *     contract, `renderMarkdown` settings, and `(empty)` fallback
  *     remain the single source of truth.
- *   - Never touches the Preview wiring. This module only calls
- *     `pushViewBodyUpdate`; the Preview wiring only calls
- *     `pushPreviewContextUpdate`. The two remain orthogonal.
- *   - Never performs a deep asset diff. Identity comparison
- *     mirrors the Preview wiring and is sufficient because the
- *     reducer always replaces the `assets` object when it
- *     mutates.
+ *   - Never touches the Preview wiring.
+ *   - Never performs a deep asset or entry-graph diff. Identity
+ *     comparison suffices because the reducer always replaces the
+ *     parent arrays/objects when they mutate.
  */
 
 import type { Dispatcher } from '../state/dispatcher';
@@ -70,6 +67,7 @@ import {
   hasAssetReferences,
   resolveAssetReferences,
 } from '../../features/markdown/asset-resolver';
+import { extractEntryReferences } from '../../features/entry-ref/extract-entry-refs';
 import {
   getOpenEntryWindowLids,
   pushViewBodyUpdate,
@@ -87,13 +85,17 @@ import {
 export function wireEntryWindowViewBodyRefresh(dispatcher: Dispatcher): () => void {
   return dispatcher.onState((state, prev) => {
     const nextContainer = state.container;
-    const prevAssets = prev.container?.assets;
-    const nextAssets = nextContainer?.assets;
     if (!nextContainer) return;
-    // Identity comparison is sufficient: the reducer always
-    // replaces the `assets` object when it mutates, matching the
-    // Preview wiring's gate exactly.
-    if (prevAssets === nextAssets) return;
+    const prevAssets = prev.container?.assets;
+    const nextAssets = nextContainer.assets;
+    const prevEntries = prev.container?.entries;
+    const nextEntries = nextContainer.entries;
+    const assetsChanged = prevAssets !== nextAssets;
+    const entriesChanged = prevEntries !== nextEntries;
+    // Outer gate: at least one of the relevant identities must have
+    // changed for there to be any possibility that a re-render is
+    // needed.
+    if (!assetsChanged && !entriesChanged) return;
 
     const openLids = getOpenEntryWindowLids();
     if (openLids.length === 0) return;
@@ -101,12 +103,25 @@ export function wireEntryWindowViewBodyRefresh(dispatcher: Dispatcher): () => vo
     for (const lid of openLids) {
       const entry = nextContainer.entries.find((e) => e.lid === lid);
       if (!entry) continue;
-      // Skip bodies that cannot possibly change based on assets.
-      // This is purely an optimization gate — the child would
-      // produce the same HTML either way. Skipping it avoids a
-      // wasted postMessage round-trip and keeps the dirty-state
-      // notice from flashing when nothing visible would change.
-      if (!entry.body || !hasAssetReferences(entry.body)) continue;
+      if (!entry.body) continue;
+
+      // The host entry's own object identity — if it changed, the
+      // host's body/title/flags were edited directly and we must
+      // always push a fresh render, regardless of refs.
+      const prevHost = prev.container?.entries.find((e) => e.lid === lid);
+      const hostChanged = prevHost !== entry;
+
+      // Cheap ref-presence gates. We use them to skip pushes that
+      // cannot possibly change the rendered output.
+      const hasAssetRef = hasAssetReferences(entry.body);
+      const hasEntryRef = extractEntryReferences(entry.body).size > 0;
+
+      const shouldPush =
+        hostChanged ||
+        (assetsChanged && hasAssetRef) ||
+        (entriesChanged && hasEntryRef);
+      if (!shouldPush) continue;
+
       // Archetype filter: `buildEntryPreviewCtx` returns undefined
       // for anything other than text / textlog, so this is both
       // the resolver-context builder AND the archetype gate.

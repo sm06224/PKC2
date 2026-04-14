@@ -399,22 +399,42 @@ describe('wireEntryWindowViewBodyRefresh', () => {
     const viewCalls = calls.filter(
       (call) => (call[0] as { type?: string })?.type === 'pkc-entry-update-view-body',
     );
-    // Each wire fires exactly once for the same asset change.
-    expect(previewCalls.length).toBe(1);
+    // `addAttachment` is a two-step dispatch: CREATE_ENTRY creates
+    // the attachment entry (entries identity change), then COMMIT_EDIT
+    // commits the body AND merges the asset into container.assets
+    // (both identities change). Under the P1-2 widened gate each
+    // wire fires ONCE per identity change that is relevant to it:
+    //   - Preview wiring: fires on both CREATE_ENTRY and COMMIT_EDIT
+    //     (it gates on assets OR entries change). 2 pushes.
+    //   - View wiring: CREATE_ENTRY gives it an entries change but the
+    //     host text body has no `entry:` ref, so it skips; COMMIT_EDIT
+    //     gives it an assets change AND the host has an `asset:` ref,
+    //     so it pushes. 1 push.
+    //
+    // Pre-P1-2 the Preview wiring only fired on the COMMIT_EDIT
+    // because it gated purely on assets-identity — so the assertion
+    // was `toBe(1)`. The new `toBe(2)` documents the deliberate
+    // broadening (P1-2, 2026-04-13). The last push is still the
+    // authoritative one; children applying context updates always
+    // render against the latest payload.
+    expect(previewCalls.length).toBe(2);
     expect(viewCalls.length).toBe(1);
 
-    // Preview payload carries the resolver context shape.
-    const previewPayload = previewCalls[0]![0] as {
+    // Preview payload carries the resolver context shape. The LAST
+    // push is what reflects the fully-committed attachment; earlier
+    // pushes may have had an empty `assets` map (from the transient
+    // CREATE_ENTRY step).
+    const lastPreview = previewCalls[previewCalls.length - 1]![0] as {
       previewCtx: { assets: Record<string, string> };
     };
-    expect(previewPayload.previewCtx.assets['ast-coex']).toBe('GGGG');
+    expect(lastPreview.previewCtx.assets['ast-coex']).toBe('GGGG');
 
     // View payload carries rendered HTML with the inlined data URI.
     const viewPayload = viewCalls[0]![0] as { viewBody: string };
     expect(viewPayload.viewBody).toContain('data:image/png;base64,GGGG');
 
     // The two payloads must NOT leak into each other.
-    expect(previewPayload).not.toHaveProperty('viewBody');
+    expect(lastPreview).not.toHaveProperty('viewBody');
     expect(viewPayload).not.toHaveProperty('previewCtx');
 
     unsubPreview();

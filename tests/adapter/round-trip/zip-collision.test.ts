@@ -100,7 +100,11 @@ function assetZipEntry(key: string, bytes: Uint8Array): ZipEntry {
 }
 
 async function importFromBytes(bytes: Uint8Array, name = 'zip-collision.pkc2.zip') {
-  const file = new File([bytes], name, { type: 'application/zip' });
+  // TS lib.dom narrows `Uint8Array<ArrayBufferLike>` to exclude
+  // `SharedArrayBuffer`-backed arrays, but `File` takes `BlobPart[]`.
+  // Cast is safe because `createZipBytes` returns a plain
+  // `Uint8Array<ArrayBuffer>`.
+  const file = new File([bytes as BlobPart], name, { type: 'application/zip' });
   return importContainerFromZip(file);
 }
 
