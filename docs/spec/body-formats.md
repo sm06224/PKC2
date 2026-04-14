@@ -167,15 +167,25 @@ interface DaySection {
 
 実装: `src/features/textlog/textlog-csv.ts`
 
-- `timestamp`（ISO 機械可読） / `timestamp_display`（人間可読） / `id` / `text` / `flags` 列
+- `timestamp`（ISO 機械可読） / `timestamp_display`（人間可読） / `id` / `text` / `important`（boolean 列） 列
 - CSV export / Copy Reference は **生 ISO timestamp** を emit（ミリ秒精度）
 - UI 表示用の `formatLogTimestampWithSeconds` は display 専用
+
+### 3.6.1 textlog-bundle (CSV) は lossy format である
+
+**Canonical decision 2026-04-13 (F3 / P0-2b → P0-5)**. textlog-bundle (`.textlog.zip`) は **意図的に lossy な交換形式** である。
+
+- CSV schema は固定 5 列（上記）。`flags` は `important` boolean 1 種のみを列として持つ
+- `TextlogFlag` に**将来新しい値**（`'important'` 以外）が追加された場合、それらは CSV round-trip で**失われる**
+- JSON route（HTML Full / ZIP）は `flags: string[]` をそのまま保持するため、**同じ Entry が配布経路によって flags 構成が異なりうる**
+- lossless な交換が必要な場合は HTML Full または ZIP を使うこと。textlog-bundle は日常的な CSV 互換ツール向けの配布形式として位置付ける
+- 非対称性は `docs/spec/data-model.md` §13 の Sister Bundle と整合。CSV 列拡張は将来の検討事項（P2）
 
 ### 3.7 既知の曖昧点
 
 - 同一 `createdAt` の log entries の副順序（storage 順が唯一の決定打）
 - legacy log id の形式多様性（`log-<ts>-<n>` 以外の過去形式の有無）
-- `flags` に unknown 値が混入した時の forward compatibility
+- ~~`flags` に unknown 値が混入した時の forward compatibility~~ → **§3.6.1 で方針確定（JSON 経路で保持、CSV 経路で drop）**
 
 ---
 
@@ -669,6 +679,17 @@ interface Archetype<TView = unknown> {
 - body は bundle 内 `container.json` に raw 格納
 - 参照 asset は bundle 内 `assets/` ディレクトリに raw binary として同梱
 - compact mode で broken asset ref は markdown リライト（§9.3）
+
+#### 13.4.1 text-bundle import の title 正規化（canonical）
+
+**Canonical decision 2026-04-13 (F2 / P0-2b → P0-5)**. text-bundle の import は **title を常に `trim()` する**:
+
+- `manifest.source_title` が空文字列または空白のみ → `'Imported text'` にフォールバック
+- それ以外 → **前後空白を除いた値**を `text.title` として返す（例: `' README '` → `'README'`）
+
+実装: `src/adapter/platform/text-bundle.ts:483` (`(parsedManifest.source_title ?? '').trim() || 'Imported text'`)。
+
+本挙動は UX 上の正規化として spec 化済み。raw 保持を期待しないこと。textlog-bundle にも同一のフォールバック（`'Imported textlog'`）があるが trim 挙動は別途確認が必要（P0-2c 候補）。
 
 ### 13.5 body の byte-level preservation の境界
 

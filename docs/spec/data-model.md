@@ -601,15 +601,16 @@ interface PackageManifest {
 - `manifest.format === 'pkc2-package'` と `version === 1` を検証
 - `container.json` を parse
 - `container.meta.container_id` / `title` が string で `entries` / `relations` が array であることを検証
-- `assets/<key>.bin` を順次読み、base64 にエンコードして `assets[key]` に格納
+- `assets/<key>.bin` を順次読み、base64 にエンコードして `assets[key]` に格納（衝突検知ルールは §11.7 参照）
 - **新しい cid を採番**して `container.meta.container_id` を置換（source と衝突を避けるため）
-- `updated_at` は import 時刻に進む
+- **`meta.updated_at` は import 時刻で無条件上書きされる**（F1 監督決定、2026-04-13）。source の `updated_at` は **保持されない**。単調性は保証されず、source が未来の値を持っていた場合、import 後に値が小さくなり得る
 - revisions は「array なら維持、欠落なら `[]`」
 
 ### 11.5 ZIP Import で失われる情報
 
 - **source_cid**（manifest に記録されるが復元は不可。新 cid が振られる）
 - 旧 cid を参照していた外部リンク（URL 直書きの entry ref 等）
+- **source の `meta.updated_at`**（§11.4 参照、import 時刻で上書きされる）
 
 ### 11.6 失敗時のエラーメッセージ
 
@@ -620,6 +621,44 @@ interface PackageManifest {
 - `Invalid container: missing meta fields`
 - `Invalid container: missing entries array`
 - `Invalid container: missing relations array`
+
+### 11.7 Import 時の衝突検知（collision policy）
+
+**Added 2026-04-13 (P0-5)**. 実装: `src/adapter/platform/zip-package.ts` の `importContainerFromZip`。
+
+ZIP ファイル内に以下のような不整合があった場合、**silent overwrite を行わず**、`ZipImportSuccess.warnings` に記録して import を成功させる。
+
+#### 11.7.1 警告コード
+
+| コード | 条件 | 処理 |
+|-------|------|-----|
+| `DUPLICATE_ASSET_SAME_CONTENT` | 同一 key の `assets/<key>.bin` が複数、**byte 完全一致** | 1 個に dedup（1 件目を採用） |
+| `DUPLICATE_ASSET_CONFLICT` | 同一 key の `assets/<key>.bin` が複数、**byte が異なる** | **1 件目を採用**（first-wins）、loudly warn |
+| `DUPLICATE_MANIFEST` | `manifest.json` が複数 | 1 件目を採用 |
+| `DUPLICATE_CONTAINER_JSON` | `container.json` が複数 | 1 件目を採用 |
+| `INVALID_ASSET_KEY` | key が空 / `.` / `..` / `/` や `\` を含む | 当該 asset を skip（`assets[key]` に格納しない） |
+
+#### 11.7.2 ZipImportWarning スキーマ
+
+```typescript
+interface ZipImportWarning {
+  code: ZipImportWarningCode;
+  message: string;    // 人間可読
+  key?: string;       // asset 関連時のみ
+  kept: 'first' | null;  // 'first' = 1件目を採用 / null = skip
+}
+```
+
+#### 11.7.3 保証契約
+
+- **一度の import 中に発生したすべての違反**を warnings 配列に記録する（silent drop しない）
+- **成功時 result に `warnings` フィールドが存在する場合、必ず 1 件以上の警告を含む**（空配列を格納しない。警告が無ければ field ごと省略）
+- **first-wins は安定かつ deterministic**: 同一 ZIP を繰り返し import すると同じ結果を返す
+- **異なる key に同一 byte を持つ asset は dedup しない**（両方とも保持。§12.3 の ZIP 行と整合）
+
+#### 11.7.4 「衝突検知」の意味的範囲
+
+本節は **1 つの ZIP ファイル内部**の不整合のみを扱う。current implementation は「複数 ZIP を順次 import した際の累積」を扱わない（import は full replace 契約、§14.1 I-IO1）。複数 ZIP を統合する merge import は **未実装**（P2 候補）。
 
 ---
 
@@ -652,13 +691,13 @@ interface PackageManifest {
 
 ### 12.3 往復 (round-trip) 可能性
 
-| 経路 | cid 保持 | revisions 保持 | assets 保持 | body/relations 保持 |
-|-----|---------|---------------|------------|-------------------|
-| HTML Light export → import | ✓ | ✓ | ✗（空に） | body=✓ / relations=✓ |
-| HTML Full export → import | ✓ | ✓ | ✓ | ✓ |
-| ZIP export → import | ✗（新 cid） | ✓ | ✓ | ✓ |
+| 経路 | cid 保持 | `meta.updated_at` 保持 | revisions 保持 | assets 保持 | body/relations 保持 |
+|-----|---------|----------------------|---------------|------------|-------------------|
+| HTML Light export → import | ✓ | ✓ | ✓ | ✗（空に） | body=✓ / relations=✓ |
+| HTML Full export → import | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ZIP export → import | ✗（新 cid、§11.5） | **✗（import 時刻で上書き、§11.4 / F1）** | ✓ | ✓ | ✓ |
 
-**注**: 「保持」は**バイト完全一致**を意味しない。`updated_at` は import 時刻に進む、pretty-print される、revisions の順序は `created_at` sort 依存、など境界は P0-2 round-trip テストで明確化する。
+**注**:「保持」は**バイト完全一致**を意味しない。pretty-print、revisions の順序は `created_at` sort 依存、など境界は P0-2a/P0-2b round-trip テスト群で観測済み。ZIP の `meta.updated_at` は F1 監督決定（2026-04-13）により**保持しない**のが canonical（§11.4）。
 
 ### 12.4 両形式で共通する原則
 
@@ -725,7 +764,7 @@ text / textlog bundle には **compact mode** がある。
 - **I-C1**: `meta` / `entries` / `relations` / `revisions` / `assets` の 5 フィールドは常に存在（空でもよい）
 - **I-C2**: `meta.container_id` は Container の生涯にわたって変化しない（ZIP import による新 cid 採番を除く。それは「新 Container」）
 - **I-C3**: `meta.schema_version` は現状 `1` 固定。migration なしに変更不可
-- **I-C4**: `meta.updated_at` はいかなる mutation 後も前回値以上
+- **I-C4**: `meta.updated_at` は、**同一 Container 内の mutation** 後は前回値以上。ただし **ZIP import は新 Container として扱う**ため本不変式の適用外（§11.4 / §11.5 / §12.3、F1 監督決定）
 
 ### 14.2 Entry レベル
 
@@ -826,11 +865,12 @@ text / textlog bundle には **compact mode** がある。
 - [ ] asset key が `[A-Za-z0-9_-]+` の範囲外の文字（例: 日本語、スペース）を含む場合の参照解決
 - [ ] 同一 base64 内容が複数 key で重複保持される場合のサイズ膨張
 - [ ] orphan asset（どの Entry からも参照されない）の検出 / 削除
-- [ ] ZIP import 時の asset key 衝突（P0-5 で解決）
+- [x] **ZIP import 時の asset key 衝突 → §11.7 で解決（P0-5, 2026-04-13）**
 
 ### 16.4 Export / Import 関連
 - [ ] HTML Full → ZIP 経由 → HTML Full で container が logical equivalent か
-- [ ] ZIP import で新 cid が振られた Container を再度 HTML export した時の `updated_at` / `created_at` の値
+- [x] **ZIP import で `meta.updated_at` が source を保持しない（F1 決定、2026-04-13、§11.4 / §11.5 / §12.3 に反映）**
+- [ ] ZIP import で新 cid が振られた Container を再度 HTML export した時の `created_at` の値
 - [ ] Light export → import → Full export の asset 欠落状態の扱い（`lightSource` フラグの永続化）
 - [ ] `export_meta` 欠落の古い HTML を import した場合のフォールバック挙動
 - [ ] `revisions` が undefined の旧 Container import で `[]` 補填が確実か
