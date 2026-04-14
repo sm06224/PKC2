@@ -283,6 +283,300 @@ describe('parseRevisionSnapshot', () => {
   });
 });
 
+// ── P0-4: strict failure contract for parseRevisionSnapshot ──────────
+//
+// Every branch below pins one reason the strict parse (P0-4,
+// 2026-04-13) returns `null`. Silent corruption of the restore
+// pipeline is the risk we are guarding against — see
+// `docs/spec/data-model.md` §6.4.
+describe('parseRevisionSnapshot — strict failure contract (P0-4)', () => {
+  /** Build a Revision carrying an arbitrary JSON payload as snapshot. */
+  function revWith(snapshotObj: unknown) {
+    return {
+      id: 'r',
+      entry_lid: 'e1',
+      snapshot: JSON.stringify(snapshotObj),
+      created_at: T,
+    };
+  }
+
+  const baseValidEntry = {
+    lid: 'e1',
+    title: 'Title',
+    body: 'Body',
+    archetype: 'text',
+    created_at: T,
+    updated_at: T,
+  };
+
+  // ── accepted (regression guards) ───────────────────────────
+
+  it('accepts a full, valid Entry-shaped snapshot', () => {
+    const out = parseRevisionSnapshot(revWith(baseValidEntry));
+    expect(out).not.toBeNull();
+    expect(out!.lid).toBe('e1');
+    expect(out!.archetype).toBe('text');
+  });
+
+  it('accepts empty title', () => {
+    const out = parseRevisionSnapshot(revWith({ ...baseValidEntry, title: '' }));
+    expect(out).not.toBeNull();
+    expect(out!.title).toBe('');
+  });
+
+  it('accepts empty body', () => {
+    const out = parseRevisionSnapshot(revWith({ ...baseValidEntry, body: '' }));
+    expect(out).not.toBeNull();
+    expect(out!.body).toBe('');
+  });
+
+  it('tolerates extra fields (preserved on the returned Entry)', () => {
+    const withExtra = { ...baseValidEntry, custom: 'keep-me' } as unknown as typeof baseValidEntry;
+    const out = parseRevisionSnapshot(revWith(withExtra));
+    expect(out).not.toBeNull();
+    expect((out as unknown as Record<string, unknown>).custom).toBe('keep-me');
+  });
+
+  it('accepts each of the 8 known ArchetypeId values', () => {
+    const known = ['text', 'textlog', 'todo', 'form', 'attachment', 'folder', 'generic', 'opaque'];
+    for (const a of known) {
+      const out = parseRevisionSnapshot(revWith({ ...baseValidEntry, archetype: a }));
+      expect(out, `archetype=${a}`).not.toBeNull();
+      expect(out!.archetype).toBe(a);
+    }
+  });
+
+  // ── rejected (silent corruption vectors) ────────────────────
+
+  it('rejects JSON that is not a plain object (null)', () => {
+    const rev = { id: 'r', entry_lid: 'e1', snapshot: 'null', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+
+  it('rejects JSON that is not a plain object (array)', () => {
+    const rev = { id: 'r', entry_lid: 'e1', snapshot: '[1,2,3]', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+
+  it('rejects JSON that is not a plain object (number)', () => {
+    const rev = { id: 'r', entry_lid: 'e1', snapshot: '42', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+
+  it('rejects JSON that is not a plain object (string)', () => {
+    const rev = { id: 'r', entry_lid: 'e1', snapshot: '"just a string"', created_at: T };
+    expect(parseRevisionSnapshot(rev)).toBeNull();
+  });
+
+  it('rejects missing lid', () => {
+    const { lid: _lid, ...withoutLid } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutLid))).toBeNull();
+  });
+
+  it('rejects empty-string lid', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, lid: '' }))).toBeNull();
+  });
+
+  it('rejects non-string lid', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, lid: 42 }))).toBeNull();
+  });
+
+  it('rejects missing title', () => {
+    const { title: _t, ...withoutTitle } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutTitle))).toBeNull();
+  });
+
+  it('rejects non-string title (null)', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, title: null }))).toBeNull();
+  });
+
+  it('rejects missing body', () => {
+    const { body: _b, ...withoutBody } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutBody))).toBeNull();
+  });
+
+  it('rejects non-string body (object)', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, body: { x: 1 } }))).toBeNull();
+  });
+
+  it('rejects missing archetype (silent corruption vector pre-P0-4)', () => {
+    const { archetype: _a, ...withoutArchetype } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutArchetype))).toBeNull();
+  });
+
+  it('rejects unknown archetype string (silent corruption vector pre-P0-4)', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, archetype: 'bogus' }))).toBeNull();
+  });
+
+  it('rejects non-string archetype (number)', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, archetype: 42 }))).toBeNull();
+  });
+
+  it('rejects missing created_at', () => {
+    const { created_at: _c, ...withoutCreated } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutCreated))).toBeNull();
+  });
+
+  it('rejects missing updated_at', () => {
+    const { updated_at: _u, ...withoutUpdated } = baseValidEntry;
+    expect(parseRevisionSnapshot(revWith(withoutUpdated))).toBeNull();
+  });
+
+  it('rejects non-string created_at', () => {
+    expect(parseRevisionSnapshot(revWith({ ...baseValidEntry, created_at: 0 }))).toBeNull();
+  });
+
+  // ── round-trip invariant: every snapshotEntry output parses ─
+
+  it('round-trips every archetype that snapshotEntry can produce', () => {
+    // snapshotEntry always writes `JSON.stringify(entry)` where
+    // entry is a real Entry — the strict parse must accept every
+    // such output unconditionally. This is the backward-compat
+    // invariant for existing user data.
+    let c = emptyContainer();
+    c = addEntry(c, 'eT', 'text', 'T', T);
+    c = addEntry(c, 'eL', 'textlog', 'L', T);
+    c = addEntry(c, 'eD', 'todo', 'D', T);
+    c = addEntry(c, 'eF', 'form', 'F', T);
+    c = addEntry(c, 'eA', 'attachment', 'A', T);
+    c = addEntry(c, 'eO', 'folder', 'O', T);
+    c = addEntry(c, 'eG', 'generic', 'G', T);
+    c = addEntry(c, 'eX', 'opaque', 'X', T);
+    let i = 0;
+    for (const entry of c.entries) {
+      c = snapshotEntry(c, entry.lid, `snap-${i++}`, T);
+    }
+    for (const rev of c.revisions) {
+      const parsed = parseRevisionSnapshot(rev);
+      expect(parsed, `failed to round-trip: ${rev.entry_lid}`).not.toBeNull();
+      expect(parsed!.lid).toBe(rev.entry_lid);
+    }
+  });
+});
+
+// ── P0-4: restoreEntry failure contract (archetype mismatch) ─────────
+describe('restoreEntry — strict failure contract (P0-4)', () => {
+  it('rejects archetype mismatch between existing entry and snapshot', () => {
+    // Scenario: hand-crafted (or migrated) data in which a revision
+    // carries archetype='todo' for a lid that currently lives as
+    // archetype='text'. Without the guard, restoreEntry would
+    // overwrite the TEXT body with the TODO JSON body (silent
+    // corruption). With the guard it returns the input unchanged.
+    let c = emptyContainer();
+    c = addEntry(c, 'e1', 'text', 'Text entry', T);
+    c = updateEntry(c, 'e1', 'Text entry', '# my text', T);
+
+    const mismatchedRevision = {
+      id: 'mismatched',
+      entry_lid: 'e1',
+      snapshot: JSON.stringify({
+        lid: 'e1',
+        title: 'Was a todo',
+        body: JSON.stringify({ status: 'open', description: 'milk' }),
+        archetype: 'todo',
+        created_at: T,
+        updated_at: T,
+      }),
+      created_at: T,
+    };
+    c = { ...c, revisions: [...c.revisions, mismatchedRevision] };
+
+    const result = restoreEntry(c, 'e1', 'mismatched', 'snap-guard', T);
+
+    // Container unchanged: same object reference and the entry still
+    // has its TEXT body.
+    expect(result).toBe(c);
+    const entry = result.entries.find((e) => e.lid === 'e1');
+    expect(entry!.archetype).toBe('text');
+    expect(entry!.body).toBe('# my text');
+  });
+
+  it('still succeeds for matching archetype', () => {
+    // Regression guard — the archetype-match check must not
+    // mis-reject legitimate restores produced by snapshotEntry.
+    let c = emptyContainer();
+    c = addEntry(c, 'e1', 'text', 'Original', T);
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = updateEntry(c, 'e1', 'Mutated', 'new body', T);
+    const restored = restoreEntry(c, 'e1', 'rev-1', 'snap-ok', T);
+    const entry = restored.entries.find((e) => e.lid === 'e1');
+    expect(entry!.title).toBe('Original');
+  });
+
+  it('rejects when the snapshot itself is malformed (no archetype)', () => {
+    let c = emptyContainer();
+    c = addEntry(c, 'e1', 'text', 'T', T);
+    const bad = {
+      id: 'bad',
+      entry_lid: 'e1',
+      snapshot: JSON.stringify({ lid: 'e1', title: 'x', body: 'y' }),
+      created_at: T,
+    };
+    c = { ...c, revisions: [...c.revisions, bad] };
+    expect(restoreEntry(c, 'e1', 'bad', 'snap-fail', T)).toBe(c);
+  });
+});
+
+// ── P0-4: restoreDeletedEntry failure contract ───────────────────────
+describe('restoreDeletedEntry — strict failure contract (P0-4)', () => {
+  it('rejects when the snapshot has an invalid archetype', () => {
+    // Pre-P0-4 this created an entry with `archetype: 'unknown'`,
+    // a silent corruption that rendering code papered over by
+    // falling back to 'generic'. Now the parse itself rejects, so
+    // restoreDeletedEntry returns unchanged container.
+    const bad = {
+      id: 'bad',
+      entry_lid: 'e-ghost',
+      snapshot: JSON.stringify({
+        lid: 'e-ghost',
+        title: 'Ghost',
+        body: '',
+        archetype: 'unknown-future-archetype',
+        created_at: T,
+        updated_at: T,
+      }),
+      created_at: T,
+    };
+    const c = { ...emptyContainer(), revisions: [bad] };
+
+    const result = restoreDeletedEntry(c, 'bad', T);
+    expect(result).toBe(c);
+    // No entry was added.
+    expect(result.entries).toHaveLength(0);
+  });
+
+  it('rejects when the snapshot is missing timestamps', () => {
+    const bad = {
+      id: 'bad',
+      entry_lid: 'e-ghost',
+      snapshot: JSON.stringify({
+        lid: 'e-ghost',
+        title: 'x',
+        body: '',
+        archetype: 'text',
+        // created_at / updated_at missing
+      }),
+      created_at: T,
+    };
+    const c = { ...emptyContainer(), revisions: [bad] };
+    expect(restoreDeletedEntry(c, 'bad', T)).toBe(c);
+  });
+
+  it('still succeeds for a well-formed deleted-entry revision', () => {
+    // Regression guard: the tighter parse must not break the
+    // legitimate restore path.
+    let c = emptyContainer();
+    c = addEntry(c, 'e1', 'todo', 'Task', T);
+    c = snapshotEntry(c, 'e1', 'rev-1', T);
+    c = removeEntry(c, 'e1');
+    expect(c.entries).toHaveLength(0);
+    const restored = restoreDeletedEntry(c, 'rev-1', T);
+    const entry = restored.entries.find((e) => e.lid === 'e1');
+    expect(entry).toBeDefined();
+    expect(entry!.archetype).toBe('todo');
+  });
+});
+
 describe('getRestoreCandidates', () => {
   it('returns latest revision for deleted entries', () => {
     let c = containerWith3Entries();
