@@ -685,6 +685,7 @@ See HANDOVER_FINAL.md §4.
 | 2026-04-14 | §18「Tier 2 完了時点の到達状態」を追加（Tier 1-1 / 1-2 / 2-1 / 2-2 / 2-3 の固定、5 つの新不変条件、5 項目の意図的 non-done、Tier 3 方向の列挙）。§1〜§17 は書き換え無し |
 | 2026-04-14 | §18.8「Tier 3-1 完了」を追加（merge import Overlay MVP 実装）。§18.5 A を完了印に更新。§4〜§5 / §6 / §17 は無変更 |
 | 2026-04-14 | §18.9「Tier 3-2 完了」を追加（release automation + bundle size budget + Playwright smoke baseline）。production code への touch 0。詳細は `docs/development/release-automation-and-smoke-baseline.md` |
+| 2026-04-14 | §18.9 末尾の Tier 3-3 再評価ポインタを追記。`docs/planning/TIER3_3_REEVALUATION.md` を正本として追加（docs-only）。Tier 3-3 = C-4（lint baseline 解消）を採用 |
 
 ### このあと更新してよい箇所
 
@@ -1027,5 +1028,11 @@ CI / tooling / docs の変更。
 **Tier 3-2 完了**。次は Tier 3-3 **再評価セッション**（選定のみ、
 実装ではない）— B / C-3 / C-4 / E のどれに進むかをユーザー要求 /
 実害の観測状況と合わせて棚卸しする。
+
+> **更新 (2026-04-14)**: 再評価セッション完了。選定結果は
+> `docs/planning/TIER3_3_REEVALUATION.md` に正本化済み。採用 =
+> **C-4（lint baseline 解消）**。B / C-3 / E は昇格条件付きで据え
+> 置き。Tier 3-3 実装セッションでは同書 §4 のスコープ / §6 の申し
+> 送りに従う。
 
 ---
