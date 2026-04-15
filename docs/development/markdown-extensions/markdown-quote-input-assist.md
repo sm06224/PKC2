@@ -1,8 +1,44 @@
 # Markdown Extension — Quote Input Assist
 
-Status: CANDIDATE
+Status: **PARTIALLY COMPLETED — Slice α (continuation) shipped 2026-04-14
+(USER_REQUEST_LEDGER S-17). Slice β / γ remain CONDITIONAL.**
 Created: 2026-04-12
 Category: B. Markdown / Rendering Extensions
+
+---
+
+## 0. 実装サマリ（2026-04-14 / Slice α 完了）
+
+§4 minimum scope の中から **continuation のみ** を最小差分で実装。
+spec の他項目（exit / bulk prefix shortcut / entry-window 同期）は
+依然 CONDITIONAL で、追加要望が来た時点で順次昇格する。
+
+- **pure helper**: `src/features/markdown/quote-assist.ts` —
+  `computeQuoteAssistOnEnter(value, caretPos)` が
+  `{ type: 'continue', insert: '\n> ' } | null` を返す
+- **wire**: `src/adapter/ui/action-binder.ts` の `handleKeydown`
+  内、inline-calc の Enter ブロックの直後、Ctrl+Enter (TEXTLOG
+  append) ブロックの前。`isSlashEligible(textarea)` で markdown
+  入力対象（`body` / `todo-description` / `textlog-append-text` /
+  `textlog-entry-text`）に絞る
+- **Enter 挙動**: collapsed caret + 末尾 + `>[ \t]?(.+)` 一致時
+  のみ `preventDefault` → `execCommand('insertText', false, '\n> ')`
+  経路で挿入（happy-dom 等で execCommand が無ければ手動 fallback +
+  `input` event 発火、undo stack も保護）
+- **fall-through cases**: mid-line Enter / 空 `> ` 行 / 非引用行 /
+  Shift / Ctrl / Alt / IME composition / non-collapsed selection は
+  全て `preventDefault` せず native Enter に委譲
+- **テスト**: `tests/features/markdown/quote-assist.test.ts`（12
+  件、pure 規則の網羅）+ `tests/adapter/quote-assist-handler.test.ts`
+  （9 件、Enter 経路の integration: 継続成功 × 2 / 非引用 / Shift /
+  Ctrl / IME / non-collapsed / 空引用 / mid-line）
+
+§5「やらないこと」は全項目守られている（rich text / 折り畳み /
+出典 URL 補助 / list heading code fence の補助 / mobile virtual key）。
+§7 Risk「IME 確定中の keydown 抑制」は `e.isComposing` ガードで
+解消、「entry window の inline script 同期」は依然 deferred。
+
+---
 
 ---
 

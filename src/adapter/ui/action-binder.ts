@@ -33,6 +33,7 @@ import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
+import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
@@ -1512,6 +1513,54 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             applyInlineCalcResult(ta, start, formatCalcResult(result.value));
             return;
           }
+        }
+      }
+    }
+
+    // ── B-3 Slice α (USER_REQUEST_LEDGER S-17, 2026-04-14): quote
+    //    continuation. When the user is at the end of a non-empty
+    //    `> …` line in a markdown-eligible textarea and presses
+    //    plain Enter, insert `\n> ` so the next line continues the
+    //    blockquote. Falls through silently when the rule does not
+    //    match (mid-line Enter, empty quote line, IME composition,
+    //    non-eligible textarea, modified Enter, etc.) so native
+    //    behaviour is preserved everywhere else.
+    //
+    //    Placed AFTER inline-calc so a `> 1+1=` line still gets the
+    //    calc result (inline-calc's `=` rule wins on that specific
+    //    overlap). Placed BEFORE Ctrl+Enter handling so the modifier
+    //    check there still owns the textlog-append path.
+    if (
+      e.key === 'Enter'
+      && !mod
+      && !e.shiftKey
+      && !e.altKey
+      && !e.isComposing
+      && e.target instanceof HTMLTextAreaElement
+      && isSlashEligible(e.target)
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      if (start === end) {
+        const action = computeQuoteAssistOnEnter(ta.value, start);
+        if (action) {
+          e.preventDefault();
+          ta.focus();
+          ta.setSelectionRange(start, start);
+          let inserted = false;
+          try {
+            inserted = document.execCommand('insertText', false, action.insert);
+          } catch {
+            /* execCommand may not exist in non-browser test envs */
+          }
+          if (!inserted) {
+            ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
+            const newCaret = start + action.insert.length;
+            ta.selectionStart = ta.selectionEnd = newCaret;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return;
         }
       }
     }
