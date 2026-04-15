@@ -523,3 +523,79 @@ describe('entry: link interception (P1 Slice 5-A)', () => {
     expect(d).toContain('data-pkc-entry-ref="entry:lid-1#day/2026-04-09"');
   });
 });
+
+describe('B-1 / S-16 — CSV / TSV fenced block → <table>', () => {
+  it('renders a ```csv block as <table> with thead by default', () => {
+    const md = '```csv\nname,qty\napple,3\nbanana,5\n```';
+    const html = renderMarkdown(md);
+    expect(html).toContain('<table class="pkc-md-rendered-csv">');
+    expect(html).toContain('<thead>');
+    expect(html).toContain('<th>name</th>');
+    expect(html).toContain('<th>qty</th>');
+    expect(html).toContain('<td>apple</td>');
+    expect(html).toContain('<td>banana</td>');
+    // Must NOT also wrap the source as a code block.
+    expect(html).not.toContain('class="language-csv"');
+  });
+
+  it('renders ```csv noheader without thead', () => {
+    const md = '```csv noheader\na,b\n1,2\n```';
+    const html = renderMarkdown(md);
+    expect(html).not.toContain('<thead>');
+    expect(html).toContain('<td>a</td>');
+    expect(html).toContain('<td>1</td>');
+  });
+
+  it('renders ```tsv with the tab delimiter', () => {
+    const md = '```tsv\na\tb\n1\t2\n```';
+    const html = renderMarkdown(md);
+    expect(html).toContain('<th>a</th>');
+    expect(html).toContain('<td>2</td>');
+  });
+
+  it('preserves classic markdown pipe-tables (no regression on existing GFM tables)', () => {
+    const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+    const html = renderMarkdown(md);
+    expect(html).toContain('<table>'); // pipe-table has no csv class
+    expect(html).not.toContain('pkc-md-rendered-csv');
+    expect(html).toContain('<th>A</th>');
+    expect(html).toContain('<td>2</td>');
+  });
+
+  it('falls back to default fence rendering for non-csv langs (B-2 syntax highlight intact)', () => {
+    const md = '```ts\nconst x = 1;\n```';
+    const html = renderMarkdown(md);
+    // B-2 syntax-highlight tokens still emitted; no CSV table class.
+    expect(html).toContain('class="language-ts"');
+    expect(html).toContain('pkc-tok-keyword');
+    expect(html).not.toContain('pkc-md-rendered-csv');
+  });
+
+  it('escapes HTML inside CSV cells (XSS safety)', () => {
+    const md = '```csv\nraw\n<script>alert(1)</script>\n```';
+    const html = renderMarkdown(md);
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    // No raw <script> in the rendered output.
+    expect(html.toLowerCase()).not.toContain('<script>alert(1)</script>');
+  });
+
+  it('handles quoted cells with embedded comma + newline + escaped quote', () => {
+    const md = '```csv\nname,note\n"Smith, Jr.","line1\nline2"\n"He said ""hi""",ok\n```';
+    const html = renderMarkdown(md);
+    expect(html).toContain('<td>Smith, Jr.</td>');
+    expect(html).toContain('line1');
+    expect(html).toContain('line2');
+    // `"` is HTML-escaped to `&quot;` per the rowsToHtml safety contract.
+    expect(html).toContain('<td>He said &quot;hi&quot;</td>');
+  });
+
+  it('falls back to default fence behaviour for empty csv block', () => {
+    const md = '```csv\n```';
+    const html = renderMarkdown(md);
+    // Empty CSV → renderer returns null → default fence renders the
+    // (empty) `<pre><code>` instead. The table class must not appear.
+    expect(html).not.toContain('pkc-md-rendered-csv');
+    // Some kind of code block wrapper is present (pre or code).
+    expect(html).toMatch(/<(pre|code)/);
+  });
+});
