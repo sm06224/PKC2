@@ -18,6 +18,7 @@
 | ファイル | 内容 | 重要度 |
 |---------|------|--------|
 | `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER + §18 Tier 2 完了追記（2026-04-14）。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
+| `USER_REQUEST_LEDGER.md` | ユーザー明示要望の棚卸し台帳（2026-04-14 起点、living）。完了 / 部分完了 / 未完 の 3 値で管理、未完ゼロなら user value 最大の polish を 1 件選ぶ運用 | ★★★★ |
 | `TIER3_PRIORITIZATION.md` | Tier 3 優先順位決定（2026-04-14）。Tier 3-1 = merge import 実装 / Tier 3-2 = release automation + CI 軽量強化 / 保留 = archetype 拡張・広範 E2E・lint baseline・長期ビジョン系 | ★★★ |
 | `TIER3_3_REEVALUATION.md` | Tier 3-3 再評価（2026-04-14）。Tier 3-1 / 3-2 完了後の保留 4 群を 7 軸で再評価し、**C-4（lint baseline 解消）を採用**。B / C-3 / E は昇格条件付きで据え置き | ★★★ |
 | `CHANGELOG_v0.1.0.md` | v0.1.0 の差分 changelog（Added / Changed / Fixed / Internal） | ★★★ |

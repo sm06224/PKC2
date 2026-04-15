@@ -1591,6 +1591,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Custom context menu (right-click) closes first — it's the
+      // topmost transient overlay when visible and users expect Esc
+      // to dismiss it (parity with ShellMenu / ShortcutHelp / etc.).
+      // Tracked in docs/planning/USER_REQUEST_LEDGER.md §4.
+      const ctxMenu = root.querySelector('[data-pkc-region="context-menu"]');
+      if (ctxMenu) {
+        dismissContextMenu();
+        return;
+      }
       // Slice 4: close the TEXTLOG preview modal first if open, so a
       // single Esc press returns the user to selection mode (matches
       // the symmetry "Esc closes the topmost overlay").
