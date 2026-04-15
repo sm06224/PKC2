@@ -373,7 +373,7 @@ v0.1.0 マージ後に開始できる P2 タスクを、優先度別に整理す
 | タスク | 理由 |
 |-------|-----|
 | **DOM 局所 diff renderer** | 現状の全置換で十分速いが、Entry 数 1000+ でスケーリング懸念 |
-| **schema_version migration path の設計** | 現状 1 固定。v2 に上げる時の migration 機構がまだない |
+| ~~**schema_version migration path の設計**~~ | **解消済み（2026-04-15 / H-3 / 自主運転モード第 3 号）**: `docs/spec/schema-migration-policy.md` に正本化。判断基準・hook 位置・lazy/eager 適用・test 戦略・v2 着手時の実装順序まで固定（docs-only）。実装は v2 要求発生時に spec §11 の順序で着手 |
 | **lint ルールの整流** | 既存 `no-restricted-imports` 80 件エラーの解消。CLAUDE.md 層規則に沿う形に書き換え |
 | **textlog-bundle CSV 列拡張** | flag 追加時に lossy でなくすなら |
 
@@ -790,7 +790,7 @@ action / warning の全てが spec に記載済み。
 検査未実施の項目（P2 以降で増えれば順次記録）:
 - 将来の archetype（complex / document-set / spreadsheet）— docs/development
   にドラフトあり、spec には未取り込み
-- schema_version migration path — spec §15.3 で「未設計」と明記、実装も無し
+- schema_version migration path — **spec 化完了**（2026-04-15、`docs/spec/schema-migration-policy.md`）。実装は v2 要求発生時に spec §11 の順序で着手する前提、現時点ではコード変更 0
 - merge import — spec に merge 契約なし、実装も無し
 - 以上 3 項目は「意図的に spec に無い」状態であり、HANDOVER_FINAL §5 と整合
 

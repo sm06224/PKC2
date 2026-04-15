@@ -861,7 +861,7 @@ text / textlog bundle には **compact mode** がある。
 
 - 現状 `SCHEMA_VERSION = 1`（`release-meta.ts:91`）
 - schema_version を上げる条件: **既存フィールドの削除・改名・型変更**を行う場合のみ
-- 昇格時は `onupgradeneeded` 相当の migration path を import 側にも用意する（**現状未設計**）
+- 昇格時の migration path 設計は `docs/spec/schema-migration-policy.md` に正本化済み（2026-04-15 / 自主運転モード第 3 号）。判断基準・hook 位置・lazy/eager の使い分け・test 戦略雛形が `§4 / §6 / §7 / §10` にまとまっている。v2 到達時はまず当該 spec §11 の実装順序に従う
 
 ### 15.4 禁止される変更（P0-P1 期間中）
 
@@ -928,6 +928,7 @@ text / textlog bundle には **compact mode** がある。
 ## 17. 関連文書
 
 - `docs/spec/body-formats.md` — archetype 別 body 契約
+- `docs/spec/schema-migration-policy.md` — schema_version 昇格時の判断基準・hook 位置・test 戦略（§15.3 を具体化）
 - `docs/planning/17_保存再水和可搬モデル.md` — 4 系統モデル（Workspace/HTML/ZIP/Template）
 - `docs/planning/13_基盤方針追補_release契約.md` — HTML slot 契約
 - `docs/planning/18_運用ガイド_export_import_rehydrate.md` — 利用手順

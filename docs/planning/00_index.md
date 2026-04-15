@@ -25,6 +25,7 @@
 | `../spec/data-model.md` | データモデル正本（Container / Entry / Revision + bulk_id / HTML・ZIP export 契約） | ★★★★ |
 | `../spec/body-formats.md` | archetype 別 body 契約 + embed / transclusion 仕様 | ★★★ |
 | `../spec/merge-import-conflict-resolution.md` | merge import 衝突解決の設計正本（Tier 2-3 で凍結、実装は Tier 3） | ★★★ |
+| `../spec/schema-migration-policy.md` | schema_version 昇格時の判断基準・hook 位置・lazy/eager 適用・test 戦略・v2 実装順序（2026-04-15 / H-3 / 自主運転モード第3号、docs-only） | ★★★ |
 
 これら 5 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
 

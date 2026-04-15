@@ -749,6 +749,13 @@ interface Archetype<TView = unknown> {
 - **保存では常に new format**
 - **既存データの読み取り可能性を決して破壊しない**
 
+body レベルの migration は container レベルの schema_version bump と**独立**
+に運用する（archetype 毎の body パーサ内で lazy migrate）。container 全体の
+schema_version 昇格ポリシーは `docs/spec/schema-migration-policy.md` を参照。
+body 形式変更は schema_version を上げる必要がないのが原則であり（§14.1 の 4
+パターンはすべて v1 のまま運用された）、上げる必要があるケースは同 spec §4
+のフローで判定する。
+
 ### 14.3 将来の legacy 予測
 
 - TODO に `status` 新値追加（例: `'cancelled'`）: 未知値 → `'open'` fallback により互換
