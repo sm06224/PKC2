@@ -118,7 +118,7 @@ schema_version 自体が上がった時点で、旧 reader は **明示的に re
 | 旧データの扱い | 破壊せず、保存契機で新形式に更新 | 最初の load で new shape に書き換え |
 | コスト | 低（差分反映を後回し） | 高（load 時に全件走査） |
 | 用途 | フィールド追加 / 補填 / 別表現への言い換え | store schema 境界（IDB version） / 読取不能な旧形式 |
-| 既存例 | attachment data→asset_key、textlog log-id 据置、todo 文字列→JSON、revisions 補填 | IDB v1→v2（`onupgradeneeded` で containers store を scan） |
+| 既存例 | attachment data→asset_key、textlog log-id 据置、todo 文字列→JSON、revisions 補填、Revision.prev_rid / content_hash（H-6 / 2026-04-15、新 snapshot のみ populate、旧 rev は absent のまま） | IDB v1→v2（`onupgradeneeded` で containers store を scan） |
 
 **判定ルール**:
 

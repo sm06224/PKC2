@@ -268,6 +268,13 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - branch / restore 系の凝った UI を入れるなら optional field 追加で可能
   （data-model §15.5）
 - 現状の forward-mutation 原則で十分使えており、拡張は具体的な要求が出てから
+- **2026-04-15 追記（H-6 / 自主運転モード第 4 号）**: linear 前提のまま、
+  `Revision.prev_rid?` と `Revision.content_hash?` の 2 optional field を
+  追加（`snapshotEntry` で populate、旧 rev は absent のまま）。branch UI /
+  diff viewer / history browser は依然未実装。本 slice は **記録面のみ**
+  強化して C-1 revision-branch-restore の足場にする。詳細は
+  `docs/spec/data-model.md §6.1 / §6.2 / §6.2.1` と `USER_REQUEST_LEDGER.md`
+  §1 S-22
 ---
 
 ## 6. 既知の制約

@@ -1,6 +1,7 @@
 import type { Container, Revision } from '../model/container';
 import type { Entry, ArchetypeId } from '../model/record';
 import type { Relation, RelationKind } from '../model/relation';
+import { fnv1a64Hex } from './hash';
 
 /**
  * Pure Container mutation functions.
@@ -219,20 +220,51 @@ export function snapshotEntry(
   const entry = container.entries.find((e) => e.lid === lid);
   if (!entry) return container;
 
+  const snapshot = JSON.stringify(entry);
   const revision: Revision = {
     id: revisionId,
     entry_lid: lid,
-    snapshot: JSON.stringify(entry),
+    snapshot,
     created_at: now,
+    content_hash: fnv1a64Hex(snapshot),
   };
   if (bulkId !== undefined) {
     revision.bulk_id = bulkId;
+  }
+  const prevRid = findLatestRevisionIdForLid(container, lid);
+  if (prevRid !== undefined) {
+    revision.prev_rid = prevRid;
   }
 
   return {
     ...container,
     revisions: [...container.revisions, revision],
   };
+}
+
+/**
+ * Find the id of the most recent prior revision for `lid`, or
+ * `undefined` if none exists. "Most recent" is defined as the
+ * revision with the greatest `created_at` string among those
+ * matching `entry_lid === lid`; ties are broken by array position
+ * (later wins, matching insertion order).
+ *
+ * Used by `snapshotEntry` to populate `Revision.prev_rid` (H-6).
+ * Kept file-local — callers outside `snapshotEntry` should query
+ * revisions via `getEntryRevisions` instead.
+ */
+function findLatestRevisionIdForLid(
+  container: Container,
+  lid: string,
+): string | undefined {
+  let best: Revision | undefined;
+  for (const r of container.revisions) {
+    if (r.entry_lid !== lid) continue;
+    if (best === undefined || r.created_at >= best.created_at) {
+      best = r;
+    }
+  }
+  return best?.id;
 }
 
 // ── Revision queries ─────────────────────────
