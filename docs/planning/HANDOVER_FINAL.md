@@ -251,11 +251,16 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - 今の規模では十分速く、再レンダリング起因の regression よりも「単純で正しい」
   ことを優先する
 
-### 5.7 TEXTLOG bundle の lossy format の解消
-- textlog-bundle (`.textlog.zip`) の CSV は `important` flag のみを列として
+### 5.7 TEXTLOG bundle の lossy format の解消（**解消済み — H-4 / S-20, 2026-04-14**）
+- 旧: textlog-bundle (`.textlog.zip`) の CSV は `important` flag のみを列として
   持ち、将来 flag が追加されれば失われる
 - F3 として spec に「lossy format」と明言済み（body-formats.md §3.6.1）
-- 実害が無く将来の flag 追加計画もない段階では解消しない
+- **H-4 (S-20) で解消**: CSV schema 末尾に `flags` 列を追加。新 writer は
+  `important` と `flags` を両方出力、新 reader は `flags` 列を正本にし、
+  無ければ `important` から推論（legacy fallback）。modern × modern の
+  round-trip は lossless、pre-H-4 reader との互換は `important` 列で維持。
+  spec §3.6.1 更新済み、詳細は `docs/development/textlog-csv-zip-export.md`
+  §3 / §14.6 と `USER_REQUEST_LEDGER.md` §1 S-20
 
 ### 5.8 Revision への branch / prev_rid の追加
 - 現状 Revision は `entry_lid + created_at` でソートして履歴として扱う

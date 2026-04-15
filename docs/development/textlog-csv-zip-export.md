@@ -113,6 +113,7 @@ Unknown fields MUST be ignored by consumers. New fields added in
 | 5 | `text_markdown` | `Meeting with **Alice**` | Original body verbatim. |
 | 6 | `text_plain` | `Meeting with Alice` | Derived: strips the common markdown metacharacters, flattens whitespace, replaces `![alt](asset:k)` with `alt`, replaces `[label](asset:k)` with `label`. Human-readable fallback, not a full markdown-to-text renderer. |
 | 7 | `asset_keys` | `ast-abc-001;ast-abc-002` | `;` separated, deduplicated, in first-occurrence order. Empty string if the row has no asset refs. |
+| 8 | `flags` | `important` / `` (empty) | **Added 2026-04-14 (H-4 / USER_REQUEST_LEDGER S-20)**. Comma-separated list of `TextlogFlag` values — the forward-compatible replacement for column 4 once `TextlogFlag` expands beyond `'important'`. New writers emit BOTH columns; new readers prefer `flags` when the header lists it, falling back to `important` only for pre-H-4 CSVs. Unknown tokens are silently dropped on parse. See spec `docs/spec/body-formats.md §3.6.1`. |
 
 ### Encoding & quoting
 
@@ -547,7 +548,7 @@ container.
 
 ### 14.6 CSV column source-of-truth
 
-The CSV has seven columns (§3). On the import side, only some of
+The CSV has eight columns (§3, with the H-4 `flags` column appended 2026-04-14). On the import side, only some of
 them are read; the rest are **discarded**. The contract:
 
 | Column | Used? | Why |
@@ -555,10 +556,11 @@ them are read; the rest are **discarded**. The contract:
 | `log_id` | **yes** — `entry.id` | Stable id from the source body. |
 | `timestamp_iso` | **yes** — `entry.createdAt` | Round-trip date. |
 | `timestamp_display` | **no** | Derived from `timestamp_iso` at render time; storing it would create two sources of truth. |
-| `important` | **yes** — `entry.flags = ['important']` if `'true'` | Round-trip flag. |
+| `important` | **fallback only** — used when `flags` column is absent (pre-H-4 CSV) | Legacy round-trip flag. Kept in every modern export for backward compat with external tools. |
 | `text_markdown` | **yes** — `entry.text` | **Source of truth.** Verbatim copy. |
 | `text_plain` | **no — discarded** | Lossy fallback for spreadsheet consumers; never the round-trip source. |
 | `asset_keys` | **no — derived from `text_markdown`** | Storing it would create a second source of truth that could drift. |
+| `flags` | **yes — authoritative (H-4, 2026-04-14)** | Comma-separated `TextlogFlag` list. When present in header, takes precedence over `important`. Unknown tokens silently dropped (forward-compat with future flag values). |
 
 `text_plain` is **explicitly** never used as a fallback when
 `text_markdown` is empty. An empty `text_markdown` produces an empty

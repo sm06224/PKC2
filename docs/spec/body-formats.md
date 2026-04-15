@@ -171,15 +171,39 @@ interface DaySection {
 - CSV export / Copy Reference は **生 ISO timestamp** を emit（ミリ秒精度）
 - UI 表示用の `formatLogTimestampWithSeconds` は display 専用
 
-### 3.6.1 textlog-bundle (CSV) は lossy format である
+### 3.6.1 textlog-bundle (CSV) の flags round-trip
 
-**Canonical decision 2026-04-13 (F3 / P0-2b → P0-5)**. textlog-bundle (`.textlog.zip`) は **意図的に lossy な交換形式** である。
+**Canonical decision 2026-04-13 (F3 / P0-2b → P0-5)**、**2026-04-14 更新（H-4 / USER_REQUEST_LEDGER S-20）で forward-compat 列を追加**。
 
-- CSV schema は固定 5 列（上記）。`flags` は `important` boolean 1 種のみを列として持つ
-- `TextlogFlag` に**将来新しい値**（`'important'` 以外）が追加された場合、それらは CSV round-trip で**失われる**
-- JSON route（HTML Full / ZIP）は `flags: string[]` をそのまま保持するため、**同じ Entry が配布経路によって flags 構成が異なりうる**
-- lossless な交換が必要な場合は HTML Full または ZIP を使うこと。textlog-bundle は日常的な CSV 互換ツール向けの配布形式として位置付ける
-- 非対称性は `docs/spec/data-model.md` §13 の Sister Bundle と整合。CSV 列拡張は将来の検討事項（P2）
+textlog-bundle (`.textlog.zip`) は当初「意図的に lossy な交換形式」として定義されたが、2026-04-14 の H-4 改修で **新しい `flags` 列を末尾に追加** し、modern-reader × modern-writer の round-trip は lossless になった。
+
+**現在の CSV schema**:
+
+```
+log_id, timestamp_iso, timestamp_display, important, text_markdown, text_plain, asset_keys, flags
+```
+
+- `important` 列（legacy, boolean）は backward-compat のため **継続維持**。pre-H-4 reader が引き続き動作するため
+- `flags` 列（new, 2026-04-14）は **`TextlogFlag` 値のカンマ連結リスト**。現在の値は `'important'` のみ、将来拡張された場合は複数値が入りうる
+- 新 writer は **両方の列を出力**（`important=true/false` と `flags="important"`/`""` が常に整合）
+- 新 reader は `flags` 列が header に存在する場合にそれを **正本として扱い**、`important` 列は無視する。`flags` 列が header に無い（= pre-H-4 CSV）場合のみ、`important` 列から推論（従来挙動）
+- 新 reader は unknown flag token を **silent drop** する（future writer が新しい flag を書き出しても、current build は known なものだけ拾って安全に load 可能）
+- カンマ連結は RFC 4180 quoting で包まれるので CSV としては 1 セル扱い
+
+**round-trip の保証レベル**:
+
+| writer | reader | flags round-trip |
+|--------|--------|------------------|
+| new (H-4+) | new (H-4+) | **lossless** — `TextlogFlag` 拡張後も `flags` 列が全値を保持 |
+| new (H-4+) | old (pre-H-4) | legacy `important` 列を通じて 'important' のみ復元、他は失われる（old reader 側の限界） |
+| old (pre-H-4) | new (H-4+) | `flags` 列が absent なので `important` から推論 → 従来どおり |
+| old (pre-H-4) | old (pre-H-4) | 変更なし（従来の lossy 性がそのまま） |
+
+**non-textlog-route との関係**: JSON route（HTML Full / ZIP）は依然として `flags: string[]` をそのまま保持する。modern CSV route が lossless になったことで非対称性は解消され、pre-H-4 環境との互換だけが例外として残る。
+
+**未対応 / 将来**:
+- asset content の CSV 内表現は依然として lossy（key 列のみ、中身は zip の別ファイル） — これは CSV の本質的制約で、Sister Bundle (zip) で補う（spec data-model.md §13）
+- CSV parser の拡張子指定 / schema version 列などはまだ入れていない — 現状は header 列名のみで判別
 
 ### 3.7 既知の曖昧点
 
