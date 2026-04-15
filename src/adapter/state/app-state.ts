@@ -21,6 +21,7 @@ import {
   purgeTrash,
 } from '../../core/operations/container-ops';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
+import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
@@ -54,6 +55,17 @@ export interface AppState {
   pendingOffers: PendingOffer[];
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
+  /**
+   * Import mode for the pending preview (Tier 3-1, merge import).
+   * - 'replace' (default when absent): CONFIRM_IMPORT will fully
+   *   replace the container.
+   * - 'merge': CONFIRM_MERGE_IMPORT will overlay imported onto host.
+   * Meaningful only while `importPreview !== null`; reset to 'replace'
+   * when preview is cleared. Optional so test fixtures that predate
+   * Tier 3-1 keep compiling; read sites treat undefined as 'replace'.
+   * See docs/spec/merge-import-conflict-resolution.md.
+   */
+  importMode?: 'replace' | 'merge';
   /** Batch import preview awaiting user confirmation (runtime-only). */
   batchImportPreview: BatchImportPreviewInfo | null;
   /** Batch import result summary for UI feedback (runtime-only, transient). */
@@ -158,6 +170,7 @@ export function createInitialState(): AppState {
     embedded: false,
     pendingOffers: [],
     importPreview: null,
+    importMode: 'replace',
     batchImportPreview: null,
     batchImportResult: null,
     searchQuery: '',
@@ -574,7 +587,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'SYS_IMPORT_PREVIEW': {
-      const next: AppState = { ...state, importPreview: action.preview };
+      // Tier 3-1: reset import mode to 'replace' on every new preview so
+      // a prior merge selection cannot leak into the next import session.
+      const next: AppState = { ...state, importPreview: action.preview, importMode: 'replace' };
       return {
         state: next,
         events: [{
@@ -603,6 +618,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         editingLid: null,
         error: null,
         importPreview: null,
+        importMode: 'replace',
         lightSource: false,
       };
       const cid = imported?.meta?.container_id ?? 'unknown';
@@ -610,8 +626,65 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
       return { state: next, events };
     }
+    case 'CONFIRM_MERGE_IMPORT': {
+      // Tier 3-1: Overlay MVP (append-only). Invariants I-Merge1 / I-Merge2.
+      // Host container remains untouched at the entry level; imported
+      // data is added with fresh lids and remapped relations. Revisions
+      // are dropped. Schema mismatch bails out with an error (the UI
+      // should prevent the user from reaching this case, but the
+      // reducer remains defensive).
+      if (!state.importPreview) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const host = state.container;
+      const imported = state.importPreview.container;
+      const source = state.importPreview.source;
+      const plan = planMergeImport(host, imported, action.now);
+      if ('error' in plan) return blocked(state, action);
+      const merged = applyMergePlan(host, imported, plan, action.now);
+      // Orphan auto-GC on the merge result (I-AutoGC1 — merge is a
+      // container-replacement path in the same spirit as import).
+      const purged = removeOrphanAssets(merged);
+      const purgedCount =
+        purged === merged
+          ? 0
+          : Object.keys(merged.assets).length - Object.keys(purged.assets).length;
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        container: purged,
+        // Host selection survives; imported entries were appended so
+        // no existing lid was displaced. New lid is NOT auto-selected
+        // (user explicitly stayed on host's workspace).
+        editingLid: null,
+        error: null,
+        importPreview: null,
+        importMode: 'replace',
+      };
+      const cid = host.meta.container_id ?? 'unknown';
+      const events: DomainEvent[] = [{
+        type: 'CONTAINER_MERGED',
+        container_id: cid,
+        source,
+        added_entries: plan.counts.addedEntries,
+        added_assets: plan.counts.addedAssets,
+        added_relations: plan.counts.addedRelations,
+      }];
+      if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
+      return { state: next, events };
+    }
+    case 'SET_IMPORT_MODE': {
+      // Tier 3-1: UI toggle between Replace and Merge on the import
+      // preview dialog. Ignored when no preview is active or when the
+      // mode is unchanged. `undefined` is treated as 'replace' (see
+      // AppState.importMode JSDoc).
+      if (!state.importPreview) return blocked(state, action);
+      const current = state.importMode ?? 'replace';
+      if (current === action.mode) return blocked(state, action);
+      const next: AppState = { ...state, importMode: action.mode };
+      return { state: next, events: [] };
+    }
     case 'CANCEL_IMPORT': {
-      const next: AppState = { ...state, importPreview: null };
+      const next: AppState = { ...state, importPreview: null, importMode: 'replace' };
       return {
         state: next,
         events: [{ type: 'IMPORT_CANCELLED' }],

@@ -695,7 +695,7 @@ interface ZipImportWarning {
 
 #### 11.7.4 「衝突検知」の意味的範囲
 
-本節は **1 つの ZIP ファイル内部**の不整合のみを扱う。current implementation は「複数 ZIP を順次 import した際の累積」を扱わない（import は full replace 契約、§14.1 I-IO1）。複数 ZIP を統合する merge import は **未実装**（P2 候補、設計は `docs/spec/merge-import-conflict-resolution.md` 参照）。
+本節は **1 つの ZIP ファイル内部**の不整合のみを扱う。current implementation は「複数 ZIP を順次 import した際の累積」を扱わない（import は full replace 契約、§14.1 I-IO1）。複数 container を統合する merge import は **Tier 3-1（2026-04-14）で実装済み**（§14.6 I-IO1b 参照）。append-only の Overlay MVP であり、衝突解決は `docs/spec/merge-import-conflict-resolution.md` が正本。
 
 ---
 
@@ -831,7 +831,8 @@ text / textlog bundle には **compact mode** がある。
 
 ### 14.6 Import/Export レベル
 
-- **I-IO1**: Import は full replace（merge なし。merge import は P2 候補、設計は `docs/spec/merge-import-conflict-resolution.md`）
+- **I-IO1**: 既定の Import は full replace（`CONFIRM_IMPORT` — 既存 container を imported で置換）
+- **I-IO1b**: 別経路として Overlay merge import（`CONFIRM_MERGE_IMPORT` — Tier 3-1 で実装、2026-04-14）。host container の既存エントリは不変のまま imported の entry / asset / relation を append-only で追加する。**imported revisions は drop**。衝突解決は host 側に副作用を起こさない方向に倒す（lid 衝突 → rename、asset hash 同一 → dedupe、asset hash 異 → rehash、dangling relation → drop）。契約と不変条件は `docs/spec/merge-import-conflict-resolution.md` §6〜§7、および `docs/planning/HANDOVER_FINAL.md §18.2` の I-Merge1 / I-Merge2 を正本とする
 - **I-IO2**: runtime state（phase / selectedLid / editingLid / pendingOffers / importPreview / multiSelectedLids 等）は一切埋め込まれない
 - **I-IO3**: HTML Full と ZIP の body / relations / revisions は logical equivalence（バイト完全一致は非保証、pretty-print や順序は変わり得る）
 
@@ -880,7 +881,7 @@ text / textlog bundle には **compact mode** がある。
 - 新 archetype（`complex`, `document-set`, `spreadsheet` 等）の追加: **schema_version 据え置きで可能**
 - `Revision` への `prev_rid` / `content_hash` フィールド追加: optional なら schema 据え置きで可能
 - `ContainerMeta` への locale / timezone フィールド追加: optional なら可能
-- merge import の実装: schema 据え置きで可能（conflict resolution 戦略は `docs/spec/merge-import-conflict-resolution.md` に設計確定済み）
+- merge import の実装: Tier 3-1（2026-04-14）で Overlay MVP が実装済み（§14.6 I-IO1b）。拡張（Policy UI / Staging / Revision 持ち込み）は `docs/spec/merge-import-conflict-resolution.md` §9 を参照
 
 ---
 

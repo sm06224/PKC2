@@ -13,11 +13,14 @@
     "build:all": "npm run build && npm run build:manual",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:smoke": "playwright test --config=tests/smoke/playwright.config.ts",
+    "size-budget": "node build/check-bundle-size.cjs",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.5.2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",

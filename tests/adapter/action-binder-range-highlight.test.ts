@@ -193,10 +193,14 @@ describe('ActionBinder — range highlight (P1 Slice 5-C)', () => {
     // range-scroll assertion.
     const captured: Array<string | null> = [];
     const origProto = HTMLElement.prototype.scrollIntoView;
+    // happy-dom widens the scrollIntoView signature beyond the DOM
+    // spec; `any` here bridges the patched function back into the
+    // prototype without rebuilding the overload shape.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
       const logId = this.getAttribute('data-pkc-log-id');
       if (logId !== null) captured.push(logId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     try {
       findAnchor('fwd').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

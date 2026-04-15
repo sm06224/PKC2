@@ -17,12 +17,15 @@
 
 | ファイル | 内容 | 重要度 |
 |---------|------|--------|
-| `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
+| `HANDOVER_FINAL.md` | v0.1.0 リリース前の最終 HANDOVER + §18 Tier 2 完了追記（2026-04-14）。全体サマリ・不変条件・意図的 non-done・既知制約・次段計画 | ★★★★ |
+| `TIER3_PRIORITIZATION.md` | Tier 3 優先順位決定（2026-04-14）。Tier 3-1 = merge import 実装 / Tier 3-2 = release automation + CI 軽量強化 / 保留 = archetype 拡張・広範 E2E・lint baseline・長期ビジョン系 | ★★★ |
+| `TIER3_3_REEVALUATION.md` | Tier 3-3 再評価（2026-04-14）。Tier 3-1 / 3-2 完了後の保留 4 群を 7 軸で再評価し、**C-4（lint baseline 解消）を採用**。B / C-3 / E は昇格条件付きで据え置き | ★★★ |
 | `CHANGELOG_v0.1.0.md` | v0.1.0 の差分 changelog（Added / Changed / Fixed / Internal） | ★★★ |
 | `../spec/data-model.md` | データモデル正本（Container / Entry / Revision + bulk_id / HTML・ZIP export 契約） | ★★★★ |
 | `../spec/body-formats.md` | archetype 別 body 契約 + embed / transclusion 仕様 | ★★★ |
+| `../spec/merge-import-conflict-resolution.md` | merge import 衝突解決の設計正本（Tier 2-3 で凍結、実装は Tier 3） | ★★★ |
 
-これら 4 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
+これら 5 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
 
 ### 第1群: アーキテクチャ（設計の芯）
 
@@ -63,7 +66,9 @@
 
 | 位置 | 内容 |
 |-----|-----|
-| `../development/INDEX.md` | Issue 別実装 note のインデックス（CLOSED / COMPLETED / CANDIDATE） |
+| `../development/INDEX.md` | Issue 別実装 note のインデックス（CLOSED / COMPLETED / CANDIDATE）。Tier 1-1 / 1-2 / 2-1 / 2-2 は COMPLETED に反映済み |
+| `../development/orphan-asset-auto-gc.md` | Tier 2-1 — import 経路に限定した orphan asset auto-GC（2026-04-14） |
+| `../development/bulk-restore-ui.md` | Tier 2-2 — BULK_* revision の 1-click restore UI（2026-04-14） |
 | `../development/ui-singleton-state-audit.md` | 残 singleton 棚卸し（2026-04-13） |
 | `../development/stale-listener-prevention.md` | テスト dispatcher leak 回避 pattern |
 | `../development/textlog-text-conversion.md` | TEXTLOG ↔ TEXT 変換仕様 |

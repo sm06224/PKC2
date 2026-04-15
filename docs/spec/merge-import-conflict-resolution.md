@@ -1,10 +1,14 @@
 # Merge Import — 衝突解決の設計
 
-**Status**: design draft（Tier 2-3 / docs-only）
-**Date**: 2026-04-14
+**Status**: canonical spec（Tier 2-3 で凍結 / 2026-04-14）。**Tier
+3-1 で MVP 実装済み**（2026-04-14、`features/import/merge-planner.ts`
++ `CONFIRM_MERGE_IMPORT` reducer case + preview UI）。
+**Positioning**: `docs/spec/` 配下の正本仕様。`HANDOVER_FINAL.md`
+§18.2 の不変条件 **I-Merge1 / I-Merge2** に紐付く凍結ドキュメント。
+本 spec は MVP 契約を定める正本のままであり、§9 将来拡張はまだ
+未実装。spec を変更するには schema bump に準ずる意思決定が必要。
 **Scope**: 複数の PKC2 container を 1 つに **merge** するときの衝突
-解決戦略を設計として固める。本ドキュメントは **spec** であって実装
-ではない。コード・テスト・reducer には一切手を入れない。
+解決戦略。
 
 ## 1. 概要
 
@@ -851,3 +855,4 @@ refactor または minor addition で吸収できる。
 | 日付 | 変更 |
 |-----|-----|
 | 2026-04-14 | 初版（Tier 2-3, docs-only） |
+| 2026-04-14 | Tier 3-1 で MVP 実装完了。`features/import/merge-planner.ts` (pure helper) + `CONFIRM_MERGE_IMPORT` / `SET_IMPORT_MODE` reducer cases + preview UI の mode radio + merge 件数サマリ。テスト 29 件追加（planner 13 / reducer+integration+UI 16）。spec 本文は無変更（MVP 契約として凍結済み） |

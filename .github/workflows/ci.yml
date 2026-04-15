@@ -6,11 +6,12 @@
 #   3. bundle ビルド (vite build) が通る
 # の 3 点を自動で検証する。
 #
-# lint は `continue-on-error: true` で情報扱い — 現状 ESLint 設定が
-# アーキテクチャ規約 (CLAUDE.md: adapter orchestrates features) と
-# ずれており 80 件程度の pre-existing な no-restricted-imports エラー
-# が溜まっている。lint config 自体の整理は別 PR の仕事で、CI 導入の
-# スコープには含めない。
+# lint は Tier 3-3（2026-04-14）で blocking に昇格済み。以前は
+# ESLint 設定が CLAUDE.md §Architecture（adapter orchestrates
+# features）と逆になっていて 91 件程度の pre-existing な
+# no-restricted-imports エラーが溜まっていたが、Tier 3-3 で
+# .eslintrc.cjs を正本化してゼロ化した。経緯は
+# docs/development/lint-baseline-realignment.md を参照。
 #
 # 対象ブランチ: main / claude/** / PR to main。
 # 対象 OS: ubuntu-latest 単一 (配布物が単一 HTML のため OS 差分不要)。
@@ -56,14 +57,26 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint (non-blocking)
-        # pre-existing な ESLint config drift が解消されるまで非ブロッ
-        # キング扱い。ログは残して回帰はレビューで拾う。
+      - name: Lint
+        # Tier 3-3 で blocking 化（2026-04-14）。継続的品質ゲートと
+        # して機能する。理由は docs/development/lint-baseline-realignment.md。
         run: npm run lint
-        continue-on-error: true
 
       - name: Test
         run: npm test
 
       - name: Build bundle
         run: npm run build:bundle
+
+      - name: Bundle size budget
+        # Tier 3-2 (2026-04-14): hard fail when dist/bundle.js or
+        # dist/bundle.css exceed a fixed raw-size budget. Budgets are
+        # chosen from the Tier 3-1 baseline (bundle.js 502.81 KB,
+        # bundle.css 72.31 KB) + ~20% headroom so natural feature
+        # churn doesn't immediately red-line CI, but a sudden jump
+        # (e.g. a heavy dep pulled into the wrong layer) surfaces
+        # immediately. Raw size rather than gzip because gzip ratio
+        # varies with content and we want a stable "I added code"
+        # signal. Rationale lives in
+        # docs/development/release-automation-and-smoke-baseline.md.
+        run: node build/check-bundle-size.cjs
