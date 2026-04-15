@@ -62,6 +62,18 @@ export type UserAction =
   | { type: 'CONFIRM_MERGE_IMPORT'; now: string }
   | { type: 'SET_IMPORT_MODE'; mode: 'replace' | 'merge' }
   | { type: 'CANCEL_IMPORT' }
+  | {
+      // S-18 (A-4 FULL, 2026-04-14): select an entry AND request the
+      // post-render effect in main.ts to scroll to + temporarily
+      // highlight the target sub-location (heading, log entry, or
+      // entry-top). `ticket` is a monotonically increasing counter
+      // generated at dispatch time so main.ts can tell a repeated
+      // navigation (same subId) apart from a stale state snapshot.
+      type: 'NAVIGATE_TO_LOCATION';
+      lid: string;
+      subId: string;
+      ticket: number;
+    }
   | { type: 'CONFIRM_BATCH_IMPORT' }
   | { type: 'CANCEL_BATCH_IMPORT' }
   | { type: 'TOGGLE_BATCH_IMPORT_ENTRY'; index: number }

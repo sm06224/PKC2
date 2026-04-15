@@ -282,10 +282,15 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - **制約として受け入れる側**: IME 編集中 / scroll 位置 / input focus は明示
   的保存・復元が必要（既存 wiring で対処済み、新 UI 追加時は要注意）
 
-### 6.2 pane state 非永続
-- 左右ペインの表示状態（`Ctrl+\` / `Ctrl+Shift+\` で切替）は **永続化されない**
-- ブラウザリロードで既定に戻る
-- IDB schema や export_meta に含めていない（将来拡張の余地はある）
+### 6.2 pane state 非永続（**解消済み — S-19 / H-7, 2026-04-14**）
+- 旧: 左右ペインの表示状態（`Ctrl+\` / `Ctrl+Shift+\` で切替）は永続化されず、
+  ブラウザリロードどころか**任意の dispatch で走る再描画でさえ既定に戻って**いた
+- **S-19 で解消**: `localStorage['pkc2.panePrefs']` に `{ sidebar, meta }` を
+  保存。renderer が初期レンダ時に prefs を読んで `data-pkc-collapsed`
+  を注入（flash なし）、`togglePane` は `setPaneCollapsed` → `applyOnePaneCollapsedToDOM`
+  を経由して永続化 + DOM 反映。reducer / AppState / user-action への
+  touch 0。invalid JSON / no-storage fallback 済み。詳細は
+  `docs/development/pane-state-persistence.md`
 
 ### 6.3 TEXT → TEXTLOG 変換の非可逆部分
 - 分割境界（heading / hr）は選んだ方式で決まるが、元の TEXT 本文内の特殊

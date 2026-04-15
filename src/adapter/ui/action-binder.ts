@@ -26,6 +26,8 @@ import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { buildFolderExportBundle } from '../platform/folder-export';
+import { setPaneCollapsed } from '../platform/pane-prefs';
+import { applyOnePaneCollapsedToDOM } from './pane-apply';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
@@ -33,9 +35,10 @@ import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
+import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -214,6 +217,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
+        break;
+      }
+      case 'navigate-to-location': {
+        // S-18 (A-4 FULL, 2026-04-14): sidebar sub-location row click.
+        // The data attributes carry the entry lid + sub-id. We issue
+        // a fresh monotonic ticket so main.ts's tracker can detect
+        // even repeated clicks on the same row (user clicked the
+        // same sub-loc twice → scroll-to should re-fire).
+        const subId = target.getAttribute('data-pkc-sub-id');
+        if (!lid || !subId) break;
+        dispatcher.dispatch({
+          type: 'NAVIGATE_TO_LOCATION',
+          lid,
+          subId,
+          ticket: ++navTicketCounter,
+        });
         break;
       }
       case 'toggle-folder-collapse': {
@@ -1516,6 +1535,54 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
+    // ── B-3 Slice α (USER_REQUEST_LEDGER S-17, 2026-04-14): quote
+    //    continuation. When the user is at the end of a non-empty
+    //    `> …` line in a markdown-eligible textarea and presses
+    //    plain Enter, insert `\n> ` so the next line continues the
+    //    blockquote. Falls through silently when the rule does not
+    //    match (mid-line Enter, empty quote line, IME composition,
+    //    non-eligible textarea, modified Enter, etc.) so native
+    //    behaviour is preserved everywhere else.
+    //
+    //    Placed AFTER inline-calc so a `> 1+1=` line still gets the
+    //    calc result (inline-calc's `=` rule wins on that specific
+    //    overlap). Placed BEFORE Ctrl+Enter handling so the modifier
+    //    check there still owns the textlog-append path.
+    if (
+      e.key === 'Enter'
+      && !mod
+      && !e.shiftKey
+      && !e.altKey
+      && !e.isComposing
+      && e.target instanceof HTMLTextAreaElement
+      && isSlashEligible(e.target)
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      if (start === end) {
+        const action = computeQuoteAssistOnEnter(ta.value, start);
+        if (action) {
+          e.preventDefault();
+          ta.focus();
+          ta.setSelectionRange(start, start);
+          let inserted = false;
+          try {
+            inserted = document.execCommand('insertText', false, action.insert);
+          } catch {
+            /* execCommand may not exist in non-browser test envs */
+          }
+          if (!inserted) {
+            ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
+            const newCaret = start + action.insert.length;
+            ta.selectionStart = ta.selectionEnd = newCaret;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return;
+        }
+      }
+    }
+
     // Ctrl+Enter / Cmd+Enter in TEXTLOG append textarea: append log entry.
     // Plain Enter is intentionally left alone so multiline input still works.
     if (
@@ -1591,6 +1658,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // Custom context menu (right-click) closes first — it's the
+      // topmost transient overlay when visible and users expect Esc
+      // to dismiss it (parity with ShellMenu / ShortcutHelp / etc.).
+      // Tracked in docs/planning/USER_REQUEST_LEDGER.md §4.
+      const ctxMenu = root.querySelector('[data-pkc-region="context-menu"]');
+      if (ctxMenu) {
+        dismissContextMenu();
+        return;
+      }
       // Slice 4: close the TEXTLOG preview modal first if open, so a
       // single Esc press returns the user to selection mode (matches
       // the symmetry "Esc closes the topmost overlay").
@@ -2056,9 +2132,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // S-14 (2026-04-14): IME composition guard for the search input.
+  // Each SET_SEARCH_QUERY dispatch triggers a full re-render which
+  // destroys and recreates the input element, killing any active IME
+  // composition (so Japanese / Chinese / Korean input was effectively
+  // unusable — every keystroke aborted composition). We now suppress
+  // dispatch for the duration of an IME composition and emit a single
+  // dispatch with the final value when composition ends. Non-IME
+  // input falls through to the existing every-keystroke path.
+  let searchImeComposing = false;
+
+  // S-18 (A-4 FULL): monotonic ticket for NAVIGATE_TO_LOCATION.
+  // Main.ts compares `state.pendingNav.ticket` against its
+  // last-seen value, so even re-clicking the same sub-id row
+  // triggers a fresh scroll + highlight.
+  let navTicketCounter = 0;
+  function handleSearchCompositionStart(e: Event): void {
+    const target = e.target as HTMLElement | null;
+    if (target?.getAttribute('data-pkc-field') === 'search') {
+      searchImeComposing = true;
+    }
+  }
+  function handleSearchCompositionEnd(e: Event): void {
+    const target = e.target as HTMLInputElement | null;
+    if (target?.getAttribute('data-pkc-field') === 'search') {
+      searchImeComposing = false;
+      // Composition just committed; dispatch the final value once.
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target.value });
+    }
+  }
+
   function handleInput(e: Event): void {
     const target = e.target as HTMLElement;
     if (target.getAttribute('data-pkc-field') === 'search') {
+      // S-14: skip dispatch while IME composition is active to keep
+      // the input element (and the composition state) alive.
+      if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
       return;
@@ -2624,6 +2733,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         hasParent,
       });
       root.appendChild(menu);
+      // Keep the menu inside the viewport when right-click happens
+      // near the right / bottom edge (bugfix 2026-04-14).
+      clampMenuToViewport(menu);
       return;
     }
 
@@ -2650,6 +2762,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         hasParent,
       });
       root.appendChild(menu);
+      clampMenuToViewport(menu);
       return;
     }
 
@@ -2678,6 +2791,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       folders,
     });
     root.appendChild(menu);
+    clampMenuToViewport(menu);
   }
 
   function handleDocumentClick(e: MouseEvent): void {
@@ -3241,6 +3355,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
+  // S-14: IME guard for the search input lives on root via event
+  // delegation so it survives re-render (the input element is
+  // recreated each time but the listeners on root persist).
+  root.addEventListener('compositionstart', handleSearchCompositionStart);
+  root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
@@ -3276,6 +3395,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
+    root.removeEventListener('compositionstart', handleSearchCompositionStart);
+    root.removeEventListener('compositionend', handleSearchCompositionEnd);
     root.removeEventListener('change', handleChange);
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);
@@ -4163,28 +4284,16 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
  */
 function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
-  const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
-  const handleSide = pane === 'sidebar' ? 'left' : 'right';
-
   const paneEl = root.querySelector<HTMLElement>(selector);
-  const trayEl = root.querySelector<HTMLElement>(`[data-pkc-region="${trayRegion}"]`);
-  const handleEl = root.querySelector<HTMLElement>(`[data-pkc-resize="${handleSide}"]`);
-
   if (!paneEl) return;
-
   const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
-
-  if (isCollapsed) {
-    // Expand
-    paneEl.removeAttribute('data-pkc-collapsed');
-    if (trayEl) trayEl.style.display = 'none';
-    if (handleEl) handleEl.removeAttribute('data-pkc-collapsed');
-  } else {
-    // Collapse
-    paneEl.setAttribute('data-pkc-collapsed', 'true');
-    if (trayEl) trayEl.style.display = '';
-    if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
-  }
+  const nextCollapsed = !isCollapsed;
+  // H-7 (S-19, 2026-04-14): persist to localStorage then apply the
+  // DOM effect via the shared helper so click / shortcut / tray
+  // paths all go through identical code. The prefs cache returned
+  // by setPaneCollapsed is authoritative for the next render.
+  setPaneCollapsed(pane, nextCollapsed);
+  applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
 }
 
 /**

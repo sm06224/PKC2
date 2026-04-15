@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { bindActions } from '@adapter/ui/action-binder';
 import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatcher';
 import { render } from '@adapter/ui/renderer';
+import { __resetPanePrefsCacheForTest } from '@adapter/platform/pane-prefs';
 import type { Container } from '@core/model/container';
 
 const baseContainer: Container = {
@@ -97,6 +98,13 @@ function metaPane(): HTMLElement | null {
 }
 
 beforeEach(() => {
+  // S-19 (2026-04-14): reset pane-prefs cache + localStorage between
+  // tests. The renderer now reads persisted prefs on the first
+  // render (so toggles survive re-renders and reloads), which means
+  // a previous test's toggle-to-collapsed can leak into the next
+  // test's boot state if we don't clear both.
+  __resetPanePrefsCacheForTest();
+  localStorage.clear();
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
@@ -106,6 +114,8 @@ beforeEach(() => {
     for (const fn of _trackedUnsubs) fn();
     _trackedUnsubs.length = 0;
     root.remove();
+    __resetPanePrefsCacheForTest();
+    localStorage.clear();
   };
 });
 

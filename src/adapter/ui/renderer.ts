@@ -15,6 +15,8 @@ import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { findSubLocationHits } from '../../features/search/sub-location-search';
+import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
@@ -38,6 +40,8 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
+import { highlightMatchesIn } from './search-mark';
+import { loadPanePrefs } from '../platform/pane-prefs';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -252,22 +256,30 @@ function renderShell(state: AppState): HTMLElement {
   // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
 
+  // H-7 (S-19, 2026-04-14): read persisted pane state so the
+  // initial render already reflects the user's last collapse
+  // preference. Avoids the "always-expand on re-render" flash
+  // that existed before pane-prefs was wired up.
+  const panePrefs = loadPanePrefs();
+
   // Left tray bar (shown when sidebar is collapsed)
   const leftTray = createElement('div', 'pkc-tray-bar');
   leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
   leftTray.setAttribute('title', 'Click to expand sidebar');
   leftTray.textContent = 'SIDEBAR';
-  leftTray.style.display = 'none';
+  leftTray.style.display = panePrefs.sidebar ? '' : 'none';
   leftTray.setAttribute('data-pkc-region', 'tray-left');
   main.appendChild(leftTray);
 
   // Left pane: entry list / tree / search / filters
   const sidebar = renderSidebar(state);
+  if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(sidebar);
 
   // Resize handle: sidebar ↔ center
   const leftHandle = createElement('div', 'pkc-resize-handle');
   leftHandle.setAttribute('data-pkc-resize', 'left');
+  if (panePrefs.sidebar) leftHandle.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(leftHandle);
 
   // Center pane: content view/edit + fixed action bar
@@ -279,10 +291,13 @@ function renderShell(state: AppState): HTMLElement {
     // Resize handle: center ↔ meta
     const rightHandle = createElement('div', 'pkc-resize-handle');
     rightHandle.setAttribute('data-pkc-resize', 'right');
+    if (panePrefs.meta) rightHandle.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    main.appendChild(renderMetaPane(selected, canEdit, state.container));
+    const metaPane = renderMetaPane(selected, canEdit, state.container);
+    if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
+    main.appendChild(metaPane);
   }
 
   // Right tray bar (shown when meta pane is collapsed)
@@ -290,7 +305,10 @@ function renderShell(state: AppState): HTMLElement {
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
   rightTray.textContent = 'META';
-  rightTray.style.display = 'none';
+  // The right tray is only meaningful when a meta pane exists, i.e.
+  // when an entry is selected. When no entry is selected, leave it
+  // hidden regardless of the persisted preference.
+  rightTray.style.display = panePrefs.meta && selected ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
 
@@ -1307,8 +1325,22 @@ function renderSidebar(state: AppState): HTMLElement {
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
+    const query = state.searchQuery.trim();
     for (const entry of entries) {
       list.appendChild(renderEntryItem(entry, state));
+      // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
+      // search query AND the entry has sub-location matches, expand
+      // them as clickable sidebar rows that scroll to the exact spot
+      // on click. Only runs for TEXT / TEXTLOG (the indexer returns
+      // [] for other archetypes). Limited to the top 5 matches per
+      // entry by the indexer's maxPerEntry default — keeps the list
+      // scannable on frequent terms.
+      if (query !== '') {
+        const hits = findSubLocationHits(entry, query);
+        for (const hit of hits) {
+          list.appendChild(renderSubLocationItem(hit));
+        }
+      }
     }
   } else {
     // Tree mode: build from structural relations
@@ -1629,6 +1661,40 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
   return li;
 }
 
+/**
+ * S-18 (A-4 FULL): render one sub-location hit under its parent
+ * entry row in the sidebar. Clicking dispatches NAVIGATE_TO_LOCATION
+ * which sets selectedLid + pendingNav, and main.ts's post-render
+ * effect then scrolls to the sub-id target and flashes the
+ * highlight.
+ */
+function renderSubLocationItem(hit: SubLocationHit): HTMLElement {
+  const li = createElement('li', 'pkc-entry-subloc');
+  li.setAttribute('data-pkc-action', 'navigate-to-location');
+  li.setAttribute('data-pkc-lid', hit.entryLid);
+  li.setAttribute('data-pkc-sub-id', hit.subId);
+  li.setAttribute('data-pkc-subloc-kind', hit.kind);
+
+  // Kind badge → label → snippet. Three spans to keep CSS simple.
+  const badge = createElement('span', 'pkc-entry-subloc-kind');
+  badge.textContent = hit.kind === 'heading'
+    ? '§'
+    : hit.kind === 'log'
+      ? '•'
+      : '↑';
+  li.appendChild(badge);
+
+  const label = createElement('span', 'pkc-entry-subloc-label');
+  label.textContent = hit.label;
+  li.appendChild(label);
+
+  const snippet = createElement('span', 'pkc-entry-subloc-snippet');
+  snippet.textContent = hit.snippet;
+  li.appendChild(snippet);
+
+  return li;
+}
+
 function renderCenter(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
@@ -1697,7 +1763,7 @@ function renderCenter(state: AppState): HTMLElement {
     }
     content.appendChild(renderEditor(selected, state.container));
   } else {
-    content.appendChild(renderView(selected, canEdit, state.container));
+    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery));
   }
 
   // Compact drop zone strip when viewing an entry (not editing)
@@ -2137,7 +2203,7 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
   return bar;
 }
 
-function renderView(entry: Entry, _canEdit: boolean, container: Container | null): HTMLElement {
+function renderView(entry: Entry, _canEdit: boolean, container: Container | null, searchQuery: string = ''): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
@@ -2215,6 +2281,15 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   }
 
   // Tags, relations, history, move → moved to right meta pane (renderMetaPane)
+
+  // A-4 Slice α (USER_REQUEST_LEDGER S-15, 2026-04-14): when a
+  // search query is active, wrap matching text in `<mark>` so the
+  // user can see WHERE the entry matched. Code blocks (`<pre>`) are
+  // skipped to keep B-2 syntax-highlight token markup intact. The
+  // helper is idempotent so re-rendering the same entry is safe.
+  if (searchQuery.trim() !== '') {
+    highlightMatchesIn(view, searchQuery);
+  }
 
   return view;
 }
@@ -3436,6 +3511,47 @@ export function renderContextMenu(
 }
 
 // ── Persistent Drop Zone ──
+
+/**
+ * Keep a menu (or any fixed-positioned element) inside the viewport.
+ *
+ * Mutates `menu.style.left` / `menu.style.top` so that its bounding
+ * box stays within `[margin, window.innerWidth - margin]` × `[margin,
+ * window.innerHeight - margin]`. Must be called AFTER the element has
+ * been appended to the DOM — `getBoundingClientRect` needs layout.
+ *
+ * Primary use: `renderContextMenu` opens near the cursor; clicks near
+ * the right / bottom edge would otherwise render the menu partly off-
+ * screen. We shift left / up by the overflow amount, but never past
+ * the top-left margin.
+ */
+export function clampMenuToViewport(menu: HTMLElement, margin = 4): void {
+  // happy-dom returns 0 for offsetWidth/Height on elements that have
+  // no layout; guard against div-by-zero style bugs with a fall-back
+  // to the style values. getBoundingClientRect is preferred because
+  // it reflects any inline style we already set.
+  const rect = menu.getBoundingClientRect();
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+  if (vw <= 0 || vh <= 0) return;
+
+  let nextLeft = rect.left;
+  let nextTop = rect.top;
+
+  if (rect.right > vw - margin) {
+    nextLeft = Math.max(margin, vw - margin - rect.width);
+  }
+  if (rect.bottom > vh - margin) {
+    nextTop = Math.max(margin, vh - margin - rect.height);
+  }
+  // Also clamp on the low side in case the caller passed negative
+  // coords (shouldn't happen but cheap to defend).
+  if (nextLeft < margin) nextLeft = margin;
+  if (nextTop < margin) nextTop = margin;
+
+  if (nextLeft !== rect.left) menu.style.left = `${nextLeft}px`;
+  if (nextTop !== rect.top) menu.style.top = `${nextTop}px`;
+}
 
 /**
  * Render a persistent file drop zone.

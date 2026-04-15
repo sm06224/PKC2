@@ -66,6 +66,24 @@ export interface AppState {
    * See docs/spec/merge-import-conflict-resolution.md.
    */
   importMode?: 'replace' | 'merge';
+  /**
+   * Pending sub-location navigation (S-18 / A-4 FULL, 2026-04-14).
+   *
+   * Set by `NAVIGATE_TO_LOCATION`. The post-render effect in
+   * `main.ts` reads this after every render, compares `ticket`
+   * against the last-seen value, and — if new — resolves the
+   * `subId` to a DOM element, scrolls it into view, and temporarily
+   * flashes `pkc-location-highlight`. The state field is NOT
+   * cleared by the reducer; the effect is idempotent because it
+   * only fires on ticket advances.
+   *
+   * Optional so existing AppState literal fixtures keep compiling
+   * (same pattern as `importMode`). Read sites treat undefined as
+   * "no pending navigation".
+   *
+   * See docs/development/search-ux-partial-reach.md.
+   */
+  pendingNav?: { subId: string; ticket: number } | null;
   /** Batch import preview awaiting user confirmation (runtime-only). */
   batchImportPreview: BatchImportPreviewInfo | null;
   /** Batch import result summary for UI feedback (runtime-only, transient). */
@@ -171,6 +189,7 @@ export function createInitialState(): AppState {
     pendingOffers: [],
     importPreview: null,
     importMode: 'replace',
+    pendingNav: null,
     batchImportPreview: null,
     batchImportResult: null,
     searchQuery: '',
@@ -324,6 +343,49 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         textToTextlogModal,
       };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
+    }
+    case 'NAVIGATE_TO_LOCATION': {
+      // S-18 (A-4 FULL): same selection semantics as SELECT_ENTRY
+      // (auto-expand ancestors, clear per-entry transient UI when
+      // the selection target changes), PLUS record a post-render
+      // hint so main.ts can scroll to the sub-location and flash
+      // the highlight. `ticket` is caller-supplied and monotonic.
+      if (state.phase !== 'ready') return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      let collapsedFolders = state.collapsedFolders;
+      if (state.collapsedFolders.length > 0) {
+        const ancestorFolders = getAncestorFolderLids(
+          state.container.relations,
+          state.container.entries,
+          action.lid,
+        );
+        if (ancestorFolders.length > 0) {
+          const ancestorSet = new Set(ancestorFolders);
+          const filtered = state.collapsedFolders.filter((l) => !ancestorSet.has(l));
+          if (filtered.length !== state.collapsedFolders.length) {
+            collapsedFolders = filtered;
+          }
+        }
+      }
+      const textlogSelection = (state.textlogSelection && state.textlogSelection.activeLid !== action.lid)
+        ? null
+        : state.textlogSelection;
+      const textToTextlogModal = (state.textToTextlogModal && state.textToTextlogModal.sourceLid !== action.lid)
+        ? null
+        : state.textToTextlogModal;
+      const next: AppState = {
+        ...state,
+        selectedLid: action.lid,
+        multiSelectedLids: [],
+        collapsedFolders,
+        textlogSelection,
+        textToTextlogModal,
+        pendingNav: { subId: action.subId, ticket: action.ticket },
+      };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_SELECTED', lid: action.lid }],
+      };
     }
     case 'DESELECT_ENTRY': {
       // P1-1: deselection tears down per-entry transient UI state too.

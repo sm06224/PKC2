@@ -225,7 +225,8 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9999;
+  /* IDB banner: topmost system bar — above toasts and overlays. */
+  z-index: 30000;
   padding: 0.4rem 0.75rem;
   background: var(--c-warn);
   color: var(--c-warn-fg);
@@ -314,7 +315,10 @@
   bottom: 0.75rem;
   left: auto;
   top: auto;
-  z-index: 9998; /* just below the IDB banner (9999) */
+  /* Toast tier: above overlays (20000+) so warnings stay readable
+     even with a context menu / settings dialog open. Below the IDB
+     banner (30000). */
+  z-index: 25000;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -1180,6 +1184,101 @@
 /* ── Phase 2: fenced code block language hint ── */
 .pkc-md-rendered pre code[class*="language-"] {
   display: block;
+}
+
+/* ── Search match highlight ──
+   A-4 Slice α (USER_REQUEST_LEDGER S-15, 2026-04-14). Visual mark
+   for substring matches inside the entry view body when the user
+   has an active search query in the sidebar filter. The DOM walk
+   that produces these `<mark>` elements lives in
+   src/adapter/ui/search-mark.ts. CSS only — no animation, no
+   scroll, no per-result row UI (those are A-4 Slice β/γ, still
+   CONDITIONAL).
+
+   Color choice: high-contrast yellow on dark mode, parchment-tinted
+   on light mode. Padding kept tiny so wrapped matches don't shift
+   line spacing in narrow gutters. */
+mark.pkc-search-mark {
+  background: #ffd84a;
+  color: #1a1a1a;
+  border-radius: 2px;
+  padding: 0 2px;
+  /* Preserve whatever weight / style the surrounding text had so
+     headings + bold + italic still render correctly through the
+     wrapper. */
+  font: inherit;
+}
+@media (prefers-color-scheme: light) {
+  mark.pkc-search-mark {
+    background: #fff09a;
+    color: #1a1a1a;
+  }
+}
+
+/* ── Sidebar sub-location rows (S-18 / A-4 FULL, 2026-04-14) ──
+   When a search query is active, each matching entry row is
+   followed by up to 5 sub-location rows. Clicking one fires
+   NAVIGATE_TO_LOCATION which scrolls to the heading (TEXT) or
+   log entry (TEXTLOG) and flashes `.pkc-location-highlight`.
+   Indented and dimmed so the entry-level row still reads first. */
+.pkc-entry-subloc {
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.15rem 0.4rem 0.15rem 1.6rem;
+  font-size: 0.72rem;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  border-left: 1px dashed var(--c-border);
+  margin-left: 0.4rem;
+  transition: background 120ms ease, color 120ms ease;
+}
+.pkc-entry-subloc:hover {
+  background: var(--c-hover);
+  color: var(--c-fg);
+}
+.pkc-entry-subloc-kind {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--c-accent);
+  width: 1em;
+  text-align: center;
+}
+.pkc-entry-subloc-label {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pkc-entry-subloc-snippet {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+/* ── Temporary flash on scroll-to target (S-18 / A-4 FULL) ──
+   `.pkc-location-highlight` is added by adapter/ui/location-nav.ts
+   for ~1.6s after a NAVIGATE_TO_LOCATION scroll. Uses a CSS
+   animation + `!important` on outline so it survives nested
+   theme rules (e.g. `.pkc-md-rendered h1` default outline). */
+@keyframes pkc-location-flash {
+  0% {
+    background: var(--c-accent);
+    color: var(--c-accent-fg);
+  }
+  100% {
+    background: transparent;
+    color: inherit;
+  }
+}
+.pkc-location-highlight {
+  animation: pkc-location-flash 1.6s ease-out;
+  scroll-margin-block: 4rem;
 }
 
 /* ── Fenced code block syntax highlighting ──
@@ -2745,6 +2844,23 @@
 }
 
 /* ── Context menu ── */
+/*
+ * z-index tier policy (bugfix 2026-04-14):
+ *
+ *   0–99     base page content
+ *   100–500  inline popovers (autocomplete, eip, detail-in-place)
+ *   9999     CRT scanline pseudo-element on #pkc-root
+ *   10000    attachment sandbox / PDF / video previews
+ *            (lifted above the 9999 scanline so iframes don't
+ *             get scanline overlay drawn across them)
+ *   20000+   interactive overlays (context menu, shell menu,
+ *            shortcut overlay, storage profile, preview modals).
+ *            MUST sit above sandbox previews (10000) so they
+ *            remain visible and clickable when an attachment
+ *            entry is currently shown in the center pane.
+ *   25000    toast stack (above overlays so warnings always read)
+ *   30000    IDB availability banner (always topmost — system bar)
+ */
 @keyframes pkc-menu-open {
   0% { opacity: 0; transform: scale(0.95); }
   100% { opacity: 1; transform: scale(1); }
@@ -2752,7 +2868,7 @@
 
 .pkc-context-menu {
   position: fixed;
-  z-index: 200;
+  z-index: 20000;
   min-width: 140px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -3044,7 +3160,7 @@
 .pkc-shell-menu-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3134,7 +3250,7 @@
 .pkc-shortcut-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3204,7 +3320,7 @@
 .pkc-storage-profile-overlay {
   position: fixed;
   inset: 0;
-  z-index: 210;
+  z-index: 20010;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4321,7 +4437,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
+  /* Overlay tier — above attachment sandbox previews (10000). */
+  z-index: 20000;
 }
 
 .pkc-textlog-preview-panel {
@@ -4388,7 +4505,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
+  /* Overlay tier — above attachment sandbox previews (10000). */
+  z-index: 20000;
 }
 
 .pkc-text-to-textlog-panel {

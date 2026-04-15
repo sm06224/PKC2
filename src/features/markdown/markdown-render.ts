@@ -26,6 +26,7 @@ import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import { makeSlugCounter } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
+import { renderCsvFence } from './csv-table';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
@@ -86,6 +87,23 @@ const defaultLinkOpen = md.renderer.rules.link_open ??
   function (tokens, idx, options, _env, self) {
     return self.renderToken(tokens, idx, options);
   };
+
+// ── B-1 (USER_REQUEST_LEDGER S-16, 2026-04-14): CSV / TSV / PSV
+//    fenced blocks render as `<table>`. Short-circuits BEFORE the
+//    `highlight:` hook so CSV blocks bypass syntax highlighting
+//    (they're not code). On parse failure or unknown lang, fall
+//    through to the default fence renderer (which then runs the
+//    highlight hook, preserving B-2 behaviour for code blocks).
+const defaultFence = md.renderer.rules.fence ??
+  function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]!;
+  const html = renderCsvFence(token.content, token.info);
+  if (html !== null) return html;
+  return defaultFence(tokens, idx, options, env, self);
+};
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;

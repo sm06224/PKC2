@@ -285,7 +285,13 @@ describe('Entry-window child dirty state policy for view rerender', () => {
   });
 
   it('dirty child: Preview live refresh still applies independently', () => {
-    const child = executeChild();
+    // A-2 (2026-04-14) replaced the Source/Preview tab bar with a
+    // split editor for `archetype === 'text'`, so showTab is a no-op
+    // there. This test pins the dirty-independent re-render of
+    // body-preview, which is still meaningful for the non-TEXT
+    // tab-bar path (attachment / folder / generic / opaque). Use
+    // `generic` so the showTab cascade still has a tab bar to drive.
+    const child = executeChild({ archetype: 'generic' });
 
     // Enter edit mode and switch to the Preview tab — this is the
     // precondition the child script's 'pkc-entry-update-preview-ctx'
