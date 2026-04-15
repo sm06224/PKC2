@@ -3438,6 +3438,47 @@ export function renderContextMenu(
 // ── Persistent Drop Zone ──
 
 /**
+ * Keep a menu (or any fixed-positioned element) inside the viewport.
+ *
+ * Mutates `menu.style.left` / `menu.style.top` so that its bounding
+ * box stays within `[margin, window.innerWidth - margin]` × `[margin,
+ * window.innerHeight - margin]`. Must be called AFTER the element has
+ * been appended to the DOM — `getBoundingClientRect` needs layout.
+ *
+ * Primary use: `renderContextMenu` opens near the cursor; clicks near
+ * the right / bottom edge would otherwise render the menu partly off-
+ * screen. We shift left / up by the overflow amount, but never past
+ * the top-left margin.
+ */
+export function clampMenuToViewport(menu: HTMLElement, margin = 4): void {
+  // happy-dom returns 0 for offsetWidth/Height on elements that have
+  // no layout; guard against div-by-zero style bugs with a fall-back
+  // to the style values. getBoundingClientRect is preferred because
+  // it reflects any inline style we already set.
+  const rect = menu.getBoundingClientRect();
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+  if (vw <= 0 || vh <= 0) return;
+
+  let nextLeft = rect.left;
+  let nextTop = rect.top;
+
+  if (rect.right > vw - margin) {
+    nextLeft = Math.max(margin, vw - margin - rect.width);
+  }
+  if (rect.bottom > vh - margin) {
+    nextTop = Math.max(margin, vh - margin - rect.height);
+  }
+  // Also clamp on the low side in case the caller passed negative
+  // coords (shouldn't happen but cheap to defend).
+  if (nextLeft < margin) nextLeft = margin;
+  if (nextTop < margin) nextTop = margin;
+
+  if (nextLeft !== rect.left) menu.style.left = `${nextLeft}px`;
+  if (nextTop !== rect.top) menu.style.top = `${nextTop}px`;
+}
+
+/**
  * Render a persistent file drop zone.
  * @param large - If true, renders full-area invitation (when no entry selected).
  *                If false, renders compact strip (below entry content).

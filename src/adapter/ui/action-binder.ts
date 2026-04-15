@@ -35,7 +35,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -2624,6 +2624,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         hasParent,
       });
       root.appendChild(menu);
+      // Keep the menu inside the viewport when right-click happens
+      // near the right / bottom edge (bugfix 2026-04-14).
+      clampMenuToViewport(menu);
       return;
     }
 
@@ -2650,6 +2653,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         hasParent,
       });
       root.appendChild(menu);
+      clampMenuToViewport(menu);
       return;
     }
 
@@ -2678,6 +2682,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       folders,
     });
     root.appendChild(menu);
+    clampMenuToViewport(menu);
   }
 
   function handleDocumentClick(e: MouseEvent): void {

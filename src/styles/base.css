@@ -225,7 +225,8 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9999;
+  /* IDB banner: topmost system bar — above toasts and overlays. */
+  z-index: 30000;
   padding: 0.4rem 0.75rem;
   background: var(--c-warn);
   color: var(--c-warn-fg);
@@ -314,7 +315,10 @@
   bottom: 0.75rem;
   left: auto;
   top: auto;
-  z-index: 9998; /* just below the IDB banner (9999) */
+  /* Toast tier: above overlays (20000+) so warnings stay readable
+     even with a context menu / settings dialog open. Below the IDB
+     banner (30000). */
+  z-index: 25000;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -2745,6 +2749,23 @@
 }
 
 /* ── Context menu ── */
+/*
+ * z-index tier policy (bugfix 2026-04-14):
+ *
+ *   0–99     base page content
+ *   100–500  inline popovers (autocomplete, eip, detail-in-place)
+ *   9999     CRT scanline pseudo-element on #pkc-root
+ *   10000    attachment sandbox / PDF / video previews
+ *            (lifted above the 9999 scanline so iframes don't
+ *             get scanline overlay drawn across them)
+ *   20000+   interactive overlays (context menu, shell menu,
+ *            shortcut overlay, storage profile, preview modals).
+ *            MUST sit above sandbox previews (10000) so they
+ *            remain visible and clickable when an attachment
+ *            entry is currently shown in the center pane.
+ *   25000    toast stack (above overlays so warnings always read)
+ *   30000    IDB availability banner (always topmost — system bar)
+ */
 @keyframes pkc-menu-open {
   0% { opacity: 0; transform: scale(0.95); }
   100% { opacity: 1; transform: scale(1); }
@@ -2752,7 +2773,7 @@
 
 .pkc-context-menu {
   position: fixed;
-  z-index: 200;
+  z-index: 20000;
   min-width: 140px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -3044,7 +3065,7 @@
 .pkc-shell-menu-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3134,7 +3155,7 @@
 .pkc-shortcut-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3204,7 +3225,7 @@
 .pkc-storage-profile-overlay {
   position: fixed;
   inset: 0;
-  z-index: 210;
+  z-index: 20010;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4321,7 +4342,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
+  /* Overlay tier — above attachment sandbox previews (10000). */
+  z-index: 20000;
 }
 
 .pkc-textlog-preview-panel {
@@ -4388,7 +4410,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
+  /* Overlay tier — above attachment sandbox previews (10000). */
+  z-index: 20000;
 }
 
 .pkc-text-to-textlog-panel {
