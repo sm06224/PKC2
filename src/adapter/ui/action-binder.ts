@@ -26,6 +26,8 @@ import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { buildFolderExportBundle } from '../platform/folder-export';
+import { setPaneCollapsed } from '../platform/pane-prefs';
+import { applyOnePaneCollapsedToDOM } from './pane-apply';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
@@ -4282,28 +4284,16 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
  */
 function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
-  const trayRegion = pane === 'sidebar' ? 'tray-left' : 'tray-right';
-  const handleSide = pane === 'sidebar' ? 'left' : 'right';
-
   const paneEl = root.querySelector<HTMLElement>(selector);
-  const trayEl = root.querySelector<HTMLElement>(`[data-pkc-region="${trayRegion}"]`);
-  const handleEl = root.querySelector<HTMLElement>(`[data-pkc-resize="${handleSide}"]`);
-
   if (!paneEl) return;
-
   const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
-
-  if (isCollapsed) {
-    // Expand
-    paneEl.removeAttribute('data-pkc-collapsed');
-    if (trayEl) trayEl.style.display = 'none';
-    if (handleEl) handleEl.removeAttribute('data-pkc-collapsed');
-  } else {
-    // Collapse
-    paneEl.setAttribute('data-pkc-collapsed', 'true');
-    if (trayEl) trayEl.style.display = '';
-    if (handleEl) handleEl.setAttribute('data-pkc-collapsed', 'true');
-  }
+  const nextCollapsed = !isCollapsed;
+  // H-7 (S-19, 2026-04-14): persist to localStorage then apply the
+  // DOM effect via the shared helper so click / shortcut / tray
+  // paths all go through identical code. The prefs cache returned
+  // by setPaneCollapsed is authoritative for the next render.
+  setPaneCollapsed(pane, nextCollapsed);
+  applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
 }
 
 /**

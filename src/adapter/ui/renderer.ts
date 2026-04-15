@@ -41,6 +41,7 @@ import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { highlightMatchesIn } from './search-mark';
+import { loadPanePrefs } from '../platform/pane-prefs';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -255,22 +256,30 @@ function renderShell(state: AppState): HTMLElement {
   // Main area: sidebar + resize-handle + center + resize-handle + meta (3-pane)
   const main = createElement('div', 'pkc-main');
 
+  // H-7 (S-19, 2026-04-14): read persisted pane state so the
+  // initial render already reflects the user's last collapse
+  // preference. Avoids the "always-expand on re-render" flash
+  // that existed before pane-prefs was wired up.
+  const panePrefs = loadPanePrefs();
+
   // Left tray bar (shown when sidebar is collapsed)
   const leftTray = createElement('div', 'pkc-tray-bar');
   leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
   leftTray.setAttribute('title', 'Click to expand sidebar');
   leftTray.textContent = 'SIDEBAR';
-  leftTray.style.display = 'none';
+  leftTray.style.display = panePrefs.sidebar ? '' : 'none';
   leftTray.setAttribute('data-pkc-region', 'tray-left');
   main.appendChild(leftTray);
 
   // Left pane: entry list / tree / search / filters
   const sidebar = renderSidebar(state);
+  if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(sidebar);
 
   // Resize handle: sidebar ↔ center
   const leftHandle = createElement('div', 'pkc-resize-handle');
   leftHandle.setAttribute('data-pkc-resize', 'left');
+  if (panePrefs.sidebar) leftHandle.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(leftHandle);
 
   // Center pane: content view/edit + fixed action bar
@@ -282,10 +291,13 @@ function renderShell(state: AppState): HTMLElement {
     // Resize handle: center ↔ meta
     const rightHandle = createElement('div', 'pkc-resize-handle');
     rightHandle.setAttribute('data-pkc-resize', 'right');
+    if (panePrefs.meta) rightHandle.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    main.appendChild(renderMetaPane(selected, canEdit, state.container));
+    const metaPane = renderMetaPane(selected, canEdit, state.container);
+    if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
+    main.appendChild(metaPane);
   }
 
   // Right tray bar (shown when meta pane is collapsed)
@@ -293,7 +305,10 @@ function renderShell(state: AppState): HTMLElement {
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
   rightTray.textContent = 'META';
-  rightTray.style.display = 'none';
+  // The right tray is only meaningful when a meta pane exists, i.e.
+  // when an entry is selected. When no entry is selected, leave it
+  // hidden regardless of the persisted preference.
+  rightTray.style.display = panePrefs.meta && selected ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
 
