@@ -1,8 +1,46 @@
 # Markdown Extension — Code Block Syntax Highlighting
 
-Status: CANDIDATE
+Status: **COMPLETED 2026-04-13** (commit `92921ec`)
 Created: 2026-04-12
 Category: B. Markdown / Rendering Extensions
+Ledger: USER_REQUEST_LEDGER §2 P-13
+
+---
+
+## 0. 実装サマリ（2026-04-13 完了）
+
+§4 の最小スコープに沿って実装され、commit `92921ec` で landing 済み。
+本ドキュメントの §1〜§8 は当時の設計判断記録として保持。
+
+- **highlighter**: `src/features/markdown/code-highlight.ts`（pure
+  features 関数。sticky-regex token walker、~3 KB gzipped）
+- **対応言語**: javascript / typescript / json / html / css / bash /
+  yaml / diff / sql / powershell（aliases: js / jsx / ts / tsx /
+  sh / zsh / yml / ps1 / pwsh）
+- **markdown-it 統合**: `src/features/markdown/markdown-render.ts`
+  L42-45 の `highlight:` hook
+- **CSS**: `src/styles/base.css` の `--c-tok-*` カラー変数
+  （dark / light 両対応）+ `.pkc-md-rendered pre code .pkc-tok-*`
+  selector
+- **entry window 同期**: `src/adapter/ui/entry-window.ts` L592-596 で
+  `--c-tok-*` 変数を child window に forward、L1012-1024 付近で
+  inline CSS にも同じ selector を emit
+- **rendered viewer（export HTML）**: `src/adapter/ui/rendered-viewer.ts`
+  に print-safe な hardcoded 色を埋め込み
+- **テスト**: `tests/features/markdown/code-highlight.test.ts`（18
+  件、per-language token coverage + safety / fallback）+
+  `tests/features/markdown/markdown-render.test.ts` の追加 case
+- **A-2 split editor 経路**: A-2（commit `7d717de`、2026-04-14）で
+  追加された entry window split editor preview も同じ markdown-it
+  pipeline を通るため自動的に highlight が乗る。回帰テスト pin は
+  `tests/adapter/entry-window-syntax-highlight.test.ts` に追加
+  （2026-04-14、ledger 整合修正のフォロースルー）
+
+§5「やらないこと」も全項目守られている（任意言語自動判定なし、
+theme 切替 UI なし、line number / code 折り畳みなし、live edit 中の
+追加処理なし、diff/patch 表示は `diff` 言語の token としてのみ）。
+
+---
 
 ---
 
