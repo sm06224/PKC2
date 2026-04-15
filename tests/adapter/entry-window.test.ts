@@ -161,7 +161,13 @@ describe('Entry Window', () => {
 
   describe('Tab bar and preview', () => {
     it('has Source and Preview tabs using pkc-tab class', async () => {
-      const html = await openAndCapture();
+      // After A-2 (2026-04-14), TEXT archetype uses the split editor
+      // and omits the tab bar. The Source/Preview tab bar is now the
+      // fallback editor for non-TEXT, non-structured archetypes
+      // (attachment / folder / generic / opaque). Pin the contract on
+      // a non-TEXT archetype so this regression test still measures
+      // the tab bar emission.
+      const html = await openAndCapture(false, { archetype: 'generic' });
       expect(html).toContain('pkc-tab-bar');
       expect(html).toContain('id="tab-source"');
       expect(html).toContain('id="tab-preview"');
@@ -170,6 +176,9 @@ describe('Entry Window', () => {
     });
 
     it('showTab preview calls renderMd which uses window.opener.pkcRenderMarkdown', async () => {
+      // renderMd is referenced from BOTH the tab-bar `showTab()` path
+      // and the A-2 split editor's input listener — emitted in the
+      // child script either way, so default archetype is fine.
       const html = await openAndCapture();
       expect(html).toContain('renderMd(src)');
       expect(html).toContain('window.opener.pkcRenderMarkdown');
@@ -2738,11 +2747,17 @@ describe('Entry Window', () => {
       });
     });
 
-    describe('TEXT keeps existing textarea editor', () => {
-      it('uses textarea and Source/Preview tabs for TEXT', async () => {
+    describe('TEXT split editor (A-2, 2026-04-14)', () => {
+      it('uses .pkc-text-split-editor and omits the structured editor / tab bar', async () => {
+        // A-2 replaced the Source/Preview tab bar with the split
+        // view (textarea + live preview) for TEXT archetype.
+        // Detailed contract assertions live in
+        // tests/adapter/entry-window-split-edit.test.ts; this test
+        // pins the headline structural decision.
         const html = await openAndCapture(false, { archetype: 'text', body: '# Hello' });
         expect(html).not.toContain('id="structured-editor"');
-        expect(html).toContain('id="tab-bar"');
+        expect(html).not.toContain('id="tab-bar"');
+        expect(html).toContain('pkc-text-split-editor');
         expect(html).toContain('id="body-edit"');
       });
 

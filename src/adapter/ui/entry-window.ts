@@ -868,10 +868,16 @@ function buildWindowHtml(
 
   // Generate archetype-specific editor body for structured types.
   // For textlog/todo/form, use the presenter to produce a structured
-  // editor matching the center pane. For all other archetypes, keep
-  // the existing textarea + Source/Preview tabs.
+  // editor matching the center pane. For TEXT, use a split view that
+  // mirrors the center pane TEXT editor (A-2, 2026-04-14). All other
+  // non-structured archetypes (attachment / folder / generic / opaque)
+  // keep the existing Source/Preview tab bar.
   const structuredArchetypes = new Set(['textlog', 'todo', 'form']);
   const useStructuredEditor = structuredArchetypes.has(entry.archetype);
+  // A-2 (USER_REQUEST_LEDGER S-13): live split editor for TEXT only.
+  // Reuses the center pane `.pkc-text-split-editor` grid. tab bar is
+  // hidden when this is on; preview updates as the user types.
+  const useSplitEditor = entry.archetype === 'text';
   let editorBodyHtml = '';
   if (useStructuredEditor) {
     const presenterMap: Record<string, { renderEditorBody: (e: Entry) => HTMLElement }> = {
@@ -1188,6 +1194,41 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-editor-body:focus {
   border-color: var(--c-accent);
   box-shadow: 0 0 0 1px var(--c-accent), var(--glow);
+}
+
+/* ── TEXT split editor (A-2, 2026-04-14) ──
+   Mirrors base.css .pkc-text-split-editor so the entry-window TEXT
+   editor feels identical to the center pane split view. Resize
+   handle is rendered but non-interactive in the child window for
+   the MVP — center pane resize logic lives in parent action-binder
+   and is intentionally not replicated here. */
+.pkc-text-split-editor {
+  display: grid;
+  grid-template-columns: 1fr 6px 1fr;
+  gap: 0;
+  min-height: 200px;
+  flex: 1;
+}
+.pkc-text-split-editor .pkc-editor-body {
+  margin-bottom: 0;
+  min-height: 200px;
+  height: 100%;
+}
+.pkc-text-split-resize-handle {
+  width: 6px;
+  background: var(--c-border);
+  border-radius: 3px;
+}
+.pkc-text-edit-preview {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  overflow-y: auto;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  min-height: 200px;
 }
 
 /* ── Tab bar (Source/Preview) ── */
@@ -1538,7 +1579,15 @@ ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-not
         <span class="pkc-archetype-label">${entry.archetype}</span>
       </div>
 ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</div>
-      <textarea class="pkc-editor-body" id="body-edit" rows="10" style="display:none"></textarea>` : `      <div class="pkc-tab-bar" id="tab-bar">
+      <textarea class="pkc-editor-body" id="body-edit" rows="10" style="display:none"></textarea>` : useSplitEditor ? `      <!-- A-2 split editor: TEXT archetype only. Mirrors center pane
+           .pkc-text-split-editor grid (textarea | resize handle | live preview).
+           tab-bar / body-preview display toggling in showTab() is bypassed via
+           useSplitEditor in the child-side script. -->
+      <div class="pkc-text-split-editor" data-pkc-region="text-split-editor">
+        <textarea class="pkc-editor-body" id="body-edit" data-pkc-field="body" data-pkc-viewport-sized="true"></textarea>
+        <div class="pkc-text-split-resize-handle" aria-hidden="true"></div>
+        <div id="body-preview" class="pkc-text-edit-preview pkc-md-rendered" data-pkc-region="text-edit-preview">${renderedBody}</div>
+      </div>` : `      <div class="pkc-tab-bar" id="tab-bar">
         <span class="pkc-tab" id="tab-source" data-pkc-active="true" onclick="showTab('source')">Source</span>
         <span class="pkc-tab" id="tab-preview" onclick="showTab('preview')">Preview</span>
       </div>
@@ -1563,6 +1612,7 @@ var currentMode = 'view';
 var lid = ${escapeForScript(entry.lid)};
 var entryArchetype = ${escapeForScript(entry.archetype)};
 var useStructuredEditor = ${useStructuredEditor ? 'true' : 'false'};
+var useSplitEditor = ${useSplitEditor ? 'true' : 'false'};
 var originalTitle = ${escapeForScript(entry.title)};
 var originalBody = ${escapeForScript(entry.body)};
 
@@ -1615,6 +1665,25 @@ var pendingViewBody = null;
 document.getElementById('body-edit').value = originalBody;
 if (document.getElementById('title-input')) {
   document.getElementById('title-input').value = originalTitle;
+}
+
+/* A-2 split editor: wire live preview refresh. Input fires every
+ * keystroke; debounce to coalesce bursts (~100ms feels immediate for
+ * a markdown preview without hogging the main thread on large bodies).
+ * The renderMd helper below already routes through the parent's
+ * pkcRenderEntryPreview so asset / entry refs resolve exactly like
+ * the view pane. The initial innerHTML is rendered server-side in
+ * buildWindowHtml (renderedBody), so the preview is correct from
+ * the moment the window opens — no flash of unrendered markdown. */
+if (useSplitEditor) {
+  var pkcSplitPreviewTimer = null;
+  document.getElementById('body-edit').addEventListener('input', function() {
+    if (pkcSplitPreviewTimer) clearTimeout(pkcSplitPreviewTimer);
+    pkcSplitPreviewTimer = setTimeout(function() {
+      var src = document.getElementById('body-edit').value;
+      document.getElementById('body-preview').innerHTML = renderMd(src);
+    }, 100);
+  });
 }
 
 /* ── Attachment preview boot ── */
@@ -2010,7 +2079,16 @@ function enterEdit() {
   document.getElementById('btn-cancel').style.display = '';
   document.getElementById('action-bar').setAttribute('data-pkc-editing', 'true');
   document.getElementById('bar-status').textContent = '✎ Editing';
-  if (!useStructuredEditor) showTab('source');
+  /* A-2 split editor: both textarea + preview are always visible, so
+   * there is no "show source tab" initialization. Refresh the preview
+   * once at edit-entry to pick up any view-body update that arrived
+   * while the user was still in view mode. */
+  if (useSplitEditor) {
+    var src = document.getElementById('body-edit').value;
+    document.getElementById('body-preview').innerHTML = renderMd(src);
+  } else if (!useStructuredEditor) {
+    showTab('source');
+  }
 }
 
 function cancelEdit() {
