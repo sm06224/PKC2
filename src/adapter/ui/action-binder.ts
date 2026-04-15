@@ -2065,9 +2065,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // S-14 (2026-04-14): IME composition guard for the search input.
+  // Each SET_SEARCH_QUERY dispatch triggers a full re-render which
+  // destroys and recreates the input element, killing any active IME
+  // composition (so Japanese / Chinese / Korean input was effectively
+  // unusable — every keystroke aborted composition). We now suppress
+  // dispatch for the duration of an IME composition and emit a single
+  // dispatch with the final value when composition ends. Non-IME
+  // input falls through to the existing every-keystroke path.
+  let searchImeComposing = false;
+  function handleSearchCompositionStart(e: Event): void {
+    const target = e.target as HTMLElement | null;
+    if (target?.getAttribute('data-pkc-field') === 'search') {
+      searchImeComposing = true;
+    }
+  }
+  function handleSearchCompositionEnd(e: Event): void {
+    const target = e.target as HTMLInputElement | null;
+    if (target?.getAttribute('data-pkc-field') === 'search') {
+      searchImeComposing = false;
+      // Composition just committed; dispatch the final value once.
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target.value });
+    }
+  }
+
   function handleInput(e: Event): void {
     const target = e.target as HTMLElement;
     if (target.getAttribute('data-pkc-field') === 'search') {
+      // S-14: skip dispatch while IME composition is active to keep
+      // the input element (and the composition state) alive.
+      if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
       return;
@@ -3255,6 +3282,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
+  // S-14: IME guard for the search input lives on root via event
+  // delegation so it survives re-render (the input element is
+  // recreated each time but the listeners on root persist).
+  root.addEventListener('compositionstart', handleSearchCompositionStart);
+  root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
   root.addEventListener('dragstart', handleDragStart);
@@ -3290,6 +3322,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
+    root.removeEventListener('compositionstart', handleSearchCompositionStart);
+    root.removeEventListener('compositionend', handleSearchCompositionEnd);
     root.removeEventListener('change', handleChange);
     root.removeEventListener('dblclick', handleDblClick);
     root.removeEventListener('dragstart', handleDragStart);

@@ -93,7 +93,25 @@ async function boot(): Promise<void> {
     const detail = root.querySelector('.pkc-detail');
     const sidebarScroll = sidebar?.scrollTop ?? 0;
     const detailScroll = detail?.scrollTop ?? 0;
-    const focusField = document.activeElement?.getAttribute('data-pkc-field') ?? null;
+    // Capture the focused field + caret position so we can restore
+    // both after re-render. Bug S-14 (2026-04-14): the previous code
+    // only restored focus in `state.phase === 'editing'`, so search
+    // input lost focus on every keystroke (and IME composition was
+    // killed). Now we restore for any field with `data-pkc-field`.
+    const activeEl = document.activeElement;
+    const focusField =
+      activeEl instanceof HTMLElement
+        ? activeEl.getAttribute('data-pkc-field')
+        : null;
+    let caretStart: number | null = null;
+    let caretEnd: number | null = null;
+    if (
+      activeEl instanceof HTMLInputElement
+      || activeEl instanceof HTMLTextAreaElement
+    ) {
+      caretStart = activeEl.selectionStart;
+      caretEnd = activeEl.selectionEnd;
+    }
 
     const currentCount = state.container?.entries.length ?? 0;
     const justCreated = currentCount > prevEntryCount && state.selectedLid && state.selectedLid !== prevSelectedLid;
@@ -109,11 +127,35 @@ async function boot(): Promise<void> {
     if (newSidebar) newSidebar.scrollTop = sidebarScroll;
     if (newDetail) newDetail.scrollTop = detailScroll;
 
-    // Restore focus: if editing, focus the title or previously focused field
-    if (state.phase === 'editing') {
-      const target = focusField
-        ? root.querySelector<HTMLElement>(`[data-pkc-field="${focusField}"]`)
-        : root.querySelector<HTMLElement>('[data-pkc-field="title"]');
+    // Restore focus + caret. Two cases:
+    //   1. A specific data-pkc-field had focus before — restore it
+    //      regardless of phase. This covers the search input
+    //      (phase = 'ready') and the editor title / body (phase =
+    //      'editing'), the two surfaces where keystrokes drive
+    //      re-renders.
+    //   2. No specific field had focus AND we're entering edit mode
+    //      — default to the title input as before.
+    if (focusField) {
+      const target = root.querySelector<HTMLElement>(
+        `[data-pkc-field="${focusField}"]`,
+      );
+      if (target) {
+        target.focus();
+        if (
+          caretStart !== null
+          && (target instanceof HTMLInputElement
+            || target instanceof HTMLTextAreaElement)
+        ) {
+          try {
+            target.setSelectionRange(caretStart, caretEnd ?? caretStart);
+          } catch {
+            /* setSelectionRange throws for input types that don't
+             * support text selection (e.g. type=number); harmless. */
+          }
+        }
+      }
+    } else if (state.phase === 'editing') {
+      const target = root.querySelector<HTMLElement>('[data-pkc-field="title"]');
       target?.focus();
     }
 
