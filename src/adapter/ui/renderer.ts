@@ -38,6 +38,7 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
+import { highlightMatchesIn } from './search-mark';
 
 /** Archetype options for the filter bar. Single source of truth. */
 const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
@@ -1697,7 +1698,7 @@ function renderCenter(state: AppState): HTMLElement {
     }
     content.appendChild(renderEditor(selected, state.container));
   } else {
-    content.appendChild(renderView(selected, canEdit, state.container));
+    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery));
   }
 
   // Compact drop zone strip when viewing an entry (not editing)
@@ -2137,7 +2138,7 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
   return bar;
 }
 
-function renderView(entry: Entry, _canEdit: boolean, container: Container | null): HTMLElement {
+function renderView(entry: Entry, _canEdit: boolean, container: Container | null, searchQuery: string = ''): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
@@ -2215,6 +2216,15 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   }
 
   // Tags, relations, history, move → moved to right meta pane (renderMetaPane)
+
+  // A-4 Slice α (USER_REQUEST_LEDGER S-15, 2026-04-14): when a
+  // search query is active, wrap matching text in `<mark>` so the
+  // user can see WHERE the entry matched. Code blocks (`<pre>`) are
+  // skipped to keep B-2 syntax-highlight token markup intact. The
+  // helper is idempotent so re-rendering the same entry is safe.
+  if (searchQuery.trim() !== '') {
+    highlightMatchesIn(view, searchQuery);
+  }
 
   return view;
 }

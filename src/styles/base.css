@@ -1186,6 +1186,35 @@
   display: block;
 }
 
+/* ── Search match highlight ──
+   A-4 Slice α (USER_REQUEST_LEDGER S-15, 2026-04-14). Visual mark
+   for substring matches inside the entry view body when the user
+   has an active search query in the sidebar filter. The DOM walk
+   that produces these `<mark>` elements lives in
+   src/adapter/ui/search-mark.ts. CSS only — no animation, no
+   scroll, no per-result row UI (those are A-4 Slice β/γ, still
+   CONDITIONAL).
+
+   Color choice: high-contrast yellow on dark mode, parchment-tinted
+   on light mode. Padding kept tiny so wrapped matches don't shift
+   line spacing in narrow gutters. */
+mark.pkc-search-mark {
+  background: #ffd84a;
+  color: #1a1a1a;
+  border-radius: 2px;
+  padding: 0 2px;
+  /* Preserve whatever weight / style the surrounding text had so
+     headings + bold + italic still render correctly through the
+     wrapper. */
+  font: inherit;
+}
+@media (prefers-color-scheme: light) {
+  mark.pkc-search-mark {
+    background: #fff09a;
+    color: #1a1a1a;
+  }
+}
+
 /* ── Fenced code block syntax highlighting ──
    Token classes are emitted by features/markdown/code-highlight.ts.
    Colors are bound to per-theme CSS variables so dark (PIP-Boy) and
