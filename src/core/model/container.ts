@@ -36,6 +36,21 @@ export interface ContainerMeta {
  * from timestamps. Absent for single-entry snapshots so the common
  * path stays unchanged. Additive / backward-compatible per spec
  * §15.1 and §6.1.
+ *
+ * `prev_rid` (added 2026-04-15, H-6 provenance strengthening) points
+ * to the most recent prior revision of the same `entry_lid` at the
+ * moment this revision was created. Absent when no prior revision
+ * existed for that entry. Gives downstream tools a linear
+ * entry-history pointer without needing timestamp scans. Additive
+ * only — `parseRevisionSnapshot` / `restoreEntry` /
+ * `restoreDeletedEntry` do not read this field. Spec §6.2 / §15.5.
+ *
+ * `content_hash` (added 2026-04-15, H-6) is a 16-char lowercase hex
+ * FNV-1a-64 digest of `snapshot`. Serves as an integrity fingerprint
+ * and a precondition for future dedup / branch-detection logic.
+ * NOT a cryptographic commitment. See `core/operations/hash.ts` and
+ * spec §6.2 / `schema-migration-policy.md §3.1` for the rationale on
+ * algorithm choice and future upgrade path.
  */
 export interface Revision {
   id: string;
@@ -47,6 +62,18 @@ export interface Revision {
    * same bulk action. Absent on single-entry snapshots.
    */
   bulk_id?: string;
+  /**
+   * ID of the most recent prior revision for the same `entry_lid` at
+   * creation time. Absent when this is the first revision recorded
+   * for the entry.
+   */
+  prev_rid?: string;
+  /**
+   * 16-char lowercase hex FNV-1a-64 hash of `snapshot`. Absent on
+   * revisions imported from pre-H-6 artifacts; new snapshots always
+   * populate it.
+   */
+  content_hash?: string;
 }
 
 /**

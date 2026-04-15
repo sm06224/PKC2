@@ -9,7 +9,7 @@
  * `docs/development/textlog-csv-zip-export.md`. The short version:
  *
  *   log_id, timestamp_iso, timestamp_display, important,
- *   text_markdown, text_plain, asset_keys
+ *   text_markdown, text_plain, asset_keys, flags
  *
  * - UTF-8, CRLF line terminators (RFC 4180).
  * - Every field is quoted; internal `"` is doubled to `""`.
@@ -17,9 +17,32 @@
  *   preserved verbatim inside the quotes (RFC-4180-legal).
  * - Row order is **append order** — the serializer never re-sorts by
  *   `timestamp_iso`, matching the textlog-foundation invariant.
+ *
+ * H-4 (USER_REQUEST_LEDGER S-20, 2026-04-14) — `flags` column:
+ *   Comma-separated list of `TextlogFlag` values. Emitted in addition
+ *   to the legacy boolean `important` column so:
+ *     - New writers emit both columns (backward-compat with external
+ *       CSV tools that only know `important`).
+ *     - New readers prefer the `flags` column when present (lossless
+ *       round-trip even when `TextlogFlag` grows beyond `'important'`).
+ *     - Old CSVs without a `flags` column fall back to the
+ *       `important` boolean inference (unchanged behaviour).
+ *   See spec §3.6.1 of docs/spec/body-formats.md.
  */
 
 import type { TextlogBody, TextlogEntry, TextlogFlag } from './textlog-body';
+
+/**
+ * Strict allow-list of recognised `TextlogFlag` values. Parsers use
+ * this to drop unknown tokens in the `flags` column rather than
+ * widening the `TextlogFlag` union at runtime.
+ *
+ * When the union is extended, add the new values here too and
+ * old-writer CSVs automatically continue to round-trip cleanly.
+ */
+export const KNOWN_TEXTLOG_FLAGS: ReadonlySet<TextlogFlag> = new Set<TextlogFlag>([
+  'important',
+]);
 
 export const TEXTLOG_CSV_HEADER = [
   'log_id',
@@ -29,6 +52,11 @@ export const TEXTLOG_CSV_HEADER = [
   'text_markdown',
   'text_plain',
   'asset_keys',
+  // `flags` is appended last (H-4 / S-20, 2026-04-14) so positional
+  // parsers and downstream spreadsheets that pinned the first 7
+  // columns continue to work unchanged. Header-based parsers pick
+  // it up by name regardless of position.
+  'flags',
 ] as const;
 
 /**
@@ -209,6 +237,7 @@ export function parseTextlogCsv(csv: string): TextlogBody {
   const idxId = header.indexOf('log_id');
   const idxIso = header.indexOf('timestamp_iso');
   const idxImportant = header.indexOf('important');
+  const idxFlags = header.indexOf('flags');
   const idxMarkdown = header.indexOf('text_markdown');
   if (idxId < 0 || idxIso < 0 || idxMarkdown < 0) {
     throw new Error('CSV header missing required columns (log_id / timestamp_iso / text_markdown)');
@@ -224,9 +253,21 @@ export function parseTextlogCsv(csv: string): TextlogBody {
     if (!id) continue; // skip unidentified rows — see jsdoc
     const iso = csvFieldAt(row, idxIso);
     const text = csvFieldAt(row, idxMarkdown);
-    const importantRaw = idxImportant >= 0 ? csvFieldAt(row, idxImportant) : '';
+    // H-4 (S-20): precedence rules for deriving `flags`:
+    //   1. `flags` column is present in header → it is authoritative,
+    //      parse the comma-separated list and drop any tokens not in
+    //      the KNOWN_TEXTLOG_FLAGS allow-list. An empty value means
+    //      "no flags" — do NOT fall back to `important`. This is how
+    //      a new-format writer signals "this entry has no flags at
+    //      all, even if legacy `important` says otherwise".
+    //   2. `flags` column absent → legacy pre-H-4 CSV; infer from
+    //      the `important` boolean column (unchanged behaviour).
     const flags: TextlogFlag[] =
-      importantRaw.toLowerCase() === 'true' ? ['important'] : [];
+      idxFlags >= 0
+        ? parseFlagsField(csvFieldAt(row, idxFlags))
+        : csvFieldAt(row, idxImportant >= 0 ? idxImportant : -1).toLowerCase() === 'true'
+          ? ['important']
+          : [];
     entries.push({ id, text, createdAt: iso, flags });
   }
 
@@ -237,6 +278,35 @@ export function parseTextlogCsv(csv: string): TextlogBody {
 
 function csvFieldAt(row: string[], i: number): string {
   return i >= 0 && i < row.length ? (row[i] ?? '') : '';
+}
+
+/**
+ * H-4 (S-20): parse the comma-separated `flags` CSV cell into a
+ * deduplicated, whitelisted `TextlogFlag[]`.
+ *
+ * - Empty / whitespace-only → `[]`
+ * - Tokens are trimmed and lower-cased
+ * - Unknown tokens (not in `KNOWN_TEXTLOG_FLAGS`) are silently dropped
+ *   — this is intentional forward compatibility: a CSV produced by a
+ *   future version that knows new flags still loads cleanly into a
+ *   current build, with the unknown flags simply absent
+ * - Dedup preserves first-occurrence order
+ */
+function parseFlagsField(raw: string): TextlogFlag[] {
+  const trimmed = raw.trim();
+  if (trimmed === '') return [];
+  const seen = new Set<TextlogFlag>();
+  const result: TextlogFlag[] = [];
+  for (const part of trimmed.split(',')) {
+    const tok = part.trim().toLowerCase();
+    if (!tok) continue;
+    if (!KNOWN_TEXTLOG_FLAGS.has(tok as TextlogFlag)) continue;
+    const flag = tok as TextlogFlag;
+    if (seen.has(flag)) continue;
+    seen.add(flag);
+    result.push(flag);
+  }
+  return result;
 }
 
 /**
@@ -306,6 +376,10 @@ function serializeRow(entry: TextlogEntry): string {
   // `docs/development/textlog-readability-hardening.md` §4.
   const display = iso;
   const important = entry.flags.includes('important') ? 'true' : 'false';
+  // H-4 (S-20): `flags` is the authoritative future-proof column.
+  // Join with `,` inside the CSV cell; RFC-4180 quoting handles the
+  // inner comma. Empty when the entry has no flags.
+  const flags = entry.flags.join(',');
   const textMarkdown = entry.text ?? '';
   const textPlain = stripMarkdownForCsvPlain(textMarkdown);
   const assetKeys = orderedAssetKeysForEntry(entry).join(';');
@@ -317,6 +391,7 @@ function serializeRow(entry: TextlogEntry): string {
     csvField(textMarkdown),
     csvField(textPlain),
     csvField(assetKeys),
+    csvField(flags),
   ].join(',');
 }
 

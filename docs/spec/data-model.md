@@ -239,12 +239,16 @@ type RelationKind =
 
 ```typescript
 interface Revision {
-  id: string;           // Revision の一意識別子
-  entry_lid: string;    // 対応 Entry の lid
-  snapshot: string;     // JSON.stringify(Entry) の前状態 (pre-mutation)
-  created_at: string;   // ISO 8601
-  bulk_id?: string;     // (optional) 同一 bulk action で生成された
-                        //            revisions を束ねる識別子
+  id: string;             // Revision の一意識別子
+  entry_lid: string;      // 対応 Entry の lid
+  snapshot: string;       // JSON.stringify(Entry) の前状態 (pre-mutation)
+  created_at: string;     // ISO 8601
+  bulk_id?: string;       // (optional) 同一 bulk action で生成された
+                          //            revisions を束ねる識別子
+  prev_rid?: string;      // (optional, H-6 / 2026-04-15) 同 entry_lid の
+                          //            直前 Revision の id
+  content_hash?: string;  // (optional, H-6 / 2026-04-15) snapshot の
+                          //            16-char lowercase hex FNV-1a-64 digest
 }
 ```
 
@@ -257,6 +261,8 @@ interface Revision {
 | `snapshot` | string | ✓ | **JSON.stringify(Entry) の文字列**（§6.4 参照） |
 | `created_at` | ISO8601 | ✓ | スナップショット時刻 |
 | `bulk_id` | string | optional | 同一 bulk action で作られた revisions を束ねるグループ識別子。単体操作（COMMIT_EDIT / DELETE_ENTRY / QUICK_UPDATE_ENTRY / RESTORE_ENTRY）では**必ず absent**。bulk 操作（BULK_DELETE / BULK_SET_STATUS / BULK_SET_DATE）では**すべて同じ値**で付与される（§6.3 参照） |
+| `prev_rid` | string | optional | (H-6 / 2026-04-15) 同 `entry_lid` の直前 Revision の `id`。`snapshotEntry` 内で `container.revisions` から **同 entry_lid を持つもののうち最大 `created_at`**（タイは配列順で later が勝つ）を選択。対象 entry に対する**最初**の snapshot では absent。`parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は本フィールドを**読まない**（§6.2.1 参照）。将来の branch/provenance 機能のための足場 |
+| `content_hash` | string | optional | (H-6 / 2026-04-15) `snapshot` 文字列の **FNV-1a-64 digest を 16-char lowercase hex** で格納。`core/operations/hash.ts` の `fnv1a64Hex(snapshot)` で計算。pre-H-6 Revision（旧 export / 旧 IDB）では absent。cryptographic commitment ではない（integrity hint と future dedup / branch 検知のための fingerprint）。強度が必要になったら `content_hash_sha256` 等を別 optional field として**追加**する — 本フィールドのアルゴリズムを後方互換なく差し替えない |
 
 ### 6.3 いつ snapshot が作られるか
 
@@ -282,6 +288,15 @@ interface Revision {
 - **一意性**: 同じ `bulk_id` が別 bulk action に再利用されることはない（reducer が毎回 `generateLid()` で新規採番）
 - **parse 非干渉**: `parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は `bulk_id` を一切読まない。個別 entry 単位の復元は bulk 時でも同じ動作
 - **backward compatibility**: `bulk_id` absent の古い Revision は strict parse / restore でこれまで通り動く。optional field 追加のみで破壊的変更なし（§15.1）
+
+#### 6.2.1 prev_rid / content_hash の保証契約（H-6 / 2026-04-15）
+
+- **非介入**: `parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は `prev_rid` と `content_hash` を一切読まない。旧 Revision（両 field absent）と新 Revision で restore 挙動は同一
+- **prev_rid の絶対性**: 指す `id` は `container.revisions` 内に存在する保証はない（import で一部の revisions が drop される merge 経路では dangling になりうる）。**dangling は許容**し、閲覧側で「prev が見つからない → chain 終端扱い」とする
+- **prev_rid の scope**: 参照対象は常に同 `entry_lid`。異なる entry_lid を跨いで chain を張ることはない
+- **content_hash の用途限定**: integrity hint / future dedup / branch 検知のための fingerprint。**cryptographic commitment ではない**。悪意ある差し替えを検出する用途に使ってはならない
+- **content_hash アルゴリズムの不変性**: 本フィールドに書かれる値は常に FNV-1a-64（16-char lowercase hex）。将来より強い hash を併用したくなったら `content_hash_sha256` 等の**別 optional field を additive に追加**する（`docs/spec/schema-migration-policy.md` §3.1）
+- **backward compatibility**: 両 field absent の古い Revision は strict parse / restore でこれまで通り動く。新 reader はそれらに対して両 field を**補填しない**（lazy migration も行わない — 再 snapshot 時に自然に populate される）
 
 ### 6.4 snapshot の形式契約
 
@@ -856,12 +871,13 @@ text / textlog bundle には **compact mode** がある。
 | **todo body** | plain string | JSON `{status, description, ...}` | parse が fallback して `{status:'open', description: body}` を返す | `todo-body.ts:36-39` |
 | **IDB schema** | v1: container.assets 直格納 | v2: assets store 分離 | `onupgradeneeded` で自動移行 | `idb-store.ts` |
 | **revisions 欠落** | 旧 export で欠落 | 必須 array | import 時に `[]` 補填 | `importer.ts:164-167` |
+| **Revision.prev_rid / content_hash** | 両 field absent | 新 snapshot で populate（旧 rev は absent 維持） | lazy: 次回 `snapshotEntry` で populate、旧 rev は補填しない | `container-ops.ts` `snapshotEntry`（H-6 / 2026-04-15） |
 
 ### 15.3 schema_version の昇格ルール
 
 - 現状 `SCHEMA_VERSION = 1`（`release-meta.ts:91`）
 - schema_version を上げる条件: **既存フィールドの削除・改名・型変更**を行う場合のみ
-- 昇格時は `onupgradeneeded` 相当の migration path を import 側にも用意する（**現状未設計**）
+- 昇格時の migration path 設計は `docs/spec/schema-migration-policy.md` に正本化済み（2026-04-15 / 自主運転モード第 3 号）。判断基準・hook 位置・lazy/eager の使い分け・test 戦略雛形が `§4 / §6 / §7 / §10` にまとまっている。v2 到達時はまず当該 spec §11 の実装順序に従う
 
 ### 15.4 禁止される変更（P0-P1 期間中）
 
@@ -879,7 +895,7 @@ text / textlog bundle には **compact mode** がある。
 ### 15.5 拡張の余地（P2 候補）
 
 - 新 archetype（`complex`, `document-set`, `spreadsheet` 等）の追加: **schema_version 据え置きで可能**
-- `Revision` への `prev_rid` / `content_hash` フィールド追加: optional なら schema 据え置きで可能
+- ~~`Revision` への `prev_rid` / `content_hash` フィールド追加~~: **完了（2026-04-15 / H-6）**。どちらも optional additive、`snapshotEntry` で populate、schema_version 据え置き（§6.1 / §6.2 / §6.2.1）
 - `ContainerMeta` への locale / timezone フィールド追加: optional なら可能
 - merge import の実装: Tier 3-1（2026-04-14）で Overlay MVP が実装済み（§14.6 I-IO1b）。拡張（Policy UI / Staging / Revision 持ち込み）は `docs/spec/merge-import-conflict-resolution.md` §9 を参照
 
@@ -928,6 +944,7 @@ text / textlog bundle には **compact mode** がある。
 ## 17. 関連文書
 
 - `docs/spec/body-formats.md` — archetype 別 body 契約
+- `docs/spec/schema-migration-policy.md` — schema_version 昇格時の判断基準・hook 位置・test 戦略（§15.3 を具体化）
 - `docs/planning/17_保存再水和可搬モデル.md` — 4 系統モデル（Workspace/HTML/ZIP/Template）
 - `docs/planning/13_基盤方針追補_release契約.md` — HTML slot 契約
 - `docs/planning/18_運用ガイド_export_import_rehydrate.md` — 利用手順

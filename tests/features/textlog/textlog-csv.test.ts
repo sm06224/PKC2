@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   serializeTextlogAsCsv,
+  parseTextlogCsv,
   collectTextlogAssetKeys,
   stripMarkdownForCsvPlain,
   compactTextlogBodyAgainst,
@@ -396,5 +397,168 @@ describe('compactTextlogBodyAgainst', () => {
   it('empty body returns empty body (no throw)', () => {
     const result = compactTextlogBodyAgainst({ entries: [] }, new Set());
     expect(result.entries).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// H-4 (USER_REQUEST_LEDGER S-20, 2026-04-14) — `flags` column.
+// Forward-compatible CSV round-trip for TextlogFlag values.
+// Backward-compat with pre-H-4 CSVs. Tolerant parse.
+// ─────────────────────────────────────────────────────────────
+
+describe('H-4 `flags` column — serializer', () => {
+  it('appends a `flags` column to the header and preserves existing columns', () => {
+    const csv = serializeTextlogAsCsv({ entries: [] });
+    const header = csv.split('\r\n')[0]!;
+    const cols = header.split(',').map((c) => c.replace(/^"|"$/g, ''));
+    // Legacy columns present.
+    expect(cols).toContain('important');
+    expect(cols).toContain('text_markdown');
+    // `flags` is the new last column.
+    expect(cols[cols.length - 1]).toBe('flags');
+  });
+
+  it('emits empty `flags` cell for an entry with no flags', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-none',
+          createdAt: '2026-04-14T12:00:00.000Z',
+          text: 'plain',
+          flags: [],
+        },
+      ],
+    };
+    const rows = parseCsv(serializeTextlogAsCsv(body));
+    const flagsIdx = rows[0]!.indexOf('flags');
+    expect(flagsIdx).toBeGreaterThanOrEqual(0);
+    expect(rows[1]![flagsIdx]).toBe('');
+  });
+
+  it('emits `important` in the new `flags` column AND keeps legacy boolean in sync', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-i',
+          createdAt: '2026-04-14T12:00:00.000Z',
+          text: 'flagged',
+          flags: ['important'],
+        },
+      ],
+    };
+    const rows = parseCsv(serializeTextlogAsCsv(body));
+    const flagsIdx = rows[0]!.indexOf('flags');
+    const importantIdx = rows[0]!.indexOf('important');
+    expect(rows[1]![flagsIdx]).toBe('important');
+    expect(rows[1]![importantIdx]).toBe('true');
+  });
+});
+
+describe('H-4 `flags` column — parser precedence', () => {
+  it('round-trips a single `important` flag through serialize→parse', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-rt',
+          createdAt: '2026-04-14T12:00:00.000Z',
+          text: 'hello',
+          flags: ['important'],
+        },
+      ],
+    };
+    const csv = serializeTextlogAsCsv(body);
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries).toEqual(body.entries);
+  });
+
+  it('round-trips an empty flags array without resurrecting `important`', () => {
+    const body: TextlogBody = {
+      entries: [
+        {
+          id: 'log-plain',
+          createdAt: '2026-04-14T12:00:00.000Z',
+          text: 'plain entry',
+          flags: [],
+        },
+      ],
+    };
+    const csv = serializeTextlogAsCsv(body);
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual([]);
+  });
+
+  it('prefers the `flags` column over legacy `important` (flags wins when empty)', () => {
+    // Hand-build a pathological row where `important=true` but
+    // `flags=""` — signals "new writer explicitly cleared the flag
+    // list". Parser must trust `flags` and ignore the legacy bool.
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys","flags"',
+      '"log-1","2026-04-14T12:00:00Z","2026-04-14T12:00:00Z","true","hello","hello","",""',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual([]);
+  });
+
+  it('prefers the `flags` column over legacy `important` (flags wins with content)', () => {
+    // `important=false` but `flags="important"` — parser must trust
+    // the new column.
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys","flags"',
+      '"log-1","2026-04-14T12:00:00Z","2026-04-14T12:00:00Z","false","hello","hello","","important"',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
+  });
+});
+
+describe('H-4 `flags` column — backward compatibility', () => {
+  it('pre-H-4 CSV without a `flags` column still infers from `important`', () => {
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys"',
+      '"log-legacy","2026-04-13T00:00:00Z","2026-04-13T00:00:00Z","true","legacy text","legacy text",""',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
+  });
+
+  it('pre-H-4 CSV with `important=false` round-trips to empty flags', () => {
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys"',
+      '"log-legacy","2026-04-13T00:00:00Z","2026-04-13T00:00:00Z","false","plain","plain",""',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual([]);
+  });
+});
+
+describe('H-4 `flags` column — tolerant parse', () => {
+  it('drops unknown flag tokens silently (forward-compat)', () => {
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys","flags"',
+      '"log-fwd","2026-04-14T12:00:00Z","2026-04-14T12:00:00Z","false","x","x","","important,pinned,urgent"',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    // `pinned` / `urgent` aren't in the current TextlogFlag union
+    // — silently dropped. `important` survives.
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
+  });
+
+  it('deduplicates repeated tokens in the `flags` column', () => {
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys","flags"',
+      '"log-dedup","2026-04-14T12:00:00Z","2026-04-14T12:00:00Z","true","x","x","","important,important"',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
+  });
+
+  it('tolerates surrounding whitespace and casing in `flags` tokens', () => {
+    const csv = [
+      '"log_id","timestamp_iso","timestamp_display","important","text_markdown","text_plain","asset_keys","flags"',
+      '"log-ws","2026-04-14T12:00:00Z","2026-04-14T12:00:00Z","false","x","x",""," IMPORTANT ,  unknown "',
+    ].join('\r\n');
+    const parsed = parseTextlogCsv(csv);
+    expect(parsed.entries[0]!.flags).toEqual(['important']);
   });
 });

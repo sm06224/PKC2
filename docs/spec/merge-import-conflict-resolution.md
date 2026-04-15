@@ -608,12 +608,26 @@ lid 衝突時の `rename / skip / overwrite` をユーザーが選ぶ UI は
 ### 8.6 Schema migration（version 不一致の自動補正）
 
 `schema_version` 不一致時に imported 側を自動で migrate する機能は
-**実装しない**。merge は preview で error を出して reject する。
+**MVP では実装しない**。merge は preview で error を出して reject する。
 
 **理由**:
 
 - schema migration は別問題領域。まず full-replace import でも
   migration が必要になった時点で別ドキュメントとして設計すべき
+
+**2026-04-15 追記（H-3 / 自主運転モード第 3 号）**: schema migration
+の正本仕様が `docs/spec/schema-migration-policy.md` に策定された（docs-only）。
+当該 spec §8 に従い、schema v2 到達時には以下の緩和を **§9 将来拡張枠で**
+検討可能:
+
+- `imported.schema_version < host.schema_version` → imported 側のみ migrate
+  してから overlay
+- `imported.schema_version > host.schema_version` → 従来通り reject、
+  host の先行更新を促す UI 導線を用意
+- `imported === host` → 現行通り
+
+実装差分は `features/import/merge-planner.ts:79` の check 1 箇所で済む。
+現段階では v1 固定のため何の変更も発生しない（設計の先置きのみ）。
 
 ### 8.7 Folder structure の semantic merge
 

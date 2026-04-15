@@ -1,8 +1,14 @@
 # Revision Branch Restore
 
-Status: CANDIDATE
+Status: CANDIDATE（記録面の下地のみ 2026-04-15 に H-6 / S-22 で導入済。branch UI / diff viewer / history browser は依然未着手）
 Created: 2026-04-12
 Category: C. Data Model Extensions
+
+**2026-04-15 update**: 本 doc の "branch / provenance 強化のための足場" のうち、
+`Revision.prev_rid?` / `Revision.content_hash?` の 2 optional field 追加は
+H-6 / S-22 で完了（`docs/spec/data-model.md §6.1 / §6.2 / §6.2.1` 参照）。
+本 doc 本体が扱う restore UI / branch viewer / diff 等は **依然 CANDIDATE** で、
+具体的な UX 要求が出るまで保留。
 
 ---
 

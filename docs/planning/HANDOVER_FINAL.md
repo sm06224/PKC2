@@ -251,11 +251,16 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - 今の規模では十分速く、再レンダリング起因の regression よりも「単純で正しい」
   ことを優先する
 
-### 5.7 TEXTLOG bundle の lossy format の解消
-- textlog-bundle (`.textlog.zip`) の CSV は `important` flag のみを列として
+### 5.7 TEXTLOG bundle の lossy format の解消（**解消済み — H-4 / S-20, 2026-04-14**）
+- 旧: textlog-bundle (`.textlog.zip`) の CSV は `important` flag のみを列として
   持ち、将来 flag が追加されれば失われる
 - F3 として spec に「lossy format」と明言済み（body-formats.md §3.6.1）
-- 実害が無く将来の flag 追加計画もない段階では解消しない
+- **H-4 (S-20) で解消**: CSV schema 末尾に `flags` 列を追加。新 writer は
+  `important` と `flags` を両方出力、新 reader は `flags` 列を正本にし、
+  無ければ `important` から推論（legacy fallback）。modern × modern の
+  round-trip は lossless、pre-H-4 reader との互換は `important` 列で維持。
+  spec §3.6.1 更新済み、詳細は `docs/development/textlog-csv-zip-export.md`
+  §3 / §14.6 と `USER_REQUEST_LEDGER.md` §1 S-20
 
 ### 5.8 Revision への branch / prev_rid の追加
 - 現状 Revision は `entry_lid + created_at` でソートして履歴として扱う
@@ -263,6 +268,13 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - branch / restore 系の凝った UI を入れるなら optional field 追加で可能
   （data-model §15.5）
 - 現状の forward-mutation 原則で十分使えており、拡張は具体的な要求が出てから
+- **2026-04-15 追記（H-6 / 自主運転モード第 4 号）**: linear 前提のまま、
+  `Revision.prev_rid?` と `Revision.content_hash?` の 2 optional field を
+  追加（`snapshotEntry` で populate、旧 rev は absent のまま）。branch UI /
+  diff viewer / history browser は依然未実装。本 slice は **記録面のみ**
+  強化して C-1 revision-branch-restore の足場にする。詳細は
+  `docs/spec/data-model.md §6.1 / §6.2 / §6.2.1` と `USER_REQUEST_LEDGER.md`
+  §1 S-22
 ---
 
 ## 6. 既知の制約
@@ -368,7 +380,7 @@ v0.1.0 マージ後に開始できる P2 タスクを、優先度別に整理す
 | タスク | 理由 |
 |-------|-----|
 | **DOM 局所 diff renderer** | 現状の全置換で十分速いが、Entry 数 1000+ でスケーリング懸念 |
-| **schema_version migration path の設計** | 現状 1 固定。v2 に上げる時の migration 機構がまだない |
+| ~~**schema_version migration path の設計**~~ | **解消済み（2026-04-15 / H-3 / 自主運転モード第 3 号）**: `docs/spec/schema-migration-policy.md` に正本化。判断基準・hook 位置・lazy/eager 適用・test 戦略・v2 着手時の実装順序まで固定（docs-only）。実装は v2 要求発生時に spec §11 の順序で着手 |
 | **lint ルールの整流** | 既存 `no-restricted-imports` 80 件エラーの解消。CLAUDE.md 層規則に沿う形に書き換え |
 | **textlog-bundle CSV 列拡張** | flag 追加時に lossy でなくすなら |
 
@@ -785,7 +797,7 @@ action / warning の全てが spec に記載済み。
 検査未実施の項目（P2 以降で増えれば順次記録）:
 - 将来の archetype（complex / document-set / spreadsheet）— docs/development
   にドラフトあり、spec には未取り込み
-- schema_version migration path — spec §15.3 で「未設計」と明記、実装も無し
+- schema_version migration path — **spec 化完了**（2026-04-15、`docs/spec/schema-migration-policy.md`）。実装は v2 要求発生時に spec §11 の順序で着手する前提、現時点ではコード変更 0
 - merge import — spec に merge 契約なし、実装も無し
 - 以上 3 項目は「意図的に spec に無い」状態であり、HANDOVER_FINAL §5 と整合
 
