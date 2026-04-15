@@ -10,11 +10,31 @@
 
 | 状態 | 件数 |
 |-----|-----|
-| 完了 | **24** |
-| 部分完了 | 0 |
-| 未完 | 0 |
+| **ユーザー明示要望 — 完了** | **24** |
+| **ユーザー明示要望 — 部分完了** | 0 |
+| **ユーザー明示要望 — 未完** | 0 |
+| 待機中候補（idea / vision / HANDOVER decline、§3） | 28（重複込 32） |
 
-**結論**: ユーザー明示要望の未完はゼロ。よって本セッションは「残余 polish 1 件」モードで進む。選定結果: **context menu の Escape 閉じ**（§4 参照）。
+**結論**: ユーザー明示要望の未完はゼロ。**§3 の 28 件はすべて "昇格条件"
+付きの待機中項目** であり、ユーザーが pain / 要望として明示しない限り
+「未完」ではない（= 今回の実装対象ではない）。よって本セッションは
+「残余 polish 1 件」モードで進んだ。選定結果: **context menu の Escape
+閉じ**（§4 参照）。
+
+### 台帳の走査レイヤ（網羅確認済み）
+
+| ソース | 走査方法 | 取り込み先 |
+|--------|---------|-----------|
+| 本セッション supervisor prompts | 会話履歴全数（12 prompts） | §1 |
+| pre-session 会話 → HANDOVER_FINAL / CHANGELOG / dev INDEX | cross-reference | §2 |
+| `docs/development/*.md` | `Status:` grep + 目視分類 | §3.1 / §3.2 / §3.3 / §3.5 |
+| `docs/development/data-model/*.md` | 全 7 ファイル読了 | §3.3 (C-1〜C-7) |
+| `docs/development/markdown-extensions/*.md` | 全 3 ファイル読了 | §3.2 (B-1〜B-3) |
+| `docs/development/INDEX.md` CANDIDATE / 保留節 | §101-164 | §3.6 |
+| `docs/vision/*.md` | 全 4 ファイル | §3.4 (D-1〜D-4) |
+| `docs/spec/merge-import-conflict-resolution.md §9` | 直接参照 | §3.5 H-10 |
+| `docs/planning/HANDOVER_FINAL.md §5 / §6 / §7 / §18` | 全節走査 | §3.5 (H-1〜H-10) |
+| `docs/requirements/00_最初の要件.md` | 既に Gen2 の前提要件として実装済み | §2 に吸収 |
 
 ---
 
@@ -56,21 +76,97 @@
 
 ---
 
-## 3. 「痛み待ち」扱いで停止中の候補（今回の未完ではない）
+## 3. 「痛み待ち」扱いで停止中の候補（ユーザー明示ではない ≒ 未完扱いではない）
 
-これらは **ユーザーが明示して待機中ではなく**、こちら側が「将来痛みが出たら再開」と記録した
-項目。台帳上の "未完" ではなく "standby"。本セッションの対象外。
+これらは **ユーザーが明示して待機しているわけではなく**、こちら側が idea /
+spec / policy として記録して「将来具体的な pain / 要求が出たら再開」と
+した項目。台帳上の **未完** ではなく **standby / conditional / vision**。
+完全列挙。
 
-| 候補 | 扱い | 根拠 | 再開条件 |
-|-----|-----|-----|---------|
-| A-4 search sub-location reach | NEXT IF PAIN REMAINS | `search-ux-partial-reach.md` | ユーザーが「まだ探しにくい」と報告した場合 |
-| A-2 text split edit in entry window | STANDBY | `text-split-edit-in-entry-window.md` | entry window の TEXT 編集 UX を広げたい要求が来た場合 |
-| B-1〜3 markdown 拡張（CSV table, syntax highlight, quote 補助）| Idea inventory | `docs/development/markdown-extensions/*.md` | 具体要求 |
-| C-1〜7 data model 拡張（revision branch, ordering, link index, spreadsheet, complex, document-set, office preview）| Idea inventory | `docs/development/data-model/*.md` | 具体要求 + spec 化先行 |
-| D-1〜4 長期ビジョン（message externalization, multi-window, P2P, application scope）| Vision | `docs/vision/*` | v1.x 計画時 |
-| merge import §9 future extensions（policy UI / staging / revision 持込 / diff export 等）| Spec 明記 | `docs/spec/merge-import-conflict-resolution.md §9` | Tier 3-1 MVP の実害 or 要求 |
-| Calendar Phase 2 (month wrap) / Shift+Arrow range | 保留候補 | `INDEX.md` CANDIDATE 節 | 必要性が顕在化 |
-| Phase 2-D SELECT_RANGE 表示順 / Sidebar multi-DnD / TEXTLOG drag-reorder | 保留候補 | `INDEX.md` 保留候補表 | 設計負債の顕在化 |
+### 3.1 Category A — Immediate UX Improvements（`docs/development/`）
+
+| ID | File | Status | 要約 | 昇格条件 |
+|----|------|--------|-----|---------|
+| A-1 | `textlog-readability-hardening.md` | COMPLETED 2026-04-12 | TEXTLOG 境界 / 日付 / 秒表示 | — |
+| A-2 | `text-split-edit-in-entry-window.md` | CANDIDATE / STANDBY | entry window の TEXT 編集を center pane と同じ split view に | 別窓編集 UX 不一致を具体的に挙げる要望 |
+| A-3 | `table-of-contents-right-pane.md` | COMPLETED 2026-04-12 | 右ペインの TOC | — |
+| A-4 | `search-ux-partial-reach.md` | CONDITIONAL — NEXT IF PAIN REMAINS | 検索が body 内 sub-location を指せない問題 | ユーザーが「まだ探しにくい」と報告 |
+
+### 3.2 Category B — Markdown / Rendering Extensions（`docs/development/markdown-extensions/`）
+
+| ID | File | Status | 要約 | 昇格条件 |
+|----|------|--------|-----|---------|
+| B-1 | `markdown-csv-table-extension.md` | CANDIDATE | fenced CSV block を自動で `<table>` にレンダリング | 表データを CSV で貼る運用が顕在化 |
+| B-2 | `markdown-code-block-highlighting.md` | CANDIDATE | code block の syntax highlight（highlight.js / Prism 等） | コードメモを多用する user の要望 |
+| B-3 | `markdown-quote-input-assist.md` | CANDIDATE | 引用入力補助（Ctrl+Shift+Q, 選択範囲 blockquote 化） | 文章引用を頻用する要望 |
+
+### 3.3 Category C — Data Model Extensions（`docs/development/data-model/`）
+
+| ID | File | Status | 要約 | 昇格条件 |
+|----|------|--------|-----|---------|
+| C-1 | `revision-branch-restore.md` | CANDIDATE | revision から分岐復元 / branch tree（`prev_rid` additive field） | "古い版に戻ったあと分岐したい" 要求 |
+| C-2 | `entry-ordering-model.md` | CANDIDATE | entry の手動 ordering（`display_order` additive） | sidebar での user-defined 並び替え要求 |
+| C-3 | `link-index-entry.md` | CANDIDATE | リンク集 entry（backlinks / forward refs の集約ビュー） | "どこから参照されているか知りたい" 要求 |
+| C-4 | `spreadsheet-entry-archetype.md` | CANDIDATE | spreadsheet archetype（CSV / XLSX 埋め込み編集） | 表計算を container で扱う要求 |
+| C-5 | `complex-entry-archetype.md` | CANDIDATE | composite entry archetype（複数 archetype の combine） | 複合オブジェクト要求 |
+| C-6 | `document-set-archetype.md` | CANDIDATE | document-set archetype（章立て文書） | 長文作成要求 |
+| C-7 | `office-preview-strategy.md` | CANDIDATE | office ファイル（.docx / .xlsx / .pptx）preview 戦略 | Office 系 attachment 運用 |
+| C-P1 | `textlog-viewer-and-linkability-redesign.md` | CANDIDATE（P1 structural redesign） | TEXTLOG を `entry:<lid>#log/<id>` 等で addressable な時系列文書に再定義。viewer / TOC / export / transclusion を `buildTextlogDoc` に一元化 | TEXTLOG で時系列ナビ / 参照が深刻な痛みに |
+
+### 3.4 Category D — Long-Term Vision（`docs/vision/`）
+
+| ID | File | Status | 要約 | 昇格条件 |
+|----|------|--------|-----|---------|
+| D-1 | `pkc-message-externalization.md` | vision | entry 間 / container 間 message 送受信プロトコル | 複数ユーザー協調の具体要求 |
+| D-2 | `pkc-multi-window-architecture.md` | vision | multi-window 協調（別窓を full container にする） | multi-window 運用の具体要求 |
+| D-3 | `webrtc-p2p-collaboration.md` | vision | WebRTC を使った P2P 同期 / マルチユーザー | 協調運用 + 不変条件拡張の意思決定 |
+| D-4 | `pkc-application-scope-vision.md` | vision | application scope の境界再定義 | v1.x 計画時 |
+
+### 3.5 HANDOVER_FINAL §5 / §7 / §6 に明記された "意図的未実装 / 既知の限界"
+
+§5（意図的にやっていないこと）/ §7（次にやるべきこと）/ §6（既知の制約）から
+横断的に抜粋。いずれも **こちら側が明示的に decline / defer した** 項目で、
+ユーザーから改めて明示要望が来るまで未完ではない。
+
+| ID | 項目 | HANDOVER 参照 | 重複する §3 候補 | 昇格条件 |
+|----|------|--------------|-----------------|---------|
+| H-1 | **i18n 基盤**（日英文言統一） | §7.1 / §18.4.2 | — | 多言語ユーザーからの要望 |
+| H-2 | **DOM 局所 diff renderer** | §5.6 / §7.3 / §18.4.3 | — | entry 1000+ でスケーリング痛み |
+| H-3 | **schema_version migration path** 設計 | §7.3 / spec §15.3 | — | schema_version bump が必要な破壊的変更要求 |
+| H-4 | **textlog-bundle CSV 列拡張**（lossy 解消） | §5.7 / §7.3 / F3 | — | 新しい flag 追加要求 |
+| H-5 | **複数 cid / multi-workspace 同時表示** | §6.7 / §18.4.5 | C-P1 との合流可能性 | 複数 container 並立 UI 要求 |
+| H-6 | **Revision への `prev_rid` / `content_hash` 追加** | §5.8 / spec §15.5 | C-1 | revision 分岐復元の具体要求 |
+| H-7 | **pane state（左右ペイン表示）の永続化** | §6.2 | — | ブラウザリロードで設定が戻る不満 |
+| H-8 | **TEXT → TEXTLOG 変換の非可逆部分** | §6.3 | — | 往復で情報が失われる不満 |
+| H-9 | **P2P / WebRTC 同期**（= D-3） | §5.3 / §7.4 / §18.4.4 | D-3 | v1.x テーマ |
+| H-10 | **Merge import §9 将来拡張**（policy UI / staging / revision 持込 / diff export / merge undo 等） | merge-import-conflict-resolution.md §9 | — | Merge MVP 実運用での具体 pain |
+
+### 3.6 `docs/development/INDEX.md` CANDIDATE 節の保留候補
+
+| 項目 | 保留理由 |
+|------|---------|
+| Calendar Phase 2（month wrap, empty cell cursor） | 必要性が薄い。Phase 1 で主要操作は完了 |
+| Shift+Arrow range selection | Phase 2-D 未解決、前提が未整備 |
+| Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能、設計負債だが実害小 |
+| Sidebar multi-DnD | structural relation の cycle detection 複雑化、BULK_MOVE で代替 |
+| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突、設計変更議論が先 |
+
+### 3.7 §3 全体の合計
+
+| カテゴリ | 件数 | うち COMPLETED | うち待機 |
+|---------|------|---------------|---------|
+| A (immediate UX) | 4 | 2 | 2 |
+| B (markdown ext) | 3 | 0 | 3 |
+| C (data model ext) | 7 + 1 P1 = 8 | 0 | 8 |
+| D (long-term vision) | 4 | 0 | 4 |
+| H (HANDOVER 明記) | 10 | 0 | 10（一部は C/D と重複） |
+| INDEX CANDIDATE | 5 | 0 | 5 |
+| **合計 待機** | | | **32 件**（重複含む、実ユニーク ~28） |
+
+**重要**: §3 の 28 件は **ユーザー明示要望ではない**（= 台帳「未完」にはカウ
+ントしない）。こちら側の idea / policy 決定として「要求が顕在化するまで
+待機」する集合。`docs/planning/00_index.md` と HANDOVER_FINAL を起点に
+辿れる形で網羅。
 
 ---
 
@@ -117,7 +213,11 @@
   限定する。こちら側の idea / standby / "痛み待ち" は §3 に置く
 - 完了した項目の commit がすべて origin に push 済みであることを常に確認する
 - 本台帳は新要望が入るたびに追記。`docs/planning/00_index.md` 第 0 群に位置付け
-  （★★★）
+  （★★★★）
+- **走査漏れ防止**: §0 の「台帳の走査レイヤ」表に列挙したすべてのソースを
+  毎回全走査する。新規 `.md` / 新節が加わった場合も同表に追記する
+- §3 項目が「ユーザーが明示した」状態になった時点で、§1 / §2 のいずれかに
+  **昇格**させる（= 状態を "未完" にして最優先着手）
 
 ---
 
@@ -126,3 +226,4 @@
 | 日付 | 変更 |
 |-----|-----|
 | 2026-04-14 | 初版。Tier 3-3 + bugfix 5276fa4 時点までを棚卸し。未完ゼロを確認、polish 1 件選定（context menu Escape 閉じ） |
+| 2026-04-14 | §3 を全数化。`docs/development/**` / `docs/development/data-model/**` / `docs/development/markdown-extensions/**` / `docs/vision/**` / merge-import spec §9 / HANDOVER §5/§6/§7 を網羅走査し、A-1〜A-4 / B-1〜B-3 / C-1〜C-7 + C-P1 / D-1〜D-4 / H-1〜H-10 / INDEX 保留候補 5 件を列挙。§0 に走査レイヤ表、§5 に走査漏れ防止ルールを追加。未完件数は変わらず（0 件） |
