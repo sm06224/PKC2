@@ -1,8 +1,64 @@
 # Search UX — Partial Reach Links
 
-Status: CONDITIONAL — NEXT IF PAIN REMAINS (2026-04-12)
+Status: **COMPLETED 2026-04-14** (USER_REQUEST_LEDGER S-15 + S-18).
+Slice α (visual `<mark>`) shipped as S-15. FULL slice (sub-location
+result rows + scroll-to + temporary highlight + `NAVIGATE_TO_LOCATION`
+action) shipped as S-18 per supervisor direction 「A-4 を部分補修では
+なく検索 UX の実用完成まで一気に持っていく」.
 Created: 2026-04-12
 Category: A. Immediate UX Improvements
+
+---
+
+## 0. 実装サマリ（2026-04-14 完了）
+
+- **pure indexer**: `src/features/search/sub-location-search.ts` の
+  `findSubLocationHits(entry, query, maxPerEntry)`。TEXT は行走査で
+  直前の `#` heading slug に match を帰属（`makeSlugCounter` を共有
+  するので renderer の `id=` と完全一致）、TEXTLOG は
+  `parseTextlogBody` で log 単位、それ以外の archetype は `[]`。
+  dedupe by sub-id、fenced code block はスキップ（S-15 と同じ方針）。
+- **新 user action**: `NAVIGATE_TO_LOCATION { lid, subId, ticket }`。
+  reducer で `selectedLid` + `pendingNav = { subId, ticket }` をセット、
+  ancestor folder 自動展開 + per-entry transient UI cleanup は
+  `SELECT_ENTRY` と同じ規則
+- **新 AppState field**: `pendingNav?: { subId: string; ticket: number } | null`
+  （optional、既存 test fixture 非破壊）
+- **adapter helper**: `src/adapter/ui/location-nav.ts` の
+  `createLocationNavTracker()`。`lastTicket` をクロージャに保持し、
+  ticket 前進時のみ `findLocationTarget` → `scrollIntoView` →
+  `.pkc-location-highlight` class 追加 → 1.6s 後に削除。再 render の
+  嵐で同じ pending が何回流れても idempotent
+- **main.ts post-render effect**: onState の最後に
+  `locationNavTracker.consume(root, state.pendingNav ?? null)`
+- **renderer**: sidebar flat-mode（filter active 時）で、各 entry の
+  行直後に sub-location hits を最大 5 行まで emit。`data-pkc-action
+  ="navigate-to-location"` + `data-pkc-lid` + `data-pkc-sub-id` +
+  `data-pkc-subloc-kind`
+- **action-binder**: `navigate-to-location` ケース + ticket カウンタ
+  （再クリックでも ticket 前進、scroll が再発火）
+- **CSS**: `.pkc-entry-subloc` + kind / label / snippet の 3 スパン
+  layout、dashed 左罫で indent。`.pkc-location-highlight` は
+  keyframes で 1.6s の background/color flash + `scroll-margin-block:
+  4rem` で sticky header を避けて着地
+- **テスト (+46)**:
+  - `tests/features/search/sub-location-search.test.ts` (21) —
+    TEXT heading dedup / no heading fallback / maxPerEntry /
+    fenced skip / 大小文字 / 空クエリ / TEXTLOG log hit / 時刻
+    label / 非 text/textlog は [] / malformed body
+  - `tests/adapter/location-nav.test.ts` (15) — subId → element
+    解決（heading / log / entry / unknown / missing / escape）、
+    highlight 追加 + タイマー後削除、scrollIntoView 呼び出し、
+    tracker の idempotency / ticket 前進 / null pending
+  - `tests/adapter/navigate-to-location.test.ts` (10) — reducer
+    3 case（成功 / not ready / container null / ticket 進行）、
+    renderer sidebar 3 case（TEXT 行 × 2 / TEXTLOG 行 × 2 / 空
+    query 0 行 / kind 属性 + snippet）、handler 2 case（click
+    dispatch + 再 click で ticket 前進）
+
+以下の §1 以降は当時の設計判断記録としてそのまま保持。
+
+---
 
 ## Trigger
 

@@ -2,6 +2,7 @@ import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
+import { createLocationNavTracker } from './adapter/ui/location-nav';
 import {
   bindActions,
   populateAttachmentPreviews,
@@ -86,6 +87,12 @@ async function boot(): Promise<void> {
   // 2. Renderer: state → DOM (with scroll/focus restoration + flash feedback)
   let prevSelectedLid: string | null = null;
   let prevEntryCount = 0;
+  // S-18 (A-4 FULL, 2026-04-14): sub-location navigation post-render
+  // effect. The tracker compares the `ticket` in state.pendingNav
+  // against the last-seen value and fires the scroll + highlight
+  // only on ticket advances. Must be declared outside the onState
+  // closure so its internal `lastTicket` survives between ticks.
+  const locationNavTracker = createLocationNavTracker();
 
   dispatcher.onState((state) => {
     // Save scroll positions and active element info before re-render
@@ -163,6 +170,11 @@ async function boot(): Promise<void> {
     if (justCreated && state.selectedLid) {
       flashEntry(root, state.selectedLid);
     }
+
+    // S-18 (A-4 FULL): sub-location scroll + highlight. Runs AFTER
+    // render so `pendingNav.subId` resolves against the just-mounted
+    // DOM. Ticket gating prevents re-fire on unrelated re-renders.
+    locationNavTracker.consume(root, state.pendingNav ?? null);
 
     prevSelectedLid = state.selectedLid;
     prevEntryCount = currentCount;

@@ -217,6 +217,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'navigate-to-location': {
+        // S-18 (A-4 FULL, 2026-04-14): sidebar sub-location row click.
+        // The data attributes carry the entry lid + sub-id. We issue
+        // a fresh monotonic ticket so main.ts's tracker can detect
+        // even repeated clicks on the same row (user clicked the
+        // same sub-loc twice → scroll-to should re-fire).
+        const subId = target.getAttribute('data-pkc-sub-id');
+        if (!lid || !subId) break;
+        dispatcher.dispatch({
+          type: 'NAVIGATE_TO_LOCATION',
+          lid,
+          subId,
+          ticket: ++navTicketCounter,
+        });
+        break;
+      }
       case 'toggle-folder-collapse': {
         if (!lid) break;
         // Stop propagation so the surrounding <li data-pkc-action="select-entry">
@@ -2123,6 +2139,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // dispatch with the final value when composition ends. Non-IME
   // input falls through to the existing every-keystroke path.
   let searchImeComposing = false;
+
+  // S-18 (A-4 FULL): monotonic ticket for NAVIGATE_TO_LOCATION.
+  // Main.ts compares `state.pendingNav.ticket` against its
+  // last-seen value, so even re-clicking the same sub-id row
+  // triggers a fresh scroll + highlight.
+  let navTicketCounter = 0;
   function handleSearchCompositionStart(e: Event): void {
     const target = e.target as HTMLElement | null;
     if (target?.getAttribute('data-pkc-field') === 'search') {

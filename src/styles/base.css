@@ -1215,6 +1215,72 @@ mark.pkc-search-mark {
   }
 }
 
+/* ── Sidebar sub-location rows (S-18 / A-4 FULL, 2026-04-14) ──
+   When a search query is active, each matching entry row is
+   followed by up to 5 sub-location rows. Clicking one fires
+   NAVIGATE_TO_LOCATION which scrolls to the heading (TEXT) or
+   log entry (TEXTLOG) and flashes `.pkc-location-highlight`.
+   Indented and dimmed so the entry-level row still reads first. */
+.pkc-entry-subloc {
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.15rem 0.4rem 0.15rem 1.6rem;
+  font-size: 0.72rem;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  border-left: 1px dashed var(--c-border);
+  margin-left: 0.4rem;
+  transition: background 120ms ease, color 120ms ease;
+}
+.pkc-entry-subloc:hover {
+  background: var(--c-hover);
+  color: var(--c-fg);
+}
+.pkc-entry-subloc-kind {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--c-accent);
+  width: 1em;
+  text-align: center;
+}
+.pkc-entry-subloc-label {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pkc-entry-subloc-snippet {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+/* ── Temporary flash on scroll-to target (S-18 / A-4 FULL) ──
+   `.pkc-location-highlight` is added by adapter/ui/location-nav.ts
+   for ~1.6s after a NAVIGATE_TO_LOCATION scroll. Uses a CSS
+   animation + `!important` on outline so it survives nested
+   theme rules (e.g. `.pkc-md-rendered h1` default outline). */
+@keyframes pkc-location-flash {
+  0% {
+    background: var(--c-accent);
+    color: var(--c-accent-fg);
+  }
+  100% {
+    background: transparent;
+    color: inherit;
+  }
+}
+.pkc-location-highlight {
+  animation: pkc-location-flash 1.6s ease-out;
+  scroll-margin-block: 4rem;
+}
+
 /* ── Fenced code block syntax highlighting ──
    Token classes are emitted by features/markdown/code-highlight.ts.
    Colors are bound to per-theme CSS variables so dark (PIP-Boy) and

@@ -15,6 +15,8 @@ import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { findSubLocationHits } from '../../features/search/sub-location-search';
+import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
@@ -1308,8 +1310,22 @@ function renderSidebar(state: AppState): HTMLElement {
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
+    const query = state.searchQuery.trim();
     for (const entry of entries) {
       list.appendChild(renderEntryItem(entry, state));
+      // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
+      // search query AND the entry has sub-location matches, expand
+      // them as clickable sidebar rows that scroll to the exact spot
+      // on click. Only runs for TEXT / TEXTLOG (the indexer returns
+      // [] for other archetypes). Limited to the top 5 matches per
+      // entry by the indexer's maxPerEntry default — keeps the list
+      // scannable on frequent terms.
+      if (query !== '') {
+        const hits = findSubLocationHits(entry, query);
+        for (const hit of hits) {
+          list.appendChild(renderSubLocationItem(hit));
+        }
+      }
     }
   } else {
     // Tree mode: build from structural relations
@@ -1626,6 +1642,40 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       li.appendChild(revBadge);
     }
   }
+
+  return li;
+}
+
+/**
+ * S-18 (A-4 FULL): render one sub-location hit under its parent
+ * entry row in the sidebar. Clicking dispatches NAVIGATE_TO_LOCATION
+ * which sets selectedLid + pendingNav, and main.ts's post-render
+ * effect then scrolls to the sub-id target and flashes the
+ * highlight.
+ */
+function renderSubLocationItem(hit: SubLocationHit): HTMLElement {
+  const li = createElement('li', 'pkc-entry-subloc');
+  li.setAttribute('data-pkc-action', 'navigate-to-location');
+  li.setAttribute('data-pkc-lid', hit.entryLid);
+  li.setAttribute('data-pkc-sub-id', hit.subId);
+  li.setAttribute('data-pkc-subloc-kind', hit.kind);
+
+  // Kind badge → label → snippet. Three spans to keep CSS simple.
+  const badge = createElement('span', 'pkc-entry-subloc-kind');
+  badge.textContent = hit.kind === 'heading'
+    ? '§'
+    : hit.kind === 'log'
+      ? '•'
+      : '↑';
+  li.appendChild(badge);
+
+  const label = createElement('span', 'pkc-entry-subloc-label');
+  label.textContent = hit.label;
+  li.appendChild(label);
+
+  const snippet = createElement('span', 'pkc-entry-subloc-snippet');
+  snippet.textContent = hit.snippet;
+  li.appendChild(snippet);
 
   return li;
 }
