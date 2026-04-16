@@ -190,13 +190,15 @@ interface Relation {
   kind: RelationKind;
   created_at: string;        // ISO 8601
   updated_at: string;        // ISO 8601
+  metadata?: Record<string, string>;  // (H-8 / 2026-04-16) optional key-value payload
 }
 
 type RelationKind =
   | 'structural'   // folder membership（親子構造）
   | 'categorical'  // tag 分類
   | 'semantic'     // 意味的参照
-  | 'temporal';    // 時系列順序
+  | 'temporal'     // 時系列順序
+  | 'provenance';  // (H-8 / 2026-04-16) conversion / derivation origin
 ```
 
 ### 5.2 フィールド契約
@@ -206,7 +208,8 @@ type RelationKind =
 | `id` | string | ✓ | Relation の一意識別子 (rid)。同一 `(from, to, kind)` の重複登録を許容するかは未規定 |
 | `from` | string | ✓ | source Entry の `lid`。対応 Entry が存在しない場合は**dangling relation** |
 | `to` | string | ✓ | target Entry の `lid`。対応 Entry が存在しない場合は**dangling relation** |
-| `kind` | RelationKind | ✓ | 4 種のみ。未知 kind は import 時の挙動未規定 |
+| `kind` | RelationKind | ✓ | 5 種（`provenance` 追加 H-8 / 2026-04-16）。未知 kind は import 時の挙動未規定 |
+| `metadata` | `Record<string, string>` | — | (H-8 / 2026-04-16) optional。`provenance` Relation が変換コンテキストを格納する。値はすべて string |
 
 ### 5.3 RelationKind 意味論
 
@@ -216,6 +219,9 @@ type RelationKind =
 | `categorical` | タグ / カテゴリ分類 | from は被タグ Entry、to はタグ Entry | entry → tag entry |
 | `semantic` | 意味的参照（see also） | 制約なし | entry → referenced entry |
 | `temporal` | 時系列順序 | 制約なし | earlier → later |
+| `provenance` | 変換 / 派生元（H-8 / 2026-04-16） | from=変換元、to=生成先。`metadata` に変換コンテキスト | TEXT entry → TEXTLOG entry |
+
+`provenance` kind の詳細設計: `docs/spec/text-textlog-provenance.md`
 
 ### 5.4 Dangling Relation 方針
 
