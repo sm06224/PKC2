@@ -290,4 +290,6 @@ preview modal のサイズ / style は既存 `docs/development/markdown-phase2.m
   fragment 形式 `#log/<id>` の出典)
 - `docs/development/selected-entry-html-clone-export.md` (subset closure が
   TEXTLOG fragment を解決する既存経路)
+- `docs/spec/text-textlog-provenance.md` (非可逆境界の canonical spec、
+  `provenance` RelationKind / `Relation.metadata?` フィールドの設計)
 

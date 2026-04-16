@@ -311,6 +311,9 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 - 変換後の TEXTLOG から元 TEXT を完全復元する保証はない（log id は新規、
   meta backlink が増える等）
 - spec `body-formats.md §2.4` に「title spam の可能性」として記載
+- **→ H-8 / 2026-04-16 で解消**: 非可逆境界を `docs/spec/text-textlog-provenance.md`
+  に canonical spec として固定。`provenance` RelationKind と `Relation.metadata?`
+  フィールドの設計も同ドキュメントに記載
 
 ### 6.4 markdown 互換リスク
 - 独自拡張: `asset:` URL スキーム、`entry:` URL スキーム、transclusion の
