@@ -4846,3 +4846,48 @@ mark.pkc-search-mark {
   gap: 0.5rem;
   margin-top: 0.25rem;
 }
+
+/* ── Boot source chooser (revised 2026-04-16) ──────────────────── */
+/* Minimum styling — reuses .pkc-text-replace-overlay / -card / -actions
+ * for the frame so no new chrome is needed. The additional selectors
+ * scope the per-section labels and info rows to the chooser specifically. */
+[data-pkc-region="boot-source-chooser"] .pkc-text-replace-card {
+  width: min(32rem, 94vw);
+  gap: 0.75rem;
+}
+.pkc-boot-chooser-explain {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--c-muted, var(--c-fg));
+  line-height: 1.45;
+}
+.pkc-boot-chooser-source {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+.pkc-boot-chooser-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.pkc-boot-chooser-info {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.125rem 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+.pkc-boot-chooser-info dt {
+  color: var(--c-muted, var(--c-fg));
+}
+.pkc-boot-chooser-info dd {
+  margin: 0;
+  word-break: break-all;
+}
+.pkc-boot-chooser-missing {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--c-muted, var(--c-fg));
+  font-style: italic;
+}

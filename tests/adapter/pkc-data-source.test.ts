@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   readPkcData,
   chooseBootSource,
+  finalizeChooserChoice,
 } from '@adapter/platform/pkc-data-source';
 import { SLOT } from '@runtime/contract';
 import type { Container } from '@core/model/container';
@@ -114,22 +115,33 @@ describe('chooseBootSource', () => {
     lightSource: false,
   };
 
-  it('prefers pkc-data over IDB when both are present (the fix)', () => {
+  it('returns source="chooser" when both pkc-data AND IDB are present (policy revision)', () => {
     const chosen = chooseBootSource(pkcData, idbContainer);
+    expect(chosen.source).toBe('chooser');
+    expect(chosen.container).toBeNull();
+    expect(chosen.pkcData).toBe(pkcData);
+    expect(chosen.idbContainer).toBe(idbContainer);
+  });
+
+  it('boots pkc-data directly with viewOnlySource=true when IDB is absent', () => {
+    const chosen = chooseBootSource(pkcData, null);
     expect(chosen.source).toBe('pkc-data');
     expect(chosen.container!.meta.container_id).toBe('c-export');
+    expect(chosen.viewOnlySource).toBe(true);
   });
 
-  it('forwards readonly from pkc-data', () => {
-    const chosen = chooseBootSource({ ...pkcData, readonly: true }, idbContainer);
+  it('forwards readonly from pkc-data in direct pkc-data path', () => {
+    const chosen = chooseBootSource({ ...pkcData, readonly: true }, null);
     expect(chosen.source).toBe('pkc-data');
     expect(chosen.readonly).toBe(true);
+    expect(chosen.viewOnlySource).toBe(true);
   });
 
-  it('forwards lightSource from pkc-data', () => {
-    const chosen = chooseBootSource({ ...pkcData, lightSource: true }, idbContainer);
+  it('forwards lightSource from pkc-data in direct pkc-data path', () => {
+    const chosen = chooseBootSource({ ...pkcData, lightSource: true }, null);
     expect(chosen.source).toBe('pkc-data');
     expect(chosen.lightSource).toBe(true);
+    expect(chosen.viewOnlySource).toBe(true);
   });
 
   it('falls back to IDB when pkc-data is null', () => {
@@ -138,17 +150,53 @@ describe('chooseBootSource', () => {
     expect(chosen.container!.meta.container_id).toBe('c-idb');
     expect(chosen.readonly).toBe(false);
     expect(chosen.lightSource).toBe(false);
+    expect(chosen.viewOnlySource).toBe(false);
   });
 
   it('falls back to empty when both sources are null', () => {
     const chosen = chooseBootSource(null, null);
     expect(chosen.source).toBe('empty');
     expect(chosen.container).toBeNull();
+    expect(chosen.viewOnlySource).toBe(false);
   });
 
-  it('does NOT inherit readonly/lightSource from a non-pkc-data source', () => {
+  it('does NOT inherit readonly/lightSource/viewOnlySource from IDB-only path', () => {
     const chosen = chooseBootSource(null, idbContainer);
     expect(chosen.readonly).toBe(false);
     expect(chosen.lightSource).toBe(false);
+    expect(chosen.viewOnlySource).toBe(false);
+  });
+});
+
+describe('finalizeChooserChoice', () => {
+  const pkcData = {
+    container: sampleContainer,
+    readonly: false,
+    lightSource: false,
+  };
+
+  it('resolves to pkc-data with viewOnlySource=true when user picks embedded', () => {
+    const resolved = finalizeChooserChoice(pkcData, idbContainer, 'pkc-data');
+    expect(resolved.source).toBe('pkc-data');
+    expect(resolved.container!.meta.container_id).toBe('c-export');
+    expect(resolved.viewOnlySource).toBe(true);
+  });
+
+  it('resolves to idb with viewOnlySource=false when user picks IDB', () => {
+    const resolved = finalizeChooserChoice(pkcData, idbContainer, 'idb');
+    expect(resolved.source).toBe('idb');
+    expect(resolved.container!.meta.container_id).toBe('c-idb');
+    expect(resolved.viewOnlySource).toBe(false);
+  });
+
+  it('preserves readonly/lightSource when embedded is picked', () => {
+    const resolved = finalizeChooserChoice(
+      { ...pkcData, readonly: true, lightSource: true },
+      idbContainer,
+      'pkc-data',
+    );
+    expect(resolved.readonly).toBe(true);
+    expect(resolved.lightSource).toBe(true);
+    expect(resolved.viewOnlySource).toBe(true);
   });
 });

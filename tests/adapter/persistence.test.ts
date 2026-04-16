@@ -246,6 +246,99 @@ describe('mountPersistence', () => {
     await Promise.resolve();
     expect(saveSpy).not.toHaveBeenCalled();
   });
+
+  // ── Boot source policy revision (2026-04-16) ──────────────────
+  //
+  // viewOnlySource=true means the container was booted from embedded
+  // pkc-data. Persistence must suppress saves so the embedded snapshot
+  // does not contaminate the receiver's IDB. Explicit Import clears
+  // the flag (see reducer CONFIRM_IMPORT / SYS_IMPORT_COMPLETE cases),
+  // after which saves resume normally.
+
+  it('does NOT save when viewOnlySource=true (pkc-data boot)', async () => {
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({
+      type: 'SYS_INIT_COMPLETE',
+      container: mockContainer,
+      viewOnlySource: true,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    // CONTAINER_LOADED event fired, but save was suppressed.
+    expect(saveSpy).not.toHaveBeenCalled();
+
+    // Also suppressed for subsequent mutations in the same session.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Note' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it('resumes saving after an explicit import clears viewOnlySource', async () => {
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({
+      type: 'SYS_INIT_COMPLETE',
+      container: mockContainer,
+      viewOnlySource: true,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).not.toHaveBeenCalled();
+
+    // Simulate an explicit Import flow: preview → confirm. SYS_IMPORT_PREVIEW
+    // stashes the imported container; CONFIRM_IMPORT commits it and clears
+    // viewOnlySource in the reducer.
+    const importedContainer: Container = {
+      ...mockContainer,
+      meta: { ...mockContainer.meta, container_id: 'c-imported' },
+    };
+    dispatcher.dispatch({
+      type: 'SYS_IMPORT_PREVIEW',
+      preview: {
+        title: importedContainer.meta.title,
+        container_id: importedContainer.meta.container_id,
+        entry_count: importedContainer.entries.length,
+        revision_count: importedContainer.revisions.length,
+        schema_version: importedContainer.meta.schema_version,
+        source: 'test-import',
+        container: importedContainer,
+      },
+    });
+    dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+
+    // CONTAINER_IMPORTED is a save trigger; viewOnlySource was cleared
+    // by the reducer, so the save should proceed.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    const saved = saveSpy.mock.calls[0]![0] as Container;
+    expect(saved.meta.container_id).toBe('c-imported');
+
+    // Post-import edits persist normally.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Post import' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('normal (viewOnlySource=false) boot still saves on CONTAINER_LOADED', async () => {
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({
+      type: 'SYS_INIT_COMPLETE',
+      container: mockContainer,
+      // Explicit false — IDB path / empty path / imported path.
+      viewOnlySource: false,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('loadFromStore', () => {

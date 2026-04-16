@@ -9,18 +9,30 @@ import type { Container } from '../../core/model/container';
  * Extracted from `main.ts` so the read path is testable in isolation
  * and so the boot-priority decision (pkc-data vs IDB) can be unit-tested.
  *
- * The boot priority itself lives in `main.ts` and is expressed by
- * `chooseBootSource()` below:
+ * ── Policy revision (2026-04-16, see `boot-container-source-policy-
+ * revision.md`) ────────────────────────────────────────────────────
  *
- *   1. pkc-data (exported HTML embedded content) — wins if non-empty
- *   2. IDB default container — wins if pkc-data is absent / empty
- *   3. Empty container — final fallback
+ * The boot priority is now:
  *
- * Rationale: opening an exported HTML should show the **exported
- * snapshot**, not whatever happens to live in the current browser's
- * IndexedDB from a previous session. Prior to this change IDB won
- * unconditionally, which made exported HTMLs unusable as a way to
- * hand off a snapshot (the receiver saw their own local content).
+ *   1. pkc-data AND IDB both present → 'chooser' (caller must show a
+ *      modal and re-resolve via `finalizeChooserChoice`)
+ *   2. pkc-data only → 'pkc-data' (viewOnlySource=true, no IDB save)
+ *   3. IDB only → 'idb'
+ *   4. Neither → 'empty'
+ *
+ * The critical new invariant is `viewOnlySource`: a container booted
+ * from embedded pkc-data is a **view-only snapshot**. The session may
+ * edit in memory, but the persistence layer refuses to write it back
+ * to IndexedDB. Promotion to a writable / persistable workspace
+ * requires an explicit Import operation (`CONFIRM_IMPORT` →
+ * `CONTAINER_IMPORTED` event, which clears `viewOnlySource`).
+ *
+ * Rationale: opening an exported HTML "just to look" used to silently
+ * expand that container into IndexedDB, contaminating the receiver's
+ * local state forever. The prior fix (S-24) flipped the priority so
+ * the HTML's content would at least be visible; this revision closes
+ * the remaining hole — the visibility fix alone still let the embedded
+ * container overwrite IDB on the very first save trigger.
  */
 
 export interface PkcDataResult {
@@ -83,21 +95,39 @@ export async function readPkcData(): Promise<PkcDataResult | null> {
 
 /**
  * Boot source descriptor returned by `chooseBootSource`.
+ *
+ * When `source === 'chooser'`, `container` is `null` and the caller
+ * MUST present a UI chooser and then call `finalizeChooserChoice` with
+ * the stashed `pkcData` / `idbContainer` to get a concrete boot source.
+ *
+ * `viewOnlySource === true` iff the container was sourced from
+ * pkc-data. Persistence reads this flag to suppress IDB writes.
  */
 export interface BootSource {
-  source: 'pkc-data' | 'idb' | 'empty';
+  source: 'pkc-data' | 'idb' | 'empty' | 'chooser';
   container: Container | null;
   readonly: boolean;
   lightSource: boolean;
+  viewOnlySource: boolean;
+  /** Only set when source === 'chooser'. Stashed for finalizeChooserChoice. */
+  pkcData?: PkcDataResult | null;
+  /** Only set when source === 'chooser'. Stashed for finalizeChooserChoice. */
+  idbContainer?: Container | null;
 }
+
+/**
+ * User choice returned from the chooser UI.
+ */
+export type ChooserChoice = 'pkc-data' | 'idb';
 
 /**
  * Decide which Container to boot from.
  *
- * Priority (new as of this change):
- *   1. pkc-data (exported HTML) — if non-empty, wins over IDB
- *   2. IDB default container — used only when pkc-data is absent
- *   3. Empty — caller builds an empty Container when both above fail
+ * Policy (revised 2026-04-16):
+ *   1. pkc-data AND IDB both present → 'chooser' (caller shows UI)
+ *   2. pkc-data only → 'pkc-data' (viewOnlySource=true)
+ *   3. IDB only → 'idb'
+ *   4. Neither → 'empty'
  *
  * Pure function: no DOM, no IDB, no side effects. Reads no globals.
  */
@@ -105,12 +135,28 @@ export function chooseBootSource(
   pkcData: PkcDataResult | null,
   idbContainer: Container | null,
 ): BootSource {
+  if (pkcData && idbContainer) {
+    return {
+      source: 'chooser',
+      container: null,
+      readonly: false,
+      lightSource: false,
+      viewOnlySource: false,
+      pkcData,
+      idbContainer,
+    };
+  }
   if (pkcData) {
     return {
       source: 'pkc-data',
       container: pkcData.container,
       readonly: pkcData.readonly,
       lightSource: pkcData.lightSource,
+      // Critical: pkc-data boots are view-only by policy. Persistence
+      // refuses to save this container until the user explicitly
+      // imports (which clears the flag via SYS_IMPORT_COMPLETE /
+      // CONFIRM_IMPORT reducer cases).
+      viewOnlySource: true,
     };
   }
   if (idbContainer) {
@@ -119,6 +165,7 @@ export function chooseBootSource(
       container: idbContainer,
       readonly: false,
       lightSource: false,
+      viewOnlySource: false,
     };
   }
   return {
@@ -126,5 +173,38 @@ export function chooseBootSource(
     container: null,
     readonly: false,
     lightSource: false,
+    viewOnlySource: false,
+  };
+}
+
+/**
+ * Translate a chooser choice back into a concrete BootSource. Pure.
+ *
+ * Called after the caller has presented the chooser UI to the user
+ * and captured their decision. The stashed `pkcData` / `idbContainer`
+ * typically come from the `chooser` BootSource returned by the
+ * initial `chooseBootSource` call, but are passed explicitly here so
+ * the helper stays pure and directly unit-testable.
+ */
+export function finalizeChooserChoice(
+  pkcData: PkcDataResult,
+  idbContainer: Container,
+  choice: ChooserChoice,
+): BootSource {
+  if (choice === 'pkc-data') {
+    return {
+      source: 'pkc-data',
+      container: pkcData.container,
+      readonly: pkcData.readonly,
+      lightSource: pkcData.lightSource,
+      viewOnlySource: true,
+    };
+  }
+  return {
+    source: 'idb',
+    container: idbContainer,
+    readonly: false,
+    lightSource: false,
+    viewOnlySource: false,
   };
 }

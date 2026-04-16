@@ -113,6 +113,15 @@ export function mountPersistence(
     // Saving it would overwrite IDB with asset-stripped data.
     if (currentState.lightSource) return;
 
+    // Skip saving when container was booted from embedded pkc-data.
+    // Boot-source policy (2026-04-16): opening an exported HTML must
+    // not expand the embedded container into IndexedDB — the embedded
+    // copy is a view-only snapshot. Persistence resumes only after
+    // an explicit Import (CONFIRM_IMPORT / SYS_IMPORT_COMPLETE /
+    // CONFIRM_MERGE_IMPORT / REHYDRATE), which clears the flag. See
+    // `docs/development/boot-container-source-policy-revision.md`.
+    if (currentState.viewOnlySource) return;
+
     saving = true;
     try {
       await store.save(container);
