@@ -4761,3 +4761,88 @@ mark.pkc-search-mark {
 .pkc-transclusion-log .pkc-textlog-timestamp {
   color: var(--c-muted);
 }
+
+/* ─── Text Replace Dialog (S-26) ─────────────────────────────
+ * Minimal find/replace overlay scoped to the current TEXT body.
+ * Mirrors the overlay/card tier used by .pkc-text-to-textlog-*.
+ */
+.pkc-text-replace-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+
+.pkc-text-replace-card {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  width: min(28rem, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.pkc-text-replace-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.pkc-text-replace-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.pkc-text-replace-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pkc-text-replace-row input[type="text"] {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: calc(var(--radius) / 2);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font: inherit;
+}
+
+.pkc-text-replace-options {
+  flex-direction: row;
+  gap: 1rem;
+  align-items: center;
+}
+
+.pkc-text-replace-options > label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pkc-text-replace-status {
+  font-size: 0.85rem;
+  min-height: 1.2em;
+  opacity: 0.85;
+}
+
+.pkc-text-replace-status[data-pkc-error="true"] {
+  color: var(--c-danger, #c0392b);
+  opacity: 1;
+}
+
+.pkc-text-replace-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}

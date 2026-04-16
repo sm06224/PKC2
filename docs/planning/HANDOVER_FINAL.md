@@ -1083,3 +1083,92 @@ typecheck / lint / unit / bundle size / UI smoke / release。
 / E の昇格条件を `TIER3_3_REEVALUATION.md §5` に記録済み）。
 
 ---
+
+## 19. Post-v0.1.0 Editor UX Pack（2026-04-16 締め）
+
+Tier 3-3 以降、editor UX を小さな安全境界ごとに順次前進させた
+一連のテーマ群をここにまとめる。いずれも production code touch は
+限定的で、**spec → feasibility → contract → implementation → audit →
+manual** という review 駆動の順序を守って積み上げた。
+
+### 19.1 完了テーマ（§1 S-24〜S-28 の正式記録）
+
+| ID | 内容 | 種別 | 主要 surface |
+|----|-----|-----|-------------|
+| S-24 | Export HTML を開いた時に IDB より pkc-data を優先する boot 順序修正 | bugfix | `src/main.ts §11`、新規 `pkc-data-source.ts` |
+| S-25 | HTML paste 時に anchor を Markdown リンク `[label](url)` に正規化 | 追加 | `adapter/ui/action-binder.ts handlePaste`、新規 `html-paste-to-markdown.ts` |
+| S-26 | current TEXT entry body の最小 Find & Replace ダイアログ | 追加 | 新規 `text-replace-dialog.ts`、pure helper `features/text/text-replace.ts` |
+| S-27 | Find & Replace に Selection only 拡張（open 時 snapshot） | 追加 | `text-replace.ts` に range 版 helper 追加、`text-replace-dialog.ts` 拡張 |
+| S-28 | textlog-replace v1（current log only、metadata 不変） | 追加 | 新規 `textlog-log-replace-dialog.ts`、`textlog-presenter.ts` に 🔎 trigger、action-binder |
+
+### 19.2 並行で追加した補助 spec / dev doc / manual
+
+- **補助 spec**（`docs/spec/`）:
+  - `find-replace-behavior-contract.md`（TEXT v1.1）
+  - `textlog-replace-feasibility-and-minimum-scope.md`
+  - `textlog-replace-v1-behavior-contract.md`
+  - `textlog-text-conversion-policy.md`（H-8 補完、TEXTLOG→TEXT 変換ポリシー）
+  - `provenance-relation-profile.md`（H-8 補完、provenance Relation の v1 profile）
+- **dev doc**（`docs/development/`）:
+  - `html-paste-link-markdown.md`
+  - `text-replace-current-entry.md`
+  - `textlog-replace-current-log.md`
+  - `textlog-replace-current-log-audit.md`（S-28 post-impl invariance audit、欠陥 0）
+  - `boot-container-source-priority.md`
+- **manual 同期**: 2 回
+  - TEXT 側 UX（paste link / Find & Replace / boot priority）
+  - textlog 側 UX（per-log Find & Replace）
+- **00_index.md**: 上記補助 spec のエントリを追加（第 0 群に 5 行追加）
+
+### 19.3 安定化済み（selected lines に進む前提として OK）
+
+- TEXT body Find & Replace（v1.1 contract 固定、Selection only 搭載）
+- textlog per-log Find & Replace（v1 contract 固定、metadata 不変を audit で確認済み）
+- HTML paste の link 正規化（TEXT body 限定）
+- Export HTML の Container 優先表示（boot priority 修正）
+- pure helper `features/text/text-replace.ts` は TEXT / textlog 両 UI から共有可能、追加テーマで再利用できる
+
+### 19.4 次候補（推奨順）
+
+#### 候補 1: **textlog-replace v1.x 候補 — log 内 Selection only**
+
+- 位置: 既存 textlog v1 contract の additive 拡張。contract §8.2 で「v1.x 候補」として明示済み
+- 利点: pure helper（`countMatchesInRange` / `replaceAllInRange`）は既に存在、UI 追加だけで済む
+- 危険: 小、TEXT 側と対称な Selection only 挙動を再利用できる
+- 推奨度: **高**（次の実装テーマとして最も自然）
+
+#### 候補 2: **textlog replace の粒度 C 前段調査（whole textlog）**
+
+- 位置: contract §8.2「v2 別契約」。まず docs-only で preview UI / undo 戦略 / cross-log regex 挙動を整理
+- 利点: 価値は高い（複数 log 一括置換）
+- 危険: 中〜高。影響範囲が広く、event / dispatch / regex scope の設計が別途必要
+- 推奨度: **中**（実装に入る前に feasibility + contract をもう 1 ラウンド挟む必要あり）
+
+#### 候補 3: **別系統 UX 改善**
+
+- TEXT / textlog から離れた任意の polish（例: calendar / kanban 操作、export/import UX、検索 UX の追加 polish 等）
+- 推奨度: **低〜中**（replace 系の棚卸しが終わったので再評価の余地あり）
+
+#### 候補 4: **global replace / broader replace**
+
+- 位置: contract §3.4 / §8.2 の終端候補
+- 推奨度: **保留**（v1.x / v2 の段階を経てから、慎重に）
+
+### 19.5 意図的にまだやっていないこと
+
+- **textlog selected lines replace**（粒度 B）: feasibility §3.2 で conversion selection との UI 二重用途化を懸念、v1.x 候補としても後回し
+- **textlog whole textlog replace**（粒度 C）: 候補 2 と同じ
+- **cross-entry / cross-archetype replace**: contract §3.4
+- **global replace**: 本 handover §19 の候補 4
+- **他 archetype（todo / form / folder description）への replace 展開**: archetype 別の body 構造が異なり、個別 contract が必要
+- **Replace next / Replace prev navigation**: TEXT / textlog 両 v1 contract で v1 非対象
+- **hit position highlight**: 両 contract で v1 非対象
+- **Selection only for textlog v1**（log 内範囲限定）: textlog v1 contract §4.2、v1.x 候補として切り出し待ち
+
+### 19.6 次テーマ選定の判断基準
+
+- **進めて良いテーマ**: 既存 contract の additive 拡張 / invariance 契約を壊さない小改善
+- **docs-only で先行させるテーマ**: 粒度 C / cross-entry / global など、UI / 影響範囲の再議論が必要なもの
+- **まだ保留**: global replace、別 archetype 展開、transport / P2P 拡張
+
+---
