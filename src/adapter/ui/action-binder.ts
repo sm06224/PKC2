@@ -37,6 +37,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
+import { openTextReplaceDialog } from './text-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
@@ -253,6 +254,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'cancel-edit':
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
         break;
+      case 'open-replace-dialog': {
+        // S-26: find/replace over the current TEXT body textarea.
+        // The dialog operates on the live textarea value, not on
+        // Container state, so there is no reducer action here.
+        // Readonly paths never reach this branch — the button is
+        // only rendered for TEXT entries in edit mode.
+        const textarea = root.querySelector<HTMLTextAreaElement>(
+          '[data-pkc-field="body"]',
+        );
+        if (!textarea) break;
+        openTextReplaceDialog(textarea, root);
+        break;
+      }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };

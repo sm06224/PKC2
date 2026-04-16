@@ -2055,6 +2055,19 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
     cancelBtn.setAttribute('title', 'Discard changes (Esc)');
     cancelBtn.textContent = 'Cancel';
     bar.appendChild(cancelBtn);
+
+    // S-26 (2026-04-16): find/replace trigger. Shown only for TEXT
+    // entries (body is plain markdown). Textlog / form / attachment
+    // are intentionally out of scope for v1 — see
+    // docs/development/text-replace-current-entry.md.
+    if (entry.archetype === 'text') {
+      const replaceBtn = createElement('button', 'pkc-btn');
+      replaceBtn.setAttribute('data-pkc-action', 'open-replace-dialog');
+      replaceBtn.setAttribute('data-pkc-lid', entry.lid);
+      replaceBtn.setAttribute('title', 'Find & replace inside this entry');
+      replaceBtn.textContent = '🔎 Replace';
+      bar.appendChild(replaceBtn);
+    }
   } else {
     if (canEdit) {
       const editBtn = createElement('button', 'pkc-btn');
