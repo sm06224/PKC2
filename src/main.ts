@@ -20,6 +20,7 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { readPkcData, chooseBootSource } from './adapter/platform/pkc-data-source';
 import {
   estimateStorage,
   bootWarningMessage,
@@ -27,7 +28,6 @@ import {
 import { showToast } from './adapter/ui/toast';
 import { summarizeZipImportWarnings } from './adapter/ui/zip-import-warnings';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
-import { decompressAssets } from './adapter/platform/compression';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
 import { exportContainerAsZip, importContainerFromZip } from './adapter/platform/zip-package';
 import { pickEntryPackageTarget } from './adapter/platform/entry-package-router';
@@ -61,9 +61,10 @@ import type { Container } from './core/model/container';
 /**
  * PKC2 bootstrap.
  *
- * Boot priority for Container data:
- * 1. IDB (last saved state) → SYS_INIT_COMPLETE
- * 2. pkc-data element (embedded in HTML) → SYS_INIT_COMPLETE
+ * Boot priority for Container data (see `pkc-data-source.ts` for the
+ * `chooseBootSource` pure helper and the rationale):
+ * 1. pkc-data element (embedded in exported HTML) → SYS_INIT_COMPLETE
+ * 2. IDB (last saved state) → SYS_INIT_COMPLETE
  * 3. Empty container → SYS_INIT_COMPLETE
  * 4. All failed → SYS_INIT_ERROR
  */
@@ -401,69 +402,55 @@ async function boot(): Promise<void> {
     console.log(`[PKC2] Running embedded (parent origin: ${embedCtx.parentOrigin ?? 'unknown'})`);
   }
 
-  // 11. Load data: IDB first, then pkc-data, then empty
+  // 11. Load data: pkc-data first (exported HTML), then IDB, then empty.
+  //
+  // Priority rationale: opening an exported HTML should display the
+  // **exported snapshot**, even when the current browser's IndexedDB
+  // already holds a container from a previous session. The old order
+  // (IDB first) made exported HTMLs effectively invisible — the viewer
+  // saw their own local content instead of what the sender exported.
+  // `chooseBootSource` is a pure helper in `pkc-data-source.ts` so the
+  // decision is unit-testable.
+  //
+  // Fresh `pkc2.html` bundles ship with `#pkc-data` = `{}` (canonical
+  // empty payload), which `readPkcData()` filters out; IDB therefore
+  // still wins for the normal "reopen the app" flow.
   try {
-    const { source, container: idbContainer } = await loadFromStore(store);
-
-    if (source === 'idb' && idbContainer) {
-      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: idbContainer, embedded: embedCtx.embedded });
-      return;
-    }
-
-    // Fallback: read pkc-data
     const pkcData = await readPkcData();
-    if (pkcData) {
-      dispatcher.dispatch({
-        type: 'SYS_INIT_COMPLETE',
-        container: pkcData.container,
-        embedded: embedCtx.embedded,
-        readonly: pkcData.readonly,
-        lightSource: pkcData.lightSource,
-      });
-      if (pkcData.lightSource) {
-        console.log('[PKC2] Light export detected — IDB save suppressed');
-      }
-      return;
-    }
+    const { container: idbContainer } = await loadFromStore(store);
+    const chosen = chooseBootSource(pkcData, idbContainer);
 
-    // Empty container
-    dispatcher.dispatch({
-      type: 'SYS_INIT_COMPLETE',
-      container: createEmptyContainer(),
-      embedded: embedCtx.embedded,
-    });
+    switch (chosen.source) {
+      case 'pkc-data':
+        dispatcher.dispatch({
+          type: 'SYS_INIT_COMPLETE',
+          container: chosen.container!,
+          embedded: embedCtx.embedded,
+          readonly: chosen.readonly,
+          lightSource: chosen.lightSource,
+        });
+        if (chosen.lightSource) {
+          console.log('[PKC2] Light export detected — IDB save suppressed');
+        }
+        return;
+      case 'idb':
+        dispatcher.dispatch({
+          type: 'SYS_INIT_COMPLETE',
+          container: chosen.container!,
+          embedded: embedCtx.embedded,
+        });
+        return;
+      case 'empty':
+        dispatcher.dispatch({
+          type: 'SYS_INIT_COMPLETE',
+          container: createEmptyContainer(),
+          embedded: embedCtx.embedded,
+        });
+        return;
+    }
   } catch (e) {
     dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });
   }
-}
-
-interface PkcDataResult {
-  container: Container;
-  readonly: boolean;
-  lightSource: boolean;
-}
-
-async function readPkcData(): Promise<PkcDataResult | null> {
-  const dataEl = document.getElementById(SLOT.DATA);
-  const raw = dataEl?.textContent?.trim();
-  if (!raw || raw === '{}') return null;
-
-  const data = JSON.parse(raw);
-  if (!data.container) return null;
-
-  const isReadonly = data.export_meta?.mutability === 'readonly';
-  const isLight = data.export_meta?.mode === 'light';
-
-  let container = data.container as Container;
-
-  // Decompress assets if they were compressed during export (gzip+base64).
-  // Without this, compressed assets stored as-is would be unreadable.
-  const assetEncoding = data.export_meta?.asset_encoding;
-  if (assetEncoding === 'gzip+base64' && container.assets && Object.keys(container.assets).length > 0) {
-    container = { ...container, assets: await decompressAssets(container.assets, assetEncoding) };
-  }
-
-  return { container, readonly: isReadonly, lightSource: isLight };
 }
 
 function createEmptyContainer(): Container {

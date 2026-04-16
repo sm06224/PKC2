@@ -182,13 +182,13 @@ export function mountPersistence(
 }
 
 /**
- * Load Container from store, with fallback.
+ * Load Container from the IDB store, with a null fallback.
  *
- * Boot priority:
- * 1. IDB default container → SYS_INIT_COMPLETE
- * 2. pkc-data element → SYS_INIT_COMPLETE
- * 3. Empty container → SYS_INIT_COMPLETE
- * 4. All failed → SYS_INIT_ERROR
+ * This function is intentionally **IDB-only**: it does not decide the
+ * overall boot priority. The boot priority (pkc-data > IDB > empty)
+ * lives in `chooseBootSource()` in `pkc-data-source.ts` and the top-
+ * level orchestration in `main.ts`. Callers pass the result of this
+ * function to `chooseBootSource` as the `idbContainer` argument.
  */
 export async function loadFromStore(
   store: ContainerStore,
