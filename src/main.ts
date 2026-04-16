@@ -20,7 +20,8 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
-import { readPkcData, chooseBootSource } from './adapter/platform/pkc-data-source';
+import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
+import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
   estimateStorage,
   bootWarningMessage,
@@ -402,23 +403,50 @@ async function boot(): Promise<void> {
     console.log(`[PKC2] Running embedded (parent origin: ${embedCtx.parentOrigin ?? 'unknown'})`);
   }
 
-  // 11. Load data: pkc-data first (exported HTML), then IDB, then empty.
+  // 11. Load data — revised boot source policy (2026-04-16, see
+  // `docs/development/boot-container-source-policy-revision.md`).
   //
-  // Priority rationale: opening an exported HTML should display the
-  // **exported snapshot**, even when the current browser's IndexedDB
-  // already holds a container from a previous session. The old order
-  // (IDB first) made exported HTMLs effectively invisible — the viewer
-  // saw their own local content instead of what the sender exported.
-  // `chooseBootSource` is a pure helper in `pkc-data-source.ts` so the
-  // decision is unit-testable.
+  //   1. pkc-data AND IDB both present → chooser modal
+  //   2. pkc-data only → boot pkc-data with `viewOnlySource = true`
+  //      (IDB save suppressed; explicit Import is the promotion gate)
+  //   3. IDB only → boot IDB normally
+  //   4. Neither → empty container
   //
-  // Fresh `pkc2.html` bundles ship with `#pkc-data` = `{}` (canonical
-  // empty payload), which `readPkcData()` filters out; IDB therefore
-  // still wins for the normal "reopen the app" flow.
+  // Prior revision (S-24, 2026-04-16) flipped precedence so exported
+  // HTMLs would at least display their own content, but an implicit
+  // save cycle still wrote that embedded container into the viewer's
+  // IndexedDB. This policy closes that hole: embedded pkc-data is
+  // treated as a view-only snapshot, and IDB is never written to
+  // unless the user explicitly imports.
+  //
+  // Embedded-iframe context bypasses the chooser (embedded PKC2 has
+  // parent-driven data flow; the chooser would confuse that UX).
   try {
     const pkcData = await readPkcData();
     const { container: idbContainer } = await loadFromStore(store);
-    const chosen = chooseBootSource(pkcData, idbContainer);
+    let chosen = chooseBootSource(pkcData, idbContainer);
+
+    if (chosen.source === 'chooser') {
+      if (embedCtx.embedded) {
+        // Embedded iframe: fall back to pkc-data priority silently.
+        // Chooser UX doesn't fit cross-origin embed scenarios.
+        chosen = finalizeChooserChoice(
+          chosen.pkcData!,
+          chosen.idbContainer!,
+          'pkc-data',
+        );
+      } else {
+        const choice = await showBootSourceChooser({
+          host: document.body,
+          chooser: chosen,
+        });
+        chosen = finalizeChooserChoice(
+          chosen.pkcData!,
+          chosen.idbContainer!,
+          choice,
+        );
+      }
+    }
 
     switch (chosen.source) {
       case 'pkc-data':
@@ -428,9 +456,13 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
           readonly: chosen.readonly,
           lightSource: chosen.lightSource,
+          viewOnlySource: chosen.viewOnlySource,
         });
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
+        }
+        if (chosen.viewOnlySource) {
+          console.log('[PKC2] Embedded pkc-data booted as view-only — IDB save suppressed until explicit Import');
         }
         return;
       case 'idb':

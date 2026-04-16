@@ -106,6 +106,19 @@ export interface AppState {
   readonly: boolean;
   /** True when container was loaded from a Light export (no assets). Suppresses IDB save. */
   lightSource: boolean;
+  /**
+   * True when container was booted from embedded pkc-data (exported
+   * HTML). Suppresses IDB save: opening an HTML must not contaminate
+   * the receiver's IndexedDB. Cleared by explicit Import operations
+   * (CONFIRM_IMPORT / SYS_IMPORT_COMPLETE / CONFIRM_MERGE_IMPORT) so
+   * that post-import edits persist normally. See
+   * `docs/development/boot-container-source-policy-revision.md`.
+   *
+   * Optional in the TS surface so existing test fixtures that spell
+   * out AppState by hand remain valid without updates. Reducer paths
+   * always initialize to `false` via `createInitialState()`.
+   */
+  viewOnlySource?: boolean;
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
@@ -201,6 +214,7 @@ export function createInitialState(): AppState {
     exportMutability: null,
     readonly: false,
     lightSource: false,
+    viewOnlySource: false,
     showArchived: false,
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
@@ -283,6 +297,7 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         embedded: action.embedded ?? false,
         readonly: action.readonly ?? false,
         lightSource: action.lightSource ?? false,
+        viewOnlySource: action.viewOnlySource ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -564,6 +579,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         selectedLid: null,
         editingLid: null,
         error: null,
+        // Boot-source-policy: explicit import clears viewOnlySource
+        // so the imported container persists to IDB normally.
+        viewOnlySource: false,
         // P1-1: container replaced wholesale — any per-entry transient
         // UI flow is anchored to a lid that likely doesn't exist in
         // the new container. Clear them defensively.
@@ -682,6 +700,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         importPreview: null,
         importMode: 'replace',
         lightSource: false,
+        // Explicit import is the canonical "promote to writable" gate
+        // for boot-source policy (see boot-container-source-policy-
+        // revision.md). Clear viewOnlySource so post-import edits
+        // persist to IDB normally.
+        viewOnlySource: false,
       };
       const cid = imported?.meta?.container_id ?? 'unknown';
       const events: DomainEvent[] = [{ type: 'CONTAINER_IMPORTED', container_id: cid, source }];
@@ -721,6 +744,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         error: null,
         importPreview: null,
         importMode: 'replace',
+        // Merge import is also an explicit promotion gate — see
+        // CONFIRM_IMPORT case. Clear so the merged result persists.
+        viewOnlySource: false,
       };
       const cid = host.meta.container_id ?? 'unknown';
       const events: DomainEvent[] = [{
@@ -996,6 +1022,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         container: rehydrated,
         readonly: false,
         lightSource: false,
+        // Rehydrate (from readonly / view-only snapshot) is an
+        // explicit promotion — treat like Import for persistence.
+        viewOnlySource: false,
       };
       return {
         state: next,
@@ -1391,6 +1420,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         embedded: action.embedded ?? state.embedded,
         readonly: action.readonly ?? false,
         lightSource: action.lightSource ?? false,
+        viewOnlySource: action.viewOnlySource ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
@@ -1413,6 +1443,7 @@ function reduceError(state: AppState, action: Dispatchable): ReduceResult {
         editingLid: null,
         error: null,
         lightSource: false,
+        viewOnlySource: false,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';
       const events: DomainEvent[] = [{ type: 'CONTAINER_IMPORTED', container_id: cid, source: action.source }];
