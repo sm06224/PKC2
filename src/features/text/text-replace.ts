@@ -96,6 +96,69 @@ export function replaceAll(
   return body.replace(r.regex, rep);
 }
 
+// ── Range variants (S-27 / "Selection only") ───────────────
+//
+// Thin wrappers around countMatches / replaceAll that restrict the
+// operation to `body.slice(start, end)`. Kept separate so callers
+// that do not need range semantics stay on the simpler API, and so
+// the existing tests around the full-body functions continue to
+// document their contract unchanged.
+
+/**
+ * True when `[start, end)` is a well-formed range within `body`.
+ * An empty range (`start === end`) is valid but matches nothing.
+ */
+function isValidRange(body: string, start: number, end: number): boolean {
+  return (
+    Number.isInteger(start)
+    && Number.isInteger(end)
+    && start >= 0
+    && end >= start
+    && end <= body.length
+  );
+}
+
+/**
+ * Count occurrences of `query` within `body.slice(start, end)`.
+ * Invalid or empty ranges count zero.
+ */
+export function countMatchesInRange(
+  body: string,
+  start: number,
+  end: number,
+  query: string,
+  options: ReplaceOptions,
+): number {
+  if (!isValidRange(body, start, end)) return 0;
+  return countMatches(body.slice(start, end), query, options);
+}
+
+/**
+ * Replace occurrences of `query` with `replacement`, but only inside
+ * `body.slice(start, end)`. Returns the stitched-together body:
+ *
+ *   body.slice(0, start) + replaced + body.slice(end)
+ *
+ * Returns `body` unchanged when the range is invalid or the regex
+ * does not build. No-op (returns `body`) when there are no hits
+ * inside the range — matches the dialog's "Apply disabled on 0 hits"
+ * semantics when the user clicks defensively.
+ */
+export function replaceAllInRange(
+  body: string,
+  start: number,
+  end: number,
+  query: string,
+  replacement: string,
+  options: ReplaceOptions,
+): string {
+  if (!isValidRange(body, start, end)) return body;
+  const selected = body.slice(start, end);
+  const replaced = replaceAll(selected, query, replacement, options);
+  if (replaced === selected) return body;
+  return body.slice(0, start) + replaced + body.slice(end);
+}
+
 // ── internal ────────────────────────────────────────────────
 
 /** Escape RegExp metacharacters so the literal matches itself. */

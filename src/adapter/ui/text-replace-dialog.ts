@@ -28,7 +28,9 @@
 import {
   buildFindRegex,
   countMatches,
+  countMatchesInRange,
   replaceAll,
+  replaceAllInRange,
   type ReplaceOptions,
 } from '../../features/text/text-replace';
 
@@ -44,6 +46,7 @@ const FIELD_FIND = 'text-replace-find';
 const FIELD_REPLACE = 'text-replace-replace';
 const FIELD_REGEX = 'text-replace-regex';
 const FIELD_CASE = 'text-replace-case';
+const FIELD_SELECTION = 'text-replace-selection';
 const ACTION_APPLY = 'text-replace-apply';
 const ACTION_CLOSE = 'text-replace-close';
 
@@ -54,6 +57,20 @@ const DATA_REGION = 'text-replace-dialog';
 let activeOverlay: HTMLElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let activeEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
+
+/**
+ * Per-dialog mutable state. The range is captured at open time and
+ * shifted after each Apply that changes the selected slice's length,
+ * so repeated replaces stay confined to what was originally selected
+ * (now possibly shrunk / expanded).
+ *
+ * `range: null` means the textarea had no non-empty selection at open
+ * time; the Selection-only checkbox is rendered but disabled in that
+ * case and the state stays `null` for the life of the dialog.
+ */
+interface DialogState {
+  range: SelectionRange | null;
+}
 
 // ── DOM helper ─────────────────────────────────────────────
 
@@ -100,11 +117,25 @@ export function openTextReplaceDialog(
   if (textarea.getAttribute('data-pkc-field') !== 'body') return;
   if (activeOverlay !== null) unmount();
 
+  // Capture the selection BEFORE we build the overlay — mounting the
+  // overlay moves focus and may collapse the textarea's selection.
+  const captured = captureSelection(textarea);
+  const state: DialogState = { range: captured };
+
   const parts = buildOverlay();
   root.appendChild(parts.overlay);
 
-  const update = (): void => updateStatus(parts, textarea);
-  const doApply = (): void => applyReplace(parts, textarea, update);
+  // Selection-only is meaningful only when the textarea had a
+  // non-empty selection at open time. Otherwise we disable the
+  // checkbox so the user cannot switch into a mode that would count
+  // zero regardless of the Find string.
+  if (captured === null) {
+    parts.selectionCheckbox.disabled = true;
+    parts.selectionCheckbox.title = 'No selection in the body textarea';
+  }
+
+  const update = (): void => updateStatus(parts, textarea, state);
+  const doApply = (): void => applyReplace(parts, textarea, state, update);
 
   wireInputHandlers(parts, update);
   wireApply(parts, doApply);
@@ -118,6 +149,22 @@ export function openTextReplaceDialog(
   parts.findInput.focus();
 }
 
+/**
+ * Snapshot `textarea.selectionStart/End` into a plain range. Returns
+ * `null` when the selection is empty or the browser does not expose
+ * coherent numbers (happy-dom returns null for unfocused inputs —
+ * that path degrades to "full body" mode without throwing).
+ */
+function captureSelection(
+  textarea: HTMLTextAreaElement,
+): SelectionRange | null {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  if (typeof start !== 'number' || typeof end !== 'number') return null;
+  if (end <= start) return null;
+  return { start, end };
+}
+
 // ── Overlay construction ───────────────────────────────────
 
 interface OverlayParts {
@@ -126,9 +173,25 @@ interface OverlayParts {
   replaceInput: HTMLInputElement;
   regexCheckbox: HTMLInputElement;
   caseCheckbox: HTMLInputElement;
+  selectionCheckbox: HTMLInputElement;
   statusEl: HTMLElement;
   applyBtn: HTMLButtonElement;
   closeBtn: HTMLButtonElement;
+}
+
+/**
+ * Mutable selection range the dialog operates on when "Selection
+ * only" is ON. Captured from `textarea.selectionStart/End` at open
+ * time and shifted after each successful apply so repeated replaces
+ * remain confined to the replaced span.
+ *
+ * `null` means the textarea had no non-empty selection at open; the
+ * Selection-only checkbox is disabled in that case and the state
+ * stays `null` for the life of the dialog.
+ */
+interface SelectionRange {
+  start: number;
+  end: number;
 }
 
 function buildOverlay(): OverlayParts {
@@ -182,6 +245,18 @@ function buildOverlay(): OverlayParts {
   caseLabel.appendChild(document.createTextNode(' Case sensitive'));
   optionsRow.appendChild(caseLabel);
 
+  // S-27: Selection only. Disabled by the entry point when the
+  // textarea has no non-empty selection at open time. Keeping the
+  // checkbox in the DOM (rather than omitting it) gives the user a
+  // stable landmark and lets tests assert the disabled/enabled state.
+  const selectionCheckbox = el('input');
+  selectionCheckbox.type = 'checkbox';
+  selectionCheckbox.setAttribute('data-pkc-field', FIELD_SELECTION);
+  const selectionLabel = el('label');
+  selectionLabel.appendChild(selectionCheckbox);
+  selectionLabel.appendChild(document.createTextNode(' Selection only'));
+  optionsRow.appendChild(selectionLabel);
+
   card.appendChild(optionsRow);
 
   const statusEl = el('div', STATUS_CLASS);
@@ -210,6 +285,7 @@ function buildOverlay(): OverlayParts {
     replaceInput,
     regexCheckbox,
     caseCheckbox,
+    selectionCheckbox,
     statusEl,
     applyBtn,
     closeBtn,
@@ -225,9 +301,24 @@ function readOptions(parts: OverlayParts): ReplaceOptions {
   };
 }
 
+/**
+ * Return the active selection range when the Selection-only checkbox
+ * is on AND a range was captured at open time. Otherwise `null`,
+ * meaning callers should operate over the whole textarea value.
+ */
+function activeRange(
+  parts: OverlayParts,
+  state: DialogState,
+): SelectionRange | null {
+  if (state.range === null) return null;
+  if (!parts.selectionCheckbox.checked) return null;
+  return state.range;
+}
+
 function updateStatus(
   parts: OverlayParts,
   textarea: HTMLTextAreaElement,
+  state: DialogState,
 ): void {
   const query = parts.findInput.value;
   const options = readOptions(parts);
@@ -247,33 +338,76 @@ function updateStatus(
     return;
   }
 
-  const n = countMatches(textarea.value, query, options);
+  const range = activeRange(parts, state);
+  const n = range === null
+    ? countMatches(textarea.value, query, options)
+    : countMatchesInRange(
+        textarea.value,
+        range.start,
+        range.end,
+        query,
+        options,
+      );
+  const scope = range === null ? 'current entry' : 'selection';
   parts.statusEl.removeAttribute('data-pkc-error');
   parts.statusEl.textContent = n === 0
-    ? 'No matches in current entry.'
-    : `${n} match${n === 1 ? '' : 'es'} will be replaced.`;
+    ? `No matches in ${scope}.`
+    : `${n} match${n === 1 ? '' : 'es'} will be replaced in ${scope}.`;
   parts.applyBtn.disabled = n === 0;
 }
 
 function applyReplace(
   parts: OverlayParts,
   textarea: HTMLTextAreaElement,
+  state: DialogState,
   rerun: () => void,
 ): void {
   const query = parts.findInput.value;
   if (query === '') return;
 
   const options = readOptions(parts);
-  const next = replaceAll(
-    textarea.value,
-    query,
-    parts.replaceInput.value,
-    options,
-  );
-  if (next === textarea.value) return; // hit 0 → no-op, matches spec
+  const range = activeRange(parts, state);
+  const oldValue = textarea.value;
+
+  let next: string;
+  let newRange: SelectionRange | null = null;
+  if (range === null) {
+    next = replaceAll(oldValue, query, parts.replaceInput.value, options);
+  } else {
+    next = replaceAllInRange(
+      oldValue,
+      range.start,
+      range.end,
+      query,
+      parts.replaceInput.value,
+      options,
+    );
+    if (next !== oldValue) {
+      // Length-adjust the range so the next Apply stays confined to
+      // the (possibly shrunk / expanded) replaced span. `delta` may
+      // be negative when the replacement shortens the slice.
+      const delta = next.length - oldValue.length;
+      newRange = { start: range.start, end: range.end + delta };
+    }
+  }
+  if (next === oldValue) return;
 
   textarea.value = next;
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // When Selection-only was in effect, snap the stored range to the
+  // new span so the next Apply stays inside the (possibly shrunk /
+  // expanded) replaced region, and mirror it on the textarea so the
+  // user sees exactly what changed.
+  if (newRange !== null) {
+    state.range = newRange;
+    try {
+      textarea.setSelectionRange(newRange.start, newRange.end);
+    } catch {
+      /* happy-dom / non-focused input can reject setSelectionRange;
+       * the internal state update above is what actually matters. */
+    }
+  }
 
   // Refresh the hit count in place so the dialog becomes visibly
   // "done" rather than still advertising the pre-apply count.
@@ -287,6 +421,7 @@ function wireInputHandlers(parts: OverlayParts, update: () => void): void {
   parts.replaceInput.addEventListener('input', update);
   parts.regexCheckbox.addEventListener('change', update);
   parts.caseCheckbox.addEventListener('change', update);
+  parts.selectionCheckbox.addEventListener('change', update);
 }
 
 function wireApply(parts: OverlayParts, doApply: () => void): void {

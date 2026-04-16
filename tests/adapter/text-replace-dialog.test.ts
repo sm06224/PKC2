@@ -17,7 +17,10 @@ import {
 let root: HTMLElement;
 let textarea: HTMLTextAreaElement;
 
-function setup(initialBody: string): void {
+function setup(
+  initialBody: string,
+  selection?: { start: number; end: number },
+): void {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
@@ -26,6 +29,10 @@ function setup(initialBody: string): void {
   textarea.setAttribute('data-pkc-field', 'body');
   textarea.value = initialBody;
   root.appendChild(textarea);
+  if (selection) {
+    textarea.focus();
+    textarea.setSelectionRange(selection.start, selection.end);
+  }
 }
 
 function find(selector: string): HTMLElement {
@@ -225,5 +232,119 @@ describe('text-replace dialog', () => {
       '[data-pkc-region="text-replace-dialog"]',
     );
     expect(overlays.length).toBe(1);
+  });
+});
+
+// ── Selection only (S-27) ────────────────────────────────
+
+function selectionCheckbox(): HTMLInputElement {
+  return dialogOverlay().querySelector<HTMLInputElement>(
+    '[data-pkc-field="text-replace-selection"]',
+  )!;
+}
+
+describe('text-replace dialog — Selection only', () => {
+  it('disables the Selection-only checkbox when no selection was captured', () => {
+    setup('apple apple apple');
+    // No selection set → captured range is null.
+    openTextReplaceDialog(textarea, root);
+    const box = selectionCheckbox();
+    expect(box.disabled).toBe(true);
+  });
+
+  it('enables the Selection-only checkbox when a non-empty selection was captured', () => {
+    // Select the first two "apple"s (including the space between).
+    setup('apple apple apple', { start: 0, end: 11 });
+    openTextReplaceDialog(textarea, root);
+    const box = selectionCheckbox();
+    expect(box.disabled).toBe(false);
+  });
+
+  it('counts only inside the selection when Selection-only is ON', () => {
+    setup('apple apple apple', { start: 0, end: 11 });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setInput('text-replace-find', 'apple');
+    // Range [0, 11] covers exactly two "apple"s.
+    expect(statusText()).toContain('2');
+    expect(statusText()).toMatch(/selection/i);
+  });
+
+  it('falls back to the full body when Selection-only is OFF', () => {
+    setup('apple apple apple', { start: 0, end: 11 });
+    openTextReplaceDialog(textarea, root);
+    setInput('text-replace-find', 'apple');
+    // Default: checkbox off → full body → 3 hits.
+    expect(statusText()).toContain('3');
+    expect(statusText()).toMatch(/current entry/i);
+  });
+
+  it('replaces only inside the selection and leaves the rest unchanged', () => {
+    setup('apple apple apple', { start: 0, end: 11 });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setInput('text-replace-find', 'apple');
+    setInput('text-replace-replace', 'pear');
+    applyBtn().click();
+    // Selected range's two "apple"s → "pear"; the trailing one is
+    // preserved because it lay outside [0, 11].
+    expect(textarea.value).toBe('pear pear apple');
+  });
+
+  it('keeps subsequent Applies inside the (shifted) selection region', () => {
+    // Range [0, 9] covers "aa aa aa ".
+    setup('aa aa aa aa', { start: 0, end: 9 });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setInput('text-replace-find', 'aa');
+    setInput('text-replace-replace', 'bbbb');
+    applyBtn().click();
+    // The first three "aa" inside the selection expand to "bbbb".
+    expect(textarea.value).toBe('bbbb bbbb bbbb aa');
+
+    // A second Apply with a different replacement must stay inside
+    // the shifted range and not touch the final "aa".
+    setInput('text-replace-find', 'bbbb');
+    setInput('text-replace-replace', 'c');
+    applyBtn().click();
+    expect(textarea.value).toBe('c c c aa');
+  });
+
+  it('honours regex mode inside the selection', () => {
+    setup('a1 a22 a333 a4444', { start: 0, end: 11 });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setCheckbox('text-replace-regex', true);
+    setInput('text-replace-find', 'a\\d+');
+    expect(statusText()).toContain('3');
+    setInput('text-replace-replace', 'X');
+    applyBtn().click();
+    // Only the first three matches (inside [0, 11]) get replaced.
+    expect(textarea.value).toBe('X X X a4444');
+  });
+
+  it('preserves invalid-regex gating when Selection only is on', () => {
+    setup('abc abc abc', { start: 0, end: 7 });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setCheckbox('text-replace-regex', true);
+    setInput('text-replace-find', '[unclosed');
+    const s = dialogOverlay().querySelector(
+      '.pkc-text-replace-status',
+    ) as HTMLElement;
+    expect(s.getAttribute('data-pkc-error')).toBe('true');
+    expect(applyBtn().disabled).toBe(true);
+  });
+
+  it('fires the input event on apply so dirty / preview hooks see the change', () => {
+    setup('apple apple apple', { start: 0, end: 11 });
+    let inputEvents = 0;
+    textarea.addEventListener('input', () => { inputEvents++; });
+    openTextReplaceDialog(textarea, root);
+    setCheckbox('text-replace-selection', true);
+    setInput('text-replace-find', 'apple');
+    setInput('text-replace-replace', 'pear');
+    applyBtn().click();
+    expect(inputEvents).toBeGreaterThanOrEqual(1);
   });
 });

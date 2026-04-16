@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   buildFindRegex,
   countMatches,
+  countMatchesInRange,
   replaceAll,
+  replaceAllInRange,
 } from '@features/text/text-replace';
 
 describe('buildFindRegex', () => {
@@ -167,5 +169,138 @@ describe('replaceAll', () => {
       { regex: false, caseSensitive: true },
     );
     expect(out).toBe(' and-');
+  });
+});
+
+describe('countMatchesInRange', () => {
+  const BODY = 'apple apple apple';
+
+  it('counts only matches that fall inside [start, end)', () => {
+    // Selection covers the first two "apple"s.
+    const n = countMatchesInRange(
+      BODY,
+      0,
+      11,
+      'apple',
+      { regex: false, caseSensitive: true },
+    );
+    expect(n).toBe(2);
+  });
+
+  it('returns 0 when the range is empty (start === end)', () => {
+    const n = countMatchesInRange(
+      BODY,
+      5,
+      5,
+      'apple',
+      { regex: false, caseSensitive: true },
+    );
+    expect(n).toBe(0);
+  });
+
+  it('returns 0 for a negative / inverted / out-of-bounds range', () => {
+    expect(countMatchesInRange(BODY, -1, 5, 'apple', { regex: false, caseSensitive: true })).toBe(0);
+    expect(countMatchesInRange(BODY, 10, 5, 'apple', { regex: false, caseSensitive: true })).toBe(0);
+    expect(countMatchesInRange(BODY, 0, BODY.length + 10, 'apple', { regex: false, caseSensitive: true })).toBe(0);
+  });
+
+  it('respects case-sensitive option inside the range', () => {
+    const body = 'Apple APPLE apple';
+    const n = countMatchesInRange(body, 0, 11, 'apple', {
+      regex: false,
+      caseSensitive: true,
+    });
+    expect(n).toBe(0);
+    const m = countMatchesInRange(body, 0, 11, 'apple', {
+      regex: false,
+      caseSensitive: false,
+    });
+    expect(m).toBe(2);
+  });
+
+  it('honours regex mode inside the range', () => {
+    const body = 'a1 a22 a333';
+    const n = countMatchesInRange(body, 0, 6, 'a\\d+', {
+      regex: true,
+      caseSensitive: true,
+    });
+    expect(n).toBe(2);
+  });
+});
+
+describe('replaceAllInRange', () => {
+  const BODY = 'apple apple apple';
+
+  it('replaces only inside the range and stitches the rest verbatim', () => {
+    const out = replaceAllInRange(
+      BODY,
+      0,
+      11,
+      'apple',
+      'pear',
+      { regex: false, caseSensitive: true },
+    );
+    expect(out).toBe('pear pear apple');
+  });
+
+  it('leaves the body unchanged when range has no hits', () => {
+    const out = replaceAllInRange(
+      BODY,
+      0,
+      5,
+      'banana',
+      'x',
+      { regex: false, caseSensitive: true },
+    );
+    expect(out).toBe(BODY);
+  });
+
+  it('leaves the body unchanged when the range is empty', () => {
+    const out = replaceAllInRange(
+      BODY,
+      5,
+      5,
+      'apple',
+      'x',
+      { regex: false, caseSensitive: true },
+    );
+    expect(out).toBe(BODY);
+  });
+
+  it('leaves the body unchanged for an invalid range', () => {
+    expect(
+      replaceAllInRange(BODY, -1, 5, 'apple', 'x', { regex: false, caseSensitive: true }),
+    ).toBe(BODY);
+    expect(
+      replaceAllInRange(BODY, 10, 5, 'apple', 'x', { regex: false, caseSensitive: true }),
+    ).toBe(BODY);
+  });
+
+  it('supports regex back-references inside the range', () => {
+    const body = 'John Smith lived here; Mary Jane lived there';
+    const out = replaceAllInRange(
+      body,
+      0,
+      10,
+      '(\\w+) (\\w+)',
+      '$2 $1',
+      { regex: true, caseSensitive: true },
+    );
+    expect(out).toBe('Smith John lived here; Mary Jane lived there');
+  });
+
+  it('produces a length-changing replacement that shifts content after the range', () => {
+    const body = '[aa][aa][aa]';
+    // Replace "aa" with "bbbb" but only in the first two brackets.
+    const out = replaceAllInRange(
+      body,
+      0,
+      8,
+      'aa',
+      'bbbb',
+      { regex: false, caseSensitive: true },
+    );
+    // First two brackets expanded; the third is verbatim.
+    expect(out).toBe('[bbbb][bbbb][aa]');
   });
 });
