@@ -38,6 +38,7 @@ import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { openTextReplaceDialog } from './text-replace-dialog';
+import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
@@ -265,6 +266,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         );
         if (!textarea) break;
         openTextReplaceDialog(textarea, root);
+        break;
+      }
+      case 'open-log-replace-dialog': {
+        // S-28: find/replace over a single textlog log entry's text
+        // textarea. Target is resolved via data-pkc-log-id so the
+        // dialog operates on exactly one log — never across logs.
+        // See docs/spec/textlog-replace-v1-behavior-contract.md.
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        // CSS.escape is used because log ids are ULID / arbitrary
+        // strings that may contain selector-unsafe characters in
+        // legacy imports; defensive escaping keeps the query safe.
+        const textarea = root.querySelector<HTMLTextAreaElement>(
+          `textarea[data-pkc-field="textlog-entry-text"][data-pkc-log-id="${CSS.escape(logId)}"]`,
+        );
+        if (!textarea) break;
+        openTextlogLogReplaceDialog(textarea, root);
         break;
       }
       case 'create-entry': {

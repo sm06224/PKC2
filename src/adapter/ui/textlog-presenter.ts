@@ -193,6 +193,21 @@ export const textlogPresenter: DetailPresenter = {
       delBtn.setAttribute('title', 'Remove this log entry');
       row.appendChild(delBtn);
 
+      // S-28: per-log Find & Replace trigger. Scope is locked to
+      // this single log's text textarea — see
+      // docs/spec/textlog-replace-v1-behavior-contract.md.
+      const replaceBtn = document.createElement('button');
+      replaceBtn.type = 'button';
+      replaceBtn.className = 'pkc-btn-small pkc-textlog-replace-btn';
+      replaceBtn.setAttribute('data-pkc-action', 'open-log-replace-dialog');
+      replaceBtn.setAttribute('data-pkc-log-id', logEntry.id);
+      replaceBtn.textContent = '🔎';
+      replaceBtn.setAttribute(
+        'title',
+        'Find & replace inside this log',
+      );
+      row.appendChild(replaceBtn);
+
       // Editable text.
       // Slice C-style sizing tuned for per-log entries: min 5 rows (large
       // enough to be usable — `rows=2` regressed this into a near-invisible
