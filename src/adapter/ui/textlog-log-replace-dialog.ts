@@ -1,13 +1,15 @@
 /**
  * Textlog log-replace dialog — minimal find/replace UI for a SINGLE
- * textlog log entry's text (S-28).
+ * textlog log entry's text (S-28; Selection only added in S-29 / v1.x).
  *
- * Scope (v1, per docs/spec/textlog-replace-v1-behavior-contract.md):
+ * Scope (v1.x, per docs/spec/textlog-replace-v1-behavior-contract.md):
  *   - Operates on ONE `<textarea data-pkc-field="textlog-entry-text"
  *     data-pkc-log-id="<id>">` the caller resolves and passes in.
  *   - Plain substring OR JavaScript RegExp find, with case-sensitive
- *     opt-in. No whole-word / multiline / preserve-case / Selection
- *     only toggles (Selection only is intentionally deferred).
+ *     opt-in. Selection only is opt-in: when the textarea has a
+ *     non-empty selection at open time, the user can confine count /
+ *     replace to that range. When no selection was captured, the
+ *     checkbox is rendered but disabled.
  *   - Shows live hit count and disables Apply on zero hits or invalid
  *     regex. Invalid-regex error shown inline.
  *   - Apply rewrites the log textarea's `.value` and fires a synthetic
@@ -17,11 +19,13 @@
  *   - `log.id` / `log.createdAt` / `log.flags` / `entries` array length
  *     and order are NEVER touched — textarea.value only holds
  *     `log.text` so metadata is structurally unreachable from here.
+ *   - Selection only narrows further but never widens beyond the
+ *     current log; cross-log behaviour is structurally impossible
+ *     because the dialog holds a single textarea reference.
  *
- * Out of scope (v1):
+ * Out of scope (v1.x):
  *   - whole textlog / selected lines / visible lines
  *   - append area / viewer (ready phase) triggers
- *   - Selection only (deferred v1.x candidate)
  *   - Replace next / hit highlight / multi-entry / global replace
  *   - TEXT body replace (use text-replace-dialog.ts instead)
  *
@@ -34,7 +38,9 @@
 import {
   buildFindRegex,
   countMatches,
+  countMatchesInRange,
   replaceAll,
+  replaceAllInRange,
   type ReplaceOptions,
 } from '../../features/text/text-replace';
 
@@ -55,6 +61,7 @@ const FIELD_FIND = 'textlog-log-replace-find';
 const FIELD_REPLACE = 'textlog-log-replace-replace';
 const FIELD_REGEX = 'textlog-log-replace-regex';
 const FIELD_CASE = 'textlog-log-replace-case';
+const FIELD_SELECTION = 'textlog-log-replace-selection';
 const ACTION_APPLY = 'textlog-log-replace-apply';
 const ACTION_CLOSE = 'textlog-log-replace-close';
 
@@ -65,6 +72,28 @@ const DATA_REGION = 'textlog-log-replace-dialog';
 let activeOverlay: HTMLElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let activeEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
+
+/**
+ * Per-dialog mutable state. The range is captured at open time and
+ * shifted after each Apply that changes the selected slice's length,
+ * so repeated replaces stay confined to what was originally selected
+ * (now possibly shrunk / expanded). Mirrors the TEXT dialog's
+ * SelectionRange contract — see find-replace-behavior-contract.md
+ * §5.4 — but scoped to a single log textarea instead of the whole
+ * TEXT body.
+ *
+ * `range: null` means the textarea had no non-empty selection at
+ * open time; the Selection-only checkbox is rendered but disabled
+ * in that case.
+ */
+interface SelectionRange {
+  start: number;
+  end: number;
+}
+
+interface DialogState {
+  range: SelectionRange | null;
+}
 
 // ── DOM helper ─────────────────────────────────────────────
 
@@ -112,11 +141,26 @@ export function openTextlogLogReplaceDialog(
   if (!textarea.getAttribute('data-pkc-log-id')) return;
   if (activeOverlay !== null) unmount();
 
+  // S-29 (v1.x): capture the log textarea's selection BEFORE we
+  // build the overlay — mounting the overlay moves focus and may
+  // collapse the textarea's selection.
+  const captured = captureSelection(textarea);
+  const state: DialogState = { range: captured };
+
   const parts = buildOverlay();
   root.appendChild(parts.overlay);
 
-  const update = (): void => updateStatus(parts, textarea);
-  const doApply = (): void => applyReplace(parts, textarea, update);
+  // Selection-only is meaningful only when the log textarea had a
+  // non-empty selection at open time. Otherwise we disable the
+  // checkbox so the user cannot switch into a mode that would count
+  // zero regardless of the Find string.
+  if (captured === null) {
+    parts.selectionCheckbox.disabled = true;
+    parts.selectionCheckbox.title = 'No selection in the current log textarea';
+  }
+
+  const update = (): void => updateStatus(parts, textarea, state);
+  const doApply = (): void => applyReplace(parts, textarea, state, update);
 
   wireInputHandlers(parts, update);
   wireApply(parts, doApply);
@@ -129,6 +173,22 @@ export function openTextlogLogReplaceDialog(
   parts.findInput.focus();
 }
 
+/**
+ * Snapshot `textarea.selectionStart/End` into a plain range. Returns
+ * `null` when the selection is empty or the browser does not expose
+ * coherent numbers (happy-dom returns null for unfocused inputs —
+ * that path degrades to "current log full text" mode without throwing).
+ */
+function captureSelection(
+  textarea: HTMLTextAreaElement,
+): SelectionRange | null {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  if (typeof start !== 'number' || typeof end !== 'number') return null;
+  if (end <= start) return null;
+  return { start, end };
+}
+
 // ── Overlay construction ───────────────────────────────────
 
 interface OverlayParts {
@@ -137,6 +197,7 @@ interface OverlayParts {
   replaceInput: HTMLInputElement;
   regexCheckbox: HTMLInputElement;
   caseCheckbox: HTMLInputElement;
+  selectionCheckbox: HTMLInputElement;
   statusEl: HTMLElement;
   applyBtn: HTMLButtonElement;
   closeBtn: HTMLButtonElement;
@@ -193,8 +254,15 @@ function buildOverlay(): OverlayParts {
   caseLabel.appendChild(document.createTextNode(' Case sensitive'));
   optionsRow.appendChild(caseLabel);
 
-  // S-28: Selection only is intentionally NOT offered here. See
-  // docs/spec/textlog-replace-v1-behavior-contract.md §4.2.
+  // S-29 (v1.x): log-internal Selection only. Disabled at open
+  // time when the textarea has no non-empty selection.
+  const selectionCheckbox = el('input');
+  selectionCheckbox.type = 'checkbox';
+  selectionCheckbox.setAttribute('data-pkc-field', FIELD_SELECTION);
+  const selectionLabel = el('label');
+  selectionLabel.appendChild(selectionCheckbox);
+  selectionLabel.appendChild(document.createTextNode(' Selection only'));
+  optionsRow.appendChild(selectionLabel);
 
   card.appendChild(optionsRow);
 
@@ -224,6 +292,7 @@ function buildOverlay(): OverlayParts {
     replaceInput,
     regexCheckbox,
     caseCheckbox,
+    selectionCheckbox,
     statusEl,
     applyBtn,
     closeBtn,
@@ -239,9 +308,24 @@ function readOptions(parts: OverlayParts): ReplaceOptions {
   };
 }
 
+/**
+ * Return the active selection range when the Selection-only checkbox
+ * is on AND a range was captured at open time. Otherwise `null`,
+ * meaning callers should operate over the whole current log textarea.
+ */
+function activeRange(
+  parts: OverlayParts,
+  state: DialogState,
+): SelectionRange | null {
+  if (state.range === null) return null;
+  if (!parts.selectionCheckbox.checked) return null;
+  return state.range;
+}
+
 function updateStatus(
   parts: OverlayParts,
   textarea: HTMLTextAreaElement,
+  state: DialogState,
 ): void {
   const query = parts.findInput.value;
   const options = readOptions(parts);
@@ -262,31 +346,61 @@ function updateStatus(
   }
 
   // v1 evaluates the match within the single log's text, never
-  // across logs. See contract §4.5.
-  const n = countMatches(textarea.value, query, options);
+  // across logs (contract §4.5). v1.x adds the option to narrow
+  // further to a captured selection inside that single log.
+  const range = activeRange(parts, state);
+  const n = range === null
+    ? countMatches(textarea.value, query, options)
+    : countMatchesInRange(
+        textarea.value,
+        range.start,
+        range.end,
+        query,
+        options,
+      );
+  const scope = range === null ? 'current log' : 'selection';
   parts.statusEl.removeAttribute('data-pkc-error');
   parts.statusEl.textContent = n === 0
-    ? 'No matches in current log.'
-    : `${n} match${n === 1 ? '' : 'es'} will be replaced in current log.`;
+    ? `No matches in ${scope}.`
+    : `${n} match${n === 1 ? '' : 'es'} will be replaced in ${scope}.`;
   parts.applyBtn.disabled = n === 0;
 }
 
 function applyReplace(
   parts: OverlayParts,
   textarea: HTMLTextAreaElement,
+  state: DialogState,
   rerun: () => void,
 ): void {
   const query = parts.findInput.value;
   if (query === '') return;
 
   const options = readOptions(parts);
-  const next = replaceAll(
-    textarea.value,
-    query,
-    parts.replaceInput.value,
-    options,
-  );
-  if (next === textarea.value) return; // 0 hit → no-op
+  const range = activeRange(parts, state);
+  const oldValue = textarea.value;
+
+  let next: string;
+  let newRange: SelectionRange | null = null;
+  if (range === null) {
+    next = replaceAll(oldValue, query, parts.replaceInput.value, options);
+  } else {
+    next = replaceAllInRange(
+      oldValue,
+      range.start,
+      range.end,
+      query,
+      parts.replaceInput.value,
+      options,
+    );
+    if (next !== oldValue) {
+      // Length-adjust the range so the next Apply stays confined to
+      // the (possibly shrunk / expanded) replaced span. `delta` may
+      // be negative when the replacement shortens the slice.
+      const delta = next.length - oldValue.length;
+      newRange = { start: range.start, end: range.end + delta };
+    }
+  }
+  if (next === oldValue) return; // 0 hit → no-op
 
   // Only this textarea is touched. log.id / log.createdAt /
   // log.flags / other logs / entries order are structurally out
@@ -295,6 +409,20 @@ function applyReplace(
   // collectBody preserves all other fields.
   textarea.value = next;
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // When Selection-only was in effect, snap the stored range to the
+  // new span so the next Apply stays inside the (possibly shrunk /
+  // expanded) replaced region, and mirror it on the textarea so the
+  // user sees exactly what changed.
+  if (newRange !== null) {
+    state.range = newRange;
+    try {
+      textarea.setSelectionRange(newRange.start, newRange.end);
+    } catch {
+      /* happy-dom / non-focused input can reject setSelectionRange;
+       * the internal state update above is what actually matters. */
+    }
+  }
 
   rerun();
 }
@@ -306,6 +434,7 @@ function wireInputHandlers(parts: OverlayParts, update: () => void): void {
   parts.replaceInput.addEventListener('input', update);
   parts.regexCheckbox.addEventListener('change', update);
   parts.caseCheckbox.addEventListener('change', update);
+  parts.selectionCheckbox.addEventListener('change', update);
 }
 
 function wireApply(parts: OverlayParts, doApply: () => void): void {

@@ -356,3 +356,182 @@ describe('textlog log-replace dialog — v1 behavior', () => {
     expect(triggers.length).toBe(0);
   });
 });
+
+// ── Selection only (S-29 / v1.x) ─────────────────────────
+
+function selectionCheckbox(): HTMLInputElement {
+  return dialog().querySelector<HTMLInputElement>(
+    '[data-pkc-field="textlog-log-replace-selection"]',
+  )!;
+}
+
+function focusWithSelection(
+  ta: HTMLTextAreaElement,
+  start: number,
+  end: number,
+): void {
+  ta.focus();
+  ta.setSelectionRange(start, end);
+}
+
+describe('textlog log-replace dialog — Selection only (v1.x)', () => {
+  it('disables the Selection-only checkbox when no selection was captured', () => {
+    mount();
+    openTextlogLogReplaceDialog(logTextarea('log-001'), root);
+    expect(selectionCheckbox().disabled).toBe(true);
+  });
+
+  it('enables the Selection-only checkbox when a non-empty selection was captured', () => {
+    mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 5); // "Apple"
+    openTextlogLogReplaceDialog(ta, root);
+    expect(selectionCheckbox().disabled).toBe(false);
+  });
+
+  it('counts only inside the selection when Selection-only is ON', () => {
+    mount();
+    // log-001 text = "Apple apple APPLE". Select first two words
+    // ("Apple apple", indices [0, 11]).
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setInput('textlog-log-replace-find', 'apple');
+    expect(statusText()).toContain('2');
+    expect(statusText()).toMatch(/selection/i);
+  });
+
+  it('falls back to the full current log when Selection-only is OFF', () => {
+    mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    openTextlogLogReplaceDialog(ta, root);
+    setInput('textlog-log-replace-find', 'apple');
+    // Default (OFF): all 3 case-insensitive matches in the full log.
+    expect(statusText()).toContain('3');
+    expect(statusText()).toMatch(/current log/i);
+  });
+
+  it('replaces only inside the selection and leaves the rest of the log unchanged', () => {
+    mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setInput('textlog-log-replace-find', 'apple');
+    setInput('textlog-log-replace-replace', 'pear');
+    applyBtn().click();
+    // Two "apple"s inside [0, 11] become "pear"; trailing "APPLE"
+    // outside the range is preserved.
+    expect(logTextarea('log-001').value).toBe('pear pear APPLE');
+    // Other logs untouched.
+    expect(logTextarea('log-002').value).toBe('banana Banana');
+    expect(logTextarea('log-003').value).toBe('cherry cherry');
+  });
+
+  it('keeps subsequent Applies inside the (shifted) selection range', () => {
+    mount();
+    const ta = logTextarea('log-002');
+    ta.value = 'aa aa aa aa';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    focusWithSelection(ta, 0, 9); // "aa aa aa "
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setInput('textlog-log-replace-find', 'aa');
+    setInput('textlog-log-replace-replace', 'bbbb');
+    applyBtn().click();
+    expect(ta.value).toBe('bbbb bbbb bbbb aa');
+
+    // Second Apply must stay inside the (now expanded) range.
+    setInput('textlog-log-replace-find', 'bbbb');
+    setInput('textlog-log-replace-replace', 'c');
+    applyBtn().click();
+    expect(ta.value).toBe('c c c aa');
+  });
+
+  it('honours regex mode inside the selection', () => {
+    mount();
+    const ta = logTextarea('log-002');
+    ta.value = 'a1 a22 a333 a4444';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    focusWithSelection(ta, 0, 11); // "a1 a22 a333"
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setCheckbox('textlog-log-replace-regex', true);
+    setInput('textlog-log-replace-find', 'a\\d+');
+    expect(statusText()).toContain('3');
+    setInput('textlog-log-replace-replace', 'X');
+    applyBtn().click();
+    // Only the first three matches inside [0, 11] get replaced;
+    // the trailing "a4444" outside the selection is preserved.
+    expect(ta.value).toBe('X X X a4444');
+  });
+
+  it('preserves invalid-regex gating when Selection-only is on', () => {
+    mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setCheckbox('textlog-log-replace-regex', true);
+    setInput('textlog-log-replace-find', '[unclosed');
+    const s = dialog().querySelector(
+      '.pkc-text-replace-status',
+    ) as HTMLElement;
+    expect(s.getAttribute('data-pkc-error')).toBe('true');
+    expect(applyBtn().disabled).toBe(true);
+  });
+
+  it('fires the input event so dirty / preview hooks see the change', () => {
+    mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    let inputEvents = 0;
+    ta.addEventListener('input', () => { inputEvents++; });
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setInput('textlog-log-replace-find', 'apple');
+    setInput('textlog-log-replace-replace', 'pear');
+    applyBtn().click();
+    expect(inputEvents).toBeGreaterThanOrEqual(1);
+  });
+
+  it('preserves log metadata invariance after a Selection-only commit-edit', () => {
+    const { dispatcher } = mount();
+    const ta = logTextarea('log-001');
+    focusWithSelection(ta, 0, 11);
+    openTextlogLogReplaceDialog(ta, root);
+    setCheckbox('textlog-log-replace-selection', true);
+    setInput('textlog-log-replace-find', 'apple');
+    setInput('textlog-log-replace-replace', 'pear');
+    applyBtn().click();
+    closeTextlogLogReplaceDialog();
+
+    const commitBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="commit-edit"]',
+    )!;
+    commitBtn.click();
+
+    const entry = dispatcher
+      .getState()
+      .container!.entries.find((e) => e.lid === 'tl1')!;
+    const body = JSON.parse(entry.body) as {
+      entries: { id: string; text: string; createdAt: string; flags: string[] }[];
+    };
+    // Order, ids, createdAt, flags all unchanged.
+    expect(body.entries.map((e) => e.id)).toEqual([
+      'log-001',
+      'log-002',
+      'log-003',
+    ]);
+    expect(body.entries[0]!.id).toBe('log-001');
+    expect(body.entries[0]!.createdAt).toBe(T1);
+    expect(body.entries[0]!.flags).toEqual(['important']);
+    // Only the [0, 11] slice of log-001's text was replaced; the
+    // trailing " APPLE" survived.
+    expect(body.entries[0]!.text).toBe('pear pear APPLE');
+    expect(body.entries[1]!.text).toBe('banana Banana');
+    expect(body.entries[2]!.text).toBe('cherry cherry');
+  });
+});
