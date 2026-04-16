@@ -29,6 +29,7 @@
 | `../spec/text-textlog-provenance.md` | TEXT ↔ TEXTLOG 変換の非可逆境界 canonical spec・`provenance` RelationKind・`Relation.metadata?` 設計・実装スライス A–D（2026-04-16 / H-8 / 自主運転モード第5号、docs-only） | ★★★ |
 | `../spec/textlog-text-conversion-policy.md` | TEXTLOG → TEXT 単方向変換の補助 spec（H-8 を補完）。変換単位 / 非可逆境界 / provenance 適用 / migration 境界 / v1 canonical rendering 決定 / examples（2026-04-16 / H-7 相当 / 自主運転モード第6号、docs-only） | ★★ |
 | `../spec/provenance-relation-profile.md` | `provenance` Relation の v1 payload profile 補助 spec（H-8 を補完）。最小必須 / 推奨 / 任意 / v1 非対象属性、source→derived 向き、Relation と meta log の役割分担、3 concrete examples（2026-04-16 / H-5 相当 / 自主運転モード第7号、docs-only） | ★★ |
+| `../spec/find-replace-behavior-contract.md` | Find & Replace v1.1 behavior contract 補助 spec（S-26 + S-27 を固定）。対象 / 非対象 / option semantics / selection semantics / state interaction / intentionally unsupported / future extension boundary（2026-04-16、docs-only） | ★★ |
 
 これら 6 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
 
