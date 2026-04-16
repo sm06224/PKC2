@@ -36,6 +36,7 @@ import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
+import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
@@ -2892,6 +2893,51 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Guard: prevent overlapping async paste operations (FileReader race)
   let pasteInProgress = false;
 
+  /**
+   * Best-effort HTML-paste link normalization. Called from
+   * `handlePaste` when the clipboard has no image. Looks at the
+   * text/html payload, converts anchor elements to `[label](url)`,
+   * and re-inserts the transformed text into the focused TEXT body
+   * textarea. Silently returns on every non-applicable case so the
+   * browser's default text/plain paste proceeds untouched.
+   *
+   * Scope: `data-pkc-field="body"` textareas only. Textlog append /
+   * entry textareas are deliberately excluded in this slice — see
+   * docs/development/html-paste-link-markdown.md.
+   */
+  function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+
+    const html = e.clipboardData?.getData('text/html') ?? '';
+    if (!html) return;
+
+    const transformed = htmlPasteToMarkdown(html);
+    if (transformed === null || transformed === '') return;
+
+    e.preventDefault();
+
+    // Prefer execCommand('insertText') when available — it preserves
+    // the browser's native undo stack and fires the `input` event
+    // that drives the text-edit preview debounce.
+    const ok = typeof document.execCommand === 'function'
+      && document.execCommand('insertText', false, transformed);
+    if (ok) return;
+
+    // Fallback: manual splice + synthetic input event. Used when
+    // execCommand is unavailable (some embedded / test environments)
+    // or when the browser refused to apply the command.
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? start;
+    const before = target.value.slice(0, start);
+    const after = target.value.slice(end);
+    target.value = before + transformed + after;
+    const pos = start + transformed.length;
+    target.setSelectionRange(pos, pos);
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   function handlePaste(e: ClipboardEvent): void {
     const state = dispatcher.getState();
     if (state.readonly) return;
@@ -2909,7 +2955,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
     }
-    if (!imageItem) return;
+    if (!imageItem) {
+      // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
+      //
+      // No image on the clipboard → check for text/html. When the
+      // payload contains anchor elements, re-insert the paste with
+      // `[label](url)` Markdown links so the URL is not silently
+      // dropped by the default text/plain fallback.
+      //
+      // Scope: TEXT body textareas only (`data-pkc-field="body"`).
+      // Textlog fields are out of scope for this slice — see
+      // docs/development/html-paste-link-markdown.md.
+      //
+      // Returns early on all non-link payloads so the browser's
+      // native text/plain paste behavior is preserved byte-for-byte.
+      maybeHandleHtmlLinkPaste(e);
+      return;
+    }
 
     const file = imageItem.getAsFile();
     if (!file) return;
