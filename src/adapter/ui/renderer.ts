@@ -41,6 +41,8 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
+import { buildLinkIndex } from '../../features/link-index/link-index';
+import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
@@ -2667,7 +2669,89 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     }
   }
 
+  // Link-index sections (C-3 v1): outgoing / backlinks / broken for the
+  // selected entry. Runtime-only; derived at render time from container.
+  const linkIndex = buildLinkIndex(container);
+  meta.appendChild(renderLinkIndexSections(entry, linkIndex, container));
+
   return meta;
+}
+
+function renderLinkIndexSections(
+  entry: Entry,
+  linkIndex: LinkIndex,
+  container: Container,
+): HTMLElement {
+  const wrap = createElement('div', 'pkc-link-index');
+  wrap.setAttribute('data-pkc-region', 'link-index');
+
+  const outgoing = linkIndex.outgoingBySource.get(entry.lid) ?? [];
+  const backlinks = linkIndex.backlinksByTarget.get(entry.lid) ?? [];
+  const brokenForEntry = outgoing.filter((r) => !r.resolved);
+
+  const titleByLid = new Map<string, string>();
+  for (const e of container.entries) titleByLid.set(e.lid, e.title);
+
+  wrap.appendChild(
+    renderLinkRefsSection('Outgoing links', 'link-index-outgoing', outgoing, titleByLid, 'target'),
+  );
+  wrap.appendChild(
+    renderLinkRefsSection('Backlinks', 'link-index-backlinks', backlinks, titleByLid, 'source'),
+  );
+  wrap.appendChild(
+    renderLinkRefsSection('Broken links', 'link-index-broken', brokenForEntry, titleByLid, 'target'),
+  );
+
+  return wrap;
+}
+
+function renderLinkRefsSection(
+  label: string,
+  regionId: string,
+  refs: readonly LinkRef[],
+  titleByLid: ReadonlyMap<string, string>,
+  peer: 'source' | 'target',
+): HTMLElement {
+  const section = createElement('div', 'pkc-link-index-section');
+  section.setAttribute('data-pkc-region', regionId);
+
+  const heading = createElement('div', 'pkc-link-index-heading');
+  heading.textContent = `${label} (${refs.length})`;
+  section.appendChild(heading);
+
+  if (refs.length === 0) {
+    const empty = createElement('div', 'pkc-link-index-empty');
+    empty.textContent =
+      regionId === 'link-index-outgoing'
+        ? 'No outgoing links.'
+        : regionId === 'link-index-backlinks'
+        ? 'No backlinks.'
+        : 'No broken links.';
+    section.appendChild(empty);
+    return section;
+  }
+
+  const list = createElement('ul', 'pkc-link-index-list');
+  for (const ref of refs) {
+    const lid = peer === 'source' ? ref.sourceLid : ref.targetLid;
+    const item = createElement('li', 'pkc-link-index-item');
+    item.setAttribute('data-pkc-lid', lid);
+    if (!ref.resolved) item.setAttribute('data-pkc-broken', 'true');
+
+    const link = createElement('span', 'pkc-link-index-peer');
+    if (ref.resolved) {
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', lid);
+      link.textContent = titleByLid.get(lid) || lid;
+    } else {
+      link.textContent = lid;
+    }
+    item.appendChild(link);
+
+    list.appendChild(item);
+  }
+  section.appendChild(list);
+  return section;
 }
 
 /**
