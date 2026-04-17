@@ -385,6 +385,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'resolve-dual-edit-save-as-branch': {
+        // FI-01 reject overlay — Save as branch (default CTA).
+        // Reducer gates preserve state identity if no conflict is
+        // parked, so no UI-side guard is needed.
+        if (lid) {
+          dispatcher.dispatch({
+            type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+            lid,
+            resolution: 'save-as-branch',
+          });
+        }
+        break;
+      }
+      case 'resolve-dual-edit-discard': {
+        // FI-01 reject overlay — Discard my edits.
+        if (lid) {
+          dispatcher.dispatch({
+            type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+            lid,
+            resolution: 'discard-my-edits',
+          });
+        }
+        break;
+      }
+      case 'resolve-dual-edit-copy-clipboard': {
+        // FI-01 reject overlay — Copy to clipboard. We run the
+        // clipboard write directly in the click handler (user-gesture
+        // context is required for navigator.clipboard) and then
+        // dispatch the RESOLVE action so the reducer's monotonic
+        // ticket advances. The ticket is runtime-observable state for
+        // callers that want to surface "copied!" feedback later; the
+        // clipboard side effect itself happens here.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const conflict = st.dualEditConflict;
+        if (!conflict || conflict.lid !== lid) break;
+        void copyPlainText(conflict.draft.body);
+        dispatcher.dispatch({
+          type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+          lid,
+          resolution: 'copy-to-clipboard',
+        });
+        break;
+      }
       case 'restore-bulk': {
         // Tier 2-2: bulk restore. Resolve all revisions that share the
         // same bulk_id (produced by BULK_DELETE / BULK_SET_STATUS /
@@ -1752,6 +1796,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // FI-01 (2026-04-17): the dual-edit reject overlay is
+      // non-dismissible by Escape (I-Dual2 / contract §8.1). Forcing
+      // the user to pick a resolution prevents silent loss of their
+      // in-progress edit. Takes priority over every other overlay
+      // because it sits visually on top of the shell.
+      if (state.dualEditConflict) {
+        return;
+      }
       // Custom context menu (right-click) closes first — it's the
       // topmost transient overlay when visible and users expect Esc
       // to dismiss it (parity with ShellMenu / ShortcutHelp / etc.).

@@ -28,6 +28,7 @@ import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { syncTextlogSelectionFromState } from './textlog-selection';
 import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
+import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
@@ -165,6 +166,12 @@ export function render(state: AppState, root: HTMLElement): void {
   // orphaned by the root-level innerHTML wipe above. Pure
   // housekeeping — never opens, only closes.
   syncTextlogPreviewModalFromState(state);
+
+  // FI-01 (2026-04-17): reject overlay for dual-edit conflicts.
+  // Mounts when `state.dualEditConflict` is populated and unmounts
+  // on every path that clears it. Must sit after the shell rebuild
+  // so the overlay layers on top.
+  syncDualEditConflictOverlay(state, root);
 }
 
 /**
