@@ -156,7 +156,7 @@ describe('Merge Conflict State', () => {
       });
     });
 
-    it('skips multi-host for keep-current (I-MergeUI7)', () => {
+    it('skips multi-host for keep-current, preserving existing resolution (I-MergeUI7)', () => {
       const state = readyStateWithMergePreview(host, imported);
       const conflicts = [
         makeConflict({ imported_lid: 'i-1', host_lid: 'h-1', kind: 'content-equal' }),
@@ -166,12 +166,17 @@ describe('Merge Conflict State', () => {
         }),
       ];
       const { state: s1 } = reduce(state, { type: 'SET_MERGE_CONFLICTS', conflicts });
+      // User first picks duplicate-as-branch for the multi-host row.
       const { state: s2 } = reduce(s1, {
+        type: 'SET_CONFLICT_RESOLUTION', importedLid: 'i-2', resolution: 'duplicate-as-branch',
+      });
+      // Then clicks "Accept all host" — multi-host row must be preserved.
+      const { state: s3 } = reduce(s2, {
         type: 'BULK_SET_CONFLICT_RESOLUTION',
         resolution: 'keep-current',
       });
-      expect(s2.mergeConflictResolutions!['i-1']).toBe('keep-current');
-      expect(s2.mergeConflictResolutions!['i-2']).toBeUndefined();
+      expect(s3.mergeConflictResolutions!['i-1']).toBe('keep-current');
+      expect(s3.mergeConflictResolutions!['i-2']).toBe('duplicate-as-branch');
     });
   });
 

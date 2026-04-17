@@ -839,7 +839,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'BULK_SET_CONFLICT_RESOLUTION': {
       if (!state.mergeConflicts || !state.mergeConflictResolutions) return blocked(state, action);
-      const resolutions: Record<string, Resolution> = {};
+      // I-MergeUI7 preservation: for keep-current bulk, title-only-multi rows
+      // are untouched — existing resolutions (if any) are preserved, not wiped.
+      const resolutions: Record<string, Resolution> = { ...state.mergeConflictResolutions };
       for (const c of state.mergeConflicts) {
         if (action.resolution === 'keep-current' && c.kind === 'title-only-multi') continue;
         resolutions[c.imported_lid] = action.resolution;

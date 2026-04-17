@@ -398,3 +398,94 @@ describe('action-binder — confirm-merge-import routes correctly', () => {
     }
   });
 });
+
+describe('action-binder — conflict detection on mode=merge (H-10 audit)', () => {
+  it('detects conflicts and dispatches SET_MERGE_CONFLICTS when switching to merge', () => {
+    const host = makeContainer({ entries: [makeEntry('h1', 'x', { title: 'Report' })] });
+    const imp = makeContainer({
+      meta: makeMeta({ container_id: 'imp' }),
+      entries: [makeEntry('i1', 'x', { title: 'Report' })],
+    });
+    const dispatcher = createDispatcher();
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: host });
+    dispatcher.dispatch({ type: 'SYS_IMPORT_PREVIEW', preview: previewOf(imp) });
+    bindActions(root, dispatcher);
+    render(dispatcher.getState(), root);
+    try {
+      const mergeBtn = root.querySelector(
+        '[data-pkc-action="set-import-mode"][data-pkc-mode="merge"]',
+      ) as HTMLElement;
+      mergeBtn.click();
+      const st = dispatcher.getState();
+      expect(st.importMode).toBe('merge');
+      expect(st.mergeConflicts).toBeDefined();
+      expect(st.mergeConflicts!.length).toBe(1);
+      expect(st.mergeConflictResolutions!['i1']).toBe('keep-current');
+      const region = root.querySelector('[data-pkc-region="merge-conflicts"]');
+      expect(region).not.toBeNull();
+    } finally {
+      document.body.removeChild(root);
+    }
+  });
+
+  it('does not dispatch SET_MERGE_CONFLICTS when schema mismatches (I-MergeUI8)', () => {
+    const host = makeContainer({
+      meta: makeMeta({ schema_version: 1 }),
+      entries: [makeEntry('h1', 'x', { title: 'Report' })],
+    });
+    const imp = makeContainer({
+      meta: makeMeta({ container_id: 'imp', schema_version: 2 }),
+      entries: [makeEntry('i1', 'x', { title: 'Report' })],
+    });
+    const dispatcher = createDispatcher();
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: host });
+    dispatcher.dispatch({ type: 'SYS_IMPORT_PREVIEW', preview: previewOf(imp) });
+    bindActions(root, dispatcher);
+    render(dispatcher.getState(), root);
+    try {
+      const mergeBtn = root.querySelector(
+        '[data-pkc-action="set-import-mode"][data-pkc-mode="merge"]',
+      ) as HTMLElement;
+      mergeBtn.click();
+      const st = dispatcher.getState();
+      expect(st.mergeConflicts).toBeUndefined();
+      expect(root.querySelector('[data-pkc-region="merge-conflicts"]')).toBeNull();
+    } finally {
+      document.body.removeChild(root);
+    }
+  });
+
+  it('does not dispatch SET_MERGE_CONFLICTS when no conflicts exist', () => {
+    const host = makeContainer({ entries: [makeEntry('h1', 'x', { title: 'Report' })] });
+    const imp = makeContainer({
+      meta: makeMeta({ container_id: 'imp' }),
+      entries: [makeEntry('i1', 'x', { title: 'UnrelatedTitle' })],
+    });
+    const dispatcher = createDispatcher();
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: host });
+    dispatcher.dispatch({ type: 'SYS_IMPORT_PREVIEW', preview: previewOf(imp) });
+    bindActions(root, dispatcher);
+    render(dispatcher.getState(), root);
+    try {
+      const mergeBtn = root.querySelector(
+        '[data-pkc-action="set-import-mode"][data-pkc-mode="merge"]',
+      ) as HTMLElement;
+      mergeBtn.click();
+      const st = dispatcher.getState();
+      expect(st.importMode).toBe('merge');
+      expect(st.mergeConflicts).toBeUndefined();
+      expect(root.querySelector('[data-pkc-region="merge-conflicts"]')).toBeNull();
+    } finally {
+      document.body.removeChild(root);
+    }
+  });
+});

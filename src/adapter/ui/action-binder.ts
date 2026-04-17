@@ -28,6 +28,7 @@ import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bun
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
 import { applyOnePaneCollapsedToDOM } from './pane-apply';
+import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
@@ -406,6 +407,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const rawMode = target.getAttribute('data-pkc-mode');
         if (rawMode === 'replace' || rawMode === 'merge') {
           dispatcher.dispatch({ type: 'SET_IMPORT_MODE', mode: rawMode });
+          // H-10: detect conflicts when switching to merge. Schema mismatch
+          // short-circuits (I-MergeUI8) — conflict UI must not mount.
+          if (rawMode === 'merge') {
+            const st = dispatcher.getState();
+            const host = st.container;
+            const imp = st.importPreview?.container;
+            if (host && imp && host.meta.schema_version === imp.meta.schema_version) {
+              const conflicts = detectEntryConflicts(host, imp);
+              if (conflicts.length > 0) {
+                dispatcher.dispatch({ type: 'SET_MERGE_CONFLICTS', conflicts });
+              }
+            }
+          }
         }
         break;
       }
