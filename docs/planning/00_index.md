@@ -88,6 +88,12 @@
 | `../development/merge-conflict-pure-slice.md` | H-10 pure slice 実装メモ（`detectEntryConflicts` 等、2026-04-17） |
 | `../development/merge-conflict-state-slice.md` | H-10 state slice 実装メモ（reducer 3 case / event 拡張 / lifecycle、2026-04-17） |
 | `../development/merge-conflict-ui-v1-audit.md` | H-10 pure + state + UI 3 slice 統合監査（DEFECT-1 / DEFECT-2 最小修正、2026-04-17） |
+| `../spec/entry-ordering-v1-minimum-scope.md` | C-2 entry-ordering v1 — minimum scope / feasibility（2026-04-17） |
+| `../spec/entry-ordering-v1-behavior-contract.md` | C-2 entry-ordering v1 — behavior contract（`entry_order` / `MOVE_ENTRY` / Manual UI / invariants、2026-04-17） |
+| `../development/entry-ordering-v1-audit.md` | C-2 entry-ordering v1 — post-implementation audit（FINDING-1 / FINDING-2 最小修正、2026-04-17） |
+| `../spec/link-index-v1-minimum-scope.md` | C-3 link-index v1 — minimum scope / feasibility（2026-04-17） |
+| `../spec/link-index-v1-behavior-contract.md` | C-3 link-index v1 — behavior contract（`buildLinkIndex` / 3 section / I-LinkIdx1〜10、2026-04-17） |
+| `../development/link-index-v1-audit.md` | C-3 link-index v1 — post-implementation audit（欠陥 0、scope narrowing 2 件記録、2026-04-17） |
 
 ## resolved/ 配下（原則非参照）
 
