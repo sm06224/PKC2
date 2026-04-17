@@ -203,6 +203,27 @@ describe('MOVE_ENTRY_UP / DOWN: no-op gates', () => {
   });
 });
 
+// ── Phase gate: editing is allowed (contract §6.1) ─────────────
+
+describe('MOVE_ENTRY_UP: editing phase is allowed (contract §6.1)', () => {
+  it('moves selected entry during editing and preserves phase + editingLid', () => {
+    const entries = [mkEntry('a'), mkEntry('b')];
+    const container: Container = {
+      ...mkContainer(entries),
+      meta: { ...mkContainer(entries).meta, entry_order: ['a', 'b'] },
+    };
+    const state: AppState = {
+      ...readyState({ container, selectedLid: 'b' }),
+      phase: 'editing',
+      editingLid: 'b',
+    };
+    const { state: next } = reduce(state, { type: 'MOVE_ENTRY_UP' });
+    expect(next.container?.meta.entry_order).toEqual(['b', 'a']);
+    expect(next.phase).toBe('editing');
+    expect(next.editingLid).toBe('b');
+  });
+});
+
 // ── Filter-aware global swap (I-Order3) ────────────────────────
 
 describe('MOVE_ENTRY_UP: filter / search semantics (I-Order3)', () => {

@@ -1617,6 +1617,14 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
       return reduceReady(state, action);
     }
+    case 'MOVE_ENTRY_UP':
+    case 'MOVE_ENTRY_DOWN': {
+      // C-2 v1 contract §6.1: MOVE_ENTRY is allowed during `editing`.
+      // Delegate to reduceReady → reduceMoveEntry, which only touches
+      // `container.meta.entry_order` and preserves phase / editingLid
+      // via the identity spread at the tail of reduceMoveEntry.
+      return reduceReady(state, action);
+    }
     default:
       return blocked(state, action);
   }

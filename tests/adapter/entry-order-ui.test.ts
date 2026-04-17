@@ -21,7 +21,8 @@ import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import type { Relation } from '@core/model/relation';
 import type { Dispatcher } from '@adapter/state/dispatcher';
-import type { UserAction, SystemCommand } from '@core/action/user-action';
+import type { Dispatchable } from '@core/action';
+import type { ReduceResult } from '@adapter/state/app-state';
 
 function mkEntry(lid: string, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -120,10 +121,11 @@ describe('C-2 UI: sidebar list order under manual mode', () => {
       mkEntry('child2'),
       mkEntry('child3'),
     ];
+    const ts = '2026-01-01T00:00:00Z';
     const relations: Relation[] = [
-      { kind: 'structural', from: 'folder', to: 'child1' },
-      { kind: 'structural', from: 'folder', to: 'child2' },
-      { kind: 'structural', from: 'folder', to: 'child3' },
+      { id: 'r1', kind: 'structural', from: 'folder', to: 'child1', created_at: ts, updated_at: ts },
+      { id: 'r2', kind: 'structural', from: 'folder', to: 'child2', created_at: ts, updated_at: ts },
+      { id: 'r3', kind: 'structural', from: 'folder', to: 'child3', created_at: ts, updated_at: ts },
     ];
     // Manual override: reverse child order within folder.
     const container = mkContainer(entries, relations, [
@@ -225,15 +227,16 @@ describe('C-2 UI: Move up / Move down button visibility', () => {
 
 describe('C-2 UI: Move up / Move down dispatch through action-binder', () => {
   interface FakeDispatcher extends Dispatcher {
-    received: Array<UserAction | SystemCommand>;
+    received: Dispatchable[];
   }
 
   function mkFake(): FakeDispatcher {
-    const received: Array<UserAction | SystemCommand> = [];
-    return {
+    const received: Dispatchable[] = [];
+    const fake: FakeDispatcher = {
       received,
-      dispatch(action: UserAction | SystemCommand) {
+      dispatch(action: Dispatchable): ReduceResult {
         received.push(action);
+        return { state: createInitialState(), events: [] };
       },
       getState() {
         return createInitialState();
@@ -244,7 +247,8 @@ describe('C-2 UI: Move up / Move down dispatch through action-binder', () => {
       onEvent() {
         return () => {};
       },
-    } as FakeDispatcher;
+    };
+    return fake;
   }
 
   it('click Move up dispatches MOVE_ENTRY_UP with the lid', () => {
