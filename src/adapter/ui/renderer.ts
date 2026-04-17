@@ -40,6 +40,7 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
+import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
 
@@ -219,7 +220,13 @@ function renderShell(state: AppState): HTMLElement {
 
   // Import confirmation panel
   if (state.importPreview) {
-    shell.appendChild(renderImportConfirmation(state.importPreview, state.importMode ?? 'replace', state.container));
+    shell.appendChild(renderImportConfirmation(
+      state.importPreview,
+      state.importMode ?? 'replace',
+      state.container,
+      state.mergeConflicts,
+      state.mergeConflictResolutions,
+    ));
   }
 
   // Batch import preview panel
@@ -2790,6 +2797,8 @@ function renderImportConfirmation(
   preview: ImportPreviewRef,
   mode: 'replace' | 'merge',
   host: Container | null,
+  conflicts?: EntryConflict[],
+  resolutions?: Record<string, Resolution>,
 ): HTMLElement {
   const panel = createElement('div', 'pkc-import-confirm');
   panel.setAttribute('data-pkc-region', 'import-confirm');
@@ -2898,6 +2907,12 @@ function renderImportConfirmation(
   }
   panel.appendChild(summary);
 
+  // ── Conflict UI (v1, H-10) ──────────────────────
+  const hasConflicts = mode === 'merge' && conflicts && conflicts.length > 0;
+  if (hasConflicts) {
+    panel.appendChild(renderMergeConflictSection(conflicts!, resolutions ?? {}));
+  }
+
   const actions = createElement('div', 'pkc-import-actions');
 
   const confirmBtn = createElement('button', 'pkc-btn-danger');
@@ -2905,6 +2920,9 @@ function renderImportConfirmation(
     confirmBtn.setAttribute('data-pkc-action', 'confirm-merge-import');
     confirmBtn.textContent = 'Merge & Import';
     if (schemaMismatch) confirmBtn.setAttribute('disabled', 'true');
+    if (hasConflicts && !allConflictsResolved(conflicts!, resolutions ?? {})) {
+      confirmBtn.setAttribute('disabled', 'true');
+    }
   } else {
     confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
     confirmBtn.textContent = 'Replace & Import';
@@ -2918,6 +2936,138 @@ function renderImportConfirmation(
 
   panel.appendChild(actions);
   return panel;
+}
+
+function allConflictsResolved(
+  conflicts: EntryConflict[],
+  resolutions: Record<string, Resolution>,
+): boolean {
+  for (const c of conflicts) {
+    const r = resolutions[c.imported_lid];
+    if (!r) return false;
+  }
+  return true;
+}
+
+function conflictKindLabel(kind: EntryConflict['kind']): string {
+  switch (kind) {
+    case 'content-equal': return 'C1';
+    case 'title-only': return 'C2';
+    case 'title-only-multi': return 'C2-multi';
+  }
+}
+
+function conflictBadgeText(conflict: EntryConflict): string {
+  switch (conflict.kind) {
+    case 'content-equal': return '✓ content identical';
+    case 'title-only': return '⚠ title matches, content differs';
+    case 'title-only-multi':
+      return `⚠ ${conflict.host_candidates?.length ?? 0} host candidates`;
+  }
+}
+
+function shortDate(iso: string): string {
+  return iso.slice(0, 16).replace('T', ' ');
+}
+
+function renderMergeConflictSection(
+  conflicts: EntryConflict[],
+  resolutions: Record<string, Resolution>,
+): HTMLElement {
+  const section = createElement('div', 'pkc-merge-conflicts');
+  section.setAttribute('data-pkc-region', 'merge-conflicts');
+
+  const heading = createElement('div', 'pkc-merge-conflicts-heading');
+  const unresolvedCount = conflicts.filter((c) => !resolutions[c.imported_lid]).length;
+  heading.textContent = unresolvedCount > 0
+    ? `Entry conflicts: ${conflicts.length} (Resolve ${unresolvedCount} pending)`
+    : `Entry conflicts: ${conflicts.length}`;
+  section.appendChild(heading);
+
+  for (const conflict of conflicts) {
+    section.appendChild(renderConflictRow(conflict, resolutions[conflict.imported_lid]));
+  }
+
+  const bulkBar = createElement('div', 'pkc-merge-conflict-bulk');
+  const acceptBtn = createElement('button', 'pkc-btn');
+  acceptBtn.setAttribute('data-pkc-action', 'bulk-resolution');
+  acceptBtn.setAttribute('data-pkc-value', 'keep-current');
+  acceptBtn.textContent = 'Accept all host';
+  bulkBar.appendChild(acceptBtn);
+
+  const dupBtn = createElement('button', 'pkc-btn');
+  dupBtn.setAttribute('data-pkc-action', 'bulk-resolution');
+  dupBtn.setAttribute('data-pkc-value', 'duplicate-as-branch');
+  dupBtn.textContent = 'Duplicate all';
+  bulkBar.appendChild(dupBtn);
+
+  section.appendChild(bulkBar);
+  return section;
+}
+
+function renderConflictRow(
+  conflict: EntryConflict,
+  resolution: Resolution | undefined,
+): HTMLElement {
+  const row = createElement('div', 'pkc-merge-conflict-row');
+  row.setAttribute('data-pkc-conflict-id', conflict.imported_lid);
+  row.setAttribute('data-pkc-conflict-kind', conflictKindLabel(conflict.kind));
+
+  const header = createElement('div', 'pkc-merge-conflict-header');
+  const archBadge = createElement('span', 'pkc-merge-conflict-archetype');
+  archBadge.textContent = conflict.archetype.toUpperCase();
+  header.appendChild(archBadge);
+
+  const title = createElement('span', 'pkc-merge-conflict-title');
+  title.textContent = `"${conflict.imported_title}"`;
+  header.appendChild(title);
+
+  const kindBadge = createElement('span', 'pkc-merge-conflict-badge');
+  kindBadge.textContent = conflictBadgeText(conflict);
+  header.appendChild(kindBadge);
+  row.appendChild(header);
+
+  const sides = createElement('div', 'pkc-merge-conflict-sides');
+
+  const hostSide = createElement('div', 'pkc-merge-conflict-side');
+  hostSide.innerHTML = `<strong>Host</strong>: ${shortDate(conflict.host_created_at)} / ${shortDate(conflict.host_updated_at)}<br><code>${escapeHtml(conflict.host_body_preview)}</code>`;
+  sides.appendChild(hostSide);
+
+  const impSide = createElement('div', 'pkc-merge-conflict-side');
+  impSide.innerHTML = `<strong>Incoming</strong>: ${shortDate(conflict.imported_created_at)} / ${shortDate(conflict.imported_updated_at)}<br><code>${escapeHtml(conflict.imported_body_preview)}</code>`;
+  sides.appendChild(impSide);
+
+  row.appendChild(sides);
+
+  const radios = createElement('div', 'pkc-merge-conflict-radios');
+  radios.setAttribute('data-pkc-field', 'conflict-resolution');
+  radios.setAttribute('role', 'radiogroup');
+
+  const options: [Resolution, string, boolean][] = [
+    ['keep-current', 'Keep current', conflict.kind === 'title-only-multi'],
+    ['duplicate-as-branch', 'Branch', false],
+    ['skip', 'Skip', false],
+  ];
+
+  for (const [value, label, disabled] of options) {
+    const btn = createElement('button', 'pkc-merge-conflict-radio');
+    btn.setAttribute('data-pkc-action', 'set-conflict-resolution');
+    btn.setAttribute('data-pkc-value', value);
+    btn.setAttribute('data-pkc-conflict-id', conflict.imported_lid);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', resolution === value ? 'true' : 'false');
+    if (resolution === value) btn.setAttribute('data-pkc-selected', 'true');
+    if (disabled) btn.setAttribute('disabled', 'true');
+    btn.textContent = label;
+    radios.appendChild(btn);
+  }
+
+  row.appendChild(radios);
+  return row;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function renderBatchImportPreview(info: BatchImportPreviewInfo, container: Container | null): HTMLElement {

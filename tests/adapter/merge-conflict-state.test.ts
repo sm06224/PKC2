@@ -65,6 +65,10 @@ function readyStateWithMergePreview(
     container: imported,
     source: 'test.pkc2',
     entry_count: imported.entries.length,
+    title: imported.meta.title,
+    container_id: imported.meta.container_id,
+    revision_count: imported.revisions.length,
+    schema_version: imported.meta.schema_version,
   };
   const init = createInitialState();
   const { state: s1 } = reduce(
@@ -103,6 +107,7 @@ describe('Merge Conflict State', () => {
       const init = createInitialState();
       const preview: ImportPreviewRef = {
         container: imported, source: 'test.pkc2', entry_count: 2,
+        title: 'Test', container_id: 'c-imp', revision_count: 0, schema_version: 1,
       };
       const { state: s1 } = reduce(
         { ...init, phase: 'ready', container: host },
@@ -302,6 +307,7 @@ describe('Merge Conflict State', () => {
       });
       const newPreview: ImportPreviewRef = {
         container: imported, source: 'new.pkc2', entry_count: 2,
+        title: 'Test', container_id: 'c-imp', revision_count: 0, schema_version: 1,
       };
       const { state: s2 } = reduce(s1, { type: 'SYS_IMPORT_PREVIEW', preview: newPreview });
       expect(s2.mergeConflicts).toBeUndefined();

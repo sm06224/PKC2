@@ -412,6 +412,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'cancel-import':
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
         break;
+      case 'set-conflict-resolution': {
+        const value = target.getAttribute('data-pkc-value');
+        const lid = target.getAttribute('data-pkc-conflict-id');
+        if (lid && (value === 'keep-current' || value === 'duplicate-as-branch' || value === 'skip')) {
+          dispatcher.dispatch({ type: 'SET_CONFLICT_RESOLUTION', importedLid: lid, resolution: value });
+        }
+        break;
+      }
+      case 'bulk-resolution': {
+        const value = target.getAttribute('data-pkc-value');
+        if (value === 'keep-current' || value === 'duplicate-as-branch' || value === 'skip') {
+          dispatcher.dispatch({ type: 'BULK_SET_CONFLICT_RESOLUTION', resolution: value });
+        }
+        break;
+      }
       case 'set-archetype-filter': {
         const raw = target.getAttribute('data-pkc-archetype');
         const archetype: ArchetypeId | null = raw ? raw as ArchetypeId : null;
