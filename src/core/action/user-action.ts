@@ -85,6 +85,21 @@ export type UserAction =
   | { type: 'SET_BATCH_IMPORT_TARGET_FOLDER'; lid: string | null }
   | { type: 'DISMISS_BATCH_IMPORT_RESULT' }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
+  /**
+   * BRANCH_RESTORE_REVISION — C-1 revision-branch-restore v1 (2026-04-17).
+   * Contract: `docs/spec/revision-branch-restore-v1-behavior-contract.md` §1.3.
+   *
+   * Creates a new entry from the given revision's snapshot and appends a
+   * `provenance` relation from the source entry (`entryLid`) to the new
+   * derived entry. The source entry and its revision chain are not
+   * touched. Blocked when `readonly` / `viewOnlySource` / `editingLid`
+   * is set, or `phase !== 'ready'` (I-Rbr7).
+   *
+   * Wiring into the reducer is the state slice's job; this slice only
+   * registers the action shape so pure helpers and tests can refer to
+   * it without triggering an unknown-action branch.
+   */
+  | { type: 'BRANCH_RESTORE_REVISION'; entryLid: string; revisionId: string }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
   | { type: 'CLEAR_FILTERS' }

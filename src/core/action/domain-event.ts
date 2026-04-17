@@ -21,6 +21,7 @@ export type DomainEvent =
   | { type: 'ENTRY_CREATED'; lid: string; archetype: ArchetypeId }
   | { type: 'ENTRY_UPDATED'; lid: string }
   | { type: 'ENTRY_RESTORED'; lid: string; revision_id: string }
+  | { type: 'ENTRY_BRANCHED_FROM_REVISION'; sourceLid: string; newLid: string; revision_id: string }
   | { type: 'ENTRY_DELETED'; lid: string }
   | { type: 'RELATION_CREATED'; id: string; from: string; to: string; kind: RelationKind }
   | { type: 'RELATION_DELETED'; id: string }
