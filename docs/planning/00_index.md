@@ -32,6 +32,7 @@
 | `../spec/find-replace-behavior-contract.md` | Find & Replace v1.1 behavior contract 補助 spec（S-26 + S-27 を固定）。対象 / 非対象 / option semantics / selection semantics / state interaction / intentionally unsupported / future extension boundary（2026-04-16、docs-only） | ★★ |
 | `../spec/textlog-replace-feasibility-and-minimum-scope.md` | textlog 向け Find & Replace の可否調査 + v1 最小 scope（粒度 A = current log only 採用、粒度 B/C/D 却下理由、metadata 不変条件、TEXT contract 非破壊方針）（2026-04-16、docs-only） | ★★ |
 | `../spec/textlog-replace-v1-behavior-contract.md` | textlog-replace v1 behavior contract（S-28 を固定）。current log only / id・createdAt・flags・配列順 不変 / Selection only 非搭載 / TEXT helper 共有・UI 独立（2026-04-16、docs-only） | ★★ |
+| `../spec/merge-conflict-ui-v1-behavior-contract/` | H-10 merge-conflict-ui v1 behavior contract（13 章分割、2026-04-17 固定）。Merge mode preview 内 entry 単位 conflict UI の scope / invariance（I-MergeUI1〜10）/ C1/C2/C2-multi 判定 / 3 操作 / bulk / gate / state interaction / non-goal。supervisor 確定事項 2 点（multi-host 代表 = `updatedAt` 最新 + tie-break array index 昇順 / `contentHash` 入力 = `body + archetype`） | ★★★ |
 
 これら 6 つが PKC2 の「今の正本」。これ以下の章は**詳細・履歴**として読む。
 
@@ -82,6 +83,11 @@
 | `../development/textlog-text-conversion.md` | TEXTLOG ↔ TEXT 変換仕様 |
 | `../development/embedded-preview-and-cycle-guard.md` | embed / cycle guard 設計 |
 | `../development/zip-export-contract.md` | ZIP stored mode 採用理由 |
+| `../development/boot-container-source-policy-revision.md` | S-30 boot source policy revision — embedded pkc-data は view-only / IDB 拡張は明示 Import のみ（2026-04-17） |
+| `../development/boot-container-source-policy-audit.md` | S-30 post-implementation invariance audit（欠陥 0、2026-04-17） |
+| `../development/merge-conflict-pure-slice.md` | H-10 pure slice 実装メモ（`detectEntryConflicts` 等、2026-04-17） |
+| `../development/merge-conflict-state-slice.md` | H-10 state slice 実装メモ（reducer 3 case / event 拡張 / lifecycle、2026-04-17） |
+| `../development/merge-conflict-ui-v1-audit.md` | H-10 pure + state + UI 3 slice 統合監査（DEFECT-1 / DEFECT-2 最小修正、2026-04-17） |
 
 ## resolved/ 配下（原則非参照）
 
