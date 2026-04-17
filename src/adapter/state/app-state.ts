@@ -21,6 +21,13 @@ import {
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
+import {
+  captureEditBase,
+  checkSaveConflict,
+  branchFromDualEditConflict,
+  type EditBaseSnapshot,
+  type SaveConflictCheck,
+} from '../../core/operations/dual-edit-safety';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
 import { applyConflictResolutions } from '../../features/import/conflict-detect';
@@ -172,6 +179,57 @@ export interface AppState {
    * mirrored here) to keep keystrokes out of the dispatch loop.
    */
   textToTextlogModal?: TextToTextlogModalState | null;
+  /**
+   * FI-01 dual-edit-safety v1 (2026-04-17). Base-version snapshot
+   * captured at `BEGIN_EDIT`; read by `COMMIT_EDIT` to run
+   * `checkSaveConflict`. Cleared on `COMMIT_EDIT` (safe), `CANCEL_EDIT`,
+   * and every `RESOLVE_DUAL_EDIT_CONFLICT` path.
+   *
+   * Optional so test fixtures that predate FI-01 keep compiling. A
+   * `null` value means "no base captured" — the guard is skipped
+   * (legacy permissive path).
+   */
+  editingBase?: EditBaseSnapshot | null;
+  /**
+   * FI-01 dual-edit-safety v1 (2026-04-17). Populated when
+   * `COMMIT_EDIT` is rejected by the save-time optimistic version
+   * guard. While non-null, the UI slice mounts the reject overlay and
+   * blocks further commits for the same lid until the user picks a
+   * resolution via `RESOLVE_DUAL_EDIT_CONFLICT`.
+   *
+   * Contract:
+   * `docs/spec/dual-edit-safety-v1-behavior-contract.md` §5.
+   */
+  dualEditConflict?: DualEditConflictState | null;
+}
+
+/**
+ * FI-01 dual-edit-safety v1 conflict record.
+ *
+ * Holds everything the overlay and the resolution reducer need to
+ * proceed without re-running the guard or re-reading the container:
+ *
+ * - `lid` / `base` / `draft`: the identity of the rejected save.
+ * - `kind`: the classification returned by `checkSaveConflict`.
+ *   v1 UI does not differentiate but keeps the information for tests
+ *   / future richer UX.
+ * - `currentUpdatedAt` / `currentContentHash` / `currentArchetype`:
+ *   snapshot of the *losing-side* reference at reject time (diagnostic
+ *   only; the overlay itself does not show them in v1).
+ * - `copyRequestTicket`: incremented on every
+ *   `RESOLVE_DUAL_EDIT_CONFLICT { resolution: 'copy-to-clipboard' }`.
+ *   A UI-side consumer observes advances and writes `draft.body` to
+ *   the clipboard; the reducer itself never touches clipboard APIs.
+ */
+export interface DualEditConflictState {
+  lid: string;
+  base: EditBaseSnapshot;
+  draft: { title: string; body: string; assets?: Record<string, string> };
+  kind: Exclude<SaveConflictCheck, { kind: 'safe' }>['kind'];
+  currentUpdatedAt?: string;
+  currentContentHash?: string;
+  currentArchetype?: import('../../core/model/record').ArchetypeId;
+  copyRequestTicket?: number;
 }
 
 /**
@@ -238,6 +296,8 @@ export function createInitialState(): AppState {
     collapsedFolders: [],
     textlogSelection: null,
     textToTextlogModal: null,
+    editingBase: null,
+    dualEditConflict: null,
   };
 }
 
@@ -533,6 +593,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
       // or a dangling preview modal is incoherent.
+      //
+      // FI-01 (2026-04-17): capture EditBaseSnapshot so COMMIT_EDIT
+      // can run the save-time optimistic version guard. captureEditBase
+      // returns null for unknown lids; we store null rather than aborting
+      // so existing callers that trigger BEGIN_EDIT before SYS_INIT
+      // (or in pathological fixtures) keep working — the guard then
+      // skips (legacy permissive path).
+      const base = state.container
+        ? captureEditBase(state.container, action.lid)
+        : null;
       const next: AppState = {
         ...state,
         phase: 'editing',
@@ -541,6 +611,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         viewMode: 'detail',
         textlogSelection: null,
         textToTextlogModal: null,
+        editingBase: base,
+        dualEditConflict: null,
       };
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
@@ -1629,6 +1701,57 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'COMMIT_EDIT': {
       if (!state.container) return blocked(state, action);
+
+      // FI-01 save-time optimistic version guard. When a base
+      // snapshot is available (preferred: action.base; fallback:
+      // state.editingBase captured at BEGIN_EDIT), check whether the
+      // container has advanced since edit start. If it has, we refuse
+      // to write and park the draft in state.dualEditConflict so the
+      // UI can offer a resolution (save-as-branch / discard / copy).
+      // When no base is available (legacy fixture / direct
+      // phase='editing' entry), we skip the guard to preserve
+      // backward compatibility — see COMMIT_EDIT JSDoc in
+      // user-action.ts.
+      const base: EditBaseSnapshot | null =
+        action.base ?? state.editingBase ?? null;
+      if (base !== null) {
+        const check = checkSaveConflict(base, state.container);
+        if (check.kind !== 'safe') {
+          const conflict: DualEditConflictState = {
+            lid: action.lid,
+            base,
+            draft: {
+              title: action.title,
+              body: action.body,
+              ...(action.assets ? { assets: action.assets } : {}),
+            },
+            kind: check.kind,
+          };
+          if (check.kind === 'version-mismatch') {
+            conflict.currentUpdatedAt = check.currentUpdatedAt;
+            if (check.currentContentHash !== undefined) {
+              conflict.currentContentHash = check.currentContentHash;
+            }
+          } else if (check.kind === 'archetype-changed') {
+            conflict.currentArchetype = check.currentArchetype;
+          }
+          const rejectedState: AppState = {
+            ...state,
+            dualEditConflict: conflict,
+          };
+          const rejectEvent: DomainEvent = {
+            type: 'DUAL_EDIT_SAVE_REJECTED',
+            lid: action.lid,
+            kind: check.kind,
+            baseUpdatedAt: base.updated_at,
+            ...(check.kind === 'version-mismatch'
+              ? { currentUpdatedAt: check.currentUpdatedAt }
+              : {}),
+          };
+          return { state: rejectedState, events: [rejectEvent] };
+        }
+      }
+
       const ts = now();
       // Snapshot the entry before update (minimal revision)
       const revId = generateLid();
@@ -1639,7 +1762,14 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       if (action.assets) {
         container = mergeAssets(container, action.assets);
       }
-      const next: AppState = { ...state, phase: 'ready', editingLid: null, container };
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        container,
+        editingBase: null,
+        dualEditConflict: null,
+      };
       return {
         state: next,
         events: [
@@ -1649,8 +1779,86 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'CANCEL_EDIT': {
-      const next: AppState = { ...state, phase: 'ready', editingLid: null };
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        editingBase: null,
+        dualEditConflict: null,
+      };
       return { state: next, events: [{ type: 'EDIT_CANCELLED' }] };
+    }
+    case 'RESOLVE_DUAL_EDIT_CONFLICT': {
+      // FI-01 v1 §5. Only valid while a conflict is parked in state
+      // and the action targets that same lid. Every mismatch preserves
+      // identity so downstream `===` checks stay cheap.
+      const conflict = state.dualEditConflict;
+      if (!conflict) return blocked(state, action);
+      if (conflict.lid !== action.lid) return blocked(state, action);
+
+      if (action.resolution === 'copy-to-clipboard') {
+        const ticket = (conflict.copyRequestTicket ?? 0) + 1;
+        const next: AppState = {
+          ...state,
+          dualEditConflict: { ...conflict, copyRequestTicket: ticket },
+        };
+        return { state: next, events: [] };
+      }
+
+      if (action.resolution === 'discard-my-edits') {
+        const next: AppState = {
+          ...state,
+          phase: 'ready',
+          editingLid: null,
+          editingBase: null,
+          dualEditConflict: null,
+        };
+        return {
+          state: next,
+          events: [{ type: 'DUAL_EDIT_DISCARDED', lid: conflict.lid }],
+        };
+      }
+
+      // save-as-branch (default safe action).
+      if (!state.container) return blocked(state, action);
+      const newLid = generateLid();
+      const relationId = generateLid();
+      const ts = now();
+      let container = branchFromDualEditConflict(
+        state.container,
+        conflict.base,
+        { title: conflict.draft.title, body: conflict.draft.body },
+        newLid,
+        relationId,
+        ts,
+      );
+      if (container === state.container) {
+        // Defensive: branchFromDualEditConflict returned the input
+        // reference (id collision). Treat as blocked to preserve
+        // I-Dual9 identity semantics.
+        return blocked(state, action);
+      }
+      if (conflict.draft.assets) {
+        container = mergeAssets(container, conflict.draft.assets);
+      }
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        editingBase: null,
+        dualEditConflict: null,
+        container,
+        selectedLid: newLid,
+      };
+      return {
+        state: next,
+        events: [{
+          type: 'ENTRY_BRANCHED_FROM_DUAL_EDIT',
+          sourceLid: conflict.lid,
+          newLid,
+          resolvedAt: ts,
+        }],
+      };
     }
     case 'PASTE_ATTACHMENT': {
       // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid

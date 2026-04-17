@@ -22,6 +22,19 @@ export type DomainEvent =
   | { type: 'ENTRY_UPDATED'; lid: string }
   | { type: 'ENTRY_RESTORED'; lid: string; revision_id: string }
   | { type: 'ENTRY_BRANCHED_FROM_REVISION'; sourceLid: string; newLid: string; revision_id: string }
+  /**
+   * FI-01 dual-edit-safety v1 events (2026-04-17). See
+   * `docs/spec/dual-edit-safety-v1-behavior-contract.md` §5.3 / §5.4 / §5.5.
+   */
+  | {
+      type: 'DUAL_EDIT_SAVE_REJECTED';
+      lid: string;
+      kind: 'entry-missing' | 'archetype-changed' | 'version-mismatch';
+      baseUpdatedAt: string;
+      currentUpdatedAt?: string;
+    }
+  | { type: 'ENTRY_BRANCHED_FROM_DUAL_EDIT'; sourceLid: string; newLid: string; resolvedAt: string }
+  | { type: 'DUAL_EDIT_DISCARDED'; lid: string }
   | { type: 'ENTRY_DELETED'; lid: string }
   | { type: 'RELATION_CREATED'; id: string; from: string; to: string; kind: RelationKind }
   | { type: 'RELATION_DELETED'; id: string }
