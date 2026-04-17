@@ -17,6 +17,7 @@ import {
   snapshotEntry,
   restoreEntry,
   restoreDeletedEntry,
+  branchRestoreRevision,
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
@@ -778,6 +779,44 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'ENTRY_RESTORED', lid: action.lid, revision_id: action.revision_id }],
+      };
+    }
+    case 'BRANCH_RESTORE_REVISION': {
+      // C-1 revision-branch-restore v1.
+      // Gates: contract §6.1. The six below must each preserve state
+      // identity so downstream `===` checks stay cheap. `editingLid`
+      // can't be non-null in the ready phase, but the explicit guard
+      // is kept so the gate list matches the contract 1:1.
+      if (!state.container) return blocked(state, action);
+      if (state.readonly) return blocked(state, action);
+      if (state.viewOnlySource) return blocked(state, action);
+      if (state.editingLid !== null) return blocked(state, action);
+      if (state.importPreview !== null) return blocked(state, action);
+      if (state.batchImportPreview !== null) return blocked(state, action);
+
+      const newLid = generateLid();
+      const relationId = generateLid();
+      const ts = now();
+
+      const container = branchRestoreRevision(
+        state.container,
+        action.entryLid,
+        action.revisionId,
+        newLid,
+        relationId,
+        ts,
+      );
+      if (container === state.container) return blocked(state, action);
+
+      const next: AppState = { ...state, container, selectedLid: newLid };
+      return {
+        state: next,
+        events: [{
+          type: 'ENTRY_BRANCHED_FROM_REVISION',
+          sourceLid: action.entryLid,
+          newLid,
+          revision_id: action.revisionId,
+        }],
       };
     }
     case 'SYS_IMPORT_PREVIEW': {
