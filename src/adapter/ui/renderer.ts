@@ -15,6 +15,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
@@ -86,6 +87,7 @@ const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
   { key: 'created_at', label: 'Created' },
   { key: 'updated_at', label: 'Updated' },
   { key: 'title', label: 'Title' },
+  { key: 'manual', label: 'Manual' },
 ] as const;
 
 /** Relation kind options with display labels. */
@@ -1297,7 +1299,12 @@ function renderSidebar(state: AppState): HTMLElement {
       return !parseTodoBody(e.body).archived;
     });
   }
-  const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
+  // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
+  // using `container.meta.entry_order` (contract §2.2). Non-manual
+  // modes fall through to the existing stable temporal/title sort.
+  const entries = state.sortKey === 'manual'
+    ? applyManualOrder(filtered, state.container?.meta.entry_order ?? [])
+    : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
   if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null)) {
@@ -1352,7 +1359,13 @@ function renderSidebar(state: AppState): HTMLElement {
   } else {
     // Tree mode: build from structural relations
     const tree = buildTree(entries, state.container.relations);
-    for (const node of tree) {
+    // C-2 v1 manual mode: buildTree orders children by relation
+    // iteration order, not by `entries` position. Reorder each node's
+    // children so folder-child ordering reflects `entry_order`.
+    const displayTree = state.sortKey === 'manual'
+      ? reorderTreeByEntries(tree, entries)
+      : tree;
+    for (const node of displayTree) {
       renderTreeNode(node, list, state);
     }
   }
@@ -1565,6 +1578,26 @@ function renderSidebar(state: AppState): HTMLElement {
   return sidebar;
 }
 
+/**
+ * C-2 v1 (2026-04-17): reorder tree children so that folder children
+ * follow the order of `entries` (i.e., `entry_order`). `buildTree`
+ * preserves root iteration order but orders children by structural
+ * relation iteration; under manual mode we need both levels to match
+ * `entries`. Returns a new tree; does not mutate input nodes.
+ */
+function reorderTreeByEntries(tree: TreeNode[], entries: readonly Entry[]): TreeNode[] {
+  const rank = new Map<string, number>();
+  entries.forEach((e, i) => rank.set(e.lid, i));
+  const INF = entries.length + 1;
+  function walk(nodes: TreeNode[]): TreeNode[] {
+    const sorted = [...nodes].sort(
+      (a, b) => (rank.get(a.entry.lid) ?? INF) - (rank.get(b.entry.lid) ?? INF),
+    );
+    return sorted.map((n) => ({ ...n, children: walk(n.children) }));
+  }
+  return walk(tree);
+}
+
 function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): void {
   const li = renderEntryItem(node.entry, state);
   if (node.depth > 0) {
@@ -1663,6 +1696,36 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       revBadge.textContent = `r${revCount}`;
       li.appendChild(revBadge);
     }
+  }
+
+  // C-2 v1 (2026-04-17): Move up / Move down for the selected entry
+  // under manual mode. Gate mirrors the reducer (detail view, not
+  // read-only, no import preview in progress) — contract §4.2.
+  // Reducer is authoritative: a no-op at an edge still goes through
+  // dispatch and returns the same state ref.
+  if (
+    entry.lid === state.selectedLid &&
+    state.sortKey === 'manual' &&
+    state.viewMode === 'detail' &&
+    !state.readonly &&
+    state.importPreview === null &&
+    state.batchImportPreview === null
+  ) {
+    const upBtn = createElement('button', 'pkc-entry-move-btn');
+    upBtn.setAttribute('data-pkc-action', 'move-entry-up');
+    upBtn.setAttribute('data-pkc-lid', entry.lid);
+    upBtn.setAttribute('title', 'Move up');
+    upBtn.setAttribute('aria-label', 'Move up');
+    upBtn.textContent = '↑';
+    li.appendChild(upBtn);
+
+    const downBtn = createElement('button', 'pkc-entry-move-btn');
+    downBtn.setAttribute('data-pkc-action', 'move-entry-down');
+    downBtn.setAttribute('data-pkc-lid', entry.lid);
+    downBtn.setAttribute('title', 'Move down');
+    downBtn.setAttribute('aria-label', 'Move down');
+    downBtn.textContent = '↓';
+    li.appendChild(downBtn);
   }
 
   return li;

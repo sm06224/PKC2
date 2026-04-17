@@ -247,6 +247,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
+      case 'move-entry-up': {
+        // C-2 v1 (2026-04-17): manual-mode Move up. Stop propagation
+        // so the surrounding <li data-pkc-action="select-entry"> does
+        // not re-issue a SELECT. The reducer gate (readonly / preview /
+        // edge / unknown lid) is authoritative — a no-op at the top
+        // edge still goes through dispatch and returns the same state.
+        if (!lid) break;
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'MOVE_ENTRY_UP', lid });
+        break;
+      }
+      case 'move-entry-down': {
+        if (!lid) break;
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'MOVE_ENTRY_DOWN', lid });
+        break;
+      }
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
         break;
