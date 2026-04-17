@@ -28,6 +28,15 @@ import type { ProvenanceRelationData } from '../../features/import/conflict-dete
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
+import { applyFilters } from '../../features/search/filter';
+import { filterByTag } from '../../features/relation/tag-filter';
+import {
+  applyManualOrder,
+  ensureEntryOrder,
+  moveAdjacentInOrder,
+  snapshotEntryOrder,
+  type MoveDirection,
+} from '../../features/entry-order/entry-order';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -290,6 +299,106 @@ function blocked(state: AppState, action: Dispatchable): ReduceResult {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+/**
+ * C-2 v1 (2026-04-17): MOVE_ENTRY_UP / MOVE_ENTRY_DOWN reducer.
+ *
+ * Gate order matches contract §6.1. Every gate miss returns the same
+ * state reference so downstream `===` identity checks stay cheap.
+ * See `docs/spec/entry-ordering-v1-behavior-contract.md`.
+ */
+function reduceMoveEntry(
+  state: AppState,
+  direction: MoveDirection,
+  lidArg: string | undefined,
+): ReduceResult {
+  if (state.readonly) return { state, events: [] };
+  if (!state.container) return { state, events: [] };
+  if (state.sortKey !== 'manual') return { state, events: [] };
+  if (state.viewMode !== 'detail') return { state, events: [] };
+  if (state.importPreview !== null) return { state, events: [] };
+  if (state.batchImportPreview !== null) return { state, events: [] };
+  const target = lidArg ?? state.selectedLid;
+  if (!target) return { state, events: [] };
+
+  const container = state.container;
+  const entries = container.entries;
+  if (!entries.some((e) => e.lid === target)) return { state, events: [] };
+
+  // Filter pipeline — matches the sidebar renderer so `domainLids`
+  // and `visibleLids` here reflect what the user is actually seeing.
+  const hasActiveFilter =
+    state.searchQuery !== '' ||
+    state.archetypeFilter !== null ||
+    state.tagFilter !== null;
+  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
+  if (state.tagFilter) {
+    filtered = filterByTag(filtered, container.relations, state.tagFilter);
+  }
+  if (!state.showArchived) {
+    filtered = filtered.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      try {
+        return !parseTodoBody(e.body).archived;
+      } catch {
+        return true;
+      }
+    });
+  }
+
+  // Belonging set (contract §1.2 decision tree).
+  let domainEntries: readonly { lid: string }[];
+  if (hasActiveFilter) {
+    domainEntries = filtered;
+  } else {
+    const parentLid = getStructuralParentLid(container.relations, target);
+    domainEntries = filtered.filter((e) =>
+      getStructuralParentLid(container.relations, e.lid) === parentLid,
+    );
+  }
+  const domainLids = domainEntries.map((e) => e.lid);
+  if (!domainLids.includes(target)) return { state, events: [] };
+
+  // Ensure entry_order so Move always has a definite answer, then
+  // project it through the visible domain set.
+  const ensured = ensureEntryOrder(container.meta.entry_order, entries);
+  const domainEntryObjs = filtered.filter((e) =>
+    domainLids.includes(e.lid),
+  );
+  const visibleEntries = applyManualOrder(domainEntryObjs, ensured);
+  const visibleLids = visibleEntries.map((e) => e.lid);
+
+  const swapResult = moveAdjacentInOrder(
+    ensured,
+    domainLids,
+    visibleLids,
+    target,
+    direction,
+  );
+  if (!swapResult.changed) return { state, events: [] };
+
+  const nextContainer = {
+    ...container,
+    meta: { ...container.meta, entry_order: swapResult.order },
+  };
+  const next: AppState = { ...state, container: nextContainer };
+  return { state: next, events: [] };
+}
+
+/**
+ * Local helper: first structural-parent lid (folder membership) for
+ * `childLid`, or `null` at root. Kept inline to avoid a dependency on
+ * `tree.ts`'s full Entry-returning helper — we only need the lid.
+ */
+function getStructuralParentLid(
+  relations: readonly import('../../core/model/relation').Relation[],
+  childLid: string,
+): string | null {
+  for (const r of relations) {
+    if (r.kind === 'structural' && r.to === childLid) return r.from;
+  }
+  return null;
 }
 
 function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult {
@@ -1058,8 +1167,39 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_SORT': {
-      const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
+      // C-2 v1 (2026-04-17): switching into manual mode performs the
+      // initial `entry_order` snapshot if none exists yet (contract
+      // §2.5). Switching out of manual preserves `meta.entry_order`
+      // untouched (I-Order2) — we only flip the runtime field.
+      let container = state.container;
+      if (
+        action.key === 'manual' &&
+        container &&
+        (container.meta.entry_order === undefined ||
+          container.meta.entry_order.length === 0)
+      ) {
+        const snapshot = snapshotEntryOrder(container.entries);
+        container = {
+          ...container,
+          meta: { ...container.meta, entry_order: snapshot },
+        };
+      }
+      const next: AppState = {
+        ...state,
+        container,
+        sortKey: action.key,
+        sortDirection: action.direction,
+      };
       return { state: next, events: [] };
+    }
+    case 'MOVE_ENTRY_UP':
+    case 'MOVE_ENTRY_DOWN': {
+      const result = reduceMoveEntry(
+        state,
+        action.type === 'MOVE_ENTRY_UP' ? 'up' : 'down',
+        action.lid,
+      );
+      return result;
     }
     // QUICK_UPDATE_ENTRY: body-only update, title preserved.
     // See user-action.ts for full contract documentation.

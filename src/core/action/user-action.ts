@@ -89,7 +89,22 @@ export type UserAction =
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
-  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' }
+  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
+  /**
+   * MOVE_ENTRY_UP / MOVE_ENTRY_DOWN — user-defined entry ordering
+   * (C-2 v1, 2026-04-17). Contract:
+   * `docs/spec/entry-ordering-v1-behavior-contract.md`.
+   *
+   * - Allowed only in `ready` / `editing` phase, `sortKey === 'manual'`,
+   *   `viewMode === 'detail'`, no preview open, not readonly.
+   * - `lid` optional: defaults to `state.selectedLid`. Missing target /
+   *   edge of belonging set / gate violation → silent no-op (reducer
+   *   returns the same state reference, no event emitted).
+   * - `selectedLid` / `multiSelectedLids` unchanged (I-Order1,
+   *   I-Order-MS). Other container fields unchanged.
+   */
+  | { type: 'MOVE_ENTRY_UP'; lid?: string }
+  | { type: 'MOVE_ENTRY_DOWN'; lid?: string }
   /**
    * QUICK_UPDATE_ENTRY — body-only update without entering edit mode.
    *
