@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Container } from '../../src/core/model/container';
 import type { Entry } from '../../src/core/model/record';
-import type { EntryConflict, Resolution } from '../../src/core/model/merge-conflict';
+import type { EntryConflict } from '../../src/core/model/merge-conflict';
 import type { ImportPreviewRef } from '../../src/core/action/system-command';
 import { reduce, createInitialState } from '../../src/adapter/state/app-state';
 import type { AppState } from '../../src/adapter/state/app-state';
