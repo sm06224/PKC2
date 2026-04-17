@@ -26,7 +26,7 @@ export type DomainEvent =
   | { type: 'RELATION_DELETED'; id: string }
   | { type: 'CONTAINER_LOADED'; container_id: string }
   | { type: 'CONTAINER_IMPORTED'; container_id: string; source: string }
-  | { type: 'CONTAINER_MERGED'; container_id: string; source: string; added_entries: number; added_assets: number; added_relations: number }
+  | { type: 'CONTAINER_MERGED'; container_id: string; source: string; added_entries: number; added_assets: number; added_relations: number; suppressed_by_keep_current: string[]; suppressed_by_skip: string[] }
   | { type: 'EXPORT_COMPLETED' }
   | { type: 'IMPORT_PREVIEWED'; source: string; entry_count: number }
   | { type: 'IMPORT_CANCELLED' }

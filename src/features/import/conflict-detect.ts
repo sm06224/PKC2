@@ -3,28 +3,8 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import type { MergePlan } from './merge-planner';
 
-// ── Types ──────────────────────────────
-
-export type ConflictKind = 'content-equal' | 'title-only' | 'title-only-multi';
-export type Resolution = 'keep-current' | 'duplicate-as-branch' | 'skip';
-
-export interface EntryConflict {
-  imported_lid: string;
-  host_lid: string;
-  host_candidates?: string[];
-  kind: ConflictKind;
-  imported_title: string;
-  host_title: string;
-  archetype: string;
-  imported_content_hash: string;
-  host_content_hash: string;
-  imported_body_preview: string;
-  host_body_preview: string;
-  imported_created_at: string;
-  imported_updated_at: string;
-  host_created_at: string;
-  host_updated_at: string;
-}
+export type { ConflictKind, Resolution, EntryConflict } from '../../core/model/merge-conflict';
+import type { ConflictKind, Resolution, EntryConflict } from '../../core/model/merge-conflict';
 
 /**
  * Structured provenance data for duplicate-as-branch resolutions.

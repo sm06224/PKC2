@@ -22,6 +22,9 @@ import {
 } from '../../core/operations/container-ops';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
+import { applyConflictResolutions } from '../../features/import/conflict-detect';
+import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
+import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
@@ -66,6 +69,8 @@ export interface AppState {
    * See docs/spec/merge-import-conflict-resolution.md.
    */
   importMode?: 'replace' | 'merge';
+  mergeConflicts?: EntryConflict[];
+  mergeConflictResolutions?: Record<string, Resolution>;
   /**
    * Pending sub-location navigation (S-18 / A-4 FULL, 2026-04-14).
    *
@@ -669,7 +674,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'SYS_IMPORT_PREVIEW': {
       // Tier 3-1: reset import mode to 'replace' on every new preview so
       // a prior merge selection cannot leak into the next import session.
-      const next: AppState = { ...state, importPreview: action.preview, importMode: 'replace' };
+      const next: AppState = {
+        ...state,
+        importPreview: action.preview,
+        importMode: 'replace',
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
+      };
       return {
         state: next,
         events: [{
@@ -713,11 +724,6 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'CONFIRM_MERGE_IMPORT': {
       // Tier 3-1: Overlay MVP (append-only). Invariants I-Merge1 / I-Merge2.
-      // Host container remains untouched at the entry level; imported
-      // data is added with fresh lids and remapped relations. Revisions
-      // are dropped. Schema mismatch bails out with an error (the UI
-      // should prevent the user from reaching this case, but the
-      // reducer remains defensive).
       if (!state.importPreview) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const host = state.container;
@@ -725,9 +731,42 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const source = state.importPreview.source;
       const plan = planMergeImport(host, imported, action.now);
       if ('error' in plan) return blocked(state, action);
-      const merged = applyMergePlan(host, imported, plan, action.now);
-      // Orphan auto-GC on the merge result (I-AutoGC1 — merge is a
-      // container-replacement path in the same spirit as import).
+
+      let finalPlan = plan;
+      let mergeTarget = imported;
+      let suppressedByKeepCurrent: string[] = [];
+      let suppressedBySkip: string[] = [];
+      let provenanceData: ProvenanceRelationData[] = [];
+
+      if (state.mergeConflicts && state.mergeConflicts.length > 0 && state.mergeConflictResolutions) {
+        const crResult = applyConflictResolutions(
+          plan, state.mergeConflictResolutions, state.mergeConflicts, action.now,
+        );
+        finalPlan = crResult.plan;
+        suppressedByKeepCurrent = crResult.suppressedByKeepCurrent;
+        suppressedBySkip = crResult.suppressedBySkip;
+        provenanceData = crResult.provenanceData;
+        mergeTarget = {
+          ...imported,
+          entries: imported.entries.filter((e) => crResult.plan.lidRemap.has(e.lid)),
+        };
+      }
+
+      let merged = applyMergePlan(host, mergeTarget, finalPlan, action.now);
+
+      if (provenanceData.length > 0) {
+        const newRelations = provenanceData.map((p) => ({
+          id: generateLid(),
+          from: p.from_lid,
+          to: p.to_lid,
+          kind: 'provenance' as const,
+          created_at: action.now,
+          updated_at: action.now,
+          metadata: p.metadata as Record<string, unknown>,
+        }));
+        merged = { ...merged, relations: [...merged.relations, ...newRelations] };
+      }
+
       const purged = removeOrphanAssets(merged);
       const purgedCount =
         purged === merged
@@ -737,15 +776,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         phase: 'ready',
         container: purged,
-        // Host selection survives; imported entries were appended so
-        // no existing lid was displaced. New lid is NOT auto-selected
-        // (user explicitly stayed on host's workspace).
         editingLid: null,
         error: null,
         importPreview: null,
         importMode: 'replace',
-        // Merge import is also an explicit promotion gate — see
-        // CONFIRM_IMPORT case. Clear so the merged result persists.
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
         viewOnlySource: false,
       };
       const cid = host.meta.container_id ?? 'unknown';
@@ -753,26 +789,75 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         type: 'CONTAINER_MERGED',
         container_id: cid,
         source,
-        added_entries: plan.counts.addedEntries,
-        added_assets: plan.counts.addedAssets,
-        added_relations: plan.counts.addedRelations,
+        added_entries: finalPlan.counts.addedEntries,
+        added_assets: finalPlan.counts.addedAssets,
+        added_relations: finalPlan.counts.addedRelations + provenanceData.length,
+        suppressed_by_keep_current: suppressedByKeepCurrent,
+        suppressed_by_skip: suppressedBySkip,
       }];
       if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
       return { state: next, events };
     }
     case 'SET_IMPORT_MODE': {
-      // Tier 3-1: UI toggle between Replace and Merge on the import
-      // preview dialog. Ignored when no preview is active or when the
-      // mode is unchanged. `undefined` is treated as 'replace' (see
-      // AppState.importMode JSDoc).
       if (!state.importPreview) return blocked(state, action);
       const current = state.importMode ?? 'replace';
       if (current === action.mode) return blocked(state, action);
-      const next: AppState = { ...state, importMode: action.mode };
+      const next: AppState = {
+        ...state,
+        importMode: action.mode,
+        mergeConflicts: action.mode === 'replace' ? undefined : state.mergeConflicts,
+        mergeConflictResolutions: action.mode === 'replace' ? undefined : state.mergeConflictResolutions,
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_MERGE_CONFLICTS': {
+      if (!state.importPreview) return blocked(state, action);
+      if ((state.importMode ?? 'replace') !== 'merge') return blocked(state, action);
+      const resolutions: Record<string, Resolution> = {};
+      for (const c of action.conflicts) {
+        if (c.kind === 'content-equal') {
+          resolutions[c.imported_lid] = 'keep-current';
+        }
+      }
+      const next: AppState = {
+        ...state,
+        mergeConflicts: action.conflicts,
+        mergeConflictResolutions: resolutions,
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_CONFLICT_RESOLUTION': {
+      if (!state.mergeConflictResolutions) return blocked(state, action);
+      const next: AppState = {
+        ...state,
+        mergeConflictResolutions: {
+          ...state.mergeConflictResolutions,
+          [action.importedLid]: action.resolution,
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'BULK_SET_CONFLICT_RESOLUTION': {
+      if (!state.mergeConflicts || !state.mergeConflictResolutions) return blocked(state, action);
+      const resolutions: Record<string, Resolution> = {};
+      for (const c of state.mergeConflicts) {
+        if (action.resolution === 'keep-current' && c.kind === 'title-only-multi') continue;
+        resolutions[c.imported_lid] = action.resolution;
+      }
+      const next: AppState = {
+        ...state,
+        mergeConflictResolutions: resolutions,
+      };
       return { state: next, events: [] };
     }
     case 'CANCEL_IMPORT': {
-      const next: AppState = { ...state, importPreview: null, importMode: 'replace' };
+      const next: AppState = {
+        ...state,
+        importPreview: null,
+        importMode: 'replace',
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
+      };
       return {
         state: next,
         events: [{ type: 'IMPORT_CANCELLED' }],

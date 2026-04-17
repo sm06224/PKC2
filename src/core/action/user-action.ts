@@ -1,5 +1,6 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
+import type { EntryConflict, Resolution } from '../model/merge-conflict';
 
 /** Export scope: 'light' omits assets; 'full' includes everything. */
 export type ExportMode = 'light' | 'full';
@@ -62,6 +63,9 @@ export type UserAction =
   | { type: 'CONFIRM_MERGE_IMPORT'; now: string }
   | { type: 'SET_IMPORT_MODE'; mode: 'replace' | 'merge' }
   | { type: 'CANCEL_IMPORT' }
+  | { type: 'SET_MERGE_CONFLICTS'; conflicts: EntryConflict[] }
+  | { type: 'SET_CONFLICT_RESOLUTION'; importedLid: string; resolution: Resolution }
+  | { type: 'BULK_SET_CONFLICT_RESOLUTION'; resolution: Resolution }
   | {
       // S-18 (A-4 FULL, 2026-04-14): select an entry AND request the
       // post-render effect in main.ts to scroll to + temporarily
