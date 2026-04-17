@@ -370,6 +370,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'branch-restore-revision': {
+        // C-1 revision-branch-restore v1. Reducer gates (readonly /
+        // viewOnlySource / editing / import previews / phase) make
+        // this a safe no-op in non-ready contexts, so no UI-side
+        // `confirm()` is needed.
+        const revisionId = target.getAttribute('data-pkc-revision-id');
+        if (lid && revisionId) {
+          dispatcher.dispatch({
+            type: 'BRANCH_RESTORE_REVISION',
+            entryLid: lid,
+            revisionId,
+          });
+        }
+        break;
+      }
       case 'restore-bulk': {
         // Tier 2-2: bulk restore. Resolve all revisions that share the
         // same bulk_id (produced by BULK_DELETE / BULK_SET_STATUS /

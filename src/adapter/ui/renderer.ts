@@ -9,6 +9,7 @@ import {
   getLatestRevision,
   getRestoreCandidates,
   getRevisionsByBulkId,
+  getEntryRevisions,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
 import type { ArchetypeId } from '../../core/model/record';
@@ -2580,6 +2581,70 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     }
 
     meta.appendChild(revInfo);
+
+    // C-1 revision-branch-restore v1 — picker (list + select only).
+    // See `docs/spec/revision-branch-restore-v1-behavior-contract.md` §7.
+    // Revisions are listed newest first so the first row matches the
+    // existing Revert button. Rendered verbatim for every revision
+    // (including the latest) — consolidation with Revert is v1.x
+    // scope (§9.2).
+    const allRevs = getEntryRevisions(container, entry.lid);
+    const revsDesc = [...allRevs].reverse();
+    const picker = createElement('details', 'pkc-revision-picker');
+    picker.setAttribute('data-pkc-region', 'revision-history');
+    const summary = createElement('summary', 'pkc-revision-picker-summary');
+    summary.textContent = `Revision history (${revsDesc.length})`;
+    picker.appendChild(summary);
+
+    revsDesc.forEach((rev, idx) => {
+      const row = createElement('div', 'pkc-revision-row');
+      row.setAttribute('data-pkc-revision-id', rev.id);
+      row.setAttribute('data-pkc-revision-index', String(idx + 1));
+
+      const headLine = createElement('div', 'pkc-revision-row-head');
+      const ts = createElement('span', 'pkc-revision-row-ts');
+      ts.textContent = formatTimestamp(rev.created_at);
+      headLine.appendChild(ts);
+
+      const parsed = parseRevisionSnapshot(rev);
+      if (parsed) {
+        const arch = createElement('span', 'pkc-revision-row-archetype');
+        arch.textContent = archetypeLabel(parsed.archetype);
+        headLine.appendChild(arch);
+      }
+
+      const hash = createElement('span', 'pkc-revision-row-hash');
+      hash.textContent = rev.content_hash ? rev.content_hash.slice(0, 8) : '—';
+      headLine.appendChild(hash);
+
+      row.appendChild(headLine);
+
+      if (canEdit) {
+        const actions = createElement('div', 'pkc-revision-row-actions');
+
+        const restoreBtn = createElement('button', 'pkc-btn-small');
+        restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
+        restoreBtn.setAttribute('data-pkc-lid', entry.lid);
+        restoreBtn.setAttribute('data-pkc-revision-id', rev.id);
+        restoreBtn.setAttribute('title', 'Restore this revision in place');
+        restoreBtn.textContent = 'Restore';
+        actions.appendChild(restoreBtn);
+
+        const branchBtn = createElement('button', 'pkc-btn-small');
+        branchBtn.setAttribute('data-pkc-action', 'branch-restore-revision');
+        branchBtn.setAttribute('data-pkc-lid', entry.lid);
+        branchBtn.setAttribute('data-pkc-revision-id', rev.id);
+        branchBtn.setAttribute('title', 'Create a new entry from this revision');
+        branchBtn.textContent = 'Restore as branch';
+        actions.appendChild(branchBtn);
+
+        row.appendChild(actions);
+      }
+
+      picker.appendChild(row);
+    });
+
+    meta.appendChild(picker);
   }
 
   // Relations section
