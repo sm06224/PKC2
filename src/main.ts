@@ -59,6 +59,8 @@ import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
 import { mergeSystemEntries } from './core/model/container';
+import { SETTINGS_LID } from './core/model/record';
+import { resolveSettingsPayload } from './core/model/system-settings-payload';
 
 /**
  * PKC2 bootstrap.
@@ -450,15 +452,17 @@ async function boot(): Promise<void> {
     }
 
     switch (chosen.source) {
-      case 'pkc-data':
+      case 'pkc-data': {
+        const container = chosen.container!;
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
-          container: chosen.container!,
+          container,
           embedded: embedCtx.embedded,
           readonly: chosen.readonly,
           lightSource: chosen.lightSource,
           viewOnlySource: chosen.viewOnlySource,
         });
+        restoreSettingsFromContainer(dispatcher, container);
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
         }
@@ -466,30 +470,57 @@ async function boot(): Promise<void> {
           console.log('[PKC2] Embedded pkc-data booted as view-only — IDB save suppressed until explicit Import');
         }
         return;
-      case 'idb':
+      }
+      case 'idb': {
+        const container = mergeSystemEntries(
+          chosen.container!,
+          chosen.systemEntriesFromPkcData ?? [],
+        );
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
-          container: mergeSystemEntries(
-            chosen.container!,
-            chosen.systemEntriesFromPkcData ?? [],
-          ),
+          container,
           embedded: embedCtx.embedded,
         });
+        restoreSettingsFromContainer(dispatcher, container);
         return;
-      case 'empty':
+      }
+      case 'empty': {
+        const container = mergeSystemEntries(
+          createEmptyContainer(),
+          chosen.systemEntriesFromPkcData ?? [],
+        );
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
-          container: mergeSystemEntries(
-            createEmptyContainer(),
-            chosen.systemEntriesFromPkcData ?? [],
-          ),
+          container,
           embedded: embedCtx.embedded,
         });
+        restoreSettingsFromContainer(dispatcher, container);
         return;
+      }
     }
   } catch (e) {
     dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });
   }
+}
+
+/**
+ * FI-Settings v1 (2026-04-18): after SYS_INIT_COMPLETE, resolve the
+ * reserved `__settings__` entry from the booted container and dispatch
+ * RESTORE_SETTINGS. Per the load contract §3.1, a missing / malformed /
+ * wrong-archetype entry falls back to SETTINGS_DEFAULTS — the resolver
+ * handles this invisibly, so we always get a valid payload to dispatch.
+ * The action does not emit SETTINGS_CHANGED (boot replay is not a user
+ * modification) so persistence stays quiet.
+ */
+function restoreSettingsFromContainer(
+  dispatcher: Dispatcher,
+  container: Container,
+): void {
+  const entry = container.entries.find(
+    (e) => e.lid === SETTINGS_LID && e.archetype === 'system-settings',
+  );
+  const settings = resolveSettingsPayload(entry?.body);
+  dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings });
 }
 
 function createEmptyContainer(): Container {
