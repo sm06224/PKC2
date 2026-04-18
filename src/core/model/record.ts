@@ -16,9 +16,28 @@ export type ArchetypeId =
   | 'system-about';
 
 export const ABOUT_LID = '__about__';
+export const SETTINGS_LID = '__settings__';
 
 export function isReservedLid(lid: string): boolean {
   return lid.startsWith('__') && lid.endsWith('__') && lid.length > 4;
+}
+
+/**
+ * System archetypes carry PKC2-managed entries (about / settings) that
+ * are not user content. They exist in the container but must be excluded
+ * from "is this workspace empty?" / "should we boot from IDB?" decisions
+ * and from sidebar/search/relation listings.
+ *
+ * Membership uses a string-prefix check so future system-* archetypes
+ * (e.g. `system-settings`) are recognized even before their literal type
+ * is added to the ArchetypeId union.
+ */
+export function isSystemArchetype(archetype: string): boolean {
+  return archetype.startsWith('system-');
+}
+
+export function isUserEntry(entry: Entry): boolean {
+  return !isSystemArchetype(entry.archetype);
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { Entry } from './record';
+import { isUserEntry, type Entry } from './record';
 import type { Relation } from './relation';
 
 /**
@@ -102,4 +102,24 @@ export interface Container {
   relations: Relation[];
   revisions: Revision[];
   assets: { [key: string]: string };
+}
+
+/**
+ * Returns only user-content entries, excluding system-* archetypes
+ * (about, settings, etc). Use this whenever the question is "what does
+ * the user have?" — sidebar listings, search results, relation pickers,
+ * empty-workspace detection, IDB boot-source decisions.
+ */
+export function getUserEntries(entries: Entry[]): Entry[] {
+  return entries.filter(isUserEntry);
+}
+
+/**
+ * Whether the container has any user-content entry. System entries
+ * (about / settings) do NOT count as content for this purpose: a
+ * container with only `__about__` is still effectively empty from the
+ * user's perspective.
+ */
+export function hasUserContent(container: Container): boolean {
+  return container.entries.some(isUserEntry);
 }

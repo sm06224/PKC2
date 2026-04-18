@@ -2,6 +2,7 @@ import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import { ABOUT_LID } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
+import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
@@ -81,14 +82,6 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   opaque: '🔒',
   'system-about': 'ℹ️',
 };
-
-function isUserEntry(e: Entry): boolean {
-  return e.archetype !== 'system-about';
-}
-
-function getUserEntries(entries: Entry[]): Entry[] {
-  return entries.filter(isUserEntry);
-}
 
 function archetypeIcon(archetype: ArchetypeId): string {
   return ARCHETYPE_ICONS[archetype] ?? '📄';
