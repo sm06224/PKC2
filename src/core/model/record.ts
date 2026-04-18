@@ -13,7 +13,8 @@ export type ArchetypeId =
   | 'folder'
   | 'generic'
   | 'opaque'
-  | 'system-about';
+  | 'system-about'
+  | 'system-settings';
 
 export const ABOUT_LID = '__about__';
 export const SETTINGS_LID = '__settings__';

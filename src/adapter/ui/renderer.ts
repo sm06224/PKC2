@@ -68,6 +68,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   generic: 'Generic',
   opaque: 'Opaque',
   'system-about': 'About',
+  'system-settings': 'Settings',
 };
 
 /** Archetype icons for visual distinction. */
@@ -81,6 +82,7 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   generic: '📄',
   opaque: '🔒',
   'system-about': 'ℹ️',
+  'system-settings': '⚙️',
 };
 
 function archetypeIcon(archetype: ArchetypeId): string {
