@@ -3174,6 +3174,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       // Capture textarea identity for re-finding after re-render
       const fieldAttr = textarea.getAttribute('data-pkc-field') ?? 'body';
+      const logId = textarea.getAttribute('data-pkc-log-id'); // FI-02 1-A: TEXTLOG cell identity
       const currentValue = textarea.value;
 
       pasteInProgress = true;
@@ -3208,10 +3209,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           contextLid,
         });
 
-        // Re-find the textarea in the (potentially rebuilt) DOM
-        const freshTextarea = root.querySelector<HTMLTextAreaElement>(
-          `textarea[data-pkc-field="${fieldAttr}"]`,
-        );
+        // Re-find the textarea in the (potentially rebuilt) DOM.
+        // FI-02 1-A: include data-pkc-log-id for TEXTLOG cells so the paste
+        // lands in the correct log cell, not always the DOM-first textarea.
+        const freshSelector = logId
+          ? `textarea[data-pkc-field="${fieldAttr}"][data-pkc-log-id="${CSS.escape(logId)}"]`
+          : `textarea[data-pkc-field="${fieldAttr}"]`;
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
         if (freshTextarea) {
           freshTextarea.value = newValue;
           const newPos = cursorPos + ref.length;
