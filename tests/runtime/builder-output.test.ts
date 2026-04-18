@@ -111,6 +111,9 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     expect(payload.runtime.offline).toBe(true);
     expect(payload.runtime.bundled).toBe(true);
     expect(payload.runtime.externalDependencies).toBe(false);
-    expect(Array.isArray(payload.modules)).toBe(true);
+    expect(typeof payload.description).toBe('string');
+    expect(typeof payload.homepage).toBe('string');
+    expect(Array.isArray(payload.dependencies)).toBe(true);
+    expect(Array.isArray(payload.devDependencies)).toBe(true);
   });
 });

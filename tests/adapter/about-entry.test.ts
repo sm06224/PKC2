@@ -9,7 +9,10 @@
  * - renderer: about view shown when no user entries
  * - renderer: about view shown when __about__ selected
  * - renderer: malformed payload fallback rendering
+ * - renderer: dependencies + devDependencies tables
+ * - renderer: proud-zero message when a table is empty
  * - export: about entry included
+ * - builder: dependencies + devDependencies both injected
  */
 
 /** @vitest-environment happy-dom */
@@ -29,20 +32,27 @@ import {
 
 // ── helpers ──────────────────────────────────────────────────
 
-function makeAboutEntry(bodyOverride?: string): Entry {
-  const payload = {
+function makeValidPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
     type: 'pkc2-about',
     version: '2.0.0',
+    description: 'Portable Knowledge Container',
     build: { timestamp: '2026-04-18T06:00:00Z', commit: 'abc1234', builder: 'vite+release-builder' },
-    license: { name: 'MIT', url: 'https://example.com/LICENSE' },
+    license: { name: 'AGPL-3.0', url: 'https://example.com/LICENSE' },
     author: { name: 'sm06224', url: 'https://example.com' },
+    homepage: 'https://example.com',
     runtime: { offline: true, bundled: true, externalDependencies: false },
-    modules: [{ name: 'markdown-it', version: '14.1.1', license: 'MIT' }],
+    dependencies: [{ name: 'markdown-it', version: '14.1.1', license: 'MIT' }],
+    devDependencies: [{ name: 'vite', version: '6.0.0', license: 'MIT' }],
+    ...overrides,
   };
+}
+
+function makeAboutEntry(bodyOverride?: string): Entry {
   return {
     lid: ABOUT_LID,
     title: 'About PKC2',
-    body: bodyOverride ?? JSON.stringify(payload),
+    body: bodyOverride ?? JSON.stringify(makeValidPayload()),
     archetype: 'system-about',
     created_at: '2026-04-18T06:00:00Z',
     updated_at: '2026-04-18T06:00:00Z',
@@ -89,67 +99,40 @@ describe('isReservedLid', () => {
 
 describe('isValidAboutPayload', () => {
   it('valid payload passes', () => {
-    const p = {
-      type: 'pkc2-about',
-      version: '2.0.0',
-      build: { timestamp: '2026-04-18T06:00:00Z', commit: 'abc1234', builder: 'vite+release-builder' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'sm06224', url: '' },
-      runtime: { offline: true, bundled: true, externalDependencies: false },
-      modules: [],
-    };
-    expect(isValidAboutPayload(p)).toBe(true);
+    expect(isValidAboutPayload(makeValidPayload())).toBe(true);
   });
 
   it('wrong type field rejects', () => {
-    const p = {
-      type: 'wrong',
-      version: '2.0.0',
-      build: { timestamp: 'x', commit: 'x', builder: 'x' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'x', url: '' },
-      runtime: { offline: true, bundled: true, externalDependencies: false },
-      modules: [],
-    };
-    expect(isValidAboutPayload(p)).toBe(false);
+    expect(isValidAboutPayload(makeValidPayload({ type: 'wrong' }))).toBe(false);
   });
 
   it('empty version rejects', () => {
-    const p = {
-      type: 'pkc2-about',
-      version: '',
-      build: { timestamp: 'x', commit: 'x', builder: 'x' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'x', url: '' },
-      runtime: { offline: true, bundled: true, externalDependencies: false },
-      modules: [],
-    };
+    expect(isValidAboutPayload(makeValidPayload({ version: '' }))).toBe(false);
+  });
+
+  it('missing description rejects', () => {
+    const p = makeValidPayload();
+    delete p.description;
     expect(isValidAboutPayload(p)).toBe(false);
   });
 
-  it('non-array modules rejects', () => {
-    const p = {
-      type: 'pkc2-about',
-      version: '2.0.0',
-      build: { timestamp: 'x', commit: 'x', builder: 'x' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'x', url: '' },
-      runtime: { offline: true, bundled: true, externalDependencies: false },
-      modules: 'not-array',
-    };
-    expect(isValidAboutPayload(p)).toBe(false);
+  it('non-array dependencies rejects', () => {
+    expect(isValidAboutPayload(makeValidPayload({ dependencies: 'not-array' }))).toBe(false);
+  });
+
+  it('non-array devDependencies rejects', () => {
+    expect(isValidAboutPayload(makeValidPayload({ devDependencies: 'not-array' }))).toBe(false);
   });
 
   it('non-boolean runtime rejects', () => {
-    const p = {
-      type: 'pkc2-about',
-      version: '2.0.0',
-      build: { timestamp: 'x', commit: 'x', builder: 'x' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'x', url: '' },
+    expect(isValidAboutPayload(makeValidPayload({
       runtime: { offline: 'yes', bundled: true, externalDependencies: false },
-      modules: [],
-    };
+    }))).toBe(false);
+  });
+
+  it('missing homepage rejects', () => {
+    const p = makeValidPayload();
+    delete p.homepage;
     expect(isValidAboutPayload(p)).toBe(false);
   });
 });
@@ -187,22 +170,27 @@ describe('resolveAboutPayload', () => {
     expect(resolveAboutPayload('{"type":"wrong"}')).toEqual(DEFAULT_ABOUT_STUB);
   });
 
-  it('parses valid payload and filters modules', () => {
-    const payload = {
-      type: 'pkc2-about',
-      version: '2.0.0',
-      build: { timestamp: 'x', commit: 'x', builder: 'x' },
-      license: { name: 'MIT', url: '' },
-      author: { name: 'test', url: '' },
-      runtime: { offline: true, bundled: true, externalDependencies: false },
-      modules: [
+  it('parses valid payload and filters both dependency lists', () => {
+    const payload = makeValidPayload({
+      dependencies: [
         { name: 'a', version: '1.0', license: 'MIT' },
         { name: 'b' },
       ],
-    };
+      devDependencies: [
+        { name: 'c', version: '2.0', license: 'Apache-2.0' },
+        { license: 'MIT' },
+      ],
+    });
     const result = resolveAboutPayload(JSON.stringify(payload));
     expect(result.version).toBe('2.0.0');
-    expect(result.modules).toHaveLength(1);
+    expect(result.dependencies).toHaveLength(1);
+    expect(result.devDependencies).toHaveLength(1);
+    expect(result.devDependencies[0]?.name).toBe('c');
+  });
+
+  it('default stub exposes empty dependencies and devDependencies', () => {
+    expect(DEFAULT_ABOUT_STUB.dependencies).toEqual([]);
+    expect(DEFAULT_ABOUT_STUB.devDependencies).toEqual([]);
   });
 });
 
@@ -317,13 +305,36 @@ describe('renderer about view display', () => {
     expect(version?.textContent).toBe('v2.0.0');
   });
 
-  it('about view displays modules table', () => {
+  it('about view displays description', () => {
     const container = makeContainer([makeAboutEntry()]);
     render(readyState(container), root);
-    const table = root.querySelector('.pkc-about-table');
-    expect(table).not.toBeNull();
-    const rows = table?.querySelectorAll('tbody tr');
-    expect(rows?.length).toBe(1);
+    const desc = root.querySelector('.pkc-about-description');
+    expect(desc?.textContent).toBe('Portable Knowledge Container');
+  });
+
+  it('about view displays two module tables (runtime + dev)', () => {
+    const container = makeContainer([makeAboutEntry()]);
+    render(readyState(container), root);
+    const tables = root.querySelectorAll('.pkc-about-table');
+    expect(tables.length).toBe(2);
+  });
+
+  it('about view displays zero-count proud message when devDependencies is empty', () => {
+    const entry = makeAboutEntry(JSON.stringify(makeValidPayload({ devDependencies: [] })));
+    const container = makeContainer([entry]);
+    render(readyState(container), root);
+    const empties = root.querySelectorAll('.pkc-about-modules-empty');
+    expect(empties.length).toBe(1);
+    expect(empties[0]?.textContent).toContain('custom tooling');
+  });
+
+  it('about view displays zero-count proud message when dependencies is empty', () => {
+    const entry = makeAboutEntry(JSON.stringify(makeValidPayload({ dependencies: [] })));
+    const container = makeContainer([entry]);
+    render(readyState(container), root);
+    const empties = root.querySelectorAll('.pkc-about-modules-empty');
+    expect(empties.length).toBe(1);
+    expect(empties[0]?.textContent).toContain('self-contained');
   });
 
   it('about view when __about__ is explicitly selected', () => {
@@ -401,14 +412,16 @@ describe('export includes about entry', () => {
 // ── 10. Builder about entry ─────────────────────────────────
 
 describe('about entry builder', () => {
-  it('buildAboutEntry produces valid payload', async () => {
+  it('buildAboutEntry produces valid payload with both dependency lists', async () => {
     const { buildAboutEntry } = await import('../../build/about-entry-builder');
     const pkg = {
       version: '2.0.0',
-      license: 'MIT',
-      author: 'sm06224',
-      homepage: 'https://github.com/sm06224/PKC2',
+      description: 'Portable Knowledge Container',
+      license: 'AGPL-3.0',
+      author: { name: 'sm06224', url: 'https://github.com/sm06224' },
+      homepage: 'https://github.com/sm06224/pkc2',
       dependencies: { 'markdown-it': '^14.1.1' },
+      devDependencies: { 'vite': '^6.0.0' },
     };
     const entry = buildAboutEntry(pkg, '2026-04-18T06:00:00Z', 'abc1234');
     expect(entry.lid).toBe(ABOUT_LID);
@@ -417,9 +430,13 @@ describe('about entry builder', () => {
     const body = JSON.parse(entry.body);
     expect(isValidAboutPayload(body)).toBe(true);
     expect(body.version).toBe('2.0.0');
+    expect(body.description).toBe('Portable Knowledge Container');
+    expect(body.homepage).toBe('https://github.com/sm06224/pkc2');
     expect(body.build.commit).toBe('abc1234');
-    expect(body.modules).toHaveLength(1);
-    expect(body.modules[0].name).toBe('markdown-it');
+    expect(body.dependencies.length).toBeGreaterThanOrEqual(1);
+    expect(body.dependencies.find((m: { name: string }) => m.name === 'markdown-it')).toBeDefined();
+    expect(body.devDependencies.length).toBeGreaterThanOrEqual(1);
+    expect(body.devDependencies.find((m: { name: string }) => m.name === 'vite')).toBeDefined();
   });
 
   it('buildAboutEntry handles missing optional fields', async () => {
@@ -429,6 +446,9 @@ describe('about entry builder', () => {
     const body = JSON.parse(entry.body);
     expect(body.author.name).toBe('unknown');
     expect(body.license.name).toBe('unknown');
-    expect(body.modules).toHaveLength(0);
+    expect(body.description).toBe('');
+    expect(body.homepage).toBe('');
+    expect(body.dependencies).toHaveLength(0);
+    expect(body.devDependencies).toHaveLength(0);
   });
 });

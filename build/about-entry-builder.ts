@@ -2,20 +2,32 @@
  * about-entry-builder: generates the __about__ entry for release builds.
  *
  * Called by release-builder.ts to create the system-about entry
- * injected into pkc-data. Source of truth: package.json fields.
+ * injected into pkc-data. Source of truth: package.json fields
+ * (dependencies + devDependencies) with license resolved from each
+ * module's node_modules/<name>/package.json.
  */
+import { readFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
 
 const ABOUT_LID = '__about__';
 
-const MODULES_TO_REPORT = ['markdown-it'];
+const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const NODE_MODULES = resolve(ROOT, 'node_modules');
 
 interface PkgJson {
   version: string;
+  description?: string;
   license?: string;
   author?: string | { name: string; url?: string };
   homepage?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+}
+
+interface AboutModule {
+  name: string;
+  version: string;
+  license: string;
 }
 
 interface AboutEntry {
@@ -33,15 +45,44 @@ function resolveAuthor(pkg: PkgJson): { name: string; url: string } {
   return { name: pkg.author.name, url: pkg.author.url ?? '' };
 }
 
-function resolveModules(pkg: PkgJson): { name: string; version: string; license: string }[] {
-  const deps = pkg.dependencies ?? {};
-  return MODULES_TO_REPORT
-    .filter((name) => name in deps)
-    .map((name) => ({
+function stripRange(spec: string): string {
+  return spec.replace(/^[\^~>=<\s]+/, '').trim();
+}
+
+function readModuleLicense(name: string): string {
+  const pkgPath = resolve(NODE_MODULES, name, 'package.json');
+  if (!existsSync(pkgPath)) return 'unknown';
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    if (typeof pkg.license === 'string' && pkg.license) return pkg.license;
+    if (typeof pkg.license === 'object' && pkg.license?.type) return pkg.license.type;
+    if (Array.isArray(pkg.licenses) && pkg.licenses[0]?.type) return pkg.licenses[0].type;
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function readModuleVersion(name: string, fallback: string): string {
+  const pkgPath = resolve(NODE_MODULES, name, 'package.json');
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      if (typeof pkg.version === 'string' && pkg.version) return pkg.version;
+    } catch { /* fall through */ }
+  }
+  return stripRange(fallback);
+}
+
+function resolveModules(deps: Record<string, string> | undefined): AboutModule[] {
+  if (!deps) return [];
+  return Object.entries(deps)
+    .map(([name, spec]) => ({
       name,
-      version: (deps[name] ?? '').replace(/^[\^~]/, ''),
-      license: 'MIT',
-    }));
+      version: readModuleVersion(name, spec),
+      license: readModuleLicense(name),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function buildAboutEntry(
@@ -50,11 +91,13 @@ export function buildAboutEntry(
   sourceCommit: string,
 ): AboutEntry {
   const author = resolveAuthor(pkg);
-  const modules = resolveModules(pkg);
+  const dependencies = resolveModules(pkg.dependencies);
+  const devDependencies = resolveModules(pkg.devDependencies);
 
   const payload = {
     type: 'pkc2-about' as const,
     version: pkg.version,
+    description: pkg.description ?? '',
     build: {
       timestamp: buildAt,
       commit: sourceCommit,
@@ -66,14 +109,16 @@ export function buildAboutEntry(
     },
     author: {
       name: author.name,
-      url: pkg.homepage ?? '',
+      url: author.url || (pkg.homepage ?? ''),
     },
+    homepage: pkg.homepage ?? '',
     runtime: {
       offline: true,
       bundled: true,
       externalDependencies: false,
     },
-    modules,
+    dependencies,
+    devDependencies,
   };
 
   return {

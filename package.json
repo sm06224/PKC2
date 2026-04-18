@@ -2,8 +2,18 @@
   "name": "pkc2",
   "version": "2.0.0",
   "private": true,
-  "description": "Portable Knowledge Container - Generation 2",
+  "description": "単一HTMLで動作する、ローカル完結型の知識コンテナ。メモ・タスク・構造化データ・添付ファイルを 1 つの HTML ファイルとして保存し、オフラインでも再水和（Rehydrate）で完全復元できます。",
   "type": "module",
+  "license": "AGPL-3.0",
+  "author": {
+    "name": "sm06224",
+    "url": "https://github.com/sm06224"
+  },
+  "homepage": "https://github.com/sm06224/pkc2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sm06224/pkc2.git"
+  },
   "scripts": {
     "dev": "vite",
     "build:bundle": "vite build",

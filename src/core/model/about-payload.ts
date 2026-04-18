@@ -1,6 +1,7 @@
 export interface AboutPayload {
   type: 'pkc2-about';
   version: string;
+  description: string;
   build: {
     timestamp: string;
     commit: string;
@@ -14,12 +15,14 @@ export interface AboutPayload {
     name: string;
     url: string;
   };
+  homepage: string;
   runtime: {
     offline: boolean;
     bundled: boolean;
     externalDependencies: boolean;
   };
-  modules: AboutModule[];
+  dependencies: AboutModule[];
+  devDependencies: AboutModule[];
 }
 
 export interface AboutModule {
@@ -31,11 +34,14 @@ export interface AboutModule {
 export const DEFAULT_ABOUT_STUB: AboutPayload = {
   type: 'pkc2-about',
   version: 'unknown',
+  description: '',
   build: { timestamp: 'unknown', commit: 'unknown', builder: 'unknown' },
   license: { name: 'unknown', url: '' },
   author: { name: 'unknown', url: '' },
+  homepage: '',
   runtime: { offline: true, bundled: true, externalDependencies: false },
-  modules: [],
+  dependencies: [],
+  devDependencies: [],
 };
 
 function isValidModule(m: unknown): m is AboutModule {
@@ -51,6 +57,7 @@ export function isValidAboutPayload(p: unknown): p is AboutPayload {
   const o = p as Record<string, unknown>;
   if (o.type !== 'pkc2-about') return false;
   if (typeof o.version !== 'string' || o.version === '') return false;
+  if (typeof o.description !== 'string') return false;
 
   const build = o.build as Record<string, unknown> | undefined;
   if (typeof build !== 'object' || build === null) return false;
@@ -68,13 +75,16 @@ export function isValidAboutPayload(p: unknown): p is AboutPayload {
   if (typeof author.name !== 'string' || author.name === '') return false;
   if (typeof author.url !== 'string') return false;
 
+  if (typeof o.homepage !== 'string') return false;
+
   const runtime = o.runtime as Record<string, unknown> | undefined;
   if (typeof runtime !== 'object' || runtime === null) return false;
   if (typeof runtime.offline !== 'boolean') return false;
   if (typeof runtime.bundled !== 'boolean') return false;
   if (typeof runtime.externalDependencies !== 'boolean') return false;
 
-  if (!Array.isArray(o.modules)) return false;
+  if (!Array.isArray(o.dependencies)) return false;
+  if (!Array.isArray(o.devDependencies)) return false;
 
   return true;
 }
@@ -93,7 +103,8 @@ export function resolveAboutPayload(body: string | undefined): AboutPayload {
     }
     return {
       ...parsed,
-      modules: filterValidModules(parsed.modules),
+      dependencies: filterValidModules(parsed.dependencies),
+      devDependencies: filterValidModules(parsed.devDependencies),
     };
   } catch {
     console.warn('[PKC2] About entry parse failed');

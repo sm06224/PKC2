@@ -3883,89 +3883,159 @@ function resolveContextFolder(state: AppState): Entry | null {
   return parent ?? null;
 }
 
+function renderAboutModuleTable(
+  modules: { name: string; version: string; license: string }[],
+  heading: string,
+  emptyMessage: string,
+): HTMLElement {
+  const section = createElement('section', 'pkc-about-modules');
+  section.setAttribute('data-pkc-region', `about-modules-${heading.toLowerCase().replace(/\s+/g, '-')}`);
+
+  const headerRow = createElement('div', 'pkc-about-modules-header');
+  const title = createElement('h3', 'pkc-about-section-title');
+  title.textContent = heading;
+  headerRow.appendChild(title);
+  const count = createElement('span', 'pkc-about-modules-count');
+  count.textContent = `${modules.length}`;
+  headerRow.appendChild(count);
+  section.appendChild(headerRow);
+
+  if (modules.length === 0) {
+    const empty = createElement('div', 'pkc-about-modules-empty');
+    empty.textContent = emptyMessage;
+    section.appendChild(empty);
+    return section;
+  }
+
+  const table = createElement('table', 'pkc-about-table');
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const h of ['Name', 'Version', 'License']) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (const mod of modules) {
+    const row = document.createElement('tr');
+    for (const val of [mod.name, mod.version, mod.license]) {
+      const td = document.createElement('td');
+      td.textContent = val;
+      row.appendChild(td);
+    }
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  section.appendChild(table);
+
+  return section;
+}
+
 function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   const container = createElement('div', 'pkc-about-view');
   container.setAttribute('data-pkc-region', 'about-view');
 
   const payload = resolveAboutPayload(aboutEntry?.body);
 
+  const header = createElement('header', 'pkc-about-header');
   const title = createElement('h1', 'pkc-about-title');
   title.textContent = 'PKC2';
-  container.appendChild(title);
+  header.appendChild(title);
+
+  const tagline = createElement('div', 'pkc-about-tagline');
+  tagline.textContent = 'Portable Knowledge Container — Generation 2';
+  header.appendChild(tagline);
 
   const version = createElement('div', 'pkc-about-version');
   version.textContent = `v${payload.version}`;
-  container.appendChild(version);
+  header.appendChild(version);
 
-  const desc = createElement('div', 'pkc-about-description');
-  const traits: string[] = [];
-  if (payload.runtime.offline) traits.push('Offline');
-  if (payload.runtime.bundled) traits.push('Bundled');
-  if (!payload.runtime.externalDependencies) traits.push('No external dependencies');
-  desc.textContent = traits.join(' / ');
-  container.appendChild(desc);
+  container.appendChild(header);
 
-  const buildInfo = createElement('div', 'pkc-about-build');
-  buildInfo.textContent = `Built at ${payload.build.timestamp} from commit ${payload.build.commit}`;
-  container.appendChild(buildInfo);
-
-  if (payload.modules.length > 0) {
-    const modSection = createElement('div', 'pkc-about-modules');
-    const modTitle = createElement('h3', 'pkc-about-section-title');
-    modTitle.textContent = 'Modules';
-    modSection.appendChild(modTitle);
-
-    const table = createElement('table', 'pkc-about-table');
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    for (const h of ['Name', 'Version', 'License']) {
-      const th = document.createElement('th');
-      th.textContent = h;
-      headRow.appendChild(th);
-    }
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (const mod of payload.modules) {
-      const row = document.createElement('tr');
-      for (const val of [mod.name, mod.version, mod.license]) {
-        const td = document.createElement('td');
-        td.textContent = val;
-        row.appendChild(td);
-      }
-      tbody.appendChild(row);
-    }
-    table.appendChild(tbody);
-    modSection.appendChild(table);
-    container.appendChild(modSection);
+  if (payload.description) {
+    const desc = createElement('p', 'pkc-about-description');
+    desc.textContent = payload.description;
+    container.appendChild(desc);
   }
 
-  const license = createElement('div', 'pkc-about-license');
-  if (payload.license.url) {
+  const traitsBox = createElement('div', 'pkc-about-traits');
+  const traitSpecs: [boolean, string][] = [
+    [payload.runtime.offline, 'Offline'],
+    [payload.runtime.bundled, 'Bundled'],
+    [!payload.runtime.externalDependencies, 'No external runtime dependencies'],
+  ];
+  for (const [active, label] of traitSpecs) {
+    if (!active) continue;
+    const chip = createElement('span', 'pkc-about-trait');
+    chip.textContent = label;
+    traitsBox.appendChild(chip);
+  }
+  container.appendChild(traitsBox);
+
+  const metaTable = createElement('dl', 'pkc-about-meta');
+  const metaRows: [string, Node][] = [];
+
+  metaRows.push(['Built at', document.createTextNode(payload.build.timestamp)]);
+  metaRows.push(['Commit', document.createTextNode(payload.build.commit)]);
+  metaRows.push(['Builder', document.createTextNode(payload.build.builder)]);
+
+  const licenseNode = payload.license.url
+    ? (() => {
+      const a = document.createElement('a');
+      a.href = payload.license.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = payload.license.name;
+      return a;
+    })()
+    : document.createTextNode(payload.license.name);
+  metaRows.push(['License', licenseNode]);
+
+  const authorNode = payload.author.url
+    ? (() => {
+      const a = document.createElement('a');
+      a.href = payload.author.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = payload.author.name;
+      return a;
+    })()
+    : document.createTextNode(payload.author.name);
+  metaRows.push(['Author', authorNode]);
+
+  if (payload.homepage) {
     const a = document.createElement('a');
-    a.href = payload.license.url;
+    a.href = payload.homepage;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
-    a.textContent = `License: ${payload.license.name}`;
-    license.appendChild(a);
-  } else {
-    license.textContent = `License: ${payload.license.name}`;
+    a.textContent = payload.homepage;
+    metaRows.push(['Homepage', a]);
   }
-  container.appendChild(license);
 
-  const author = createElement('div', 'pkc-about-author');
-  if (payload.author.url) {
-    const a = document.createElement('a');
-    a.href = payload.author.url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.textContent = `Author: ${payload.author.name}`;
-    author.appendChild(a);
-  } else {
-    author.textContent = `Author: ${payload.author.name}`;
+  for (const [label, value] of metaRows) {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.appendChild(value);
+    metaTable.appendChild(dt);
+    metaTable.appendChild(dd);
   }
-  container.appendChild(author);
+  container.appendChild(metaTable);
+
+  container.appendChild(renderAboutModuleTable(
+    payload.dependencies,
+    'Runtime Dependencies',
+    'No runtime dependencies — fully self-contained.',
+  ));
+
+  container.appendChild(renderAboutModuleTable(
+    payload.devDependencies,
+    'Development Dependencies',
+    'No development dependencies — built with fully custom tooling.',
+  ));
 
   return container;
 }
