@@ -33,6 +33,15 @@ import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
 import { applyConflictResolutions } from '../../features/import/conflict-detect';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
+import {
+  type SystemSettingsPayload,
+  SETTINGS_DEFAULTS,
+  isValidHexColor,
+  isValidThemeMode,
+  isValidFontFamily,
+  isValidLanguageTag,
+  isValidTimezone,
+} from '../../core/model/system-settings-payload';
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
@@ -136,6 +145,20 @@ export interface AppState {
    * `docs/spec/system-settings-hidden-entry-v1-minimum-scope.md`).
    */
   accentColor?: string;
+  /**
+   * Resolved system settings (FI-Settings v1, 2026-04-18).
+   *
+   * Persistent: mirrored to the reserved `__settings__` entry via the
+   * `SETTINGS_CHANGED` domain event. Absent for legacy test fixtures
+   * and the brief pre-RESTORE_SETTINGS window at boot; consumers treat
+   * undefined as `SETTINGS_DEFAULTS` (see `resolveSettings`).
+   *
+   * `showScanline` / `accentColor` above remain as a read-compat
+   * mirror and are kept in sync by every reducer path that mutates
+   * `settings.theme.*`. Do not add new code that writes those mirror
+   * fields without also updating `settings`.
+   */
+  settings?: SystemSettingsPayload;
   /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
   tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
@@ -305,6 +328,7 @@ export function createInitialState(): AppState {
     archetypeFilterExpanded: false,
     showScanline: false,
     accentColor: undefined,
+    settings: SETTINGS_DEFAULTS,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -385,6 +409,43 @@ function blocked(state: AppState, action: Dispatchable): ReduceResult {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+/**
+ * FI-Settings v1 (2026-04-18): apply a resolved SystemSettingsPayload
+ * to state, keeping the legacy `showScanline` / `accentColor` mirror
+ * fields in sync, and emit a single `SETTINGS_CHANGED` event carrying
+ * the new payload verbatim for downstream persistence / renderer
+ * subscribers.
+ *
+ * Callers are expected to have already performed any input validation
+ * and produced the full next payload. A separate early-return (same
+ * state reference, empty events) is used at each call site when no
+ * effective change is needed.
+ */
+function applySettingsUpdate(
+  state: AppState,
+  next: SystemSettingsPayload,
+): ReduceResult {
+  const nextState: AppState = {
+    ...state,
+    settings: next,
+    showScanline: next.theme.scanline,
+    accentColor: next.theme.accentColor ?? undefined,
+  };
+  return {
+    state: nextState,
+    events: [{ type: 'SETTINGS_CHANGED', settings: next }],
+  };
+}
+
+/** Expand `#rgb` → `#rrggbb`; pass through 6-char input (already lowercase). */
+function canonicalHex(color: string): string {
+  const lc = color.toLowerCase();
+  if (lc.length === 4) {
+    return '#' + lc.slice(1).split('').map((c) => c + c).join('');
+  }
+  return lc;
 }
 
 /**
@@ -1314,27 +1375,168 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'TOGGLE_ARCHETYPE_FILTER_EXPANDED': {
       return { state: { ...state, archetypeFilterExpanded: !(state.archetypeFilterExpanded ?? false) }, events: [] };
     }
+    // ── FI-Settings v1 mirror actions (FI-12 back-compat) ───────────
+    // These were session-only before 2026-04-18. They now also write
+    // into `state.settings.theme.*` and emit `SETTINGS_CHANGED` so the
+    // persistence layer upserts `__settings__`. The legacy
+    // `showScanline` / `accentColor` fields are reconstructed by
+    // `applySettingsUpdate` so old read sites keep working.
     case 'TOGGLE_SCANLINE': {
-      return { state: { ...state, showScanline: !(state.showScanline ?? false) }, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, scanline: !cur.theme.scanline },
+      });
     }
     case 'SET_SCANLINE': {
-      if ((state.showScanline ?? false) === action.on) return { state, events: [] };
-      return { state: { ...state, showScanline: action.on }, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.scanline === action.on) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, scanline: action.on },
+      });
     }
     case 'SET_ACCENT_COLOR': {
-      // Accept only `#rrggbb` / `#rgb` hex strings. Anything else is
-      // silently rejected so a stale/rogue dispatch can't corrupt the
-      // CSS variable. The renderer writes the value directly into an
-      // inline style, so invalid input here would be a trust boundary
-      // violation.
+      // Accept `#rrggbb` / `#rgb`; canonicalize to lower-case 6-char so
+      // the stored payload always satisfies `isValidHexColor` and the
+      // per-field fallback at load time doesn't discard our own write.
       if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(action.color)) {
         return { state, events: [] };
       }
-      return { state: { ...state, accentColor: action.color.toLowerCase() }, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const canonical = canonicalHex(action.color);
+      if (cur.theme.accentColor === canonical) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, accentColor: canonical },
+      });
     }
     case 'RESET_ACCENT_COLOR': {
-      if (state.accentColor === undefined) return { state, events: [] };
-      return { state: { ...state, accentColor: undefined }, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.accentColor === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, accentColor: null },
+      });
+    }
+    // ── FI-Settings v1 new actions ──────────────────────────────────
+    case 'SET_THEME_MODE': {
+      if (!isValidThemeMode(action.mode)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.mode === action.mode) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, mode: action.mode },
+      });
+    }
+    case 'RESET_THEME_MODE': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.mode === SETTINGS_DEFAULTS.theme.mode) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, mode: SETTINGS_DEFAULTS.theme.mode },
+      });
+    }
+    case 'SET_BORDER_COLOR': {
+      if (!isValidHexColor(action.color)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const c = action.color.toLowerCase();
+      if (cur.theme.borderColor === c) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, borderColor: c },
+      });
+    }
+    case 'RESET_BORDER_COLOR': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.borderColor === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, borderColor: null },
+      });
+    }
+    case 'SET_TEXT_COLOR': {
+      if (!isValidHexColor(action.color)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const c = action.color.toLowerCase();
+      if (cur.theme.textColor === c) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, textColor: c },
+      });
+    }
+    case 'RESET_TEXT_COLOR': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.theme.textColor === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, textColor: null },
+      });
+    }
+    case 'SET_PREFERRED_FONT': {
+      if (!isValidFontFamily(action.font)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.display.preferredFont === action.font) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        display: { ...cur.display, preferredFont: action.font },
+      });
+    }
+    case 'RESET_PREFERRED_FONT': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.display.preferredFont === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        display: { ...cur.display, preferredFont: null },
+      });
+    }
+    case 'SET_LANGUAGE': {
+      if (!isValidLanguageTag(action.language)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.locale.language === action.language) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        locale: { ...cur.locale, language: action.language },
+      });
+    }
+    case 'RESET_LANGUAGE': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.locale.language === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        locale: { ...cur.locale, language: null },
+      });
+    }
+    case 'SET_TIMEZONE': {
+      if (!isValidTimezone(action.timezone)) return { state, events: [] };
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.locale.timezone === action.timezone) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        locale: { ...cur.locale, timezone: action.timezone },
+      });
+    }
+    case 'RESET_TIMEZONE': {
+      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      if (cur.locale.timezone === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        locale: { ...cur.locale, timezone: null },
+      });
+    }
+    case 'RESTORE_SETTINGS': {
+      // Boot-time payload replay: rebuild the mirror fields but DO NOT
+      // emit SETTINGS_CHANGED — persistence would otherwise re-save the
+      // value we just read back, and the restore is not a user-visible
+      // modification. See I-SETTINGS-1 / load contract §3.1.
+      const next = action.settings;
+      const nextState: AppState = {
+        ...state,
+        settings: next,
+        showScanline: next.theme.scanline,
+        accentColor: next.theme.accentColor ?? undefined,
+      };
+      return { state: nextState, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };
