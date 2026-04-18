@@ -1,6 +1,7 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
 import type { BatchImportResultSummary } from './system-command';
+import type { SystemSettingsPayload } from '../model/system-settings-payload';
 
 /**
  * DomainEvent: immutable facts about what happened.
@@ -56,6 +57,18 @@ export type DomainEvent =
   | { type: 'ORPHAN_ASSETS_PURGED'; count: number }
   | { type: 'BULK_DELETED'; lids: string[] }
   | { type: 'MULTI_SELECT_CHANGED'; lids: string[] }
+  /**
+   * SETTINGS_CHANGED — user-visible system settings were modified
+   * (FI-Settings v1, 2026-04-18). Emitted after any reducer path that
+   * updates `state.settings`, including the legacy mirror actions
+   * (TOGGLE_SCANLINE, SET_ACCENT_COLOR, etc.) so persistence can
+   * upsert the reserved `__settings__` entry on a single trigger.
+   *
+   * Carries the resolved payload verbatim so subscribers don't need to
+   * re-read state or re-derive defaults. Apply-to-DOM and save-to-IDB
+   * are BOTH downstream of this event.
+   */
+  | { type: 'SETTINGS_CHANGED'; settings: SystemSettingsPayload }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */
