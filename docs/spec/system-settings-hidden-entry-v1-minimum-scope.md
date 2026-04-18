@@ -1,29 +1,32 @@
 # System Settings as Hidden Entry v1 — Minimum Scope
 
-Status: DRAFT 2026-04-18
+Status: DRAFT 2026-04-18 (rev.2 — expanded from scanline+accent to full settings)
 Pipeline position: minimum scope
 Scope: docs-only (no implementation in this FI)
 Relates to:
 - `docs/spec/ui-theme-customizable-accent-scanline-v1-minimum-scope.md`
 - `docs/spec/ui-theme-customizable-accent-scanline-v1-behavior-contract.md`
-- `docs/development/ui-theme-customizable-accent-scanline-v1-audit.md`
+- `docs/spec/about-build-info-hidden-entry-v1-minimum-scope.md` (hidden entry pattern)
 
 ---
 
-## 0. Why
+## 0. 問題の再定義
 
-FI-12 follow-up で `showScanline` と `accentColor` を runtime state に入れたが、
-セッション限りで毎回リセットされる。永続化が必要になる。
+### 0-1. runtime-only の限界
 
-選択肢:
+FI-12 で `showScanline` と `accentColor` を AppState に入れたが、セッション限りで毎回リセットされる。ユーザーが毎回再設定する必要がある。
+
+### 0-2. 永続化先の選定
 
 | 案 | 評価 |
 |----|------|
-| localStorage | 単一 HTML 哲学に反する。配布・同期困難 |
-| IndexedDB (別キー) | 永続化はできるが PKC の Container と分離した二重管理 |
-| **Container 内の hidden system entry** | **採用候補** |
+| localStorage | 単一 HTML 哲学に反する。配布・移動時に設定が失われる |
+| IndexedDB (別キー) | Container と分離した二重管理。export に含まれない |
+| **Container 内の hidden entry** | **採用** — export/import で持ち運べる。self-describing container 哲学と合致 |
 
-本文書は **PKC 自身の hidden system entry に設定を保存する方式** の minimum scope を定義する。実装はこの FI の範囲外（後続 FI で実施）。
+### 0-3. 方向性
+
+PKC2 は single-HTML / self-describing / self-configuring container を志向する。設定もまた Container 内に保持し、成果物 1 枚で完結する。
 
 ---
 
@@ -31,32 +34,37 @@ FI-12 follow-up で `showScanline` と `accentColor` を runtime state に入れ
 
 ### 1-1. v1 Goal
 
-- 設定値を Container の 1 件の hidden entry (`archetype: 'system'`) として保持する
-- JSON 形式で body に保存
-- 最初の対象設定は 2 つだけ:
-  - `theme.scanline: boolean`
-  - `theme.accentColor: string | null`
-- runtime state と同期する load / save の contract を定義する
-- UI でこの hidden entry が一覧に出ないこと（既存 filter / sort / Kanban / Calendar で非表示）
+- 設定値を Container 内の hidden entry (`__settings__`) として永続化する
+- JSON body で保存、format discriminator + version field 付き
+- v1 対象設定（8 項目）:
+
+| カテゴリ | 設定 | 型 | デフォルト |
+|---------|------|-----|-----------|
+| theme | `mode` | `'dark' \| 'light' \| 'auto'` | `'auto'` |
+| theme | `scanline` | `boolean` | `false` |
+| theme | `accentColor` | `string \| null` | `null` (= CSS default `#33ff66`) |
+| theme | `borderColor` | `string \| null` | `null` (= CSS default) |
+| theme | `textColor` | `string \| null` | `null` (= CSS default) |
+| display | `preferredFont` | `string \| null` | `null` (= `'BIZ UDGothic'`) |
+| locale | `language` | `string \| null` | `null` (= system) |
+| locale | `timezone` | `string \| null` | `null` (= system locale) |
+
+- null = system/CSS default にフォールバック
+- load / save の contract を定義
+- hidden entry が各ビューで非表示
 
 ### 1-2. v1 Non-goal
 
-- 他の設定項目の追加（sort 永続化、view mode 永続化 等）
-- user-level editor での直接編集 UI
-- 複数 settings entry 同時存在のサポート
-- migration（schema v2 への移行）
-- 別 single-HTML ツールとの connect UI
-- 外部同期（同一設定を複数ブラウザで共有）
-- TEXT archetype の subtype（csv / yaml / xml / json / ini 等）の正式導入
-
-### 1-3. Non-goal の一部は v1.x 以降で検討
-
-| 項目 | フェーズ |
-|------|---------|
-| 直接編集 UI | v1.x |
-| migration 機構 | schema バージョン変更時 |
-| 別ツール連携（PKC-Message 経由） | 別 FI |
-| TEXT subtype 形式 | 別 FI（config-like text の正式化）|
+| 項目 | 理由 |
+|------|------|
+| テーマプリセット保存 / 共有 | 設定基盤が先 |
+| カラーピッカー UI | v1 は直接入力 or プリセット切替 |
+| フォント一覧 auto-detection | ブラウザ API 制約、v1 scope 外 |
+| 多言語リソースバンドル | language 設定は将来の i18n hook 点のみ |
+| schema v2 への migration 機構 | version field で将来検出可能 |
+| PKC-Message 経由の設定変更 | 別 FI |
+| TEXT subtype (json/yaml/ini) の正式導入 | 別 FI |
+| 複数 settings entry 同時存在 | 1 container = 1 settings |
 
 ---
 
@@ -64,191 +72,210 @@ FI-12 follow-up で `showScanline` と `accentColor` を runtime state に入れ
 
 ### 2-1. Archetype
 
-新規 archetype を**追加しない**。既存の `system` archetype を再利用する。
-（※ 既存コードに `system` archetype が未定義の場合は behavior contract 段階で追加の要否を判断する。単一 hidden entry に閉じる運用なので `generic` / `opaque` での代替も選択肢）
+新規 archetype `system-settings` を追加する。
+
+| archetype | 用途 | mutable | lid |
+|-----------|------|---------|-----|
+| `system-about` | ビルド情報 | false (immutable) | `__about__` |
+| `system-settings` | ユーザー設定 | **true** | `__settings__` |
+
+About と Settings は性質が異なる（immutable vs mutable）ため独立 archetype とする。
 
 ### 2-2. Lid convention
 
-固定 lid を使う（lookup を単純化するため）:
+固定 lid: `__settings__`
 
-```
-__settings__
-```
+`isReservedLid()` (先頭末尾 `__`) に合致する。reducer が reserved lid への不正操作を拒否する（About と同パターン）。
 
-（先頭末尾の `__` は既存 entry と衝突しない unique prefix。実運用で collision check を reducer / persistence で行う。）
-
-### 2-3. Body schema (JSON)
+### 2-3. Body schema (JSON, v1)
 
 ```jsonc
 {
   "format": "pkc2-system-settings",
   "version": 1,
   "theme": {
+    "mode": "auto",
     "scanline": false,
-    "accentColor": null
+    "accentColor": null,
+    "borderColor": null,
+    "textColor": null
+  },
+  "display": {
+    "preferredFont": null
+  },
+  "locale": {
+    "language": null,
+    "timezone": null
   }
 }
 ```
 
-| フィールド | 型 | 必須 | 説明 |
-|-----------|-----|------|------|
+### 2-4. フィールド定義
+
+| field | 型 | 必須 | 説明 |
+|-------|-----|------|------|
 | `format` | `"pkc2-system-settings"` 固定 | ○ | 誤読 guard |
-| `version` | `number` 整数 | ○ | schema version（v1 = 1） |
-| `theme.scanline` | `boolean` | ○ | scanline overlay の ON/OFF |
-| `theme.accentColor` | `string \| null` | ○ | hex (`#rrggbb`) または null (= default) |
+| `version` | `number` (整数) | ○ | schema version (v1 = 1) |
+| `theme.mode` | `'dark' \| 'light' \| 'auto'` | ○ | テーマモード |
+| `theme.scanline` | `boolean` | ○ | スキャンライン ON/OFF |
+| `theme.accentColor` | `string \| null` | ○ | hex (`#rrggbb`) or null |
+| `theme.borderColor` | `string \| null` | ○ | hex or null |
+| `theme.textColor` | `string \| null` | ○ | hex or null |
+| `display.preferredFont` | `string \| null` | ○ | CSS font-family 値 or null |
+| `locale.language` | `string \| null` | ○ | BCP 47 tag or null |
+| `locale.timezone` | `string \| null` | ○ | IANA timezone or null |
 
-将来の `theme.*` 追加は version bump なしで backward-compatible に行える。未知フィールドは無視する。
+**未知キー許容方針**: パーサーは未知のトップレベル・ネストキーを無視する (forward-compatible)。version bump なしで backward-compatible に新キーを追加可能。
 
-### 2-4. Default
+### 2-5. Default
 
-hidden entry が不在 or parse 失敗時は下記 default を使う:
+hidden entry 不在 / parse 失敗 / format 不一致 / version 不一致時は全 default を使用:
 
+```typescript
+const SETTINGS_DEFAULTS = {
+  theme: { mode: 'auto', scanline: false, accentColor: null, borderColor: null, textColor: null },
+  display: { preferredFont: null },
+  locale: { language: null, timezone: null },
+};
 ```
-{ theme: { scanline: false, accentColor: null } }
-```
+
+null = 各 CSS 変数 / system API のデフォルトにフォールバック。
 
 ---
 
-## 3. Load / save contract (pseudocode)
+## 3. Load / save contract
 
-### 3-1. Load
+### 3-1. Load (起動時)
 
 ```
 SYS_INIT_COMPLETE のあと:
   entry = container.entries.find(e => e.lid === '__settings__')
-  if (!entry) → use defaults
-  if (entry.archetype !== 'system') → use defaults
+  if (!entry) → use SETTINGS_DEFAULTS
+  if (entry.archetype !== 'system-settings') → use SETTINGS_DEFAULTS
   parsed = tryParseJSON(entry.body)
-  if (!parsed) → use defaults
-  if (parsed.format !== 'pkc2-system-settings') → use defaults
-  if (parsed.version !== 1) → log warning, use defaults
-  apply:
-    AppState.showScanline = parsed.theme?.scanline ?? false
-    AppState.accentColor  = parsed.theme?.accentColor ?? undefined
+  if (!parsed || parsed.format !== 'pkc2-system-settings') → use SETTINGS_DEFAULTS
+  if (parsed.version !== 1) → log warning, use SETTINGS_DEFAULTS
+  apply (with per-field fallback):
+    theme.mode       = parsed.theme?.mode       ?? 'auto'
+    theme.scanline   = parsed.theme?.scanline   ?? false
+    theme.accentColor= parsed.theme?.accentColor?? null
+    theme.borderColor= parsed.theme?.borderColor?? null
+    theme.textColor  = parsed.theme?.textColor  ?? null
+    display.preferredFont = parsed.display?.preferredFont ?? null
+    locale.language  = parsed.locale?.language   ?? null
+    locale.timezone  = parsed.locale?.timezone   ?? null
 ```
 
-### 3-2. Save
+### 3-2. Apply (DOM への反映)
 
-以下のアクションは永続化対象:
+| 設定 | 反映先 |
+|------|--------|
+| `theme.mode` | `data-pkc-theme` 属性 (既存機構) |
+| `theme.scanline` | `data-pkc-scanline` 属性 (既存) |
+| `theme.accentColor` | `--c-accent` CSS 変数 (既存) |
+| `theme.borderColor` | `--c-border` CSS 変数 (新規) |
+| `theme.textColor` | `--c-text` CSS 変数 (新規) |
+| `display.preferredFont` | `--font-main` CSS 変数 (新規) |
+| `locale.language` | `html[lang]` 属性 |
+| `locale.timezone` | 日付フォーマット関数への引数 |
 
-- `SET_SCANLINE` / `TOGGLE_SCANLINE`
-- `SET_ACCENT_COLOR` / `RESET_ACCENT_COLOR`
+### 3-3. Save (変更時)
 
-reducer が state を更新したあと、Container の `__settings__` entry を upsert する追加 domain event を発行する:
+設定変更アクション → reducer が state 更新 → `SETTINGS_CHANGED` domain event 発行 → persistence 層が `__settings__` entry を upsert。
 
-```
-event: { type: 'SETTINGS_CHANGED', settings: { scanline, accentColor } }
-```
+```typescript
+// 新規 domain event
+{ type: 'SETTINGS_CHANGED'; settings: SystemSettingsPayload }
 
-persistence 層がこのイベントを listen して IndexedDB / autosave に反映する。Container への実書き込みは persistence 層の既存 autosave 経路に同期する（別経路は作らない）。
-
-### 3-3. Upsert semantics
-
-entry が存在しなければ新規作成、存在すれば body のみ更新:
-
-```
+// upsert semantics
 {
   lid: '__settings__',
-  title: 'System Settings',   // UI には出ないが export ファイルでは可読
-  archetype: 'system',
+  title: 'System Settings',
+  archetype: 'system-settings',
   body: JSON.stringify(nextSettings, null, 2),
   created_at: existing?.created_at ?? now(),
   updated_at: now(),
 }
 ```
 
+Container 更新は persistence 層の既存 autosave 経路に同期する（別経路は作らない）。
+
 ---
 
 ## 4. UI invisibility contract
 
-以下の全ビューで hidden entry を表示しない:
-
 | View | 方針 |
 |------|------|
-| Sidebar tree | `archetype === 'system'` を除外 |
-| Search / filter 結果 | 同上 |
-| Archetype filter tabs | `system` を tab として出さない |
-| Kanban | 対象外（todo 専用） |
-| Calendar | 対象外（日付持つ entry 専用） |
-| Relations | 作成元 / 作成先として候補に出さない |
-| Export HTML / ZIP | Container に含めたまま（設定も含めて共有できる）|
-
-既存の「folder のみ除外」等の filter と同パターンで追加する。
+| Sidebar tree | `isUserEntry()` で除外 (About と同パターン) |
+| Search / filter | 同上 |
+| Archetype filter tabs | `system-settings` を tab に出さない |
+| Kanban / Calendar | 対象外 |
+| Relations | 候補に出さない |
+| Export HTML / ZIP | Container に含める (設定も持ち運べる) |
 
 ---
 
-## 5. Action / event contract (sketch)
+## 5. 不変条件
 
-```typescript
-// 新規 domain event
-{ type: 'SETTINGS_CHANGED'; settings: { scanline: boolean; accentColor: string | null } }
+### I-SETTINGS-1 — 破損耐性
 
-// 既存 actions に副作用追加:
-// SET_SCANLINE / TOGGLE_SCANLINE / SET_ACCENT_COLOR / RESET_ACCENT_COLOR
-// reducer が SETTINGS_CHANGED event を返す
-```
+settings entry が不在 / parse 失敗 / schema 不一致でも **app は正常起動** する。全項目を SETTINGS_DEFAULTS で安全起動。
 
-reducer は Container を直接更新しない。Container 更新は persistence 層（既存 autosave）が `SETTINGS_CHANGED` event を受けて行う（分離維持）。
+### I-SETTINGS-2 — About entry との役割分離
 
----
+About = immutable build info / Settings = mutable user preferences。archetype・lid・生成タイミング全て独立。相互依存なし。
 
-## 6. 将来性 — TEXT subtype との関係
+### I-SETTINGS-3 — Export/import に含まれる
 
-`__settings__` は今回は archetype `system` 固定の JSON body として扱う。
-しかし将来、PKC2 が「TEXT entry の subtype」（csv, xml, yaml, json, ini 等）を正式サポートする場合、本設定エントリを以下のように再解釈できるようにしておく:
+設定は Container の一部として export される。import 時は host 側の settings を優先（上書きしない）。
 
-- `archetype: 'text'` + `subtype: 'json'` + 同じ lid / body
-- または `archetype: 'system'` を `archetype: 'text'` に変更 + `metaType` attribute
+### I-SETTINGS-4 — Reserved lid 保護
 
-どちらに進んでも schema version の bump で対応できるよう、v1 では:
+reducer が `__settings__` に対する `BEGIN_EDIT` / `DELETE_ENTRY` / 通常 `CREATE_ENTRY` を拒否する。変更は `SETTINGS_CHANGED` 経由のみ。
 
-- body の先頭フィールドを `"format": "pkc2-system-settings"` で固定
-- `version: 1` を明示
-- `__settings__` 以外の system entry を作らない
+### I-SETTINGS-5 — null = system default
 
-このルールで「後方互換な subtype 再解釈」が可能になる。
+全設定項目で null は「システムデフォルトに従う」を意味する。null 以外の値のみ CSS 変数 / DOM 属性をオーバーライドする。
 
 ---
 
-## 7. 将来性 — PKC-Message 連携
+## 6. 将来接続
 
-詳細 UI（色パレット、フォント選択、プリセット保存等）はコア HTML に入れず、
-別の single-HTML ツール（Settings Editor）が **PKC-Message 経由** で:
-
-1. 現在の `__settings__` entry を読む
-2. UI で編集
-3. 変更を PKC に送り返して entry を upsert
-
-これによりコアバンドルの肥大化を避けられる。v1 ではこの連携は対象外だが、
-**hidden entry に JSON で持つ** 本設計がこの拡張の前提条件になる。
+| 項目 | 関係 |
+|------|------|
+| config-like text (TEXT subtype) | 将来 `archetype: 'text' + subtype: 'json'` に再解釈可能。format + version で互換維持 |
+| PKC-Message | 外部 Settings Editor が read → edit → upsert する経路。v1 非対象 |
+| Theme preset | `theme.*` をまとめて切替。settings 基盤の上に載る |
+| Richer editor / preview | JSON body の structured edit UI。v1 は不要 |
 
 ---
 
-## 8. Risk / open questions
+## 7. Risk / open questions
 
 | 項目 | 方針 |
 |------|------|
-| `system` archetype が存在しない場合 | behavior contract 段階で追加 or `generic` 流用を決定 |
-| 既存 export HTML に hidden entry が載るか | 載せる（配布物で設定も引き継げる / プライバシー懸念は v1 scope 外）|
-| import/merge 時の `__settings__` 衝突 | import 側の値を棄却、host 側を優先（ユーザー設定は手元で上書きされたくない）|
-| reducer と persistence の分離を崩さないか | `SETTINGS_CHANGED` event 経由で既存 autosave に乗せるので OK |
-| schema v2 への migration | v1 では実装しない。version field で将来検出可能 |
+| `system-settings` archetype 追加の影響 | ArchetypeId union + `isUserEntry()` filter で閉じる |
+| import 時の `__settings__` 衝突 | host 側を優先。import 側の settings は棄却 |
+| font validation | CSS font-family として invalid でも app は壊れない (ブラウザ fallback) |
+| timezone validation | Intl API が unknown timezone を throw → catch して system default |
+| language 設定の実効性 | v1 では i18n 未実装。将来の hook 点として保持するのみ |
+| schema v2 migration | v1 では不要。version field で将来検出可能 |
 
 ---
 
-## 9. Testability (future FI のための参考)
+## 8. Testability (将来 impl 向け参考)
 
-- pure: load parser（default fallback / malformed / format mismatch / version mismatch）
-- reducer: SET_* → SETTINGS_CHANGED event emit 確認
-- persistence: upsert / autosave で entry が永続化される
-- UI: hidden entry が各 view で非表示
+- **pure (8 件)**: load parser — default fallback / malformed JSON / format mismatch / version mismatch / 部分欠損 / null 値 / unknown key 無視 / hex validation
+- **reducer (6 件)**: 各設定変更 action → SETTINGS_CHANGED event emit / reserved lid guard
+- **persistence (3 件)**: upsert 新規作成 / upsert 既存更新 / autosave 連携
+- **UI (4 件)**: hidden entry 各 view 非表示 / CSS 変数反映 / DOM 属性反映 / system default fallback
 
 ---
 
-## 10. References
+## References
 
-- `docs/spec/ui-theme-customizable-accent-scanline-v1-minimum-scope.md`
-- `docs/spec/ui-theme-customizable-accent-scanline-v1-behavior-contract.md`
-- `docs/development/ui-theme-customizable-accent-scanline-v1-audit.md`
-- `src/core/model/container.ts`（entry schema）
-- `src/adapter/state/app-state.ts`（showScanline / accentColor fields）
+- `docs/spec/about-build-info-hidden-entry-v1-minimum-scope.md` — hidden entry pattern
+- `docs/spec/ui-theme-customizable-accent-scanline-v1-minimum-scope.md` — FI-12 theme state
+- `src/core/model/record.ts` — ArchetypeId, isReservedLid()
+- `src/adapter/state/app-state.ts` — showScanline / accentColor fields
+- `src/adapter/platform/persistence.ts` — autosave / event listener pattern
