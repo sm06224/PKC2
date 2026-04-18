@@ -1127,22 +1127,22 @@ describe('search query', () => {
 // ── Archetype filter ────────────────────────
 
 describe('archetype filter', () => {
-  it('createInitialState has null archetypeFilter', () => {
-    expect(createInitialState().archetypeFilter).toBeNull();
+  it('createInitialState has empty archetypeFilter', () => {
+    expect(createInitialState().archetypeFilter).toEqual(new Set());
   });
 
   it('SET_ARCHETYPE_FILTER sets archetype in ready phase', () => {
     const { state, events } = reduce(readyState(), {
       type: 'SET_ARCHETYPE_FILTER', archetype: 'todo',
     });
-    expect(state.archetypeFilter).toBe('todo');
+    expect(state.archetypeFilter).toEqual(new Set(['todo']));
     expect(events).toHaveLength(0);
   });
 
-  it('SET_ARCHETYPE_FILTER can clear to null', () => {
-    const base = { ...readyState(), archetypeFilter: 'text' as const };
+  it('SET_ARCHETYPE_FILTER can clear to empty set', () => {
+    const base = { ...readyState(), archetypeFilter: new Set(['text'] as const) };
     const { state } = reduce(base, { type: 'SET_ARCHETYPE_FILTER', archetype: null });
-    expect(state.archetypeFilter).toBeNull();
+    expect(state.archetypeFilter).toEqual(new Set());
   });
 
   it('SET_ARCHETYPE_FILTER is blocked during editing', () => {
@@ -1168,11 +1168,11 @@ describe('archetype filter', () => {
   });
 
   it('archetypeFilter persists through phase transitions', () => {
-    const withFilter = { ...readyState(), archetypeFilter: 'todo' as const };
+    const withFilter = { ...readyState(), archetypeFilter: new Set(['todo'] as const) };
     const { state: editing } = reduce(withFilter, { type: 'BEGIN_EDIT', lid: 'e1' });
-    expect(editing.archetypeFilter).toBe('todo');
+    expect(editing.archetypeFilter).toEqual(new Set(['todo']));
     const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
-    expect(back.archetypeFilter).toBe('todo');
+    expect(back.archetypeFilter).toEqual(new Set(['todo']));
   });
 });
 
@@ -1180,17 +1180,17 @@ describe('archetype filter', () => {
 
 describe('clear filters', () => {
   it('CLEAR_FILTERS resets both searchQuery and archetypeFilter', () => {
-    const base = { ...readyState(), searchQuery: 'hello', archetypeFilter: 'todo' as const };
+    const base = { ...readyState(), searchQuery: 'hello', archetypeFilter: new Set(['todo'] as const) };
     const { state, events } = reduce(base, { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
-    expect(state.archetypeFilter).toBeNull();
+    expect(state.archetypeFilter).toEqual(new Set());
     expect(events).toHaveLength(0);
   });
 
   it('CLEAR_FILTERS is a no-op when already clear', () => {
     const { state } = reduce(readyState(), { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
-    expect(state.archetypeFilter).toBeNull();
+    expect(state.archetypeFilter).toEqual(new Set());
   });
 
   it('CLEAR_FILTERS is blocked during initializing', () => {
@@ -1217,12 +1217,12 @@ describe('clear filters', () => {
   it('CLEAR_FILTERS does not reset sort state', () => {
     const base = {
       ...readyState(),
-      searchQuery: 'hello', archetypeFilter: 'todo' as const,
+      searchQuery: 'hello', archetypeFilter: new Set(['todo'] as const),
       sortKey: 'title' as const, sortDirection: 'asc' as const,
     };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
-    expect(state.archetypeFilter).toBeNull();
+    expect(state.archetypeFilter).toEqual(new Set());
     expect(state.sortKey).toBe('title');
     expect(state.sortDirection).toBe('asc');
   });
@@ -1411,10 +1411,10 @@ describe('sort', () => {
   });
 
   it('CLEAR_FILTERS also clears tagFilter', () => {
-    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: 'text' as const, tagFilter: 'e2' };
+    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: new Set(['text'] as const), tagFilter: 'e2' };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
-    expect(state.archetypeFilter).toBeNull();
+    expect(state.archetypeFilter).toEqual(new Set());
     expect(state.tagFilter).toBeNull();
   });
 

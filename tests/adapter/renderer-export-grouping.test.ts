@@ -40,7 +40,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     importPreview: null,
     batchImportPreview: null,
     searchQuery: '',
-    archetypeFilter: null,
+    archetypeFilter: new Set(),
     tagFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',

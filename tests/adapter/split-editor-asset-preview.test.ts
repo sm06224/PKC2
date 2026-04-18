@@ -57,7 +57,7 @@ function makeEditingState(container: Container, selectedLid: string): AppState {
     importPreview: null,
     batchImportPreview: null,
     searchQuery: '',
-    archetypeFilter: null,
+    archetypeFilter: new Set(),
     tagFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',

@@ -530,6 +530,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SET_ARCHETYPE_FILTER', archetype });
         break;
       }
+      case 'toggle-archetype-filter': {
+        const raw = target.getAttribute('data-pkc-archetype');
+        if (raw) {
+          dispatcher.dispatch({ type: 'TOGGLE_ARCHETYPE_FILTER', archetype: raw as ArchetypeId });
+        }
+        break;
+      }
+      case 'toggle-archetype-filter-expanded':
+        dispatcher.dispatch({ type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' });
+        break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;

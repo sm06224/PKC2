@@ -147,6 +147,8 @@ export type UserAction =
   | { type: 'RESOLVE_DUAL_EDIT_CONFLICT'; lid: string; resolution: 'save-as-branch' | 'discard-my-edits' | 'copy-to-clipboard' }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
+  | { type: 'TOGGLE_ARCHETYPE_FILTER'; archetype: ArchetypeId }
+  | { type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }

@@ -112,8 +112,14 @@ export interface AppState {
   batchImportResult: BatchImportResultSummary | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
-  /** Current archetype filter (runtime-only, feature layer). null = show all. */
-  archetypeFilter: ArchetypeId | null;
+  /** Current archetype filter (runtime-only, feature layer). Empty set = show all. */
+  archetypeFilter: ReadonlySet<ArchetypeId>;
+  /**
+   * Whether the Secondary tier of the archetype filter bar is expanded.
+   * Optional so test fixtures that predate FI-09 keep compiling.
+   * Read sites treat undefined as false.
+   */
+  archetypeFilterExpanded?: boolean;
   /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
   tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
@@ -279,7 +285,8 @@ export function createInitialState(): AppState {
     batchImportPreview: null,
     batchImportResult: null,
     searchQuery: '',
-    archetypeFilter: null,
+    archetypeFilter: new Set<ArchetypeId>(),
+    archetypeFilterExpanded: false,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -391,7 +398,7 @@ function reduceMoveEntry(
   // and `visibleLids` here reflect what the user is actually seeing.
   const hasActiveFilter =
     state.searchQuery !== '' ||
-    state.archetypeFilter !== null ||
+    state.archetypeFilter.size > 0 ||
     state.tagFilter !== null;
   let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
   if (state.tagFilter) {
@@ -1266,15 +1273,34 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_ARCHETYPE_FILTER': {
-      const next: AppState = { ...state, archetypeFilter: action.archetype };
+      // Backwards-compat: null → empty Set (= show all), specific → singleton Set.
+      const next: AppState = {
+        ...state,
+        archetypeFilter: action.archetype === null
+          ? new Set<ArchetypeId>()
+          : new Set([action.archetype]),
+      };
       return { state: next, events: [] };
+    }
+    case 'TOGGLE_ARCHETYPE_FILTER': {
+      const next = new Set(state.archetypeFilter);
+      if (next.has(action.archetype)) {
+        next.delete(action.archetype);
+      } else {
+        next.add(action.archetype);
+      }
+      return { state: { ...state, archetypeFilter: next }, events: [] };
+    }
+    case 'TOGGLE_ARCHETYPE_FILTER_EXPANDED': {
+      return { state: { ...state, archetypeFilterExpanded: !(state.archetypeFilterExpanded ?? false) }, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };
       return { state: next, events: [] };
     }
     case 'CLEAR_FILTERS': {
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null, tagFilter: null };
+      // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), tagFilter: null };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {

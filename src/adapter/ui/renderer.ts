@@ -49,10 +49,10 @@ import type { EntryConflict, Resolution } from '../../core/model/merge-conflict'
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
 
-/** Archetype options for the filter bar. Single source of truth. */
-const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
-  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'folder', 'generic', 'opaque',
-] as const;
+/** Primary tier: always visible in the archetype filter bar (FI-09). */
+const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = ['text', 'textlog', 'folder'];
+/** Secondary tier: hidden by default, shown when archetypeFilterExpanded (FI-09). */
+const ARCHETYPE_FILTER_SECONDARY: readonly ArchetypeId[] = ['todo', 'attachment', 'form', 'generic', 'opaque'];
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
 const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
@@ -1245,7 +1245,7 @@ function renderSidebar(state: AppState): HTMLElement {
     searchInput.className = 'pkc-search-input';
     searchRow.appendChild(searchInput);
 
-    if (state.searchQuery !== '' || state.archetypeFilter !== null) {
+    if (state.searchQuery !== '' || state.archetypeFilter.size > 0) {
       const clearBtn = createElement('button', 'pkc-btn-clear');
       clearBtn.setAttribute('data-pkc-action', 'clear-filters');
       clearBtn.setAttribute('title', 'Clear search and filters');
@@ -1256,7 +1256,7 @@ function renderSidebar(state: AppState): HTMLElement {
     sidebar.appendChild(searchRow);
 
     // Archetype filter bar
-    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter, state.archetypeFilterExpanded ?? false));
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
@@ -1317,7 +1317,7 @@ function renderSidebar(state: AppState): HTMLElement {
     : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -1345,7 +1345,7 @@ function renderSidebar(state: AppState): HTMLElement {
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null;
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
@@ -3569,20 +3569,57 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
   return bar;
 }
 
-function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
+function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>, expanded: boolean): HTMLElement {
   const bar = createElement('div', 'pkc-archetype-filter');
   bar.setAttribute('data-pkc-region', 'archetype-filter');
 
-  for (const opt of ARCHETYPE_FILTER_OPTIONS) {
+  // "All" button — active when no archetype is selected
+  const allBtn = createElement('button', 'pkc-filter-btn');
+  allBtn.setAttribute('data-pkc-action', 'set-archetype-filter');
+  allBtn.setAttribute('data-pkc-archetype', '');
+  allBtn.textContent = 'All';
+  if (current.size === 0) {
+    allBtn.setAttribute('data-pkc-active', 'true');
+  }
+  bar.appendChild(allBtn);
+
+  // Primary group — always visible
+  const primaryGroup = createElement('div', 'pkc-filter-group');
+  primaryGroup.setAttribute('data-pkc-filter-group', 'primary');
+  for (const archetype of ARCHETYPE_FILTER_PRIMARY) {
     const btn = createElement('button', 'pkc-filter-btn');
-    btn.setAttribute('data-pkc-action', 'set-archetype-filter');
-    btn.setAttribute('data-pkc-archetype', opt ?? '');
-    btn.textContent = opt ? archetypeLabel(opt) : 'All';
-    if (opt === current) {
+    btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', archetype);
+    btn.textContent = archetypeLabel(archetype);
+    if (current.has(archetype)) {
       btn.setAttribute('data-pkc-active', 'true');
     }
-    bar.appendChild(btn);
+    primaryGroup.appendChild(btn);
   }
+  bar.appendChild(primaryGroup);
+
+  // Expand toggle
+  const expandBtn = createElement('button', 'pkc-filter-expand');
+  expandBtn.setAttribute('data-pkc-action', 'toggle-archetype-filter-expanded');
+  expandBtn.setAttribute('data-pkc-expanded', expanded ? 'true' : 'false');
+  expandBtn.textContent = expanded ? '▲' : '▼';
+  bar.appendChild(expandBtn);
+
+  // Secondary group — shown when expanded
+  const secondaryGroup = createElement('div', 'pkc-filter-group');
+  secondaryGroup.setAttribute('data-pkc-filter-group', 'secondary');
+  secondaryGroup.setAttribute('data-pkc-visible', expanded ? 'true' : 'false');
+  for (const archetype of ARCHETYPE_FILTER_SECONDARY) {
+    const btn = createElement('button', 'pkc-filter-btn');
+    btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', archetype);
+    btn.textContent = archetypeLabel(archetype);
+    if (current.has(archetype)) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    secondaryGroup.appendChild(btn);
+  }
+  bar.appendChild(secondaryGroup);
 
   return bar;
 }
