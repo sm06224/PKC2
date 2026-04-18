@@ -54,12 +54,12 @@ export function serializeTodoBody(todo: TodoBody): string {
  * Format a YYYY-MM-DD date string for display.
  * Returns localized short date (e.g. "2026/04/08" for ja, "4/8/2026" for en).
  */
-export function formatTodoDate(date: string): string {
+export function formatTodoDate(date: string, locale?: string): string {
   const [y, m, d] = date.split('-').map(Number);
   if (!y || !m || !d) return date; // fallback: show raw string
   const dt = new Date(y, m - 1, d);
   if (isNaN(dt.getTime())) return date;
-  return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric' });
+  return dt.toLocaleDateString(locale, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
 /**

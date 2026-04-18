@@ -82,12 +82,39 @@ describe('SET_BORDER_COLOR / RESET_BORDER_COLOR', () => {
   });
 });
 
-describe('SET_TEXT_COLOR / RESET_TEXT_COLOR', () => {
-  it('sets and resets the text color', () => {
-    const after = reduce(readyState(), { type: 'SET_TEXT_COLOR', color: '#fafafa' });
-    expect(after.state.settings!.theme.textColor).toBe('#fafafa');
-    const reset = reduce(after.state, { type: 'RESET_TEXT_COLOR' });
-    expect(reset.state.settings!.theme.textColor).toBeNull();
+describe('SET_UI_TEXT_COLOR / RESET_UI_TEXT_COLOR', () => {
+  it('sets and resets the UI text color', () => {
+    const after = reduce(readyState(), { type: 'SET_UI_TEXT_COLOR', color: '#fafafa' });
+    expect(after.state.settings!.theme.uiTextColor).toBe('#fafafa');
+    const reset = reduce(after.state, { type: 'RESET_UI_TEXT_COLOR' });
+    expect(reset.state.settings!.theme.uiTextColor).toBeNull();
+  });
+});
+
+describe('SET_BODY_TEXT_COLOR / RESET_BODY_TEXT_COLOR', () => {
+  it('sets and resets the body text color', () => {
+    const after = reduce(readyState(), { type: 'SET_BODY_TEXT_COLOR', color: '#dddddd' });
+    expect(after.state.settings!.theme.bodyTextColor).toBe('#dddddd');
+    const reset = reduce(after.state, { type: 'RESET_BODY_TEXT_COLOR' });
+    expect(reset.state.settings!.theme.bodyTextColor).toBeNull();
+  });
+});
+
+describe('SET_BACKGROUND_COLOR / RESET_BACKGROUND_COLOR', () => {
+  it('sets and resets the background color', () => {
+    const after = reduce(readyState(), { type: 'SET_BACKGROUND_COLOR', color: '#001100' });
+    expect(after.state.settings!.theme.backgroundColor).toBe('#001100');
+    const reset = reduce(after.state, { type: 'RESET_BACKGROUND_COLOR' });
+    expect(reset.state.settings!.theme.backgroundColor).toBeNull();
+  });
+});
+
+describe('SET_FONT_DIRECT_INPUT / RESET_FONT_DIRECT_INPUT', () => {
+  it('sets and resets the font direct input', () => {
+    const after = reduce(readyState(), { type: 'SET_FONT_DIRECT_INPUT', font: 'Noto Sans JP' });
+    expect(after.state.settings!.display.fontDirectInput).toBe('Noto Sans JP');
+    const reset = reduce(after.state, { type: 'RESET_FONT_DIRECT_INPUT' });
+    expect(reset.state.settings!.display.fontDirectInput).toBeNull();
   });
 });
 

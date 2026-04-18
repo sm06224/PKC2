@@ -101,12 +101,12 @@ describe('Escape closes the custom context menu', () => {
     cleanup = bindActions(root, dispatcher);
     render(dispatcher.getState(), root);
 
-    // The renderer emits a shell-menu overlay with display:none
-    // by default. Flip it to 'block' to simulate "user opened the
-    // settings dialog".
-    const shell = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+    // Open the shell menu via state dispatch.
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    render(dispatcher.getState(), root);
+    let shell = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
     expect(shell).toBeTruthy();
-    shell!.style.display = 'block';
+    expect(shell!.style.display).not.toBe('none');
 
     // Open context menu on top.
     const menu = renderContextMenu('e1', 100, 100, {
@@ -119,11 +119,12 @@ describe('Escape closes the custom context menu', () => {
     // Esc #1 → context menu closes, shell menu stays visible.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(root.querySelector('[data-pkc-region="context-menu"]')).toBeNull();
-    expect(shell!.style.display).toBe('block');
+    shell = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+    expect(shell!.style.display).not.toBe('none');
 
     // Esc #2 → now the shell menu closes (existing behaviour preserved).
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    expect(shell!.style.display).toBe('none');
+    expect(dispatcher.getState().menuOpen).toBe(false);
   });
 
   it('does NOT dispatch DESELECT_ENTRY when closing only the context menu', () => {

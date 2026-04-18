@@ -178,15 +178,23 @@ export type UserAction =
   | { type: 'RESET_THEME_MODE' }
   | { type: 'SET_BORDER_COLOR'; color: string }
   | { type: 'RESET_BORDER_COLOR' }
-  | { type: 'SET_TEXT_COLOR'; color: string }
-  | { type: 'RESET_TEXT_COLOR' }
+  | { type: 'SET_BACKGROUND_COLOR'; color: string }
+  | { type: 'RESET_BACKGROUND_COLOR' }
+  | { type: 'SET_UI_TEXT_COLOR'; color: string }
+  | { type: 'RESET_UI_TEXT_COLOR' }
+  | { type: 'SET_BODY_TEXT_COLOR'; color: string }
+  | { type: 'RESET_BODY_TEXT_COLOR' }
   | { type: 'SET_PREFERRED_FONT'; font: string }
   | { type: 'RESET_PREFERRED_FONT' }
+  | { type: 'SET_FONT_DIRECT_INPUT'; font: string }
+  | { type: 'RESET_FONT_DIRECT_INPUT' }
   | { type: 'SET_LANGUAGE'; language: string }
   | { type: 'RESET_LANGUAGE' }
   | { type: 'SET_TIMEZONE'; timezone: string }
   | { type: 'RESET_TIMEZONE' }
   | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
+  | { type: 'TOGGLE_MENU' }
+  | { type: 'CLOSE_MENU' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }

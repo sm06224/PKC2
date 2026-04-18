@@ -52,6 +52,8 @@ import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
+import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
+import { setFormatContext, getFormatLocale } from './format-context';
 
 /** Primary tier: always visible in the archetype filter bar (FI-09). */
 const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = ['text', 'textlog', 'folder'];
@@ -108,9 +110,10 @@ function archetypeIcon(archetype: ArchetypeId): string {
  *   - `data-pkc-theme` attribute (explicit 'light' / 'dark', removed
  *     for 'auto' which falls back to `prefers-color-scheme`)
  *   - `data-pkc-scanline="on"` when scanline is true, removed otherwise
- *   - `--c-accent` / `--c-border` / `--c-text` inline CSS variables
- *     (removed when the payload holds null → base.css defaults win)
- *   - `--font-sans` inline CSS variable (preferredFont)
+ *   - `--c-accent` / `--c-border` / `--c-bg` / `--c-fg` / `--c-text` /
+ *     `--c-body-text` inline CSS variables (removed when payload holds
+ *     null → base.css defaults win)
+ *   - `--font-sans` inline CSS variable (fontDirectInput ?? preferredFont)
  *   - `html.lang` attribute (locale.language)
  *
  * Timezone is NOT applied here — it's consumed by date-format helpers
@@ -157,18 +160,27 @@ function applySystemSettings(
   } else {
     root.style.removeProperty('--c-border');
   }
-  if (resolved.theme.textColor) {
-    // base.css: most text rules use var(--c-fg); --c-text is defined as var(--c-fg).
-    // Override both so the user-chosen color cascades everywhere.
-    root.style.setProperty('--c-text', resolved.theme.textColor);
-    root.style.setProperty('--c-fg', resolved.theme.textColor);
+  if (resolved.theme.backgroundColor) {
+    root.style.setProperty('--c-bg', resolved.theme.backgroundColor);
   } else {
-    root.style.removeProperty('--c-text');
-    root.style.removeProperty('--c-fg');
+    root.style.removeProperty('--c-bg');
   }
-  if (resolved.display.preferredFont) {
-    // Wrap in quotes so multi-word family names survive the CSS cascade.
-    root.style.setProperty('--font-sans', `'${resolved.display.preferredFont}', 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace`);
+  if (resolved.theme.uiTextColor) {
+    root.style.setProperty('--c-fg', resolved.theme.uiTextColor);
+    root.style.setProperty('--c-text', resolved.theme.uiTextColor);
+  } else {
+    root.style.removeProperty('--c-fg');
+    root.style.removeProperty('--c-text');
+  }
+  if (resolved.theme.bodyTextColor) {
+    root.style.setProperty('--c-body-text', resolved.theme.bodyTextColor);
+  } else {
+    root.style.removeProperty('--c-body-text');
+  }
+  // Font: direct input wins over dropdown selection (D5).
+  const effectiveFont = resolved.display.fontDirectInput ?? resolved.display.preferredFont;
+  if (effectiveFont) {
+    root.style.setProperty('--font-sans', `'${effectiveFont}', 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace`);
   } else {
     root.style.removeProperty('--font-sans');
   }
@@ -221,6 +233,9 @@ const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = 
  */
 
 export function render(state: AppState, root: HTMLElement): void {
+  const localeSettings = state.settings?.locale;
+  setFormatContext(localeSettings?.language, localeSettings?.timezone);
+
   // P1-1: sync reducer-owned transient UI state into the forward
   // caches used by legacy reader APIs. Must happen BEFORE the DOM
   // is rebuilt below so presenters see the current selection state.
@@ -604,7 +619,7 @@ function renderShellMenu(
   // never gets pushed below the right pane or clipped by the event log.
   const overlay = createElement('div', 'pkc-shell-menu-overlay');
   overlay.setAttribute('data-pkc-region', 'shell-menu');
-  overlay.style.display = 'none';
+  overlay.style.display = state.menuOpen ? '' : 'none';
 
   const card = createElement('div', 'pkc-shell-menu-card');
 
@@ -691,10 +706,12 @@ function renderShellMenu(
   card.appendChild(accentSection);
 
   // FI-Settings v1 full UI — additional appearance / locale controls.
-  // Each follows the same pattern as accent: native input + reset button,
-  // dispatching via data-pkc-action. The reducer and persistence wiring
-  // already exist; this is the final "last mile" UI connection.
   const settings = state.settings ?? SETTINGS_DEFAULTS;
+  // Theme-aware defaults for color pickers: so the picker opens at the
+  // current effective color rather than black.
+  const themeDefaults = currentTheme === 'light'
+    ? { bg: '#f0ebe0', fg: '#1a1a14' }
+    : { bg: '#0d0f0a', fg: '#c8d8b0' };
 
   // Border color
   const borderSection = createElement('div', 'pkc-shell-menu-section');
@@ -714,25 +731,84 @@ function renderShellMenu(
   borderSection.appendChild(borderControls);
   card.appendChild(borderSection);
 
-  // Text color
-  const textColorSection = createElement('div', 'pkc-shell-menu-section');
-  const textColorLabel = createElement('span', 'pkc-shell-menu-label');
-  textColorLabel.textContent = 'Text';
-  textColorSection.appendChild(textColorLabel);
-  const textColorControls = createElement('div', 'pkc-shell-menu-theme-buttons');
-  const textColorInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
-  textColorInput.type = 'color';
-  textColorInput.setAttribute('data-pkc-action', 'set-text-color');
-  textColorInput.value = settings.theme.textColor ?? '#e0e0e0';
-  textColorControls.appendChild(textColorInput);
-  const textColorReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
-  textColorReset.setAttribute('data-pkc-action', 'reset-text-color');
-  textColorReset.textContent = 'Default';
-  textColorControls.appendChild(textColorReset);
-  textColorSection.appendChild(textColorControls);
-  card.appendChild(textColorSection);
+  // Background color
+  const bgSection = createElement('div', 'pkc-shell-menu-section');
+  const bgLabel = createElement('span', 'pkc-shell-menu-label');
+  bgLabel.textContent = 'Background';
+  bgSection.appendChild(bgLabel);
+  const bgControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const bgInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  bgInput.type = 'color';
+  bgInput.setAttribute('data-pkc-action', 'set-background-color');
+  bgInput.value = settings.theme.backgroundColor ?? themeDefaults.bg;
+  bgControls.appendChild(bgInput);
+  const bgReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  bgReset.setAttribute('data-pkc-action', 'reset-background-color');
+  bgReset.textContent = 'Default';
+  bgControls.appendChild(bgReset);
+  bgSection.appendChild(bgControls);
+  card.appendChild(bgSection);
 
-  // Preferred font
+  // UI text color
+  const uiTextSection = createElement('div', 'pkc-shell-menu-section');
+  const uiTextLabel = createElement('span', 'pkc-shell-menu-label');
+  uiTextLabel.textContent = 'UI Text';
+  uiTextSection.appendChild(uiTextLabel);
+  const uiTextControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const uiTextInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  uiTextInput.type = 'color';
+  uiTextInput.setAttribute('data-pkc-action', 'set-ui-text-color');
+  uiTextInput.value = settings.theme.uiTextColor ?? themeDefaults.fg;
+  uiTextControls.appendChild(uiTextInput);
+  const uiTextReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  uiTextReset.setAttribute('data-pkc-action', 'reset-ui-text-color');
+  uiTextReset.textContent = 'Default';
+  uiTextControls.appendChild(uiTextReset);
+  uiTextSection.appendChild(uiTextControls);
+  card.appendChild(uiTextSection);
+
+  // Body text color
+  const bodyTextSection = createElement('div', 'pkc-shell-menu-section');
+  const bodyTextLabel = createElement('span', 'pkc-shell-menu-label');
+  bodyTextLabel.textContent = 'Body Text';
+  bodyTextSection.appendChild(bodyTextLabel);
+  const bodyTextControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const bodyTextInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  bodyTextInput.type = 'color';
+  bodyTextInput.setAttribute('data-pkc-action', 'set-body-text-color');
+  bodyTextInput.value = settings.theme.bodyTextColor ?? themeDefaults.fg;
+  bodyTextControls.appendChild(bodyTextInput);
+  const bodyTextReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  bodyTextReset.setAttribute('data-pkc-action', 'reset-body-text-color');
+  bodyTextReset.textContent = 'Default';
+  bodyTextControls.appendChild(bodyTextReset);
+  bodyTextSection.appendChild(bodyTextControls);
+  card.appendChild(bodyTextSection);
+
+  // WCAG contrast ratio display
+  const wcagSection = createElement('div', 'pkc-shell-menu-section');
+  wcagSection.setAttribute('data-pkc-region', 'wcag-contrast');
+  const wcagLabel = createElement('span', 'pkc-shell-menu-label');
+  wcagLabel.textContent = 'Contrast';
+  wcagSection.appendChild(wcagLabel);
+  const wcagBox = createElement('div', 'pkc-shell-menu-wcag');
+  const effectiveBg = settings.theme.backgroundColor ?? themeDefaults.bg;
+  const effectiveUiText = settings.theme.uiTextColor ?? themeDefaults.fg;
+  const effectiveBodyText = settings.theme.bodyTextColor ?? themeDefaults.fg;
+  const uiRatio = contrastRatio(effectiveBg, effectiveUiText);
+  const bodyRatio = contrastRatio(effectiveBg, effectiveBodyText);
+  const uiGrade = wcagGrade(uiRatio);
+  const bodyGrade = wcagGrade(bodyRatio);
+  const uiLine = createElement('div', 'pkc-wcag-line');
+  uiLine.innerHTML = `UI: <strong>${formatContrastRatio(uiRatio)}</strong> <span class="pkc-wcag-badge" data-pkc-wcag="${uiGrade}">${uiGrade}</span>`;
+  const bodyLine = createElement('div', 'pkc-wcag-line');
+  bodyLine.innerHTML = `Body: <strong>${formatContrastRatio(bodyRatio)}</strong> <span class="pkc-wcag-badge" data-pkc-wcag="${bodyGrade}">${bodyGrade}</span>`;
+  wcagBox.appendChild(uiLine);
+  wcagBox.appendChild(bodyLine);
+  wcagSection.appendChild(wcagBox);
+  card.appendChild(wcagSection);
+
+  // Preferred font (dropdown + direct input)
   const fontSection = createElement('div', 'pkc-shell-menu-section');
   const fontLabel = createElement('span', 'pkc-shell-menu-label');
   fontLabel.textContent = 'Font';
@@ -741,7 +817,7 @@ function renderShellMenu(
   const fontSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
   fontSelect.setAttribute('data-pkc-action', 'set-preferred-font');
   const fontOptions: { value: string; label: string }[] = [
-    { value: '', label: 'System Default' },
+    { value: '', label: 'Preset' },
     { value: 'BIZ UDGothic', label: 'BIZ UDGothic' },
     { value: 'IBM Plex Mono', label: 'IBM Plex Mono' },
     { value: 'Share Tech Mono', label: 'Share Tech Mono' },
@@ -757,6 +833,12 @@ function renderShellMenu(
     fontSelect.appendChild(opt);
   }
   fontControls.appendChild(fontSelect);
+  const fontInput = createElement('input', 'pkc-shell-menu-font-input') as HTMLInputElement;
+  fontInput.type = 'text';
+  fontInput.placeholder = 'Direct input (priority)';
+  fontInput.setAttribute('data-pkc-action', 'set-font-direct-input');
+  fontInput.value = settings.display.fontDirectInput ?? '';
+  fontControls.appendChild(fontInput);
   fontSection.appendChild(fontControls);
   card.appendChild(fontSection);
 
@@ -813,6 +895,13 @@ function renderShellMenu(
   tzControls.appendChild(tzSelect);
   tzSection.appendChild(tzControls);
   card.appendChild(tzSection);
+
+  // i18n limitation notice
+  const i18nNotice = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-i18n-notice');
+  const i18nText = createElement('span', 'pkc-shell-menu-notice-text');
+  i18nText.textContent = 'Language / Timezone は日付表示のフォーマットに反映されます。UI 文字列の翻訳は未実装です。';
+  i18nNotice.appendChild(i18nText);
+  card.appendChild(i18nNotice);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
@@ -2398,7 +2487,7 @@ function renderKanbanView(state: AppState): HTMLElement {
 
       if (item.todo.date) {
         const date = createElement('div', 'pkc-kanban-card-date');
-        date.textContent = formatTodoDate(item.todo.date);
+        date.textContent = formatTodoDate(item.todo.date, getFormatLocale());
         if (isTodoPastDue(item.todo)) {
           date.classList.add('pkc-todo-date-overdue');
         }
@@ -4186,6 +4275,10 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
     traitsBox.appendChild(chip);
   }
   container.appendChild(traitsBox);
+
+  const i18nNote = createElement('p', 'pkc-about-i18n-note');
+  i18nNote.textContent = 'i18n: Language / Timezone settings affect date formatting. Full UI string translation is not yet implemented.';
+  container.appendChild(i18nNote);
 
   const metaTable = createElement('dl', 'pkc-about-meta');
   const metaRows: [string, Node][] = [];

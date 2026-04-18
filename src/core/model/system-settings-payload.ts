@@ -27,10 +27,13 @@ export interface SystemSettingsPayload {
     scanline: boolean;
     accentColor: string | null;
     borderColor: string | null;
-    textColor: string | null;
+    backgroundColor: string | null;
+    uiTextColor: string | null;
+    bodyTextColor: string | null;
   };
   display: {
     preferredFont: string | null;
+    fontDirectInput: string | null;
   };
   locale: {
     language: string | null;
@@ -46,10 +49,13 @@ export const SETTINGS_DEFAULTS: SystemSettingsPayload = {
     scanline: false,
     accentColor: null,
     borderColor: null,
-    textColor: null,
+    backgroundColor: null,
+    uiTextColor: null,
+    bodyTextColor: null,
   },
   display: {
     preferredFont: null,
+    fontDirectInput: null,
   },
   locale: {
     language: null,
@@ -127,6 +133,11 @@ export function resolveSettingsPayload(body: string | undefined): SystemSettings
     ? o.locale as Record<string, unknown>
     : {};
 
+  // Migration: old `textColor` field maps to `uiTextColor` for v1 back-compat.
+  const migratedUiText = isValidHexColor(theme.uiTextColor)
+    ? theme.uiTextColor
+    : isValidHexColor(theme.textColor) ? theme.textColor : null;
+
   return {
     format: 'pkc2-system-settings',
     version: 1,
@@ -135,10 +146,13 @@ export function resolveSettingsPayload(body: string | undefined): SystemSettings
       scanline: typeof theme.scanline === 'boolean' ? theme.scanline : SETTINGS_DEFAULTS.theme.scanline,
       accentColor: isValidHexColor(theme.accentColor) ? theme.accentColor : null,
       borderColor: isValidHexColor(theme.borderColor) ? theme.borderColor : null,
-      textColor: isValidHexColor(theme.textColor) ? theme.textColor : null,
+      backgroundColor: isValidHexColor(theme.backgroundColor) ? theme.backgroundColor : null,
+      uiTextColor: migratedUiText,
+      bodyTextColor: isValidHexColor(theme.bodyTextColor) ? theme.bodyTextColor : null,
     },
     display: {
       preferredFont: isValidFontFamily(display.preferredFont) ? display.preferredFont : null,
+      fontDirectInput: isValidFontFamily(display.fontDirectInput) ? display.fontDirectInput : null,
     },
     locale: {
       language: isValidLanguageTag(locale.language) ? locale.language : null,

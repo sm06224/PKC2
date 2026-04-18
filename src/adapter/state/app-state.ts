@@ -186,6 +186,8 @@ export interface AppState {
    * always initialize to `false` via `createInitialState()`.
    */
   viewOnlySource?: boolean;
+  /** Shell menu open/close state. Runtime-only, not persisted. */
+  menuOpen?: boolean;
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
@@ -1535,22 +1537,58 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         theme: { ...cur.theme, borderColor: null },
       });
     }
-    case 'SET_TEXT_COLOR': {
+    case 'SET_BACKGROUND_COLOR': {
       if (!isValidHexColor(action.color)) return { state, events: [] };
       const cur = currentSettings(state);
       const c = action.color.toLowerCase();
-      if (cur.theme.textColor === c) return { state, events: [] };
+      if (cur.theme.backgroundColor === c) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
-        theme: { ...cur.theme, textColor: c },
+        theme: { ...cur.theme, backgroundColor: c },
       });
     }
-    case 'RESET_TEXT_COLOR': {
+    case 'RESET_BACKGROUND_COLOR': {
       const cur = currentSettings(state);
-      if (cur.theme.textColor === null) return { state, events: [] };
+      if (cur.theme.backgroundColor === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
-        theme: { ...cur.theme, textColor: null },
+        theme: { ...cur.theme, backgroundColor: null },
+      });
+    }
+    case 'SET_UI_TEXT_COLOR': {
+      if (!isValidHexColor(action.color)) return { state, events: [] };
+      const cur = currentSettings(state);
+      const c = action.color.toLowerCase();
+      if (cur.theme.uiTextColor === c) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, uiTextColor: c },
+      });
+    }
+    case 'RESET_UI_TEXT_COLOR': {
+      const cur = currentSettings(state);
+      if (cur.theme.uiTextColor === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, uiTextColor: null },
+      });
+    }
+    case 'SET_BODY_TEXT_COLOR': {
+      if (!isValidHexColor(action.color)) return { state, events: [] };
+      const cur = currentSettings(state);
+      const c = action.color.toLowerCase();
+      if (cur.theme.bodyTextColor === c) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, bodyTextColor: c },
+      });
+    }
+    case 'RESET_BODY_TEXT_COLOR': {
+      const cur = currentSettings(state);
+      if (cur.theme.bodyTextColor === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        theme: { ...cur.theme, bodyTextColor: null },
       });
     }
     case 'SET_PREFERRED_FONT': {
@@ -1568,6 +1606,23 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return applySettingsUpdate(state, {
         ...cur,
         display: { ...cur.display, preferredFont: null },
+      });
+    }
+    case 'SET_FONT_DIRECT_INPUT': {
+      if (!isValidFontFamily(action.font)) return { state, events: [] };
+      const cur = currentSettings(state);
+      if (cur.display.fontDirectInput === action.font) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        display: { ...cur.display, fontDirectInput: action.font },
+      });
+    }
+    case 'RESET_FONT_DIRECT_INPUT': {
+      const cur = currentSettings(state);
+      if (cur.display.fontDirectInput === null) return { state, events: [] };
+      return applySettingsUpdate(state, {
+        ...cur,
+        display: { ...cur.display, fontDirectInput: null },
       });
     }
     case 'SET_LANGUAGE': {
@@ -1617,6 +1672,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         accentColor: next.theme.accentColor ?? undefined,
       };
       return { state: nextState, events: [] };
+    }
+    case 'TOGGLE_MENU': {
+      return { state: { ...state, menuOpen: !state.menuOpen }, events: [] };
+    }
+    case 'CLOSE_MENU': {
+      if (!state.menuOpen) return { state, events: [] };
+      return { state: { ...state, menuOpen: false }, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };

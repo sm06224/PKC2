@@ -12,6 +12,7 @@ import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { getFormatLocale, getFormatTimeZone } from './format-context';
 import {
   isSelectionModeActive,
   isLogSelected,
@@ -166,7 +167,7 @@ export const textlogPresenter: DetailPresenter = {
       // Timestamp (read-only in editor)
       const tsEl = document.createElement('span');
       tsEl.className = 'pkc-textlog-timestamp';
-      tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt);
+      tsEl.textContent = formatLogTimestampWithSeconds(logEntry.createdAt, getFormatLocale(), getFormatTimeZone());
       row.appendChild(tsEl);
 
       // Flag checkbox
@@ -357,7 +358,7 @@ function renderLogArticle(
   // Timestamp — display is short form; title shows full ISO for precision.
   const tsEl = document.createElement('span');
   tsEl.className = 'pkc-textlog-timestamp';
-  tsEl.textContent = formatLogTimestampWithSeconds(log.createdAt);
+  tsEl.textContent = formatLogTimestampWithSeconds(log.createdAt, getFormatLocale(), getFormatTimeZone());
   tsEl.setAttribute('title', log.createdAt);
   header.appendChild(tsEl);
 

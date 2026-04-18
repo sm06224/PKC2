@@ -122,39 +122,39 @@ describe('border color UI', () => {
 
 // ── 2. Text color ───────────────────────────────────────────────
 
-describe('text color UI', () => {
-  it('renders a color input with data-pkc-action="set-text-color"', () => {
+describe('UI text color UI', () => {
+  it('renders a color input with data-pkc-action="set-ui-text-color"', () => {
     setup();
-    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-text-color"]');
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-ui-text-color"]');
     expect(input).not.toBeNull();
     expect(input!.type).toBe('color');
   });
 
-  it('change → dispatches SET_TEXT_COLOR → persists', () => {
+  it('change → dispatches SET_UI_TEXT_COLOR → persists', () => {
     const { dispatcher } = setup();
-    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-text-color"]')!;
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-ui-text-color"]')!;
     input.value = '#fafafa';
     fireChange(input);
-    expect(dispatcher.getState().settings?.theme.textColor).toBe('#fafafa');
-    expect(getSettingsBody(dispatcher).theme.textColor).toBe('#fafafa');
+    expect(dispatcher.getState().settings?.theme.uiTextColor).toBe('#fafafa');
+    expect(getSettingsBody(dispatcher).theme.uiTextColor).toBe('#fafafa');
   });
 
   it('reset → clears to null', () => {
     const { dispatcher } = setup();
-    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-text-color"]')!;
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-ui-text-color"]')!;
     input.value = '#fafafa';
     fireChange(input);
-    const btn = root.querySelector<HTMLElement>('[data-pkc-action="reset-text-color"]')!;
+    const btn = root.querySelector<HTMLElement>('[data-pkc-action="reset-ui-text-color"]')!;
     fireClick(btn);
-    expect(dispatcher.getState().settings?.theme.textColor).toBeNull();
+    expect(dispatcher.getState().settings?.theme.uiTextColor).toBeNull();
   });
 
-  it('persisted value → DOM --c-text', () => {
+  it('persisted value → DOM --c-fg', () => {
     setup();
-    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-text-color"]')!;
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-ui-text-color"]')!;
     input.value = '#cccccc';
     fireChange(input);
-    expect(root.style.getPropertyValue('--c-text')).toBe('#cccccc');
+    expect(root.style.getPropertyValue('--c-fg')).toBe('#cccccc');
   });
 });
 
@@ -289,9 +289,11 @@ describe('full settings restore round-trip', () => {
         scanline: true,
         accentColor: '#ff00aa',
         borderColor: '#112233',
-        textColor: '#fafafa',
+        backgroundColor: '#001100',
+        uiTextColor: '#fafafa',
+        bodyTextColor: '#dddddd',
       },
-      display: { preferredFont: 'Inter' },
+      display: { preferredFont: 'Inter', fontDirectInput: null },
       locale: { language: 'en-US', timezone: 'Asia/Tokyo' },
     };
     dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings: payload });
@@ -302,7 +304,9 @@ describe('full settings restore round-trip', () => {
     expect(root.getAttribute('data-pkc-scanline')).toBe('on');
     expect(root.style.getPropertyValue('--c-accent')).toBe('#ff00aa');
     expect(root.style.getPropertyValue('--c-border')).toBe('#112233');
-    expect(root.style.getPropertyValue('--c-text')).toBe('#fafafa');
+    expect(root.style.getPropertyValue('--c-bg')).toBe('#001100');
+    expect(root.style.getPropertyValue('--c-fg')).toBe('#fafafa');
+    expect(root.style.getPropertyValue('--c-body-text')).toBe('#dddddd');
     expect(root.style.getPropertyValue('--font-sans')).toContain('Inter');
     expect(document.documentElement.getAttribute('lang')).toBe('en-US');
   });
@@ -339,9 +343,9 @@ describe('existing settings are not broken', () => {
     const borderInput = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-border-color"]')!;
     borderInput.value = '#aabbcc';
     fireChange(borderInput);
-    const textInput = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-text-color"]')!;
-    textInput.value = '#ddeeff';
-    fireChange(textInput);
+    const uiTextInput = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-ui-text-color"]')!;
+    uiTextInput.value = '#ddeeff';
+    fireChange(uiTextInput);
     const fontSelect = root.querySelector<HTMLSelectElement>('select[data-pkc-action="set-preferred-font"]')!;
     fontSelect.value = 'Inter';
     fireChange(fontSelect);
@@ -350,7 +354,159 @@ describe('existing settings are not broken', () => {
     expect(matches).toHaveLength(1);
     const body = resolveSettingsPayload(matches[0]!.body);
     expect(body.theme.borderColor).toBe('#aabbcc');
-    expect(body.theme.textColor).toBe('#ddeeff');
+    expect(body.theme.uiTextColor).toBe('#ddeeff');
     expect(body.display.preferredFont).toBe('Inter');
+  });
+});
+
+// ── 8. Background color ───────────────────────────────────────
+
+describe('background color UI', () => {
+  it('renders a color input with data-pkc-action="set-background-color"', () => {
+    setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-background-color"]');
+    expect(input).not.toBeNull();
+    expect(input!.type).toBe('color');
+  });
+
+  it('change → dispatches SET_BACKGROUND_COLOR → persists', () => {
+    const { dispatcher } = setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-background-color"]')!;
+    input.value = '#112200';
+    fireChange(input);
+    expect(dispatcher.getState().settings?.theme.backgroundColor).toBe('#112200');
+  });
+
+  it('reset → clears to null', () => {
+    const { dispatcher } = setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-background-color"]')!;
+    input.value = '#112200';
+    fireChange(input);
+    const btn = root.querySelector<HTMLElement>('[data-pkc-action="reset-background-color"]')!;
+    fireClick(btn);
+    expect(dispatcher.getState().settings?.theme.backgroundColor).toBeNull();
+  });
+
+  it('persisted value → DOM --c-bg', () => {
+    setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-background-color"]')!;
+    input.value = '#112200';
+    fireChange(input);
+    expect(root.style.getPropertyValue('--c-bg')).toBe('#112200');
+  });
+});
+
+// ── 9. Body text color ────────────────────────────────────────
+
+describe('body text color UI', () => {
+  it('renders a color input with data-pkc-action="set-body-text-color"', () => {
+    setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-body-text-color"]');
+    expect(input).not.toBeNull();
+    expect(input!.type).toBe('color');
+  });
+
+  it('change → dispatches SET_BODY_TEXT_COLOR → persists', () => {
+    const { dispatcher } = setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-body-text-color"]')!;
+    input.value = '#aabbcc';
+    fireChange(input);
+    expect(dispatcher.getState().settings?.theme.bodyTextColor).toBe('#aabbcc');
+  });
+
+  it('persisted value → DOM --c-body-text', () => {
+    setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-body-text-color"]')!;
+    input.value = '#aabbcc';
+    fireChange(input);
+    expect(root.style.getPropertyValue('--c-body-text')).toBe('#aabbcc');
+  });
+});
+
+// ── 10. Font direct input ─────────────────────────────────────
+
+describe('font direct input', () => {
+  it('renders a text input with data-pkc-action="set-font-direct-input"', () => {
+    setup();
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-font-direct-input"]');
+    expect(input).not.toBeNull();
+    expect(input!.type).toBe('text');
+  });
+
+  it('direct input wins over dropdown', () => {
+    const { dispatcher } = setup();
+    // Set dropdown first
+    const select = root.querySelector<HTMLSelectElement>('select[data-pkc-action="set-preferred-font"]')!;
+    select.value = 'Inter';
+    fireChange(select);
+    // Then set direct input
+    const input = root.querySelector<HTMLInputElement>('input[data-pkc-action="set-font-direct-input"]')!;
+    input.value = 'Noto Sans JP';
+    fireChange(input);
+    expect(dispatcher.getState().settings?.display.fontDirectInput).toBe('Noto Sans JP');
+    expect(root.style.getPropertyValue('--font-sans')).toContain('Noto Sans JP');
+  });
+});
+
+// ── 11. WCAG contrast ratio ───────────────────────────────────
+
+describe('WCAG contrast ratio display', () => {
+  it('renders WCAG section with both UI and Body lines', () => {
+    setup();
+    const wcag = root.querySelector('[data-pkc-region="wcag-contrast"]');
+    expect(wcag).not.toBeNull();
+    const lines = wcag!.querySelectorAll('.pkc-wcag-line');
+    expect(lines.length).toBe(2);
+    expect(lines[0]!.textContent).toContain('UI:');
+    expect(lines[1]!.textContent).toContain('Body:');
+  });
+
+  it('displays a grade badge', () => {
+    setup();
+    const badges = root.querySelectorAll('.pkc-wcag-badge');
+    expect(badges.length).toBe(2);
+    const grade = badges[0]!.getAttribute('data-pkc-wcag');
+    expect(['AAA', 'AA', 'Fail']).toContain(grade);
+  });
+});
+
+// ── 12. Menu state persistence (B1/B2 fix) ────────────────────
+
+describe('menu open state', () => {
+  it('TOGGLE_MENU opens the menu overlay', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+    expect(menu!.style.display).not.toBe('none');
+  });
+
+  it('CLOSE_MENU closes the menu', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    dispatcher.dispatch({ type: 'CLOSE_MENU' });
+    expect(dispatcher.getState().menuOpen).toBe(false);
+  });
+
+  it('settings change does NOT close the menu', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    dispatcher.dispatch({ type: 'SET_BORDER_COLOR', color: '#aabbcc' });
+    expect(dispatcher.getState().menuOpen).toBe(true);
+  });
+});
+
+// ── 13. Migration: old textColor → uiTextColor ───────────────
+
+describe('textColor migration', () => {
+  it('old textColor maps to uiTextColor on restore', () => {
+    const oldPayload = JSON.stringify({
+      format: 'pkc2-system-settings',
+      version: 1,
+      theme: { mode: 'auto', scanline: false, accentColor: null, borderColor: null, textColor: '#ff0000' },
+      display: { preferredFont: null },
+      locale: { language: null, timezone: null },
+    });
+    const resolved = resolveSettingsPayload(oldPayload);
+    expect(resolved.theme.uiTextColor).toBe('#ff0000');
   });
 });

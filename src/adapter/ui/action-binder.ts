@@ -78,6 +78,8 @@ import {
   formatShortDateTime,
   formatISO8601,
 } from '../../features/datetime/datetime-format';
+import type { FormatLocaleOptions } from '../../features/datetime/datetime-format';
+import { getFormatLocale, getFormatTimeZone } from './format-context';
 import {
   evaluateCalcExpression,
   detectInlineCalcRequest,
@@ -145,8 +147,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Shell menu backdrop click: close menu if user clicked outside the card.
     const rawTarget = e.target as HTMLElement | null;
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
-      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-      if (menu) menu.style.display = 'none';
+      dispatcher.dispatch({ type: 'CLOSE_MENU' });
       return;
     }
 
@@ -557,8 +558,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'reset-border-color':
         dispatcher.dispatch({ type: 'RESET_BORDER_COLOR' });
         break;
-      case 'reset-text-color':
-        dispatcher.dispatch({ type: 'RESET_TEXT_COLOR' });
+      case 'reset-background-color':
+        dispatcher.dispatch({ type: 'RESET_BACKGROUND_COLOR' });
+        break;
+      case 'reset-ui-text-color':
+        dispatcher.dispatch({ type: 'RESET_UI_TEXT_COLOR' });
+        break;
+      case 'reset-body-text-color':
+        dispatcher.dispatch({ type: 'RESET_BODY_TEXT_COLOR' });
         break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
@@ -1245,18 +1252,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-shell-menu': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        dispatcher.dispatch({ type: 'TOGGLE_MENU' });
         break;
       }
       case 'close-shell-menu': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'select-about': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         if (dispatcher.getState().viewMode !== 'detail') {
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
         }
@@ -1289,8 +1293,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'show-shortcut-help': {
         const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
         if (helpOverlay) helpOverlay.style.display = '';
-        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menuPanel) menuPanel.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-shortcut-help': {
@@ -1308,8 +1311,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const st = dispatcher.getState();
         const overlay = buildStorageProfileOverlay(st.container);
         root.appendChild(overlay);
-        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menuPanel) menuPanel.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-storage-profile': {
@@ -1913,9 +1915,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       // Close shell menu if open
-      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-      if (menu && menu.style.display !== 'none') {
-        menu.style.display = 'none';
+      if (state.menuOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         return;
       }
       if (state.importPreview) {
@@ -2456,9 +2457,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const val = (target as HTMLInputElement).value;
       if (val) dispatcher.dispatch({ type: 'SET_BORDER_COLOR', color: val });
     }
-    if (action === 'set-text-color') {
+    if (action === 'set-background-color') {
       const val = (target as HTMLInputElement).value;
-      if (val) dispatcher.dispatch({ type: 'SET_TEXT_COLOR', color: val });
+      if (val) dispatcher.dispatch({ type: 'SET_BACKGROUND_COLOR', color: val });
+    }
+    if (action === 'set-ui-text-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_UI_TEXT_COLOR', color: val });
+    }
+    if (action === 'set-body-text-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_BODY_TEXT_COLOR', color: val });
     }
 
     // Select controls: font / language / timezone. Empty value = "System
@@ -2469,6 +2478,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SET_PREFERRED_FONT', font: val });
       } else {
         dispatcher.dispatch({ type: 'RESET_PREFERRED_FONT' });
+      }
+    }
+    if (action === 'set-font-direct-input') {
+      const val = (target as HTMLInputElement).value.trim();
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_FONT_DIRECT_INPUT', font: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_FONT_DIRECT_INPUT' });
       }
     }
     if (action === 'set-language') {
@@ -4951,10 +4968,12 @@ function getDateTimeShortcutText(e: KeyboardEvent): string | null {
       return formatISO8601(now);
     }
     if (e.shiftKey) {
-      return formatShortDateTime(now);
+      const fmtOpts: FormatLocaleOptions = { locale: getFormatLocale(), timeZone: getFormatTimeZone() };
+      return formatShortDateTime(now, fmtOpts);
     }
     if (!e.altKey) {
-      return formatShortDate(now);
+      const fmtOpts: FormatLocaleOptions = { locale: getFormatLocale(), timeZone: getFormatTimeZone() };
+      return formatShortDate(now, fmtOpts);
     }
   }
 

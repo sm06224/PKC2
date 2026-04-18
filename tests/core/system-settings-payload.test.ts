@@ -119,8 +119,8 @@ describe('resolveSettingsPayload', () => {
     const input = {
       format: 'pkc2-system-settings' as const,
       version: 1 as const,
-      theme: { mode: 'dark' as const, scanline: true, accentColor: '#ff00aa', borderColor: '#112233', textColor: '#fafafa' },
-      display: { preferredFont: 'Inter' },
+      theme: { mode: 'dark' as const, scanline: true, accentColor: '#ff00aa', borderColor: '#112233', backgroundColor: null, uiTextColor: '#fafafa', bodyTextColor: null },
+      display: { preferredFont: 'Inter', fontDirectInput: null },
       locale: { language: 'en-US', timezone: 'Asia/Tokyo' },
     };
     expect(resolveSettingsPayload(serializeSettingsPayload(input))).toEqual(input);
@@ -145,7 +145,9 @@ describe('resolveSettingsPayload', () => {
     expect(resolved.theme.scanline).toBe(false);
     expect(resolved.theme.accentColor).toBeNull();
     expect(resolved.theme.borderColor).toBe('#AABBCC');
-    expect(resolved.theme.textColor).toBeNull();
+    expect(resolved.theme.uiTextColor).toBeNull();
+    expect(resolved.theme.bodyTextColor).toBeNull();
+    expect(resolved.theme.backgroundColor).toBeNull();
     expect(resolved.display.preferredFont).toBeNull();
     expect(resolved.locale.language).toBeNull();
     expect(resolved.locale.timezone).toBe('Asia/Tokyo');

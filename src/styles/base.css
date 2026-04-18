@@ -34,6 +34,7 @@
      inheritance fallbacks. */
   --c-text: var(--c-fg);
   --c-text-dim: var(--c-muted);
+  --c-body-text: var(--c-fg);
   /* TOC secondary rows (day / log labels).
      Previously aliased to `var(--c-muted)` (#5a6e4a) which only reaches
      ~3.3:1 against the #0d0f0a terminal bg — below WCAG AA for normal
@@ -82,6 +83,7 @@
        inside a nested custom-property chain. */
     --c-text: #1a1a14;
     --c-text-dim: #6b6558;
+    --c-body-text: #1a1a14;
     /* Light-theme darker override: the light sidebar background
        (#f0ebe0 / #e6e0d3) washes out `--c-muted` (#6b6558) enough
        that day / log rows in the right-pane TOC read as
@@ -123,6 +125,7 @@
      for the rationale. */
   --c-text: #1a1a14;
   --c-text-dim: #6b6558;
+  --c-body-text: #1a1a14;
   --c-toc-secondary: #26221b;
   --c-range-active-bg: rgba(26, 107, 53, 0.11);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
@@ -146,6 +149,7 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
+  --c-body-text: #c8d8b0;
   /* See the `:root` block for the rationale — #5a6e4a (aliased via
      `--c-muted`) fails WCAG AA on the dark terminal bg. */
   --c-toc-secondary: #9ab37e;
@@ -1031,6 +1035,7 @@
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);
+  color: var(--c-body-text);
   white-space: normal;
   /* Center-pane prose density. Tightened progressively:
      1.45 → 1.4 → 1.35. The app body is 1.4 but markdown paragraphs
@@ -1453,7 +1458,7 @@ mark.pkc-search-mark {
   outline: none;
   min-height: 120px;
   background: var(--c-bg);
-  color: var(--c-fg);
+  color: var(--c-body-text);
 }
 
 .pkc-editor-body:focus {
@@ -3248,6 +3253,58 @@ mark.pkc-search-mark {
   padding: 0;
 }
 
+.pkc-shell-menu-font-input {
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  color: var(--c-fg);
+  flex: 1;
+  min-width: 0;
+}
+.pkc-shell-menu-font-input::placeholder {
+  color: var(--c-muted);
+  font-size: 0.65rem;
+}
+
+.pkc-shell-menu-wcag {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+}
+.pkc-wcag-line {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.pkc-wcag-badge {
+  display: inline-block;
+  padding: 0 0.3rem;
+  border-radius: var(--radius);
+  font-size: 0.6rem;
+  font-weight: bold;
+}
+.pkc-wcag-badge[data-pkc-wcag="AAA"] {
+  background: var(--c-success);
+  color: var(--c-accent-fg);
+}
+.pkc-wcag-badge[data-pkc-wcag="AA"] {
+  background: var(--c-warn);
+  color: var(--c-warn-fg);
+}
+.pkc-wcag-badge[data-pkc-wcag="Fail"] {
+  background: var(--c-danger);
+  color: #fff;
+}
+
+.pkc-shell-menu-notice-text {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  font-style: italic;
+}
+
 .pkc-shell-menu-close {
   margin-top: 0.5rem;
   align-self: flex-end;
@@ -4988,6 +5045,12 @@ mark.pkc-search-mark {
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.pkc-about-i18n-note {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  font-style: italic;
+  margin: 0.5rem 0 1rem;
 }
 .pkc-about-meta {
   display: grid;
