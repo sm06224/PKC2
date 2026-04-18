@@ -1258,12 +1258,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'set-theme': {
-        const mode = target.getAttribute('data-pkc-theme-mode') as
-          | 'light'
-          | 'dark'
-          | 'system'
-          | null;
-        if (mode) setTheme(root, mode);
+        // FI-Settings v1 follow-up (2026-04-18): dispatch SET_THEME_MODE
+        // so the change is persisted via `__settings__`. The UI uses the
+        // label `'system'`; the payload uses `'auto'` (follows system
+        // prefers-color-scheme). Map at the boundary.
+        const raw = target.getAttribute('data-pkc-theme-mode');
+        if (raw !== 'light' && raw !== 'dark' && raw !== 'system') break;
+        const mode = raw === 'system' ? 'auto' : raw;
+        dispatcher.dispatch({ type: 'SET_THEME_MODE', mode });
         // Stay open so the user can verify the new theme before closing.
         break;
       }
@@ -4874,28 +4876,6 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
 }
 
-/**
- * Apply a theme mode. 'light' / 'dark' set an explicit override; 'system'
- * removes the override so CSS falls back to the `prefers-color-scheme`
- * media query. Also updates the active highlighting on the theme buttons
- * inside the shell menu so the UI stays in sync without a full re-render.
- */
-function setTheme(root: HTMLElement, mode: 'light' | 'dark' | 'system'): void {
-  const pkc = (root.closest('#pkc-root') ?? root) as HTMLElement;
-  if (mode === 'system') {
-    pkc.removeAttribute('data-pkc-theme');
-  } else {
-    pkc.setAttribute('data-pkc-theme', mode);
-  }
-  const buttons = pkc.querySelectorAll<HTMLElement>('.pkc-shell-menu-theme-btn');
-  for (const btn of buttons) {
-    if (btn.getAttribute('data-pkc-theme-mode') === mode) {
-      btn.setAttribute('data-pkc-theme-active', 'true');
-    } else {
-      btn.removeAttribute('data-pkc-theme-active');
-    }
-  }
-}
 
 /**
  * Maps a KeyboardEvent to a date/time formatted string, or null if not a match.
