@@ -4,6 +4,7 @@ import { ABOUT_LID } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
+import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
@@ -89,6 +90,97 @@ function archetypeIcon(archetype: ArchetypeId): string {
   return ARCHETYPE_ICONS[archetype] ?? '📄';
 }
 
+/**
+ * FI-Settings v1 (2026-04-18): apply the resolved settings payload to
+ * the live DOM. Called on every `render()` because the root element's
+ * innerHTML is cleared just above, but the attributes / inline styles
+ * on `#pkc-root` itself survive the clear — still, we re-apply to
+ * handle transitions (e.g. settings changed while a re-render was
+ * queued).
+ *
+ * `settings.theme.*` is the primary source of truth. The legacy
+ * mirror fields (`state.showScanline` / `state.accentColor`) are used
+ * only as a fallback when `state.settings` is absent — this lets
+ * test fixtures that predate FI-Settings keep driving the DOM via the
+ * old fields without a full migration.
+ *
+ * Writes:
+ *   - `data-pkc-theme` attribute (explicit 'light' / 'dark', removed
+ *     for 'auto' which falls back to `prefers-color-scheme`)
+ *   - `data-pkc-scanline="on"` when scanline is true, removed otherwise
+ *   - `--c-accent` / `--c-border` / `--c-text` inline CSS variables
+ *     (removed when the payload holds null → base.css defaults win)
+ *   - `--font-sans` inline CSS variable (preferredFont)
+ *   - `html.lang` attribute (locale.language)
+ *
+ * Timezone is NOT applied here — it's consumed by date-format helpers
+ * via AppState lookup.
+ */
+function applySystemSettings(
+  root: HTMLElement,
+  settings: SystemSettingsPayload | undefined,
+  state: AppState,
+): void {
+  // Fallback to legacy mirror fields when `state.settings` is absent
+  // so old fixtures and the brief pre-RESTORE_SETTINGS boot window
+  // still drive the DOM.
+  const resolved: SystemSettingsPayload = settings ?? {
+    ...SETTINGS_DEFAULTS,
+    theme: {
+      ...SETTINGS_DEFAULTS.theme,
+      scanline: state.showScanline === true,
+      accentColor: state.accentColor ?? null,
+    },
+  };
+
+  // Theme mode → data-pkc-theme. 'auto' clears the attribute so
+  // `prefers-color-scheme` in base.css takes over.
+  if (resolved.theme.mode === 'dark' || resolved.theme.mode === 'light') {
+    root.setAttribute('data-pkc-theme', resolved.theme.mode);
+  } else {
+    root.removeAttribute('data-pkc-theme');
+  }
+
+  if (resolved.theme.scanline) {
+    root.setAttribute('data-pkc-scanline', 'on');
+  } else {
+    root.removeAttribute('data-pkc-scanline');
+  }
+
+  if (resolved.theme.accentColor) {
+    root.style.setProperty('--c-accent', resolved.theme.accentColor);
+  } else {
+    root.style.removeProperty('--c-accent');
+  }
+  if (resolved.theme.borderColor) {
+    root.style.setProperty('--c-border', resolved.theme.borderColor);
+  } else {
+    root.style.removeProperty('--c-border');
+  }
+  if (resolved.theme.textColor) {
+    root.style.setProperty('--c-text', resolved.theme.textColor);
+  } else {
+    root.style.removeProperty('--c-text');
+  }
+  if (resolved.display.preferredFont) {
+    // Wrap in quotes so multi-word family names survive the CSS cascade.
+    root.style.setProperty('--font-sans', `'${resolved.display.preferredFont}', 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace`);
+  } else {
+    root.style.removeProperty('--font-sans');
+  }
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    if (resolved.locale.language) {
+      document.documentElement.setAttribute('lang', resolved.locale.language);
+    } else {
+      // Default to 'ja' (shipped HTML uses ja) — keep in sync with
+      // index.html; removing the attribute entirely would break
+      // accessibility assumptions.
+      document.documentElement.setAttribute('lang', 'ja');
+    }
+  }
+}
+
 function archetypeLabel(archetype: ArchetypeId): string {
   return ARCHETYPE_LABELS[archetype] ?? archetype;
 }
@@ -138,20 +230,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
-  if (state.showScanline) {
-    root.setAttribute('data-pkc-scanline', 'on');
-  } else {
-    root.removeAttribute('data-pkc-scanline');
-  }
-  // Accent color override (FI-12 follow-up). Written as an inline
-  // style on `#pkc-root` so it cascades to everything referencing
-  // `--c-accent`. undefined → remove the override so the base.css
-  // default (neon green) takes over.
-  if (state.accentColor) {
-    root.style.setProperty('--c-accent', state.accentColor);
-  } else {
-    root.style.removeProperty('--c-accent');
-  }
+  applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {
     case 'initializing':
