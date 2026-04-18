@@ -4027,6 +4027,11 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   }
   container.appendChild(metaTable);
 
+  container.appendChild(renderAboutCredits(
+    { name: payload.author.name, role: payload.author.role, url: payload.author.url },
+    payload.contributors,
+  ));
+
   container.appendChild(renderAboutModuleTable(
     payload.dependencies,
     'Runtime Dependencies',
@@ -4040,6 +4045,68 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   ));
 
   return container;
+}
+
+function renderAboutCredits(
+  principal: { name: string; role: string; url: string },
+  contributors: { name: string; role: string; url: string }[],
+): HTMLElement {
+  const section = createElement('section', 'pkc-about-credits');
+  section.setAttribute('data-pkc-region', 'about-credits');
+
+  const title = createElement('h3', 'pkc-about-section-title');
+  title.textContent = 'Credits';
+  section.appendChild(title);
+
+  const intro = createElement('p', 'pkc-about-credits-intro');
+  intro.textContent = 'Built collaboratively by:';
+  section.appendChild(intro);
+
+  const list = createElement('ul', 'pkc-about-credits-list');
+
+  const appendEntry = (entry: { name: string; role: string; url: string }) => {
+    if (!entry.name) return;
+    const li = document.createElement('li');
+    li.className = 'pkc-about-credit';
+
+    let nameNode: Node;
+    if (entry.url) {
+      const a = document.createElement('a');
+      a.href = entry.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = entry.name;
+      nameNode = a;
+    } else {
+      nameNode = document.createTextNode(entry.name);
+    }
+    const nameWrap = createElement('span', 'pkc-about-credit-name');
+    nameWrap.appendChild(nameNode);
+    li.appendChild(nameWrap);
+
+    if (entry.role) {
+      const sep = createElement('span', 'pkc-about-credit-sep');
+      sep.textContent = ' — ';
+      li.appendChild(sep);
+      const role = createElement('span', 'pkc-about-credit-role');
+      role.textContent = entry.role;
+      li.appendChild(role);
+    }
+
+    list.appendChild(li);
+  };
+
+  appendEntry(principal);
+  for (const c of contributors) appendEntry(c);
+  section.appendChild(list);
+
+  const note = createElement('p', 'pkc-about-credits-note');
+  note.textContent
+    = 'AI collaborators are acknowledged here as development partners. '
+    + 'Under current copyright law, authorship is held solely by the human author above.';
+  section.appendChild(note);
+
+  return section;
 }
 
 function findSelectedEntry(state: AppState): Entry | null {

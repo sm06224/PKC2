@@ -5011,6 +5011,61 @@ mark.pkc-search-mark {
   color: var(--c-accent);
   border-bottom-color: var(--c-accent);
 }
+.pkc-about-credits {
+  margin: 0 0 1.75rem;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: var(--radius-lg);
+}
+.pkc-about-credits .pkc-about-section-title {
+  margin-bottom: 0.5rem;
+}
+.pkc-about-credits-intro {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  color: var(--c-muted);
+  letter-spacing: 0.03em;
+}
+.pkc-about-credits-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.pkc-about-credit {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.pkc-about-credit-name {
+  font-weight: 600;
+  color: var(--c-accent);
+}
+.pkc-about-credit-name a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-about-credit-name a:hover {
+  border-bottom-color: var(--c-accent);
+}
+.pkc-about-credit-sep {
+  color: var(--c-muted);
+}
+.pkc-about-credit-role {
+  color: var(--c-fg);
+}
+.pkc-about-credits-note {
+  margin: 0;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--c-border);
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  line-height: 1.55;
+  font-style: italic;
+}
 .pkc-about-modules {
   margin-bottom: 1.5rem;
 }

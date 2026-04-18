@@ -14,20 +14,34 @@ const ABOUT_LID = '__about__';
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const NODE_MODULES = resolve(ROOT, 'node_modules');
 
+interface PkgContributor {
+  name?: string;
+  role?: string;
+  url?: string;
+  email?: string;
+}
+
 interface PkgJson {
   version: string;
   description?: string;
   license?: string;
-  author?: string | { name: string; url?: string };
+  author?: string | { name: string; url?: string; role?: string };
   homepage?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  contributors?: (string | PkgContributor)[];
 }
 
 interface AboutModule {
   name: string;
   version: string;
   license: string;
+}
+
+interface AboutContributor {
+  name: string;
+  role: string;
+  url: string;
 }
 
 interface AboutEntry {
@@ -39,10 +53,26 @@ interface AboutEntry {
   updated_at: string;
 }
 
-function resolveAuthor(pkg: PkgJson): { name: string; url: string } {
-  if (!pkg.author) return { name: 'unknown', url: '' };
-  if (typeof pkg.author === 'string') return { name: pkg.author, url: '' };
-  return { name: pkg.author.name, url: pkg.author.url ?? '' };
+function resolveAuthor(pkg: PkgJson): { name: string; url: string; role: string } {
+  if (!pkg.author) return { name: 'unknown', url: '', role: '' };
+  if (typeof pkg.author === 'string') return { name: pkg.author, url: '', role: '' };
+  return {
+    name: pkg.author.name,
+    url: pkg.author.url ?? '',
+    role: pkg.author.role ?? '',
+  };
+}
+
+function resolveContributors(pkg: PkgJson): AboutContributor[] {
+  if (!Array.isArray(pkg.contributors)) return [];
+  return pkg.contributors.map((c) => {
+    if (typeof c === 'string') return { name: c, role: '', url: '' };
+    return {
+      name: c.name ?? 'unknown',
+      role: c.role ?? '',
+      url: c.url ?? '',
+    };
+  });
 }
 
 function stripRange(spec: string): string {
@@ -93,6 +123,7 @@ export function buildAboutEntry(
   const author = resolveAuthor(pkg);
   const dependencies = resolveModules(pkg.dependencies);
   const devDependencies = resolveModules(pkg.devDependencies);
+  const contributors = resolveContributors(pkg);
 
   const payload = {
     type: 'pkc2-about' as const,
@@ -110,6 +141,7 @@ export function buildAboutEntry(
     author: {
       name: author.name,
       url: author.url || (pkg.homepage ?? ''),
+      role: author.role,
     },
     homepage: pkg.homepage ?? '',
     runtime: {
@@ -119,6 +151,7 @@ export function buildAboutEntry(
     },
     dependencies,
     devDependencies,
+    contributors,
   };
 
   return {

@@ -14,6 +14,7 @@ export interface AboutPayload {
   author: {
     name: string;
     url: string;
+    role: string;
   };
   homepage: string;
   runtime: {
@@ -23,6 +24,7 @@ export interface AboutPayload {
   };
   dependencies: AboutModule[];
   devDependencies: AboutModule[];
+  contributors: AboutContributor[];
 }
 
 export interface AboutModule {
@@ -31,17 +33,24 @@ export interface AboutModule {
   license: string;
 }
 
+export interface AboutContributor {
+  name: string;
+  role: string;
+  url: string;
+}
+
 export const DEFAULT_ABOUT_STUB: AboutPayload = {
   type: 'pkc2-about',
   version: 'unknown',
   description: '',
   build: { timestamp: 'unknown', commit: 'unknown', builder: 'unknown' },
   license: { name: 'unknown', url: '' },
-  author: { name: 'unknown', url: '' },
+  author: { name: 'unknown', url: '', role: '' },
   homepage: '',
   runtime: { offline: true, bundled: true, externalDependencies: false },
   dependencies: [],
   devDependencies: [],
+  contributors: [],
 };
 
 function isValidModule(m: unknown): m is AboutModule {
@@ -50,6 +59,14 @@ function isValidModule(m: unknown): m is AboutModule {
   return typeof o.name === 'string' && o.name !== ''
     && typeof o.version === 'string' && o.version !== ''
     && typeof o.license === 'string' && o.license !== '';
+}
+
+function isValidContributor(c: unknown): c is AboutContributor {
+  if (typeof c !== 'object' || c === null) return false;
+  const o = c as Record<string, unknown>;
+  return typeof o.name === 'string' && o.name !== ''
+    && typeof o.role === 'string'
+    && typeof o.url === 'string';
 }
 
 export function isValidAboutPayload(p: unknown): p is AboutPayload {
@@ -74,6 +91,7 @@ export function isValidAboutPayload(p: unknown): p is AboutPayload {
   if (typeof author !== 'object' || author === null) return false;
   if (typeof author.name !== 'string' || author.name === '') return false;
   if (typeof author.url !== 'string') return false;
+  if (typeof author.role !== 'string') return false;
 
   if (typeof o.homepage !== 'string') return false;
 
@@ -85,12 +103,17 @@ export function isValidAboutPayload(p: unknown): p is AboutPayload {
 
   if (!Array.isArray(o.dependencies)) return false;
   if (!Array.isArray(o.devDependencies)) return false;
+  if (!Array.isArray(o.contributors)) return false;
 
   return true;
 }
 
 export function filterValidModules(modules: unknown[]): AboutModule[] {
   return modules.filter(isValidModule);
+}
+
+export function filterValidContributors(contributors: unknown[]): AboutContributor[] {
+  return contributors.filter(isValidContributor);
 }
 
 export function resolveAboutPayload(body: string | undefined): AboutPayload {
@@ -105,6 +128,7 @@ export function resolveAboutPayload(body: string | undefined): AboutPayload {
       ...parsed,
       dependencies: filterValidModules(parsed.dependencies),
       devDependencies: filterValidModules(parsed.devDependencies),
+      contributors: filterValidContributors(parsed.contributors),
     };
   } catch {
     console.warn('[PKC2] About entry parse failed');

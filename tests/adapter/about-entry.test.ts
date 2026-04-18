@@ -39,11 +39,15 @@ function makeValidPayload(overrides: Record<string, unknown> = {}): Record<strin
     description: 'Portable Knowledge Container',
     build: { timestamp: '2026-04-18T06:00:00Z', commit: 'abc1234', builder: 'vite+release-builder' },
     license: { name: 'AGPL-3.0', url: 'https://example.com/LICENSE' },
-    author: { name: 'sm06224', url: 'https://example.com' },
+    author: { name: 'sm06224', url: 'https://example.com', role: 'Author & Chief Director' },
     homepage: 'https://example.com',
     runtime: { offline: true, bundled: true, externalDependencies: false },
     dependencies: [{ name: 'markdown-it', version: '14.1.1', license: 'MIT' }],
     devDependencies: [{ name: 'vite', version: '6.0.0', license: 'MIT' }],
+    contributors: [
+      { name: 'Claude (Anthropic)', role: 'Implementation Partner', url: 'https://www.anthropic.com' },
+      { name: 'ChatGPT (OpenAI)', role: 'Program Director', url: 'https://openai.com' },
+    ],
     ...overrides,
   };
 }
@@ -135,6 +139,16 @@ describe('isValidAboutPayload', () => {
     delete p.homepage;
     expect(isValidAboutPayload(p)).toBe(false);
   });
+
+  it('missing author.role rejects', () => {
+    expect(isValidAboutPayload(makeValidPayload({
+      author: { name: 'sm06224', url: '' },
+    }))).toBe(false);
+  });
+
+  it('non-array contributors rejects', () => {
+    expect(isValidAboutPayload(makeValidPayload({ contributors: 'nope' }))).toBe(false);
+  });
 });
 
 // ── 3. filterValidModules ───────────────────────────────────
@@ -191,6 +205,20 @@ describe('resolveAboutPayload', () => {
   it('default stub exposes empty dependencies and devDependencies', () => {
     expect(DEFAULT_ABOUT_STUB.dependencies).toEqual([]);
     expect(DEFAULT_ABOUT_STUB.devDependencies).toEqual([]);
+    expect(DEFAULT_ABOUT_STUB.contributors).toEqual([]);
+  });
+
+  it('filters invalid contributor entries', () => {
+    const payload = makeValidPayload({
+      contributors: [
+        { name: 'Claude', role: 'Impl', url: 'https://example.com' },
+        { name: 'bad' },
+        { role: 'missing name', url: 'https://x' },
+      ],
+    });
+    const result = resolveAboutPayload(JSON.stringify(payload));
+    expect(result.contributors).toHaveLength(1);
+    expect(result.contributors[0]?.name).toBe('Claude');
   });
 });
 
@@ -319,6 +347,29 @@ describe('renderer about view display', () => {
     expect(tables.length).toBe(2);
   });
 
+  it('about view displays Credits section with author + contributors', () => {
+    const container = makeContainer([makeAboutEntry()]);
+    render(readyState(container), root);
+    const credits = root.querySelector('[data-pkc-region="about-credits"]');
+    expect(credits).not.toBeNull();
+    const items = credits!.querySelectorAll('.pkc-about-credit');
+    expect(items.length).toBe(3);
+    expect(items[0]?.textContent).toContain('sm06224');
+    expect(items[0]?.textContent).toContain('Author & Chief Director');
+    expect(items[1]?.textContent).toContain('Claude (Anthropic)');
+    expect(items[1]?.textContent).toContain('Implementation Partner');
+    expect(items[2]?.textContent).toContain('ChatGPT (OpenAI)');
+    expect(items[2]?.textContent).toContain('Program Director');
+  });
+
+  it('Credits note disclaims legal AI authorship', () => {
+    const container = makeContainer([makeAboutEntry()]);
+    render(readyState(container), root);
+    const note = root.querySelector('.pkc-about-credits-note');
+    expect(note?.textContent).toContain('copyright');
+    expect(note?.textContent).toContain('human author');
+  });
+
   it('about view displays zero-count proud message when devDependencies is empty', () => {
     const entry = makeAboutEntry(JSON.stringify(makeValidPayload({ devDependencies: [] })));
     const container = makeContainer([entry]);
@@ -418,10 +469,13 @@ describe('about entry builder', () => {
       version: '2.0.0',
       description: 'Portable Knowledge Container',
       license: 'AGPL-3.0',
-      author: { name: 'sm06224', url: 'https://github.com/sm06224' },
+      author: { name: 'sm06224', url: 'https://github.com/sm06224', role: 'Author & Chief Director' },
       homepage: 'https://github.com/sm06224/pkc2',
       dependencies: { 'markdown-it': '^14.1.1' },
       devDependencies: { 'vite': '^6.0.0' },
+      contributors: [
+        { name: 'Claude (Anthropic)', role: 'Implementation Partner', url: 'https://www.anthropic.com' },
+      ],
     };
     const entry = buildAboutEntry(pkg, '2026-04-18T06:00:00Z', 'abc1234');
     expect(entry.lid).toBe(ABOUT_LID);
@@ -433,10 +487,14 @@ describe('about entry builder', () => {
     expect(body.description).toBe('Portable Knowledge Container');
     expect(body.homepage).toBe('https://github.com/sm06224/pkc2');
     expect(body.build.commit).toBe('abc1234');
+    expect(body.author.role).toBe('Author & Chief Director');
     expect(body.dependencies.length).toBeGreaterThanOrEqual(1);
     expect(body.dependencies.find((m: { name: string }) => m.name === 'markdown-it')).toBeDefined();
     expect(body.devDependencies.length).toBeGreaterThanOrEqual(1);
     expect(body.devDependencies.find((m: { name: string }) => m.name === 'vite')).toBeDefined();
+    expect(body.contributors).toHaveLength(1);
+    expect(body.contributors[0].name).toBe('Claude (Anthropic)');
+    expect(body.contributors[0].role).toBe('Implementation Partner');
   });
 
   it('buildAboutEntry handles missing optional fields', async () => {
@@ -445,10 +503,12 @@ describe('about entry builder', () => {
     const entry = buildAboutEntry(pkg, '2026-04-18T06:00:00Z', 'unknown');
     const body = JSON.parse(entry.body);
     expect(body.author.name).toBe('unknown');
+    expect(body.author.role).toBe('');
     expect(body.license.name).toBe('unknown');
     expect(body.description).toBe('');
     expect(body.homepage).toBe('');
     expect(body.dependencies).toHaveLength(0);
     expect(body.devDependencies).toHaveLength(0);
+    expect(body.contributors).toHaveLength(0);
   });
 });
