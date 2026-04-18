@@ -108,6 +108,7 @@ import {
   openAssetAutocomplete,
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
+import { checkAssetDuplicate } from './asset-dedupe';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -2997,7 +2998,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── File drop zone handler (external file → attachment entry) ──
 
   function handleFileDropOver(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (!dropZone) return;
 
     // Only handle external file drops (not internal entry DnD)
@@ -3013,15 +3016,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleFileDropLeave(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (dropZone) {
       dropZone.removeAttribute('data-pkc-file-drag-over');
     }
   }
 
   function handleFileDrop(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (!dropZone) return;
+    const zone: HTMLElement = dropZone;
 
     if (!e.dataTransfer?.files.length) return;
 
@@ -3030,17 +3038,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     e.preventDefault();
     e.stopPropagation();
-    dropZone.removeAttribute('data-pkc-file-drag-over');
+    zone.removeAttribute('data-pkc-file-drag-over');
 
-    // Take the first file only (single file for now)
-    const file = e.dataTransfer.files[0]!;
-    const contextFolder = dropZone.getAttribute('data-pkc-context-folder') ?? undefined;
+    const files = Array.from(e.dataTransfer.files);
+    const contextFolder = zone.getAttribute('data-pkc-context-folder') ?? undefined;
 
-    processFileAttachment(file, contextFolder, dispatcher);
-
-    // Visual feedback: flash the drop zone
-    dropZone.setAttribute('data-pkc-drop-success', 'true');
-    setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
+    // G-1: process all files in FileList index order, sequentially.
+    // Each file's dispatches complete before the next FileReader starts,
+    // preserving container.entries append order (I-FI04-4).
+    function processNext(index: number): void {
+      if (index >= files.length) {
+        zone.setAttribute('data-pkc-drop-success', 'true');
+        setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
+        return;
+      }
+      processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () =>
+        processNext(index + 1),
+      );
+    }
+    processNext(0);
   }
 
   // ── Clipboard paste handler (screenshot / image → attachment entry) ──
@@ -4635,6 +4651,98 @@ function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
         }),
     });
   });
+}
+
+/**
+ * FI-04: Process one file with G-2 dedupe detection.
+ * Reads the file once, checks for duplicates (hash + size), shows an
+ * informational toast if a duplicate is found, then always creates the
+ * attachment entry (I-FI04-1). Calls onComplete after all dispatches finish
+ * so callers can chain the next file (G-1 sequential ordering).
+ */
+function processFileAttachmentWithDedupe(
+  file: File,
+  contextFolder: string | undefined,
+  dispatcher: Dispatcher,
+  onComplete: () => void,
+): void {
+  if (isFileTooLarge(file.size)) {
+    const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+    console.warn(`[PKC2] Drop rejected: ${msg}`);
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () => dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
+    });
+    onComplete();
+    return;
+  }
+
+  preflightStorageWarn(file, dispatcher);
+
+  const reader = new FileReader();
+  reader.onerror = () => {
+    const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
+    console.warn(`[PKC2] ${msg}`);
+    showToast({ message: msg, kind: 'error' });
+    onComplete();
+  };
+  reader.onload = () => {
+    const arrayBuffer = reader.result as ArrayBuffer;
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    const base64 = btoa(binary);
+
+    // G-2: informational dedupe — never blocks attachment (I-FI04-1)
+    try {
+      if (checkAssetDuplicate(base64, file.size, dispatcher.getState().container)) {
+        showToast({
+          kind: 'info',
+          message: `「${file.name}」は既存の添付と同一内容です`,
+          autoDismissMs: 3000,
+        });
+      }
+    } catch (dedupeErr) {
+      console.warn(`[PKC2] FI-04: dedupe check failed for "${file.name}"`, dedupeErr);
+    }
+
+    // Always create the attachment entry (I-FI04-1, I-FI04-2)
+    const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const bodyMeta = JSON.stringify({
+      name: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+      asset_key: assetKey,
+    });
+
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+    const state = dispatcher.getState();
+    if (state.editingLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: state.editingLid,
+        title: file.name,
+        body: bodyMeta,
+        assets: { [assetKey]: base64 },
+      });
+      if (contextFolder) {
+        const newState = dispatcher.getState();
+        if (newState.selectedLid) {
+          dispatcher.dispatch({
+            type: 'CREATE_RELATION',
+            from: contextFolder,
+            to: newState.selectedLid,
+            kind: 'structural',
+          });
+        }
+      }
+    }
+    onComplete();
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 /**

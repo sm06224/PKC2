@@ -1351,6 +1351,7 @@ function renderSidebar(state: AppState): HTMLElement {
       empty.textContent = 'No entries in this container.';
     }
     sidebar.appendChild(empty);
+    sidebar.appendChild(renderSidebarDropZone(state));
     return sidebar;
   }
 
@@ -1359,6 +1360,7 @@ function renderSidebar(state: AppState): HTMLElement {
     empty.setAttribute('data-pkc-region', 'empty-guidance');
     empty.textContent = 'No matching entries. Try adjusting your search or filters.';
     sidebar.appendChild(empty);
+    sidebar.appendChild(renderSidebarDropZone(state));
     return sidebar;
   }
 
@@ -1603,7 +1605,34 @@ function renderSidebar(state: AppState): HTMLElement {
     }
   }
 
+  // G-3: persistent file drop zone at sidebar bottom (FI-04).
+  // Always rendered; active only when phase === 'ready' and not readonly.
+  sidebar.appendChild(renderSidebarDropZone(state));
+
   return sidebar;
+}
+
+/**
+ * FI-04 G-3: Persistent file drop zone rendered at the bottom of the sidebar.
+ * Shares data-pkc-region="file-drop-zone" with center-pane drop zones so the
+ * existing handleFileDrop / handleFileDropOver / handleFileDropLeave handlers
+ * in action-binder work without additional event listeners.
+ */
+function renderSidebarDropZone(state: AppState): HTMLElement {
+  const zone = createElement('div', 'pkc-drop-zone pkc-drop-zone-sidebar');
+  zone.setAttribute('data-pkc-region', 'sidebar-file-drop-zone');
+  zone.setAttribute('data-pkc-persistent-drop-zone', 'true');
+
+  const isActive = state.phase === 'ready' && !state.readonly;
+  if (!isActive) {
+    zone.setAttribute('data-pkc-inactive', 'true');
+  }
+
+  const label = createElement('span', 'pkc-drop-zone-label');
+  label.textContent = '📎 Drop files here';
+  zone.appendChild(label);
+
+  return zone;
 }
 
 /**
