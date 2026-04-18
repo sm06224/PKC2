@@ -617,6 +617,11 @@ function renderShellMenu(
   shortcutBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
   shortcutBtn.textContent = '⌨ Keyboard Shortcuts';
   shortcutSection.appendChild(shortcutBtn);
+
+  const aboutBtn = createElement('button', 'pkc-btn-small');
+  aboutBtn.setAttribute('data-pkc-action', 'select-about');
+  aboutBtn.textContent = 'ℹ About PKC2';
+  shortcutSection.appendChild(aboutBtn);
   card.appendChild(shortcutSection);
 
   // Data Maintenance — manual orphan asset cleanup + workspace reset.
@@ -662,8 +667,10 @@ function renderShellMenu(
   helpSection.appendChild(helpList);
   card.appendChild(helpSection);
 
-  // Version
-  const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
+  // Version (clickable → About)
+  const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');
+  versionSection.setAttribute('data-pkc-action', 'select-about');
+  versionSection.setAttribute('title', 'Open About');
   versionSection.textContent = `PKC2 v${VERSION}`;
   card.appendChild(versionSection);
 

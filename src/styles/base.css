@@ -3223,6 +3223,16 @@ mark.pkc-search-mark {
   font-size: 0.6rem;
   color: var(--c-muted);
   text-align: center;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+.pkc-shell-menu-version:hover {
+  color: var(--c-accent);
+  text-decoration: underline dotted;
 }
 
 .pkc-shell-menu-help-list {

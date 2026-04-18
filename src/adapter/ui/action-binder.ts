@@ -1,4 +1,5 @@
 import type { ArchetypeId } from '../../core/model/record';
+import { ABOUT_LID } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
@@ -1246,6 +1247,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'close-shell-menu': {
         const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
         if (menu) menu.style.display = 'none';
+        break;
+      }
+      case 'select-about': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = 'none';
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: ABOUT_LID });
         break;
       }
       case 'set-theme': {
