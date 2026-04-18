@@ -310,10 +310,10 @@ describe('FI-01 state slice — RESOLVE_DUAL_EDIT_CONFLICT copy-to-clipboard', (
     })();
 
     const containerBefore = state.container;
-    let events;
-    ({ state, events } = reduce(state, {
+    const { state: nextState, events } = reduce(state, {
       type: 'RESOLVE_DUAL_EDIT_CONFLICT', lid: 'e1', resolution: 'copy-to-clipboard',
-    }));
+    });
+    state = nextState;
 
     expect(state.container).toBe(containerBefore);
     expect(state.phase).toBe('editing');

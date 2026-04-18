@@ -10,7 +10,6 @@ import {
   isDualEditConflictOverlayOpen,
 } from '@adapter/ui/dual-edit-conflict-overlay';
 import type { Container } from '@core/model/container';
-import type { AppState } from '@adapter/state/app-state';
 
 /**
  * FI-01 dual-edit-safety v1 — reject overlay UI slice tests.
