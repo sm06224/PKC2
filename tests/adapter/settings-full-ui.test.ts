@@ -495,7 +495,102 @@ describe('menu open state', () => {
   });
 });
 
-// ── 13. Migration: old textColor → uiTextColor ───────────────
+// ── 13. D6: background color propagates to all panes ─────────
+
+const containerWithEntry: Container = {
+  meta: {
+    container_id: 'test-id',
+    title: 'Test',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    schema_version: 1,
+  },
+  entries: [
+    {
+      lid: 'e1',
+      title: 'Entry One',
+      body: 'body',
+      archetype: 'text',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ],
+  relations: [],
+  revisions: [],
+  assets: {},
+};
+
+function setupWithSelection() {
+  const dispatcher = createDispatcher();
+  const events: DomainEvent[] = [];
+  dispatcher.onEvent((e) => events.push(e));
+  dispatcher.onState((state) => render(state, root));
+
+  dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithEntry });
+  dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+  render(dispatcher.getState(), root);
+  cleanup = bindActions(root, dispatcher);
+
+  return { dispatcher, events };
+}
+
+describe('background color propagation (D6)', () => {
+  it('sidebar exists and has no inline background override', () => {
+    setup();
+    const sidebar = root.querySelector<HTMLElement>('.pkc-sidebar');
+    expect(sidebar).not.toBeNull();
+    expect(sidebar!.style.background).toBe('');
+  });
+
+  it('meta-pane exists when entry selected and has no inline background override', () => {
+    setupWithSelection();
+    const meta = root.querySelector<HTMLElement>('.pkc-meta-pane');
+    expect(meta).not.toBeNull();
+    expect(meta!.style.background).toBe('');
+  });
+
+  it('setting background color sets --c-bg on root, affecting all panes', () => {
+    const { dispatcher } = setupWithSelection();
+    dispatcher.dispatch({ type: 'SET_BACKGROUND_COLOR', color: '#220033' });
+    render(dispatcher.getState(), root);
+    expect(root.style.getPropertyValue('--c-bg')).toBe('#220033');
+    const sidebar = root.querySelector<HTMLElement>('.pkc-sidebar');
+    expect(sidebar).not.toBeNull();
+    expect(sidebar!.style.background).toBe('');
+    const meta = root.querySelector<HTMLElement>('.pkc-meta-pane');
+    expect(meta).not.toBeNull();
+    expect(meta!.style.background).toBe('');
+  });
+});
+
+// ── 14. D7: menu responsive layout ──────────────────────────
+
+describe('menu card structure (D7)', () => {
+  it('menu card is rendered inside overlay', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    const card = root.querySelector<HTMLElement>('.pkc-shell-menu-card');
+    expect(card).not.toBeNull();
+  });
+
+  it('menu card contains multiple sections', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    const sections = root.querySelectorAll('.pkc-shell-menu-section');
+    expect(sections.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('menu heading and close button exist for grid span', () => {
+    const { dispatcher } = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    const heading = root.querySelector<HTMLElement>('.pkc-shell-menu-heading');
+    const close = root.querySelector<HTMLElement>('.pkc-shell-menu-close');
+    expect(heading).not.toBeNull();
+    expect(close).not.toBeNull();
+  });
+});
+
+// ── 15. Migration: old textColor → uiTextColor ───────────────
 
 describe('textColor migration', () => {
   it('old textColor maps to uiTextColor on restore', () => {
