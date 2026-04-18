@@ -1614,9 +1614,9 @@ function renderSidebar(state: AppState): HTMLElement {
 
 /**
  * FI-04 G-3: Persistent file drop zone rendered at the bottom of the sidebar.
- * Shares data-pkc-region="file-drop-zone" with center-pane drop zones so the
- * existing handleFileDrop / handleFileDropOver / handleFileDropLeave handlers
- * in action-binder work without additional event listeners.
+ * Uses data-pkc-region="sidebar-file-drop-zone" to avoid querySelector ordering
+ * conflicts with center-pane zones. The action-binder drop handlers match both
+ * "file-drop-zone" and "sidebar-file-drop-zone" via a combined CSS selector.
  */
 function renderSidebarDropZone(state: AppState): HTMLElement {
   const zone = createElement('div', 'pkc-drop-zone pkc-drop-zone-sidebar');
