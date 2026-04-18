@@ -331,8 +331,11 @@ function renderShell(state: AppState): HTMLElement {
   main.appendChild(renderCenter(state));
 
   // Right pane: meta information (tags, relations, history, move)
+  // System-about entries are view-only hidden entries, so the meta
+  // pane (which exposes tags/relations/history/delete) is skipped.
   const selected = findSelectedEntry(state);
-  if (selected) {
+  const hasMetaPane = !!selected && selected.archetype !== 'system-about';
+  if (hasMetaPane) {
     // Resize handle: center ↔ meta
     const rightHandle = createElement('div', 'pkc-resize-handle');
     rightHandle.setAttribute('data-pkc-resize', 'right');
@@ -340,7 +343,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected, canEdit, state.container);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container);
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -350,10 +353,8 @@ function renderShell(state: AppState): HTMLElement {
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
   rightTray.textContent = 'META';
-  // The right tray is only meaningful when a meta pane exists, i.e.
-  // when an entry is selected. When no entry is selected, leave it
-  // hidden regardless of the persisted preference.
-  rightTray.style.display = panePrefs.meta && selected ? '' : 'none';
+  // The right tray is only meaningful when a meta pane exists.
+  rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
 

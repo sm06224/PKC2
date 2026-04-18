@@ -388,6 +388,24 @@ describe('renderer about view display', () => {
     expect(empties[0]?.textContent).toContain('self-contained');
   });
 
+  it('meta pane (tags/relations) is NOT rendered when __about__ is selected', () => {
+    const userEntry: Entry = {
+      lid: 'user-1',
+      title: 'Test',
+      body: 'hello',
+      archetype: 'text',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    const container = makeContainer([makeAboutEntry(), userEntry]);
+    const state = { ...readyState(container), selectedLid: ABOUT_LID };
+    render(state, root);
+    const metaPane = root.querySelector('[data-pkc-region="meta"]');
+    expect(metaPane).toBeNull();
+    const tagAdd = root.querySelector('[data-pkc-region="tag-add"]');
+    expect(tagAdd).toBeNull();
+  });
+
   it('about view when __about__ is explicitly selected', () => {
     const userEntry: Entry = {
       lid: 'user-1',
