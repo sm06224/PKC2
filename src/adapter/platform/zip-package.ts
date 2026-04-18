@@ -757,7 +757,9 @@ export function triggerZipDownload(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
-    document.body.removeChild(a);
+    if (typeof document !== 'undefined') {
+      document.body.removeChild(a);
+    }
     URL.revokeObjectURL(url);
   }, 100);
 }
