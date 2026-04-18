@@ -126,6 +126,15 @@ export interface AppState {
    * undefined is equivalent to false. Session-only; not persisted.
    */
   showScanline?: boolean;
+  /**
+   * User-chosen accent color override (FI-12 follow-up).
+   * Hex string like '#33ff66'. undefined = use the CSS default
+   * (`--c-accent` from base.css, which is the neon green token).
+   * Session-only; not persisted. Future persistence is planned via
+   * the hidden system settings entry (see
+   * `docs/spec/system-settings-hidden-entry-v1-minimum-scope.md`).
+   */
+  accentColor?: string;
   /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
   tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
@@ -294,6 +303,7 @@ export function createInitialState(): AppState {
     archetypeFilter: new Set<ArchetypeId>(),
     archetypeFilterExpanded: false,
     showScanline: false,
+    accentColor: undefined,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -1303,6 +1313,25 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_SCANLINE': {
       return { state: { ...state, showScanline: !(state.showScanline ?? false) }, events: [] };
+    }
+    case 'SET_SCANLINE': {
+      if ((state.showScanline ?? false) === action.on) return { state, events: [] };
+      return { state: { ...state, showScanline: action.on }, events: [] };
+    }
+    case 'SET_ACCENT_COLOR': {
+      // Accept only `#rrggbb` / `#rgb` hex strings. Anything else is
+      // silently rejected so a stale/rogue dispatch can't corrupt the
+      // CSS variable. The renderer writes the value directly into an
+      // inline style, so invalid input here would be a trust boundary
+      // violation.
+      if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(action.color)) {
+        return { state, events: [] };
+      }
+      return { state: { ...state, accentColor: action.color.toLowerCase() }, events: [] };
+    }
+    case 'RESET_ACCENT_COLOR': {
+      if (state.accentColor === undefined) return { state, events: [] };
+      return { state: { ...state, accentColor: undefined }, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };

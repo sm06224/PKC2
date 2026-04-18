@@ -3869,8 +3869,26 @@ mark.pkc-search-mark {
 }
 
 .pkc-kanban-card[data-pkc-selected="true"] {
+  /* FI-12 follow-up: the global [data-pkc-selected="true"] rule paints a
+     solid accent background with dark `--c-accent-fg` text, which turns
+     selected Kanban cards into unreadable green blocks with tiny dark
+     text. Override to a readable treatment: keep the normal body color,
+     use a subtle accent tint as the selection cue, and rely on the
+     existing border + inset shadow for the "selected" signal. */
+  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-bg)) !important;
+  color: var(--c-fg) !important;
   border-color: var(--c-accent);
-  box-shadow: inset 0 0 0 1px var(--c-accent);
+  box-shadow: inset 0 0 0 1px var(--c-accent), var(--glow);
+}
+
+/* Same rationale for the child badges: the global [data-pkc-selected=true]
+   descendant rules flip badge text to `--c-accent-fg` (dark on accent),
+   which is only legible on a solid accent background. Since the card bg
+   is now a subtle tint, restore the normal badge fg color. */
+.pkc-kanban-card[data-pkc-selected="true"] .pkc-archetype-badge,
+.pkc-kanban-card[data-pkc-selected="true"] .pkc-todo-status-badge,
+.pkc-kanban-card[data-pkc-selected="true"] .pkc-task-badge {
+  color: var(--c-fg);
 }
 
 .pkc-kanban-card[data-pkc-todo-status="done"] {

@@ -544,6 +544,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'toggle-scanline':
         dispatcher.dispatch({ type: 'TOGGLE_SCANLINE' });
         break;
+      case 'set-scanline': {
+        const raw = target.getAttribute('data-pkc-scanline-value');
+        if (raw === 'on' || raw === 'off') {
+          dispatcher.dispatch({ type: 'SET_SCANLINE', on: raw === 'on' });
+        }
+        break;
+      }
+      case 'reset-accent-color':
+        dispatcher.dispatch({ type: 'RESET_ACCENT_COLOR' });
+        break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
@@ -2417,6 +2427,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (val) {
         dispatcher.dispatch({ type: 'BULK_SET_DATE', date: val });
       }
+    }
+
+    // Accent color picker (FI-12 follow-up). <input type="color"> fires
+    // `change` when the user confirms a color.
+    if (action === 'set-accent-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_ACCENT_COLOR', color: val });
     }
 
     // Container sandbox policy select
