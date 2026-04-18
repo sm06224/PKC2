@@ -4917,6 +4917,12 @@ mark.pkc-search-mark {
 }
 
 /* ── About view ── */
+.pkc-about-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
 .pkc-about-view {
   max-width: 52rem;
   margin: 0 auto;

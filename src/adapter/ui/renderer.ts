@@ -1914,7 +1914,9 @@ function renderCenter(state: AppState): HTMLElement {
   const showAbout = selected?.archetype === 'system-about'
     || (userEntries.length === 0 && !selected && aboutEntry);
   if (showAbout) {
-    center.appendChild(renderAboutView(aboutEntry));
+    const aboutScroll = createElement('div', 'pkc-about-scroll');
+    aboutScroll.appendChild(renderAboutView(aboutEntry));
+    center.appendChild(aboutScroll);
     return center;
   }
 
