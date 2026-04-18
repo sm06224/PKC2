@@ -3271,10 +3271,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * entry textareas are deliberately excluded in this slice — see
    * docs/development/html-paste-link-markdown.md.
    */
+  const PASTE_LINK_ALLOWED_FIELDS = new Set([
+    'body',
+    'textlog-append-text',
+    'textlog-entry-text',
+  ]);
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
-    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return;
 
     const html = e.clipboardData?.getData('text/html') ?? '';
     if (!html) return;
