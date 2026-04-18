@@ -554,6 +554,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'reset-accent-color':
         dispatcher.dispatch({ type: 'RESET_ACCENT_COLOR' });
         break;
+      case 'reset-border-color':
+        dispatcher.dispatch({ type: 'RESET_BORDER_COLOR' });
+        break;
+      case 'reset-text-color':
+        dispatcher.dispatch({ type: 'RESET_TEXT_COLOR' });
+        break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
@@ -2440,11 +2446,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
-    // Accent color picker (FI-12 follow-up). <input type="color"> fires
+    // Color pickers: accent / border / text. <input type="color"> fires
     // `change` when the user confirms a color.
     if (action === 'set-accent-color') {
       const val = (target as HTMLInputElement).value;
       if (val) dispatcher.dispatch({ type: 'SET_ACCENT_COLOR', color: val });
+    }
+    if (action === 'set-border-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_BORDER_COLOR', color: val });
+    }
+    if (action === 'set-text-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_TEXT_COLOR', color: val });
+    }
+
+    // Select controls: font / language / timezone. Empty value = "System
+    // Default" = reset to null. Non-empty = set to the selected value.
+    if (action === 'set-preferred-font') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_PREFERRED_FONT', font: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_PREFERRED_FONT' });
+      }
+    }
+    if (action === 'set-language') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_LANGUAGE', language: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_LANGUAGE' });
+      }
+    }
+    if (action === 'set-timezone') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_TIMEZONE', timezone: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_TIMEZONE' });
+      }
     }
 
     // Container sandbox policy select

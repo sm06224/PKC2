@@ -686,6 +686,130 @@ function renderShellMenu(
   accentSection.appendChild(accentControls);
   card.appendChild(accentSection);
 
+  // FI-Settings v1 full UI — additional appearance / locale controls.
+  // Each follows the same pattern as accent: native input + reset button,
+  // dispatching via data-pkc-action. The reducer and persistence wiring
+  // already exist; this is the final "last mile" UI connection.
+  const settings = state.settings ?? SETTINGS_DEFAULTS;
+
+  // Border color
+  const borderSection = createElement('div', 'pkc-shell-menu-section');
+  const borderLabel = createElement('span', 'pkc-shell-menu-label');
+  borderLabel.textContent = 'Border';
+  borderSection.appendChild(borderLabel);
+  const borderControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const borderInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  borderInput.type = 'color';
+  borderInput.setAttribute('data-pkc-action', 'set-border-color');
+  borderInput.value = settings.theme.borderColor ?? '#333333';
+  borderControls.appendChild(borderInput);
+  const borderReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  borderReset.setAttribute('data-pkc-action', 'reset-border-color');
+  borderReset.textContent = 'Default';
+  borderControls.appendChild(borderReset);
+  borderSection.appendChild(borderControls);
+  card.appendChild(borderSection);
+
+  // Text color
+  const textColorSection = createElement('div', 'pkc-shell-menu-section');
+  const textColorLabel = createElement('span', 'pkc-shell-menu-label');
+  textColorLabel.textContent = 'Text';
+  textColorSection.appendChild(textColorLabel);
+  const textColorControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const textColorInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  textColorInput.type = 'color';
+  textColorInput.setAttribute('data-pkc-action', 'set-text-color');
+  textColorInput.value = settings.theme.textColor ?? '#e0e0e0';
+  textColorControls.appendChild(textColorInput);
+  const textColorReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  textColorReset.setAttribute('data-pkc-action', 'reset-text-color');
+  textColorReset.textContent = 'Default';
+  textColorControls.appendChild(textColorReset);
+  textColorSection.appendChild(textColorControls);
+  card.appendChild(textColorSection);
+
+  // Preferred font
+  const fontSection = createElement('div', 'pkc-shell-menu-section');
+  const fontLabel = createElement('span', 'pkc-shell-menu-label');
+  fontLabel.textContent = 'Font';
+  fontSection.appendChild(fontLabel);
+  const fontControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const fontSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  fontSelect.setAttribute('data-pkc-action', 'set-preferred-font');
+  const fontOptions: { value: string; label: string }[] = [
+    { value: '', label: 'System Default' },
+    { value: 'BIZ UDGothic', label: 'BIZ UDGothic' },
+    { value: 'IBM Plex Mono', label: 'IBM Plex Mono' },
+    { value: 'Share Tech Mono', label: 'Share Tech Mono' },
+    { value: 'Inter', label: 'Inter' },
+    { value: 'sans-serif', label: 'Sans Serif' },
+    { value: 'monospace', label: 'Monospace' },
+  ];
+  for (const { value, label } of fontOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.display.preferredFont ?? '')) opt.selected = true;
+    fontSelect.appendChild(opt);
+  }
+  fontControls.appendChild(fontSelect);
+  fontSection.appendChild(fontControls);
+  card.appendChild(fontSection);
+
+  // Language
+  const langSection = createElement('div', 'pkc-shell-menu-section');
+  const langLabel = createElement('span', 'pkc-shell-menu-label');
+  langLabel.textContent = 'Language';
+  langSection.appendChild(langLabel);
+  const langControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const langSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  langSelect.setAttribute('data-pkc-action', 'set-language');
+  const langOptions: { value: string; label: string }[] = [
+    { value: '', label: 'System' },
+    { value: 'ja', label: '日本語 (ja)' },
+    { value: 'en', label: 'English (en)' },
+    { value: 'en-US', label: 'English (en-US)' },
+    { value: 'zh-Hant-TW', label: '繁體中文 (zh-Hant-TW)' },
+    { value: 'ko', label: '한국어 (ko)' },
+  ];
+  for (const { value, label } of langOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.locale.language ?? '')) opt.selected = true;
+    langSelect.appendChild(opt);
+  }
+  langControls.appendChild(langSelect);
+  langSection.appendChild(langControls);
+  card.appendChild(langSection);
+
+  // Timezone
+  const tzSection = createElement('div', 'pkc-shell-menu-section');
+  const tzLabel = createElement('span', 'pkc-shell-menu-label');
+  tzLabel.textContent = 'Timezone';
+  tzSection.appendChild(tzLabel);
+  const tzControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const tzSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  tzSelect.setAttribute('data-pkc-action', 'set-timezone');
+  const tzOptions: { value: string; label: string }[] = [
+    { value: '', label: 'System' },
+    { value: 'Asia/Tokyo', label: 'Asia/Tokyo (JST)' },
+    { value: 'UTC', label: 'UTC' },
+    { value: 'America/New_York', label: 'America/New_York (ET)' },
+    { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PT)' },
+    { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+  ];
+  for (const { value, label } of tzOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.locale.timezone ?? '')) opt.selected = true;
+    tzSelect.appendChild(opt);
+  }
+  tzControls.appendChild(tzSelect);
+  tzSection.appendChild(tzControls);
+  card.appendChild(tzSection);
+
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
   const shortcutBtn = createElement('button', 'pkc-btn-small');
