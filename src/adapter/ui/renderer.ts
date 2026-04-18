@@ -158,9 +158,13 @@ function applySystemSettings(
     root.style.removeProperty('--c-border');
   }
   if (resolved.theme.textColor) {
+    // base.css: most text rules use var(--c-fg); --c-text is defined as var(--c-fg).
+    // Override both so the user-chosen color cascades everywhere.
     root.style.setProperty('--c-text', resolved.theme.textColor);
+    root.style.setProperty('--c-fg', resolved.theme.textColor);
   } else {
     root.style.removeProperty('--c-text');
+    root.style.removeProperty('--c-fg');
   }
   if (resolved.display.preferredFont) {
     // Wrap in quotes so multi-word family names survive the CSS cascade.
