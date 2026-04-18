@@ -2,6 +2,7 @@ import { SLOT } from '../../runtime/contract';
 import { decompressAssets } from './compression';
 import type { Container } from '../../core/model/container';
 import { hasUserContent } from '../../core/model/container';
+import { isSystemArchetype, type Entry } from '../../core/model/record';
 
 /**
  * pkc-data source — reads the Container embedded in the exported HTML
@@ -40,6 +41,17 @@ export interface PkcDataResult {
   container: Container;
   readonly: boolean;
   lightSource: boolean;
+  /**
+   * system-* entries extracted from `container`. These represent the
+   * authoritative, build-time view of About / Settings / … and must be
+   * merged onto IDB / empty boot containers so those views always
+   * reflect the current build, never a stale IDB snapshot.
+   *
+   * Optional so test fixtures that predate this field keep compiling.
+   * Production code always derives it from `container.entries` in
+   * `readPkcData`, and consumers treat an absent value as empty.
+   */
+  systemEntries?: Entry[];
 }
 
 /**
@@ -69,16 +81,11 @@ export async function readPkcData(): Promise<PkcDataResult | null> {
   }
   if (!data.container) return null;
 
-  // System-entry isolation: a pkc-data payload that contains only
-  // system-* entries (about / settings) carries no user content. Treat
-  // it as absent so the boot-source decision falls through to IDB (if
-  // any) or 'empty', instead of locking the session into view-only mode
-  // and suppressing IDB writes. See `docs/spec/about-build-info-hidden-
-  // entry-v1-behavior-contract.md` §I-ABOUT-7 and `docs/spec/system-
-  // settings-hidden-entry-v1-behavior-contract.md` §I-SETTINGS-3 — both
-  // exports continue to include the system entries; this gate only
-  // affects the *boot-source decision*, not what is exported.
-  if (!hasUserContent(data.container)) return null;
+  // Note: system-only pkc-data payloads (no user content) are NOT
+  // rejected here. They carry authoritative system entries (About /
+  // Settings) that must still be merged onto the boot container even
+  // when IDB wins the boot-source vote. The user-content check is
+  // deferred to chooseBootSource which gates boot source selection.
 
   const isReadonly = data.export_meta?.mutability === 'readonly';
   const isLight = data.export_meta?.mode === 'light';
@@ -102,7 +109,8 @@ export async function readPkcData(): Promise<PkcDataResult | null> {
     }
   }
 
-  return { container, readonly: isReadonly, lightSource: isLight };
+  const systemEntries = container.entries.filter((e) => isSystemArchetype(e.archetype));
+  return { container, readonly: isReadonly, lightSource: isLight, systemEntries };
 }
 
 /**
@@ -121,6 +129,14 @@ export interface BootSource {
   readonly: boolean;
   lightSource: boolean;
   viewOnlySource: boolean;
+  /**
+   * Authoritative system-* entries from pkc-data, to be merged onto
+   * the chosen boot container. For 'pkc-data' source these are already
+   * in the container; for 'idb' / 'empty' sources the caller must
+   * merge them in. Optional so test fixtures that predate this field
+   * keep compiling; treat absent / empty as "nothing to merge".
+   */
+  systemEntriesFromPkcData?: Entry[];
   /** Only set when source === 'chooser'. Stashed for finalizeChooserChoice. */
   pkcData?: PkcDataResult | null;
   /** Only set when source === 'chooser'. Stashed for finalizeChooserChoice. */
@@ -135,11 +151,19 @@ export type ChooserChoice = 'pkc-data' | 'idb';
 /**
  * Decide which Container to boot from.
  *
- * Policy (revised 2026-04-16):
- *   1. pkc-data AND IDB both present → 'chooser' (caller shows UI)
- *   2. pkc-data only → 'pkc-data' (viewOnlySource=true)
- *   3. IDB only → 'idb'
- *   4. Neither → 'empty'
+ * Policy (revised 2026-04-18, system-entry isolation):
+ *   1. pkc-data has user content AND IDB both present → 'chooser'
+ *   2. pkc-data has user content only → 'pkc-data' (viewOnlySource=true)
+ *   3. IDB only (or pkc-data is system-only) → 'idb'
+ *   4. Neither (or pkc-data is system-only and no IDB) → 'empty'
+ *
+ * "User content" means at least one entry whose archetype is NOT
+ * system-*. A pkc-data payload that only contains About / Settings
+ * must not lock the session into view-only mode, so it is ignored for
+ * the boot-source vote. However, its system entries are surfaced via
+ * `systemEntriesFromPkcData` so the caller can merge them onto the
+ * chosen boot container — this keeps About always reflecting the
+ * current build, even when IDB wins the vote.
  *
  * Pure function: no DOM, no IDB, no side effects. Reads no globals.
  */
@@ -147,28 +171,33 @@ export function chooseBootSource(
   pkcData: PkcDataResult | null,
   idbContainer: Container | null,
 ): BootSource {
-  if (pkcData && idbContainer) {
+  const systemEntriesFromPkcData: Entry[] = pkcData?.systemEntries ?? [];
+  const pkcDataHasUserContent = pkcData ? hasUserContent(pkcData.container) : false;
+
+  if (pkcDataHasUserContent && idbContainer) {
     return {
       source: 'chooser',
       container: null,
       readonly: false,
       lightSource: false,
       viewOnlySource: false,
+      systemEntriesFromPkcData,
       pkcData,
       idbContainer,
     };
   }
-  if (pkcData) {
+  if (pkcDataHasUserContent) {
     return {
       source: 'pkc-data',
-      container: pkcData.container,
-      readonly: pkcData.readonly,
-      lightSource: pkcData.lightSource,
+      container: pkcData!.container,
+      readonly: pkcData!.readonly,
+      lightSource: pkcData!.lightSource,
       // Critical: pkc-data boots are view-only by policy. Persistence
       // refuses to save this container until the user explicitly
       // imports (which clears the flag via SYS_IMPORT_COMPLETE /
       // CONFIRM_IMPORT reducer cases).
       viewOnlySource: true,
+      systemEntriesFromPkcData,
     };
   }
   if (idbContainer) {
@@ -178,6 +207,7 @@ export function chooseBootSource(
       readonly: false,
       lightSource: false,
       viewOnlySource: false,
+      systemEntriesFromPkcData,
     };
   }
   return {
@@ -186,6 +216,7 @@ export function chooseBootSource(
     readonly: false,
     lightSource: false,
     viewOnlySource: false,
+    systemEntriesFromPkcData,
   };
 }
 
@@ -203,6 +234,7 @@ export function finalizeChooserChoice(
   idbContainer: Container,
   choice: ChooserChoice,
 ): BootSource {
+  const systemEntriesFromPkcData: Entry[] = pkcData.systemEntries ?? [];
   if (choice === 'pkc-data') {
     return {
       source: 'pkc-data',
@@ -210,6 +242,7 @@ export function finalizeChooserChoice(
       readonly: pkcData.readonly,
       lightSource: pkcData.lightSource,
       viewOnlySource: true,
+      systemEntriesFromPkcData,
     };
   }
   return {
@@ -218,5 +251,6 @@ export function finalizeChooserChoice(
     readonly: false,
     lightSource: false,
     viewOnlySource: false,
+    systemEntriesFromPkcData,
   };
 }

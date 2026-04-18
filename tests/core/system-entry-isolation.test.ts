@@ -10,6 +10,7 @@ import {
 import {
   getUserEntries,
   hasUserContent,
+  mergeSystemEntries,
   type Container,
 } from '@core/model/container';
 
@@ -111,6 +112,72 @@ describe('getUserEntries', () => {
   it('returns the input as-is when no system entries are present', () => {
     const entries = [makeEntry('a', 'text'), makeEntry('b', 'todo')];
     expect(getUserEntries(entries)).toEqual(entries);
+  });
+});
+
+describe('mergeSystemEntries', () => {
+  it('replaces existing system entries with the supplied set', () => {
+    const staleAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'STALE' };
+    const freshAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'FRESH' };
+    const result = mergeSystemEntries(makeContainer([staleAbout]), [freshAbout]);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.body).toBe('FRESH');
+  });
+
+  it('preserves user entries while replacing system entries', () => {
+    const userA = makeEntry('a', 'text');
+    const userB = makeEntry('b', 'todo');
+    const staleAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'STALE' };
+    const freshAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'FRESH' };
+    const result = mergeSystemEntries(
+      makeContainer([userA, staleAbout, userB]),
+      [freshAbout],
+    );
+    expect(result.entries).toHaveLength(3);
+    expect(result.entries.filter((e) => e.archetype === 'text')).toHaveLength(1);
+    expect(result.entries.filter((e) => e.archetype === 'todo')).toHaveLength(1);
+    expect(result.entries.find((e) => e.lid === ABOUT_LID)!.body).toBe('FRESH');
+  });
+
+  it('adds system entries to a container that has none', () => {
+    const userA = makeEntry('a', 'text');
+    const freshAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'FRESH' };
+    const result = mergeSystemEntries(makeContainer([userA]), [freshAbout]);
+    expect(result.entries).toHaveLength(2);
+  });
+
+  it('strips stale system entries when given an empty supply', () => {
+    // This case covers: pkc-data had no system entries but IDB did.
+    // The supplied list is authoritative, so IDB's system entries go away.
+    const userA = makeEntry('a', 'text');
+    const staleAbout = makeEntry(ABOUT_LID, 'system-about');
+    const result = mergeSystemEntries(makeContainer([userA, staleAbout]), []);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.lid).toBe('a');
+  });
+
+  it('preserves meta / relations / revisions / assets', () => {
+    const base: Container = {
+      ...makeContainer([makeEntry('a', 'text')]),
+      relations: [{ id: 'r1', kind: 'categorical', from: 'a', to: 'tag:foo', created_at: T, updated_at: T }],
+      revisions: [{ id: 'rev1', entry_lid: 'a', snapshot: '{}', created_at: T }],
+      assets: { 'asset-1': 'data:...' },
+    };
+    const freshAbout = makeEntry(ABOUT_LID, 'system-about');
+    const result = mergeSystemEntries(base, [freshAbout]);
+    expect(result.meta).toBe(base.meta);
+    expect(result.relations).toBe(base.relations);
+    expect(result.revisions).toBe(base.revisions);
+    expect(result.assets).toBe(base.assets);
+  });
+
+  it('does not mutate the input container', () => {
+    const userA = makeEntry('a', 'text');
+    const staleAbout = makeEntry(ABOUT_LID, 'system-about');
+    const base = makeContainer([userA, staleAbout]);
+    const baseEntriesCopy = [...base.entries];
+    mergeSystemEntries(base, []);
+    expect(base.entries).toEqual(baseEntriesCopy);
   });
 });
 
