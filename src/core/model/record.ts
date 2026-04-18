@@ -12,7 +12,14 @@ export type ArchetypeId =
   | 'attachment'
   | 'folder'
   | 'generic'
-  | 'opaque';
+  | 'opaque'
+  | 'system-about';
+
+export const ABOUT_LID = '__about__';
+
+export function isReservedLid(lid: string): boolean {
+  return lid.startsWith('__') && lid.endsWith('__') && lid.length > 4;
+}
 
 /**
  * Entry: the fundamental persistent data unit in PKC2.

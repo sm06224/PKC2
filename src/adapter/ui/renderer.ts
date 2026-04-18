@@ -1,6 +1,8 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
+import { ABOUT_LID } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
+import { resolveAboutPayload } from '../../core/model/about-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
@@ -64,6 +66,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   folder: 'Folder',
   generic: 'Generic',
   opaque: 'Opaque',
+  'system-about': 'About',
 };
 
 /** Archetype icons for visual distinction. */
@@ -76,7 +79,16 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   folder: '📁',
   generic: '📄',
   opaque: '🔒',
+  'system-about': 'ℹ️',
 };
+
+function isUserEntry(e: Entry): boolean {
+  return e.archetype !== 'system-about';
+}
+
+function getUserEntries(entries: Entry[]): Entry[] {
+  return entries.filter(isUserEntry);
+}
 
 function archetypeIcon(archetype: ArchetypeId): string {
   return ARCHETYPE_ICONS[archetype] ?? '📄';
@@ -1297,7 +1309,7 @@ function renderSidebar(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
-  const allEntries = state.container?.entries ?? [];
+  const allEntries = getUserEntries(state.container?.entries ?? []);
 
   // Search input (always shown when entries exist)
   if (allEntries.length > 0) {
@@ -1874,8 +1886,10 @@ function renderCenter(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
 
-  // View mode toggle (always visible when container has entries)
-  if (state.container && state.container.entries.length > 0) {
+  const userEntries = getUserEntries(state.container?.entries ?? []);
+
+  // View mode toggle (always visible when container has user entries)
+  if (userEntries.length > 0) {
     center.appendChild(renderViewModeToggle(state.viewMode));
   }
 
@@ -1895,6 +1909,15 @@ function renderCenter(state: AppState): HTMLElement {
   const selected = findSelectedEntry(state);
   const canEdit = state.phase === 'ready' && !state.readonly;
 
+  // Show About when: explicitly selected OR no user entries exist
+  const aboutEntry = state.container?.entries.find((e) => e.lid === ABOUT_LID);
+  const showAbout = selected?.archetype === 'system-about'
+    || (userEntries.length === 0 && !selected && aboutEntry);
+  if (showAbout) {
+    center.appendChild(renderAboutView(aboutEntry));
+    return center;
+  }
+
   if (!selected) {
     if (canEdit) {
       // Large drop zone invitation when nothing is selected
@@ -1904,11 +1927,11 @@ function renderCenter(state: AppState): HTMLElement {
       const placeholder = createElement('div', 'pkc-empty pkc-guidance');
       placeholder.setAttribute('data-pkc-region', 'center-guidance');
       if (state.readonly) {
-        placeholder.textContent = state.container?.entries?.length
+        placeholder.textContent = userEntries.length
           ? 'Select an entry from the sidebar to view it here.'
           : 'This container has no entries.';
       } else {
-        placeholder.textContent = state.container?.entries?.length
+        placeholder.textContent = userEntries.length
           ? 'Select an entry from the sidebar to view it here.'
           : 'Create your first entry using the + buttons above.';
       }
@@ -2542,7 +2565,7 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   }
 
   if (canEdit) {
-    const available = getAvailableTagTargets(container.relations, container.entries, entry.lid);
+    const available = getAvailableTagTargets(container.relations, getUserEntries(container.entries), entry.lid);
     if (available.length > 0) {
       const addForm = createElement('span', 'pkc-tag-add');
       addForm.setAttribute('data-pkc-region', 'tag-add');
@@ -2770,7 +2793,7 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   }
 
   if (canEdit && container.entries.length > 1) {
-    meta.appendChild(renderRelationCreateForm(entry.lid, container.entries));
+    meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
   }
 
   // Sandbox control section for HTML attachments
@@ -3858,6 +3881,93 @@ function resolveContextFolder(state: AppState): Entry | null {
   // Check if the selected entry has a structural parent (folder)
   const parent = getStructuralParent(state.container.relations, state.container.entries, state.selectedLid);
   return parent ?? null;
+}
+
+function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
+  const container = createElement('div', 'pkc-about-view');
+  container.setAttribute('data-pkc-region', 'about-view');
+
+  const payload = resolveAboutPayload(aboutEntry?.body);
+
+  const title = createElement('h1', 'pkc-about-title');
+  title.textContent = 'PKC2';
+  container.appendChild(title);
+
+  const version = createElement('div', 'pkc-about-version');
+  version.textContent = `v${payload.version}`;
+  container.appendChild(version);
+
+  const desc = createElement('div', 'pkc-about-description');
+  const traits: string[] = [];
+  if (payload.runtime.offline) traits.push('Offline');
+  if (payload.runtime.bundled) traits.push('Bundled');
+  if (!payload.runtime.externalDependencies) traits.push('No external dependencies');
+  desc.textContent = traits.join(' / ');
+  container.appendChild(desc);
+
+  const buildInfo = createElement('div', 'pkc-about-build');
+  buildInfo.textContent = `Built at ${payload.build.timestamp} from commit ${payload.build.commit}`;
+  container.appendChild(buildInfo);
+
+  if (payload.modules.length > 0) {
+    const modSection = createElement('div', 'pkc-about-modules');
+    const modTitle = createElement('h3', 'pkc-about-section-title');
+    modTitle.textContent = 'Modules';
+    modSection.appendChild(modTitle);
+
+    const table = createElement('table', 'pkc-about-table');
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const h of ['Name', 'Version', 'License']) {
+      const th = document.createElement('th');
+      th.textContent = h;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const mod of payload.modules) {
+      const row = document.createElement('tr');
+      for (const val of [mod.name, mod.version, mod.license]) {
+        const td = document.createElement('td');
+        td.textContent = val;
+        row.appendChild(td);
+      }
+      tbody.appendChild(row);
+    }
+    table.appendChild(tbody);
+    modSection.appendChild(table);
+    container.appendChild(modSection);
+  }
+
+  const license = createElement('div', 'pkc-about-license');
+  if (payload.license.url) {
+    const a = document.createElement('a');
+    a.href = payload.license.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = `License: ${payload.license.name}`;
+    license.appendChild(a);
+  } else {
+    license.textContent = `License: ${payload.license.name}`;
+  }
+  container.appendChild(license);
+
+  const author = createElement('div', 'pkc-about-author');
+  if (payload.author.url) {
+    const a = document.createElement('a');
+    a.href = payload.author.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = `Author: ${payload.author.name}`;
+    author.appendChild(a);
+  } else {
+    author.textContent = `Author: ${payload.author.name}`;
+  }
+  container.appendChild(author);
+
+  return container;
 }
 
 function findSelectedEntry(state: AppState): Entry | null {

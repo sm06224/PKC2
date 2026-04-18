@@ -1,5 +1,6 @@
 import type { Container } from '../../core/model/container';
 import type { ArchetypeId } from '../../core/model/record';
+import { isReservedLid } from '../../core/model/record';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
@@ -613,6 +614,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'BEGIN_EDIT': {
       if (state.readonly) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
       // P1-1: BEGIN_EDIT terminates any in-progress transient UI flows
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
@@ -711,6 +713,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'DELETE_ENTRY': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
       const ts = now();
       const entriesBefore = state.container.entries;
       // Snapshot the entry before deletion (preserves last state for restore)
@@ -1382,6 +1385,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'QUICK_UPDATE_ENTRY': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
       const entry = state.container.entries.find((e) => e.lid === action.lid);
       if (!entry) return blocked(state, action);
       const ts = now();
@@ -1766,6 +1770,7 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'COMMIT_EDIT': {
       if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
 
       // FI-01 save-time optimistic version guard. When a base
       // snapshot is available (preferred: action.base; fallback:

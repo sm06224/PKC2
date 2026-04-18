@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { createHash } from 'crypto';
 import { computeGitStamp } from './git-stamp';
+import { buildAboutEntry } from './about-entry-builder';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
@@ -77,6 +78,22 @@ function main(): void {
 
   const metaJson = JSON.stringify(meta, null, 2);
 
+  // Build the __about__ entry and inject as pkc-data
+  const aboutEntry = buildAboutEntry(pkg, build_at, source_commit);
+  const pkcData = JSON.stringify({ container: {
+    meta: {
+      container_id: 'default',
+      schema_version: SCHEMA_VERSION,
+      title: 'PKC2',
+      created_at: build_at,
+      updated_at: build_at,
+    },
+    entries: [aboutEntry],
+    relations: [],
+    revisions: [],
+    assets: {},
+  }});
+
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
   html = html.replace('{{APP}}', APP_ID);
@@ -84,6 +101,7 @@ function main(): void {
   html = html.replace('{{SCHEMA}}', String(SCHEMA_VERSION));
   html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
+  html = html.replace('{{PKC_DATA}}', () => pkcData);
   html = html.replace('{{STYLES}}', () => css);
   html = html.replace('{{META}}', () => metaJson);
   html = html.replace('{{CORE}}', () => js);
