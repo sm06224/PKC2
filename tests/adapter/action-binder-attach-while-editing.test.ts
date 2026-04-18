@@ -137,7 +137,7 @@ describe('FI-05 DnD during editing — TEXT', () => {
     Object.defineProperty(document, 'activeElement', { value: textarea, configurable: true });
 
     const file = new File(['fake-png'], 'test.png', { type: 'image/png' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     // FileReader is async, wait for it
@@ -156,7 +156,7 @@ describe('FI-05 DnD during editing — TEXT', () => {
     Object.defineProperty(document, 'activeElement', { value: textarea, configurable: true });
 
     const file = new File(['fake-pdf'], 'report.pdf', { type: 'application/pdf' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     await vi.waitFor(() => {
@@ -178,7 +178,7 @@ describe('FI-05 DnD during editing — FOLDER', () => {
     Object.defineProperty(document, 'activeElement', { value: textarea, configurable: true });
 
     const file = new File(['img'], 'photo.jpg', { type: 'image/jpeg' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     await vi.waitFor(() => {
@@ -202,7 +202,7 @@ describe('FI-05 DnD during editing — TEXTLOG', () => {
     Object.defineProperty(document, 'activeElement', { value: logB, configurable: true });
 
     const file = new File(['img'], 'shot.png', { type: 'image/png' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     await vi.waitFor(() => {
@@ -259,7 +259,7 @@ describe('FI-05 no textarea focused — fallback to single textarea', () => {
     Object.defineProperty(document, 'activeElement', { value: document.body, configurable: true });
 
     const file = new File(['img'], 'auto.png', { type: 'image/png' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     await vi.waitFor(() => {
@@ -275,7 +275,7 @@ describe('FI-05 no textarea focused — fallback to single textarea', () => {
     Object.defineProperty(document, 'activeElement', { value: document.body, configurable: true });
 
     const file = new File(['img'], 'nope.png', { type: 'image/png' });
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, [file]);
 
     // Wait for FileReader + dispatch + re-render
@@ -304,7 +304,7 @@ describe('FI-05 multiple files', () => {
       new File(['a'], 'a.png', { type: 'image/png' }),
       new File(['b'], 'b.pdf', { type: 'application/pdf' }),
     ];
-    const editor = root.querySelector('[data-pkc-mode="edit"]')!;
+    const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]')!;
     simulateFileDrop(editor, files);
 
     await vi.waitFor(() => {

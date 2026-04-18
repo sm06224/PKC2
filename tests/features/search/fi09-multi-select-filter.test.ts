@@ -15,7 +15,7 @@ import { reduce, createInitialState } from '@adapter/state/app-state';
 import { render } from '@adapter/ui/renderer';
 import type { Entry, ArchetypeId } from '@core/model/record';
 import type { AppState } from '@adapter/state/app-state';
-import type { Container } from '@core/model/record';
+import type { Container } from '@core/model/container';
 
 // ── helpers ─────────────────────────────────────────────────
 
@@ -39,8 +39,7 @@ const allTypesEntries: Entry[] = [
 ];
 
 const mockContainer: Container = {
-  lid: 'c1',
-  meta: { title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  meta: { container_id: 'c1', title: 'Test', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
   entries: allTypesEntries,
   relations: [],
   revisions: [],
