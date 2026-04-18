@@ -150,6 +150,9 @@ export type UserAction =
   | { type: 'TOGGLE_ARCHETYPE_FILTER'; archetype: ArchetypeId }
   | { type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' }
   | { type: 'TOGGLE_SCANLINE' }
+  | { type: 'SET_SCANLINE'; on: boolean }
+  | { type: 'SET_ACCENT_COLOR'; color: string }
+  | { type: 'RESET_ACCENT_COLOR' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }

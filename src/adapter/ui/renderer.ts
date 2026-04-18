@@ -136,6 +136,15 @@ export function render(state: AppState, root: HTMLElement): void {
   } else {
     root.removeAttribute('data-pkc-scanline');
   }
+  // Accent color override (FI-12 follow-up). Written as an inline
+  // style on `#pkc-root` so it cascades to everything referencing
+  // `--c-accent`. undefined → remove the override so the base.css
+  // default (neon green) takes over.
+  if (state.accentColor) {
+    root.style.setProperty('--c-accent', state.accentColor);
+  } else {
+    root.style.removeProperty('--c-accent');
+  }
 
   switch (state.phase) {
     case 'initializing':
@@ -538,18 +547,57 @@ function renderShellMenu(
   themeSection.appendChild(themeButtons);
   card.appendChild(themeSection);
 
-  // Scanline toggle (FI-12 v1): opt-in CRT scanline overlay.
+  // Scanline segmented control (FI-12 follow-up). A single toggle
+  // button hid the current state behind an opaque glyph; a two-button
+  // segmented control mirrors the Theme row above so "which one is
+  // active right now" is obvious at a glance.
   const scanlineSection = createElement('div', 'pkc-shell-menu-section');
   const scanlineLabel = createElement('span', 'pkc-shell-menu-label');
   scanlineLabel.textContent = 'Scanline';
   scanlineSection.appendChild(scanlineLabel);
-  const scanlineBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
-  scanlineBtn.setAttribute('data-pkc-action', 'toggle-scanline');
+  const scanlineButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
   const scanlineOn = state.showScanline === true;
-  scanlineBtn.setAttribute('data-pkc-active', String(scanlineOn));
-  scanlineBtn.textContent = scanlineOn ? '◉ On' : '○ Off';
-  scanlineSection.appendChild(scanlineBtn);
+  const scanlineChoices: { value: 'off' | 'on'; label: string }[] = [
+    { value: 'off', label: '○ Off' },
+    { value: 'on', label: '◉ On' },
+  ];
+  for (const { value, label } of scanlineChoices) {
+    const btn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+    btn.setAttribute('data-pkc-action', 'set-scanline');
+    btn.setAttribute('data-pkc-scanline-value', value);
+    const isActive = (value === 'on') === scanlineOn;
+    btn.setAttribute('data-pkc-active', String(isActive));
+    if (isActive) btn.setAttribute('data-pkc-theme-active', 'true');
+    btn.textContent = label;
+    scanlineButtons.appendChild(btn);
+  }
+  scanlineSection.appendChild(scanlineButtons);
   card.appendChild(scanlineSection);
+
+  // Accent color picker (FI-12 follow-up). A native <input type="color">
+  // + a reset button. Runtime-only — persistence is deferred to the
+  // hidden system settings entry design (see
+  // `docs/spec/system-settings-hidden-entry-v1-minimum-scope.md`).
+  const accentSection = createElement('div', 'pkc-shell-menu-section');
+  const accentLabel = createElement('span', 'pkc-shell-menu-label');
+  accentLabel.textContent = 'Accent';
+  accentSection.appendChild(accentLabel);
+  const accentControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const accentInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  accentInput.type = 'color';
+  accentInput.setAttribute('data-pkc-action', 'set-accent-color');
+  accentInput.setAttribute('data-pkc-field', 'accent-color');
+  // The <input type="color"> requires a 6-digit hex. When no override
+  // is set we seed it with the neon-green default so the picker opens
+  // at the token color rather than #000000.
+  accentInput.value = state.accentColor ?? '#33ff66';
+  accentControls.appendChild(accentInput);
+  const accentReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  accentReset.setAttribute('data-pkc-action', 'reset-accent-color');
+  accentReset.textContent = 'Neon Green に戻す';
+  accentControls.appendChild(accentReset);
+  accentSection.appendChild(accentControls);
+  card.appendChild(accentSection);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
