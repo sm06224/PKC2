@@ -28,6 +28,7 @@ import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bun
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
 import { applyOnePaneCollapsedToDOM } from './pane-apply';
+import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
@@ -107,6 +108,7 @@ import {
   openAssetAutocomplete,
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
+import { checkAssetDuplicate } from './asset-dedupe';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -246,6 +248,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
+      case 'move-entry-up': {
+        // C-2 v1 (2026-04-17): manual-mode Move up. Stop propagation
+        // so the surrounding <li data-pkc-action="select-entry"> does
+        // not re-issue a SELECT. The reducer gate (readonly / preview /
+        // edge / unknown lid) is authoritative — a no-op at the top
+        // edge still goes through dispatch and returns the same state.
+        if (!lid) break;
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'MOVE_ENTRY_UP', lid });
+        break;
+      }
+      case 'move-entry-down': {
+        if (!lid) break;
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'MOVE_ENTRY_DOWN', lid });
+        break;
+      }
       case 'begin-edit':
         if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
         break;
@@ -287,6 +306,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        // FI-05: During editing, "📎 File" opens a file picker and inserts
+        // a link instead of dispatching CREATE_ENTRY (which would clobber
+        // the current editing state).
+        if (arch === 'attachment' && dispatcher.getState().phase === 'editing') {
+          triggerEditingFileAttach();
+          break;
+        }
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Text';
         // Explicit context from a "+ New" button inside a folder row.
@@ -352,6 +378,65 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'branch-restore-revision': {
+        // C-1 revision-branch-restore v1. Reducer gates (readonly /
+        // viewOnlySource / editing / import previews / phase) make
+        // this a safe no-op in non-ready contexts, so no UI-side
+        // `confirm()` is needed.
+        const revisionId = target.getAttribute('data-pkc-revision-id');
+        if (lid && revisionId) {
+          dispatcher.dispatch({
+            type: 'BRANCH_RESTORE_REVISION',
+            entryLid: lid,
+            revisionId,
+          });
+        }
+        break;
+      }
+      case 'resolve-dual-edit-save-as-branch': {
+        // FI-01 reject overlay — Save as branch (default CTA).
+        // Reducer gates preserve state identity if no conflict is
+        // parked, so no UI-side guard is needed.
+        if (lid) {
+          dispatcher.dispatch({
+            type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+            lid,
+            resolution: 'save-as-branch',
+          });
+        }
+        break;
+      }
+      case 'resolve-dual-edit-discard': {
+        // FI-01 reject overlay — Discard my edits.
+        if (lid) {
+          dispatcher.dispatch({
+            type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+            lid,
+            resolution: 'discard-my-edits',
+          });
+        }
+        break;
+      }
+      case 'resolve-dual-edit-copy-clipboard': {
+        // FI-01 reject overlay — Copy to clipboard. We run the
+        // clipboard write directly in the click handler (user-gesture
+        // context is required for navigator.clipboard) and then
+        // dispatch the RESOLVE action so the reducer's monotonic
+        // ticket advances. The ticket is runtime-observable state for
+        // callers that want to surface "copied!" feedback later; the
+        // clipboard side effect itself happens here.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const conflict = st.dualEditConflict;
+        if (!conflict || conflict.lid !== lid) break;
+        void copyPlainText(conflict.draft.body);
+        dispatcher.dispatch({
+          type: 'RESOLVE_DUAL_EDIT_CONFLICT',
+          lid,
+          resolution: 'copy-to-clipboard',
+        });
+        break;
+      }
       case 'restore-bulk': {
         // Tier 2-2: bulk restore. Resolve all revisions that share the
         // same bulk_id (produced by BULK_DELETE / BULK_SET_STATUS /
@@ -406,18 +491,59 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const rawMode = target.getAttribute('data-pkc-mode');
         if (rawMode === 'replace' || rawMode === 'merge') {
           dispatcher.dispatch({ type: 'SET_IMPORT_MODE', mode: rawMode });
+          // H-10: detect conflicts when switching to merge. Schema mismatch
+          // short-circuits (I-MergeUI8) — conflict UI must not mount.
+          if (rawMode === 'merge') {
+            const st = dispatcher.getState();
+            const host = st.container;
+            const imp = st.importPreview?.container;
+            if (host && imp && host.meta.schema_version === imp.meta.schema_version) {
+              const conflicts = detectEntryConflicts(host, imp);
+              if (conflicts.length > 0) {
+                dispatcher.dispatch({ type: 'SET_MERGE_CONFLICTS', conflicts });
+              }
+            }
+          }
         }
         break;
       }
       case 'cancel-import':
         dispatcher.dispatch({ type: 'CANCEL_IMPORT' });
         break;
+      case 'set-conflict-resolution': {
+        const value = target.getAttribute('data-pkc-value');
+        const lid = target.getAttribute('data-pkc-conflict-id');
+        if (lid && (value === 'keep-current' || value === 'duplicate-as-branch' || value === 'skip')) {
+          dispatcher.dispatch({ type: 'SET_CONFLICT_RESOLUTION', importedLid: lid, resolution: value });
+        }
+        break;
+      }
+      case 'bulk-resolution': {
+        const value = target.getAttribute('data-pkc-value');
+        if (value === 'keep-current' || value === 'duplicate-as-branch' || value === 'skip') {
+          dispatcher.dispatch({ type: 'BULK_SET_CONFLICT_RESOLUTION', resolution: value });
+        }
+        break;
+      }
       case 'set-archetype-filter': {
         const raw = target.getAttribute('data-pkc-archetype');
         const archetype: ArchetypeId | null = raw ? raw as ArchetypeId : null;
         dispatcher.dispatch({ type: 'SET_ARCHETYPE_FILTER', archetype });
         break;
       }
+      case 'toggle-archetype-filter': {
+        const raw = target.getAttribute('data-pkc-archetype');
+        if (raw) {
+          dispatcher.dispatch({ type: 'TOGGLE_ARCHETYPE_FILTER', archetype: raw as ArchetypeId });
+        }
+        break;
+      }
+      case 'toggle-archetype-filter-expanded':
+        dispatcher.dispatch({ type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' });
+        break;
+      case 'toggle-scanline':
+        dispatcher.dispatch({ type: 'TOGGLE_SCANLINE' });
+        break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
@@ -1691,6 +1817,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Escape: close overlays, cancel import preview, cancel edit, or deselect
     if (e.key === 'Escape') {
+      // FI-01 (2026-04-17): the dual-edit reject overlay is
+      // non-dismissible by Escape (I-Dual2 / contract §8.1). Forcing
+      // the user to pick a resolution prevents silent loss of their
+      // in-progress edit. Takes priority over every other overlay
+      // because it sits visually on top of the shell.
+      if (state.dualEditConflict) {
+        return;
+      }
       // Custom context menu (right-click) closes first — it's the
       // topmost transient overlay when visible and users expect Esc
       // to dismiss it (parity with ShellMenu / ShortcutHelp / etc.).
@@ -2864,7 +2998,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── File drop zone handler (external file → attachment entry) ──
 
   function handleFileDropOver(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (!dropZone) return;
 
     // Only handle external file drops (not internal entry DnD)
@@ -2880,15 +3016,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleFileDropLeave(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (dropZone) {
       dropZone.removeAttribute('data-pkc-file-drag-over');
     }
   }
 
   function handleFileDrop(e: DragEvent): void {
-    const dropZone = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    const dropZone = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-region="file-drop-zone"],[data-pkc-region="sidebar-file-drop-zone"]',
+    );
     if (!dropZone) return;
+    const zone: HTMLElement = dropZone;
 
     if (!e.dataTransfer?.files.length) return;
 
@@ -2897,17 +3038,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     e.preventDefault();
     e.stopPropagation();
-    dropZone.removeAttribute('data-pkc-file-drag-over');
+    zone.removeAttribute('data-pkc-file-drag-over');
 
-    // Take the first file only (single file for now)
-    const file = e.dataTransfer.files[0]!;
-    const contextFolder = dropZone.getAttribute('data-pkc-context-folder') ?? undefined;
+    const files = Array.from(e.dataTransfer.files);
+    const contextFolder = zone.getAttribute('data-pkc-context-folder') ?? undefined;
 
-    processFileAttachment(file, contextFolder, dispatcher);
-
-    // Visual feedback: flash the drop zone
-    dropZone.setAttribute('data-pkc-drop-success', 'true');
-    setTimeout(() => dropZone.removeAttribute('data-pkc-drop-success'), 600);
+    // G-1: process all files in FileList index order, sequentially.
+    // Each file's dispatches complete before the next FileReader starts,
+    // preserving container.entries append order (I-FI04-4).
+    function processNext(index: number): void {
+      if (index >= files.length) {
+        zone.setAttribute('data-pkc-drop-success', 'true');
+        setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
+        return;
+      }
+      processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () =>
+        processNext(index + 1),
+      );
+    }
+    processNext(0);
   }
 
   // ── Clipboard paste handler (screenshot / image → attachment entry) ──
@@ -2920,6 +3069,207 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     return field === 'body'
       || field === 'textlog-append-text'
       || field === 'textlog-entry-text';
+  }
+
+  // ── FI-05: Shared helpers for asset link insertion during editing ──
+
+  interface InsertContext {
+    fieldAttr: string;
+    logId: string | null;
+    cursorPos: number;
+    currentValue: string;
+  }
+
+  function captureInsertContext(): InsertContext | null {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing') return null;
+
+    let textarea: HTMLTextAreaElement | null = null;
+
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement && isMarkdownTextarea(active)) {
+      textarea = active;
+    }
+
+    if (!textarea) {
+      const editor = root.querySelector('[data-pkc-mode="edit"]');
+      if (!editor) return null;
+      const candidates = editor.querySelectorAll<HTMLTextAreaElement>(
+        'textarea[data-pkc-field="body"], textarea[data-pkc-field="textlog-append-text"], textarea[data-pkc-field="textlog-entry-text"]',
+      );
+      if (candidates.length === 1) {
+        textarea = candidates[0]!;
+      } else {
+        return null;
+      }
+    }
+
+    return {
+      fieldAttr: textarea.getAttribute('data-pkc-field') ?? 'body',
+      logId: textarea.getAttribute('data-pkc-log-id'),
+      cursorPos: textarea.selectionStart ?? textarea.value.length,
+      currentValue: textarea.value,
+    };
+  }
+
+  function buildAssetRef(name: string, assetKey: string, mime: string): string {
+    return mime.startsWith('image/')
+      ? `![${name}](asset:${assetKey})`
+      : `[${name}](asset:${assetKey})`;
+  }
+
+  function insertAssetLinkAtContext(ctx: InsertContext, ref: string): void {
+    const freshSelector = ctx.logId
+      ? `textarea[data-pkc-field="${ctx.fieldAttr}"][data-pkc-log-id="${CSS.escape(ctx.logId)}"]`
+      : `textarea[data-pkc-field="${ctx.fieldAttr}"]`;
+    const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
+    if (!freshTextarea) {
+      console.warn('[PKC2] FI-05: textarea not found after re-render, skipping link insertion');
+      return;
+    }
+    const newValue = ctx.currentValue.slice(0, ctx.cursorPos) + ref + ctx.currentValue.slice(ctx.cursorPos);
+    freshTextarea.value = newValue;
+    const newPos = ctx.cursorPos + ref.length;
+    freshTextarea.setSelectionRange(newPos, newPos);
+    freshTextarea.focus();
+    updateTextEditPreview(freshTextarea);
+  }
+
+  function processEditingFileDrop(files: File[], contextLid: string, insertCtx: InsertContext | null): void {
+    let accumulatedRefs = '';
+    let fileIndex = 0;
+
+    function processNext(): void {
+      if (fileIndex >= files.length) return;
+      const file = files[fileIndex]!;
+      fileIndex++;
+
+      if (isFileTooLarge(file.size)) {
+        const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+        console.warn(`[PKC2] Drop rejected: ${msg}`);
+        showToast({
+          message: msg,
+          kind: 'warn',
+          onExport: () =>
+            dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
+        });
+        processNext();
+        return;
+      }
+
+      preflightStorageWarn(file, dispatcher);
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
+        console.warn(`[PKC2] ${msg}`);
+        showToast({ message: msg, kind: 'error' });
+        processNext();
+      };
+      reader.onload = () => {
+        const arrayBuffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]!);
+        }
+        const base64 = btoa(binary);
+
+        const mime = file.type || 'application/octet-stream';
+        const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name: file.name,
+          mime,
+          size: file.size,
+          assetKey,
+          assetData: base64,
+          contextLid,
+        });
+
+        if (insertCtx) {
+          const ref = buildAssetRef(file.name, assetKey, mime);
+          const separator = accumulatedRefs.length > 0 ? '\n' : '';
+          accumulatedRefs += separator + ref;
+          insertAssetLinkAtContext(
+            { ...insertCtx, cursorPos: insertCtx.cursorPos, currentValue: insertCtx.currentValue },
+            accumulatedRefs,
+          );
+        }
+
+        processNext();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    processNext();
+  }
+
+  // ── FI-05: Editor file drop (editing phase) ──
+
+  function handleEditorFileDropOver(e: DragEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+    if (!e.dataTransfer?.types.includes('Files')) return;
+
+    const editor = (e.target as HTMLElement).closest('[data-pkc-mode="edit"]');
+    if (!editor) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleEditorFileDrop(e: DragEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+    if (!e.dataTransfer?.files.length) return;
+
+    const editor = (e.target as HTMLElement).closest('[data-pkc-mode="edit"]');
+    if (!editor) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const insertCtx = captureInsertContext();
+    const files = Array.from(e.dataTransfer.files);
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return;
+
+    processEditingFileDrop(files, contextLid, insertCtx);
+  }
+
+  // ── FI-05: Hidden file input for button-attach during editing ──
+
+  let editingFileInput: HTMLInputElement | null = null;
+
+  function triggerEditingFileAttach(): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+
+    const insertCtx = captureInsertContext();
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return;
+
+    if (!editingFileInput) {
+      editingFileInput = document.createElement('input');
+      editingFileInput.type = 'file';
+      editingFileInput.multiple = true;
+      editingFileInput.style.display = 'none';
+      editingFileInput.setAttribute('data-pkc-role', 'editing-file-input');
+      document.body.appendChild(editingFileInput);
+    }
+
+    const handleChange = (): void => {
+      editingFileInput!.removeEventListener('change', handleChange);
+      const fileList = editingFileInput!.files;
+      if (!fileList?.length) return;
+      processEditingFileDrop(Array.from(fileList), contextLid, insertCtx);
+      editingFileInput!.value = '';
+    };
+
+    editingFileInput.addEventListener('change', handleChange);
+    editingFileInput.click();
   }
 
   // Guard: prevent overlapping async paste operations (FileReader race)
@@ -2937,10 +3287,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * entry textareas are deliberately excluded in this slice — see
    * docs/development/html-paste-link-markdown.md.
    */
+  const PASTE_LINK_ALLOWED_FIELDS = new Set([
+    'body',
+    'textlog-append-text',
+    'textlog-entry-text',
+  ]);
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
-    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return;
 
     const html = e.clipboardData?.getData('text/html') ?? '';
     if (!html) return;
@@ -3061,6 +3418,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       // Capture textarea identity for re-finding after re-render
       const fieldAttr = textarea.getAttribute('data-pkc-field') ?? 'body';
+      const logId = textarea.getAttribute('data-pkc-log-id'); // FI-02 1-A: TEXTLOG cell identity
       const currentValue = textarea.value;
 
       pasteInProgress = true;
@@ -3095,10 +3453,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           contextLid,
         });
 
-        // Re-find the textarea in the (potentially rebuilt) DOM
-        const freshTextarea = root.querySelector<HTMLTextAreaElement>(
-          `textarea[data-pkc-field="${fieldAttr}"]`,
-        );
+        // Re-find the textarea in the (potentially rebuilt) DOM.
+        // FI-02 1-A: include data-pkc-log-id for TEXTLOG cells so the paste
+        // lands in the correct log cell, not always the DOM-first textarea.
+        const freshSelector = logId
+          ? `textarea[data-pkc-field="${fieldAttr}"][data-pkc-log-id="${CSS.escape(logId)}"]`
+          : `textarea[data-pkc-field="${fieldAttr}"]`;
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
         if (freshTextarea) {
           freshTextarea.value = newValue;
           const newPos = cursorPos + ref.length;
@@ -3464,6 +3825,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragover', handleCalendarDragOver);
   root.addEventListener('dragover', handleViewSwitchDragOver);
   root.addEventListener('dragover', handleFileDropOver);
+  root.addEventListener('dragover', handleEditorFileDropOver);
   root.addEventListener('dragenter', handleViewSwitchDragEnter);
   root.addEventListener('dragleave', handleDragLeave);
   root.addEventListener('dragleave', handleKanbanDragLeave);
@@ -3474,6 +3836,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('drop', handleKanbanDrop);
   root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
+  root.addEventListener('drop', handleEditorFileDrop);
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);
@@ -3501,6 +3864,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dragover', handleCalendarDragOver);
     root.removeEventListener('dragover', handleViewSwitchDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
+    root.removeEventListener('dragover', handleEditorFileDropOver);
     root.removeEventListener('dragenter', handleViewSwitchDragEnter);
     root.removeEventListener('dragleave', handleDragLeave);
     root.removeEventListener('dragleave', handleKanbanDragLeave);
@@ -3511,6 +3875,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('drop', handleKanbanDrop);
     root.removeEventListener('drop', handleCalendarDrop);
     root.removeEventListener('drop', handleFileDrop);
+    root.removeEventListener('drop', handleEditorFileDrop);
+    if (editingFileInput) { editingFileInput.remove(); editingFileInput = null; }
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
@@ -4285,6 +4651,98 @@ function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
         }),
     });
   });
+}
+
+/**
+ * FI-04: Process one file with G-2 dedupe detection.
+ * Reads the file once, checks for duplicates (hash + size), shows an
+ * informational toast if a duplicate is found, then always creates the
+ * attachment entry (I-FI04-1). Calls onComplete after all dispatches finish
+ * so callers can chain the next file (G-1 sequential ordering).
+ */
+function processFileAttachmentWithDedupe(
+  file: File,
+  contextFolder: string | undefined,
+  dispatcher: Dispatcher,
+  onComplete: () => void,
+): void {
+  if (isFileTooLarge(file.size)) {
+    const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+    console.warn(`[PKC2] Drop rejected: ${msg}`);
+    showToast({
+      message: msg,
+      kind: 'warn',
+      onExport: () => dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
+    });
+    onComplete();
+    return;
+  }
+
+  preflightStorageWarn(file, dispatcher);
+
+  const reader = new FileReader();
+  reader.onerror = () => {
+    const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
+    console.warn(`[PKC2] ${msg}`);
+    showToast({ message: msg, kind: 'error' });
+    onComplete();
+  };
+  reader.onload = () => {
+    const arrayBuffer = reader.result as ArrayBuffer;
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    const base64 = btoa(binary);
+
+    // G-2: informational dedupe — never blocks attachment (I-FI04-1)
+    try {
+      if (checkAssetDuplicate(base64, file.size, dispatcher.getState().container)) {
+        showToast({
+          kind: 'info',
+          message: `「${file.name}」は既存の添付と同一内容です`,
+          autoDismissMs: 3000,
+        });
+      }
+    } catch (dedupeErr) {
+      console.warn(`[PKC2] FI-04: dedupe check failed for "${file.name}"`, dedupeErr);
+    }
+
+    // Always create the attachment entry (I-FI04-1, I-FI04-2)
+    const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const bodyMeta = JSON.stringify({
+      name: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+      asset_key: assetKey,
+    });
+
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+    const state = dispatcher.getState();
+    if (state.editingLid) {
+      dispatcher.dispatch({
+        type: 'COMMIT_EDIT',
+        lid: state.editingLid,
+        title: file.name,
+        body: bodyMeta,
+        assets: { [assetKey]: base64 },
+      });
+      if (contextFolder) {
+        const newState = dispatcher.getState();
+        if (newState.selectedLid) {
+          dispatcher.dispatch({
+            type: 'CREATE_RELATION',
+            from: contextFolder,
+            to: newState.selectedLid,
+            kind: 'structural',
+          });
+        }
+      }
+    }
+    onComplete();
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 /**

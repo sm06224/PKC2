@@ -120,34 +120,34 @@ describe('filterByArchetype', () => {
 });
 
 describe('applyFilters', () => {
-  it('returns all entries when both filters are empty/null', () => {
-    expect(applyFilters(mixedEntries, '', null)).toEqual(mixedEntries);
+  it('returns all entries when both filters are empty', () => {
+    expect(applyFilters(mixedEntries, '', new Set())).toEqual(mixedEntries);
   });
 
-  it('applies text query only when archetype is null', () => {
-    const result = applyFilters(mixedEntries, 'text', null);
+  it('applies text query only when archetype set is empty', () => {
+    const result = applyFilters(mixedEntries, 'text', new Set());
     expect(result).toHaveLength(2);
     expect(result.map((e) => e.lid)).toEqual(['m1', 'm3']);
   });
 
   it('applies archetype filter only when query is empty', () => {
-    const result = applyFilters(mixedEntries, '', 'todo');
+    const result = applyFilters(mixedEntries, '', new Set(['todo'] as const));
     expect(result).toHaveLength(2);
     expect(result.map((e) => e.lid)).toEqual(['m2', 'm5']);
   });
 
   it('applies both filters as AND combination', () => {
-    const result = applyFilters(mixedEntries, 'bug', 'todo');
+    const result = applyFilters(mixedEntries, 'bug', new Set(['todo'] as const));
     expect(result).toHaveLength(1);
     expect(result[0]!.lid).toBe('m5');
   });
 
   it('returns empty when AND combination has no match', () => {
-    const result = applyFilters(mixedEntries, 'bug', 'text');
+    const result = applyFilters(mixedEntries, 'bug', new Set(['text'] as const));
     expect(result).toHaveLength(0);
   });
 
   it('handles empty entries array', () => {
-    expect(applyFilters([], 'test', 'text')).toEqual([]);
+    expect(applyFilters([], 'test', new Set(['text'] as const))).toEqual([]);
   });
 });

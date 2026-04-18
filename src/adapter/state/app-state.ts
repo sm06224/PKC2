@@ -17,14 +17,34 @@ import {
   snapshotEntry,
   restoreEntry,
   restoreDeletedEntry,
+  branchRestoreRevision,
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
+import {
+  captureEditBase,
+  checkSaveConflict,
+  branchFromDualEditConflict,
+  type EditBaseSnapshot,
+  type SaveConflictCheck,
+} from '../../core/operations/dual-edit-safety';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
+import { applyConflictResolutions } from '../../features/import/conflict-detect';
+import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
+import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
+import { applyFilters } from '../../features/search/filter';
+import { filterByTag } from '../../features/relation/tag-filter';
+import {
+  applyManualOrder,
+  ensureEntryOrder,
+  moveAdjacentInOrder,
+  snapshotEntryOrder,
+  type MoveDirection,
+} from '../../features/entry-order/entry-order';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -66,6 +86,8 @@ export interface AppState {
    * See docs/spec/merge-import-conflict-resolution.md.
    */
   importMode?: 'replace' | 'merge';
+  mergeConflicts?: EntryConflict[];
+  mergeConflictResolutions?: Record<string, Resolution>;
   /**
    * Pending sub-location navigation (S-18 / A-4 FULL, 2026-04-14).
    *
@@ -90,8 +112,20 @@ export interface AppState {
   batchImportResult: BatchImportResultSummary | null;
   /** Current search/filter query (runtime-only, feature layer). */
   searchQuery: string;
-  /** Current archetype filter (runtime-only, feature layer). null = show all. */
-  archetypeFilter: ArchetypeId | null;
+  /** Current archetype filter (runtime-only, feature layer). Empty set = show all. */
+  archetypeFilter: ReadonlySet<ArchetypeId>;
+  /**
+   * Whether the Secondary tier of the archetype filter bar is expanded.
+   * Optional so test fixtures that predate FI-09 keep compiling.
+   * Read sites treat undefined as false.
+   */
+  archetypeFilterExpanded?: boolean;
+  /**
+   * Whether the CRT scanline overlay is visible (FI-12 v1).
+   * Optional so test fixtures that predate FI-12 keep compiling.
+   * undefined is equivalent to false. Session-only; not persisted.
+   */
+  showScanline?: boolean;
   /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
   tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
@@ -157,6 +191,57 @@ export interface AppState {
    * mirrored here) to keep keystrokes out of the dispatch loop.
    */
   textToTextlogModal?: TextToTextlogModalState | null;
+  /**
+   * FI-01 dual-edit-safety v1 (2026-04-17). Base-version snapshot
+   * captured at `BEGIN_EDIT`; read by `COMMIT_EDIT` to run
+   * `checkSaveConflict`. Cleared on `COMMIT_EDIT` (safe), `CANCEL_EDIT`,
+   * and every `RESOLVE_DUAL_EDIT_CONFLICT` path.
+   *
+   * Optional so test fixtures that predate FI-01 keep compiling. A
+   * `null` value means "no base captured" — the guard is skipped
+   * (legacy permissive path).
+   */
+  editingBase?: EditBaseSnapshot | null;
+  /**
+   * FI-01 dual-edit-safety v1 (2026-04-17). Populated when
+   * `COMMIT_EDIT` is rejected by the save-time optimistic version
+   * guard. While non-null, the UI slice mounts the reject overlay and
+   * blocks further commits for the same lid until the user picks a
+   * resolution via `RESOLVE_DUAL_EDIT_CONFLICT`.
+   *
+   * Contract:
+   * `docs/spec/dual-edit-safety-v1-behavior-contract.md` §5.
+   */
+  dualEditConflict?: DualEditConflictState | null;
+}
+
+/**
+ * FI-01 dual-edit-safety v1 conflict record.
+ *
+ * Holds everything the overlay and the resolution reducer need to
+ * proceed without re-running the guard or re-reading the container:
+ *
+ * - `lid` / `base` / `draft`: the identity of the rejected save.
+ * - `kind`: the classification returned by `checkSaveConflict`.
+ *   v1 UI does not differentiate but keeps the information for tests
+ *   / future richer UX.
+ * - `currentUpdatedAt` / `currentContentHash` / `currentArchetype`:
+ *   snapshot of the *losing-side* reference at reject time (diagnostic
+ *   only; the overlay itself does not show them in v1).
+ * - `copyRequestTicket`: incremented on every
+ *   `RESOLVE_DUAL_EDIT_CONFLICT { resolution: 'copy-to-clipboard' }`.
+ *   A UI-side consumer observes advances and writes `draft.body` to
+ *   the clipboard; the reducer itself never touches clipboard APIs.
+ */
+export interface DualEditConflictState {
+  lid: string;
+  base: EditBaseSnapshot;
+  draft: { title: string; body: string; assets?: Record<string, string> };
+  kind: Exclude<SaveConflictCheck, { kind: 'safe' }>['kind'];
+  currentUpdatedAt?: string;
+  currentContentHash?: string;
+  currentArchetype?: import('../../core/model/record').ArchetypeId;
+  copyRequestTicket?: number;
 }
 
 /**
@@ -206,7 +291,9 @@ export function createInitialState(): AppState {
     batchImportPreview: null,
     batchImportResult: null,
     searchQuery: '',
-    archetypeFilter: null,
+    archetypeFilter: new Set<ArchetypeId>(),
+    archetypeFilterExpanded: false,
+    showScanline: false,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -223,6 +310,8 @@ export function createInitialState(): AppState {
     collapsedFolders: [],
     textlogSelection: null,
     textToTextlogModal: null,
+    editingBase: null,
+    dualEditConflict: null,
   };
 }
 
@@ -285,6 +374,106 @@ function blocked(state: AppState, action: Dispatchable): ReduceResult {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+/**
+ * C-2 v1 (2026-04-17): MOVE_ENTRY_UP / MOVE_ENTRY_DOWN reducer.
+ *
+ * Gate order matches contract §6.1. Every gate miss returns the same
+ * state reference so downstream `===` identity checks stay cheap.
+ * See `docs/spec/entry-ordering-v1-behavior-contract.md`.
+ */
+function reduceMoveEntry(
+  state: AppState,
+  direction: MoveDirection,
+  lidArg: string | undefined,
+): ReduceResult {
+  if (state.readonly) return { state, events: [] };
+  if (!state.container) return { state, events: [] };
+  if (state.sortKey !== 'manual') return { state, events: [] };
+  if (state.viewMode !== 'detail') return { state, events: [] };
+  if (state.importPreview !== null) return { state, events: [] };
+  if (state.batchImportPreview !== null) return { state, events: [] };
+  const target = lidArg ?? state.selectedLid;
+  if (!target) return { state, events: [] };
+
+  const container = state.container;
+  const entries = container.entries;
+  if (!entries.some((e) => e.lid === target)) return { state, events: [] };
+
+  // Filter pipeline — matches the sidebar renderer so `domainLids`
+  // and `visibleLids` here reflect what the user is actually seeing.
+  const hasActiveFilter =
+    state.searchQuery !== '' ||
+    state.archetypeFilter.size > 0 ||
+    state.tagFilter !== null;
+  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
+  if (state.tagFilter) {
+    filtered = filterByTag(filtered, container.relations, state.tagFilter);
+  }
+  if (!state.showArchived) {
+    filtered = filtered.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      try {
+        return !parseTodoBody(e.body).archived;
+      } catch {
+        return true;
+      }
+    });
+  }
+
+  // Belonging set (contract §1.2 decision tree).
+  let domainEntries: readonly { lid: string }[];
+  if (hasActiveFilter) {
+    domainEntries = filtered;
+  } else {
+    const parentLid = getStructuralParentLid(container.relations, target);
+    domainEntries = filtered.filter((e) =>
+      getStructuralParentLid(container.relations, e.lid) === parentLid,
+    );
+  }
+  const domainLids = domainEntries.map((e) => e.lid);
+  if (!domainLids.includes(target)) return { state, events: [] };
+
+  // Ensure entry_order so Move always has a definite answer, then
+  // project it through the visible domain set.
+  const ensured = ensureEntryOrder(container.meta.entry_order, entries);
+  const domainEntryObjs = filtered.filter((e) =>
+    domainLids.includes(e.lid),
+  );
+  const visibleEntries = applyManualOrder(domainEntryObjs, ensured);
+  const visibleLids = visibleEntries.map((e) => e.lid);
+
+  const swapResult = moveAdjacentInOrder(
+    ensured,
+    domainLids,
+    visibleLids,
+    target,
+    direction,
+  );
+  if (!swapResult.changed) return { state, events: [] };
+
+  const nextContainer = {
+    ...container,
+    meta: { ...container.meta, entry_order: swapResult.order },
+  };
+  const next: AppState = { ...state, container: nextContainer };
+  return { state: next, events: [] };
+}
+
+/**
+ * Local helper: first structural-parent lid (folder membership) for
+ * `childLid`, or `null` at root. Kept inline to avoid a dependency on
+ * `tree.ts`'s full Entry-returning helper — we only need the lid.
+ */
+function getStructuralParentLid(
+  relations: readonly import('../../core/model/relation').Relation[],
+  childLid: string,
+): string | null {
+  for (const r of relations) {
+    if (r.kind === 'structural' && r.to === childLid) return r.from;
+  }
+  return null;
 }
 
 function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult {
@@ -418,6 +607,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
       // or a dangling preview modal is incoherent.
+      //
+      // FI-01 (2026-04-17): capture EditBaseSnapshot so COMMIT_EDIT
+      // can run the save-time optimistic version guard. captureEditBase
+      // returns null for unknown lids; we store null rather than aborting
+      // so existing callers that trigger BEGIN_EDIT before SYS_INIT
+      // (or in pathological fixtures) keep working — the guard then
+      // skips (legacy permissive path).
+      const base = state.container
+        ? captureEditBase(state.container, action.lid)
+        : null;
       const next: AppState = {
         ...state,
         phase: 'editing',
@@ -426,6 +625,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         viewMode: 'detail',
         textlogSelection: null,
         textToTextlogModal: null,
+        editingBase: base,
+        dualEditConflict: null,
       };
       return { state: next, events: [{ type: 'EDIT_BEGUN', lid: action.lid }] };
     }
@@ -666,10 +867,54 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         events: [{ type: 'ENTRY_RESTORED', lid: action.lid, revision_id: action.revision_id }],
       };
     }
+    case 'BRANCH_RESTORE_REVISION': {
+      // C-1 revision-branch-restore v1.
+      // Gates: contract §6.1. The six below must each preserve state
+      // identity so downstream `===` checks stay cheap. `editingLid`
+      // can't be non-null in the ready phase, but the explicit guard
+      // is kept so the gate list matches the contract 1:1.
+      if (!state.container) return blocked(state, action);
+      if (state.readonly) return blocked(state, action);
+      if (state.viewOnlySource) return blocked(state, action);
+      if (state.editingLid !== null) return blocked(state, action);
+      if (state.importPreview !== null) return blocked(state, action);
+      if (state.batchImportPreview !== null) return blocked(state, action);
+
+      const newLid = generateLid();
+      const relationId = generateLid();
+      const ts = now();
+
+      const container = branchRestoreRevision(
+        state.container,
+        action.entryLid,
+        action.revisionId,
+        newLid,
+        relationId,
+        ts,
+      );
+      if (container === state.container) return blocked(state, action);
+
+      const next: AppState = { ...state, container, selectedLid: newLid };
+      return {
+        state: next,
+        events: [{
+          type: 'ENTRY_BRANCHED_FROM_REVISION',
+          sourceLid: action.entryLid,
+          newLid,
+          revision_id: action.revisionId,
+        }],
+      };
+    }
     case 'SYS_IMPORT_PREVIEW': {
       // Tier 3-1: reset import mode to 'replace' on every new preview so
       // a prior merge selection cannot leak into the next import session.
-      const next: AppState = { ...state, importPreview: action.preview, importMode: 'replace' };
+      const next: AppState = {
+        ...state,
+        importPreview: action.preview,
+        importMode: 'replace',
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
+      };
       return {
         state: next,
         events: [{
@@ -713,11 +958,6 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'CONFIRM_MERGE_IMPORT': {
       // Tier 3-1: Overlay MVP (append-only). Invariants I-Merge1 / I-Merge2.
-      // Host container remains untouched at the entry level; imported
-      // data is added with fresh lids and remapped relations. Revisions
-      // are dropped. Schema mismatch bails out with an error (the UI
-      // should prevent the user from reaching this case, but the
-      // reducer remains defensive).
       if (!state.importPreview) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       const host = state.container;
@@ -725,9 +965,42 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const source = state.importPreview.source;
       const plan = planMergeImport(host, imported, action.now);
       if ('error' in plan) return blocked(state, action);
-      const merged = applyMergePlan(host, imported, plan, action.now);
-      // Orphan auto-GC on the merge result (I-AutoGC1 — merge is a
-      // container-replacement path in the same spirit as import).
+
+      let finalPlan = plan;
+      let mergeTarget = imported;
+      let suppressedByKeepCurrent: string[] = [];
+      let suppressedBySkip: string[] = [];
+      let provenanceData: ProvenanceRelationData[] = [];
+
+      if (state.mergeConflicts && state.mergeConflicts.length > 0 && state.mergeConflictResolutions) {
+        const crResult = applyConflictResolutions(
+          plan, state.mergeConflictResolutions, state.mergeConflicts, action.now,
+        );
+        finalPlan = crResult.plan;
+        suppressedByKeepCurrent = crResult.suppressedByKeepCurrent;
+        suppressedBySkip = crResult.suppressedBySkip;
+        provenanceData = crResult.provenanceData;
+        mergeTarget = {
+          ...imported,
+          entries: imported.entries.filter((e) => crResult.plan.lidRemap.has(e.lid)),
+        };
+      }
+
+      let merged = applyMergePlan(host, mergeTarget, finalPlan, action.now);
+
+      if (provenanceData.length > 0) {
+        const newRelations = provenanceData.map((p) => ({
+          id: generateLid(),
+          from: p.from_lid,
+          to: p.to_lid,
+          kind: 'provenance' as const,
+          created_at: action.now,
+          updated_at: action.now,
+          metadata: p.metadata as Record<string, unknown>,
+        }));
+        merged = { ...merged, relations: [...merged.relations, ...newRelations] };
+      }
+
       const purged = removeOrphanAssets(merged);
       const purgedCount =
         purged === merged
@@ -737,15 +1010,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         phase: 'ready',
         container: purged,
-        // Host selection survives; imported entries were appended so
-        // no existing lid was displaced. New lid is NOT auto-selected
-        // (user explicitly stayed on host's workspace).
         editingLid: null,
         error: null,
         importPreview: null,
         importMode: 'replace',
-        // Merge import is also an explicit promotion gate — see
-        // CONFIRM_IMPORT case. Clear so the merged result persists.
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
         viewOnlySource: false,
       };
       const cid = host.meta.container_id ?? 'unknown';
@@ -753,26 +1023,77 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         type: 'CONTAINER_MERGED',
         container_id: cid,
         source,
-        added_entries: plan.counts.addedEntries,
-        added_assets: plan.counts.addedAssets,
-        added_relations: plan.counts.addedRelations,
+        added_entries: finalPlan.counts.addedEntries,
+        added_assets: finalPlan.counts.addedAssets,
+        added_relations: finalPlan.counts.addedRelations + provenanceData.length,
+        suppressed_by_keep_current: suppressedByKeepCurrent,
+        suppressed_by_skip: suppressedBySkip,
       }];
       if (purgedCount > 0) events.push({ type: 'ORPHAN_ASSETS_PURGED', count: purgedCount });
       return { state: next, events };
     }
     case 'SET_IMPORT_MODE': {
-      // Tier 3-1: UI toggle between Replace and Merge on the import
-      // preview dialog. Ignored when no preview is active or when the
-      // mode is unchanged. `undefined` is treated as 'replace' (see
-      // AppState.importMode JSDoc).
       if (!state.importPreview) return blocked(state, action);
       const current = state.importMode ?? 'replace';
       if (current === action.mode) return blocked(state, action);
-      const next: AppState = { ...state, importMode: action.mode };
+      const next: AppState = {
+        ...state,
+        importMode: action.mode,
+        mergeConflicts: action.mode === 'replace' ? undefined : state.mergeConflicts,
+        mergeConflictResolutions: action.mode === 'replace' ? undefined : state.mergeConflictResolutions,
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_MERGE_CONFLICTS': {
+      if (!state.importPreview) return blocked(state, action);
+      if ((state.importMode ?? 'replace') !== 'merge') return blocked(state, action);
+      const resolutions: Record<string, Resolution> = {};
+      for (const c of action.conflicts) {
+        if (c.kind === 'content-equal') {
+          resolutions[c.imported_lid] = 'keep-current';
+        }
+      }
+      const next: AppState = {
+        ...state,
+        mergeConflicts: action.conflicts,
+        mergeConflictResolutions: resolutions,
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_CONFLICT_RESOLUTION': {
+      if (!state.mergeConflictResolutions) return blocked(state, action);
+      const next: AppState = {
+        ...state,
+        mergeConflictResolutions: {
+          ...state.mergeConflictResolutions,
+          [action.importedLid]: action.resolution,
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'BULK_SET_CONFLICT_RESOLUTION': {
+      if (!state.mergeConflicts || !state.mergeConflictResolutions) return blocked(state, action);
+      // I-MergeUI7 preservation: for keep-current bulk, title-only-multi rows
+      // are untouched — existing resolutions (if any) are preserved, not wiped.
+      const resolutions: Record<string, Resolution> = { ...state.mergeConflictResolutions };
+      for (const c of state.mergeConflicts) {
+        if (action.resolution === 'keep-current' && c.kind === 'title-only-multi') continue;
+        resolutions[c.imported_lid] = action.resolution;
+      }
+      const next: AppState = {
+        ...state,
+        mergeConflictResolutions: resolutions,
+      };
       return { state: next, events: [] };
     }
     case 'CANCEL_IMPORT': {
-      const next: AppState = { ...state, importPreview: null, importMode: 'replace' };
+      const next: AppState = {
+        ...state,
+        importPreview: null,
+        importMode: 'replace',
+        mergeConflicts: undefined,
+        mergeConflictResolutions: undefined,
+      };
       return {
         state: next,
         events: [{ type: 'IMPORT_CANCELLED' }],
@@ -959,20 +1280,73 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_ARCHETYPE_FILTER': {
-      const next: AppState = { ...state, archetypeFilter: action.archetype };
+      // Backwards-compat: null → empty Set (= show all), specific → singleton Set.
+      const next: AppState = {
+        ...state,
+        archetypeFilter: action.archetype === null
+          ? new Set<ArchetypeId>()
+          : new Set([action.archetype]),
+      };
       return { state: next, events: [] };
+    }
+    case 'TOGGLE_ARCHETYPE_FILTER': {
+      const next = new Set(state.archetypeFilter);
+      if (next.has(action.archetype)) {
+        next.delete(action.archetype);
+      } else {
+        next.add(action.archetype);
+      }
+      return { state: { ...state, archetypeFilter: next }, events: [] };
+    }
+    case 'TOGGLE_ARCHETYPE_FILTER_EXPANDED': {
+      return { state: { ...state, archetypeFilterExpanded: !(state.archetypeFilterExpanded ?? false) }, events: [] };
+    }
+    case 'TOGGLE_SCANLINE': {
+      return { state: { ...state, showScanline: !(state.showScanline ?? false) }, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };
       return { state: next, events: [] };
     }
     case 'CLEAR_FILTERS': {
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: null, tagFilter: null };
+      // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), tagFilter: null };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {
-      const next: AppState = { ...state, sortKey: action.key, sortDirection: action.direction };
+      // C-2 v1 (2026-04-17): switching into manual mode performs the
+      // initial `entry_order` snapshot if none exists yet (contract
+      // §2.5). Switching out of manual preserves `meta.entry_order`
+      // untouched (I-Order2) — we only flip the runtime field.
+      let container = state.container;
+      if (
+        action.key === 'manual' &&
+        container &&
+        (container.meta.entry_order === undefined ||
+          container.meta.entry_order.length === 0)
+      ) {
+        const snapshot = snapshotEntryOrder(container.entries);
+        container = {
+          ...container,
+          meta: { ...container.meta, entry_order: snapshot },
+        };
+      }
+      const next: AppState = {
+        ...state,
+        container,
+        sortKey: action.key,
+        sortDirection: action.direction,
+      };
       return { state: next, events: [] };
+    }
+    case 'MOVE_ENTRY_UP':
+    case 'MOVE_ENTRY_DOWN': {
+      const result = reduceMoveEntry(
+        state,
+        action.type === 'MOVE_ENTRY_UP' ? 'up' : 'down',
+        action.lid,
+      );
+      return result;
     }
     // QUICK_UPDATE_ENTRY: body-only update, title preserved.
     // See user-action.ts for full contract documentation.
@@ -1363,6 +1737,57 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'COMMIT_EDIT': {
       if (!state.container) return blocked(state, action);
+
+      // FI-01 save-time optimistic version guard. When a base
+      // snapshot is available (preferred: action.base; fallback:
+      // state.editingBase captured at BEGIN_EDIT), check whether the
+      // container has advanced since edit start. If it has, we refuse
+      // to write and park the draft in state.dualEditConflict so the
+      // UI can offer a resolution (save-as-branch / discard / copy).
+      // When no base is available (legacy fixture / direct
+      // phase='editing' entry), we skip the guard to preserve
+      // backward compatibility — see COMMIT_EDIT JSDoc in
+      // user-action.ts.
+      const base: EditBaseSnapshot | null =
+        action.base ?? state.editingBase ?? null;
+      if (base !== null) {
+        const check = checkSaveConflict(base, state.container);
+        if (check.kind !== 'safe') {
+          const conflict: DualEditConflictState = {
+            lid: action.lid,
+            base,
+            draft: {
+              title: action.title,
+              body: action.body,
+              ...(action.assets ? { assets: action.assets } : {}),
+            },
+            kind: check.kind,
+          };
+          if (check.kind === 'version-mismatch') {
+            conflict.currentUpdatedAt = check.currentUpdatedAt;
+            if (check.currentContentHash !== undefined) {
+              conflict.currentContentHash = check.currentContentHash;
+            }
+          } else if (check.kind === 'archetype-changed') {
+            conflict.currentArchetype = check.currentArchetype;
+          }
+          const rejectedState: AppState = {
+            ...state,
+            dualEditConflict: conflict,
+          };
+          const rejectEvent: DomainEvent = {
+            type: 'DUAL_EDIT_SAVE_REJECTED',
+            lid: action.lid,
+            kind: check.kind,
+            baseUpdatedAt: base.updated_at,
+            ...(check.kind === 'version-mismatch'
+              ? { currentUpdatedAt: check.currentUpdatedAt }
+              : {}),
+          };
+          return { state: rejectedState, events: [rejectEvent] };
+        }
+      }
+
       const ts = now();
       // Snapshot the entry before update (minimal revision)
       const revId = generateLid();
@@ -1373,7 +1798,14 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       if (action.assets) {
         container = mergeAssets(container, action.assets);
       }
-      const next: AppState = { ...state, phase: 'ready', editingLid: null, container };
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        container,
+        editingBase: null,
+        dualEditConflict: null,
+      };
       return {
         state: next,
         events: [
@@ -1383,11 +1815,97 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       };
     }
     case 'CANCEL_EDIT': {
-      const next: AppState = { ...state, phase: 'ready', editingLid: null };
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        editingBase: null,
+        dualEditConflict: null,
+      };
       return { state: next, events: [{ type: 'EDIT_CANCELLED' }] };
+    }
+    case 'RESOLVE_DUAL_EDIT_CONFLICT': {
+      // FI-01 v1 §5. Only valid while a conflict is parked in state
+      // and the action targets that same lid. Every mismatch preserves
+      // identity so downstream `===` checks stay cheap.
+      const conflict = state.dualEditConflict;
+      if (!conflict) return blocked(state, action);
+      if (conflict.lid !== action.lid) return blocked(state, action);
+
+      if (action.resolution === 'copy-to-clipboard') {
+        const ticket = (conflict.copyRequestTicket ?? 0) + 1;
+        const next: AppState = {
+          ...state,
+          dualEditConflict: { ...conflict, copyRequestTicket: ticket },
+        };
+        return { state: next, events: [] };
+      }
+
+      if (action.resolution === 'discard-my-edits') {
+        const next: AppState = {
+          ...state,
+          phase: 'ready',
+          editingLid: null,
+          editingBase: null,
+          dualEditConflict: null,
+        };
+        return {
+          state: next,
+          events: [{ type: 'DUAL_EDIT_DISCARDED', lid: conflict.lid }],
+        };
+      }
+
+      // save-as-branch (default safe action).
+      if (!state.container) return blocked(state, action);
+      const newLid = generateLid();
+      const relationId = generateLid();
+      const ts = now();
+      let container = branchFromDualEditConflict(
+        state.container,
+        conflict.base,
+        { title: conflict.draft.title, body: conflict.draft.body },
+        newLid,
+        relationId,
+        ts,
+      );
+      if (container === state.container) {
+        // Defensive: branchFromDualEditConflict returned the input
+        // reference (id collision). Treat as blocked to preserve
+        // I-Dual9 identity semantics.
+        return blocked(state, action);
+      }
+      if (conflict.draft.assets) {
+        container = mergeAssets(container, conflict.draft.assets);
+      }
+      const next: AppState = {
+        ...state,
+        phase: 'ready',
+        editingLid: null,
+        editingBase: null,
+        dualEditConflict: null,
+        container,
+        selectedLid: newLid,
+      };
+      return {
+        state: next,
+        events: [{
+          type: 'ENTRY_BRANCHED_FROM_DUAL_EDIT',
+          sourceLid: conflict.lid,
+          newLid,
+          resolvedAt: ts,
+        }],
+      };
     }
     case 'PASTE_ATTACHMENT': {
       // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
+      return reduceReady(state, action);
+    }
+    case 'MOVE_ENTRY_UP':
+    case 'MOVE_ENTRY_DOWN': {
+      // C-2 v1 contract §6.1: MOVE_ENTRY is allowed during `editing`.
+      // Delegate to reduceReady → reduceMoveEntry, which only touches
+      // `container.meta.entry_order` and preserves phase / editingLid
+      // via the identity spread at the tail of reduceMoveEntry.
       return reduceReady(state, action);
     }
     default:

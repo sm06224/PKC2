@@ -228,7 +228,9 @@ function triggerDownload(content: string, filename: string): void {
 
   // Cleanup after a tick
   setTimeout(() => {
-    document.body.removeChild(a);
+    if (typeof document !== 'undefined') {
+      document.body.removeChild(a);
+    }
     URL.revokeObjectURL(url);
   }, 100);
 }

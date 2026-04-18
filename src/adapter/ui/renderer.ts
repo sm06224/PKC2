@@ -9,12 +9,14 @@ import {
   getLatestRevision,
   getRestoreCandidates,
   getRevisionsByBulkId,
+  getEntryRevisions,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
 import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
+import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
@@ -26,6 +28,7 @@ import type { RelationKind } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { syncTextlogSelectionFromState } from './textlog-selection';
 import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
+import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
@@ -40,13 +43,16 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
+import { buildLinkIndex } from '../../features/link-index/link-index';
+import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
+import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
 
-/** Archetype options for the filter bar. Single source of truth. */
-const ARCHETYPE_FILTER_OPTIONS: readonly (ArchetypeId | null)[] = [
-  null, 'text', 'textlog', 'todo', 'form', 'attachment', 'folder', 'generic', 'opaque',
-] as const;
+/** Primary tier: always visible in the archetype filter bar (FI-09). */
+const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = ['text', 'textlog', 'folder'];
+/** Secondary tier: hidden by default, shown when archetypeFilterExpanded (FI-09). */
+const ARCHETYPE_FILTER_SECONDARY: readonly ArchetypeId[] = ['todo', 'attachment', 'form', 'generic', 'opaque'];
 
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
 const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
@@ -85,6 +91,7 @@ const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
   { key: 'created_at', label: 'Created' },
   { key: 'updated_at', label: 'Updated' },
   { key: 'title', label: 'Title' },
+  { key: 'manual', label: 'Manual' },
 ] as const;
 
 /** Relation kind options with display labels. */
@@ -124,6 +131,11 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
+  if (state.showScanline) {
+    root.setAttribute('data-pkc-scanline', 'on');
+  } else {
+    root.removeAttribute('data-pkc-scanline');
+  }
 
   switch (state.phase) {
     case 'initializing':
@@ -159,6 +171,12 @@ export function render(state: AppState, root: HTMLElement): void {
   // orphaned by the root-level innerHTML wipe above. Pure
   // housekeeping — never opens, only closes.
   syncTextlogPreviewModalFromState(state);
+
+  // FI-01 (2026-04-17): reject overlay for dual-edit conflicts.
+  // Mounts when `state.dualEditConflict` is populated and unmounts
+  // on every path that clears it. Must sit after the shell rebuild
+  // so the overlay layers on top.
+  syncDualEditConflictOverlay(state, root);
 }
 
 /**
@@ -219,7 +237,13 @@ function renderShell(state: AppState): HTMLElement {
 
   // Import confirmation panel
   if (state.importPreview) {
-    shell.appendChild(renderImportConfirmation(state.importPreview, state.importMode ?? 'replace', state.container));
+    shell.appendChild(renderImportConfirmation(
+      state.importPreview,
+      state.importMode ?? 'replace',
+      state.container,
+      state.mergeConflicts,
+      state.mergeConflictResolutions,
+    ));
   }
 
   // Batch import preview panel
@@ -513,6 +537,19 @@ function renderShellMenu(
   }
   themeSection.appendChild(themeButtons);
   card.appendChild(themeSection);
+
+  // Scanline toggle (FI-12 v1): opt-in CRT scanline overlay.
+  const scanlineSection = createElement('div', 'pkc-shell-menu-section');
+  const scanlineLabel = createElement('span', 'pkc-shell-menu-label');
+  scanlineLabel.textContent = 'Scanline';
+  scanlineSection.appendChild(scanlineLabel);
+  const scanlineBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  scanlineBtn.setAttribute('data-pkc-action', 'toggle-scanline');
+  const scanlineOn = state.showScanline === true;
+  scanlineBtn.setAttribute('data-pkc-active', String(scanlineOn));
+  scanlineBtn.textContent = scanlineOn ? '◉ On' : '○ Off';
+  scanlineSection.appendChild(scanlineBtn);
+  card.appendChild(scanlineSection);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
@@ -1226,7 +1263,7 @@ function renderSidebar(state: AppState): HTMLElement {
     searchInput.className = 'pkc-search-input';
     searchRow.appendChild(searchInput);
 
-    if (state.searchQuery !== '' || state.archetypeFilter !== null) {
+    if (state.searchQuery !== '' || state.archetypeFilter.size > 0) {
       const clearBtn = createElement('button', 'pkc-btn-clear');
       clearBtn.setAttribute('data-pkc-action', 'clear-filters');
       clearBtn.setAttribute('title', 'Clear search and filters');
@@ -1237,7 +1274,7 @@ function renderSidebar(state: AppState): HTMLElement {
     sidebar.appendChild(searchRow);
 
     // Archetype filter bar
-    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter, state.archetypeFilterExpanded ?? false));
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
@@ -1290,10 +1327,15 @@ function renderSidebar(state: AppState): HTMLElement {
       return !parseTodoBody(e.body).archived;
     });
   }
-  const entries = sortEntries(filtered, state.sortKey, state.sortDirection);
+  // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
+  // using `container.meta.entry_order` (contract §2.2). Non-manual
+  // modes fall through to the existing stable temporal/title sort.
+  const entries = state.sortKey === 'manual'
+    ? applyManualOrder(filtered, state.container?.meta.entry_order ?? [])
+    : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -1309,6 +1351,7 @@ function renderSidebar(state: AppState): HTMLElement {
       empty.textContent = 'No entries in this container.';
     }
     sidebar.appendChild(empty);
+    sidebar.appendChild(renderSidebarDropZone(state));
     return sidebar;
   }
 
@@ -1317,11 +1360,12 @@ function renderSidebar(state: AppState): HTMLElement {
     empty.setAttribute('data-pkc-region', 'empty-guidance');
     empty.textContent = 'No matching entries. Try adjusting your search or filters.';
     sidebar.appendChild(empty);
+    sidebar.appendChild(renderSidebarDropZone(state));
     return sidebar;
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter !== null || state.tagFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null;
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
@@ -1345,7 +1389,13 @@ function renderSidebar(state: AppState): HTMLElement {
   } else {
     // Tree mode: build from structural relations
     const tree = buildTree(entries, state.container.relations);
-    for (const node of tree) {
+    // C-2 v1 manual mode: buildTree orders children by relation
+    // iteration order, not by `entries` position. Reorder each node's
+    // children so folder-child ordering reflects `entry_order`.
+    const displayTree = state.sortKey === 'manual'
+      ? reorderTreeByEntries(tree, entries)
+      : tree;
+    for (const node of displayTree) {
       renderTreeNode(node, list, state);
     }
   }
@@ -1555,7 +1605,54 @@ function renderSidebar(state: AppState): HTMLElement {
     }
   }
 
+  // G-3: persistent file drop zone at sidebar bottom (FI-04).
+  // Always rendered; active only when phase === 'ready' and not readonly.
+  sidebar.appendChild(renderSidebarDropZone(state));
+
   return sidebar;
+}
+
+/**
+ * FI-04 G-3: Persistent file drop zone rendered at the bottom of the sidebar.
+ * Uses data-pkc-region="sidebar-file-drop-zone" to avoid querySelector ordering
+ * conflicts with center-pane zones. The action-binder drop handlers match both
+ * "file-drop-zone" and "sidebar-file-drop-zone" via a combined CSS selector.
+ */
+function renderSidebarDropZone(state: AppState): HTMLElement {
+  const zone = createElement('div', 'pkc-drop-zone pkc-drop-zone-sidebar');
+  zone.setAttribute('data-pkc-region', 'sidebar-file-drop-zone');
+  zone.setAttribute('data-pkc-persistent-drop-zone', 'true');
+
+  const isActive = state.phase === 'ready' && !state.readonly;
+  if (!isActive) {
+    zone.setAttribute('data-pkc-inactive', 'true');
+  }
+
+  const label = createElement('span', 'pkc-drop-zone-label');
+  label.textContent = '📎 Drop files here';
+  zone.appendChild(label);
+
+  return zone;
+}
+
+/**
+ * C-2 v1 (2026-04-17): reorder tree children so that folder children
+ * follow the order of `entries` (i.e., `entry_order`). `buildTree`
+ * preserves root iteration order but orders children by structural
+ * relation iteration; under manual mode we need both levels to match
+ * `entries`. Returns a new tree; does not mutate input nodes.
+ */
+function reorderTreeByEntries(tree: TreeNode[], entries: readonly Entry[]): TreeNode[] {
+  const rank = new Map<string, number>();
+  entries.forEach((e, i) => rank.set(e.lid, i));
+  const INF = entries.length + 1;
+  function walk(nodes: TreeNode[]): TreeNode[] {
+    const sorted = [...nodes].sort(
+      (a, b) => (rank.get(a.entry.lid) ?? INF) - (rank.get(b.entry.lid) ?? INF),
+    );
+    return sorted.map((n) => ({ ...n, children: walk(n.children) }));
+  }
+  return walk(tree);
 }
 
 function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): void {
@@ -1656,6 +1753,36 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       revBadge.textContent = `r${revCount}`;
       li.appendChild(revBadge);
     }
+  }
+
+  // C-2 v1 (2026-04-17): Move up / Move down for the selected entry
+  // under manual mode. Gate mirrors the reducer (detail view, not
+  // read-only, no import preview in progress) — contract §4.2.
+  // Reducer is authoritative: a no-op at an edge still goes through
+  // dispatch and returns the same state ref.
+  if (
+    entry.lid === state.selectedLid &&
+    state.sortKey === 'manual' &&
+    state.viewMode === 'detail' &&
+    !state.readonly &&
+    state.importPreview === null &&
+    state.batchImportPreview === null
+  ) {
+    const upBtn = createElement('button', 'pkc-entry-move-btn');
+    upBtn.setAttribute('data-pkc-action', 'move-entry-up');
+    upBtn.setAttribute('data-pkc-lid', entry.lid);
+    upBtn.setAttribute('title', 'Move up');
+    upBtn.setAttribute('aria-label', 'Move up');
+    upBtn.textContent = '↑';
+    li.appendChild(upBtn);
+
+    const downBtn = createElement('button', 'pkc-entry-move-btn');
+    downBtn.setAttribute('data-pkc-action', 'move-entry-down');
+    downBtn.setAttribute('data-pkc-lid', entry.lid);
+    downBtn.setAttribute('title', 'Move down');
+    downBtn.setAttribute('aria-label', 'Move down');
+    downBtn.textContent = '↓';
+    li.appendChild(downBtn);
   }
 
   return li;
@@ -2508,6 +2635,70 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     }
 
     meta.appendChild(revInfo);
+
+    // C-1 revision-branch-restore v1 — picker (list + select only).
+    // See `docs/spec/revision-branch-restore-v1-behavior-contract.md` §7.
+    // Revisions are listed newest first so the first row matches the
+    // existing Revert button. Rendered verbatim for every revision
+    // (including the latest) — consolidation with Revert is v1.x
+    // scope (§9.2).
+    const allRevs = getEntryRevisions(container, entry.lid);
+    const revsDesc = [...allRevs].reverse();
+    const picker = createElement('details', 'pkc-revision-picker');
+    picker.setAttribute('data-pkc-region', 'revision-history');
+    const summary = createElement('summary', 'pkc-revision-picker-summary');
+    summary.textContent = `Revision history (${revsDesc.length})`;
+    picker.appendChild(summary);
+
+    revsDesc.forEach((rev, idx) => {
+      const row = createElement('div', 'pkc-revision-row');
+      row.setAttribute('data-pkc-revision-id', rev.id);
+      row.setAttribute('data-pkc-revision-index', String(idx + 1));
+
+      const headLine = createElement('div', 'pkc-revision-row-head');
+      const ts = createElement('span', 'pkc-revision-row-ts');
+      ts.textContent = formatTimestamp(rev.created_at);
+      headLine.appendChild(ts);
+
+      const parsed = parseRevisionSnapshot(rev);
+      if (parsed) {
+        const arch = createElement('span', 'pkc-revision-row-archetype');
+        arch.textContent = archetypeLabel(parsed.archetype);
+        headLine.appendChild(arch);
+      }
+
+      const hash = createElement('span', 'pkc-revision-row-hash');
+      hash.textContent = rev.content_hash ? rev.content_hash.slice(0, 8) : '—';
+      headLine.appendChild(hash);
+
+      row.appendChild(headLine);
+
+      if (canEdit) {
+        const actions = createElement('div', 'pkc-revision-row-actions');
+
+        const restoreBtn = createElement('button', 'pkc-btn-small');
+        restoreBtn.setAttribute('data-pkc-action', 'restore-entry');
+        restoreBtn.setAttribute('data-pkc-lid', entry.lid);
+        restoreBtn.setAttribute('data-pkc-revision-id', rev.id);
+        restoreBtn.setAttribute('title', 'Restore this revision in place');
+        restoreBtn.textContent = 'Restore';
+        actions.appendChild(restoreBtn);
+
+        const branchBtn = createElement('button', 'pkc-btn-small');
+        branchBtn.setAttribute('data-pkc-action', 'branch-restore-revision');
+        branchBtn.setAttribute('data-pkc-lid', entry.lid);
+        branchBtn.setAttribute('data-pkc-revision-id', rev.id);
+        branchBtn.setAttribute('title', 'Create a new entry from this revision');
+        branchBtn.textContent = 'Restore as branch';
+        actions.appendChild(branchBtn);
+
+        row.appendChild(actions);
+      }
+
+      picker.appendChild(row);
+    });
+
+    meta.appendChild(picker);
   }
 
   // Relations section
@@ -2597,7 +2788,89 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     }
   }
 
+  // Link-index sections (C-3 v1): outgoing / backlinks / broken for the
+  // selected entry. Runtime-only; derived at render time from container.
+  const linkIndex = buildLinkIndex(container);
+  meta.appendChild(renderLinkIndexSections(entry, linkIndex, container));
+
   return meta;
+}
+
+function renderLinkIndexSections(
+  entry: Entry,
+  linkIndex: LinkIndex,
+  container: Container,
+): HTMLElement {
+  const wrap = createElement('div', 'pkc-link-index');
+  wrap.setAttribute('data-pkc-region', 'link-index');
+
+  const outgoing = linkIndex.outgoingBySource.get(entry.lid) ?? [];
+  const backlinks = linkIndex.backlinksByTarget.get(entry.lid) ?? [];
+  const brokenForEntry = outgoing.filter((r) => !r.resolved);
+
+  const titleByLid = new Map<string, string>();
+  for (const e of container.entries) titleByLid.set(e.lid, e.title);
+
+  wrap.appendChild(
+    renderLinkRefsSection('Outgoing links', 'link-index-outgoing', outgoing, titleByLid, 'target'),
+  );
+  wrap.appendChild(
+    renderLinkRefsSection('Backlinks', 'link-index-backlinks', backlinks, titleByLid, 'source'),
+  );
+  wrap.appendChild(
+    renderLinkRefsSection('Broken links', 'link-index-broken', brokenForEntry, titleByLid, 'target'),
+  );
+
+  return wrap;
+}
+
+function renderLinkRefsSection(
+  label: string,
+  regionId: string,
+  refs: readonly LinkRef[],
+  titleByLid: ReadonlyMap<string, string>,
+  peer: 'source' | 'target',
+): HTMLElement {
+  const section = createElement('div', 'pkc-link-index-section');
+  section.setAttribute('data-pkc-region', regionId);
+
+  const heading = createElement('div', 'pkc-link-index-heading');
+  heading.textContent = `${label} (${refs.length})`;
+  section.appendChild(heading);
+
+  if (refs.length === 0) {
+    const empty = createElement('div', 'pkc-link-index-empty');
+    empty.textContent =
+      regionId === 'link-index-outgoing'
+        ? 'No outgoing links.'
+        : regionId === 'link-index-backlinks'
+        ? 'No backlinks.'
+        : 'No broken links.';
+    section.appendChild(empty);
+    return section;
+  }
+
+  const list = createElement('ul', 'pkc-link-index-list');
+  for (const ref of refs) {
+    const lid = peer === 'source' ? ref.sourceLid : ref.targetLid;
+    const item = createElement('li', 'pkc-link-index-item');
+    item.setAttribute('data-pkc-lid', lid);
+    if (!ref.resolved) item.setAttribute('data-pkc-broken', 'true');
+
+    const link = createElement('span', 'pkc-link-index-peer');
+    if (ref.resolved) {
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', lid);
+      link.textContent = titleByLid.get(lid) || lid;
+    } else {
+      link.textContent = lid;
+    }
+    item.appendChild(link);
+
+    list.appendChild(item);
+  }
+  section.appendChild(list);
+  return section;
 }
 
 /**
@@ -2790,6 +3063,8 @@ function renderImportConfirmation(
   preview: ImportPreviewRef,
   mode: 'replace' | 'merge',
   host: Container | null,
+  conflicts?: EntryConflict[],
+  resolutions?: Record<string, Resolution>,
 ): HTMLElement {
   const panel = createElement('div', 'pkc-import-confirm');
   panel.setAttribute('data-pkc-region', 'import-confirm');
@@ -2898,6 +3173,12 @@ function renderImportConfirmation(
   }
   panel.appendChild(summary);
 
+  // ── Conflict UI (v1, H-10) ──────────────────────
+  const hasConflicts = mode === 'merge' && conflicts && conflicts.length > 0;
+  if (hasConflicts) {
+    panel.appendChild(renderMergeConflictSection(conflicts!, resolutions ?? {}));
+  }
+
   const actions = createElement('div', 'pkc-import-actions');
 
   const confirmBtn = createElement('button', 'pkc-btn-danger');
@@ -2905,6 +3186,9 @@ function renderImportConfirmation(
     confirmBtn.setAttribute('data-pkc-action', 'confirm-merge-import');
     confirmBtn.textContent = 'Merge & Import';
     if (schemaMismatch) confirmBtn.setAttribute('disabled', 'true');
+    if (hasConflicts && !allConflictsResolved(conflicts!, resolutions ?? {})) {
+      confirmBtn.setAttribute('disabled', 'true');
+    }
   } else {
     confirmBtn.setAttribute('data-pkc-action', 'confirm-import');
     confirmBtn.textContent = 'Replace & Import';
@@ -2918,6 +3202,138 @@ function renderImportConfirmation(
 
   panel.appendChild(actions);
   return panel;
+}
+
+function allConflictsResolved(
+  conflicts: EntryConflict[],
+  resolutions: Record<string, Resolution>,
+): boolean {
+  for (const c of conflicts) {
+    const r = resolutions[c.imported_lid];
+    if (!r) return false;
+  }
+  return true;
+}
+
+function conflictKindLabel(kind: EntryConflict['kind']): string {
+  switch (kind) {
+    case 'content-equal': return 'C1';
+    case 'title-only': return 'C2';
+    case 'title-only-multi': return 'C2-multi';
+  }
+}
+
+function conflictBadgeText(conflict: EntryConflict): string {
+  switch (conflict.kind) {
+    case 'content-equal': return '✓ content identical';
+    case 'title-only': return '⚠ title matches, content differs';
+    case 'title-only-multi':
+      return `⚠ ${conflict.host_candidates?.length ?? 0} host candidates`;
+  }
+}
+
+function shortDate(iso: string): string {
+  return iso.slice(0, 16).replace('T', ' ');
+}
+
+function renderMergeConflictSection(
+  conflicts: EntryConflict[],
+  resolutions: Record<string, Resolution>,
+): HTMLElement {
+  const section = createElement('div', 'pkc-merge-conflicts');
+  section.setAttribute('data-pkc-region', 'merge-conflicts');
+
+  const heading = createElement('div', 'pkc-merge-conflicts-heading');
+  const unresolvedCount = conflicts.filter((c) => !resolutions[c.imported_lid]).length;
+  heading.textContent = unresolvedCount > 0
+    ? `Entry conflicts: ${conflicts.length} (Resolve ${unresolvedCount} pending)`
+    : `Entry conflicts: ${conflicts.length}`;
+  section.appendChild(heading);
+
+  for (const conflict of conflicts) {
+    section.appendChild(renderConflictRow(conflict, resolutions[conflict.imported_lid]));
+  }
+
+  const bulkBar = createElement('div', 'pkc-merge-conflict-bulk');
+  const acceptBtn = createElement('button', 'pkc-btn');
+  acceptBtn.setAttribute('data-pkc-action', 'bulk-resolution');
+  acceptBtn.setAttribute('data-pkc-value', 'keep-current');
+  acceptBtn.textContent = 'Accept all host';
+  bulkBar.appendChild(acceptBtn);
+
+  const dupBtn = createElement('button', 'pkc-btn');
+  dupBtn.setAttribute('data-pkc-action', 'bulk-resolution');
+  dupBtn.setAttribute('data-pkc-value', 'duplicate-as-branch');
+  dupBtn.textContent = 'Duplicate all';
+  bulkBar.appendChild(dupBtn);
+
+  section.appendChild(bulkBar);
+  return section;
+}
+
+function renderConflictRow(
+  conflict: EntryConflict,
+  resolution: Resolution | undefined,
+): HTMLElement {
+  const row = createElement('div', 'pkc-merge-conflict-row');
+  row.setAttribute('data-pkc-conflict-id', conflict.imported_lid);
+  row.setAttribute('data-pkc-conflict-kind', conflictKindLabel(conflict.kind));
+
+  const header = createElement('div', 'pkc-merge-conflict-header');
+  const archBadge = createElement('span', 'pkc-merge-conflict-archetype');
+  archBadge.textContent = conflict.archetype.toUpperCase();
+  header.appendChild(archBadge);
+
+  const title = createElement('span', 'pkc-merge-conflict-title');
+  title.textContent = `"${conflict.imported_title}"`;
+  header.appendChild(title);
+
+  const kindBadge = createElement('span', 'pkc-merge-conflict-badge');
+  kindBadge.textContent = conflictBadgeText(conflict);
+  header.appendChild(kindBadge);
+  row.appendChild(header);
+
+  const sides = createElement('div', 'pkc-merge-conflict-sides');
+
+  const hostSide = createElement('div', 'pkc-merge-conflict-side');
+  hostSide.innerHTML = `<strong>Host</strong>: ${shortDate(conflict.host_created_at)} / ${shortDate(conflict.host_updated_at)}<br><code>${escapeHtml(conflict.host_body_preview)}</code>`;
+  sides.appendChild(hostSide);
+
+  const impSide = createElement('div', 'pkc-merge-conflict-side');
+  impSide.innerHTML = `<strong>Incoming</strong>: ${shortDate(conflict.imported_created_at)} / ${shortDate(conflict.imported_updated_at)}<br><code>${escapeHtml(conflict.imported_body_preview)}</code>`;
+  sides.appendChild(impSide);
+
+  row.appendChild(sides);
+
+  const radios = createElement('div', 'pkc-merge-conflict-radios');
+  radios.setAttribute('data-pkc-field', 'conflict-resolution');
+  radios.setAttribute('role', 'radiogroup');
+
+  const options: [Resolution, string, boolean][] = [
+    ['keep-current', 'Keep current', conflict.kind === 'title-only-multi'],
+    ['duplicate-as-branch', 'Branch', false],
+    ['skip', 'Skip', false],
+  ];
+
+  for (const [value, label, disabled] of options) {
+    const btn = createElement('button', 'pkc-merge-conflict-radio');
+    btn.setAttribute('data-pkc-action', 'set-conflict-resolution');
+    btn.setAttribute('data-pkc-value', value);
+    btn.setAttribute('data-pkc-conflict-id', conflict.imported_lid);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', resolution === value ? 'true' : 'false');
+    if (resolution === value) btn.setAttribute('data-pkc-selected', 'true');
+    if (disabled) btn.setAttribute('disabled', 'true');
+    btn.textContent = label;
+    radios.appendChild(btn);
+  }
+
+  row.appendChild(radios);
+  return row;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function renderBatchImportPreview(info: BatchImportPreviewInfo, container: Container | null): HTMLElement {
@@ -3200,20 +3616,57 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
   return bar;
 }
 
-function renderArchetypeFilter(current: ArchetypeId | null): HTMLElement {
+function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>, expanded: boolean): HTMLElement {
   const bar = createElement('div', 'pkc-archetype-filter');
   bar.setAttribute('data-pkc-region', 'archetype-filter');
 
-  for (const opt of ARCHETYPE_FILTER_OPTIONS) {
+  // "All" button — active when no archetype is selected
+  const allBtn = createElement('button', 'pkc-filter-btn');
+  allBtn.setAttribute('data-pkc-action', 'set-archetype-filter');
+  allBtn.setAttribute('data-pkc-archetype', '');
+  allBtn.textContent = 'All';
+  if (current.size === 0) {
+    allBtn.setAttribute('data-pkc-active', 'true');
+  }
+  bar.appendChild(allBtn);
+
+  // Primary group — always visible
+  const primaryGroup = createElement('div', 'pkc-filter-group');
+  primaryGroup.setAttribute('data-pkc-filter-group', 'primary');
+  for (const archetype of ARCHETYPE_FILTER_PRIMARY) {
     const btn = createElement('button', 'pkc-filter-btn');
-    btn.setAttribute('data-pkc-action', 'set-archetype-filter');
-    btn.setAttribute('data-pkc-archetype', opt ?? '');
-    btn.textContent = opt ? archetypeLabel(opt) : 'All';
-    if (opt === current) {
+    btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', archetype);
+    btn.textContent = archetypeLabel(archetype);
+    if (current.has(archetype)) {
       btn.setAttribute('data-pkc-active', 'true');
     }
-    bar.appendChild(btn);
+    primaryGroup.appendChild(btn);
   }
+  bar.appendChild(primaryGroup);
+
+  // Expand toggle
+  const expandBtn = createElement('button', 'pkc-filter-expand');
+  expandBtn.setAttribute('data-pkc-action', 'toggle-archetype-filter-expanded');
+  expandBtn.setAttribute('data-pkc-expanded', expanded ? 'true' : 'false');
+  expandBtn.textContent = expanded ? '▲' : '▼';
+  bar.appendChild(expandBtn);
+
+  // Secondary group — shown when expanded
+  const secondaryGroup = createElement('div', 'pkc-filter-group');
+  secondaryGroup.setAttribute('data-pkc-filter-group', 'secondary');
+  secondaryGroup.setAttribute('data-pkc-visible', expanded ? 'true' : 'false');
+  for (const archetype of ARCHETYPE_FILTER_SECONDARY) {
+    const btn = createElement('button', 'pkc-filter-btn');
+    btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
+    btn.setAttribute('data-pkc-archetype', archetype);
+    btn.textContent = archetypeLabel(archetype);
+    if (current.has(archetype)) {
+      btn.setAttribute('data-pkc-active', 'true');
+    }
+    secondaryGroup.appendChild(btn);
+  }
+  bar.appendChild(secondaryGroup);
 
   return bar;
 }

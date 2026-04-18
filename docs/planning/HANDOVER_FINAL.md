@@ -1,7 +1,7 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-14（§18.10 Tier 3-3 完了追記）
+**Last updated**: 2026-04-17（§21 C-2 entry-ordering v1 + C-3 link-index v1 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
@@ -207,13 +207,11 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 **これは怠慢ではなく設計判断**。次の開発者が「なぜ残したのか」で迷わないた
 めに、全て理由付きで列挙する。
 
-### 5.1 merge import 未実装
-- 現状 import は **full replace** のみ
-- merge には conflict resolution 戦略（新規 cid 採番 / lid 衝突時の扱い /
-  relation の張り替え）の設計が必要
-- 追加だけの用途には **Batch Import** / **単体 bundle (.text.zip /
-  .textlog.zip)** が既に存在する
-- merge が欲しくなる運用シナリオが明確化するまで、実装しない
+### 5.1 merge import 未実装（**部分解消 — Tier 3-1 MVP + H-10 v1, 2026-04-17**）
+- ~~現状 import は **full replace** のみ~~ → Tier 3-1 で Overlay MVP（append-only）、H-10 v1 で entry 単位 conflict UI（C1/C2/C2-multi + 3 操作 + bulk + provenance）まで到達
+- ~~merge には conflict resolution 戦略（新規 cid 採番 / lid 衝突時の扱い / relation の張り替え）の設計が必要~~ → `docs/spec/merge-import-conflict-resolution.md` + `docs/spec/merge-conflict-ui-v1-behavior-contract/` で固定
+- 追加だけの用途には **Batch Import** / **単体 bundle (.text.zip / .textlog.zip)** が引き続き利用可能
+- **なお v1 非対象**: §9 将来拡張（policy UI / staging / revision 持込 / diff export / merge undo）、accept-incoming（host 上書き）、semantic merge、attachment binary diff — いずれも v1.x / v2 テーマとして据え置き（§20.5 参照）
 
 ### 5.2 template archetype の正式化
 - `generic` / `opaque` は予約として型に残っているが、専用 presenter はない
@@ -1170,5 +1168,158 @@ manual** という review 駆動の順序を守って積み上げた。
 - **進めて良いテーマ**: 既存 contract の additive 拡張 / invariance 契約を壊さない小改善
 - **docs-only で先行させるテーマ**: 粒度 C / cross-entry / global など、UI / 影響範囲の再議論が必要なもの
 - **まだ保留**: global replace、別 archetype 展開、transport / P2P 拡張
+
+---
+
+## 20. Boot policy revision + H-10 merge-conflict-ui v1（2026-04-17 締め）
+
+§19 の Editor UX Pack に続き、**boot 契約の structural 強化**と **merge
+import の entry 単位 conflict UI**を docs-first パイプラインで閉じた。
+いずれも「contract → 実装 → audit → manual」の順序を守り、slice ごとに
+scope を厳守した。
+
+### 20.1 完了テーマ（§1 S-30 / S-31 の正式記録）
+
+| ID | 内容 | 種別 | 主要 surface |
+|----|-----|-----|-------------|
+| S-30 | Boot source policy revision（embedded pkc-data は view-only / IDB 拡張は明示 Import のみ） | 強化 + audit + manual | `chooseBootSource` 拡張 + `viewOnlySource` state / save ガード + 明示 Import 7 経路 clear + boot chooser overlay |
+| S-31 | H-10 merge-conflict-ui v1（behavior contract → pure / state / UI 3 slice → audit → manual） | contract + 3 slice + audit + manual | `features/import/conflict-detect.ts`、`app-state.ts` 3 reducer case、`renderer.ts` conflict section、`action-binder.ts` 4 handler（うち set-import-mode で wiring） |
+
+### 20.2 並行で追加した補助 spec / dev doc / manual
+
+- **behavior contract**（新規、13 章分割）:
+  - `docs/spec/merge-conflict-ui-v1-behavior-contract/00-positioning.md` 〜 `12-non-goal.md`
+  - supervisor 確定事項 2 点: (1) multi-host 代表 = `updatedAt` 最新 + tie-break array index 昇順 (2) `contentHash` 入力 = `body + archetype`（title は分類軸なので除外）
+  - I-MergeUI1〜I-MergeUI10 の不変条件固定
+- **dev doc**（`docs/development/`）:
+  - `boot-container-source-policy-revision.md`（S-30 実装 spec）
+  - `boot-container-source-policy-audit.md`（S-30 audit、欠陥 0）
+  - `merge-conflict-pure-slice.md`（pure 実装メモ）
+  - `merge-conflict-state-slice.md`（state 実装メモ）
+  - `merge-conflict-ui-v1-audit.md`（全 3 slice 統合監査、DEFECT-1 / DEFECT-2 最小修正記録）
+- **manual 同期**: 2 回
+  - boot 側（chooser / view-only）→ 07 / 09
+  - H-10 側（Merge mode と conflict 解決 UI / troubleshooting 3 件 / 用語集 3 件）→ 07 / 09
+- **core / state 追加（additive）**:
+  - `RelationKind = 'provenance'` が merge-duplicate 用途として稼働開始（既に H-8 spec で予約済み）
+  - `AppState.viewOnlySource: boolean`（S-30）
+  - `AppState.mergeConflicts` / `mergeConflictResolutions`（S-31）
+  - `CONTAINER_MERGED` event に `suppressed_by_keep_current[]` / `suppressed_by_skip[]` 追加
+  - いずれも SCHEMA_VERSION 変更なし
+
+### 20.3 安定化済み（次の builder として前提にしてよい）
+
+- **Boot 契約**: Export HTML を開いても受信者の IDB workspace は構造的に上書きされない。IDB 拡張は明示 Import でのみ許可（§20 audit で欠陥 0 を確認）
+- **Merge import conflict UI v1**: entry 単位の C1 / C2 / C2-multi 分類、3 操作（Keep current / Duplicate as branch / Skip）、bulk shortcut、Confirm merge gate、provenance relation append までが contract + audit で固定
+- pure helper `src/features/import/conflict-detect.ts` は再利用可能（今後の merge 系拡張、例えば relation-level conflict / revision 持込などの基盤になる）
+
+### 20.4 次候補（推奨順）
+
+#### 候補 1: **直近完了群の棚卸し後、待機テーマから 1 件選定**
+
+supervisor が台帳 §3 を見て以下のいずれか 1 件を昇格する想定。
+
+- **B-3 Slice β/γ**（quote assist の empty exit / bulk prefix toggle / entry-window 同期） — CONDITIONAL、実 user 報告があれば昇格
+- **C-1 revision-branch-restore** — `prev_rid` / `content_hash` 下地（H-6）は既に敷設済み、pain が顕在化したら着手
+- **C-1 revision-branch-restore** — `prev_rid` / `content_hash` 下地（H-6）は既に敷設済み、pain が顕在化したら着手
+- **C-P1 textlog-viewer-and-linkability-redesign** — TEXTLOG を addressable な時系列文書に再定義（大きいので feasibility 先行）
+- ~~**C-2 entry-ordering-model**~~ / ~~**C-3 link-index-entry**~~ — **完了済み（§21 参照）**
+
+#### 候補 2: **H-10 v1.x 候補**（実運用で pain が出たら）
+
+- conflict UI のキーボード操作拡張（J/K で行移動、Space でバッジ展開など）
+- body preview の diff 表示（v1 は side-by-side のみ、diff は非対象）
+- conflict UI の keyboard focus / accessibility 強化
+
+#### 候補 3: **重いテーマ（まだ後ろ）**
+
+- whole-textlog replace（粒度 C）
+- global replace（cross-entry）
+- merge import §9 将来拡張（policy UI / staging / revision 持込 / diff export / merge undo）
+
+### 20.5 意図的にまだやっていないこと
+
+- **merge import の §9 将来拡張全般**: H-10 v1 は「entry 単位の 3 操作 + bulk + gate」に閉じている。relation / revision 持込、staging、policy 永続化、diff export、undo は v1.x / v2 で別契約
+- **accept-incoming（host 上書き）操作**: I-MergeUI1（host absolute preservation）/ I-Merge1（append-only）に違反するため v1 では不採用。duplicate-as-branch + 手動 delete が代替
+- **semantic merge / field-level cherry-pick**: archetype 別に別契約が必要なため v1 非対象
+- **attachment binary diff**: content 同一判定は `asset_key` 一致に限定、バイナリ差分は v1 非対象
+
+### 20.6 運用メモ
+
+- 本節（§20）以降の追加は、新テーマ 1 件が **contract → 実装 → audit → manual** の全段を閉じた時点で新しい節（§21 以降）として追記する
+- 途中段階では §19 / §20 に追記せず、dev doc と ledger §1 のみ更新する運用を継続
+
+---
+
+## 21. C-2 entry-ordering v1 + C-3 link-index v1（2026-04-17 締め）
+
+§20 の boot policy revision + H-10 完了に続き、**data model extension 系の 2 テーマ**を
+docs-first pipeline（minimum scope → contract → 実装 → audit → manual）で完了させた。
+
+### 21.1 完了テーマ（§1 S-32 / S-33 の正式記録）
+
+| # | テーマ | パイプライン段階 | 主要成果物 |
+|---|---|---|---|
+| S-32 | C-2 entry-ordering v1（サイドバー手動並び替え） | 全 6 段 + F-1/F-2 修正 | `entry_order: string[]` additive optional in Container.meta / `MOVE_ENTRY` user action / `applyManualOrder` pure helper / renderer Manual セレクタ + ↑/↓ ボタン |
+| S-33 | C-3 link-index v1（entry 間参照インデックス） | 全 6 段 + audit 欠陥 0 | `buildLinkIndex(container)` runtime-only / meta pane Outgoing + Backlinks + Broken 3 section / AppState・schema 変更なし |
+
+### 21.2 共通方針（両テーマ）
+
+- **docs-first**: minimum scope（feasibility）→ behavior contract → 実装 → audit → manual の 6 段 pipeline
+- **最小差分**: 既存 reducer / AppState / schema を尊重。additive optional のみ
+- **完全 pipeline 閉鎖**: audit + manual sync まで行い「実装あるのに manual なし」状態を回避
+
+### 21.3 C-2 entry-ordering v1 詳細
+
+**実装範囲**:
+- `Container.meta.entry_order?: string[]`（additive optional、SCHEMA_VERSION 据え置き）
+- `MOVE_ENTRY { lid, direction: 'up'|'down' }` user action + reducer
+- `applyManualOrder(entries, order)` pure helper（features 層）
+- renderer: Manual ソートセレクタ + 選択中エントリに ↑/↓ ボタン（Detail / 非 readonly / 非 Import preview 限定）
+- audit で FINDING-1（ルート/フォルダ混在時の index 計算）/ FINDING-2（削除済 LID が order に残留）を最小修正
+
+**テスト**: pure order helper + reducer + UI の計 3 テストファイル、全 passed
+
+**新規 spec / dev doc**:
+- `docs/spec/entry-ordering-v1-minimum-scope.md`
+- `docs/spec/entry-ordering-v1-behavior-contract.md`
+- `docs/development/entry-ordering-v1-audit.md`
+
+**manual 同期**: `docs/manual/05_日常操作.md`（Manual Order 節）/ `docs/manual/09_トラブルシューティングと用語集.md`（4 件 + Manual Order 用語）
+
+### 21.4 C-3 link-index v1 詳細
+
+**実装範囲**:
+- `buildLinkIndex(container): LinkIndex`（features 層 pure helper、runtime-only）
+- `LinkRef` / `LinkIndex` / `LinkSourceArchetype` 型（features 層、AppState / Container に追加なし）
+- `extractEntryReferences(markdown)` の流用（entry-ref 既存 helper）
+- renderer `renderMetaPane` に `renderLinkIndexSections` / `renderLinkRefsSection` を追加
+- Outgoing / Backlinks / Broken の 3 セクション（`data-pkc-region` selector 規約、§4.6 準拠）
+- broken 行: `data-pkc-broken="true"` マーカー + click なし。resolved 行: 既存 `select-entry` 導線を再利用
+
+**audit**: 欠陥なし。scope narrowing 2 件（selected-entry スコープ / open-link-index-broken ボタン未実装）を記録
+
+**テスト**: pure helper 20 件 + UI 9 件（4059→4068 +9）、全 passed
+
+**新規 spec / dev doc**:
+- `docs/spec/link-index-v1-minimum-scope.md`
+- `docs/spec/link-index-v1-behavior-contract.md`
+- `docs/development/link-index-v1-audit.md`
+
+**manual 同期**: `docs/manual/05_日常操作.md`（リンクインデックス節）/ `docs/manual/09_トラブルシューティングと用語集.md`（TS 4 件 + 用語 2 件）
+
+### 21.5 次候補（推奨順）
+
+§20.4 の更新に連動:
+
+1. **C-1 revision-branch-restore** — `prev_rid` / `content_hash`（H-6）の下地は既に敷設済み。分岐復元の user pain が顕在化したら着手
+2. **C-P1 textlog-viewer-and-linkability-redesign** — TEXTLOG を addressable な時系列文書に再定義。規模が大きいため feasibility spec 先行推奨
+3. **B-3 Slice β/γ**（quote assist の empty exit / bulk prefix toggle）— CONDITIONAL、user 報告があれば昇格
+4. **heavy テーマ**（whole-textlog replace / global replace / merge §9 拡張）— まだ後
+
+### 21.6 運用メモ
+
+- 本節（§21）以降の追加は §20.6 の運用ルールを継続（全段 pipeline 閉鎖後に新節追記）
+- C-2 / C-3 の §3 待機候補は「完了済み」に更新済み（LEDGER §3.3 参照）
 
 ---

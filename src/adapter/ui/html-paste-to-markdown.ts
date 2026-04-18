@@ -98,6 +98,10 @@ function walkNode(node: Node): string {
       // Empty label → use the URL itself so the link is not lost.
       return sanitizeHref(href);
     }
+    if (label.trim() === href.trim()) {
+      // Label is the URL itself — bare URL avoids redundant [url](url).
+      return sanitizeHref(href);
+    }
     return `[${escapeMarkdownLabel(label)}](${sanitizeHref(href)})`;
   }
 

@@ -19,6 +19,19 @@ export interface ContainerMeta {
    * - 'relaxed': allow-same-origin + allow-scripts + allow-forms
    */
   sandbox_policy?: 'strict' | 'relaxed';
+  /**
+   * User-defined entry ordering (C-2 v1, 2026-04-17). Additive-only.
+   *
+   * Absent / empty → no manual order. `AppState.sortKey === 'manual'`
+   * reads this list to drive sidebar ordering; all other sort keys
+   * ignore it. Invariant list I-Order1〜I-Order10 lives in
+   * `docs/spec/entry-ordering-v1-behavior-contract.md`.
+   *
+   * Load-time normalization (see `entry-order.ts`) deduplicates
+   * entries and drops dangling lids. SCHEMA_VERSION is unchanged per
+   * additive policy (Option A).
+   */
+  entry_order?: string[];
 }
 
 /**

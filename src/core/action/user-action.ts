@@ -1,5 +1,7 @@
 import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
+import type { EntryConflict, Resolution } from '../model/merge-conflict';
+import type { EditBaseSnapshot } from '../operations/dual-edit-safety';
 
 /** Export scope: 'light' omits assets; 'full' includes everything. */
 export type ExportMode = 'light' | 'full';
@@ -21,7 +23,24 @@ export type UserAction =
   | { type: 'SELECT_ENTRY'; lid: string }
   | { type: 'DESELECT_ENTRY' }
   | { type: 'BEGIN_EDIT'; lid: string }
-  | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string; assets?: Record<string, string> }
+  /**
+   * COMMIT_EDIT — confirm the user's in-progress edit back to the
+   * container.
+   *
+   * FI-01 dual-edit-safety v1 (2026-04-17): the optional `base` field
+   * carries the `EditBaseSnapshot` captured at `BEGIN_EDIT` so the
+   * reducer can run the save-time optimistic version guard
+   * (`checkSaveConflict`). When `base` is omitted, the reducer falls
+   * back to `state.editingBase`, which is also populated at
+   * BEGIN_EDIT. Fixtures that fabricate `phase: 'editing'` without
+   * going through BEGIN_EDIT leave `editingBase` at `null`; in that
+   * case the guard is skipped (legacy permissive path) — this is a
+   * deliberate backward-compat decision so pre-FI-01 tests keep
+   * passing while live call sites always supply a base.
+   *
+   * Contract: `docs/spec/dual-edit-safety-v1-behavior-contract.md` §2.3.
+   */
+  | { type: 'COMMIT_EDIT'; lid: string; title: string; body: string; assets?: Record<string, string>; base?: EditBaseSnapshot }
   | { type: 'CANCEL_EDIT' }
   /**
    * CREATE_ENTRY — create a new entry and (optionally) place it under
@@ -62,6 +81,9 @@ export type UserAction =
   | { type: 'CONFIRM_MERGE_IMPORT'; now: string }
   | { type: 'SET_IMPORT_MODE'; mode: 'replace' | 'merge' }
   | { type: 'CANCEL_IMPORT' }
+  | { type: 'SET_MERGE_CONFLICTS'; conflicts: EntryConflict[] }
+  | { type: 'SET_CONFLICT_RESOLUTION'; importedLid: string; resolution: Resolution }
+  | { type: 'BULK_SET_CONFLICT_RESOLUTION'; resolution: Resolution }
   | {
       // S-18 (A-4 FULL, 2026-04-14): select an entry AND request the
       // post-render effect in main.ts to scroll to + temporarily
@@ -81,11 +103,71 @@ export type UserAction =
   | { type: 'SET_BATCH_IMPORT_TARGET_FOLDER'; lid: string | null }
   | { type: 'DISMISS_BATCH_IMPORT_RESULT' }
   | { type: 'RESTORE_ENTRY'; lid: string; revision_id: string }
+  /**
+   * BRANCH_RESTORE_REVISION — C-1 revision-branch-restore v1 (2026-04-17).
+   * Contract: `docs/spec/revision-branch-restore-v1-behavior-contract.md` §1.3.
+   *
+   * Creates a new entry from the given revision's snapshot and appends a
+   * `provenance` relation from the source entry (`entryLid`) to the new
+   * derived entry. The source entry and its revision chain are not
+   * touched. Blocked when `readonly` / `viewOnlySource` / `editingLid`
+   * is set, or `phase !== 'ready'` (I-Rbr7).
+   *
+   * Wiring into the reducer is the state slice's job; this slice only
+   * registers the action shape so pure helpers and tests can refer to
+   * it without triggering an unknown-action branch.
+   */
+  | { type: 'BRANCH_RESTORE_REVISION'; entryLid: string; revisionId: string }
+  /**
+   * RESOLVE_DUAL_EDIT_CONFLICT — user decision on a save that the
+   * version guard rejected (FI-01 dual-edit-safety v1, 2026-04-17).
+   *
+   * The action is only meaningful while `state.dualEditConflict` is
+   * populated. `lid` must match `state.dualEditConflict.lid`; a
+   * mismatch is treated as a blocked no-op (identity preserved).
+   *
+   * Resolutions:
+   * - `'save-as-branch'` (default safe action): creates a new entry
+   *   from the user's draft via `branchFromDualEditConflict`, appends
+   *   a `provenance` relation (`conversion_kind='concurrent-edit'`),
+   *   clears `dualEditConflict` / `editingBase` / `editingLid`, moves
+   *   to `ready` phase, and selects the new branch lid.
+   * - `'discard-my-edits'`: drops the edit buffer, clears
+   *   `dualEditConflict` / `editingBase` / `editingLid`, and moves
+   *   to `ready` phase. The container is not mutated.
+   * - `'copy-to-clipboard'`: bumps
+   *   `state.dualEditConflict.copyRequestTicket` so the UI slice can
+   *   observe the advance and write `draft.body` to the clipboard
+   *   out-of-reducer. Overlay / conflict state are retained (user has
+   *   not resolved yet).
+   *
+   * Contract: `docs/spec/dual-edit-safety-v1-behavior-contract.md`
+   *   §5.1 / §5.4 / §5.5 / §5.6.
+   */
+  | { type: 'RESOLVE_DUAL_EDIT_CONFLICT'; lid: string; resolution: 'save-as-branch' | 'discard-my-edits' | 'copy-to-clipboard' }
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
+  | { type: 'TOGGLE_ARCHETYPE_FILTER'; archetype: ArchetypeId }
+  | { type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' }
+  | { type: 'TOGGLE_SCANLINE' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
-  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at'; direction: 'asc' | 'desc' }
+  | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
+  /**
+   * MOVE_ENTRY_UP / MOVE_ENTRY_DOWN — user-defined entry ordering
+   * (C-2 v1, 2026-04-17). Contract:
+   * `docs/spec/entry-ordering-v1-behavior-contract.md`.
+   *
+   * - Allowed only in `ready` / `editing` phase, `sortKey === 'manual'`,
+   *   `viewMode === 'detail'`, no preview open, not readonly.
+   * - `lid` optional: defaults to `state.selectedLid`. Missing target /
+   *   edge of belonging set / gate violation → silent no-op (reducer
+   *   returns the same state reference, no event emitted).
+   * - `selectedLid` / `multiSelectedLids` unchanged (I-Order1,
+   *   I-Order-MS). Other container fields unchanged.
+   */
+  | { type: 'MOVE_ENTRY_UP'; lid?: string }
+  | { type: 'MOVE_ENTRY_DOWN'; lid?: string }
   /**
    * QUICK_UPDATE_ENTRY — body-only update without entering edit mode.
    *

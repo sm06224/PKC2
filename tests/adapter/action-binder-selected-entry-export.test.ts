@@ -93,10 +93,17 @@ function createDispatcher() {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
   return () => {
+    // Drain pending timers (e.g. triggerZipDownload's 100ms cleanup
+    // setTimeout) before the happy-dom environment is torn down.
+    // Without this, the timer fires after document is undefined → unhandled
+    // ReferenceError that breaks CI on Node 20.
+    vi.runAllTimers();
+    vi.useRealTimers();
     cleanup?.();
     cleanup = null;
     for (const fn of _trackedUnsubs) fn();

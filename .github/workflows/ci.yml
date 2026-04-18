@@ -63,6 +63,14 @@ jobs:
         run: npm run lint
 
       - name: Test
+        # Bump V8 heap to 4GB. Node 20 default (~2GB) was insufficient
+        # for the cumulative test surface (4228 tests / 165 files):
+        # the threads pool shares one V8 isolate per worker and the
+        # accumulated happy-dom DOM across files trips OOM mid-run on
+        # the GitHub-hosted ubuntu runner. Raising the limit is the
+        # least-invasive fix; vitest pool tuning would change behavior.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm test
 
       - name: Build bundle

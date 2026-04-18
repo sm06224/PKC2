@@ -67,14 +67,27 @@ export function filterByArchetype(entries: Entry[], archetype: ArchetypeId | nul
 }
 
 /**
+ * Filter entries by a set of archetypes (multi-select).
+ * Empty set = no filter (returns all entries).
+ * Non-empty set = entries whose archetype is in the set (OR semantics).
+ */
+export function filterByArchetypes(
+  entries: Entry[],
+  filter: ReadonlySet<ArchetypeId>,
+): Entry[] {
+  if (filter.size === 0) return entries;
+  return entries.filter((entry) => filter.has(entry.archetype));
+}
+
+/**
  * Apply combined filters: text query AND archetype filter.
- * Both filters are optional (empty query = no text filter, null archetype = no type filter).
+ * Empty query = no text filter; empty set = no type filter.
  */
 export function applyFilters(
   entries: Entry[],
   query: string,
-  archetype: ArchetypeId | null,
+  filter: ReadonlySet<ArchetypeId>,
 ): Entry[] {
   const byText = filterEntries(entries, query);
-  return filterByArchetype(byText, archetype);
+  return filterByArchetypes(byText, filter);
 }

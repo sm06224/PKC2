@@ -7,7 +7,8 @@ export type RelationKind =
   | 'structural'   // folder membership
   | 'categorical'  // tag classification
   | 'semantic'     // meaning-based reference
-  | 'temporal';    // time-based ordering
+  | 'temporal'     // time-based ordering
+  | 'provenance';  // origin tracking (merge-duplicate, text-textlog conversion)
 
 /**
  * Relation: a typed edge between two Records.
@@ -21,4 +22,5 @@ export interface Relation {
   kind: RelationKind;
   created_at: string;
   updated_at: string;
+  metadata?: Record<string, unknown>;
 }

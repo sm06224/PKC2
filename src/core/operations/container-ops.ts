@@ -551,3 +551,97 @@ export function restoreDeletedEntry(
   const withEntry = addEntry(container, restored.lid, restored.archetype, restored.title, now);
   return updateEntry(withEntry, restored.lid, restored.title, restored.body, now);
 }
+
+/**
+ * Branch-restore a past revision into a NEW entry (C-1 v1, 2026-04-17).
+ *
+ * Creates a fresh entry with its own `newLid` carrying the snapshot's
+ * title / body / archetype, then appends a single `provenance` relation
+ * pointing from the source (original) entry to the new (derived) branch
+ * entry. The source entry and its revision chain stay unchanged
+ * (I-Rbr1 / I-Rbr5).
+ *
+ * Contract: `docs/spec/revision-branch-restore-v1-behavior-contract.md`
+ *   §1.3 (operation), §3 (I-Rbr1〜10), §4.1 (provenance metadata).
+ *
+ * Returns the input `container` unchanged (reference equality) when any
+ * of the following holds — pure rejection, no silent mutation:
+ *   - `revisionId` is absent from `container.revisions`
+ *   - `parseRevisionSnapshot` rejects the revision (strict contract,
+ *     see `data-model.md §6.4`)
+ *   - `revision.entry_lid !== entryLid` (cross-entry guard)
+ *   - the source entry (`entryLid`) no longer exists in `container.entries`
+ *   - `newLid` already collides with an existing entry
+ *   - `relationId` already collides with an existing relation
+ *
+ * `newLid` / `relationId` / `now` are injected by the caller for
+ * determinism (I-Rbr10). The reducer typically supplies `generateLid()`
+ * and the current timestamp.
+ *
+ * Provenance direction (I-Rbr9, profile §3.1 canonical):
+ *   `from = entryLid (source)` → `to = newLid (derived)`.
+ *
+ * Metadata follows the profile additive scheme (§4.1 / §4.2):
+ *   - `conversion_kind: 'revision-branch'` (new profile value)
+ *   - `converted_at: now`
+ *   - `source_revision_id: revisionId`
+ *   - `source_content_hash`: copied from `revision.content_hash` when
+ *     present; omitted for pre-H-6 revisions without a hash.
+ */
+export function branchRestoreRevision(
+  container: Container,
+  entryLid: string,
+  revisionId: string,
+  newLid: string,
+  relationId: string,
+  now: string,
+): Container {
+  const revision = container.revisions.find((r) => r.id === revisionId);
+  if (!revision) return container;
+
+  const snapshot = parseRevisionSnapshot(revision);
+  if (!snapshot) return container;
+
+  if (revision.entry_lid !== entryLid) return container;
+
+  // Source entry must exist. Branch restore is only meaningful when
+  // the original entry is live; restoring a deleted entry is the job
+  // of `restoreDeletedEntry`.
+  if (!container.entries.some((e) => e.lid === entryLid)) return container;
+
+  // Defensive id-collision guards. `generateLid` collisions are
+  // vanishingly rare, but the guards keep the helper safe against
+  // hand-wired call sites (tests, replay tools).
+  if (container.entries.some((e) => e.lid === newLid)) return container;
+  if (container.relations.some((r) => r.id === relationId)) return container;
+
+  // 1) append new entry with snapshot's archetype + title.
+  // 2) overwrite body (addEntry initialises body as '').
+  const withEntry = addEntry(container, newLid, snapshot.archetype, snapshot.title, now);
+  const withBody = updateEntry(withEntry, newLid, snapshot.title, snapshot.body, now);
+
+  // Build metadata per profile §2.2. All values are strings.
+  const metadata: Record<string, string> = {
+    conversion_kind: 'revision-branch',
+    converted_at: now,
+    source_revision_id: revisionId,
+  };
+  if (revision.content_hash !== undefined) {
+    metadata.source_content_hash = revision.content_hash;
+  }
+
+  const relation: Relation = {
+    id: relationId,
+    from: entryLid, // source (I-Rbr9 canonical direction)
+    to: newLid,     // derived
+    kind: 'provenance',
+    created_at: now,
+    updated_at: now,
+    metadata,
+  };
+
+  return {
+    ...withBody,
+    relations: [...withBody.relations, relation],
+  };
+}
