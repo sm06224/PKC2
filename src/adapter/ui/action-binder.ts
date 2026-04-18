@@ -1,4 +1,5 @@
 import type { ArchetypeId } from '../../core/model/record';
+import { ABOUT_LID } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
@@ -209,10 +210,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'select-entry': {
         if (!lid) break;
         const me = e as MouseEvent;
-        // Double-click detection via MouseEvent.detail.
-        // Normal dblclick event is unreliable because SELECT_ENTRY triggers
-        // synchronous re-render, removing the target element from DOM before
-        // the dblclick event can bubble to the delegated listener on root.
         if (me.detail >= 2) {
           handleDblClickAction(target, lid);
         } else if (me.ctrlKey || me.metaKey) {
@@ -220,6 +217,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else if (me.shiftKey) {
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid });
         } else {
+          if (dispatcher.getState().viewMode !== 'detail') {
+            dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+          }
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
@@ -1246,6 +1246,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'close-shell-menu': {
         const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
         if (menu) menu.style.display = 'none';
+        break;
+      }
+      case 'select-about': {
+        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
+        if (menu) menu.style.display = 'none';
+        if (dispatcher.getState().viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: ABOUT_LID });
         break;
       }
       case 'set-theme': {

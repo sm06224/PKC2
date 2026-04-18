@@ -331,8 +331,11 @@ function renderShell(state: AppState): HTMLElement {
   main.appendChild(renderCenter(state));
 
   // Right pane: meta information (tags, relations, history, move)
+  // System-about entries are view-only hidden entries, so the meta
+  // pane (which exposes tags/relations/history/delete) is skipped.
   const selected = findSelectedEntry(state);
-  if (selected) {
+  const hasMetaPane = !!selected && selected.archetype !== 'system-about';
+  if (hasMetaPane) {
     // Resize handle: center ↔ meta
     const rightHandle = createElement('div', 'pkc-resize-handle');
     rightHandle.setAttribute('data-pkc-resize', 'right');
@@ -340,7 +343,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected, canEdit, state.container);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container);
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -350,10 +353,8 @@ function renderShell(state: AppState): HTMLElement {
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
   rightTray.textContent = 'META';
-  // The right tray is only meaningful when a meta pane exists, i.e.
-  // when an entry is selected. When no entry is selected, leave it
-  // hidden regardless of the persisted preference.
-  rightTray.style.display = panePrefs.meta && selected ? '' : 'none';
+  // The right tray is only meaningful when a meta pane exists.
+  rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
 
@@ -617,6 +618,11 @@ function renderShellMenu(
   shortcutBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
   shortcutBtn.textContent = '⌨ Keyboard Shortcuts';
   shortcutSection.appendChild(shortcutBtn);
+
+  const aboutBtn = createElement('button', 'pkc-btn-small');
+  aboutBtn.setAttribute('data-pkc-action', 'select-about');
+  aboutBtn.textContent = 'ℹ About PKC2';
+  shortcutSection.appendChild(aboutBtn);
   card.appendChild(shortcutSection);
 
   // Data Maintenance — manual orphan asset cleanup + workspace reset.
@@ -662,8 +668,10 @@ function renderShellMenu(
   helpSection.appendChild(helpList);
   card.appendChild(helpSection);
 
-  // Version
-  const versionSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-version');
+  // Version (clickable → About)
+  const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');
+  versionSection.setAttribute('data-pkc-action', 'select-about');
+  versionSection.setAttribute('title', 'Open About');
   versionSection.textContent = `PKC2 v${VERSION}`;
   card.appendChild(versionSection);
 
@@ -1914,7 +1922,9 @@ function renderCenter(state: AppState): HTMLElement {
   const showAbout = selected?.archetype === 'system-about'
     || (userEntries.length === 0 && !selected && aboutEntry);
   if (showAbout) {
-    center.appendChild(renderAboutView(aboutEntry));
+    const aboutScroll = createElement('div', 'pkc-about-scroll');
+    aboutScroll.appendChild(renderAboutView(aboutEntry));
+    center.appendChild(aboutScroll);
     return center;
   }
 
@@ -4025,6 +4035,11 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   }
   container.appendChild(metaTable);
 
+  container.appendChild(renderAboutCredits(
+    { name: payload.author.name, role: payload.author.role, url: payload.author.url },
+    payload.contributors,
+  ));
+
   container.appendChild(renderAboutModuleTable(
     payload.dependencies,
     'Runtime Dependencies',
@@ -4038,6 +4053,68 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   ));
 
   return container;
+}
+
+function renderAboutCredits(
+  principal: { name: string; role: string; url: string },
+  contributors: { name: string; role: string; url: string }[],
+): HTMLElement {
+  const section = createElement('section', 'pkc-about-credits');
+  section.setAttribute('data-pkc-region', 'about-credits');
+
+  const title = createElement('h3', 'pkc-about-section-title');
+  title.textContent = 'Credits';
+  section.appendChild(title);
+
+  const intro = createElement('p', 'pkc-about-credits-intro');
+  intro.textContent = 'Built collaboratively by:';
+  section.appendChild(intro);
+
+  const list = createElement('ul', 'pkc-about-credits-list');
+
+  const appendEntry = (entry: { name: string; role: string; url: string }) => {
+    if (!entry.name) return;
+    const li = document.createElement('li');
+    li.className = 'pkc-about-credit';
+
+    let nameNode: Node;
+    if (entry.url) {
+      const a = document.createElement('a');
+      a.href = entry.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = entry.name;
+      nameNode = a;
+    } else {
+      nameNode = document.createTextNode(entry.name);
+    }
+    const nameWrap = createElement('span', 'pkc-about-credit-name');
+    nameWrap.appendChild(nameNode);
+    li.appendChild(nameWrap);
+
+    if (entry.role) {
+      const sep = createElement('span', 'pkc-about-credit-sep');
+      sep.textContent = ' — ';
+      li.appendChild(sep);
+      const role = createElement('span', 'pkc-about-credit-role');
+      role.textContent = entry.role;
+      li.appendChild(role);
+    }
+
+    list.appendChild(li);
+  };
+
+  appendEntry(principal);
+  for (const c of contributors) appendEntry(c);
+  section.appendChild(list);
+
+  const note = createElement('p', 'pkc-about-credits-note');
+  note.textContent
+    = 'AI collaborators are acknowledged here as development partners. '
+    + 'Under current copyright law, authorship is held solely by the human author above.';
+  section.appendChild(note);
+
+  return section;
 }
 
 function findSelectedEntry(state: AppState): Entry | null {

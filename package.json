@@ -7,8 +7,21 @@
   "license": "AGPL-3.0",
   "author": {
     "name": "sm06224",
-    "url": "https://github.com/sm06224"
+    "url": "https://github.com/sm06224",
+    "role": "Author & Chief Director"
   },
+  "contributors": [
+    {
+      "name": "Claude (Anthropic)",
+      "role": "Implementation Partner",
+      "url": "https://www.anthropic.com"
+    },
+    {
+      "name": "ChatGPT (OpenAI)",
+      "role": "Program Director",
+      "url": "https://openai.com"
+    }
+  ],
   "homepage": "https://github.com/sm06224/pkc2",
   "repository": {
     "type": "git",

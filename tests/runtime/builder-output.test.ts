@@ -113,7 +113,9 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     expect(payload.runtime.externalDependencies).toBe(false);
     expect(typeof payload.description).toBe('string');
     expect(typeof payload.homepage).toBe('string');
+    expect(typeof payload.author.role).toBe('string');
     expect(Array.isArray(payload.dependencies)).toBe(true);
     expect(Array.isArray(payload.devDependencies)).toBe(true);
+    expect(Array.isArray(payload.contributors)).toBe(true);
   });
 });
