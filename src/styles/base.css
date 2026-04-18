@@ -4915,3 +4915,169 @@ mark.pkc-search-mark {
   color: var(--c-muted, var(--c-fg));
   font-style: italic;
 }
+
+/* ── About view ── */
+.pkc-about-view {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  color: var(--c-fg);
+  line-height: 1.6;
+}
+.pkc-about-header {
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+.pkc-about-title {
+  margin: 0;
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--c-accent);
+  text-shadow: 0 0 8px rgba(51, 255, 102, 0.25);
+}
+.pkc-about-tagline {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  color: var(--c-muted);
+  letter-spacing: 0.02em;
+}
+.pkc-about-version {
+  margin-top: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--c-accent);
+  letter-spacing: 0.05em;
+}
+.pkc-about-description {
+  margin: 0 0 1.5rem;
+  font-size: 0.95rem;
+  color: var(--c-fg);
+  white-space: pre-wrap;
+}
+.pkc-about-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.pkc-about-trait {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--c-accent-dim);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  color: var(--c-accent);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pkc-about-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0 0 2rem;
+  padding: 0.9rem 1rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.88rem;
+}
+.pkc-about-meta dt {
+  color: var(--c-muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  align-self: center;
+}
+.pkc-about-meta dd {
+  margin: 0;
+  color: var(--c-fg);
+  word-break: break-all;
+}
+.pkc-about-meta dd a {
+  color: var(--c-accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-about-meta dd a:hover {
+  color: var(--c-accent);
+  border-bottom-color: var(--c-accent);
+}
+.pkc-about-modules {
+  margin-bottom: 1.5rem;
+}
+.pkc-about-modules-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 0.35rem;
+}
+.pkc-about-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--c-fg);
+  text-transform: uppercase;
+}
+.pkc-about-modules-count {
+  display: inline-block;
+  min-width: 1.6rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--c-accent-dim);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  color: var(--c-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.pkc-about-modules-empty {
+  padding: 0.75rem 0.9rem;
+  background: var(--c-surface);
+  border: 1px dashed var(--c-accent-dim);
+  border-radius: var(--radius);
+  color: var(--c-accent);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+.pkc-about-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+.pkc-about-table th,
+.pkc-about-table td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-about-table th {
+  color: var(--c-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  background: var(--c-hover);
+}
+.pkc-about-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.pkc-about-table tbody tr:hover {
+  background: var(--c-hover);
+}
+.pkc-about-table td:nth-child(2) {
+  color: var(--c-accent);
+  font-variant-numeric: tabular-nums;
+}
+.pkc-about-table td:nth-child(3) {
+  color: var(--c-muted);
+  font-size: 0.78rem;
+}
