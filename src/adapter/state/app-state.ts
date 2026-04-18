@@ -1,6 +1,6 @@
 import type { Container } from '../../core/model/container';
-import type { ArchetypeId } from '../../core/model/record';
-import { isReservedLid } from '../../core/model/record';
+import type { ArchetypeId, Entry } from '../../core/model/record';
+import { isReservedLid, SETTINGS_LID } from '../../core/model/record';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
@@ -328,7 +328,13 @@ export function createInitialState(): AppState {
     archetypeFilterExpanded: false,
     showScanline: false,
     accentColor: undefined,
-    settings: SETTINGS_DEFAULTS,
+    // FI-Settings v1: left undefined until main.ts dispatches
+    // RESTORE_SETTINGS after boot. The renderer and reducer both treat
+    // undefined as "use SETTINGS_DEFAULTS (or the mirror fields)",
+    // which lets pre-RESTORE_SETTINGS fixtures and legacy test
+    // fixtures that only populate showScanline / accentColor continue
+    // to drive the DOM through the mirror-fallback path.
+    settings: undefined,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -412,11 +418,39 @@ function now(): string {
 }
 
 /**
+ * FI-Settings v1 (2026-04-18): read the effective SystemSettingsPayload
+ * for a state, synthesizing it from the legacy mirror fields when
+ * `state.settings` has not been populated yet (pre-RESTORE_SETTINGS
+ * boot window, or legacy test fixtures). This keeps single-action
+ * reducer paths stable against fixtures that still only set
+ * `showScanline` / `accentColor`.
+ */
+function currentSettings(state: AppState): SystemSettingsPayload {
+  if (state.settings) return state.settings;
+  return {
+    ...SETTINGS_DEFAULTS,
+    theme: {
+      ...SETTINGS_DEFAULTS.theme,
+      scanline: state.showScanline === true,
+      accentColor: state.accentColor ?? null,
+    },
+  };
+}
+
+/**
  * FI-Settings v1 (2026-04-18): apply a resolved SystemSettingsPayload
  * to state, keeping the legacy `showScanline` / `accentColor` mirror
- * fields in sync, and emit a single `SETTINGS_CHANGED` event carrying
- * the new payload verbatim for downstream persistence / renderer
+ * fields in sync, upsert the reserved `__settings__` entry in the
+ * container, and emit a single `SETTINGS_CHANGED` event carrying the
+ * new payload verbatim for downstream persistence / renderer
  * subscribers.
+ *
+ * The container upsert happens inline so persistence only needs to
+ * hear the one `SETTINGS_CHANGED` event and call `save(container)`
+ * — the entry is already materialized when the event fires. No
+ * dedicated `ENTRY_UPDATED` / `ENTRY_CREATED` event is emitted for
+ * this path so revision-history subscribers don't treat a theme tweak
+ * as user-content edit.
  *
  * Callers are expected to have already performed any input validation
  * and produced the full next payload. A separate early-return (same
@@ -429,6 +463,7 @@ function applySettingsUpdate(
 ): ReduceResult {
   const nextState: AppState = {
     ...state,
+    container: upsertSettingsEntry(state.container, next),
     settings: next,
     showScanline: next.theme.scanline,
     accentColor: next.theme.accentColor ?? undefined,
@@ -437,6 +472,51 @@ function applySettingsUpdate(
     state: nextState,
     events: [{ type: 'SETTINGS_CHANGED', settings: next }],
   };
+}
+
+/**
+ * Upsert the reserved `__settings__` entry into a container with the
+ * given payload as its JSON body. No-op when `container` is null
+ * (pre-boot). Preserves `created_at` on updates; sets both timestamps
+ * on fresh inserts.
+ */
+function upsertSettingsEntry(
+  container: Container | null,
+  settings: SystemSettingsPayload,
+): Container | null {
+  if (!container) return container;
+  const body = JSON.stringify(settings, null, 2);
+  const ts = now();
+  const existingIdx = container.entries.findIndex((e) => e.lid === SETTINGS_LID);
+  if (existingIdx >= 0) {
+    const existing = container.entries[existingIdx]!;
+    // Stable identity: if the body is literally unchanged (possible via
+    // RESTORE_SETTINGS round-trip), don't bump updated_at or allocate a
+    // new entries array. Callers already early-return on field-equal
+    // no-op, but this defends against stringify-order edge cases.
+    if (existing.body === body && existing.archetype === 'system-settings') {
+      return container;
+    }
+    const updated: Entry = {
+      ...existing,
+      body,
+      archetype: 'system-settings',
+      title: existing.title || 'System Settings',
+      updated_at: ts,
+    };
+    const nextEntries = container.entries.slice();
+    nextEntries[existingIdx] = updated;
+    return { ...container, entries: nextEntries };
+  }
+  const created: Entry = {
+    lid: SETTINGS_LID,
+    title: 'System Settings',
+    body,
+    archetype: 'system-settings',
+    created_at: ts,
+    updated_at: ts,
+  };
+  return { ...container, entries: [...container.entries, created] };
 }
 
 /** Expand `#rgb` → `#rrggbb`; pass through 6-char input (already lowercase). */
@@ -1382,14 +1462,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     // `showScanline` / `accentColor` fields are reconstructed by
     // `applySettingsUpdate` so old read sites keep working.
     case 'TOGGLE_SCANLINE': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       return applySettingsUpdate(state, {
         ...cur,
         theme: { ...cur.theme, scanline: !cur.theme.scanline },
       });
     }
     case 'SET_SCANLINE': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.scanline === action.on) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1403,7 +1483,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(action.color)) {
         return { state, events: [] };
       }
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       const canonical = canonicalHex(action.color);
       if (cur.theme.accentColor === canonical) return { state, events: [] };
       return applySettingsUpdate(state, {
@@ -1412,7 +1492,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_ACCENT_COLOR': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.accentColor === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1422,7 +1502,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     // ── FI-Settings v1 new actions ──────────────────────────────────
     case 'SET_THEME_MODE': {
       if (!isValidThemeMode(action.mode)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.mode === action.mode) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1430,7 +1510,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_THEME_MODE': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.mode === SETTINGS_DEFAULTS.theme.mode) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1439,7 +1519,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_BORDER_COLOR': {
       if (!isValidHexColor(action.color)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       const c = action.color.toLowerCase();
       if (cur.theme.borderColor === c) return { state, events: [] };
       return applySettingsUpdate(state, {
@@ -1448,7 +1528,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_BORDER_COLOR': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.borderColor === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1457,7 +1537,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_TEXT_COLOR': {
       if (!isValidHexColor(action.color)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       const c = action.color.toLowerCase();
       if (cur.theme.textColor === c) return { state, events: [] };
       return applySettingsUpdate(state, {
@@ -1466,7 +1546,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_TEXT_COLOR': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.theme.textColor === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1475,7 +1555,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_PREFERRED_FONT': {
       if (!isValidFontFamily(action.font)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.display.preferredFont === action.font) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1483,7 +1563,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_PREFERRED_FONT': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.display.preferredFont === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1492,7 +1572,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_LANGUAGE': {
       if (!isValidLanguageTag(action.language)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.locale.language === action.language) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1500,7 +1580,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_LANGUAGE': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.locale.language === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1509,7 +1589,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_TIMEZONE': {
       if (!isValidTimezone(action.timezone)) return { state, events: [] };
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.locale.timezone === action.timezone) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
@@ -1517,7 +1597,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       });
     }
     case 'RESET_TIMEZONE': {
-      const cur = state.settings ?? SETTINGS_DEFAULTS;
+      const cur = currentSettings(state);
       if (cur.locale.timezone === null) return { state, events: [] };
       return applySettingsUpdate(state, {
         ...cur,
