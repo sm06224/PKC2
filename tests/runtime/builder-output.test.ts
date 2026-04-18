@@ -79,9 +79,38 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     expect(meta.code_integrity).toBe(expected);
   });
 
-  it('pkc-data starts as empty JSON object', () => {
+  it('pkc-data contains __about__ entry with valid AboutPayload', () => {
     const dataMatch = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     expect(dataMatch).not.toBeNull();
-    expect(dataMatch![1]!.trim()).toBe('{}');
+
+    const parsed = JSON.parse(dataMatch![1]!);
+    expect(parsed.container).toBeDefined();
+    expect(Array.isArray(parsed.container.entries)).toBe(true);
+
+    const aboutEntry = parsed.container.entries.find(
+      (e: { lid: string }) => e.lid === '__about__',
+    );
+    expect(aboutEntry).toBeDefined();
+    expect(aboutEntry.archetype).toBe('system-about');
+    expect(aboutEntry.title).toBeTruthy();
+    expect(aboutEntry.created_at).toBeTruthy();
+    expect(aboutEntry.updated_at).toBeTruthy();
+
+    const payload = JSON.parse(aboutEntry.body);
+    expect(payload.type).toBe('pkc2-about');
+    expect(payload.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(payload.build).toBeDefined();
+    expect(payload.build.timestamp).toBeTruthy();
+    expect(payload.build.commit).toBeTruthy();
+    expect(payload.build.builder).toBeTruthy();
+    expect(payload.license).toBeDefined();
+    expect(payload.license.name).toBeTruthy();
+    expect(payload.author).toBeDefined();
+    expect(payload.author.name).toBeTruthy();
+    expect(payload.runtime).toBeDefined();
+    expect(payload.runtime.offline).toBe(true);
+    expect(payload.runtime.bundled).toBe(true);
+    expect(payload.runtime.externalDependencies).toBe(false);
+    expect(Array.isArray(payload.modules)).toBe(true);
   });
 });
