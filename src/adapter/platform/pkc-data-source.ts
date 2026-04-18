@@ -1,6 +1,7 @@
 import { SLOT } from '../../runtime/contract';
 import { decompressAssets } from './compression';
 import type { Container } from '../../core/model/container';
+import { hasUserContent } from '../../core/model/container';
 
 /**
  * pkc-data source — reads the Container embedded in the exported HTML
@@ -67,6 +68,17 @@ export async function readPkcData(): Promise<PkcDataResult | null> {
     return null;
   }
   if (!data.container) return null;
+
+  // System-entry isolation: a pkc-data payload that contains only
+  // system-* entries (about / settings) carries no user content. Treat
+  // it as absent so the boot-source decision falls through to IDB (if
+  // any) or 'empty', instead of locking the session into view-only mode
+  // and suppressing IDB writes. See `docs/spec/about-build-info-hidden-
+  // entry-v1-behavior-contract.md` §I-ABOUT-7 and `docs/spec/system-
+  // settings-hidden-entry-v1-behavior-contract.md` §I-SETTINGS-3 — both
+  // exports continue to include the system entries; this gate only
+  // affects the *boot-source decision*, not what is exported.
+  if (!hasUserContent(data.container)) return null;
 
   const isReadonly = data.export_meta?.mutability === 'readonly';
   const isLight = data.export_meta?.mode === 'light';

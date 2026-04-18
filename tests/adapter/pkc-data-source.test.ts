@@ -74,6 +74,37 @@ describe('readPkcData', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when the container has only system-* entries (no user content)', async () => {
+    // Regression: a pkc-data payload containing only system entries
+    // (about / settings) used to lock the session into view-only mode
+    // and suppress IDB writes, because chooseBootSource saw a non-null
+    // pkc-data result. After the system-entry isolation fix, such a
+    // payload is treated as absent so boot falls through to IDB or empty.
+    const systemOnlyContainer: Container = {
+      ...sampleContainer,
+      entries: [
+        { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about', created_at: T, updated_at: T },
+      ],
+    };
+    mountPkcData(JSON.stringify({ container: systemOnlyContainer }));
+    const result = await readPkcData();
+    expect(result).toBeNull();
+  });
+
+  it('returns container when at least one user entry coexists with system entries', async () => {
+    const mixedContainer: Container = {
+      ...sampleContainer,
+      entries: [
+        { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about', created_at: T, updated_at: T },
+        { lid: 'e1', title: 'Hello', body: 'world', archetype: 'text', created_at: T, updated_at: T },
+      ],
+    };
+    mountPkcData(JSON.stringify({ container: mixedContainer }));
+    const result = await readPkcData();
+    expect(result).not.toBeNull();
+    expect(result!.container.entries).toHaveLength(2);
+  });
+
   it('returns null when the payload has no container key', async () => {
     mountPkcData(JSON.stringify({ export_meta: { mode: 'full' } }));
     const result = await readPkcData();
