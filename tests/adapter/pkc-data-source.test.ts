@@ -74,12 +74,12 @@ describe('readPkcData', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when the container has only system-* entries (no user content)', async () => {
-    // Regression: a pkc-data payload containing only system entries
-    // (about / settings) used to lock the session into view-only mode
-    // and suppress IDB writes, because chooseBootSource saw a non-null
-    // pkc-data result. After the system-entry isolation fix, such a
-    // payload is treated as absent so boot falls through to IDB or empty.
+  it('returns result (not null) even when the container has only system-* entries', async () => {
+    // System-entry isolation: a system-only pkc-data payload still
+    // carries authoritative About / Settings data that must be merged
+    // onto the IDB or empty boot container. readPkcData surfaces the
+    // container with a populated systemEntries list; chooseBootSource
+    // is what decides the payload doesn't win the boot vote.
     const systemOnlyContainer: Container = {
       ...sampleContainer,
       entries: [
@@ -88,10 +88,12 @@ describe('readPkcData', () => {
     };
     mountPkcData(JSON.stringify({ container: systemOnlyContainer }));
     const result = await readPkcData();
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.systemEntries).toHaveLength(1);
+    expect(result!.systemEntries![0]!.lid).toBe('__about__');
   });
 
-  it('returns container when at least one user entry coexists with system entries', async () => {
+  it('populates systemEntries separately from container.entries', async () => {
     const mixedContainer: Container = {
       ...sampleContainer,
       entries: [
@@ -103,6 +105,8 @@ describe('readPkcData', () => {
     const result = await readPkcData();
     expect(result).not.toBeNull();
     expect(result!.container.entries).toHaveLength(2);
+    expect(result!.systemEntries).toHaveLength(1);
+    expect(result!.systemEntries![0]!.lid).toBe('__about__');
   });
 
   it('returns null when the payload has no container key', async () => {
@@ -189,6 +193,63 @@ describe('chooseBootSource', () => {
     expect(chosen.source).toBe('empty');
     expect(chosen.container).toBeNull();
     expect(chosen.viewOnlySource).toBe(false);
+  });
+
+  it('returns idb (not chooser) when pkc-data has no user content, even if pkc-data is present', () => {
+    // System-entry isolation: a system-only pkc-data must not trigger
+    // the chooser or the view-only pkc-data boot path. IDB wins.
+    const systemOnlyPkcData = {
+      container: {
+        ...sampleContainer,
+        entries: [
+          { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about' as const, created_at: T, updated_at: T },
+        ],
+      },
+      readonly: false,
+      lightSource: false,
+      systemEntries: [
+        { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about' as const, created_at: T, updated_at: T },
+      ],
+    };
+    const chosen = chooseBootSource(systemOnlyPkcData, idbContainer);
+    expect(chosen.source).toBe('idb');
+    expect(chosen.viewOnlySource).toBe(false);
+    expect(chosen.systemEntriesFromPkcData).toHaveLength(1);
+    expect(chosen.systemEntriesFromPkcData![0]!.lid).toBe('__about__');
+  });
+
+  it('returns empty (not pkc-data) when pkc-data is system-only and IDB is absent', () => {
+    const systemOnlyPkcData = {
+      container: {
+        ...sampleContainer,
+        entries: [
+          { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about' as const, created_at: T, updated_at: T },
+        ],
+      },
+      readonly: false,
+      lightSource: false,
+      systemEntries: [
+        { lid: '__about__', title: 'About', body: '{}', archetype: 'system-about' as const, created_at: T, updated_at: T },
+      ],
+    };
+    const chosen = chooseBootSource(systemOnlyPkcData, null);
+    expect(chosen.source).toBe('empty');
+    expect(chosen.viewOnlySource).toBe(false);
+    expect(chosen.systemEntriesFromPkcData).toHaveLength(1);
+  });
+
+  it('surfaces systemEntriesFromPkcData on idb path so caller can merge authoritative system entries', () => {
+    const pkcDataWithSystem = {
+      container: sampleContainer,
+      readonly: false,
+      lightSource: false,
+      systemEntries: [
+        { lid: '__about__', title: 'About v2', body: '{"version":"2.0.0"}', archetype: 'system-about' as const, created_at: T, updated_at: T },
+      ],
+    };
+    // pkc-data has user content + idb is present → chooser, but system entries still surfaced
+    const chosen = chooseBootSource(pkcDataWithSystem, idbContainer);
+    expect(chosen.systemEntriesFromPkcData).toHaveLength(1);
   });
 
   it('does NOT inherit readonly/lightSource/viewOnlySource from IDB-only path', () => {

@@ -123,3 +123,32 @@ export function getUserEntries(entries: Entry[]): Entry[] {
 export function hasUserContent(container: Container): boolean {
   return container.entries.some(isUserEntry);
 }
+
+/**
+ * Upsert system-* entries onto a container, replacing any existing
+ * system entries with the supplied set. User entries and all other
+ * container fields (relations, revisions, assets, meta) are preserved.
+ *
+ * Intended use: at boot, the freshly-built pkc-data payload carries
+ * the current system entries (about, settings, …). When booting from
+ * IDB or starting empty, we want those system entries to reflect the
+ * current build — not whatever stale copy IDB happens to hold — so the
+ * boot path merges them in before SYS_INIT_COMPLETE.
+ *
+ * Policy: **pkc-data wins for system entries**. About is immutable
+ * build-time data; Settings, when added, will have its own reconciliation
+ * rules (see its behavior contract §I-SETTINGS-3 for import-time host
+ * priority — boot-time policy is defined here).
+ *
+ * Ordering: system entries from `newSystemEntries` are appended to the
+ * end of the entries list. Existing entries keep their relative order.
+ *
+ * Pure: no I/O, no mutation of inputs.
+ */
+export function mergeSystemEntries(base: Container, newSystemEntries: Entry[]): Container {
+  const userEntries = base.entries.filter(isUserEntry);
+  return {
+    ...base,
+    entries: [...userEntries, ...newSystemEntries],
+  };
+}

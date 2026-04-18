@@ -58,6 +58,7 @@ import { textlogPresenter } from './adapter/ui/textlog-presenter';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
+import { mergeSystemEntries } from './core/model/container';
 
 /**
  * PKC2 bootstrap.
@@ -468,14 +469,20 @@ async function boot(): Promise<void> {
       case 'idb':
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
-          container: chosen.container!,
+          container: mergeSystemEntries(
+            chosen.container!,
+            chosen.systemEntriesFromPkcData ?? [],
+          ),
           embedded: embedCtx.embedded,
         });
         return;
       case 'empty':
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
-          container: createEmptyContainer(),
+          container: mergeSystemEntries(
+            createEmptyContainer(),
+            chosen.systemEntriesFromPkcData ?? [],
+          ),
           embedded: embedCtx.embedded,
         });
         return;
