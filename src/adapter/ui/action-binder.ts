@@ -305,6 +305,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        // FI-05: During editing, "📎 File" opens a file picker and inserts
+        // a link instead of dispatching CREATE_ENTRY (which would clobber
+        // the current editing state).
+        if (arch === 'attachment' && dispatcher.getState().phase === 'editing') {
+          triggerEditingFileAttach();
+          break;
+        }
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Text';
         // Explicit context from a "+ New" button inside a folder row.
@@ -3035,6 +3042,207 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       || field === 'textlog-entry-text';
   }
 
+  // ── FI-05: Shared helpers for asset link insertion during editing ──
+
+  interface InsertContext {
+    fieldAttr: string;
+    logId: string | null;
+    cursorPos: number;
+    currentValue: string;
+  }
+
+  function captureInsertContext(): InsertContext | null {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing') return null;
+
+    let textarea: HTMLTextAreaElement | null = null;
+
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement && isMarkdownTextarea(active)) {
+      textarea = active;
+    }
+
+    if (!textarea) {
+      const editor = root.querySelector('[data-pkc-mode="edit"]');
+      if (!editor) return null;
+      const candidates = editor.querySelectorAll<HTMLTextAreaElement>(
+        'textarea[data-pkc-field="body"], textarea[data-pkc-field="textlog-append-text"], textarea[data-pkc-field="textlog-entry-text"]',
+      );
+      if (candidates.length === 1) {
+        textarea = candidates[0]!;
+      } else {
+        return null;
+      }
+    }
+
+    return {
+      fieldAttr: textarea.getAttribute('data-pkc-field') ?? 'body',
+      logId: textarea.getAttribute('data-pkc-log-id'),
+      cursorPos: textarea.selectionStart ?? textarea.value.length,
+      currentValue: textarea.value,
+    };
+  }
+
+  function buildAssetRef(name: string, assetKey: string, mime: string): string {
+    return mime.startsWith('image/')
+      ? `![${name}](asset:${assetKey})`
+      : `[${name}](asset:${assetKey})`;
+  }
+
+  function insertAssetLinkAtContext(ctx: InsertContext, ref: string): void {
+    const freshSelector = ctx.logId
+      ? `textarea[data-pkc-field="${ctx.fieldAttr}"][data-pkc-log-id="${CSS.escape(ctx.logId)}"]`
+      : `textarea[data-pkc-field="${ctx.fieldAttr}"]`;
+    const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
+    if (!freshTextarea) {
+      console.warn('[PKC2] FI-05: textarea not found after re-render, skipping link insertion');
+      return;
+    }
+    const newValue = ctx.currentValue.slice(0, ctx.cursorPos) + ref + ctx.currentValue.slice(ctx.cursorPos);
+    freshTextarea.value = newValue;
+    const newPos = ctx.cursorPos + ref.length;
+    freshTextarea.setSelectionRange(newPos, newPos);
+    freshTextarea.focus();
+    updateTextEditPreview(freshTextarea);
+  }
+
+  function processEditingFileDrop(files: File[], contextLid: string, insertCtx: InsertContext | null): void {
+    let accumulatedRefs = '';
+    let fileIndex = 0;
+
+    function processNext(): void {
+      if (fileIndex >= files.length) return;
+      const file = files[fileIndex]!;
+      fileIndex++;
+
+      if (isFileTooLarge(file.size)) {
+        const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
+        console.warn(`[PKC2] Drop rejected: ${msg}`);
+        showToast({
+          message: msg,
+          kind: 'warn',
+          onExport: () =>
+            dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
+        });
+        processNext();
+        return;
+      }
+
+      preflightStorageWarn(file, dispatcher);
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
+        console.warn(`[PKC2] ${msg}`);
+        showToast({ message: msg, kind: 'error' });
+        processNext();
+      };
+      reader.onload = () => {
+        const arrayBuffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]!);
+        }
+        const base64 = btoa(binary);
+
+        const mime = file.type || 'application/octet-stream';
+        const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name: file.name,
+          mime,
+          size: file.size,
+          assetKey,
+          assetData: base64,
+          contextLid,
+        });
+
+        if (insertCtx) {
+          const ref = buildAssetRef(file.name, assetKey, mime);
+          const separator = accumulatedRefs.length > 0 ? '\n' : '';
+          accumulatedRefs += separator + ref;
+          insertAssetLinkAtContext(
+            { ...insertCtx, cursorPos: insertCtx.cursorPos, currentValue: insertCtx.currentValue },
+            accumulatedRefs,
+          );
+        }
+
+        processNext();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    processNext();
+  }
+
+  // ── FI-05: Editor file drop (editing phase) ──
+
+  function handleEditorFileDropOver(e: DragEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+    if (!e.dataTransfer?.types.includes('Files')) return;
+
+    const editor = (e.target as HTMLElement).closest('[data-pkc-mode="edit"]');
+    if (!editor) return;
+
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleEditorFileDrop(e: DragEvent): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+    if (!e.dataTransfer?.files.length) return;
+
+    const editor = (e.target as HTMLElement).closest('[data-pkc-mode="edit"]');
+    if (!editor) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const insertCtx = captureInsertContext();
+    const files = Array.from(e.dataTransfer.files);
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return;
+
+    processEditingFileDrop(files, contextLid, insertCtx);
+  }
+
+  // ── FI-05: Hidden file input for button-attach during editing ──
+
+  let editingFileInput: HTMLInputElement | null = null;
+
+  function triggerEditingFileAttach(): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'editing' || state.readonly) return;
+
+    const insertCtx = captureInsertContext();
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return;
+
+    if (!editingFileInput) {
+      editingFileInput = document.createElement('input');
+      editingFileInput.type = 'file';
+      editingFileInput.multiple = true;
+      editingFileInput.style.display = 'none';
+      editingFileInput.setAttribute('data-pkc-role', 'editing-file-input');
+      document.body.appendChild(editingFileInput);
+    }
+
+    const handleChange = (): void => {
+      editingFileInput!.removeEventListener('change', handleChange);
+      const fileList = editingFileInput!.files;
+      if (!fileList?.length) return;
+      processEditingFileDrop(Array.from(fileList), contextLid, insertCtx);
+      editingFileInput!.value = '';
+    };
+
+    editingFileInput.addEventListener('change', handleChange);
+    editingFileInput.click();
+  }
+
   // Guard: prevent overlapping async paste operations (FileReader race)
   let pasteInProgress = false;
 
@@ -3581,6 +3789,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragover', handleCalendarDragOver);
   root.addEventListener('dragover', handleViewSwitchDragOver);
   root.addEventListener('dragover', handleFileDropOver);
+  root.addEventListener('dragover', handleEditorFileDropOver);
   root.addEventListener('dragenter', handleViewSwitchDragEnter);
   root.addEventListener('dragleave', handleDragLeave);
   root.addEventListener('dragleave', handleKanbanDragLeave);
@@ -3591,6 +3800,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('drop', handleKanbanDrop);
   root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
+  root.addEventListener('drop', handleEditorFileDrop);
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);
@@ -3618,6 +3828,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('dragover', handleCalendarDragOver);
     root.removeEventListener('dragover', handleViewSwitchDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
+    root.removeEventListener('dragover', handleEditorFileDropOver);
     root.removeEventListener('dragenter', handleViewSwitchDragEnter);
     root.removeEventListener('dragleave', handleDragLeave);
     root.removeEventListener('dragleave', handleKanbanDragLeave);
@@ -3628,6 +3839,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('drop', handleKanbanDrop);
     root.removeEventListener('drop', handleCalendarDrop);
     root.removeEventListener('drop', handleFileDrop);
+    root.removeEventListener('drop', handleEditorFileDrop);
+    if (editingFileInput) { editingFileInput.remove(); editingFileInput = null; }
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
