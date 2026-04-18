@@ -131,6 +131,11 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
+  if (state.showScanline) {
+    root.setAttribute('data-pkc-scanline', 'on');
+  } else {
+    root.removeAttribute('data-pkc-scanline');
+  }
 
   switch (state.phase) {
     case 'initializing':
@@ -532,6 +537,19 @@ function renderShellMenu(
   }
   themeSection.appendChild(themeButtons);
   card.appendChild(themeSection);
+
+  // Scanline toggle (FI-12 v1): opt-in CRT scanline overlay.
+  const scanlineSection = createElement('div', 'pkc-shell-menu-section');
+  const scanlineLabel = createElement('span', 'pkc-shell-menu-label');
+  scanlineLabel.textContent = 'Scanline';
+  scanlineSection.appendChild(scanlineLabel);
+  const scanlineBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  scanlineBtn.setAttribute('data-pkc-action', 'toggle-scanline');
+  const scanlineOn = state.showScanline === true;
+  scanlineBtn.setAttribute('data-pkc-active', String(scanlineOn));
+  scanlineBtn.textContent = scanlineOn ? '◉ On' : '○ Off';
+  scanlineSection.appendChild(scanlineBtn);
+  card.appendChild(scanlineSection);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');

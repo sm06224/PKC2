@@ -120,6 +120,12 @@ export interface AppState {
    * Read sites treat undefined as false.
    */
   archetypeFilterExpanded?: boolean;
+  /**
+   * Whether the CRT scanline overlay is visible (FI-12 v1).
+   * Optional so test fixtures that predate FI-12 keep compiling.
+   * undefined is equivalent to false. Session-only; not persisted.
+   */
+  showScanline?: boolean;
   /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
   tagFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
@@ -287,6 +293,7 @@ export function createInitialState(): AppState {
     searchQuery: '',
     archetypeFilter: new Set<ArchetypeId>(),
     archetypeFilterExpanded: false,
+    showScanline: false,
     tagFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
@@ -1293,6 +1300,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_ARCHETYPE_FILTER_EXPANDED': {
       return { state: { ...state, archetypeFilterExpanded: !(state.archetypeFilterExpanded ?? false) }, events: [] };
+    }
+    case 'TOGGLE_SCANLINE': {
+      return { state: { ...state, showScanline: !(state.showScanline ?? false) }, events: [] };
     }
     case 'SET_TAG_FILTER': {
       const next: AppState = { ...state, tagFilter: action.tagLid };

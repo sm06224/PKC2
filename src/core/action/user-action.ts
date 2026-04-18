@@ -149,6 +149,7 @@ export type UserAction =
   | { type: 'SET_ARCHETYPE_FILTER'; archetype: ArchetypeId | null }
   | { type: 'TOGGLE_ARCHETYPE_FILTER'; archetype: ArchetypeId }
   | { type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' }
+  | { type: 'TOGGLE_SCANLINE' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }

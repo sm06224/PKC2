@@ -52,6 +52,9 @@
   --glow: 0 0 6px rgba(51,255,102,0.15);
   --transition-fast: 120ms ease;
   color-scheme: dark;
+  /* FI-12 v1: Kanban column drop target background. 12% accent keeps text
+     readable (WCAG AA). v1.x hook point for theming. */
+  --c-kanban-drag-over-bg: color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 
 /* ── Light theme override (warm parchment) ── */
@@ -163,39 +166,20 @@
   line-height: 1.4;
 }
 
-/* Subtle CRT scanline overlay (dark mode only) */
-@media (prefers-color-scheme: dark) {
-  #pkc-root::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 9999;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.04) 2px,
-      rgba(0,0,0,0.04) 4px
-    );
-  }
-}
-/* Default (no prefers-color-scheme support = dark) */
-@media not all and (prefers-color-scheme: light) {
-  #pkc-root::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 9999;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.04) 2px,
-      rgba(0,0,0,0.04) 4px
-    );
-  }
+/* CRT scanline overlay — opt-in via data-pkc-scanline="on" (FI-12 v1) */
+#pkc-root[data-pkc-scanline="on"]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
 }
 
 /* ── Phase indicators on root ── */
@@ -3847,6 +3831,15 @@ mark.pkc-search-mark {
   padding: 0.4rem;
   overflow-y: auto;
   flex: 1;
+}
+
+/* FI-12 v1: Kanban column drop target — 12% accent keeps content readable.
+   Overrides the global [data-pkc-drag-over="true"] (full accent) for this
+   element only; sidebar folder drop zone is unaffected. */
+.pkc-kanban-list[data-pkc-drag-over="true"] {
+  background: var(--c-kanban-drag-over-bg) !important;
+  color: var(--c-fg) !important;
+  outline: 2px dashed var(--c-accent);
 }
 
 .pkc-kanban-card {

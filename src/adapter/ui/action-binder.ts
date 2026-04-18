@@ -540,6 +540,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'toggle-archetype-filter-expanded':
         dispatcher.dispatch({ type: 'TOGGLE_ARCHETYPE_FILTER_EXPANDED' });
         break;
+      case 'toggle-scanline':
+        dispatcher.dispatch({ type: 'TOGGLE_SCANLINE' });
+        break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
