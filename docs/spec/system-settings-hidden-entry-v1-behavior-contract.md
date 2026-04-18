@@ -206,3 +206,201 @@ case 'BEGIN_EDIT' / 'DELETE_ENTRY' / 'QUICK_UPDATE_ENTRY':
 ```
 
 About entry の reserved lid 保護と同パターン。
+
+---
+
+## 4. Load contract
+
+### 4-1. Load timing
+
+`SYS_INIT_COMPLETE` 後、main.ts のブートストラップが以下を実行:
+
+```
+1. container.entries から lid === '__settings__' を find
+2. resolveSettingsPayload(entry) で SystemSettingsPayload を得る
+3. dispatch({ type: 'RESTORE_SETTINGS', settings })
+4. renderer の最初の render で apply される (§5)
+```
+
+`RESTORE_SETTINGS` は `phase === 'initializing'` でも受理される唯一の例外。
+
+### 4-2. resolveSettingsPayload (擬似コード)
+
+```typescript
+function resolveSettingsPayload(entry?: Entry): SystemSettingsPayload {
+  if (!entry) return SETTINGS_DEFAULTS;
+  if (entry.archetype !== 'system-settings') {
+    console.warn('[PKC2] settings entry has wrong archetype, using defaults');
+    return SETTINGS_DEFAULTS;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(entry.body);
+  } catch (e) {
+    console.warn('[PKC2] settings entry parse failed:', e);
+    return SETTINGS_DEFAULTS;
+  }
+  if (parsed?.format !== 'pkc2-system-settings') {
+    console.warn('[PKC2] settings format mismatch, using defaults');
+    return SETTINGS_DEFAULTS;
+  }
+  if (parsed.version !== 1) {
+    console.warn('[PKC2] settings version mismatch, using defaults');
+    return SETTINGS_DEFAULTS;
+  }
+  // ここから per-field fallback (§4-3)
+  return mergeWithDefaults(parsed);
+}
+```
+
+### 4-3. Per-field fallback merge
+
+```typescript
+function mergeWithDefaults(parsed: any): SystemSettingsPayload {
+  return {
+    theme: {
+      mode:        validMode(parsed.theme?.mode)        ?? 'auto',
+      scanline:    typeof parsed.theme?.scanline === 'boolean' ? parsed.theme.scanline : false,
+      accentColor: validHex(parsed.theme?.accentColor) ?? null,
+      borderColor: validHex(parsed.theme?.borderColor) ?? null,
+      textColor:   validHex(parsed.theme?.textColor)   ?? null,
+    },
+    display: {
+      preferredFont: validFont(parsed.display?.preferredFont) ?? null,
+    },
+    locale: {
+      language: validLang(parsed.locale?.language) ?? null,
+      timezone: validTimezone(parsed.locale?.timezone) ?? null,
+    },
+  };
+}
+```
+
+各 valid* 関数は §2-5/§2-6/§2-7 のルールに従う。1 field の不正は他 field に影響しない。
+
+### 4-4. Defaults
+
+```typescript
+const SETTINGS_DEFAULTS: SystemSettingsPayload = {
+  theme: { mode: 'auto', scanline: false, accentColor: null, borderColor: null, textColor: null },
+  display: { preferredFont: null },
+  locale: { language: null, timezone: null },
+};
+```
+
+null = system / CSS default にフォールバック (I-SETTINGS-5)。
+
+---
+
+## 5. Apply contract
+
+### 5-1. Apply timing
+
+renderer の `render(state, root)` 内で、毎 render に **idempotent に** 反映する。差分検出はしない (DOM 操作は冪等で、性能影響なし)。
+
+### 5-2. 各 field の反映先
+
+| field | 反映先 | null 時の挙動 |
+|-------|--------|--------------|
+| `theme.mode` | `#pkc-root[data-pkc-theme="dark\|light\|auto"]` | (null 不可) auto = system 追従 |
+| `theme.scanline` | `#pkc-root[data-pkc-scanline="on"]` 属性付け外し | false なら属性削除 |
+| `theme.accentColor` | `#pkc-root.style.setProperty('--c-accent', value)` | `removeProperty('--c-accent')` |
+| `theme.borderColor` | `#pkc-root.style.setProperty('--c-border', value)` | `removeProperty('--c-border')` |
+| `theme.textColor` | `#pkc-root.style.setProperty('--c-text', value)` | `removeProperty('--c-text')` |
+| `display.preferredFont` | `#pkc-root.style.setProperty('--font-main', value)` | `removeProperty('--font-main')` |
+| `locale.language` | `document.documentElement.lang = value` | `'auto'` 互換: navigator.language を反映 or 何もしない |
+| `locale.timezone` | runtime の `formatDate*` 関数群が `Intl.DateTimeFormat` 第二引数に引き渡す | system locale (引数省略) |
+
+### 5-3. CSS 変数の新規追加
+
+`src/styles/base.css` の `:root` に以下を追加 (実装時)。本 contract では宣言のみ:
+
+```css
+:root {
+  --c-border: <既存 border 色のデフォルト>;
+  --c-text:   <既存 text 色のデフォルト>;
+  --font-main: 'BIZ UDGothic', 'BIZ UDPGothic', sans-serif;
+}
+```
+
+既存 `--c-accent` (FI-12 で導入) と同パターン。
+
+### 5-4. Font fallback chain
+
+`display.preferredFont` の値はユーザー入力の CSS font-family 文字列。runtime は値の妥当性を judge せず、ブラウザの font fallback に委ねる:
+
+```css
+font-family: var(--font-main);
+/* デフォルト宣言で 'BIZ UDGothic', 'BIZ UDPGothic', sans-serif を最終 fallback とする */
+```
+
+invalid なフォント名でも sans-serif が必ず効くため、UI 崩壊なし。
+
+### 5-5. Locale apply の v1 制約
+
+- `locale.language` は `<html lang>` への反映のみ。i18n リソース切替は v1 では実装しない (将来の hook 点)
+- `locale.timezone` は `formatTodoDate` / Calendar の日付描画関数で `Intl.DateTimeFormat` の `timeZone` オプションに渡す
+- 既存の date format 関数群は引数追加が必要 (実装時の作業範囲)
+
+### 5-6. Idempotent / no-flicker
+
+renderer は毎回同じ値を set する。差分検出をしない代わりに、ブラウザは値が同じなら repaint しない。flicker / FOUC を防ぐため、初回 render は **`SYS_INIT_COMPLETE` 直後の同期 dispatch chain 内** に収まる必要がある (`RESTORE_SETTINGS` → render が同 microtask)。
+
+---
+
+## 6. Invariants
+
+### I-SETTINGS-1 — 破損耐性 (app 起動保証)
+
+settings entry の不在 / parse 失敗 / format 不一致 / version 不一致のいずれでも **app は正常起動** する。`SETTINGS_DEFAULTS` で安全起動。UI には赤エラーを出さず、`console.warn` のみ。
+
+### I-SETTINGS-2 — About entry との完全分離
+
+| 軸 | About | Settings |
+|----|-------|----------|
+| archetype | `system-about` | `system-settings` |
+| lid | `__about__` | `__settings__` |
+| Mutability | immutable | mutable |
+| 生成タイミング | build-time | runtime (user action) |
+| Fallback 粒度 | 全体 | per-field |
+
+両者は独立した reducer / presenter / state slice で扱う。相互依存・相互参照なし。
+
+### I-SETTINGS-3 — Export/import に含まれる
+
+- HTML export / ZIP export / subset export は `__settings__` entry を**含める**
+- import / merge 時は **host 側を保持** し流入棄却 (warning log のみ)
+- 設定は配布物の一部として持ち運べるが、受け取り側で上書きされない
+
+### I-SETTINGS-4 — Reserved lid 保護 (defense in depth)
+
+reducer は `__settings__` 対象の以下 user actions を block:
+- `BEGIN_EDIT`
+- `DELETE_ENTRY`
+- `QUICK_UPDATE_ENTRY`
+- `COMMIT_EDIT` (lid match 時)
+- `CREATE_ENTRY` (同 lid 衝突時)
+
+block 時は state 不変、event 発行なし、`console.warn` 出力のみ。変更の唯一の経路は `SET_*` / `TOGGLE_*` / `RESET_*` / `RESTORE_SETTINGS` 系。
+
+### I-SETTINGS-5 — null = system default
+
+全 nullable field について `null` は「システムデフォルトに従う」を意味する:
+- color: CSS 変数の `:root` 既定値
+- font: `--font-main` の既定 fallback chain
+- language: `navigator.language`
+- timezone: system locale (Intl 引数省略)
+
+null 以外の値が入ったときのみ override する。`undefined` は受け取らない (parse 段階で null に正規化)。
+
+### I-SETTINGS-6 — Single source of truth
+
+Container 内の `__settings__` entry が唯一の永続層。AppState.settings は **rehydrate された runtime mirror**。両者の差は `SETTINGS_CHANGED` event → persistence の autosave 経路でのみ吸収される (双方向同期は禁止 = 反対方向は流れない)。
+
+### I-SETTINGS-7 — Forward-compatible (unknown key)
+
+unknown キーは parse 時に読み飛ばし、**save 時には書き出さない** (sanitize)。将来の v2 schema 追加時に v1 runtime が壊れない / v1 runtime の save で v2 値を上書き消失しない、両方を担保。
+
+### I-SETTINGS-8 — Phase gate
+
+全 SET_* / TOGGLE_* / RESET_* は `phase === 'ready'` のみ受理。`RESTORE_SETTINGS` のみ `'initializing'` でも受理。
