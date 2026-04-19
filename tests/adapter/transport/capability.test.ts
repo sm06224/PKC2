@@ -19,9 +19,13 @@ describe('capability', () => {
       expect(canHandleMessage('record:offer', false)).toBe(true);
     });
 
-    it('allows record:reject in any mode', () => {
-      expect(canHandleMessage('record:reject', true)).toBe(true);
-      expect(canHandleMessage('record:reject', false)).toBe(true);
+    it('rejects record:reject in any mode (sender-only by design)', () => {
+      // PKC2 sends record:reject when a pending offer is dismissed
+      // (main.ts:391). Inbound handling is not part of the current
+      // architecture — no outgoing-offer tracking exists.
+      // See docs/development/transport-record-reject-decision.md.
+      expect(canHandleMessage('record:reject', true)).toBe(false);
+      expect(canHandleMessage('record:reject', false)).toBe(false);
     });
 
     it('rejects unsupported message types', () => {
@@ -41,7 +45,12 @@ describe('capability', () => {
       const types = getSupportedMessageTypes();
       expect(types).toContain('export:request');
       expect(types).toContain('record:offer');
-      expect(types).toContain('record:reject');
+    });
+
+    it('does not include record:reject (sender-only by design)', () => {
+      // See docs/development/transport-record-reject-decision.md
+      const types = getSupportedMessageTypes();
+      expect(types).not.toContain('record:reject');
     });
 
     it('does not include ping/pong', () => {
