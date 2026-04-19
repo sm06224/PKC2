@@ -22,6 +22,7 @@ import {
   prepareOptimizedIntake,
   buildAttachmentBodyMeta,
   buildAttachmentAssets,
+  deriveDisplayFilename,
   type IntakePayload,
 } from './image-optimize/paste-optimization';
 import {
@@ -4228,7 +4229,7 @@ function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: str
   }
   if (!base64) return null;
 
-  return { data: base64, mime: att.mime, name: att.name };
+  return { data: base64, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
 }
 
 function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
@@ -4380,7 +4381,9 @@ function collectAssetNameMap(container: Container): Record<string, string> {
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body);
-    if (att.asset_key && att.name) map[att.asset_key] = att.name;
+    if (att.asset_key && att.name) {
+      map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
+    }
   }
   return map;
 }

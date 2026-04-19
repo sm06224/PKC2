@@ -253,3 +253,54 @@ export function buildAttachmentAssets(
   }
   return assets;
 }
+
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  'image/webp': 'webp',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
+  'image/avif': 'avif',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+};
+
+const EXTENSION_ALIASES: Record<string, string> = {
+  jpg: 'jpg',
+  jpeg: 'jpg',
+  webp: 'webp',
+  png: 'png',
+  gif: 'gif',
+  svg: 'svg',
+  bmp: 'bmp',
+  avif: 'avif',
+  heic: 'heic',
+  heif: 'heif',
+};
+
+/**
+ * Derive the user-facing display filename from the stored filename and
+ * the actual storage MIME. Image intake optimization converts inputs
+ * (e.g. image/png) to a different output MIME (e.g. image/webp) while
+ * the attachment body retains the original filename for provenance.
+ * This helper rewrites the extension so the UI label, info line, and
+ * `<a download>` filename all match what the downloaded byte stream
+ * will actually be.
+ *
+ * Non-image MIMEs, unknown image MIMEs, and filenames whose extension
+ * already matches the stored MIME are returned unchanged.
+ */
+export function deriveDisplayFilename(name: string, mime: string): string {
+  if (!name || !mime) return name;
+  const target = IMAGE_MIME_EXTENSIONS[mime.toLowerCase()];
+  if (!target) return name;
+
+  const dot = name.lastIndexOf('.');
+  const base = dot <= 0 ? name : name.slice(0, dot);
+  const currentExt = dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+  const currentCanonical = EXTENSION_ALIASES[currentExt] ?? currentExt;
+
+  if (currentCanonical === target) return name;
+  return `${base}.${target}`;
+}

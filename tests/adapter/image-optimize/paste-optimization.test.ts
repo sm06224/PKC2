@@ -13,6 +13,7 @@ import {
   prepareOptimizedIntake,
   buildAttachmentBodyMeta,
   buildAttachmentAssets,
+  deriveDisplayFilename,
   type IntakePayload,
 } from '@adapter/ui/image-optimize/paste-optimization';
 import type { OptimizeResult } from '@adapter/ui/image-optimize/optimizer';
@@ -478,5 +479,52 @@ describe('buildAttachmentAssets', () => {
       'att-2': 'OPT',
       'att-2__original': 'ORIG',
     });
+  });
+});
+
+describe('deriveDisplayFilename', () => {
+  it('rewrites extension when optimized to WebP', () => {
+    expect(deriveDisplayFilename('screenshot.png', 'image/webp')).toBe('screenshot.webp');
+    expect(deriveDisplayFilename('photo.jpg', 'image/webp')).toBe('photo.webp');
+    expect(deriveDisplayFilename('photo.jpeg', 'image/webp')).toBe('photo.webp');
+  });
+
+  it('leaves filename unchanged when extension already matches MIME', () => {
+    expect(deriveDisplayFilename('photo.webp', 'image/webp')).toBe('photo.webp');
+    expect(deriveDisplayFilename('icon.png', 'image/png')).toBe('icon.png');
+    expect(deriveDisplayFilename('pic.jpg', 'image/jpeg')).toBe('pic.jpg');
+    expect(deriveDisplayFilename('pic.jpeg', 'image/jpeg')).toBe('pic.jpeg');
+  });
+
+  it('is case-insensitive on current extension', () => {
+    expect(deriveDisplayFilename('shot.PNG', 'image/webp')).toBe('shot.webp');
+    expect(deriveDisplayFilename('pic.JPG', 'image/webp')).toBe('pic.webp');
+  });
+
+  it('appends extension when filename has no extension', () => {
+    expect(deriveDisplayFilename('screenshot', 'image/webp')).toBe('screenshot.webp');
+  });
+
+  it('preserves multi-dot basename', () => {
+    expect(deriveDisplayFilename('my.image.v2.png', 'image/webp')).toBe('my.image.v2.webp');
+  });
+
+  it('returns filename unchanged for non-image MIME', () => {
+    expect(deriveDisplayFilename('report.pdf', 'application/pdf')).toBe('report.pdf');
+    expect(deriveDisplayFilename('notes.txt', 'text/plain')).toBe('notes.txt');
+    expect(deriveDisplayFilename('archive.zip', 'application/zip')).toBe('archive.zip');
+  });
+
+  it('returns filename unchanged for unknown image MIME', () => {
+    expect(deriveDisplayFilename('img.tiff', 'image/tiff')).toBe('img.tiff');
+  });
+
+  it('returns filename unchanged for empty MIME or empty name', () => {
+    expect(deriveDisplayFilename('', 'image/webp')).toBe('');
+    expect(deriveDisplayFilename('shot.png', '')).toBe('shot.png');
+  });
+
+  it('does not strip leading-dot filenames (.htaccess style)', () => {
+    expect(deriveDisplayFilename('.htaccess', 'image/webp')).toBe('.htaccess.webp');
   });
 });
