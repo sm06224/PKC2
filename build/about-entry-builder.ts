@@ -44,11 +44,16 @@ interface AboutContributor {
   url: string;
 }
 
+// Narrow archetype to the literal `'system-about'` so callers that
+// push into a typed `Entry[]` (e.g. manual-builder since Phase 3)
+// don't hit a string-widening error. release-builder's inferred
+// container literal was unaffected by the previous wider `string`
+// typing, and remains unaffected by this narrower one.
 interface AboutEntry {
   lid: string;
   title: string;
   body: string;
-  archetype: string;
+  archetype: 'system-about';
   created_at: string;
   updated_at: string;
 }
