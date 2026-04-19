@@ -201,11 +201,22 @@ function main(): void {
     // Escape </script> within JSON to prevent premature script tag closure
     .replace(/<\/(script)/gi, '<\\/$1');
 
-  // 7. Inject into template
+  // 7. Inject into template.
+  //
+  // IMPORTANT: use the `replacerFn` form of `String.prototype.replace`.
+  // The markdown source for chapter 09 contains literal examples like
+  // `$1`, `$&`, `$<name>` as part of Find-and-Replace documentation.
+  // When the replacement is passed as a plain string, `$&` is expanded
+  // to "the matched substring" (i.e. the template's original pkc-data),
+  // corrupting the output JSON. The function form is immune because
+  // the return value is taken verbatim.
+  //
+  // See docs/development/manual-build-integration-plan.md §"破綻点".
   const template = readFileSync(TEMPLATE, 'utf8');
+  const newScriptTag = `<script id="pkc-data" type="application/json">${pkcDataJson}</script>`;
   let output = template.replace(
     /<script id="pkc-data" type="application\/json">[\s\S]*?<\/script>/,
-    `<script id="pkc-data" type="application/json">${pkcDataJson}</script>`,
+    () => newScriptTag,
   );
 
   // 8. Update <title> to the manual title
