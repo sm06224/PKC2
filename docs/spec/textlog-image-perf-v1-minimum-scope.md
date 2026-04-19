@@ -1,6 +1,6 @@
 # TEXTLOG 複数画像パフォーマンス v1 — Minimum Scope
 
-Status: DRAFT rev.2 2026-04-19
+Status: DRAFT rev.2.1 2026-04-19
 Pipeline position: minimum scope
 Parent: `docs/planning/file-issues/03_perf-textlog-image-lazy-rendering.md`
 Spike result note: `docs/development/fi-03-spike-native-lazy-result.md`
@@ -13,9 +13,12 @@ Spike result note: `docs/development/fi-03-spike-native-lazy-result.md`
 |-----|------|------|
 | rev.1 | 2026-04-19 | 初版。`loading="lazy"` + `decoding="async"` を v1 本命として提示 |
 | rev.2 | 2026-04-19 | 実測スパイク結果により native lazy / async decoding を棄却。v1 本命を staged render / staged asset resolve / placeholder に切替 |
+| rev.2.1 | 2026-04-19 | 実運用サイズ前提を 300KB から 1-3MB+ に更新（全環境で 1MB 未満の期待は不可）。rev.1 spike の 200KB が実運用下限未満であったことを明記。paste 時圧縮を別 FI に分離することを明記。`decoding="async"` を staged render 実装後の再評価候補に格下げ |
 
 > **rev.1 → rev.2 の転換根拠**: `docs/development/fi-03-spike-native-lazy-result.md` 参照。
 > 要約: `loading="lazy"` は data URI に対して render time を 2 倍に悪化させる（50 枚で +94ms）。`decoding="async"` 単独は改善がノイズレベル（805ms → 785ms、2.5%）。両者とも v1 の user pain 解決には不十分であるだけでなく、lazy は害になることが実測で確定した。
+>
+> **rev.2 → rev.2.1 の転換根拠**: 実運用での画像サイズ観測（supervisor 環境で 2.9 MB/枚、別環境の Full HD + Windows でも 1 MB 超）により、**全環境で 1 MB 未満のスクリーンショットを期待できない**ことが判明。rev.1 spike の 200KB BMP は実運用下限（1 MB）未満であり、**メカニズム検証には有効だったが magnitude 評価には使えない**。この事実は staged render の方向を強化し、併せて「paste 時圧縮」を FI-03 から分離した別 FI として管理する判断に繋がった。
 
 ---
 
@@ -44,24 +47,35 @@ renderBody(entry, assets)
 ```
 
 **全ログ行を同期的に処理**する。画像 1 枚あたり：
-1. `container.assets[key]`（数百 KB〜数 MB の base64 文字列）を markdown 文字列に inline 連結
+1. `container.assets[key]`（**実運用で 1〜3 MB+ の base64 文字列**）を markdown 文字列に inline 連結
 2. `renderMarkdown()` が巨大文字列を parse → `<img src="data:...">` を含む HTML を生成
 3. `innerHTML` で DOM に挿入 → ブラウザが base64 を decode → layout + paint
 
-### 1-2. ボトルネックの所在
+### 1-2. 実運用サイズの前提（rev.2.1 で更新）
+
+PKC2 は画像を**無加工**（圧縮・リサイズ・フォーマット変換なし）で base64 保存する（`action-binder.ts` の paste handler、`btoa(binary)` そのまま）。実環境観測：
+
+| 環境 | 1 枚あたり |
+|------|-----------|
+| Full HD + Windows（最小構成想定） | **> 1 MB** |
+| Mac + Firefox + ウルトラワイドモニタ | **~2.9 MB** |
+
+**全環境で 1 MB を下回らない**ことが確定している。rev.1 の「1 枚 300 KB（screenshot 平均）」想定は実運用下限（1 MB）の 1/3 以下であり、**非現実的**であった。rev.2.1 では全シナリオのサイズ前提を **1〜3 MB+** に更新する。
+
+### 1-3. ボトルネックの所在
 
 | フェーズ | 重さの原因 | 線形度 |
 |---------|-----------|--------|
-| **文字列構築** | N 枚分の base64 文字列を markdown source に inline 連結。1 枚 300 KB（screenshot 平均）× 50 枚 = 15 MB の文字列操作 | O(N × avg_size) |
-| **markdown parse** | markdown-it が 15 MB の巨大入力を tokenize。画像トークン以外の tokens もすべてスキャンされる | O(total_chars) |
-| **DOM 挿入** | `innerHTML` で `<img src="data:...">` を一括挿入。ブラウザが同期的に base64 → bitmap decode を始める | O(N) |
+| **文字列構築** | N 枚分の base64 文字列を markdown source に inline 連結。**1 枚 1〜3 MB × 50 枚 = 50〜150 MB+ の文字列操作**（ウルトラワイド環境では更に増大） | O(N × avg_size) |
+| **markdown parse** | markdown-it が **50〜150 MB+ の巨大入力**を tokenize。画像トークン以外の tokens もすべてスキャンされる | O(total_chars) |
+| **DOM 挿入** | `innerHTML` で `<img src="data:...">` を一括挿入。ブラウザが同期的に base64 → bitmap decode を始める。**単体画像の decode コストも 1-3 MB 級では無視できない** | O(N) |
 | **layout / paint** | 全 `<img>` が即座に layout 参加。viewport 外の画像もサイズ確定のために decode される | O(N) |
 
-**実用上最も痛いのは「前段パイプライン（base64 inline 展開 → markdown parse → 一括 DOM 挿入）が全画像を同期的に処理する」こと**。文字列構築・parse・DOM 投入のいずれも画像数 × 画像サイズに線形で積み上がり、main thread を長時間ブロックする。
+**実用上最も痛いのは「前段パイプライン（base64 inline 展開 → markdown parse → 一括 DOM 挿入）が全画像を同期的に処理する」こと**。文字列構築・parse・DOM 投入のいずれも画像数 × 画像サイズに線形で積み上がり、main thread を長時間ブロックする。実運用サイズでは合計処理量が 50〜150 MB+ に達するため、後段の lazy 機構が効かないだけでなく、そもそも前段が完了するまで main thread が数秒〜十数秒ブロックされる。
 
 > **rev.2 で確定した重要知見**: `<img>` 属性による後段 lazy（`loading="lazy"` / `decoding="async"`）は、前段パイプラインが完了するまで **そもそも発動しない**。つまり「ユーザが既にフリーズを体感した後」でしか効かないため、前段コストを減らさない限り user pain は解決しない。詳細は `docs/development/fi-03-spike-native-lazy-result.md`。
 
-### 1-3. edit surface の重さ
+### 1-4. edit surface の重さ
 
 `renderEditorBody()` は **画像を解決しない**（textarea の `.value` にログ本文の markdown 原文を入れるだけ）。従って edit mode 自体は画像数に対して軽い。
 
@@ -69,13 +83,40 @@ renderBody(entry, assets)
 - edit 開始: re-render で `renderEditorBody()` を呼ぶ → 軽い
 - edit 完了: re-render で `renderBody()` を呼ぶ → 全画像を再度同期展開 → **重い**
 
-### 1-4. 「無言で遅い」が問題であること
+### 1-5. 「無言で遅い」が問題であること
 
 現状、ユーザーへの feedback は一切ない：
 - skeleton / placeholder / spinner なし
 - 進捗表示なし
 - ブラウザの loading indicator は `file://` では出ない
 - 結果として「フリーズしたのか、待てば良いのか」の判断材料がゼロ
+
+### 1-6. spike の位置づけと paste 時圧縮の scope 分離（rev.2.1）
+
+#### rev.1 spike（200KB BMP）の有効範囲
+
+`docs/development/fi-03-spike-native-lazy-result.md` に記録された rev.1 spike は、1 枚 ~200 KB の BMP data URI で計測した。これは実運用下限（1 MB）の 1/5 であり、以下の使い分けを行う：
+
+| 用途 | spike の有効性 | 理由 |
+|------|-------------|------|
+| **メカニズム検証**（`loading="lazy"` / `decoding="async"` が data URI に対して効く仕組みか） | **有効** | メカニズムは画像サイズに依存しない。200KB で観測された挙動（lazy 悪化 / async ノイズ）は 1-3MB でも同じ機序で発生する |
+| **magnitude 評価**（実運用でどの程度の処理量 / 所要時間が発生するか） | **使えない** | 実運用の 1/5 以下のサイズで測った数値（50 枚 85ms 等）は、現実の 50〜150 MB+ 前段処理を再現していない |
+
+rev.2.1 以降、数値の引用時は必ず上記用途を明示する。behavior contract で baseline を取るときは **1-3 MB 級の実データ**で再測定する。
+
+#### paste 時圧縮は別 FI として分離
+
+Gemini オブザーバー提案①（Canvas + WebP による取り込み時圧縮）は技術的に妥当だが、以下の理由で **FI-03 の scope 外**とする：
+
+| 観点 | FI-03 | paste 時圧縮（別 FI） |
+|------|-------|-------------------|
+| 対象 | 既存データの表示性能 | 将来取り込むデータの入力品質 |
+| タイミング | render 時 | paste / import 時 |
+| 影響範囲 | read surface のみ | 保存データの性質 |
+| 既存重い画像への効果 | あり（staged render で救う） | なし（既に保存済みデータは圧縮できない） |
+| I-TIP2 との関係 | 不変 | 別問題（intake 時なので違反ではないが、ユーザ同意 UX 要件あり） |
+
+**両者は独立かつ相補的**で、並行起票・並行管理する。実装順序は supervisor 判断事項。本 rev.2.1 は FI-03 側の scope を保つ。
 
 ## 2. 対象 surface
 
@@ -178,14 +219,18 @@ minimum scope の段階で「何を測るか」を定義する。behavior contra
 | **スクロール時の体感** | scroll event 中に jank（32ms 超の frame drop）があるかどうか | staged hydrate trigger が scroll を阻害しないかの確認 |
 | **メモリ使用量** | `performance.memory`（Chrome のみ）または DevTools Memory tab | 初期表示時に DOM に保持している base64 量が減っているかの確認 |
 
-### 6-2. 計測シナリオ
+### 6-2. 計測シナリオ（rev.2.1 で更新）
 
-| シナリオ | 画像数 | 想定 base64 総量 |
-|---------|-------|-----------------|
-| 軽量（baseline） | 0 枚 | 0 KB |
-| 中規模 | 10 枚 | ~3 MB |
-| 重量級 | 50 枚 | ~15 MB |
-| 混在 | 20 枚 + テキストログ 100 行 | ~6 MB + テキスト |
+**実運用サイズ前提**: 1 枚 1-3 MB+（§1-2）。以下は base64 展開後の合計データ量。
+
+| シナリオ | 画像数 | 想定 base64 総量（1MB/枚） | 想定 base64 総量（3MB/枚） |
+|---------|-------|-------------------------|-------------------------|
+| 軽量（baseline） | 0 枚 | 0 MB | 0 MB |
+| 中規模 | 10 枚 | ~10 MB | ~30 MB |
+| 重量級 | 50 枚 | ~50 MB | ~150 MB |
+| 混在 | 20 枚 + テキストログ 100 行 | ~20 MB + テキスト | ~60 MB + テキスト |
+
+> **baseline 計測の必須条件**: 200KB 級 fake data では実運用を再現できない。実際のスクリーンショット（または同等サイズの PNG）を使うこと。
 
 ### 6-3. 計測の実施タイミング
 
@@ -200,26 +245,26 @@ minimum scope の段階で「何を測るか」を定義する。behavior contra
 ```
 TEXTLOG: 作業メモ
 ├─ 2026-04-19
-│   ├─ 14:00 "設定画面のバグ確認" + screenshot ×1 (300KB)
+│   ├─ 14:00 "設定画面のバグ確認" + screenshot ×1 (1.2 MB)
 │   ├─ 14:05 "再現手順" （テキストのみ）
-│   ├─ 14:10 "エラー画面" + screenshot ×1 (350KB)
-│   └─ 14:15 "修正後" + screenshot ×1 (280KB)
+│   ├─ 14:10 "エラー画面" + screenshot ×1 (1.8 MB)
+│   └─ 14:15 "修正後" + screenshot ×1 (1.4 MB)
 ├─ 2026-04-18
-│   ├─ ... + screenshot ×3
+│   ├─ ... + screenshot ×3（1-3 MB/枚）
 │   └─ ... + screenshot ×2
 └─ 2026-04-17
     └─ ... + screenshot ×2
 ```
 
-**修正前**: 全 10 枚の base64（~3 MB）を同期展開 → ~800ms〜1.5s フリーズ（推定）
-**修正後（v1 target, rev.2）**: 初期 render は直近 day-section のみ → 前段で展開する画像は 1〜3 枚程度。残り article は placeholder で姿を見せ、scroll / rAF trigger で順次 hydrate。テキストは初期 article 分のみ即座、残りは hydrate とともに表示。
+**修正前**: 全 10 枚の base64（~10〜30 MB）を同期展開 → 数秒オーダーのフリーズ（実運用サイズでは rev.1 想定の ~800ms〜1.5s より大幅に悪化）
+**修正後（v1 target, rev.2.1）**: 初期 render は直近 day-section のみ → 前段で展開する画像は 1〜3 枚程度。残り article は placeholder で姿を見せ、scroll / rAF trigger で順次 hydrate。テキストは初期 article 分のみ即座、残りは hydrate とともに表示。
 
 ### 7-2. 画像 50 枚の TEXTLOG（重量級）
 
-1 ヶ月分のスクリーンショットログ。50 枚 × 300 KB = ~15 MB。
+1 ヶ月分のスクリーンショットログ。実運用サイズで **50 枚 × 1-3 MB = 50〜150 MB+**（ウルトラワイド環境ではさらに増大）。
 
-**修正前**: 全 50 枚同期 → 5〜15s フリーズ（推定、ハード依存）
-**修正後（v1 target, rev.2）**: 初期 render は直近 day-section ＋ 近傍のみ（~5〜10 枚程度）。残り 40 枚超の article は hydrate 待ち placeholder で表示。scroll に応じて段階的に前段解決 + 描画。初期フリーズは前段処理対象が小さいため大幅短縮。体感は「直近ログはすぐ出る。過去ログは placeholder → スクロールすると順に実体化」。
+**修正前**: 全 50 枚同期 → 十秒〜数十秒のフリーズ（50〜150 MB+ の base64 文字列構築 + markdown parse + DOM 挿入が main thread を占有）
+**修正後（v1 target, rev.2.1）**: 初期 render は直近 day-section ＋ 近傍のみ（~5〜10 枚程度 = 5〜30 MB）。残り 40 枚超の article は hydrate 待ち placeholder で表示。scroll に応じて段階的に前段解決 + 描画。初期フリーズは前段処理対象が小さいため大幅短縮。体感は「直近ログはすぐ出る。過去ログは placeholder → スクロールすると順に実体化」。
 
 ### 7-3. テキスト 100 行 + 画像 20 枚（混在）
 
@@ -274,22 +319,51 @@ TEXTLOG: 作業メモ
 6. **D-TIP6 = staged を維持**。edit→read 復帰時も user pain は同じなので staged の恩恵を受けるべき
 7. **D-TIP7 = Playwright 自動ベンチ**。本 spike で Playwright + Chromium が動作することが確認済み。手動計測より再現性が高く、regression 検知にも使える
 
-### 8-4. v1 で**やらない**ことの確認（rev.2 で再掲）
+### 8-4. v1 で**やらない**ことの確認（rev.2.1）
 
-- `loading="lazy"` を付けない
-- `decoding="async"` を付けない
-- Blob URL 化しない
+- `loading="lazy"` を付けない（**恒久棄却**。実測で悪化を確認済み）
+- `decoding="async"` を付けない（**v1 では採用しない**。後述の 8-5 で将来再評価予定）
+- Blob URL 化しない（v1.x 候補として残す。staged 処理と組み合わせ前提）
 - Web Worker 化しない
 - virtualization しない
-- 画像を圧縮しない / 変換しない
+- 画像を圧縮しない / 変換しない（**別 FI（画像取り込み最適化）で並行管理**）
+- paste pipeline に触らない（FI-08 / FI-08.x / 別 FI の scope）
+
+### 8-5. staged render 実装後の再評価予定（rev.2.1 新設）
+
+rev.2.1 時点で「v1 本命から外した」施策のうち、**staged render 実装完了後の audit で再評価する候補**：
+
+| 施策 | 再評価の条件 | 期待される効果 | 判断時期 |
+|------|-----------|---------------|---------|
+| **`decoding="async"`** | staged render で前段コストが解消された後、後段 decode（1-3 MB PNG は単体でも重い）が支配的になる場合に効く可能性あり。**1-3 MB 級の実データ**で再測定する | 残存 decode コストの main thread 解放（rev.1 spike は 200KB で計測したため decode が軽すぎて効果が出なかった可能性） | FI-03 audit 段階 |
+| **Blob URL 化**（個別画像単位） | staged hydrate の trigger 時に、data URI から Blob URL への変換を挟む。DOM 内の文字列長を劇的に短縮 | メモリ効率改善、image cache hit 率向上 | FI-03 audit または v1.x |
+| **Web Worker による markdown parse off-thread** | staged render でも初期 article の parse が遅い場合 | 初期 render の main thread 解放 | v1.x |
+
+> **再評価 spike の必須条件（`decoding="async"`）**: rev.1 spike で 200KB を使ったことが magnitude 評価を誤らせた教訓から、再評価は必ず **1-3 MB 実データ**で行う。fake BMP は使わない。
+
+### 8-6. 関連する別 FI（画像取り込み最適化）
+
+本 FI-03 と並行管理される別 FI として、supervisor 決裁により **「画像取り込み最適化 FI」** が起票予定（minimum scope は本 rev.2.1 確定後に作成）。
+
+| 観点 | FI-03 | 画像取り込み最適化 FI |
+|------|-------|-------------------|
+| 対象 | 既存重い画像の **表示性能** | 未来の重い画像の **流入削減** |
+| タイミング | render 時 | paste / import 時 |
+| 手法 | staged render / staged asset resolve / placeholder | Canvas + WebP 再エンコード / 原画保持オプション / 1 MB soft warning 見直し |
+| 既存データへの効果 | あり | なし |
+| 相互依存 | なし（独立実装可能） | なし |
+
+**両 FI は並行起票・並行管理。実装順序は supervisor 判断**。本 rev.2.1 は FI-03 の scope を狭く保ち、staged render に集中する。
 
 ---
 
 ## References
 
 - Parent file issue: `docs/planning/file-issues/03_perf-textlog-image-lazy-rendering.md`
-- **Spike result note（rev.2 の根拠）**: `docs/development/fi-03-spike-native-lazy-result.md`
+- **Spike result note（rev.2 / rev.2.1 の根拠）**: `docs/development/fi-03-spike-native-lazy-result.md`
 - `src/adapter/ui/textlog-presenter.ts` — `renderBody` / `renderLogArticle`（staged render の対象）
 - `src/features/markdown/asset-resolver.ts` — `resolveAssetReferences`（staged asset resolve の対象）
 - `src/features/markdown/markdown-render.ts` — `renderMarkdown` / image rule
 - `src/adapter/ui/renderer.ts` — 全体 render loop
+- `src/adapter/ui/action-binder.ts` — paste handler（画像無加工保存の根拠、別 FI の対象）
+- `src/adapter/ui/guardrails.ts` — サイズ警告閾値（SIZE_WARN_SOFT=1MB, SIZE_WARN_HEAVY=5MB, SIZE_REJECT_HARD=250MB）
