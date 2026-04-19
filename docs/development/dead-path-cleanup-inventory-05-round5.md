@@ -1,5 +1,18 @@
 # Dead Path Cleanup Inventory 05 — Round 5 (action-binder + transport + todo/calendar/kanban + search + image-optimize)
 
+**Resolution status** (2026-04-19):
+
+| Finding | 分類 | Resolution |
+|---------|------|------------|
+| `src/features/index.ts` barrel (再 export ファイル全体) | B → **A** (smoking gun) | **Deleted by PR #44** — src/tests/build のいずれからも import されておらず、再 export 対象は全て直接 import 済み。|
+| `entryMatchesQuery` (filter.ts) | B | 保留継続 — barrel 削除後も tests から直接 import されており、docstring "highlighting" forward intent が残る。PR #44 時点で明示的に retain。highlighting feature 計画が固まってから再判定。|
+| `calendar-prev` / `calendar-next` 月計算重複 (action-binder.ts) | B (refactor) | **Resolved by PR #46** — `shiftCalendarMonth(year, month, delta)` private helper に統合。bundle +80 bytes (helper 分)、挙動完全不変。|
+| `record:accept` / `record:reject` capability vs handler 整合 | C | **Reviewed by PR #45 → Resolved by PR #47** — PR #45 で drift 分類 (accept: doc drift / reject: implementation drift) + `record-offer-handler.ts` JSDoc 修正。PR #47 で `record:reject` を **sender-only by design** に確定し capability から削除。`record:accept` は future-only として retain。|
+| `case 'legacy'` (action-binder navigate-entry-ref) | D | 誤検知 — `parseEntryRef` の legacy kind 受信先、意図的 backward compat。|
+| todo/calendar/kanban の view 別分岐 | D | 仕様 invariant (`todo-view-consistency.md §4` "Kanban: Always excluded")。|
+| `clearPreference` / `isAboveOptimizationThreshold` 等 | C | 保留 — FI-03 v2 future feature または spec-declared test contract。|
+| その他全 export | D | live。|
+
 ## スコープ
 
 inventory round 5。round 1-4 でカバーしていない残り adapter/features 領域を 4 トラック並列で棚卸し。1 文書にまとめるが調査は分割して進めた (round 4 と同じ方式)。

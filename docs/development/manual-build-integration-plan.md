@@ -1,7 +1,19 @@
 # PKC2 Manual Build Integration Plan
 
-**Status**: active — 2026-04-19 recovery + architecture pass.
+**Status**: Phase 1–4 complete (2026-04-19). **Phase 5 intentionally deferred** — see below.
 **Scope**: Make `pkc2-manual.html` generation an officially managed PKC2 build artifact. Document current state, identify breakage, propose architecture, implement minimum safe recovery.
+
+**Phase rollup** (2026-04-19):
+
+| Phase | PR | 成果 |
+|-------|-----|------|
+| Phase 1 — 棚卸し + 最小回復 | #48 | `$&` 特殊展開バグ修正、manual HTML 正常生成、design doc 作成。 |
+| Phase 2 — CI 組み込み | #49 | `.github/workflows/ci.yml` に `build:manual` + `check:manual` step 追加、`build/check-manual-integrity.cjs` 新設。 |
+| Phase 3 — release provenance 整合 | #50 | `buildAboutEntry()` を manual にも適用、`AboutEntry.archetype` literal narrowing。 |
+| Phase 4 — navigation smoke + .md 変換 | #51 | `.md` → `entry:manual-text-NN` 変換、`tests/smoke/manual-launch.spec.ts` + `smoke.yml` 統合、`check:manual` に residue 検査追加。 |
+| **Phase 5 — public repo / GitHub Pages 連携** | — | **Deferred (policy 2026-04-19)**。PKC2 は artifact 生成 / 検証までを責務とし、公開は外部手動 process で行う。自動化は現時点で不要と判断。|
+
+PKC2 側の責務境界は「artifact 生成 (`pkc2.html`, `pkc2-manual.html`) + CI 検証 (integrity + smoke)」に確定。publishing は外部工程として扱う。
 
 ## 1. サマリ
 

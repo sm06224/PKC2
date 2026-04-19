@@ -1,5 +1,15 @@
 # Dead Path Cleanup Inventory 02 — adapter/ui 4本
 
+**Resolution status** (2026-04-19):
+
+Round 2 は A 級候補ゼロで終了したため、削除 PR はなし。以下の follow-up は **未解決 (intentional)**:
+
+| Follow-up | 分類 | 状況 |
+|-----------|------|------|
+| `entry-window.ts` JSDoc L10 の stale `pkc-entry-init` 参照 | D (doc drift, 低優先) | 未対応。1 行コメント修正は安全だが単独 PR には軽すぎるため、関連箇所を触る次 PR で同時対応予定。|
+| `rendered-viewer.ts` `resolveAssetSource(container: Container \| null)` 型絞り込み | C (refactor 候補) | 未対応。production / tests ともに non-null のみ渡すため、`Container` への narrowing 候補。削除対象ではなく純粋な refactor。|
+| それ以外の全 export | D | live。|
+
 ## スコープ
 
 inventory round 2。`adapter/ui` 層のうち、round 1 で触れなかった中〜大サイズの 4 ファイルを棚卸し対象とする。

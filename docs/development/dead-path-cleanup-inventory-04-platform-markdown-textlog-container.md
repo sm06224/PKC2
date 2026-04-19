@@ -1,5 +1,16 @@
 # Dead Path Cleanup Inventory 04 — adapter/platform + features/container + features/markdown + features/textlog
 
+**Resolution status** (2026-04-19):
+
+| Finding | 分類 | Resolution |
+|---------|------|------------|
+| `exporter.ts` の local `slugify` / `formatDateCompact` 重複 | B (refactor) | **Resolved by PR #40** — `zip-package.ts` 側 export からの import に置換、bundle ~200 bytes 減。|
+| `updateLogEntry` (textlog-body.ts) | B | **Removed by PR #41** — architectural mismatch 判定 (collectBody が DOM 再構築する設計、helper を呼ぶ経路が構造上不在)。|
+| `isUlid` (log-id.ts) | B | **Retained as C by PR #41** — docstring が "debugging / audit tooling only" を明示し非 production 使用が設計意図と判明。昇格して retain 確定。|
+| `getMarkdownInstance` (markdown-render.ts) | C | 保留 — `ux-regression-recovery.md:128` で明示された plugin extension API。|
+| CSV flags 列 compat / legacy log-id accept / FI-03 placeholder hydrate fallback | C | 保留 — backward compat invariant。|
+| その他全 export | D | live。|
+
 ## スコープ
 
 inventory round 4。これまでの 3 round で adapter/ui 層と features の一部 (entry-ref / link-index / auto-placement) を棚卸しした上で、残る大きな領域を 4 グループに分けて精査する。

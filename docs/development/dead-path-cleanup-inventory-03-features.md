@@ -1,5 +1,16 @@
 # Dead Path Cleanup Inventory 03 — features 層 (entry-ref / link-index / auto-placement)
 
+**Resolution status** (2026-04-19):
+
+Round 3 も A 級候補ゼロで終了。B / C 候補のうち次のように推移:
+
+| Finding | 分類 | Resolution |
+|---------|------|------------|
+| `isValidEntryRef` (entry-ref.ts) | B | **保留継続**。削除の smoking gun 不在 (挙動矛盾なし / docstring forward intent なし)。highlighting feature 計画後に再判定。|
+| `extractRefsFromEntry` / `collectLinkRefs` / `LinkSourceArchetype` (link-index.ts) | C | 保留 — `docs/spec/link-index-v1-behavior-contract.md §3.2 / §2.1` で明示公開された API surface。削除には spec revision が必要。|
+| Round 0 foundation 未接続仮説 (entry-ref / link-index / auto-placement) | — | 棚卸しで **全 live 実装** と確認、仮説払拭。|
+| その他全 export | D | live。|
+
 ## スコープ
 
 inventory round 3。adapter/ui 層を 2 round 棚卸しした結果「不用意に削る段階ではない」と判断できたため、次は features 層に入る。foundation / future-feature / spec-first 実装が混ざりやすい領域のため、削除より先に「何が live で何が spec-declared なのか」を切り分ける。

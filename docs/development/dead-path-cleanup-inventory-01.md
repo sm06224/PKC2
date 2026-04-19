@@ -1,5 +1,14 @@
 # Dead Path Cleanup Inventory 01 — adapter/ui 三本
 
+**Resolution status** (2026-04-19):
+
+| Finding | 分類 | Resolution |
+|---------|------|------------|
+| `isPreviewableMedia` (attachment-presenter.ts) | B → **resolved** | Deleted by **PR #36** (test-only contract residue with docs drift). |
+| `SandboxAttribute` type export | B (cosmetic) | Retained — cosmetic API surface only. |
+| `AttachmentBody.data` legacy / `isLegacyFormat` | C | Retained — backward compat invariant. |
+| Everything else | D | live, no action. |
+
 ## スコープ
 
 本 inventory は `adapter/ui` 層の legacy / fallback / unreachable path の **初回棚卸し** を目的とする。対象は以下の 3 ファイルに限定し、「即削除」ではなく「dead path 候補」を A/B/C/D に分類することを主眼とする。
