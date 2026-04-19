@@ -36,13 +36,19 @@ interface MessageRule {
 
 /**
  * Static acceptance rules per MessageType.
- * Only types listed here are considered "supported."
+ * Only types listed here are considered "supported" for INBOUND routing.
+ *
  * ping/pong are handled by the bridge before routing, so not listed.
+ *
+ * `record:reject` is intentionally NOT listed: PKC2 only **sends** it
+ * when a pending offer is dismissed (`main.ts:391`), and currently has
+ * no architecture for receiving offer-reject replies (no outgoing-offer
+ * tracking exists). See
+ * `docs/development/transport-record-reject-decision.md`.
  */
 const MESSAGE_RULES: Partial<Record<MessageType, MessageRule>> = {
   'export:request': { mode: 'embedded-only' },
   'record:offer':   { mode: 'any' },
-  'record:reject':  { mode: 'any' },
 };
 
 // ── Public API ────────────────────────
