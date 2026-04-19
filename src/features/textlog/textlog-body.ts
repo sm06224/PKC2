@@ -68,17 +68,6 @@ export function appendLogEntry(body: TextlogBody, text: string, now: Date = new 
 }
 
 /**
- * Update the text of a log entry by id.
- */
-export function updateLogEntry(body: TextlogBody, entryId: string, newText: string): TextlogBody {
-  return {
-    entries: body.entries.map((e) =>
-      e.id === entryId ? { ...e, text: newText } : e,
-    ),
-  };
-}
-
-/**
  * Toggle a flag on a log entry.
  */
 export function toggleLogFlag(body: TextlogBody, entryId: string, flag: TextlogFlag): TextlogBody {
