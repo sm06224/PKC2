@@ -300,7 +300,33 @@ export type UserAction =
    * - Emits ENTRY_CREATED; RELATION_CREATED only when a target folder
    *   is resolved.
    */
-  | { type: 'PASTE_ATTACHMENT'; name: string; mime: string; size: number; assetKey: string; assetData: string; contextLid: string }
+  | {
+      type: 'PASTE_ATTACHMENT';
+      name: string;
+      mime: string;
+      size: number;
+      assetKey: string;
+      assetData: string;
+      contextLid: string;
+      /**
+       * v1 image intake optimization (Phase 1, paste surface only).
+       * When provided, `assetData` is the optimized payload and
+       * `${assetKey}__original` holds the original image as a second
+       * asset entry. `optimizationMeta` is attached to the
+       * attachment body as the `optimized` provenance field.
+       * See docs/spec/image-intake-optimization-v1-behavior-contract.md.
+       */
+      originalAssetData?: string;
+      optimizationMeta?: {
+        originalMime: string;
+        originalSize: number;
+        method: string;
+        quality: number;
+        resized: boolean;
+        originalDimensions: { width: number; height: number };
+        optimizedDimensions: { width: number; height: number };
+      };
+    }
   /**
    * SET_SANDBOX_POLICY — update container-level default sandbox policy.
    *

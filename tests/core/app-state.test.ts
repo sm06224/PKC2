@@ -2505,6 +2505,73 @@ describe('PASTE_ATTACHMENT', () => {
     const { state } = reduce(s, pasteAction);
     expect(state.container!.assets['att-test-001']).toBeUndefined();
   });
+
+  // ── v1 image intake optimization (Phase 1 paste surface) ──
+  // See docs/spec/image-intake-optimization-v1-behavior-contract.md §3.
+
+  it('omits the optimized body field when no optimizationMeta is provided (back-compat)', () => {
+    const s = readyState();
+    const { state } = reduce(s, pasteAction);
+    const att = findAttachment(state)!;
+    const body = JSON.parse(att.body);
+    expect(body.optimized).toBeUndefined();
+    expect(Object.keys(state.container!.assets)).toEqual(['att-test-001']);
+  });
+
+  it('records provenance in body.optimized when optimizationMeta is supplied', () => {
+    const s = readyState();
+    const { state } = reduce(s, {
+      ...pasteAction,
+      mime: 'image/webp',
+      size: 460_800,
+      optimizationMeta: {
+        originalMime: 'image/png',
+        originalSize: 2_900_000,
+        method: 'canvas-webp-lossy',
+        quality: 0.85,
+        resized: true,
+        originalDimensions: { width: 3440, height: 1440 },
+        optimizedDimensions: { width: 2560, height: 1073 },
+      },
+    });
+    const att = findAttachment(state)!;
+    const body = JSON.parse(att.body);
+    expect(body.mime).toBe('image/webp');
+    expect(body.size).toBe(460_800);
+    expect(body.optimized).toBeDefined();
+    expect(body.optimized.original_mime).toBe('image/png');
+    expect(body.optimized.original_size).toBe(2_900_000);
+    expect(body.optimized.quality).toBe(0.85);
+    expect(body.optimized.resized).toBe(true);
+    expect(body.optimized.original_dimensions).toEqual({ width: 3440, height: 1440 });
+    expect(body.optimized.optimized_dimensions).toEqual({ width: 2560, height: 1073 });
+    expect(body.optimized.original_asset_key).toBeUndefined();
+  });
+
+  it('stores a second asset under __original when originalAssetData is supplied', () => {
+    const s = readyState();
+    const { state } = reduce(s, {
+      ...pasteAction,
+      mime: 'image/webp',
+      size: 460_800,
+      assetData: 'OPTIMIZED_B64',
+      originalAssetData: 'ORIGINAL_B64',
+      optimizationMeta: {
+        originalMime: 'image/png',
+        originalSize: 2_900_000,
+        method: 'canvas-webp-lossy',
+        quality: 0.85,
+        resized: true,
+        originalDimensions: { width: 3440, height: 1440 },
+        optimizedDimensions: { width: 2560, height: 1073 },
+      },
+    });
+    expect(state.container!.assets['att-test-001']).toBe('OPTIMIZED_B64');
+    expect(state.container!.assets['att-test-001__original']).toBe('ORIGINAL_B64');
+    const att = findAttachment(state)!;
+    const body = JSON.parse(att.body);
+    expect(body.optimized.original_asset_key).toBe('att-test-001__original');
+  });
 });
 
 // ── SYS_APPLY_BATCH_IMPORT (atomic batch import) ──────

@@ -18,6 +18,7 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { showToast } from './toast';
+import { prepareOptimizedPaste } from './image-optimize/paste-optimization';
 import {
   estimateStorage,
   attachmentWarningMessage,
@@ -3509,8 +3510,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       pasteInProgress = true;
       const reader = new FileReader();
-      reader.onload = () => {
-        pasteInProgress = false;
+      reader.onload = async () => {
         const arrayBuffer = reader.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
         let binary = '';
@@ -3518,6 +3518,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           binary += String.fromCharCode(bytes[i]!);
         }
         const base64 = btoa(binary);
+
+        // v1 image intake optimization (Phase 1, paste surface only).
+        // The pipeline may be asynchronous (Canvas + confirm UI);
+        // keep pasteInProgress set until it resolves so nested pastes
+        // don't race.
+        let payload;
+        try {
+          payload = await prepareOptimizedPaste(file, base64);
+        } catch {
+          payload = {
+            assetData: base64,
+            mime: file.type || 'image/png',
+            size: file.size,
+          };
+        } finally {
+          pasteInProgress = false;
+        }
 
         // Build the reference string before dispatch
         const ref = `![${name}](asset:${assetKey})`;
@@ -3532,11 +3549,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({
           type: 'PASTE_ATTACHMENT',
           name,
-          mime: file.type || 'image/png',
-          size: file.size,
+          mime: payload.mime,
+          size: payload.size,
           assetKey,
-          assetData: base64,
+          assetData: payload.assetData,
           contextLid,
+          originalAssetData: payload.originalAssetData,
+          optimizationMeta: payload.optimizationMeta,
         });
 
         // Re-find the textarea in the (potentially rebuilt) DOM.
