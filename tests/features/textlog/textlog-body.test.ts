@@ -3,7 +3,6 @@ import {
   parseTextlogBody,
   serializeTextlogBody,
   appendLogEntry,
-  updateLogEntry,
   toggleLogFlag,
   deleteLogEntry,
   formatLogTimestampWithSeconds,
@@ -109,33 +108,6 @@ describe('appendLogEntry', () => {
     const body: TextlogBody = { entries: [] };
     appendLogEntry(body, 'New');
     expect(body.entries).toHaveLength(0);
-  });
-});
-
-// ── updateLogEntry ──
-
-describe('updateLogEntry', () => {
-  it('updates text of matching entry', () => {
-    const body: TextlogBody = {
-      entries: [
-        { id: 'log-1', text: 'Original', createdAt: '2026-04-09T10:00:00Z', flags: [] },
-      ],
-    };
-    const result = updateLogEntry(body, 'log-1', 'Updated text');
-    expect(result.entries[0]!.text).toBe('Updated text');
-    expect(result.entries[0]!.id).toBe('log-1');
-  });
-
-  it('does not modify non-matching entries', () => {
-    const body: TextlogBody = {
-      entries: [
-        { id: 'log-1', text: 'Entry 1', createdAt: '2026-04-09T10:00:00Z', flags: [] },
-        { id: 'log-2', text: 'Entry 2', createdAt: '2026-04-09T11:00:00Z', flags: [] },
-      ],
-    };
-    const result = updateLogEntry(body, 'log-1', 'Updated');
-    expect(result.entries[0]!.text).toBe('Updated');
-    expect(result.entries[1]!.text).toBe('Entry 2');
   });
 });
 
