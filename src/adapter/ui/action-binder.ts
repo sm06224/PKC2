@@ -119,6 +119,15 @@ import {
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
 import { checkAssetDuplicate } from './asset-dedupe';
+import {
+  closeEntryRefAutocomplete,
+  handleEntryRefAutocompleteKeydown,
+  isEntryRefAutocompleteOpen,
+  openEntryRefAutocomplete,
+  updateEntryRefAutocompleteQuery,
+} from './entry-ref-autocomplete';
+import { findEntryCompletionContext } from '../../features/entry-ref/entry-ref-autocomplete';
+import { isUserEntry } from '../../core/model/record';
 
 /**
  * ActionBinder: wires DOM events → UserAction dispatch.
@@ -1680,6 +1689,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (isAssetAutocompleteOpen()) {
       if (handleAssetAutocompleteKeydown(e)) return;
     }
+    // Entry-ref autocomplete (free-typing `entry:` completion). Same
+    // precedence shape as asset-autocomplete; mutually exclusive because
+    // the triggers (`(asset:` vs `(entry:`) do not overlap.
+    if (isEntryRefAutocompleteOpen()) {
+      if (handleEntryRefAutocompleteKeydown(e)) return;
+    }
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
@@ -1893,6 +1908,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Close asset autocomplete if open (handled above, safety net)
       if (isAssetAutocompleteOpen()) {
         closeAssetAutocomplete();
+        return;
+      }
+      // Close entry-ref autocomplete if open (handled above, safety net)
+      if (isEntryRefAutocompleteOpen()) {
+        closeEntryRefAutocomplete();
         return;
       }
       // Close slash menu if open (handled above via handleSlashMenuKeydown, but kept as safety net)
@@ -2404,6 +2424,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           }
         } else if (isAssetAutocompleteOpen()) {
           closeAssetAutocomplete();
+        }
+      }
+
+      // Entry-ref autocomplete — fires when the caret is inside
+      // `(entry:<query>`. Same precedence shape as asset-autocomplete but
+      // scoped to user entries (excludes system + current entry).
+      if (!isSlashMenuOpen() && !isAssetAutocompleteOpen()) {
+        const ctx = findEntryCompletionContext(text, caretPos);
+        if (ctx) {
+          if (isEntryRefAutocompleteOpen()) {
+            updateEntryRefAutocompleteQuery(ctx.query);
+          } else {
+            const state = dispatcher.getState();
+            const container = state.container;
+            if (container) {
+              const currentLid = state.editingLid;
+              const candidates = container.entries.filter(
+                (e) => isUserEntry(e) && e.lid !== currentLid,
+              );
+              openEntryRefAutocomplete(target, ctx.queryStart, ctx.query, candidates, root);
+            }
+          }
+        } else if (isEntryRefAutocompleteOpen()) {
+          closeEntryRefAutocomplete();
         }
       }
     }
@@ -3070,6 +3114,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const ac = root.querySelector('[data-pkc-region="asset-autocomplete"]');
       if (!ac || !ac.contains(e.target as Node)) {
         closeAssetAutocomplete();
+      }
+    }
+    // Close entry-ref autocomplete on click outside
+    if (isEntryRefAutocompleteOpen()) {
+      const ac = root.querySelector('[data-pkc-region="entry-ref-autocomplete"]');
+      if (!ac || !ac.contains(e.target as Node)) {
+        closeEntryRefAutocomplete();
       }
     }
 
@@ -4015,6 +4066,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeSlashMenu();
     closeAssetPicker();
     closeAssetAutocomplete();
+    closeEntryRefAutocomplete();
     registerAssetPickerCallback(null);
   };
 }
