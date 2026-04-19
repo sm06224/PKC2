@@ -1519,9 +1519,12 @@ describe('Renderer', () => {
     const relRegion = root.querySelector('[data-pkc-region="relations"]');
     expect(relRegion).not.toBeNull();
 
-    // Outbound group for e1
-    const outbound = relRegion!.querySelector('[data-pkc-relation-direction="outbound"]');
-    expect(outbound).not.toBeNull();
+    // Outgoing relations group for e1 (renamed from "outbound" in v1)
+    const outgoing = relRegion!.querySelector('[data-pkc-relation-direction="outgoing"]');
+    expect(outgoing).not.toBeNull();
+    expect(outgoing!.querySelector('.pkc-relation-heading')!.textContent).toBe(
+      'Outgoing relations (1)',
+    );
   });
 
   it('shows relation kind badge', () => {
@@ -1555,9 +1558,10 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const inbound = root.querySelector('[data-pkc-relation-direction="inbound"]');
-    expect(inbound).not.toBeNull();
-    const peer = inbound!.querySelector('[data-pkc-action="select-entry"]');
+    const backlinks = root.querySelector('[data-pkc-relation-direction="backlinks"]');
+    expect(backlinks).not.toBeNull();
+    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('Backlinks (1)');
+    const peer = backlinks!.querySelector('[data-pkc-action="select-entry"]');
     expect(peer).not.toBeNull();
     expect(peer!.getAttribute('data-pkc-lid')).toBe('e1');
   });
@@ -1582,7 +1586,7 @@ describe('Renderer', () => {
     expect(peer!.textContent).toBe('Entry Two');
   });
 
-  it('does not show relation section when no relations exist', () => {
+  it('always shows relation section with empty states when no relations exist (Backlinks v1)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
@@ -1590,7 +1594,41 @@ describe('Renderer', () => {
     render(state, root);
 
     const relRegion = root.querySelector('[data-pkc-region="relations"]');
-    expect(relRegion).toBeNull();
+    expect(relRegion).not.toBeNull();
+
+    const outgoing = relRegion!.querySelector('[data-pkc-relation-direction="outgoing"]');
+    expect(outgoing).not.toBeNull();
+    expect(outgoing!.querySelector('.pkc-relation-heading')!.textContent).toBe(
+      'Outgoing relations (0)',
+    );
+    expect(outgoing!.querySelector('.pkc-relation-empty')!.textContent).toBe(
+      'No outgoing relations.',
+    );
+    expect(outgoing!.querySelector('.pkc-relation-list')).toBeNull();
+
+    const backlinks = relRegion!.querySelector('[data-pkc-relation-direction="backlinks"]');
+    expect(backlinks).not.toBeNull();
+    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('Backlinks (0)');
+    expect(backlinks!.querySelector('.pkc-relation-empty')!.textContent).toBe('No backlinks.');
+    expect(backlinks!.querySelector('.pkc-relation-list')).toBeNull();
+  });
+
+  it('Backlinks panel is independent of link-index backlinks section', () => {
+    // v1 keeps the two backlink concepts separate: relations-based (Backlinks) and
+    // markdown-reference-based (link-index-backlinks). Both should coexist in meta pane.
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+    };
+    render(state, root);
+
+    const relationBacklinks = root.querySelector(
+      '[data-pkc-region="relations"] [data-pkc-relation-direction="backlinks"]',
+    );
+    const linkIndexBacklinks = root.querySelector('[data-pkc-region="link-index-backlinks"]');
+    expect(relationBacklinks).not.toBeNull();
+    expect(linkIndexBacklinks).not.toBeNull();
+    expect(relationBacklinks).not.toBe(linkIndexBacklinks);
   });
 
   it('shows relation creation form in ready phase', () => {

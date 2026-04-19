@@ -1873,6 +1873,13 @@ mark.pkc-search-mark {
   text-transform: uppercase;
 }
 
+.pkc-relation-empty {
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  padding-left: 0.5rem;
+  font-style: italic;
+}
+
 /* ── Relation create form ── */
 .pkc-relation-create {
   margin-top: 0.5rem;

@@ -221,7 +221,7 @@ describe('Mutation → Shell integration', () => {
     const relRegion = root.querySelector('[data-pkc-region="relations"]');
     expect(relRegion).not.toBeNull();
 
-    // Outbound section with peer title
+    // Outgoing relations section with peer title
     const peer = relRegion!.querySelector('[data-pkc-action="select-entry"]');
     expect(peer).not.toBeNull();
     expect(peer!.textContent).toBe('Second');
