@@ -61,6 +61,14 @@ jobs:
       - name: Build release HTML
         run: npm run build:release
 
+      - name: Build manual HTML
+        # Phase 4: the manual-launch smoke spec navigates
+        # /pkc2-manual.html. It needs the manual artifact present in
+        # PKC2-Extensions/ — `scripts/smoke-serve.cjs` routes that
+        # directory alongside dist/. See
+        # docs/development/manual-build-integration-plan.md §Phase 4.
+        run: npm run build:manual
+
       - name: Run smoke baseline
         run: npm run test:smoke
 
