@@ -1,7 +1,15 @@
 # Transport Record Accept / Reject — Consistency Review
 
-**Status**: active — 2026-04-19 review.
+**Status**: review complete — 2026-04-19.
 **Scope**: transport `record:accept` / `record:reject` の実装 / 仕様 / capability / handler の整合性確認。削除ではなく差分の明文化が目的。
+
+**Resolution status** (2026-04-19):
+
+| Finding | Resolution |
+|---------|------------|
+| `record-offer-handler.ts` JSDoc の `2-phase contract` + `SYS_ACCEPT_OFFER` | **Resolved by PR #45** — JSDoc を実装と一致する 1-phase inbound 記述に置換、`SYS_ACCEPT_OFFER` → `ACCEPT_OFFER` に訂正。|
+| `record:reject` capability 宣言 vs handler 不在 (implementation drift) | **Resolved by PR #47** — **Option A: sender-only by design** に確定。capability rule から `record:reject` を削除、tests 更新、decision doc (`transport-record-reject-decision.md`) 作成。|
+| `record:accept` spec-declared surface (`RecordAcceptPayload` 未使用) | 未解決 (future-only として retain) — sender / receiver いずれの実装も現 architecture に組み込む計画なし。spec 保存のため削除せず。|
 
 inventory 05 (PR #43) で "capability 宣言 vs handler 不在" として C 保留にした 2 項目について、実装と仕様のどちらが drift しているのかを切り分ける。
 
