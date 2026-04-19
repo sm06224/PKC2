@@ -165,11 +165,18 @@ JSDoc に背景を明記し、本 doc §3.1 への cross-link を残した。
 
 | Phase | タスク | 成果 |
 |-------|--------|------|
-| **Phase 1 (本 PR)** | 棚卸し + 最小回復 | design doc + `$&` fix、manual HTML 正常生成 |
-| Phase 2 (推奨・次 PR) | ci.yml に `build:manual` step 追加 + JSON parse assertion | PR / main push で manual breakage が即検知 |
-| Phase 3 (任意) | manual-builder が `__about__` entry を注入 | manual の About ダイアログが本体と一致 |
+| **Phase 1** (PR #48) | 棚卸し + 最小回復 | design doc + `$&` fix、manual HTML 正常生成 |
+| **Phase 2** (PR #49) | ci.yml に `build:manual` + `check:manual` step 追加 | PR / main push で manual breakage が即検知 |
+| **Phase 3** (本 PR) | manual-builder が `__about__` entry を注入 (release-builder と parity) | manual の About ダイアログが本体と一致、release provenance (version / commit / build.timestamp) が正しく反映 |
 | Phase 4 (任意) | Playwright smoke で manual HTML も navigate check | 描画レベルの regression 防止 |
 | Phase 5 (public repo 側) | PKC2 Release asset → Pages 連携 (上記 §4.4 A 方式) | 配布自動化 |
+
+### Phase 3 実装メモ (本 PR)
+
+- `buildAboutEntry(pkg, buildAt, sourceCommit)` を `build/about-entry-builder.ts` から共有使用
+- manual-builder は `aboutBuildAt = new Date().toISOString()` / `aboutCommit = computeGitStamp()` を渡す (BUILD_TIMESTAMP 固定値ではなく **実 build 時刻 / git 状態** を使用)。理由: About 表示は **release provenance** であり "この artifact がいつ / どの commit で作られたか" を示すのが本務。chapter 本文エントリは従来通り BUILD_TIMESTAMP で reproducible
+- About Entry は `entries[]` の先頭に prepend (release-builder の挙動と対称)
+- `about-entry-builder.ts` の `AboutEntry.archetype` 型を `string` → `'system-about'` リテラルに narrowing (manual-builder が typed `Entry[]` に push するため必要。release-builder の型推論には影響なし)
 
 ## 7. Rollback / Safety
 

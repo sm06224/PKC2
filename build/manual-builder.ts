@@ -19,6 +19,8 @@ import { resolve, dirname, basename } from 'path';
 import type { Container, ContainerMeta } from '../src/core/model/container';
 import type { Entry, ArchetypeId } from '../src/core/model/record';
 import type { Relation } from '../src/core/model/relation';
+import { buildAboutEntry } from './about-entry-builder';
+import { computeGitStamp } from './git-stamp';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
@@ -87,6 +89,21 @@ function main(): void {
   const entries: Entry[] = [];
   const relations: Relation[] = [];
   const assets: Record<string, string> = {};
+
+  // 0. System `__about__` entry (Phase 3 parity with release-builder).
+  //
+  // Use real `new Date()` + `computeGitStamp()` rather than the fixed
+  // BUILD_TIMESTAMP so the manual's About dialog reflects actual
+  // release provenance (version / commit / build time), matching the
+  // contract used by `dist/pkc2.html`. Content entries below keep
+  // BUILD_TIMESTAMP because chapter reproducibility is more important
+  // than per-entry timestamps.
+  //
+  // See docs/development/manual-build-integration-plan.md §"Phase 3".
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
+  const aboutBuildAt = new Date().toISOString();
+  const aboutCommit = computeGitStamp();
+  entries.push(buildAboutEntry(pkg, aboutBuildAt, aboutCommit));
 
   // 1. Folder entries
   for (const folder of FOLDERS) {
