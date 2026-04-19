@@ -282,7 +282,10 @@ export function renderMarkdown(text: string): string {
  */
 export function hasMarkdownSyntax(text: string): boolean {
   if (!text) return false;
-  return /^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text);
+  if (/^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text)) return true;
+  // FI-08.x: bare URLs should flow through markdown-it linkify (D-FB1=B).
+  if (/\b(?:https?|ftp):\/\/[^\s<>]/i.test(text)) return true;
+  return false;
 }
 
 /**

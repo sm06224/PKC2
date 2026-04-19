@@ -47,6 +47,12 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'RELATION_DELETED',
   'CONTAINER_LOADED',
   'CONTAINER_IMPORTED',
+  // FI-Settings v1 (2026-04-18): `SETTINGS_CHANGED` fires whenever any
+  // theme/display/locale setting is mutated. The reducer has already
+  // upserted `__settings__` into the container by the time we see the
+  // event, so a plain `save(container)` persists it — no separate
+  // dispatch round-trip is needed.
+  'SETTINGS_CHANGED',
 ]);
 
 const DEBOUNCE_MS = 300;

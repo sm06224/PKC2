@@ -7628,3 +7628,64 @@ describe('Sidebar scroll-into-view', () => {
     }
   });
 });
+
+// ── FI-08.x: editor textarea stays plain / read mode autolinks (T-FBC-12, T-FBC-13) ──
+// See docs/spec/addressbar-paste-fallback-v1-behavior-contract.md §7-5
+describe('FI-08.x — editor textarea and read-mode autolink (T-FBC-12, T-FBC-13)', () => {
+  const urlContainer: Container = {
+    meta: {
+      container_id: 'urltest',
+      title: 'URL Test',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'u1',
+        title: 'URL only entry',
+        body: 'https://example.com',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  // T-FBC-12: edit mode textarea.value stays plain URL (I-FBC7)
+  it('T-FBC-12: edit mode textarea[data-pkc-field="body"].value stays plain URL (no <a>)', () => {
+    const state: AppState = {
+      phase: 'editing', container: urlContainer,
+      selectedLid: 'u1', editingLid: 'u1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+    };
+    render(state, root);
+
+    const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    expect(bodyArea).not.toBeNull();
+    expect(bodyArea!.value).toBe('https://example.com');
+    // textarea.value MUST be the raw string, never HTML-ified
+    expect(bodyArea!.value).not.toContain('<a');
+    expect(bodyArea!.value).not.toContain('href=');
+  });
+
+  // T-FBC-13: read mode detail view renders bare URL as <a>
+  it('T-FBC-13: read mode detail view renders bare URL as <a href>', () => {
+    const state: AppState = {
+      phase: 'ready', container: urlContainer,
+      selectedLid: 'u1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [],
+    };
+    render(state, root);
+
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view).not.toBeNull();
+
+    // The body surface must contain a clickable <a> for the URL
+    const anchor = view!.querySelector('a[href="https://example.com"]');
+    expect(anchor).not.toBeNull();
+    expect(anchor!.getAttribute('target')).toBe('_blank');
+    expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+});

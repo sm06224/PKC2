@@ -6,9 +6,13 @@
  * All formatters accept an optional Date for testability (default: now).
  */
 
-/** Returns locale-aware short weekday name via Intl.DateTimeFormat. */
-function localizedDay(d: Date): string {
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+export interface FormatLocaleOptions {
+  locale?: string;
+  timeZone?: string;
+}
+
+function localizedDay(d: Date, opts?: FormatLocaleOptions): string {
+  return new Intl.DateTimeFormat(opts?.locale, { weekday: 'short', timeZone: opts?.timeZone }).format(d);
 }
 
 function pad2(n: number): string {
@@ -35,14 +39,14 @@ export function formatDateTime(d: Date = new Date()): string {
 }
 
 /** yy/MM/dd ddd */
-export function formatShortDate(d: Date = new Date()): string {
+export function formatShortDate(d: Date = new Date(), opts?: FormatLocaleOptions): string {
   const yy = pad2(d.getFullYear() % 100);
-  return `${yy}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${localizedDay(d)}`;
+  return `${yy}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${localizedDay(d, opts)}`;
 }
 
 /** yy/MM/dd ddd HH:mm:ss */
-export function formatShortDateTime(d: Date = new Date()): string {
-  return `${formatShortDate(d)} ${formatTime(d)}`;
+export function formatShortDateTime(d: Date = new Date(), opts?: FormatLocaleOptions): string {
+  return `${formatShortDate(d, opts)} ${formatTime(d)}`;
 }
 
 /** ISO 8601: yyyy-MM-ddTHH:mm:ss±HH:mm */

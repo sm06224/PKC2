@@ -545,3 +545,20 @@ describe('textlog collectBody', () => {
     expect(parsed.entries).toEqual([]);
   });
 });
+
+// ── FI-08.x: TEXTLOG rendered view autolinks bare URL (T-FBC-14) ──
+// See docs/spec/addressbar-paste-fallback-v1-behavior-contract.md §7-6
+describe('FI-08.x — TEXTLOG rendered view autolink (T-FBC-14)', () => {
+  it('T-FBC-14: TEXTLOG article containing a bare URL renders as <a href>', () => {
+    const body: TextlogBody = {
+      entries: [
+        { id: 'log-u', text: 'https://example.com', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+      ],
+    };
+    const el = textlogPresenter.renderBody(makeEntry(body));
+    const anchor = el.querySelector('a[href="https://example.com"]');
+    expect(anchor).not.toBeNull();
+    expect(anchor!.getAttribute('target')).toBe('_blank');
+    expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+});

@@ -125,30 +125,37 @@ export function hasUserContent(container: Container): boolean {
 }
 
 /**
- * Upsert system-* entries onto a container, replacing any existing
- * system entries with the supplied set. User entries and all other
- * container fields (relations, revisions, assets, meta) are preserved.
+ * Upsert system-* entries onto a container per-lid. Entries in
+ * `newSystemEntries` overwrite any existing base entry sharing the same
+ * lid; system entries whose lid is NOT supplied are preserved. User
+ * entries and all other container fields (relations, revisions, assets,
+ * meta) are preserved.
  *
  * Intended use: at boot, the freshly-built pkc-data payload carries
- * the current system entries (about, settings, …). When booting from
- * IDB or starting empty, we want those system entries to reflect the
- * current build — not whatever stale copy IDB happens to hold — so the
- * boot path merges them in before SYS_INIT_COMPLETE.
+ * the build-time system entries (e.g. `__about__`). When booting from
+ * IDB, we want the build's copy to replace any stale version — but
+ * user-mutable system entries like `__settings__` (which pkc-data does
+ * NOT supply) must survive the merge. Prior to 2026-04-18 this function
+ * wiped every non-user entry, so `__settings__` was lost on every
+ * reboot; see FI-Settings v1 persistence bug.
  *
- * Policy: **pkc-data wins for system entries**. About is immutable
- * build-time data; Settings, when added, will have its own reconciliation
- * rules (see its behavior contract §I-SETTINGS-3 for import-time host
- * priority — boot-time policy is defined here).
+ * Policy:
+ * - **pkc-data wins per-lid** for system entries it supplies (about).
+ * - **IDB retains** system entries pkc-data does not mention
+ *   (`__settings__`, future system-* entries).
  *
- * Ordering: system entries from `newSystemEntries` are appended to the
- * end of the entries list. Existing entries keep their relative order.
+ * Ordering: existing base entries keep their relative order. Brand-new
+ * system entries (lids not present in base) are appended to the end.
  *
  * Pure: no I/O, no mutation of inputs.
  */
 export function mergeSystemEntries(base: Container, newSystemEntries: Entry[]): Container {
-  const userEntries = base.entries.filter(isUserEntry);
+  const supplied = new Map(newSystemEntries.map((e) => [e.lid, e]));
+  const mergedExisting = base.entries.map((e) => supplied.get(e.lid) ?? e);
+  const existingLids = new Set(base.entries.map((e) => e.lid));
+  const appended = newSystemEntries.filter((e) => !existingLids.has(e.lid));
   return {
     ...base,
-    entries: [...userEntries, ...newSystemEntries],
+    entries: [...mergedExisting, ...appended],
   };
 }

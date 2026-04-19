@@ -60,6 +60,7 @@ import {
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
 import { parseTodoBody, formatTodoDate } from '../../features/todo/todo-body';
+import { getFormatLocale, getFormatTimeZone } from './format-context';
 
 /**
  * Archetypes that can be expanded as embed targets. Other archetypes
@@ -359,7 +360,7 @@ function renderTodoEmbed(
   if (todo.date) {
     const dateEl = document.createElement('span');
     dateEl.className = 'pkc-todo-embed-date';
-    dateEl.textContent = formatTodoDate(todo.date);
+    dateEl.textContent = formatTodoDate(todo.date, getFormatLocale());
     meta.appendChild(dateEl);
   }
 
@@ -531,7 +532,7 @@ function renderEmbeddedLog(
   header.className = 'pkc-textlog-log-header';
   const tsEl = document.createElement('span');
   tsEl.className = 'pkc-textlog-timestamp';
-  tsEl.textContent = formatLogTimestampWithSeconds(log.createdAt);
+  tsEl.textContent = formatLogTimestampWithSeconds(log.createdAt, getFormatLocale(), getFormatTimeZone());
   tsEl.setAttribute('title', log.createdAt);
   header.appendChild(tsEl);
   article.appendChild(header);

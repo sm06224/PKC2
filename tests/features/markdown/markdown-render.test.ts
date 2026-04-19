@@ -599,3 +599,95 @@ describe('B-1 / S-16 — CSV / TSV fenced block → <table>', () => {
     expect(html).toMatch(/<(pre|code)/);
   });
 });
+
+// ── FI-08.x: addressbar paste fallback v1 behavior contract ──
+// Verifies that the existing `linkify: true` configuration + validateLink
+// allowlist + link_open rule already satisfy D-FB1=B (renderer-side
+// autolink) without any implementation changes. See:
+//   docs/spec/addressbar-paste-fallback-v1-behavior-contract.md
+describe('FI-08.x — bare URL autolink on rendered Markdown (T-FBC-1 .. T-FBC-11)', () => {
+  // T-FBC-1: bare https:// URL → <a> with target/rel
+  it('T-FBC-1: autolinks bare https:// URL with target=_blank and rel=noopener noreferrer', () => {
+    const html = renderMarkdown('https://example.com');
+    expect(html).toMatch(/<a\s+[^>]*href="https:\/\/example\.com"/);
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  // T-FBC-2: bare http:// URL also autolinked
+  it('T-FBC-2: autolinks bare http:// URL', () => {
+    const html = renderMarkdown('http://example.com');
+    expect(html).toMatch(/<a\s+[^>]*href="http:\/\/example\.com"/);
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  // T-FBC-3: bare mailto: autolinked; link_open rule still attaches
+  // target=_blank + rel (current link_open applies to all non-entry links).
+  it('T-FBC-3: autolinks bare mailto: URL', () => {
+    const html = renderMarkdown('mailto:user@example.com');
+    expect(html).toMatch(/<a\s+[^>]*href="mailto:user@example\.com"/);
+  });
+
+  // T-FBC-4: inline URL inside Japanese text — autolink applies to URL only
+  it('T-FBC-4: autolinks inline URL inside surrounding text', () => {
+    const html = renderMarkdown('参考: https://example.com を見て');
+    expect(html).toMatch(/<a\s+[^>]*href="https:\/\/example\.com"/);
+    expect(html).toContain('参考:');
+    expect(html).toContain('を見て');
+  });
+
+  // T-FBC-5: multiline — each URL gets its own anchor
+  it('T-FBC-5: autolinks URL on its own line inside multiline body', () => {
+    const html = renderMarkdown('行1\nhttps://example.com\n行3');
+    expect(html).toMatch(/<a\s+[^>]*href="https:\/\/example\.com"/);
+    expect(html).toContain('行1');
+    expect(html).toContain('行3');
+  });
+
+  // T-FBC-6: plain text without URLs → no anchor emitted
+  it('T-FBC-6: does NOT emit <a> for plain text without URLs', () => {
+    const html = renderMarkdown('ただのテキスト、URL は無い。');
+    expect(html).not.toMatch(/<a[\s>]/);
+  });
+
+  // ── Dangerous scheme rejection (I-FBC4) ──
+  // T-FBC-7: javascript: must NOT be autolinked (linkify schemas don't
+  // include it; validateLink would also reject).
+  it('T-FBC-7: does NOT autolink javascript: scheme', () => {
+    const html = renderMarkdown('javascript:alert(1)');
+    expect(html).not.toMatch(/<a\s+[^>]*href="javascript:/i);
+  });
+
+  // T-FBC-8: file:// must NOT be autolinked
+  it('T-FBC-8: does NOT autolink file:// scheme', () => {
+    const html = renderMarkdown('file:///etc/passwd');
+    expect(html).not.toMatch(/<a\s+[^>]*href="file:/i);
+  });
+
+  // T-FBC-9: data:text/html must NOT be autolinked
+  it('T-FBC-9: does NOT autolink data:text/html URIs', () => {
+    const html = renderMarkdown('data:text/html,<script>alert(1)</script>');
+    expect(html).not.toMatch(/<a\s+[^>]*href="data:text\/html/i);
+  });
+
+  // ── Non-collision with FI-08 v1 explicit notation ──
+  // T-FBC-10: explicit [label](url) keeps label; no double-processing
+  // by linkify.
+  it('T-FBC-10: explicit [label](url) keeps label and does NOT duplicate autolink', () => {
+    const html = renderMarkdown('[Docs](https://x.com)');
+    expect(html).toContain('>Docs<');
+    expect(html).toMatch(/<a\s+[^>]*href="https:\/\/x\.com"/);
+    // There must be exactly one <a> for this input
+    const anchorCount = (html.match(/<a\s/g) ?? []).length;
+    expect(anchorCount).toBe(1);
+  });
+
+  // T-FBC-11: angle-bracket autolink <https://...> continues to work
+  it('T-FBC-11: preserves angle-bracket autolink <https://x.com>', () => {
+    const html = renderMarkdown('<https://x.com>');
+    expect(html).toMatch(/<a\s+[^>]*href="https:\/\/x\.com"/);
+    const anchorCount = (html.match(/<a\s/g) ?? []).length;
+    expect(anchorCount).toBe(1);
+  });
+});

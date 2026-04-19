@@ -4,6 +4,7 @@ import { ABOUT_LID } from '../../core/model/record';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
+import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
@@ -51,6 +52,8 @@ import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
+import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
+import { setFormatContext, getFormatLocale } from './format-context';
 
 /** Primary tier: always visible in the archetype filter bar (FI-09). */
 const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = ['text', 'textlog', 'folder'];
@@ -68,6 +71,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   generic: 'Generic',
   opaque: 'Opaque',
   'system-about': 'About',
+  'system-settings': 'Settings',
 };
 
 /** Archetype icons for visual distinction. */
@@ -81,10 +85,116 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   generic: '📄',
   opaque: '🔒',
   'system-about': 'ℹ️',
+  'system-settings': '⚙️',
 };
 
 function archetypeIcon(archetype: ArchetypeId): string {
   return ARCHETYPE_ICONS[archetype] ?? '📄';
+}
+
+/**
+ * FI-Settings v1 (2026-04-18): apply the resolved settings payload to
+ * the live DOM. Called on every `render()` because the root element's
+ * innerHTML is cleared just above, but the attributes / inline styles
+ * on `#pkc-root` itself survive the clear — still, we re-apply to
+ * handle transitions (e.g. settings changed while a re-render was
+ * queued).
+ *
+ * `settings.theme.*` is the primary source of truth. The legacy
+ * mirror fields (`state.showScanline` / `state.accentColor`) are used
+ * only as a fallback when `state.settings` is absent — this lets
+ * test fixtures that predate FI-Settings keep driving the DOM via the
+ * old fields without a full migration.
+ *
+ * Writes:
+ *   - `data-pkc-theme` attribute (explicit 'light' / 'dark', removed
+ *     for 'auto' which falls back to `prefers-color-scheme`)
+ *   - `data-pkc-scanline="on"` when scanline is true, removed otherwise
+ *   - `--c-accent` / `--c-border` / `--c-bg` / `--c-fg` / `--c-text` /
+ *     `--c-body-text` inline CSS variables (removed when payload holds
+ *     null → base.css defaults win)
+ *   - `--font-sans` inline CSS variable (fontDirectInput ?? preferredFont)
+ *   - `html.lang` attribute (locale.language)
+ *
+ * Timezone is NOT applied here — it's consumed by date-format helpers
+ * via AppState lookup.
+ */
+function applySystemSettings(
+  root: HTMLElement,
+  settings: SystemSettingsPayload | undefined,
+  state: AppState,
+): void {
+  // Fallback to legacy mirror fields when `state.settings` is absent
+  // so old fixtures and the brief pre-RESTORE_SETTINGS boot window
+  // still drive the DOM.
+  const resolved: SystemSettingsPayload = settings ?? {
+    ...SETTINGS_DEFAULTS,
+    theme: {
+      ...SETTINGS_DEFAULTS.theme,
+      scanline: state.showScanline === true,
+      accentColor: state.accentColor ?? null,
+    },
+  };
+
+  // Theme mode → data-pkc-theme. 'auto' clears the attribute so
+  // `prefers-color-scheme` in base.css takes over.
+  if (resolved.theme.mode === 'dark' || resolved.theme.mode === 'light') {
+    root.setAttribute('data-pkc-theme', resolved.theme.mode);
+  } else {
+    root.removeAttribute('data-pkc-theme');
+  }
+
+  if (resolved.theme.scanline) {
+    root.setAttribute('data-pkc-scanline', 'on');
+  } else {
+    root.removeAttribute('data-pkc-scanline');
+  }
+
+  if (resolved.theme.accentColor) {
+    root.style.setProperty('--c-accent', resolved.theme.accentColor);
+  } else {
+    root.style.removeProperty('--c-accent');
+  }
+  if (resolved.theme.borderColor) {
+    root.style.setProperty('--c-border', resolved.theme.borderColor);
+  } else {
+    root.style.removeProperty('--c-border');
+  }
+  if (resolved.theme.backgroundColor) {
+    root.style.setProperty('--c-bg', resolved.theme.backgroundColor);
+  } else {
+    root.style.removeProperty('--c-bg');
+  }
+  if (resolved.theme.uiTextColor) {
+    root.style.setProperty('--c-fg', resolved.theme.uiTextColor);
+    root.style.setProperty('--c-text', resolved.theme.uiTextColor);
+  } else {
+    root.style.removeProperty('--c-fg');
+    root.style.removeProperty('--c-text');
+  }
+  if (resolved.theme.bodyTextColor) {
+    root.style.setProperty('--c-body-text', resolved.theme.bodyTextColor);
+  } else {
+    root.style.removeProperty('--c-body-text');
+  }
+  // Font: direct input wins over dropdown selection (D5).
+  const effectiveFont = resolved.display.fontDirectInput ?? resolved.display.preferredFont;
+  if (effectiveFont) {
+    root.style.setProperty('--font-sans', `'${effectiveFont}', 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace`);
+  } else {
+    root.style.removeProperty('--font-sans');
+  }
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    if (resolved.locale.language) {
+      document.documentElement.setAttribute('lang', resolved.locale.language);
+    } else {
+      // Default to 'ja' (shipped HTML uses ja) — keep in sync with
+      // index.html; removing the attribute entirely would break
+      // accessibility assumptions.
+      document.documentElement.setAttribute('lang', 'ja');
+    }
+  }
 }
 
 function archetypeLabel(archetype: ArchetypeId): string {
@@ -123,6 +233,9 @@ const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = 
  */
 
 export function render(state: AppState, root: HTMLElement): void {
+  const localeSettings = state.settings?.locale;
+  setFormatContext(localeSettings?.language, localeSettings?.timezone);
+
   // P1-1: sync reducer-owned transient UI state into the forward
   // caches used by legacy reader APIs. Must happen BEFORE the DOM
   // is rebuilt below so presenters see the current selection state.
@@ -136,20 +249,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
-  if (state.showScanline) {
-    root.setAttribute('data-pkc-scanline', 'on');
-  } else {
-    root.removeAttribute('data-pkc-scanline');
-  }
-  // Accent color override (FI-12 follow-up). Written as an inline
-  // style on `#pkc-root` so it cascades to everything referencing
-  // `--c-accent`. undefined → remove the override so the base.css
-  // default (neon green) takes over.
-  if (state.accentColor) {
-    root.style.setProperty('--c-accent', state.accentColor);
-  } else {
-    root.style.removeProperty('--c-accent');
-  }
+  applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {
     case 'initializing':
@@ -519,7 +619,7 @@ function renderShellMenu(
   // never gets pushed below the right pane or clipped by the event log.
   const overlay = createElement('div', 'pkc-shell-menu-overlay');
   overlay.setAttribute('data-pkc-region', 'shell-menu');
-  overlay.style.display = 'none';
+  overlay.style.display = state.menuOpen ? '' : 'none';
 
   const card = createElement('div', 'pkc-shell-menu-card');
 
@@ -604,6 +704,204 @@ function renderShellMenu(
   accentControls.appendChild(accentReset);
   accentSection.appendChild(accentControls);
   card.appendChild(accentSection);
+
+  // FI-Settings v1 full UI — additional appearance / locale controls.
+  const settings = state.settings ?? SETTINGS_DEFAULTS;
+  // Theme-aware defaults for color pickers: so the picker opens at the
+  // current effective color rather than black.
+  const themeDefaults = currentTheme === 'light'
+    ? { bg: '#f0ebe0', fg: '#1a1a14' }
+    : { bg: '#0d0f0a', fg: '#c8d8b0' };
+
+  // Border color
+  const borderSection = createElement('div', 'pkc-shell-menu-section');
+  const borderLabel = createElement('span', 'pkc-shell-menu-label');
+  borderLabel.textContent = 'Border';
+  borderSection.appendChild(borderLabel);
+  const borderControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const borderInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  borderInput.type = 'color';
+  borderInput.setAttribute('data-pkc-action', 'set-border-color');
+  borderInput.value = settings.theme.borderColor ?? '#333333';
+  borderControls.appendChild(borderInput);
+  const borderReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  borderReset.setAttribute('data-pkc-action', 'reset-border-color');
+  borderReset.textContent = 'Default';
+  borderControls.appendChild(borderReset);
+  borderSection.appendChild(borderControls);
+  card.appendChild(borderSection);
+
+  // Background color
+  const bgSection = createElement('div', 'pkc-shell-menu-section');
+  const bgLabel = createElement('span', 'pkc-shell-menu-label');
+  bgLabel.textContent = 'Background';
+  bgSection.appendChild(bgLabel);
+  const bgControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const bgInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  bgInput.type = 'color';
+  bgInput.setAttribute('data-pkc-action', 'set-background-color');
+  bgInput.value = settings.theme.backgroundColor ?? themeDefaults.bg;
+  bgControls.appendChild(bgInput);
+  const bgReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  bgReset.setAttribute('data-pkc-action', 'reset-background-color');
+  bgReset.textContent = 'Default';
+  bgControls.appendChild(bgReset);
+  bgSection.appendChild(bgControls);
+  card.appendChild(bgSection);
+
+  // UI text color
+  const uiTextSection = createElement('div', 'pkc-shell-menu-section');
+  const uiTextLabel = createElement('span', 'pkc-shell-menu-label');
+  uiTextLabel.textContent = 'UI Text';
+  uiTextSection.appendChild(uiTextLabel);
+  const uiTextControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const uiTextInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  uiTextInput.type = 'color';
+  uiTextInput.setAttribute('data-pkc-action', 'set-ui-text-color');
+  uiTextInput.value = settings.theme.uiTextColor ?? themeDefaults.fg;
+  uiTextControls.appendChild(uiTextInput);
+  const uiTextReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  uiTextReset.setAttribute('data-pkc-action', 'reset-ui-text-color');
+  uiTextReset.textContent = 'Default';
+  uiTextControls.appendChild(uiTextReset);
+  uiTextSection.appendChild(uiTextControls);
+  card.appendChild(uiTextSection);
+
+  // Body text color
+  const bodyTextSection = createElement('div', 'pkc-shell-menu-section');
+  const bodyTextLabel = createElement('span', 'pkc-shell-menu-label');
+  bodyTextLabel.textContent = 'Body Text';
+  bodyTextSection.appendChild(bodyTextLabel);
+  const bodyTextControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const bodyTextInput = createElement('input', 'pkc-shell-menu-accent-input') as HTMLInputElement;
+  bodyTextInput.type = 'color';
+  bodyTextInput.setAttribute('data-pkc-action', 'set-body-text-color');
+  bodyTextInput.value = settings.theme.bodyTextColor ?? themeDefaults.fg;
+  bodyTextControls.appendChild(bodyTextInput);
+  const bodyTextReset = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+  bodyTextReset.setAttribute('data-pkc-action', 'reset-body-text-color');
+  bodyTextReset.textContent = 'Default';
+  bodyTextControls.appendChild(bodyTextReset);
+  bodyTextSection.appendChild(bodyTextControls);
+  card.appendChild(bodyTextSection);
+
+  // WCAG contrast ratio display
+  const wcagSection = createElement('div', 'pkc-shell-menu-section');
+  wcagSection.setAttribute('data-pkc-region', 'wcag-contrast');
+  const wcagLabel = createElement('span', 'pkc-shell-menu-label');
+  wcagLabel.textContent = 'Contrast';
+  wcagSection.appendChild(wcagLabel);
+  const wcagBox = createElement('div', 'pkc-shell-menu-wcag');
+  const effectiveBg = settings.theme.backgroundColor ?? themeDefaults.bg;
+  const effectiveUiText = settings.theme.uiTextColor ?? themeDefaults.fg;
+  const effectiveBodyText = settings.theme.bodyTextColor ?? themeDefaults.fg;
+  const uiRatio = contrastRatio(effectiveBg, effectiveUiText);
+  const bodyRatio = contrastRatio(effectiveBg, effectiveBodyText);
+  const uiGrade = wcagGrade(uiRatio);
+  const bodyGrade = wcagGrade(bodyRatio);
+  const uiLine = createElement('div', 'pkc-wcag-line');
+  uiLine.innerHTML = `UI: <strong>${formatContrastRatio(uiRatio)}</strong> <span class="pkc-wcag-badge" data-pkc-wcag="${uiGrade}">${uiGrade}</span>`;
+  const bodyLine = createElement('div', 'pkc-wcag-line');
+  bodyLine.innerHTML = `Body: <strong>${formatContrastRatio(bodyRatio)}</strong> <span class="pkc-wcag-badge" data-pkc-wcag="${bodyGrade}">${bodyGrade}</span>`;
+  wcagBox.appendChild(uiLine);
+  wcagBox.appendChild(bodyLine);
+  wcagSection.appendChild(wcagBox);
+  card.appendChild(wcagSection);
+
+  // Preferred font (dropdown + direct input)
+  const fontSection = createElement('div', 'pkc-shell-menu-section');
+  const fontLabel = createElement('span', 'pkc-shell-menu-label');
+  fontLabel.textContent = 'Font';
+  fontSection.appendChild(fontLabel);
+  const fontControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const fontSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  fontSelect.setAttribute('data-pkc-action', 'set-preferred-font');
+  const fontOptions: { value: string; label: string }[] = [
+    { value: '', label: 'Preset' },
+    { value: 'BIZ UDGothic', label: 'BIZ UDGothic' },
+    { value: 'IBM Plex Mono', label: 'IBM Plex Mono' },
+    { value: 'Share Tech Mono', label: 'Share Tech Mono' },
+    { value: 'Inter', label: 'Inter' },
+    { value: 'sans-serif', label: 'Sans Serif' },
+    { value: 'monospace', label: 'Monospace' },
+  ];
+  for (const { value, label } of fontOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.display.preferredFont ?? '')) opt.selected = true;
+    fontSelect.appendChild(opt);
+  }
+  fontControls.appendChild(fontSelect);
+  const fontInput = createElement('input', 'pkc-shell-menu-font-input') as HTMLInputElement;
+  fontInput.type = 'text';
+  fontInput.placeholder = 'Direct input (priority)';
+  fontInput.setAttribute('data-pkc-action', 'set-font-direct-input');
+  fontInput.value = settings.display.fontDirectInput ?? '';
+  fontControls.appendChild(fontInput);
+  fontSection.appendChild(fontControls);
+  card.appendChild(fontSection);
+
+  // Language
+  const langSection = createElement('div', 'pkc-shell-menu-section');
+  const langLabel = createElement('span', 'pkc-shell-menu-label');
+  langLabel.textContent = 'Language';
+  langSection.appendChild(langLabel);
+  const langControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const langSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  langSelect.setAttribute('data-pkc-action', 'set-language');
+  const langOptions: { value: string; label: string }[] = [
+    { value: '', label: 'System' },
+    { value: 'ja', label: '日本語 (ja)' },
+    { value: 'en', label: 'English (en)' },
+    { value: 'en-US', label: 'English (en-US)' },
+    { value: 'zh-Hant-TW', label: '繁體中文 (zh-Hant-TW)' },
+    { value: 'ko', label: '한국어 (ko)' },
+  ];
+  for (const { value, label } of langOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.locale.language ?? '')) opt.selected = true;
+    langSelect.appendChild(opt);
+  }
+  langControls.appendChild(langSelect);
+  langSection.appendChild(langControls);
+  card.appendChild(langSection);
+
+  // Timezone
+  const tzSection = createElement('div', 'pkc-shell-menu-section');
+  const tzLabel = createElement('span', 'pkc-shell-menu-label');
+  tzLabel.textContent = 'Timezone';
+  tzSection.appendChild(tzLabel);
+  const tzControls = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const tzSelect = createElement('select', 'pkc-shell-menu-select') as HTMLSelectElement;
+  tzSelect.setAttribute('data-pkc-action', 'set-timezone');
+  const tzOptions: { value: string; label: string }[] = [
+    { value: '', label: 'System' },
+    { value: 'Asia/Tokyo', label: 'Asia/Tokyo (JST)' },
+    { value: 'UTC', label: 'UTC' },
+    { value: 'America/New_York', label: 'America/New_York (ET)' },
+    { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PT)' },
+    { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+  ];
+  for (const { value, label } of tzOptions) {
+    const opt = createElement('option', '') as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = label;
+    if (value === (settings.locale.timezone ?? '')) opt.selected = true;
+    tzSelect.appendChild(opt);
+  }
+  tzControls.appendChild(tzSelect);
+  tzSection.appendChild(tzControls);
+  card.appendChild(tzSection);
+
+  // i18n limitation notice
+  const i18nNotice = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-i18n-notice');
+  const i18nText = createElement('span', 'pkc-shell-menu-notice-text');
+  i18nText.textContent = 'Language / Timezone は日付表示のフォーマットに反映されます。UI 文字列の翻訳は未実装です。';
+  i18nNotice.appendChild(i18nText);
+  card.appendChild(i18nNotice);
 
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
@@ -2189,7 +2487,7 @@ function renderKanbanView(state: AppState): HTMLElement {
 
       if (item.todo.date) {
         const date = createElement('div', 'pkc-kanban-card-date');
-        date.textContent = formatTodoDate(item.todo.date);
+        date.textContent = formatTodoDate(item.todo.date, getFormatLocale());
         if (isTodoPastDue(item.todo)) {
           date.classList.add('pkc-todo-date-overdue');
         }
@@ -3977,6 +4275,10 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
     traitsBox.appendChild(chip);
   }
   container.appendChild(traitsBox);
+
+  const i18nNote = createElement('p', 'pkc-about-i18n-note');
+  i18nNote.textContent = 'i18n: Language / Timezone settings affect date formatting. Full UI string translation is not yet implemented.';
+  container.appendChild(i18nNote);
 
   const metaTable = createElement('dl', 'pkc-about-meta');
   const metaRows: [string, Node][] = [];

@@ -2,6 +2,7 @@ import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
 import type { EntryConflict, Resolution } from '../model/merge-conflict';
 import type { EditBaseSnapshot } from '../operations/dual-edit-safety';
+import type { SystemSettingsPayload, ThemeMode } from '../model/system-settings-payload';
 
 /** Export scope: 'light' omits assets; 'full' includes everything. */
 export type ExportMode = 'light' | 'full';
@@ -153,6 +154,47 @@ export type UserAction =
   | { type: 'SET_SCANLINE'; on: boolean }
   | { type: 'SET_ACCENT_COLOR'; color: string }
   | { type: 'RESET_ACCENT_COLOR' }
+  /**
+   * FI-Settings v1 (2026-04-18) — system settings persistence.
+   * Contract: `docs/spec/system-settings-hidden-entry-v1-behavior-contract.md`.
+   *
+   * All settings actions are gated to `phase === 'ready'` and blocked
+   * when `state.readonly` is set. Each emits `SETTINGS_CHANGED`.
+   *
+   * TOGGLE_SCANLINE / SET_SCANLINE / SET_ACCENT_COLOR /
+   * RESET_ACCENT_COLOR (legacy FI-12 mirror actions above) additionally
+   * write to `state.settings.theme.*` and emit `SETTINGS_CHANGED` so
+   * the existing theme UI stays wire-compatible — see the mirror
+   * section of the behavior contract.
+   *
+   * RESTORE_SETTINGS is a system-side action dispatched by main.ts
+   * after boot once the `__settings__` entry has been resolved. It
+   * replaces `state.settings` wholesale and reconstructs the mirror
+   * fields (showScanline / accentColor) from the payload; it does NOT
+   * emit SETTINGS_CHANGED (boot-time restoration is not a user
+   * modification).
+   */
+  | { type: 'SET_THEME_MODE'; mode: ThemeMode }
+  | { type: 'RESET_THEME_MODE' }
+  | { type: 'SET_BORDER_COLOR'; color: string }
+  | { type: 'RESET_BORDER_COLOR' }
+  | { type: 'SET_BACKGROUND_COLOR'; color: string }
+  | { type: 'RESET_BACKGROUND_COLOR' }
+  | { type: 'SET_UI_TEXT_COLOR'; color: string }
+  | { type: 'RESET_UI_TEXT_COLOR' }
+  | { type: 'SET_BODY_TEXT_COLOR'; color: string }
+  | { type: 'RESET_BODY_TEXT_COLOR' }
+  | { type: 'SET_PREFERRED_FONT'; font: string }
+  | { type: 'RESET_PREFERRED_FONT' }
+  | { type: 'SET_FONT_DIRECT_INPUT'; font: string }
+  | { type: 'RESET_FONT_DIRECT_INPUT' }
+  | { type: 'SET_LANGUAGE'; language: string }
+  | { type: 'RESET_LANGUAGE' }
+  | { type: 'SET_TIMEZONE'; timezone: string }
+  | { type: 'RESET_TIMEZONE' }
+  | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
+  | { type: 'TOGGLE_MENU' }
+  | { type: 'CLOSE_MENU' }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }

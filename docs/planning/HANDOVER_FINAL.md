@@ -209,7 +209,7 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
 
 ### 5.1 merge import 未実装（**部分解消 — Tier 3-1 MVP + H-10 v1, 2026-04-17**）
 - ~~現状 import は **full replace** のみ~~ → Tier 3-1 で Overlay MVP（append-only）、H-10 v1 で entry 単位 conflict UI（C1/C2/C2-multi + 3 操作 + bulk + provenance）まで到達
-- ~~merge には conflict resolution 戦略（新規 cid 採番 / lid 衝突時の扱い / relation の張り替え）の設計が必要~~ → `docs/spec/merge-import-conflict-resolution.md` + `docs/spec/merge-conflict-ui-v1-behavior-contract/` で固定
+- ~~merge には conflict resolution 戦略（新規 cid 採番 / lid 衝突時の扱い / relation の張り替え）の設計が必要~~ → `docs/spec/merge-import-conflict-resolution.md` + `docs/spec/merge-conflict-ui-v1-behavior-contract.md` で固定
 - 追加だけの用途には **Batch Import** / **単体 bundle (.text.zip / .textlog.zip)** が引き続き利用可能
 - **なお v1 非対象**: §9 将来拡張（policy UI / staging / revision 持込 / diff export / merge undo）、accept-incoming（host 上書き）、semantic merge、attachment binary diff — いずれも v1.x / v2 テーマとして据え置き（§20.5 参照）
 
@@ -1187,8 +1187,8 @@ scope を厳守した。
 
 ### 20.2 並行で追加した補助 spec / dev doc / manual
 
-- **behavior contract**（新規、13 章分割）:
-  - `docs/spec/merge-conflict-ui-v1-behavior-contract/00-positioning.md` 〜 `12-non-goal.md`
+- **behavior contract**（新規、単一ファイル統合済み）:
+  - `docs/spec/merge-conflict-ui-v1-behavior-contract.md`（§0〜§12、775 行）
   - supervisor 確定事項 2 点: (1) multi-host 代表 = `updatedAt` 最新 + tie-break array index 昇順 (2) `contentHash` 入力 = `body + archetype`（title は分類軸なので除外）
   - I-MergeUI1〜I-MergeUI10 の不変条件固定
 - **dev doc**（`docs/development/`）:

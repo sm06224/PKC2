@@ -146,14 +146,38 @@ describe('mergeSystemEntries', () => {
     expect(result.entries).toHaveLength(2);
   });
 
-  it('strips stale system entries when given an empty supply', () => {
-    // This case covers: pkc-data had no system entries but IDB did.
-    // The supplied list is authoritative, so IDB's system entries go away.
+  it('preserves unmentioned system entries when given an empty supply', () => {
+    // Per-lid upsert (FI-Settings v1, 2026-04-18): supplying nothing
+    // means "no changes." Pre-existing system entries whose lid is not
+    // in the supply list must survive — otherwise IDB's `__settings__`
+    // is wiped on every reboot (pkc-data only supplies `__about__`).
     const userA = makeEntry('a', 'text');
-    const staleAbout = makeEntry(ABOUT_LID, 'system-about');
-    const result = mergeSystemEntries(makeContainer([userA, staleAbout]), []);
-    expect(result.entries).toHaveLength(1);
-    expect(result.entries[0]!.lid).toBe('a');
+    const existingAbout = makeEntry(ABOUT_LID, 'system-about');
+    const existingSettings = makeEntry(SETTINGS_LID, 'system-settings');
+    const result = mergeSystemEntries(
+      makeContainer([userA, existingAbout, existingSettings]),
+      [],
+    );
+    expect(result.entries).toHaveLength(3);
+    expect(result.entries.find((e) => e.lid === ABOUT_LID)).toBeDefined();
+    expect(result.entries.find((e) => e.lid === SETTINGS_LID)).toBeDefined();
+  });
+
+  it('preserves unmentioned system entries while upserting supplied ones', () => {
+    // pkc-data supplies `__about__` but not `__settings__`. The new
+    // `__about__` must overwrite the stale one while `__settings__`
+    // from IDB is kept intact.
+    const userA = makeEntry('a', 'text');
+    const staleAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'STALE' };
+    const existingSettings = { ...makeEntry(SETTINGS_LID, 'system-settings'), body: 'USER_PREFS' };
+    const freshAbout = { ...makeEntry(ABOUT_LID, 'system-about'), body: 'FRESH' };
+    const result = mergeSystemEntries(
+      makeContainer([userA, staleAbout, existingSettings]),
+      [freshAbout],
+    );
+    expect(result.entries).toHaveLength(3);
+    expect(result.entries.find((e) => e.lid === ABOUT_LID)!.body).toBe('FRESH');
+    expect(result.entries.find((e) => e.lid === SETTINGS_LID)!.body).toBe('USER_PREFS');
   });
 
   it('preserves meta / relations / revisions / assets', () => {

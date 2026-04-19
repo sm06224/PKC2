@@ -581,7 +581,7 @@ function getParentCssVars(): string {
     '--c-bg', '--c-fg', '--c-accent', '--c-accent-dim', '--c-accent-fg',
     '--c-border', '--c-hover', '--c-danger', '--c-muted', '--c-surface',
     '--c-success', '--c-warn', '--c-warn-fg',
-    '--c-text', '--c-text-dim', '--c-info',
+    '--c-text', '--c-text-dim', '--c-body-text', '--c-info',
     '--font-sans', '--font-mono',
     '--radius', '--radius-lg', '--radius-sm',
     '--shadow-sm', '--glow', '--transition-fast',

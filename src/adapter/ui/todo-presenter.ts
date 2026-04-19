@@ -13,6 +13,7 @@ import {
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { getFormatLocale } from './format-context';
 
 // Re-export from features layer so existing adapter-internal consumers keep working.
 export { parseTodoBody, serializeTodoBody, formatTodoDate, isTodoPastDue };
@@ -48,7 +49,7 @@ export const todoPresenter: DetailPresenter = {
       const dateEl = document.createElement('span');
       dateEl.className = 'pkc-todo-date';
       dateEl.setAttribute('data-pkc-field', 'todo-date-display');
-      dateEl.textContent = formatTodoDate(todo.date);
+      dateEl.textContent = formatTodoDate(todo.date, getFormatLocale());
       if (isTodoPastDue(todo)) {
         dateEl.classList.add('pkc-todo-date-overdue');
       }

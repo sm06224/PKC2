@@ -3,7 +3,7 @@
 Created: 2026-04-17
 Scope: pure slice + state slice + UI slice の統合監査
 Related:
-- docs/spec/merge-conflict-ui-v1-behavior-contract/ (contract)
+- docs/spec/merge-conflict-ui-v1-behavior-contract.md (contract)
 - docs/development/merge-conflict-pure-slice.md
 - docs/development/merge-conflict-state-slice.md
 

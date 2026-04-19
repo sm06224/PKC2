@@ -63,9 +63,10 @@ describe('TOGGLE_SCANLINE reducer', () => {
     expect(next.showScanline).toBe(false);
   });
 
-  it('emits no domain events', () => {
+  it('emits SETTINGS_CHANGED (FI-Settings v1 mirror sync)', () => {
     const { events } = reduce(readyState({ showScanline: false }), { type: 'TOGGLE_SCANLINE' });
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('SETTINGS_CHANGED');
   });
 
   it('editing phase: TOGGLE_SCANLINE is ignored', () => {
@@ -101,9 +102,10 @@ describe('SET_SCANLINE reducer', () => {
     expect(next).toBe(state);
   });
 
-  it('emits no domain events', () => {
+  it('emits SETTINGS_CHANGED (FI-Settings v1 mirror sync)', () => {
     const { events } = reduce(readyState(), { type: 'SET_SCANLINE', on: true });
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('SETTINGS_CHANGED');
   });
 });
 
@@ -115,9 +117,11 @@ describe('SET_ACCENT_COLOR reducer', () => {
     expect(next.accentColor).toBe('#aabbcc');
   });
 
-  it('accepts 3-digit hex', () => {
+  it('accepts 3-digit hex and expands it to the 6-digit form (FI-Settings v1)', () => {
+    // FI-Settings v1 canonicalizes stored hex to #rrggbb so the persisted
+    // `__settings__` body always passes the isValidHexColor load-time check.
     const { state: next } = reduce(readyState(), { type: 'SET_ACCENT_COLOR', color: '#ABC' });
-    expect(next.accentColor).toBe('#abc');
+    expect(next.accentColor).toBe('#aabbcc');
   });
 
   it('rejects non-hex strings (state identity preserved)', () => {
@@ -132,9 +136,10 @@ describe('SET_ACCENT_COLOR reducer', () => {
     expect(next).toBe(state);
   });
 
-  it('emits no domain events', () => {
+  it('emits SETTINGS_CHANGED (FI-Settings v1 mirror sync)', () => {
     const { events } = reduce(readyState(), { type: 'SET_ACCENT_COLOR', color: '#112233' });
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('SETTINGS_CHANGED');
   });
 });
 

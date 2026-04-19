@@ -78,6 +78,8 @@ import {
   formatShortDateTime,
   formatISO8601,
 } from '../../features/datetime/datetime-format';
+import type { FormatLocaleOptions } from '../../features/datetime/datetime-format';
+import { getFormatLocale, getFormatTimeZone } from './format-context';
 import {
   evaluateCalcExpression,
   detectInlineCalcRequest,
@@ -145,8 +147,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Shell menu backdrop click: close menu if user clicked outside the card.
     const rawTarget = e.target as HTMLElement | null;
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
-      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-      if (menu) menu.style.display = 'none';
+      dispatcher.dispatch({ type: 'CLOSE_MENU' });
       return;
     }
 
@@ -553,6 +554,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'reset-accent-color':
         dispatcher.dispatch({ type: 'RESET_ACCENT_COLOR' });
+        break;
+      case 'reset-border-color':
+        dispatcher.dispatch({ type: 'RESET_BORDER_COLOR' });
+        break;
+      case 'reset-background-color':
+        dispatcher.dispatch({ type: 'RESET_BACKGROUND_COLOR' });
+        break;
+      case 'reset-ui-text-color':
+        dispatcher.dispatch({ type: 'RESET_UI_TEXT_COLOR' });
+        break;
+      case 'reset-body-text-color':
+        dispatcher.dispatch({ type: 'RESET_BODY_TEXT_COLOR' });
         break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
@@ -1239,18 +1252,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-shell-menu': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        dispatcher.dispatch({ type: 'TOGGLE_MENU' });
         break;
       }
       case 'close-shell-menu': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'select-about': {
-        const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menu) menu.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         if (dispatcher.getState().viewMode !== 'detail') {
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
         }
@@ -1258,12 +1268,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'set-theme': {
-        const mode = target.getAttribute('data-pkc-theme-mode') as
-          | 'light'
-          | 'dark'
-          | 'system'
-          | null;
-        if (mode) setTheme(root, mode);
+        // FI-Settings v1 follow-up (2026-04-18): dispatch SET_THEME_MODE
+        // so the change is persisted via `__settings__`. The UI uses the
+        // label `'system'`; the payload uses `'auto'` (follows system
+        // prefers-color-scheme). Map at the boundary.
+        const raw = target.getAttribute('data-pkc-theme-mode');
+        if (raw !== 'light' && raw !== 'dark' && raw !== 'system') break;
+        const mode = raw === 'system' ? 'auto' : raw;
+        dispatcher.dispatch({ type: 'SET_THEME_MODE', mode });
         // Stay open so the user can verify the new theme before closing.
         break;
       }
@@ -1281,8 +1293,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'show-shortcut-help': {
         const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
         if (helpOverlay) helpOverlay.style.display = '';
-        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menuPanel) menuPanel.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-shortcut-help': {
@@ -1300,8 +1311,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const st = dispatcher.getState();
         const overlay = buildStorageProfileOverlay(st.container);
         root.appendChild(overlay);
-        const menuPanel = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-        if (menuPanel) menuPanel.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-storage-profile': {
@@ -1905,9 +1915,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       // Close shell menu if open
-      const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
-      if (menu && menu.style.display !== 'none') {
-        menu.style.display = 'none';
+      if (state.menuOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
         return;
       }
       if (state.importPreview) {
@@ -2438,11 +2447,62 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
 
-    // Accent color picker (FI-12 follow-up). <input type="color"> fires
+    // Color pickers: accent / border / text. <input type="color"> fires
     // `change` when the user confirms a color.
     if (action === 'set-accent-color') {
       const val = (target as HTMLInputElement).value;
       if (val) dispatcher.dispatch({ type: 'SET_ACCENT_COLOR', color: val });
+    }
+    if (action === 'set-border-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_BORDER_COLOR', color: val });
+    }
+    if (action === 'set-background-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_BACKGROUND_COLOR', color: val });
+    }
+    if (action === 'set-ui-text-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_UI_TEXT_COLOR', color: val });
+    }
+    if (action === 'set-body-text-color') {
+      const val = (target as HTMLInputElement).value;
+      if (val) dispatcher.dispatch({ type: 'SET_BODY_TEXT_COLOR', color: val });
+    }
+
+    // Select controls: font / language / timezone. Empty value = "System
+    // Default" = reset to null. Non-empty = set to the selected value.
+    if (action === 'set-preferred-font') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_PREFERRED_FONT', font: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_PREFERRED_FONT' });
+      }
+    }
+    if (action === 'set-font-direct-input') {
+      const val = (target as HTMLInputElement).value.trim();
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_FONT_DIRECT_INPUT', font: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_FONT_DIRECT_INPUT' });
+      }
+    }
+    if (action === 'set-language') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_LANGUAGE', language: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_LANGUAGE' });
+      }
+    }
+    if (action === 'set-timezone') {
+      const val = (target as HTMLSelectElement).value;
+      if (val) {
+        dispatcher.dispatch({ type: 'SET_TIMEZONE', timezone: val });
+      } else {
+        dispatcher.dispatch({ type: 'RESET_TIMEZONE' });
+      }
     }
 
     // Container sandbox policy select
@@ -4874,28 +4934,6 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
 }
 
-/**
- * Apply a theme mode. 'light' / 'dark' set an explicit override; 'system'
- * removes the override so CSS falls back to the `prefers-color-scheme`
- * media query. Also updates the active highlighting on the theme buttons
- * inside the shell menu so the UI stays in sync without a full re-render.
- */
-function setTheme(root: HTMLElement, mode: 'light' | 'dark' | 'system'): void {
-  const pkc = (root.closest('#pkc-root') ?? root) as HTMLElement;
-  if (mode === 'system') {
-    pkc.removeAttribute('data-pkc-theme');
-  } else {
-    pkc.setAttribute('data-pkc-theme', mode);
-  }
-  const buttons = pkc.querySelectorAll<HTMLElement>('.pkc-shell-menu-theme-btn');
-  for (const btn of buttons) {
-    if (btn.getAttribute('data-pkc-theme-mode') === mode) {
-      btn.setAttribute('data-pkc-theme-active', 'true');
-    } else {
-      btn.removeAttribute('data-pkc-theme-active');
-    }
-  }
-}
 
 /**
  * Maps a KeyboardEvent to a date/time formatted string, or null if not a match.
@@ -4930,10 +4968,12 @@ function getDateTimeShortcutText(e: KeyboardEvent): string | null {
       return formatISO8601(now);
     }
     if (e.shiftKey) {
-      return formatShortDateTime(now);
+      const fmtOpts: FormatLocaleOptions = { locale: getFormatLocale(), timeZone: getFormatTimeZone() };
+      return formatShortDateTime(now, fmtOpts);
     }
     if (!e.altKey) {
-      return formatShortDate(now);
+      const fmtOpts: FormatLocaleOptions = { locale: getFormatLocale(), timeZone: getFormatTimeZone() };
+      return formatShortDate(now, fmtOpts);
     }
   }
 

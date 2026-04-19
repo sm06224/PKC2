@@ -118,11 +118,11 @@ export function deleteLogEntry(body: TextlogBody, entryId: string): TextlogBody 
  * ISO timestamp instead, so millisecond fidelity is preserved when the
  * log leaves the app.
  */
-export function formatLogTimestampWithSeconds(iso: string): string {
+export function formatLogTimestampWithSeconds(iso: string, locale?: string, timeZone?: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  const day = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+  const day = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone }).format(d);
   return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
