@@ -1,19 +1,33 @@
 /**
  * Entry-ref Autocomplete — inline popup for the `entry:` URL completion.
  *
- * See `docs/development/entry-autocomplete-v1.md` for scope and terminology.
- * Structurally mirrors `asset-autocomplete.ts`: detection lives in a pure
- * helper (`features/entry-ref/entry-ref-autocomplete.ts`); this module
- * only handles DOM lifecycle, keyboard routing, and textarea editing.
+ * See `docs/development/entry-autocomplete-v1.md` and `-v1.1.md` for
+ * scope and terminology. Structurally mirrors `asset-autocomplete.ts`:
+ * detection lives in a pure helper
+ * (`features/entry-ref/entry-ref-autocomplete.ts`); this module handles
+ * DOM lifecycle, keyboard routing, and textarea editing for two trigger
+ * kinds:
+ *
+ *   - `entry-url`: caret inside `(entry:<query>`. Insert `<lid>` only.
+ *   - `bracket`:   caret inside `[[<query>`. Replace `[[<query>` with
+ *                  `[<label>](entry:<lid>)` (v1.1 wiki-style trigger).
  */
 
 import type { Entry } from '../../core/model/record';
 import { filterEntryCandidates } from '../../features/entry-ref/entry-ref-autocomplete';
 
+export type EntryRefAutocompleteKind = 'entry-url' | 'bracket';
+
 let activePopover: HTMLElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
-/** Start of the query range to replace on accept (inclusive). */
-let queryRangeStart = -1;
+/**
+ * Start of the range to replace on accept (inclusive). For `entry-url`
+ * this is the position right after `entry:` (replaces the query only).
+ * For `bracket` this is the position of the first `[` (replaces
+ * `[[<query>` wholesale).
+ */
+let replaceRangeStart = -1;
+let activeKind: EntryRefAutocompleteKind = 'entry-url';
 let selectedIndex = 0;
 let allCandidates: Entry[] = [];
 let visibleCandidates: Entry[] = [];
@@ -27,19 +41,26 @@ export function isEntryRefAutocompleteOpen(): boolean {
  *
  * When `candidates` is empty (no user entries other than the current one),
  * this is a no-op — there is nothing to suggest and the popover stays closed.
+ *
+ * @param replaceStart Start of the replacement range. Semantics depend on
+ * `kind` — see {@link replaceRangeStart}.
+ * @param kind         Trigger kind. Defaults to `entry-url` for backward
+ * compatibility with v1 callers.
  */
 export function openEntryRefAutocomplete(
   textarea: HTMLTextAreaElement,
-  queryStart: number,
+  replaceStart: number,
   query: string,
   candidates: Entry[],
   root: HTMLElement,
+  kind: EntryRefAutocompleteKind = 'entry-url',
 ): void {
   closeEntryRefAutocomplete();
   if (candidates.length === 0) return;
 
   activeTextarea = textarea;
-  queryRangeStart = queryStart;
+  replaceRangeStart = replaceStart;
+  activeKind = kind;
   allCandidates = candidates.slice();
   visibleCandidates = filterEntryCandidates(allCandidates, query);
   selectedIndex = 0;
@@ -167,16 +188,23 @@ export function handleEntryRefAutocompleteKeydown(e: KeyboardEvent): boolean {
 }
 
 function insertCandidate(cand: Entry): void {
-  if (!activeTextarea || queryRangeStart < 0) return;
+  if (!activeTextarea || replaceRangeStart < 0) return;
   const textarea = activeTextarea;
   const value = textarea.value;
   const caretPos = textarea.selectionStart ?? value.length;
 
-  const before = value.slice(0, queryRangeStart);
+  const before = value.slice(0, replaceRangeStart);
   const after = value.slice(caretPos);
-  textarea.value = before + cand.lid + after;
 
-  const newPos = queryRangeStart + cand.lid.length;
+  // Per v1.1: `bracket` replaces `[[<query>` wholesale with the canonical
+  // markdown form, while `entry-url` only replaces the <query> run.
+  const insertion =
+    activeKind === 'bracket'
+      ? `[${cand.title || cand.lid}](entry:${cand.lid})`
+      : cand.lid;
+
+  textarea.value = before + insertion + after;
+  const newPos = replaceRangeStart + insertion.length;
   textarea.selectionStart = textarea.selectionEnd = newPos;
 
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -191,7 +219,8 @@ export function closeEntryRefAutocomplete(): void {
     activePopover = null;
   }
   activeTextarea = null;
-  queryRangeStart = -1;
+  replaceRangeStart = -1;
+  activeKind = 'entry-url';
   selectedIndex = 0;
   allCandidates = [];
   visibleCandidates = [];

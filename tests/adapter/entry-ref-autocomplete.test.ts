@@ -249,3 +249,99 @@ describe('entry-ref autocomplete mouse insertion', () => {
     expect(isEntryRefAutocompleteOpen()).toBe(false);
   });
 });
+
+// ── v1.1: bracket (`[[`) trigger kind ──
+
+describe('entry-ref autocomplete — bracket (`[[`) kind', () => {
+  it('inserts `[title](entry:lid)` replacing `[[<query>` wholesale', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = 'before [[al after';
+    // Caret right after "al", i.e. between 'l' (idx 10) and ' ' (idx 11)
+    ta.selectionStart = ta.selectionEnd = 11;
+
+    const cands: Entry[] = [makeEntry('alpha-1', 'Alpha')];
+    // bracketStart = position of the first `[` in `[[`, i.e. 7
+    openEntryRefAutocomplete(ta, 7, 'al', cands, root, 'bracket');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(ta.value).toBe('before [Alpha](entry:alpha-1) after');
+    // Caret lands right after the inserted text (before ` after`)
+    expect(ta.selectionStart).toBe(7 + '[Alpha](entry:alpha-1)'.length);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
+
+  it('uses lid as label fallback for untitled entries', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[[';
+    ta.selectionStart = ta.selectionEnd = 2;
+
+    const cands: Entry[] = [makeEntry('lid-only', '')];
+    openEntryRefAutocomplete(ta, 0, '', cands, root, 'bracket');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(ta.value).toBe('[lid-only](entry:lid-only)');
+  });
+
+  it('does not auto-insert `]]` on Escape (leaves `[[<query>` intact)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[[foo';
+    ta.selectionStart = ta.selectionEnd = 5;
+
+    const cands: Entry[] = [makeEntry('alpha-1', 'Alpha')];
+    openEntryRefAutocomplete(ta, 0, 'foo', cands, root, 'bracket');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Escape' }),
+    );
+
+    expect(ta.value).toBe('[[foo');
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
+
+  it('mousedown in bracket mode inserts the markdown link form', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[[';
+    ta.selectionStart = ta.selectionEnd = 2;
+
+    const cands: Entry[] = [makeEntry('hit-lid', 'Hit Title')];
+    openEntryRefAutocomplete(ta, 0, '', cands, root, 'bracket');
+
+    const item = root.querySelector<HTMLElement>(
+      '.pkc-entry-ref-autocomplete-item',
+    );
+    item!.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+    );
+
+    expect(ta.value).toBe('[Hit Title](entry:hit-lid)');
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
+
+  it('entry-url kind still inserts only the lid (v1 behavior preserved)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 12;
+
+    const cands: Entry[] = [makeEntry('alpha-1', 'Alpha')];
+    // Explicitly pass 'entry-url' kind; also verifies the default.
+    openEntryRefAutocomplete(ta, 10, 'al', cands, root, 'entry-url');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(ta.value).toBe('[x](entry:alpha-1)');
+  });
+});
