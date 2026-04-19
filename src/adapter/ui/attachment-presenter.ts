@@ -147,13 +147,6 @@ export function isSvg(mime: string): boolean {
 }
 
 /**
- * Check if a MIME type is a video/audio type that browsers can play.
- */
-export function isPreviewableMedia(mime: string): boolean {
-  return /^(video\/(mp4|webm|ogg)|audio\/(mp3|mpeg|ogg|wav|webm))$/i.test(mime);
-}
-
-/**
  * Check if a MIME type is PDF.
  */
 export function isPdf(mime: string): boolean {
