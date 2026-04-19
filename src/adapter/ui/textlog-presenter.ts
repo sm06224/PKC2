@@ -174,7 +174,7 @@ export const textlogPresenter: DetailPresenter = {
           ctxMap.set(log.id, {
             lid: entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting,
           });
-          sectionEl.appendChild(renderLogArticlePlaceholder(entry.lid, log, fmtTs));
+          sectionEl.appendChild(renderLogArticlePlaceholder(entry.lid, log, fmtTs, selecting));
         }
       }
       docEl.appendChild(sectionEl);

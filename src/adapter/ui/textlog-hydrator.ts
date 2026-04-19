@@ -1,5 +1,6 @@
 import type { Entry } from '../../core/model/record';
 import type { LogArticle } from '../../features/textlog/textlog-doc';
+import { isLogSelected } from './textlog-selection';
 
 export const INITIAL_RENDER_ARTICLE_COUNT = 8;
 export const LOOKAHEAD_ARTICLE_COUNT = 4;
@@ -31,6 +32,7 @@ export function renderLogArticlePlaceholder(
   lid: string,
   log: LogArticle,
   formatTimestamp: (ts: string) => string,
+  selecting = false,
 ): HTMLElement {
   const article = document.createElement('article');
   article.className = 'pkc-textlog-log pkc-textlog-log-pending';
@@ -41,9 +43,27 @@ export function renderLogArticlePlaceholder(
   if (log.flags.includes('important')) {
     article.setAttribute('data-pkc-log-important', 'true');
   }
+  if (selecting && isLogSelected(log.id)) {
+    article.setAttribute('data-pkc-log-selected', 'true');
+  }
 
   const header = document.createElement('header');
   header.className = 'pkc-textlog-log-header';
+
+  if (selecting) {
+    const selectLabel = document.createElement('label');
+    selectLabel.className = 'pkc-textlog-select-label';
+    selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
+    const selectCheck = document.createElement('input');
+    selectCheck.type = 'checkbox';
+    selectCheck.className = 'pkc-textlog-select-check';
+    selectCheck.setAttribute('data-pkc-field', 'textlog-select');
+    selectCheck.setAttribute('data-pkc-lid', lid);
+    selectCheck.setAttribute('data-pkc-log-id', log.id);
+    selectCheck.checked = isLogSelected(log.id);
+    selectLabel.appendChild(selectCheck);
+    header.appendChild(selectLabel);
+  }
 
   const flagBtn = document.createElement('button');
   flagBtn.className = 'pkc-textlog-flag-btn';
@@ -115,6 +135,10 @@ export function attachHydrator(
     return { disconnect() {}, forceHydrateAll() {} };
   }
 
+  const beforePrintHandler = (): void => {
+    doForceHydrateAll();
+  };
+
   function doForceHydrateAll(): void {
     const remaining = docEl.querySelectorAll<HTMLElement>(
       '[data-pkc-hydrated="false"]',
@@ -182,9 +206,16 @@ export function attachHydrator(
 
   scheduleLookahead();
 
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('beforeprint', beforePrintHandler);
+  }
+
   return {
     disconnect() {
       observer.disconnect();
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('beforeprint', beforePrintHandler);
+      }
     },
     forceHydrateAll: doForceHydrateAll,
   };
