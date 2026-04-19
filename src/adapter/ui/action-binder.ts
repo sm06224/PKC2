@@ -126,7 +126,10 @@ import {
   openEntryRefAutocomplete,
   updateEntryRefAutocompleteQuery,
 } from './entry-ref-autocomplete';
-import { findEntryCompletionContext } from '../../features/entry-ref/entry-ref-autocomplete';
+import {
+  findBracketCompletionContext,
+  findEntryCompletionContext,
+} from '../../features/entry-ref/entry-ref-autocomplete';
 import { isUserEntry } from '../../core/model/record';
 
 /**
@@ -2428,13 +2431,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
 
       // Entry-ref autocomplete — fires when the caret is inside
-      // `(entry:<query>`. Same precedence shape as asset-autocomplete but
-      // scoped to user entries (excludes system + current entry).
+      // `(entry:<query>` (v1) or `[[<query>` (v1.1 wiki-style). Both
+      // share the same popup; the insertion format differs per kind.
+      // Checks `(entry:` first, then `[[`; the two triggers can never
+      // both match at the same caret position.
       if (!isSlashMenuOpen() && !isAssetAutocompleteOpen()) {
-        const ctx = findEntryCompletionContext(text, caretPos);
-        if (ctx) {
+        const entryCtx = findEntryCompletionContext(text, caretPos);
+        const bracketCtx = entryCtx ? null : findBracketCompletionContext(text, caretPos);
+        if (entryCtx) {
           if (isEntryRefAutocompleteOpen()) {
-            updateEntryRefAutocompleteQuery(ctx.query);
+            updateEntryRefAutocompleteQuery(entryCtx.query);
           } else {
             const state = dispatcher.getState();
             const container = state.container;
@@ -2443,7 +2449,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
               const candidates = container.entries.filter(
                 (e) => isUserEntry(e) && e.lid !== currentLid,
               );
-              openEntryRefAutocomplete(target, ctx.queryStart, ctx.query, candidates, root);
+              openEntryRefAutocomplete(
+                target,
+                entryCtx.queryStart,
+                entryCtx.query,
+                candidates,
+                root,
+                'entry-url',
+              );
+            }
+          }
+        } else if (bracketCtx) {
+          if (isEntryRefAutocompleteOpen()) {
+            updateEntryRefAutocompleteQuery(bracketCtx.query);
+          } else {
+            const state = dispatcher.getState();
+            const container = state.container;
+            if (container) {
+              const currentLid = state.editingLid;
+              const candidates = container.entries.filter(
+                (e) => isUserEntry(e) && e.lid !== currentLid,
+              );
+              openEntryRefAutocomplete(
+                target,
+                bracketCtx.bracketStart,
+                bracketCtx.query,
+                candidates,
+                root,
+                'bracket',
+              );
             }
           }
         } else if (isEntryRefAutocompleteOpen()) {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   filterEntryCandidates,
+  findBracketCompletionContext,
   findEntryCompletionContext,
 } from '@features/entry-ref/entry-ref-autocomplete';
 import type { Entry } from '@core/model/record';
@@ -124,5 +125,94 @@ describe('filterEntryCandidates', () => {
   it('is case-insensitive on both lid and title', () => {
     expect(filterEntryCandidates(all, 'PHOTO')).toHaveLength(1);
     expect(filterEntryCandidates(all, 'ABC')).toHaveLength(1);
+  });
+});
+
+// ── findBracketCompletionContext (v1.1 `[[` wiki-style trigger) ──
+
+describe('findBracketCompletionContext', () => {
+  it('matches immediately after `[[` with empty query', () => {
+    const text = '[[';
+    const res = findBracketCompletionContext(text, text.length);
+    expect(res).not.toBeNull();
+    expect(res!.bracketStart).toBe(0);
+    expect(res!.query).toBe('');
+  });
+
+  it('matches `[[foo` with partial query', () => {
+    const text = '[[foo';
+    const res = findBracketCompletionContext(text, text.length);
+    expect(res).not.toBeNull();
+    expect(res!.bracketStart).toBe(0);
+    expect(res!.query).toBe('foo');
+  });
+
+  it('allows spaces and mixed characters in the query', () => {
+    const text = '[[foo bar 123_xy';
+    const res = findBracketCompletionContext(text, text.length);
+    expect(res).not.toBeNull();
+    expect(res!.query).toBe('foo bar 123_xy');
+  });
+
+  it('does not match single `[` (not a wiki trigger)', () => {
+    const text = '[foo';
+    expect(findBracketCompletionContext(text, text.length)).toBeNull();
+  });
+
+  it('does not match plain text', () => {
+    expect(findBracketCompletionContext('plain text', 10)).toBeNull();
+  });
+
+  it('does not match when caret is before the trigger', () => {
+    const text = '[[foo';
+    expect(findBracketCompletionContext(text, 1)).toBeNull();
+  });
+
+  it('bails on `]` between `[[` and caret', () => {
+    const text = '[[foo]bar';
+    expect(findBracketCompletionContext(text, text.length)).toBeNull();
+  });
+
+  it('bails on newline between `[[` and caret', () => {
+    const text = '[[foo\nbar';
+    expect(findBracketCompletionContext(text, text.length)).toBeNull();
+  });
+
+  it('picks the innermost `[[` when nested triple brackets exist', () => {
+    const text = '[[[foo';
+    const res = findBracketCompletionContext(text, text.length);
+    expect(res).not.toBeNull();
+    expect(res!.bracketStart).toBe(1);
+    expect(res!.query).toBe('foo');
+  });
+
+  it('matches when text contains prior closed brackets on other lines', () => {
+    const text = '[x](entry:e1)\n[[foo';
+    const res = findBracketCompletionContext(text, text.length);
+    expect(res).not.toBeNull();
+    expect(res!.query).toBe('foo');
+    expect(res!.bracketStart).toBe(14);
+  });
+
+  it('returns null for empty text', () => {
+    expect(findBracketCompletionContext('', 0)).toBeNull();
+  });
+
+  it('returns null when caret is at position < 2', () => {
+    expect(findBracketCompletionContext('[', 1)).toBeNull();
+    expect(findBracketCompletionContext('x', 1)).toBeNull();
+  });
+
+  it('does not match at `[[|text]]` — caret exists after `]`', () => {
+    const text = '[[foo]]';
+    expect(findBracketCompletionContext(text, text.length)).toBeNull();
+  });
+
+  it('matches mid-query (caret inside the query run)', () => {
+    const text = '[[foobar]';
+    // Caret just before `]`, i.e. at position 8
+    const res = findBracketCompletionContext(text, 8);
+    expect(res).not.toBeNull();
+    expect(res!.query).toBe('foobar');
   });
 });

@@ -3,13 +3,21 @@
  *
  * Mirrors the shape of `adapter/ui/asset-autocomplete.ts` context detector
  * but for `entry:` instead of `asset:`. See
- * `docs/development/entry-autocomplete-v1.md` for terminology and scope.
+ * `docs/development/entry-autocomplete-v1.md` and `-v1.1.md` for
+ * terminology and scope.
  */
 
 import type { Entry } from '../../core/model/record';
 
 export interface EntryCompletionContext {
   queryStart: number;
+  query: string;
+}
+
+export interface BracketCompletionContext {
+  /** Position of the first `[` of the `[[` trigger. */
+  bracketStart: number;
+  /** Text typed after `[[` up to caret. Excludes newline and `]`. */
   query: string;
 }
 
@@ -40,6 +48,33 @@ export function findEntryCompletionContext(
   if (text[start - 7] !== '(') return null;
 
   return { queryStart: start, query: text.slice(start, caretPos) };
+}
+
+/**
+ * Returns `{ bracketStart, query }` when the caret sits inside a `[[<query>|`
+ * wiki-style trigger context. `|` is the caret; `<query>` is any run of
+ * characters that does not contain `]` or newline.
+ *
+ * Walks backward from caret, bailing on `]` or newline. A context exists
+ * when we find `[[` before either the string start or a bail character.
+ * Nested `[[` are handled by taking the *innermost* (closest to caret)
+ * `[[` pair.
+ */
+export function findBracketCompletionContext(
+  text: string,
+  caretPos: number,
+): BracketCompletionContext | null {
+  if (caretPos < 2) return null;
+
+  for (let i = caretPos; i >= 2; i--) {
+    const ch = text[i - 1];
+    if (ch === '\n' || ch === ']') return null;
+    if (ch === '[' && text[i - 2] === '[') {
+      const bracketStart = i - 2;
+      return { bracketStart, query: text.slice(i, caretPos) };
+    }
+  }
+  return null;
 }
 
 /**
