@@ -27,6 +27,7 @@ import type { Container } from '../../core/model/container';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { ReleaseMeta } from '../../runtime/release-meta';
 import { compressAssets } from './compression';
+import { slugify, formatDateCompact } from './zip-package';
 
 /**
  * ExportResult: outcome of an export attempt.
@@ -241,19 +242,4 @@ function escapeAttr(s: string): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^\w\u3000-\u9fff\uff00-\uffef]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40) || 'untitled';
-}
-
-function formatDateCompact(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}${m}${day}`;
 }
