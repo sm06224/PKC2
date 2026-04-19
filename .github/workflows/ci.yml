@@ -88,3 +88,25 @@ jobs:
         # signal. Rationale lives in
         # docs/development/release-automation-and-smoke-baseline.md.
         run: node build/check-bundle-size.cjs
+
+      - name: Build release HTML
+        # Manual builder depends on dist/pkc2.html (produced here),
+        # so we run build:release before build:manual. Matches the
+        # order used by release.yml for consistency.
+        run: npm run build:release
+
+      - name: Build manual HTML
+        # Phase 2 of manual-build integration (PR #48 was Phase 1,
+        # which fixed the $& replacement bug in manual-builder). Running
+        # build:manual on every PR/main push ensures the class of
+        # failure that hid until v* tag release can no longer regress
+        # silently. See docs/development/manual-build-integration-plan.md.
+        run: npm run build:manual
+
+      - name: Manual integrity check
+        # Asserts `PKC2-Extensions/pkc2-manual.html` contains exactly
+        # one parseable `<script id="pkc-data">` payload with a valid
+        # container shape. Locks out the specific regression the
+        # Phase 1 fix addressed, plus any similarly structured future
+        # breakage.
+        run: npm run check:manual
