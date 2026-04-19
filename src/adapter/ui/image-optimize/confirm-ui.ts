@@ -47,7 +47,7 @@ export function showOptimizeConfirm(params: OptimizeConfirmParams): Promise<Opti
     overlay.style.cssText = [
       'position:fixed',
       'inset:0',
-      'z-index:10000',
+      'z-index:20000',
       'display:flex',
       'align-items:center',
       'justify-content:center',
@@ -144,12 +144,49 @@ export function showOptimizeConfirm(params: OptimizeConfirmParams): Promise<Opti
     document.body.appendChild(overlay);
 
     let resolved = false;
+    // Escape listener is registered on document (capture phase) so it
+    // fires before action-binder's global keydown listener. The handler
+    // is removed on dialog close to avoid leaking.
+    let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+
     const finish = (result: OptimizeConfirmResult): void => {
       if (resolved) return;
       resolved = true;
+      if (escapeHandler) {
+        document.removeEventListener('keydown', escapeHandler, true);
+        escapeHandler = null;
+      }
       overlay.remove();
       resolve(result);
     };
+
+    escapeHandler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        finish({
+          action: 'decline',
+          keepOriginal: keepOriginalInput.checked,
+          remember: false,
+        });
+      }
+    };
+    document.addEventListener('keydown', escapeHandler, true);
+
+    // Simple focus trap: keep Tab cycling within the dialog.
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button, input'));
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
 
     optimizeBtn.addEventListener('click', () => {
       finish({
