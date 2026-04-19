@@ -167,16 +167,61 @@ JSDoc に背景を明記し、本 doc §3.1 への cross-link を残した。
 |-------|--------|------|
 | **Phase 1** (PR #48) | 棚卸し + 最小回復 | design doc + `$&` fix、manual HTML 正常生成 |
 | **Phase 2** (PR #49) | ci.yml に `build:manual` + `check:manual` step 追加 | PR / main push で manual breakage が即検知 |
-| **Phase 3** (本 PR) | manual-builder が `__about__` entry を注入 (release-builder と parity) | manual の About ダイアログが本体と一致、release provenance (version / commit / build.timestamp) が正しく反映 |
-| Phase 4 (任意) | Playwright smoke で manual HTML も navigate check | 描画レベルの regression 防止 |
+| **Phase 3** (PR #50) | manual-builder が `__about__` entry を注入 (release-builder と parity) | manual の About ダイアログが本体と一致、release provenance (version / commit / build.timestamp) が正しく反映 |
+| **Phase 4** (本 PR) | Playwright smoke で manual HTML を navigate check + `.md` リンク transcoding | 描画レベル regression 防止 + 章間リンク 404 解消 (manual が自己完結) |
 | Phase 5 (public repo 側) | PKC2 Release asset → Pages 連携 (上記 §4.4 A 方式) | 配布自動化 |
 
-### Phase 3 実装メモ (本 PR)
+### Phase 3 実装メモ (PR #50)
 
 - `buildAboutEntry(pkg, buildAt, sourceCommit)` を `build/about-entry-builder.ts` から共有使用
 - manual-builder は `aboutBuildAt = new Date().toISOString()` / `aboutCommit = computeGitStamp()` を渡す (BUILD_TIMESTAMP 固定値ではなく **実 build 時刻 / git 状態** を使用)。理由: About 表示は **release provenance** であり "この artifact がいつ / どの commit で作られたか" を示すのが本務。chapter 本文エントリは従来通り BUILD_TIMESTAMP で reproducible
 - About Entry は `entries[]` の先頭に prepend (release-builder の挙動と対称)
 - `about-entry-builder.ts` の `AboutEntry.archetype` 型を `string` → `'system-about'` リテラルに narrowing (manual-builder が typed `Entry[]` に push するため必要。release-builder の型推論には影響なし)
+
+### Phase 4 実装メモ (本 PR)
+
+#### manual markdown リンク transcoding (404 解消)
+
+`build/manual-builder.ts::transcodeManualLinks` を追加。chapter 本文の markdown link `[label](URL)` のうち、以下のパターンを `entry:manual-text-NN` に書き換える:
+
+- `./03_画面とビュー.md` / `./03_画面とビュー.md#foo`
+- `../manual/00_index.md`
+- `03_画面とビュー.md` (裸ファイル名)
+- `/docs/manual/03_*.md` 等の絶対パス
+
+v1 挙動: **アンカーは削除**。最終 HTML では章エントリ全体にランディングする。見出しスクロール復元は follow-up。
+
+変換対象外 (そのまま保持):
+- 外部 URL (`http://`, `https://`, `mailto:`)
+- 同ページ内アンカー (`#ローカル見出し`)
+- `entry:` / `asset:` schemes
+- 画像参照 (`![alt](url)`, alt は transcoding 対象外)
+- non-chapter markdown リンク (例: `./images/foo.png`, `./relative-note.txt`)
+
+ビルド後の manual には 47 件の `entry:manual-text-NN` 参照が存在し、raw `.md` chapter link の残存は 0 件。
+
+#### `check:manual` の強化
+
+`build/check-manual-integrity.cjs` に、text entry body 内の未変換 `.md` chapter link を検出する正規表現を追加。`transcodeManualLinks` のカバレッジ不足を `npm run check:manual` で即検知する。CI でも同等に走る。
+
+#### Playwright smoke: `tests/smoke/manual-launch.spec.ts`
+
+1. `/pkc2-manual.html` を load し `data-pkc-phase=ready` を確認 (Phase 1 regression / Phase 3 system entry の生存証明)
+2. sidebar の `li[data-pkc-lid="manual-text-02"]` (クイックスタート) を click
+3. center detail pane に `<h1>クイックスタート</h1>` が現れるのを確認
+4. 本文内の最初の `a[href^="entry:manual-text-"]` を click
+5. heading が別章に変わる (navigate-entry-ref → SELECT_ENTRY chain が機能している)
+6. page error / console error が 0 件
+
+意図的に cover しない範囲: 全章の描画品質 / 見出しアンカー scroll 復元 / About dialog 描画 / sidebar tree 展開 / view mode 切替 / visual regression。
+
+#### `scripts/smoke-serve.cjs` の拡張
+
+ROOTS に `PKC2-Extensions/` を追加。`dist/` と `PKC2-Extensions/` の 2 経路で静的配信。`/pkc2.html` (既存 app-launch spec) と `/pkc2-manual.html` (新 manual-launch spec) を同一 webServer で serve。`..` escape guard は各 ROOT 単位で継続。
+
+#### `.github/workflows/smoke.yml` の拡張
+
+`build:release` と `test:smoke` の間に `npm run build:manual` step を挿入。既存の app-launch smoke を壊さず manual smoke の前提を CI で成立させる。
 
 ## 7. Rollback / Safety
 

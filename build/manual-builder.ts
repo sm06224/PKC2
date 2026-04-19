@@ -132,6 +132,14 @@ function main(): void {
       body = readFileSync(PLANNING_18, 'utf8');
     }
 
+    // Transcode manual-internal `.md` links to PKC `entry:` links so
+    // the final `pkc2-manual.html` is self-contained and does not
+    // 404 when a reader clicks a chapter cross-reference. External
+    // URLs, `entry:`/`asset:` schemes, and in-page `#anchor` links
+    // are left untouched. See Phase 4 in
+    // docs/development/manual-build-integration-plan.md.
+    body = transcodeManualLinks(body);
+
     const title = extractTitle(body) ?? stripMdExtension(file);
     const lid = `manual-text-${number}`;
     entries.push({
@@ -284,6 +292,29 @@ function extractTitle(markdown: string): string | null {
 
 function stripMdExtension(file: string): string {
   return file.replace(/\.md$/i, '');
+}
+
+/**
+ * Rewrite manual-internal `.md` links to `entry:manual-text-NN` so
+ * the produced `pkc2-manual.html` is self-contained.
+ *
+ * v1 behavior (Phase 4):
+ * - Matches inline markdown links `[label](URL)` whose URL points at
+ *   a chapter file (`00`..`09`, optionally with a `#anchor` fragment,
+ *   optionally with `./` / `../manual/` / bare-filename prefix).
+ * - Rewrites the URL to `entry:manual-text-NN`. Anchors are dropped
+ *   in v1 — landing on the chapter entry is enough to resolve the
+ *   404 and preserves the link's semantic value. Heading-level
+ *   scroll restoration is a future follow-up.
+ * - External URLs, `entry:` / `asset:` schemes, bare `#anchor` links,
+ *   image references, and non-chapter markdown links are left alone.
+ */
+function transcodeManualLinks(body: string): string {
+  // Capture group 1 = chapter number (00..09), so we can stamp the
+  // target `entry:` lid. The path prefix and optional `#anchor` are
+  // matched but not captured — we don't emit them.
+  const RE = /\]\((?:\.{1,2}\/(?:manual\/)?|\/(?:docs\/)?manual\/)?(\d{2})_[^)#]+\.md(?:#[^)]*)?\)/g;
+  return body.replace(RE, (_match, number) => `](entry:manual-text-${number})`);
 }
 
 function makeStructuralRelation(from: string, to: string, id: string): Relation {

@@ -92,8 +92,34 @@ if (!Array.isArray(entries) || entries.length === 0) {
   fail('container.entries is missing, not an array, or empty');
 }
 
+// Phase 4 addition: no untranscoded manual-internal `.md` link should
+// survive in any text-body entry. If this triggers, `transcodeManualLinks`
+// in `build/manual-builder.ts` needs to be updated to cover the newly
+// introduced link shape. Image references (`![...](...)`) and external
+// URLs that happen to end in `.md` are out of scope; we match only the
+// chapter-file shape `NN_..md` inside inline `[label](...)` links.
+const CHAPTER_LINK_RE = /\]\((?:\.{1,2}\/(?:manual\/)?|\/(?:docs\/)?manual\/)?\d{2}_[^)]+\.md(?:#[^)]*)?\)/g;
+const textBodies = entries.filter((e) => e && typeof e.body === 'string' && e.archetype === 'text');
+const leakedLinks = [];
+for (const e of textBodies) {
+  const matches = e.body.match(CHAPTER_LINK_RE);
+  if (matches && matches.length > 0) {
+    leakedLinks.push({ lid: e.lid, samples: matches.slice(0, 3) });
+  }
+}
+if (leakedLinks.length > 0) {
+  console.error('[manual-integrity] FAIL: untranscoded chapter-file `.md` links survive in text entries:');
+  for (const { lid, samples } of leakedLinks) {
+    console.error(`  - ${lid}: ${samples.join(' / ')}`);
+  }
+  console.error(
+    '[manual-integrity]        Update `transcodeManualLinks` in build/manual-builder.ts.',
+  );
+  process.exit(1);
+}
+
 const sizeKB = (Buffer.byteLength(html, 'utf8') / 1024).toFixed(1);
 console.log(
   `[manual-integrity] OK   PKC2-Extensions/pkc2-manual.html  ${sizeKB} KB  ` +
-    `(container_id=${cid}, entries=${entries.length})`,
+    `(container_id=${cid}, entries=${entries.length}, text-entries=${textBodies.length})`,
 );
