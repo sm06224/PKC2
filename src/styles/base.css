@@ -4421,6 +4421,23 @@ mark.pkc-search-mark {
   word-break: break-word;
 }
 
+/* ── Staged render placeholder (FI-03) ── */
+.pkc-textlog-text-pending {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(128,128,128,0.04) 0 8px,
+    transparent 8px 16px
+  );
+  border-radius: 4px;
+}
+.pkc-textlog-text-pending::after {
+  content: '⏳';
+  display: block;
+  text-align: center;
+  opacity: 0.35;
+  padding: 0.5em;
+}
+
 /* ── TEXTLOG-scoped markdown density override ──
  *
  * TEXTLOG bodies render inside a grid of per-log articles with

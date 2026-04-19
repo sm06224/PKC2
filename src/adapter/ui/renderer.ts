@@ -36,6 +36,7 @@ import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
@@ -4116,7 +4117,7 @@ export function buildAssetNameMap(container: Container): Record<string, string> 
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body);
     if (att.asset_key && att.name) {
-      map[att.asset_key] = att.name;
+      map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
     }
   }
   return map;
@@ -4756,8 +4757,9 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
   }
 
   // File info
+  const displayName = deriveDisplayFilename(att.name, att.mime);
   const info = createElement('div', 'pkc-detached-attachment-info');
-  info.textContent = `${att.name} — ${att.mime}${att.size ? ` (${formatFileSize(att.size)})` : ''}`;
+  info.textContent = `${displayName} — ${att.mime}${att.size ? ` (${formatFileSize(att.size)})` : ''}`;
   root.appendChild(info);
 
   // Check data availability
@@ -4780,8 +4782,8 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
     const dlBtn = createElement('button', 'pkc-btn');
     dlBtn.setAttribute('data-pkc-action', 'download-attachment');
     dlBtn.setAttribute('data-pkc-lid', entry.lid);
-    dlBtn.setAttribute('title', `Download ${att.name}`);
-    dlBtn.textContent = `📥 Download ${att.name}`;
+    dlBtn.setAttribute('title', `Download ${displayName}`);
+    dlBtn.textContent = `📥 Download ${displayName}`;
     root.appendChild(dlBtn);
   } else {
     const stripped = createElement('div', 'pkc-attachment-stripped');

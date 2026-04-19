@@ -2069,15 +2069,37 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
 
       // Create attachment entry (no phase transition).
       const attachmentLid = generateLid();
-      const bodyMeta = JSON.stringify({
+      const bodyData: Record<string, unknown> = {
         name: action.name,
         mime: action.mime,
         size: action.size,
         asset_key: action.assetKey,
-      });
+      };
+      // v1 image intake optimization (paste + editor-drop surfaces):
+      // attach provenance metadata + optional original asset pointer.
+      if (action.optimizationMeta) {
+        const provenance: Record<string, unknown> = {
+          original_mime: action.optimizationMeta.originalMime,
+          original_size: action.optimizationMeta.originalSize,
+          method: action.optimizationMeta.method,
+          quality: action.optimizationMeta.quality,
+          resized: action.optimizationMeta.resized,
+          original_dimensions: action.optimizationMeta.originalDimensions,
+          optimized_dimensions: action.optimizationMeta.optimizedDimensions,
+        };
+        if (action.originalAssetData) {
+          provenance.original_asset_key = `${action.assetKey}__original`;
+        }
+        bodyData.optimized = provenance;
+      }
+      const bodyMeta = JSON.stringify(bodyData);
       container = addEntry(container, attachmentLid, 'attachment', action.name, ts);
       container = updateEntry(container, attachmentLid, action.name, bodyMeta, ts);
-      container = mergeAssets(container, { [action.assetKey]: action.assetData });
+      const assetsToMerge: Record<string, string> = { [action.assetKey]: action.assetData };
+      if (action.originalAssetData) {
+        assetsToMerge[`${action.assetKey}__original`] = action.originalAssetData;
+      }
+      container = mergeAssets(container, assetsToMerge);
       events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
 
       // Place the attachment under the resolved folder. When no

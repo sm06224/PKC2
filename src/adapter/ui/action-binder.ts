@@ -19,6 +19,13 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { showToast } from './toast';
 import {
+  prepareOptimizedIntake,
+  buildAttachmentBodyMeta,
+  buildAttachmentAssets,
+  deriveDisplayFilename,
+  type IntakePayload,
+} from './image-optimize/paste-optimization';
+import {
   estimateStorage,
   attachmentWarningMessage,
 } from '../platform/storage-estimate';
@@ -3252,7 +3259,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         showToast({ message: msg, kind: 'error' });
         processNext();
       };
-      reader.onload = () => {
+      reader.onload = async () => {
         const arrayBuffer = reader.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
         let binary = '';
@@ -3261,21 +3268,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         const base64 = btoa(binary);
 
-        const mime = file.type || 'application/octet-stream';
+        // v1 image intake optimization (drop surface — editor inline drop
+        // is still a drop gesture, so it shares the 'drop' surface
+        // preference with the sidebar drop zone).
+        let payload: IntakePayload;
+        try {
+          payload = await prepareOptimizedIntake(file, base64, 'drop');
+        } catch {
+          payload = {
+            assetData: base64,
+            mime: file.type || 'application/octet-stream',
+            size: file.size,
+          };
+        }
+
         const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         dispatcher.dispatch({
           type: 'PASTE_ATTACHMENT',
           name: file.name,
-          mime,
-          size: file.size,
+          mime: payload.mime,
+          size: payload.size,
           assetKey,
-          assetData: base64,
+          assetData: payload.assetData,
           contextLid,
+          originalAssetData: payload.originalAssetData,
+          optimizationMeta: payload.optimizationMeta,
         });
 
         if (insertCtx) {
-          const ref = buildAssetRef(file.name, assetKey, mime);
+          const ref = buildAssetRef(file.name, assetKey, payload.mime);
           const separator = accumulatedRefs.length > 0 ? '\n' : '';
           accumulatedRefs += separator + ref;
           insertAssetLinkAtContext(
@@ -3509,8 +3531,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
       pasteInProgress = true;
       const reader = new FileReader();
-      reader.onload = () => {
-        pasteInProgress = false;
+      reader.onload = async () => {
         const arrayBuffer = reader.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
         let binary = '';
@@ -3518,6 +3539,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           binary += String.fromCharCode(bytes[i]!);
         }
         const base64 = btoa(binary);
+
+        // v1 image intake optimization (paste surface).
+        // The pipeline may be asynchronous (Canvas + confirm UI);
+        // keep pasteInProgress set until it resolves so nested pastes
+        // don't race.
+        let payload: IntakePayload;
+        try {
+          payload = await prepareOptimizedIntake(file, base64, 'paste');
+        } catch {
+          payload = {
+            assetData: base64,
+            mime: file.type || 'image/png',
+            size: file.size,
+          };
+        } finally {
+          pasteInProgress = false;
+        }
 
         // Build the reference string before dispatch
         const ref = `![${name}](asset:${assetKey})`;
@@ -3532,11 +3570,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({
           type: 'PASTE_ATTACHMENT',
           name,
-          mime: file.type || 'image/png',
-          size: file.size,
+          mime: payload.mime,
+          size: payload.size,
           assetKey,
-          assetData: base64,
+          assetData: payload.assetData,
           contextLid,
+          originalAssetData: payload.originalAssetData,
+          optimizationMeta: payload.optimizationMeta,
         });
 
         // Re-find the textarea in the (potentially rebuilt) DOM.
@@ -4189,7 +4229,7 @@ function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: str
   }
   if (!base64) return null;
 
-  return { data: base64, mime: att.mime, name: att.name };
+  return { data: base64, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
 }
 
 function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
@@ -4341,7 +4381,9 @@ function collectAssetNameMap(container: Container): Record<string, string> {
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body);
-    if (att.asset_key && att.name) map[att.asset_key] = att.name;
+    if (att.asset_key && att.name) {
+      map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
+    }
   }
   return map;
 }
@@ -4773,7 +4815,7 @@ function processFileAttachmentWithDedupe(
     showToast({ message: msg, kind: 'error' });
     onComplete();
   };
-  reader.onload = () => {
+  reader.onload = async () => {
     const arrayBuffer = reader.result as ArrayBuffer;
     const bytes = new Uint8Array(arrayBuffer);
     let binary = '';
@@ -4782,9 +4824,24 @@ function processFileAttachmentWithDedupe(
     }
     const base64 = btoa(binary);
 
-    // G-2: informational dedupe — never blocks attachment (I-FI04-1)
+    // v1 image intake optimization (drop surface). Returns the
+    // original payload as-is for non-image files / sub-threshold
+    // images / unsupported formats.
+    let payload: IntakePayload;
     try {
-      if (checkAssetDuplicate(base64, file.size, dispatcher.getState().container)) {
+      payload = await prepareOptimizedIntake(file, base64, 'drop');
+    } catch {
+      payload = {
+        assetData: base64,
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+      };
+    }
+
+    // G-2: informational dedupe — never blocks attachment (I-FI04-1).
+    // Run on the post-optimization bytes since that is what gets stored.
+    try {
+      if (checkAssetDuplicate(payload.assetData, payload.size, dispatcher.getState().container)) {
         showToast({
           kind: 'info',
           message: `「${file.name}」は既存の添付と同一内容です`,
@@ -4797,12 +4854,7 @@ function processFileAttachmentWithDedupe(
 
     // Always create the attachment entry (I-FI04-1, I-FI04-2)
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const bodyMeta = JSON.stringify({
-      name: file.name,
-      mime: file.type || 'application/octet-stream',
-      size: file.size,
-      asset_key: assetKey,
-    });
+    const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
 
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
     const state = dispatcher.getState();
@@ -4812,7 +4864,7 @@ function processFileAttachmentWithDedupe(
         lid: state.editingLid,
         title: file.name,
         body: bodyMeta,
-        assets: { [assetKey]: base64 },
+        assets: buildAttachmentAssets(assetKey, payload),
       });
       if (contextFolder) {
         const newState = dispatcher.getState();
@@ -4864,7 +4916,7 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
     console.warn(`[PKC2] ${msg}`);
     showToast({ message: msg, kind: 'error' });
   };
-  reader.onload = () => {
+  reader.onload = async () => {
     const arrayBuffer = reader.result as ArrayBuffer;
     const bytes = new Uint8Array(arrayBuffer);
 
@@ -4875,16 +4927,23 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
     }
     const base64 = btoa(binary);
 
+    // v1 image intake optimization (attach surface).
+    let payload: IntakePayload;
+    try {
+      payload = await prepareOptimizedIntake(file, base64, 'attach');
+    } catch {
+      payload = {
+        assetData: base64,
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+      };
+    }
+
     // Generate asset key
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Build attachment body metadata
-    const bodyMeta = JSON.stringify({
-      name: file.name,
-      mime: file.type || 'application/octet-stream',
-      size: file.size,
-      asset_key: assetKey,
-    });
+    // Build attachment body metadata (includes optimized provenance when present)
+    const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
 
     // Step 1: Create entry (enters editing mode automatically)
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
@@ -4897,7 +4956,7 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
         lid: state.editingLid,
         title: file.name,
         body: bodyMeta,
-        assets: { [assetKey]: base64 },
+        assets: buildAttachmentAssets(assetKey, payload),
       });
 
       // Step 3: Place in context folder if applicable
