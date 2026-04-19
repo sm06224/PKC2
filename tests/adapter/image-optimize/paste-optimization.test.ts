@@ -1,13 +1,20 @@
 /**
  * @vitest-environment happy-dom
  *
- * Covers the paste-surface optimization pipeline end-to-end using
+ * Covers the surface-aware optimization pipeline end-to-end using
  * injected Canvas / confirm-UI mocks (happy-dom has no WebP toBlob).
  *
- * Maps to behavior contract §7 examples 7-1 through 7-9.
+ * Phase 1 cases map to behavior contract §7 examples 7-1 through 7-9
+ * (paste surface). Phase 2 adds drop/attach surface coverage and
+ * surface-independence verification (D-IIO5 / contract §4-1-1 C2).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { prepareOptimizedPaste } from '@adapter/ui/image-optimize/paste-optimization';
+import {
+  prepareOptimizedIntake,
+  buildAttachmentBodyMeta,
+  buildAttachmentAssets,
+  type IntakePayload,
+} from '@adapter/ui/image-optimize/paste-optimization';
 import type { OptimizeResult } from '@adapter/ui/image-optimize/optimizer';
 import type { OptimizeConfirmResult } from '@adapter/ui/image-optimize/confirm-ui';
 import {
@@ -45,16 +52,18 @@ function confirmAs(result: OptimizeConfirmResult) {
 beforeEach(() => {
   localStorage.clear();
   clearPreference('paste');
+  clearPreference('drop');
+  clearPreference('attach');
 });
 
-describe('prepareOptimizedPaste', () => {
+describe('prepareOptimizedIntake (paste surface)', () => {
   it('passes through below-threshold images silently', async () => {
     const file = makeFile(200 * 1024, 'image/png', 'small.png');
     const toast = vi.fn();
     const optimizer = okOptimizer(10);
     const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -75,7 +84,7 @@ describe('prepareOptimizedPaste', () => {
     const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -96,7 +105,7 @@ describe('prepareOptimizedPaste', () => {
     const optimizer = okOptimizer(460_800);
     const confirm = confirmAs({ action: 'optimize', keepOriginal: true, remember: false });
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -115,7 +124,7 @@ describe('prepareOptimizedPaste', () => {
     const confirm = confirmAs({ action: 'decline', keepOriginal: false, remember: false });
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -138,7 +147,7 @@ describe('prepareOptimizedPaste', () => {
     const optimizer = okOptimizer(350_000);
     const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -155,7 +164,7 @@ describe('prepareOptimizedPaste', () => {
     const optimizer = okOptimizer(100_000);
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: trueAlpha(),
       confirmImpl: confirmAs({ action: 'optimize', keepOriginal: false, remember: false }),
@@ -177,7 +186,7 @@ describe('prepareOptimizedPaste', () => {
     const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirm,
@@ -195,7 +204,7 @@ describe('prepareOptimizedPaste', () => {
     const optimizer = vi.fn(async () => null);
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirmAs({ action: 'optimize', keepOriginal: false, remember: false }),
@@ -215,7 +224,7 @@ describe('prepareOptimizedPaste', () => {
     const optimizer = okOptimizer(700_000);
     const toast = vi.fn();
 
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: optimizer,
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirmAs({ action: 'optimize', keepOriginal: false, remember: false }),
@@ -232,7 +241,7 @@ describe('prepareOptimizedPaste', () => {
 
   it('decline from confirm UI preserves original', async () => {
     const file = makeFile(2_000_000, 'image/png');
-    const payload = await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: okOptimizer(300_000),
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirmAs({ action: 'decline', keepOriginal: false, remember: false }),
@@ -246,7 +255,7 @@ describe('prepareOptimizedPaste', () => {
   it('remember=true persists the preference for subsequent pastes', async () => {
     const file = makeFile(2_000_000, 'image/png');
 
-    await prepareOptimizedPaste(file, 'ORIGINAL_B64', {
+    await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
       optimizerImpl: okOptimizer(300_000),
       alphaCheckImpl: falseAlpha(),
       confirmImpl: confirmAs({ action: 'optimize', keepOriginal: true, remember: true }),
@@ -258,5 +267,216 @@ describe('prepareOptimizedPaste', () => {
     const parsed = JSON.parse(raw!);
     expect(parsed.action).toBe('optimize');
     expect(parsed.keepOriginal).toBe(true);
+  });
+});
+
+describe('prepareOptimizedIntake (drop surface)', () => {
+  it('drop surface optimize path returns the optimized payload', async () => {
+    const file = makeFile(2_000_000, 'image/png');
+    const optimizer = okOptimizer(350_000);
+    const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'drop', {
+      optimizerImpl: optimizer,
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    expect(payload.mime).toBe('image/webp');
+    expect(payload.size).toBe(350_000);
+    expect(payload.optimizationMeta).toBeDefined();
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembered drop preference runs silent on the drop surface', async () => {
+    setPreference('drop', { action: 'optimize', keepOriginal: false });
+    const file = makeFile(2_000_000, 'image/png');
+    const confirm = confirmAs({ action: 'decline', keepOriginal: false, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'drop', {
+      optimizerImpl: okOptimizer(400_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    expect(payload.mime).toBe('image/webp');
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('remember=true on drop surface persists under the drop key only', async () => {
+    const file = makeFile(2_000_000, 'image/png');
+
+    await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'drop', {
+      optimizerImpl: okOptimizer(300_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirmAs({ action: 'optimize', keepOriginal: false, remember: true }),
+      toastImpl: vi.fn(),
+    });
+
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.drop')).not.toBeNull();
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.paste')).toBeNull();
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.attach')).toBeNull();
+  });
+});
+
+describe('prepareOptimizedIntake (attach surface)', () => {
+  it('attach surface optimize path returns the optimized payload', async () => {
+    const file = makeFile(2_000_000, 'image/png');
+    const confirm = confirmAs({ action: 'optimize', keepOriginal: true, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'attach', {
+      optimizerImpl: okOptimizer(350_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    expect(payload.mime).toBe('image/webp');
+    expect(payload.originalAssetData).toBe('ORIGINAL_B64');
+    expect(payload.optimizationMeta?.originalSize).toBe(2_000_000);
+  });
+
+  it('remember=true on attach surface persists under the attach key only', async () => {
+    const file = makeFile(2_000_000, 'image/png');
+
+    await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'attach', {
+      optimizerImpl: okOptimizer(300_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirmAs({ action: 'decline', keepOriginal: false, remember: true }),
+      toastImpl: vi.fn(),
+    });
+
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.attach')).not.toBeNull();
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.paste')).toBeNull();
+    expect(localStorage.getItem('pkc2.imageOptimize.preference.drop')).toBeNull();
+  });
+});
+
+describe('prepareOptimizedIntake — surface independence (D-IIO5)', () => {
+  it('paste preference does NOT influence the drop surface', async () => {
+    setPreference('paste', { action: 'decline', keepOriginal: false });
+    const file = makeFile(2_000_000, 'image/png');
+    const confirm = confirmAs({ action: 'optimize', keepOriginal: false, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'drop', {
+      optimizerImpl: okOptimizer(400_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    // Drop surface must show the confirm UI even when paste has a remembered decline.
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(payload.mime).toBe('image/webp');
+  });
+
+  it('drop preference does NOT influence the attach surface', async () => {
+    setPreference('drop', { action: 'optimize', keepOriginal: true });
+    const file = makeFile(2_000_000, 'image/png');
+    const confirm = confirmAs({ action: 'decline', keepOriginal: false, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'attach', {
+      optimizerImpl: okOptimizer(400_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    // Attach surface must still prompt; remembered drop=optimize must NOT auto-apply.
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(payload.assetData).toBe('ORIGINAL_B64');
+    expect(payload.optimizationMeta).toBeUndefined();
+  });
+
+  it('attach preference does NOT influence the paste surface', async () => {
+    setPreference('attach', { action: 'optimize', keepOriginal: true });
+    const file = makeFile(2_000_000, 'image/png');
+    const confirm = confirmAs({ action: 'decline', keepOriginal: false, remember: false });
+
+    const payload = await prepareOptimizedIntake(file, 'ORIGINAL_B64', 'paste', {
+      optimizerImpl: okOptimizer(400_000),
+      alphaCheckImpl: falseAlpha(),
+      confirmImpl: confirm,
+      toastImpl: vi.fn(),
+    });
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(payload.assetData).toBe('ORIGINAL_B64');
+  });
+});
+
+describe('buildAttachmentBodyMeta', () => {
+  function passThroughPayload(): IntakePayload {
+    return { assetData: 'B64', mime: 'application/pdf', size: 12345 };
+  }
+
+  function optimizedPayload(keepOriginal = false): IntakePayload {
+    const payload: IntakePayload = {
+      assetData: 'OPT_B64',
+      mime: 'image/webp',
+      size: 320_000,
+      optimizationMeta: {
+        originalMime: 'image/png',
+        originalSize: 2_000_000,
+        method: 'canvas-webp-lossy',
+        quality: 0.85,
+        resized: true,
+        originalDimensions: { width: 3000, height: 2000 },
+        optimizedDimensions: { width: 2560, height: 1707 },
+      },
+    };
+    if (keepOriginal) payload.originalAssetData = 'ORIG_B64';
+    return payload;
+  }
+
+  it('omits the optimized field when no optimization metadata is present', () => {
+    const json = buildAttachmentBodyMeta('doc.pdf', 'att-1', passThroughPayload());
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual({
+      name: 'doc.pdf',
+      mime: 'application/pdf',
+      size: 12345,
+      asset_key: 'att-1',
+    });
+    expect(parsed.optimized).toBeUndefined();
+  });
+
+  it('attaches optimized provenance when metadata is present', () => {
+    const json = buildAttachmentBodyMeta('shot.png', 'att-9', optimizedPayload());
+    const parsed = JSON.parse(json);
+    expect(parsed.optimized).toBeDefined();
+    expect(parsed.optimized.original_mime).toBe('image/png');
+    expect(parsed.optimized.original_size).toBe(2_000_000);
+    expect(parsed.optimized.method).toBe('canvas-webp-lossy');
+    expect(parsed.optimized.quality).toBe(0.85);
+    expect(parsed.optimized.resized).toBe(true);
+    expect(parsed.optimized.original_asset_key).toBeUndefined();
+  });
+
+  it('includes original_asset_key when keep-original is set', () => {
+    const json = buildAttachmentBodyMeta('shot.png', 'att-9', optimizedPayload(true));
+    const parsed = JSON.parse(json);
+    expect(parsed.optimized.original_asset_key).toBe('att-9__original');
+  });
+});
+
+describe('buildAttachmentAssets', () => {
+  it('returns a single-key map when no original is kept', () => {
+    const assets = buildAttachmentAssets('att-1', {
+      assetData: 'OPT', mime: 'image/webp', size: 100,
+    });
+    expect(assets).toEqual({ 'att-1': 'OPT' });
+  });
+
+  it('adds the __original suffix entry when keep-original is set', () => {
+    const assets = buildAttachmentAssets('att-2', {
+      assetData: 'OPT', mime: 'image/webp', size: 100, originalAssetData: 'ORIG',
+    });
+    expect(assets).toEqual({
+      'att-2': 'OPT',
+      'att-2__original': 'ORIG',
+    });
   });
 });

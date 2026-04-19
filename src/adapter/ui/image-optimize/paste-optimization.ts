@@ -1,14 +1,19 @@
 /**
- * Orchestrates the paste-surface optimization pipeline described in
+ * Orchestrates the image-intake optimization pipeline described in
  * behavior contract §2-1. Consumes a File + its already-computed
  * original base64, returns a payload that describes what to
  * dispatch (optimized vs original, optional original-kept asset,
  * optional provenance metadata).
  *
+ * Surface-scoped: the caller passes the IntakeSurface ('paste' /
+ * 'drop' / 'attach') so remembered preferences stay strictly
+ * separated. A preference saved under 'paste' MUST NOT influence
+ * 'drop' or 'attach' decisions (contract §4-1-1 C2).
+ *
  * This function is deliberately kept side-effect-aware (toasts,
  * Canvas, localStorage) but pure-in-shape: no state-machine
  * dispatch, no DOM fiddling outside confirm-ui. The caller decides
- * how to turn the payload into a PASTE_ATTACHMENT action.
+ * how to turn the payload into a dispatch action.
  */
 
 import { classifyIntakeCandidate } from '@features/image-optimize/classifier';
@@ -18,6 +23,7 @@ import {
   DEFAULT_OUTPUT_MIME,
   DEFAULT_WEBP_QUALITY,
 } from '@features/image-optimize/config';
+import type { IntakeSurface } from '@features/image-optimize/preference';
 import { blobToBase64, hasAlphaChannel, optimizeImage, type OptimizeResult } from './optimizer';
 import { getPreference, setPreference } from './preference-store';
 import { showOptimizeConfirm, type OptimizeConfirmResult } from './confirm-ui';
@@ -33,7 +39,7 @@ export interface OptimizationMeta {
   optimizedDimensions: { width: number; height: number };
 }
 
-export interface PastePayload {
+export interface IntakePayload {
   /** base64 to store as the primary asset. */
   assetData: string;
   /** MIME type of the primary asset. */
@@ -46,7 +52,7 @@ export interface PastePayload {
   optimizationMeta?: OptimizationMeta;
 }
 
-export interface PasteOptimizeOptions {
+export interface IntakeOptimizeOptions {
   quality?: number;
   maxLongEdge?: number;
   threshold?: number;
@@ -87,7 +93,7 @@ function passThrough(
   file: File,
   originalBase64: string,
   originalSize: number,
-): PastePayload {
+): IntakePayload {
   return {
     assetData: originalBase64,
     mime: file.type || 'application/octet-stream',
@@ -95,11 +101,12 @@ function passThrough(
   };
 }
 
-export async function prepareOptimizedPaste(
+export async function prepareOptimizedIntake(
   file: File,
   originalBase64: string,
-  options: PasteOptimizeOptions = {},
-): Promise<PastePayload> {
+  surface: IntakeSurface,
+  options: IntakeOptimizeOptions = {},
+): Promise<IntakePayload> {
   const quality = options.quality ?? DEFAULT_WEBP_QUALITY;
   const maxLongEdge = options.maxLongEdge ?? DEFAULT_MAX_LONG_EDGE;
   const threshold = options.threshold ?? DEFAULT_OPTIMIZATION_THRESHOLD;
@@ -150,8 +157,8 @@ export async function prepareOptimizedPaste(
   const optimizedBase64 = await blobToBase64(result.blob);
   const meta = buildMeta(file, result, quality);
 
-  // Step [7a]: remembered-preference silent path (paste surface only)
-  const pref = getPreference('paste');
+  // Step [7a]: remembered-preference silent path (surface-scoped)
+  const pref = getPreference(surface);
   if (pref) {
     if (pref.action === 'optimize') {
       toastFn({
@@ -181,7 +188,7 @@ export async function prepareOptimizedPaste(
   });
 
   if (choice.remember) {
-    setPreference('paste', { action: choice.action, keepOriginal: choice.keepOriginal });
+    setPreference(surface, { action: choice.action, keepOriginal: choice.keepOriginal });
   }
 
   if (choice.action === 'optimize') {
@@ -196,4 +203,53 @@ export async function prepareOptimizedPaste(
 
   // decline
   return passThrough(file, originalBase64, file.size);
+}
+
+/**
+ * Build the attachment body metadata JSON from an IntakePayload.
+ * The shape mirrors the PASTE_ATTACHMENT reducer (app-state.ts §2068+)
+ * so dispatch via PASTE_ATTACHMENT vs COMMIT_EDIT produces identical bodies.
+ */
+export function buildAttachmentBodyMeta(
+  fileName: string,
+  assetKey: string,
+  payload: IntakePayload,
+): string {
+  const bodyData: Record<string, unknown> = {
+    name: fileName,
+    mime: payload.mime,
+    size: payload.size,
+    asset_key: assetKey,
+  };
+  if (payload.optimizationMeta) {
+    const provenance: Record<string, unknown> = {
+      original_mime: payload.optimizationMeta.originalMime,
+      original_size: payload.optimizationMeta.originalSize,
+      method: payload.optimizationMeta.method,
+      quality: payload.optimizationMeta.quality,
+      resized: payload.optimizationMeta.resized,
+      original_dimensions: payload.optimizationMeta.originalDimensions,
+      optimized_dimensions: payload.optimizationMeta.optimizedDimensions,
+    };
+    if (payload.originalAssetData) {
+      provenance.original_asset_key = `${assetKey}__original`;
+    }
+    bodyData.optimized = provenance;
+  }
+  return JSON.stringify(bodyData);
+}
+
+/**
+ * Build the asset map for a COMMIT_EDIT dispatch from an IntakePayload.
+ * Includes the `${assetKey}__original` entry when keep-original was opted in.
+ */
+export function buildAttachmentAssets(
+  assetKey: string,
+  payload: IntakePayload,
+): Record<string, string> {
+  const assets: Record<string, string> = { [assetKey]: payload.assetData };
+  if (payload.originalAssetData) {
+    assets[`${assetKey}__original`] = payload.originalAssetData;
+  }
+  return assets;
 }
