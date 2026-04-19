@@ -1,20 +1,27 @@
 /**
- * Record offer/accept message handlers.
+ * Record offer message handler (inbound phase-1 only).
  *
- * Implements the minimal 2-phase record transfer contract:
- * 1. record:offer — sender proposes a record, receiver stores it as pending
- * 2. record:accept — receiver accepts, dispatches SYS_ACCEPT_OFFER to add Entry
+ * Current wiring:
+ * - Inbound `record:offer` is stored as an AppState.pendingOffer entry
+ *   via dispatching the `SYS_RECORD_OFFERED` SystemCommand.
+ * - When the user accepts the offer in the pending-offer UI, the
+ *   internal `ACCEPT_OFFER` UserAction is dispatched (see
+ *   action-binder.ts + app-state.ts reducer). This turns the pending
+ *   offer into an Entry.
  *
- * Design:
- * - Offers go into AppState.pendingOffers (runtime-only, not persisted)
- * - Accept dispatches a SystemCommand that the reducer handles
- * - Each offer gets a unique offer_id generated at receipt time
- * - The handler does NOT merge or deduplicate — it's a simple inbox
+ * Scope boundary (see
+ * `docs/development/transport-record-accept-reject-consistency-review.md`):
+ * - The informational `record:accept` outbound message defined in the
+ *   spec is NOT wired in this module. `RecordAcceptPayload` below is
+ *   kept for forward wire-up but has no current sender.
+ * - The `record:reject` outbound message IS sent by `main.ts:391` when
+ *   a pending offer is dismissed; it is not handled on the inbound
+ *   side by this module.
  *
  * This module does NOT:
- * - Implement merge import
- * - Handle correlation_id
- * - Validate archetype compatibility
+ * - Send `record:accept` / `record:reject` (outbound sender lives in
+ *   main.ts for reject; accept is not yet wired)
+ * - Implement merge import / correlation_id / archetype compatibility
  * - Implement capability negotiation
  */
 
