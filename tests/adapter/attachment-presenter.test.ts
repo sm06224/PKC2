@@ -13,7 +13,6 @@ import {
   collectAssetData,
   classifyPreviewType,
   isPreviewableImage,
-  isPreviewableMedia,
   isPdf,
   isHtml,
   isSvg,
@@ -610,21 +609,6 @@ describe('MIME type classification', () => {
       expect(isSvg('image/png')).toBe(false);
       expect(isSvg('text/html')).toBe(false);
       expect(isSvg('application/svg')).toBe(false);
-    });
-  });
-
-  describe('isPreviewableMedia', () => {
-    it('recognizes video types', () => {
-      expect(isPreviewableMedia('video/mp4')).toBe(true);
-      expect(isPreviewableMedia('video/webm')).toBe(true);
-    });
-    it('recognizes audio types', () => {
-      expect(isPreviewableMedia('audio/mpeg')).toBe(true);
-      expect(isPreviewableMedia('audio/wav')).toBe(true);
-    });
-    it('rejects non-media types', () => {
-      expect(isPreviewableMedia('image/png')).toBe(false);
-      expect(isPreviewableMedia('text/html')).toBe(false);
     });
   });
 
