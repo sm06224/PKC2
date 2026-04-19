@@ -18,8 +18,28 @@ import {
   isLogSelected,
   getSelectionSize,
 } from './textlog-selection';
+import {
+  INITIAL_RENDER_ARTICLE_COUNT,
+  renderLogArticlePlaceholder,
+  attachHydrator,
+  type HydratorContext,
+  type HydratorHandle,
+} from './textlog-hydrator';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
+
+let activeHydrator: HydratorHandle | null = null;
+
+function cleanupActiveHydrator(): void {
+  if (activeHydrator) {
+    activeHydrator.disconnect();
+    activeHydrator = null;
+  }
+}
+
+export function getActiveHydrator(): HydratorHandle | null {
+  return activeHydrator;
+}
 
 export const textlogPresenter: DetailPresenter = {
   /**
@@ -122,33 +142,51 @@ export const textlogPresenter: DetailPresenter = {
     docEl.className = 'pkc-textlog-document';
     docEl.setAttribute('data-pkc-region', 'textlog-document');
 
+    let hydratedCount = 0;
+    const ctxMap = new Map<string, HydratorContext>();
+    const fmtTs = (ts: string) =>
+      formatLogTimestampWithSeconds(ts, getFormatLocale(), getFormatTimeZone());
+
     for (const section of doc.sections) {
       const sectionEl = document.createElement('section');
       sectionEl.className = 'pkc-textlog-day';
-      // Undated bucket (unparseable timestamp) uses a fixed key so its
-      // heading and anchor stay addressable without generating an
-      // invalid `day-` id.
       const dayId = section.dateKey === '' ? 'day-undated' : `day-${section.dateKey}`;
       sectionEl.id = dayId;
       sectionEl.setAttribute('data-pkc-date-key', section.dateKey);
 
-      const header = document.createElement('header');
-      header.className = 'pkc-textlog-day-header';
-      const title = document.createElement('h2');
-      title.className = 'pkc-textlog-day-title';
-      title.textContent = section.dateKey === '' ? 'Undated' : section.dateKey;
-      header.appendChild(title);
-      sectionEl.appendChild(header);
+      const sHeader = document.createElement('header');
+      sHeader.className = 'pkc-textlog-day-header';
+      const sTitle = document.createElement('h2');
+      sTitle.className = 'pkc-textlog-day-title';
+      sTitle.textContent = section.dateKey === '' ? 'Undated' : section.dateKey;
+      sHeader.appendChild(sTitle);
+      sectionEl.appendChild(sHeader);
 
       for (const log of section.logs) {
-        sectionEl.appendChild(
-          renderLogArticle(entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting),
-        );
+        if (hydratedCount < INITIAL_RENDER_ARTICLE_COUNT) {
+          const articleEl = renderLogArticle(
+            entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting,
+          );
+          articleEl.setAttribute('data-pkc-hydrated', 'true');
+          sectionEl.appendChild(articleEl);
+          hydratedCount++;
+        } else {
+          ctxMap.set(log.id, {
+            lid: entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting,
+          });
+          sectionEl.appendChild(renderLogArticlePlaceholder(entry.lid, log, fmtTs));
+        }
       }
       docEl.appendChild(sectionEl);
     }
 
     container.appendChild(docEl);
+
+    if (ctxMap.size > 0) {
+      cleanupActiveHydrator();
+      activeHydrator = attachHydrator(docEl, ctxMap, renderLogArticle);
+    }
+
     return container;
   },
 
