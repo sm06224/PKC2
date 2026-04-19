@@ -38,6 +38,7 @@
     "test:watch": "vitest",
     "test:smoke": "playwright test --config=tests/smoke/playwright.config.ts",
     "size-budget": "node build/check-bundle-size.cjs",
+    "check:manual": "node build/check-manual-integrity.cjs",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "typecheck": "tsc --noEmit"
