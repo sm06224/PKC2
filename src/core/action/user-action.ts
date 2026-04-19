@@ -309,7 +309,7 @@ export type UserAction =
       assetData: string;
       contextLid: string;
       /**
-       * v1 image intake optimization (Phase 1, paste surface only).
+       * v1 image intake optimization (paste + editor-drop surfaces).
        * When provided, `assetData` is the optimized payload and
        * `${assetKey}__original` holds the original image as a second
        * asset entry. `optimizationMeta` is attached to the

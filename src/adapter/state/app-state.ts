@@ -2075,7 +2075,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         size: action.size,
         asset_key: action.assetKey,
       };
-      // v1 image intake optimization (Phase 1, paste surface only):
+      // v1 image intake optimization (paste + editor-drop surfaces):
       // attach provenance metadata + optional original asset pointer.
       if (action.optimizationMeta) {
         const provenance: Record<string, unknown> = {
