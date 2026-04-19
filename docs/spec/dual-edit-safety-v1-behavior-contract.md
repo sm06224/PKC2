@@ -37,7 +37,7 @@ minimum scope 受理時に supervisor が明示指示した以下 6 点を固定
 | `docs/spec/provenance-relation-profile.md §3.1` | provenance canonical direction（source → derived） |
 | `docs/spec/provenance-relation-profile.md §2.2` | metadata profile（required / recommended / optional） |
 | `docs/spec/revision-branch-restore-v1-behavior-contract.md` | C-1 branch restore（本書の branch 操作と**別 conversion_kind**、実装共有のみ） |
-| `docs/spec/merge-conflict-ui-v1-behavior-contract/` | H-10 conflict overlay の DOM 流儀参考 |
+| `docs/spec/merge-conflict-ui-v1-behavior-contract.md` | H-10 conflict overlay の DOM 流儀参考 |
 | `src/core/operations/container-ops.ts` | `addEntry` / `updateEntry` / `addRelation` — branch 側で再利用 |
 | `src/adapter/state/app-state.ts` | 既存 save 経路（`COMMIT_ENTRY_EDIT` 付近）— gate を差し込む場所 |
 
@@ -520,7 +520,7 @@ reject が起きたとき、既存 overlay UI 流儀（boot-source-chooser.ts / 
 - provenance profile: `docs/spec/provenance-relation-profile.md`（§2.2 / §3.1 を参照）
 - data-model: `docs/spec/data-model.md`（§3 Entry / §5 Relation / §6 Revision）
 - C-1 branch restore contract: `docs/spec/revision-branch-restore-v1-behavior-contract.md`（共有 helper の流儀）
-- H-10 merge conflict overlay: `docs/spec/merge-conflict-ui-v1-behavior-contract/`（overlay 流儀）
+- H-10 merge conflict overlay: `docs/spec/merge-conflict-ui-v1-behavior-contract.md`（overlay 流儀）
 - S-30 boot source chooser: `docs/development/boot-container-source-policy-revision.md`（overlay 実装の参考）
 
 ---
