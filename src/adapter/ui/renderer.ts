@@ -3074,25 +3074,19 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     meta.appendChild(picker);
   }
 
-  // Relations section
+  // Relations section — always rendered so users can see that relations exist
+  // as a first-class concept even when empty. Inbound is promoted to
+  // "Backlinks"; outbound to "Outgoing relations". See backlinks-panel-v1.md.
   const directed = getRelationsForEntry(container.relations, entry.lid);
   const resolved = resolveRelations(directed, container.entries);
   const outbound = resolved.filter((r) => r.direction === 'outbound');
   const inbound = resolved.filter((r) => r.direction === 'inbound');
 
-  if (outbound.length > 0 || inbound.length > 0) {
-    const relSection = createElement('div', 'pkc-relations');
-    relSection.setAttribute('data-pkc-region', 'relations');
-
-    if (outbound.length > 0) {
-      relSection.appendChild(renderRelationGroup('Outbound', outbound));
-    }
-    if (inbound.length > 0) {
-      relSection.appendChild(renderRelationGroup('Inbound', inbound));
-    }
-
-    meta.appendChild(relSection);
-  }
+  const relSection = createElement('div', 'pkc-relations');
+  relSection.setAttribute('data-pkc-region', 'relations');
+  relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound));
+  relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound));
+  meta.appendChild(relSection);
 
   if (canEdit && container.entries.length > 1) {
     meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
@@ -3308,14 +3302,22 @@ function renderTocSection(entry: Entry): HTMLElement | null {
 
 function renderRelationGroup(
   label: string,
+  direction: 'outgoing' | 'backlinks',
   relations: { relation: { id: string; kind: string }; direction: string; peer: Entry }[],
 ): HTMLElement {
   const group = createElement('div', 'pkc-relation-group');
-  group.setAttribute('data-pkc-relation-direction', label.toLowerCase());
+  group.setAttribute('data-pkc-relation-direction', direction);
 
   const heading = createElement('div', 'pkc-relation-heading');
   heading.textContent = `${label} (${relations.length})`;
   group.appendChild(heading);
+
+  if (relations.length === 0) {
+    const empty = createElement('div', 'pkc-relation-empty');
+    empty.textContent = direction === 'backlinks' ? 'No backlinks.' : 'No outgoing relations.';
+    group.appendChild(empty);
+    return group;
+  }
 
   const list = createElement('ul', 'pkc-relation-list');
   for (const r of relations) {
