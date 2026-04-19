@@ -1378,18 +1378,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'calendar-prev': {
         const state = dispatcher.getState();
-        let y = state.calendarYear;
-        let m = state.calendarMonth - 1;
-        if (m < 1) { m = 12; y--; }
-        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        const next = shiftCalendarMonth(state.calendarYear, state.calendarMonth, -1);
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: next.year, month: next.month });
         break;
       }
       case 'calendar-next': {
         const state = dispatcher.getState();
-        let y = state.calendarYear;
-        let m = state.calendarMonth + 1;
-        if (m > 12) { m = 1; y++; }
-        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: y, month: m });
+        const next = shiftCalendarMonth(state.calendarYear, state.calendarMonth, +1);
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: next.year, month: next.month });
         break;
       }
       case 'toggle-sidebar': {
@@ -4979,6 +4975,22 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
 /**
  * Toggle a pane between visible and collapsed (tray) state.
  */
+/**
+ * Shift the calendar (year, month) pair by ±1 month with year wrap.
+ * Pure helper shared by the `calendar-prev` / `calendar-next` actions.
+ */
+function shiftCalendarMonth(
+  year: number,
+  month: number,
+  delta: -1 | 1,
+): { year: number; month: number } {
+  let y = year;
+  let m = month + delta;
+  if (m < 1) { m = 12; y -= 1; }
+  if (m > 12) { m = 1; y += 1; }
+  return { year: y, month: m };
+}
+
 function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
   const paneEl = root.querySelector<HTMLElement>(selector);
