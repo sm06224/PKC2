@@ -367,3 +367,134 @@ describe('asset autocomplete mouse insertion', () => {
     expect(isAssetAutocompleteOpen()).toBe(false);
   });
 });
+
+// ── Modifier-Enter policy (mirrors entry-ref autocomplete v1.5) ──
+
+describe('asset autocomplete — modifier-Enter', () => {
+  const cands: AssetCandidate[] = [
+    { key: 'ast-a', name: 'a.png', mime: 'image/png' },
+    { key: 'ast-b', name: 'b.png', mime: 'image/png' },
+  ];
+
+  it('Ctrl+Enter closes popup, leaves textarea unchanged, returns false', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+    expect(isAssetAutocompleteOpen()).toBe(true);
+
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isAssetAutocompleteOpen()).toBe(false);
+    // No insertion happened — value unchanged.
+    expect(ta.value).toBe('![alt](asset:as)');
+  });
+
+  it('Cmd+Enter (metaKey) behaves identically to Ctrl+Enter', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isAssetAutocompleteOpen()).toBe(false);
+    expect(ta.value).toBe('![alt](asset:as)');
+  });
+
+  it('plain Enter still accepts (regression check)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(isAssetAutocompleteOpen()).toBe(false);
+    expect(ta.value).toBe('![alt](asset:ast-a)');
+  });
+
+  it('Shift+Enter still accepts (only Ctrl/Cmd modifier triggers pass-through)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('![alt](asset:ast-a)');
+  });
+
+  it('Alt+Enter still accepts', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', altKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('![alt](asset:ast-a)');
+  });
+
+  it('Ctrl+Enter on empty list also closes popup + returns false', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+
+    openAssetAutocomplete(ta, 0, 'zzz', cands, root);
+    expect(isAssetAutocompleteOpen()).toBe(true);
+    expect(
+      root.querySelector('.pkc-asset-autocomplete-empty'),
+    ).not.toBeNull();
+
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isAssetAutocompleteOpen()).toBe(false);
+  });
+
+  it('Ctrl+Tab is out of scope (still accepts)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '![alt](asset:as)';
+    ta.selectionStart = ta.selectionEnd = 15;
+
+    openAssetAutocomplete(ta, 13, 'as', cands, root);
+    const consumed = handleAssetAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('![alt](asset:ast-a)');
+  });
+});

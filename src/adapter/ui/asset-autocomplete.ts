@@ -226,6 +226,17 @@ export function handleAssetAutocompleteKeydown(e: KeyboardEvent): boolean {
     return true;
   }
 
+  // Mirror of entry-ref autocomplete v1.5 policy: Ctrl/Cmd+Enter is
+  // reserved for editor-level shortcuts (notably textlog append). Close
+  // the popup and pass the event through so the underlying handler can
+  // run. Plain Enter still accepts the selected candidate. Canonical
+  // decision + rationale live in
+  // docs/development/entry-autocomplete-v1.5-modifier-enter.md.
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    closeAssetAutocomplete();
+    return false;
+  }
+
   if (visibleCandidates.length === 0) return false;
 
   switch (e.key) {
