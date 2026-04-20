@@ -521,6 +521,42 @@ describe('Mutation → Shell integration', () => {
     expect(isEntryRefAutocompleteOpen()).toBe(false);
   });
 
+  // v1.3: end-to-end RECORD_ENTRY_REF_SELECTION wiring. Accepting a
+  // candidate must update state.recentEntryRefLids so the next popup can
+  // surface recent entries first.
+  it('accepting a candidate records it into recentEntryRefLids', async () => {
+    const { openEntryRefAutocomplete, handleEntryRefAutocompleteKeydown } =
+      await import('@adapter/ui/entry-ref-autocomplete');
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:)';
+    ta.selectionStart = ta.selectionEnd = 10;
+
+    openEntryRefAutocomplete(
+      ta,
+      10,
+      '',
+      [
+        {
+          lid: 'target-lid', title: 'Target', body: '', archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      root,
+    );
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(dispatcher.getState().recentEntryRefLids).toEqual(['target-lid']);
+  });
+
   it('closes entry-ref autocomplete when editing is cancelled', async () => {
     const { openEntryRefAutocomplete, isEntryRefAutocompleteOpen } =
       await import('@adapter/ui/entry-ref-autocomplete');

@@ -7,6 +7,7 @@ import {
   handleEntryRefAutocompleteKeydown,
   isEntryRefAutocompleteOpen,
   openEntryRefAutocomplete,
+  registerEntryRefInsertCallback,
   updateEntryRefAutocompleteQuery,
 } from '@adapter/ui/entry-ref-autocomplete';
 import type { Entry } from '@core/model/record';
@@ -342,6 +343,69 @@ describe('entry-ref autocomplete — bracket (`[[`) kind', () => {
       new KeyboardEvent('keydown', { key: 'Enter' }),
     );
 
+    expect(ta.value).toBe('[x](entry:alpha-1)');
+  });
+});
+
+// ── v1.3: insert callback (feeds recent-first LRU) ──
+
+describe('entry-ref autocomplete — insert callback', () => {
+  const cands: Entry[] = [makeEntry('alpha-1', 'Alpha')];
+
+  afterEach(() => {
+    registerEntryRefInsertCallback(null);
+  });
+
+  it('fires the registered callback with the inserted lid (entry-url kind)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 12;
+
+    const seen: string[] = [];
+    registerEntryRefInsertCallback((lid) => seen.push(lid));
+
+    openEntryRefAutocomplete(ta, 10, 'al', cands, root, 'entry-url');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(seen).toEqual(['alpha-1']);
+  });
+
+  it('fires the registered callback for bracket kind as well', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[[';
+    ta.selectionStart = ta.selectionEnd = 2;
+
+    const seen: string[] = [];
+    registerEntryRefInsertCallback((lid) => seen.push(lid));
+
+    openEntryRefAutocomplete(ta, 0, '', cands, root, 'bracket');
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(seen).toEqual(['alpha-1']);
+  });
+
+  it('is a no-op when no callback is registered', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:)';
+    ta.selectionStart = ta.selectionEnd = 10;
+
+    // No registration. Should not throw.
+    openEntryRefAutocomplete(ta, 10, '', cands, root, 'entry-url');
+    expect(() =>
+      handleEntryRefAutocompleteKeydown(
+        new KeyboardEvent('keydown', { key: 'Enter' }),
+      ),
+    ).not.toThrow();
     expect(ta.value).toBe('[x](entry:alpha-1)');
   });
 });

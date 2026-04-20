@@ -3,6 +3,7 @@ import {
   filterEntryCandidates,
   findBracketCompletionContext,
   findEntryCompletionContext,
+  reorderByRecentFirst,
 } from '@features/entry-ref/entry-ref-autocomplete';
 import type { Entry } from '@core/model/record';
 
@@ -214,5 +215,60 @@ describe('findBracketCompletionContext', () => {
     const res = findBracketCompletionContext(text, 8);
     expect(res).not.toBeNull();
     expect(res!.query).toBe('foobar');
+  });
+});
+
+// ── reorderByRecentFirst (v1.3 recent-first ordering) ──
+
+describe('reorderByRecentFirst', () => {
+  const entries: Entry[] = [
+    makeEntry('a', 'Alpha'),
+    makeEntry('b', 'Beta'),
+    makeEntry('c', 'Gamma'),
+    makeEntry('d', 'Delta'),
+  ];
+
+  it('returns a copy unchanged when recentLids is empty', () => {
+    const out = reorderByRecentFirst(entries, []);
+    expect(out.map((e) => e.lid)).toEqual(['a', 'b', 'c', 'd']);
+    // Not aliased
+    out.pop();
+    expect(entries).toHaveLength(4);
+  });
+
+  it('returns a copy unchanged when entries is empty', () => {
+    const out = reorderByRecentFirst([], ['a', 'b']);
+    expect(out).toEqual([]);
+  });
+
+  it('promotes a single recent lid to the front', () => {
+    const out = reorderByRecentFirst(entries, ['c']);
+    expect(out.map((e) => e.lid)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('promotes multiple recent lids in recency order (head = most recent)', () => {
+    const out = reorderByRecentFirst(entries, ['d', 'b']);
+    // d first (most recent), then b, then remaining original order
+    expect(out.map((e) => e.lid)).toEqual(['d', 'b', 'a', 'c']);
+  });
+
+  it('ignores recent lids that do not match any candidate', () => {
+    const out = reorderByRecentFirst(entries, ['ghost', 'c', 'void']);
+    expect(out.map((e) => e.lid)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('tolerates duplicate recent lids (first occurrence wins)', () => {
+    const out = reorderByRecentFirst(entries, ['b', 'b', 'c']);
+    expect(out.map((e) => e.lid)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('preserves the remainder order after promoted entries', () => {
+    const out = reorderByRecentFirst(entries, ['d']);
+    expect(out.map((e) => e.lid)).toEqual(['d', 'a', 'b', 'c']);
+  });
+
+  it('never changes the entry set', () => {
+    const out = reorderByRecentFirst(entries, ['c', 'a', 'ghost']);
+    expect(new Set(out.map((e) => e.lid))).toEqual(new Set(['a', 'b', 'c', 'd']));
   });
 });

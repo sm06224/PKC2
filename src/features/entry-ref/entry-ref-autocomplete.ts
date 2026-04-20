@@ -92,3 +92,39 @@ export function filterEntryCandidates(
     (e) => e.lid.toLowerCase().includes(q) || e.title.toLowerCase().includes(q),
   );
 }
+
+/**
+ * v1.3: reorder candidates so that lids present in `recentLids` appear
+ * first in recency order (most recent first), with all remaining
+ * candidates preserving their original order afterwards.
+ *
+ * - The set of candidates is invariant. No entry is added or removed;
+ *   only order changes.
+ * - `recentLids` entries that don't match any candidate (e.g. deleted
+ *   or system entries) are silently ignored — no cleanup required.
+ * - Duplicate `recentLids` entries are tolerated; only the first
+ *   occurrence of a given lid promotes it.
+ */
+export function reorderByRecentFirst(
+  entries: readonly Entry[],
+  recentLids: readonly string[],
+): Entry[] {
+  if (entries.length === 0 || recentLids.length === 0) return entries.slice();
+
+  const byLid = new Map<string, Entry>();
+  for (const e of entries) byLid.set(e.lid, e);
+
+  const promoted: Entry[] = [];
+  const seen = new Set<string>();
+  for (const lid of recentLids) {
+    if (seen.has(lid)) continue;
+    const hit = byLid.get(lid);
+    if (hit) {
+      promoted.push(hit);
+      seen.add(lid);
+    }
+  }
+
+  const rest = entries.filter((e) => !seen.has(e.lid));
+  return [...promoted, ...rest];
+}
