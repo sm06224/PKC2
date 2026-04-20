@@ -150,6 +150,8 @@ case 'Tab':
 
 asset autocomplete も Ctrl+Enter を accept として吸収している。同じ理由で textlog append とぶつかりうる。**本 PR は entry-ref autocomplete 限定**で進めるが、後続 PR で asset autocomplete に同じ修正を適用する余地あり。
 
+> **Resolved**: `docs/development/asset-autocomplete-modifier-enter-v1.md` で同 policy を mirror 適用済み（v1.5 の派生 PR）。本 spec の記述は残すが、実コードは既に整合している。
+
 `slash-menu.ts` も類似だが、slash menu は `/` トリガーで開かれるため textlog append との衝突パターンが異なる。本 PR スコープ外、別途検討。
 
 ## 9. 関連文書
