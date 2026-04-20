@@ -44,10 +44,16 @@ afterEach(() => {
   root.remove();
 });
 
-const TEXTLOG_FIELDS = ['textlog-append-text', 'textlog-entry-text'] as const;
+// v1.3 extends this set to explicitly cover `todo-description`, which
+// has been in the SLASH_ELIGIBLE_FIELDS gate but was not test-locked.
+const PARITY_FIELDS = [
+  'textlog-append-text',
+  'textlog-entry-text',
+  'todo-description',
+] as const;
 
-for (const field of TEXTLOG_FIELDS) {
-  describe(`entry-ref autocomplete — textlog field "${field}"`, () => {
+for (const field of PARITY_FIELDS) {
+  describe(`entry-ref autocomplete — non-body field "${field}"`, () => {
     const cands: Entry[] = [
       makeEntry('alpha-1', 'Alpha'),
       makeEntry('beta-2', 'Beta'),

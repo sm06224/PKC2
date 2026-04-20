@@ -69,6 +69,7 @@ function mkState(container: Container, selectedLid: string | null): AppState {
     multiSelectedLids: [],
     batchImportResult: null,
     collapsedFolders: [],
+    recentEntryRefLids: [],
   };
 }
 

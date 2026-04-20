@@ -70,7 +70,7 @@ function makeEditingState(container: Container, selectedLid: string): AppState {
     calendarYear: 2026,
     calendarMonth: 4,
     multiSelectedLids: [],
-    batchImportResult: null, collapsedFolders: [],
+    batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
   };
 }
 

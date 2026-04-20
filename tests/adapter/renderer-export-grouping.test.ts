@@ -55,6 +55,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     multiSelectedLids: [],
     batchImportResult: null,
     collapsedFolders: [],
+    recentEntryRefLids: [],
     ...overrides,
   };
 }

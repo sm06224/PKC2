@@ -55,7 +55,7 @@ function baseState(overrides?: Partial<AppState>): AppState {
     exportMode: null, exportMutability: null,
     readonly: false, lightSource: false, showArchived: false,
     viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4,
-    multiSelectedLids: [], collapsedFolders: [],
+    multiSelectedLids: [], collapsedFolders: [], recentEntryRefLids: [],
     ...overrides,
   };
 }

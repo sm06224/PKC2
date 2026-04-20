@@ -124,11 +124,13 @@ import {
   handleEntryRefAutocompleteKeydown,
   isEntryRefAutocompleteOpen,
   openEntryRefAutocomplete,
+  registerEntryRefInsertCallback,
   updateEntryRefAutocompleteQuery,
 } from './entry-ref-autocomplete';
 import {
   findBracketCompletionContext,
   findEntryCompletionContext,
+  reorderByRecentFirst,
 } from '../../features/entry-ref/entry-ref-autocomplete';
 import { isUserEntry } from '../../core/model/record';
 
@@ -160,6 +162,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       candidates,
       ctx.root,
     );
+  });
+
+  // v1.3: record every autocomplete acceptance so the next popup can
+  // surface recently linked entries at the top. Same pattern as the
+  // asset-picker callback above.
+  registerEntryRefInsertCallback((lid) => {
+    dispatcher.dispatch({ type: 'RECORD_ENTRY_REF_SELECTION', lid });
   });
 
   function handleClick(e: Event): void {
@@ -2446,9 +2455,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const container = state.container;
             if (container) {
               const currentLid = state.editingLid;
-              const candidates = container.entries.filter(
+              const filtered = container.entries.filter(
                 (e) => isUserEntry(e) && e.lid !== currentLid,
               );
+              // v1.3: recent-first reordering before display.
+              const candidates = reorderByRecentFirst(filtered, state.recentEntryRefLids);
               openEntryRefAutocomplete(
                 target,
                 entryCtx.queryStart,
@@ -2467,9 +2478,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const container = state.container;
             if (container) {
               const currentLid = state.editingLid;
-              const candidates = container.entries.filter(
+              const filtered = container.entries.filter(
                 (e) => isUserEntry(e) && e.lid !== currentLid,
               );
+              const candidates = reorderByRecentFirst(filtered, state.recentEntryRefLids);
               openEntryRefAutocomplete(
                 target,
                 bracketCtx.bracketStart,
@@ -4119,6 +4131,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeAssetAutocomplete();
     closeEntryRefAutocomplete();
     registerAssetPickerCallback(null);
+    registerEntryRefInsertCallback(null);
   };
 }
 

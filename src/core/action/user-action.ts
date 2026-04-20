@@ -379,7 +379,17 @@ export type UserAction =
   /** SET_TEXT_TO_TEXTLOG_SPLIT_MODE — update split mode; no-op when modal closed. */
   | { type: 'SET_TEXT_TO_TEXTLOG_SPLIT_MODE'; splitMode: 'heading' | 'hr' }
   /** CLOSE_TEXT_TO_TEXTLOG_MODAL — close the modal (no-op when closed). */
-  | { type: 'CLOSE_TEXT_TO_TEXTLOG_MODAL' };
+  | { type: 'CLOSE_TEXT_TO_TEXTLOG_MODAL' }
+  /**
+   * RECORD_ENTRY_REF_SELECTION — record that the user accepted a
+   * candidate from the entry-ref autocomplete popup. Drives the
+   * runtime-only recent-first ordering (see
+   * docs/development/entry-autocomplete-v1.3-recent-first.md). Not
+   * persisted and not derived from generic SELECT_ENTRY — author-side
+   * "recently linked to" is a different signal from "recently
+   * navigated to".
+   */
+  | { type: 'RECORD_ENTRY_REF_SELECTION'; lid: string };
 
 /** Extract the type literal from a UserAction. */
 export type UserActionType = UserAction['type'];

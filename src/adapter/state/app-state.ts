@@ -204,6 +204,13 @@ export interface AppState {
    */
   collapsedFolders: string[];
   /**
+   * entry-ref autocomplete v1.3: LRU of lids accepted from the
+   * autocomplete popup (most recent first). Powers recent-first
+   * ordering of suggestions. Runtime-only, not persisted. Capped at
+   * 20 entries. Does NOT include generic SELECT_ENTRY navigation.
+   */
+  recentEntryRefLids: string[];
+  /**
    * TEXTLOG → TEXT log-selection mode (Slice 4 / P1-1). Runtime-only.
    *
    * `null` (or absent) when no selection is active. The presence of
@@ -351,6 +358,7 @@ export function createInitialState(): AppState {
     calendarMonth: new Date().getMonth() + 1,
     multiSelectedLids: [],
     collapsedFolders: [],
+    recentEntryRefLids: [],
     textlogSelection: null,
     textToTextlogModal: null,
     editingBase: null,
@@ -2307,6 +2315,15 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
       // `container.meta.entry_order` and preserves phase / editingLid
       // via the identity spread at the tail of reduceMoveEntry.
       return reduceReady(state, action);
+    }
+    case 'RECORD_ENTRY_REF_SELECTION': {
+      // v1.3: runtime-only LRU of recently accepted autocomplete lids.
+      // Prepend + dedupe + cap at 20. See
+      // docs/development/entry-autocomplete-v1.3-recent-first.md.
+      const lid = action.lid;
+      const deduped = state.recentEntryRefLids.filter((x) => x !== lid);
+      const next = [lid, ...deduped].slice(0, 20);
+      return { state: { ...state, recentEntryRefLids: next }, events: [] };
     }
     default:
       return blocked(state, action);

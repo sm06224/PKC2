@@ -18,6 +18,20 @@ import { filterEntryCandidates } from '../../features/entry-ref/entry-ref-autoco
 
 export type EntryRefAutocompleteKind = 'entry-url' | 'bracket';
 
+/**
+ * v1.3: callback invoked when the user accepts a candidate. The
+ * action-binder registers a handler that dispatches
+ * `RECORD_ENTRY_REF_SELECTION` to feed the recent-first LRU.
+ * Mirrors the shape of `registerAssetPickerCallback` in slash-menu.ts.
+ */
+let insertCallback: ((lid: string) => void) | null = null;
+
+export function registerEntryRefInsertCallback(
+  cb: ((lid: string) => void) | null,
+): void {
+  insertCallback = cb;
+}
+
 let activePopover: HTMLElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
 /**
@@ -209,6 +223,10 @@ function insertCandidate(cand: Entry): void {
 
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
   textarea.focus();
+
+  // v1.3: notify action-binder so recent-first LRU gets updated.
+  // Fires even for duplicate selections — the reducer dedups.
+  insertCallback?.(cand.lid);
 
   closeEntryRefAutocomplete();
 }
