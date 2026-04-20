@@ -2132,15 +2132,18 @@ function renderEntryItem(
 
   // v1 backlink count badge — relations-based only. Rendered only when
   // count > 0. Visual form: `←N` with a `title` explaining the meaning
-  // without the ambiguous standalone word "backlink".
+  // without the ambiguous standalone word "backlink". Clicking jumps
+  // to the Relations section — see
+  // docs/development/backlink-badge-jump-v1.md.
   const backlinkCount = backlinkCounts?.get(entry.lid) ?? 0;
   if (backlinkCount > 0) {
-    const badge = createElement('span', 'pkc-backlink-badge');
+    const badge = createElement('button', 'pkc-backlink-badge');
+    badge.setAttribute('data-pkc-action', 'open-backlinks');
+    badge.setAttribute('data-pkc-lid', entry.lid);
     badge.setAttribute('data-pkc-backlink-count', String(backlinkCount));
-    badge.setAttribute(
-      'title',
-      backlinkCount === 1 ? '1 incoming relation' : `${backlinkCount} incoming relations`,
-    );
+    const phrase = backlinkCount === 1 ? '1 incoming relation' : `${backlinkCount} incoming relations`;
+    badge.setAttribute('title', phrase);
+    badge.setAttribute('aria-label', `Jump to ${phrase}`);
     badge.textContent = `←${backlinkCount}`;
     li.appendChild(badge);
   }

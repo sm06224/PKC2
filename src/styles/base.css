@@ -812,11 +812,23 @@
   color: rgba(255,255,255,0.7);
 }
 
-/* ── Sidebar backlink count badge (relations-based only; v1) ── */
+/* ── Sidebar backlink count badge (relations-based only; v1) ──
+ * Rendered as <button> so Tab focus + Enter activation work natively
+ * (see docs/development/backlink-badge-jump-v1.md). Button default
+ * styles are reset below so the visual stays identical to the v1 span. */
 .pkc-backlink-badge {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
   font-size: 0.6rem;
   color: var(--c-muted);
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.pkc-backlink-badge:hover {
+  color: var(--c-accent);
 }
 
 [data-pkc-selected="true"] .pkc-backlink-badge {

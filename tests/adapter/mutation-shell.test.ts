@@ -637,4 +637,61 @@ describe('Mutation → Shell integration', () => {
     dispatcher.dispatch({ type: 'CANCEL_EDIT' });
     expect(isEntryRefAutocompleteOpen()).toBe(false);
   });
+
+  // v1 backlink badge click → select entry + scroll into Relations
+  // region. See docs/development/backlink-badge-jump-v1.md.
+  it('clicking sidebar backlink badge selects the target entry', () => {
+    const { dispatcher } = setup();
+
+    // Create a relation so e2 has an inbound count → its row gets a
+    // backlink badge that we can click.
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+
+    // Pre-condition: e1 is selected, not e2.
+    expect(dispatcher.getState().selectedLid).toBe('e1');
+
+    const badge = root.querySelector<HTMLElement>(
+      '[data-pkc-lid="e2"] .pkc-backlink-badge',
+    );
+    expect(badge).not.toBeNull();
+    badge!.click();
+
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+  });
+
+  it('clicking backlink badge while already selected does not re-dispatch SELECT_ENTRY', () => {
+    const { dispatcher, events } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e2' });
+    const beforeCount = events.filter((e) => e.type === 'ENTRY_SELECTED').length;
+
+    const badge = root.querySelector<HTMLElement>(
+      '[data-pkc-lid="e2"] .pkc-backlink-badge',
+    );
+    badge!.click();
+
+    const afterCount = events.filter((e) => e.type === 'ENTRY_SELECTED').length;
+    expect(afterCount).toBe(beforeCount);
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+  });
+
+  it('clicking backlink badge from calendar view switches back to detail', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });
+    expect(dispatcher.getState().viewMode).toBe('calendar');
+
+    const badge = root.querySelector<HTMLElement>(
+      '[data-pkc-lid="e2"] .pkc-backlink-badge',
+    );
+    badge!.click();
+
+    expect(dispatcher.getState().viewMode).toBe('detail');
+    expect(dispatcher.getState().selectedLid).toBe('e2');
+  });
 });

@@ -436,6 +436,32 @@ describe('Renderer', () => {
     expect(root.querySelector('.pkc-backlink-badge')).toBeNull();
   });
 
+  // ── v1 badge click: renders as <button> with open-backlinks action ──
+
+  it('renders backlink badge as a <button> with open-backlinks action + aria-label', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const badge = root.querySelector<HTMLElement>(
+      '[data-pkc-lid="e2"] .pkc-backlink-badge',
+    );
+    expect(badge).not.toBeNull();
+    expect(badge!.tagName).toBe('BUTTON');
+    expect(badge!.getAttribute('data-pkc-action')).toBe('open-backlinks');
+    expect(badge!.getAttribute('data-pkc-lid')).toBe('e2');
+    expect(badge!.getAttribute('aria-label')).toBe('Jump to 2 incoming relations');
+  });
+
   it('renders import confirmation panel when importPreview is set', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
