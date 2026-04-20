@@ -310,7 +310,7 @@ if (payload.snapshot === 'initial-graph'):
 
 ## 6. Explicit Limitations
 
-PoC が**敢えてやらない**こと。すべて acceptance §3 / §5 の defer 枠と整合。
+PoC が**敢えてやらない**こと。すべて acceptance §3 / §6 の defer 枠と整合（acceptance §5 の Non-Responsibility Boundary による構造的担保も併用）。
 
 ### 6.1 配信保証: at-most-once
 - 送信失敗（`postMessage` throw / target detach）時の **retry は行わない**
@@ -349,15 +349,17 @@ PoC が**敢えてやらない**こと。すべて acceptance §3 / §5 の defe
 - PoC では全 relation event をそのまま流す
 - filter 実装は acceptance §2 を満たす範囲で v1 GA までの別 PR
 
-### 6.9 PKC2 の責務外（Non-Responsibility Boundary）
-PoC が生み出すのは「通知」であって「同期基盤」ではない。具体的に:
-- **外部ツールの状態整合**: PKC2 は保証しない。hook は片方向通知
-- **再送・順序保証**: PKC2 は at-most-once / 順序保証なし（§6.1 / §6.2）
-- **snapshot の完全性**: best-effort。送信中の更新は snapshot に含まれないか、次の `hook:event` で届くかのどちらか
-- **遅延上限**: PKC2 は送信遅延の上限を保証しない
-- **ホスト側の idempotency 保証**: guest 側の責任。PKC2 は同一 event を複数回送らないが、再 subscribe による再送は起こりうる
+### 6.9 PKC2 の責務外（Non-Responsibility Boundary — normative source: `acceptance §5`）
+PoC が生み出すのは「通知」であって「同期基盤」ではない。**本項の normative source は acceptance contract §5（Non-Responsibility Boundary）** であり、以下は acceptance §5 の要点を PoC 向けに再掲したもの。矛盾が生じた場合は acceptance §5 が優先する。
 
-この境界をまたがる要求は PoC / v1 / v2+ いずれでも PKC2 の責務ではない。上位レイヤ（host アプリ / 外部 broker）が担う。
+- **外部ツールの状態整合**: PKC2 は保証しない。hook は片方向通知（acceptance §5.1）
+- **再送・順序保証**: PKC2 は at-most-once / 順序保証なし（本書 §6.1 / §6.2、acceptance §5.2 / §5.3）
+- **snapshot の完全性 / 履歴**: best-effort。送信中の更新は snapshot に含まれないか、次の `hook:event` で届くかのどちらか。購読前 event の replay は行わない（acceptance §5.4 / §5.10）
+- **遅延上限**: PKC2 は送信遅延の上限を保証しない（acceptance §5.6）
+- **ホスト側の idempotency 保証**: guest 側の責任。PKC2 は同一 event を複数回送らないが、再 subscribe による再送は起こりうる（acceptance §5.7）
+- **grant の永続性 / cross-tool consistency / transactionality**: いずれも保証しない（acceptance §5.5 / §5.8 / §5.9）
+
+この境界をまたがる要求は PoC / v1 / v2+ いずれでも PKC2 の責務ではない。上位レイヤ（host アプリ / 外部 broker）が担う。境界逸脱を求める仕様変更は **acceptance §5.11** に従い acceptance doc の改訂 PR を先行させること。
 
 ## 7. Kill Switch Strategy
 

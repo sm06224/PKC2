@@ -11,6 +11,7 @@
 - 条件を 1 つでも満たさない実装提案は **受理しない**（merge しない / 差し戻す）
 - v1 の許容面積は意図的に極小：**embedded-only / memory-only / TTL 必須 / relation 系のみ / projection 必須 / snapshot は initial-graph のみ**
 - 「PKC2 を generic event bus にしない」「core を汚染しない」の 2 点が最上位不変条件
+- §5 **Non-Responsibility Boundary** により、同期整合 / 再送 / 順序 / replay / 低遅延 / cross-tool 整合は **PKC2 の責務外** であることを契約として固定
 - v2+ の拡張パスは本書に明記。条件を満たす前に v2 機能を v1 実装に混ぜない
 
 ---
@@ -200,78 +201,162 @@ interface HookRelationEventPayload {
 - `[closed]` に入った subscription への以降の event は発火しない（store から削除済み）
 - reducer / container には影響しない（pure adapter 機構）
 
-## 5. Future Expansion Path（v2+ の拡張余地）
+## 5. Non-Responsibility Boundary（PKC2 が保証しない範囲）
+
+§1〜§4 の条件をすべて満たした実装が merge されたとしても、PKC2 の hook subscription は **配信通知基盤（notification surface）** であって **分散同期基盤（sync substrate）** ではない。以下は PKC2 が **保証しない** 事項を契約として固定する。この境界は PoC / v1 / v2+ いずれの段階でも変わらない。
+
+本節は `pkc-message-hook-subscription-poc.md` §6.9 に暫定記述されていた Non-Responsibility Boundary を acceptance contract 本体に昇格したものである（決定文書 G5）。以後、normative source は本節であり、PoC / v1 spec / decision はここを参照する。
+
+### 5.1 State Synchronization（状態整合）: 保証しない
+- PKC2 は外部ツールの state と PKC2 内部 state の一致を**保証しない**
+- hook は一方向（PKC2 → host）通知。受信側での反映結果・失敗・部分適用を PKC2 は追跡しない
+- 双方向同期が必要な用途は本契約の適用範囲外。上位レイヤ（host 側または外部 broker）の責任
+
+### 5.2 Reliable Delivery / Retries（再送）: 保証しない
+- 配信は **at-most-once**。PKC2 は再送を行わない
+- host 側受信失敗 / host 側 handler 例外 / network 障害のいずれでも、同一 event の自動再配信は発生しない
+- host が欠落を検出するための sequence number / ack protocol は v1 では提供しない（v2+ の診断 API で検討可能、§6 参照）
+
+### 5.3 Ordering（順序保証）: 保証しない
+- PKC2 は配信順序を**保証しない**
+- 特に throttle / coalesce（§2.7）により、元の DomainEvent 発生順と `hook:event` 到達順は一致しないことがある
+- 異なる relation への event 間の相対順序も保証しない
+- host 側は payload 内の `created_at` / `updated_at` を頼りに順序を推論する責務を負う
+
+### 5.4 Replay History（履歴配信）: 提供しない
+- subscription 成立**以前**に発生した event は配信されない
+- `initial-graph` snapshot は "subscribe 時点での最新状態" であって "履歴" ではない（§2.6）
+- 過去 event の再生 / since-token / resume-from-checkpoint はいずれも v1 では提供しない
+- host 側の履歴保存が必要なら host 側で independent に永続化する責務
+
+### 5.5 External Tool Consistency（外部ツール間の整合）: 保証しない
+- 複数の外部ツールが同時に subscribe していても、全員が同一 event を同一順序で受信する保証はない
+- "すべての外部ツールが同じ state を見ている" は PKC2 の責務ではない
+- cross-tool consistency を要する用途は別基盤で設計する
+
+### 5.6 Low-Latency（低遅延）: best-effort のみ
+- PKC2 は配信遅延の**上限を保証しない**
+- throttle（§2.7）/ coalesce による意図的な遅延、ホスト環境の postMessage キュー、browser throttling（hidden tab 等）いずれも PKC2 は制御下に置けない
+- p50 / p99 といった latency SLI / SLO の提示は行わない
+
+### 5.7 Host-side Idempotency（host 側の冪等性）: host の責務
+- PKC2 は同一 event を能動的に複数回送らないが、host が再 subscribe した場合は **再び snapshot から** 配信が始まる
+- 同じ state 変化に対応する event が異なる subscription lifecycle を跨いで複数回 host に届くことは発生し得る
+- host 側は受信 event の処理を冪等に設計する責務を負う（PKC2 側で de-dup しない）
+
+### 5.8 Grant Permanence（grant の永続性）: 保証しない
+- subscription は memory-only（§2.2）。reload / crash / tab close で喪失する
+- `expiresAt` 前でもセッション消失で subscription は失効する
+- "subscribe したら再起動後も自動復活" は本契約の適用外（§3.4）
+
+### 5.9 Transactionality（トランザクション境界）: 提供しない
+- 複数 event を atomic として扱う仕組みは提供しない
+- bulk import で 100 件の relation が作成されても、hook は 100 回個別に（または coalesce により少数回に）通知する
+- "全 event が届いてから rendering したい" 等の要求は host 側で batching する
+
+### 5.10 Projection の完全性（完全な state の露出）: 意図的に提供しない
+- projection allow-list（§2.5）は **意図的に狭く**、`body` / `metadata` / `revisions` / `assets` を一切含まない
+- 「全フィールドを見たい」という要望は **§3.7 / §4.2 により却下**
+- host が PKC2 の内部 state を完全に再現することは本契約の適用範囲外
+
+### 5.11 境界逸脱要求への対応
+上記いずれかの保証を要求する機能リクエストは、原則として本契約の**違反** とみなす。具体的には:
+- §1.4 Review 反映前提（P4-1）に照らし、提案は acceptance doc の改訂 PR を先行させる
+- §6 Future Expansion Path（旧 §5）に落とせる場合のみ defer として受理
+- それ以外は却下（§7 Final Position 準拠）
+
+### 5.12 構造的担保
+本節の境界は以下の設計選択によって**構造的に**担保される:
+- memory-only store（§2.2）→ §5.8
+- at-most-once（§2.7 と relaxed による）→ §5.2
+- 順序保証なし throttle / coalesce（§2.7）→ §5.3
+- snapshot scope の限定（§2.6）→ §5.4 / §5.10
+- projection allow-list（§2.5）→ §5.10
+- memory 限定 + TTL 上限（§2.2 / §2.3）→ §5.8
+
+**つまり v1 実装が §2 の Mandatory Constraints を正しく満たすこと自体が §5 の Non-Responsibility Boundary の担保になる。両者は同じ contract の表裏である。**
+
+## 6. Future Expansion Path（v2+ の拡張余地）
 
 v1 で **敢えて外した**機能のうち、将来検討対象となるもの。各項目は独立した別文書で検討する前提（本書では scope 外）。
 
-### 5.1 Event 種別の拡大
+### 6.1 Event 種別の拡大
 - `entry.created` / `entry.updated` / `entry.deleted`（projection allow-list を慎重に設計。body は常に除外）
 - `revision.created`（metadata のみ、body は除外）
 - `phase.changed` / `selection.changed` は敢えて defer（UI 状態を外部に流す必然性が薄い）
 - `asset.*` は defer（binary payload は hook に乗せない。別プロトコルで扱う）
 
-### 5.2 Grant / Origin モデルの拡張
+### 6.2 Grant / Origin モデルの拡張
 - **trusted-origin allow-list**: `event.origin` を正規化し、ユーザが承認した origin のみ subscribe を許可
 - **readonly / editable grant の粒度**: v1 は通知のみなので意味なし。write 系 API が増えた段階で検討
 - **standalone モード対応**: 同一オリジンからの postMessage を許可（iframe 無しでも購読）
 
-### 5.3 Grant 永続化
+### 6.3 Grant 永続化
 - IndexedDB に trusted-origin + grant profile を保存
 - 再起動後の自動 restore / revoke UI
+- 本項を検討する際は §5.8（Grant Permanence の非保証）を契約改訂の対象に含める必要がある
 
-### 5.4 TTL 延長 / Keep-alive
+### 6.4 TTL 延長 / Keep-alive
 - `hook:renew` による TTL 延長
 - 上限の緩和（24h → 週単位）
 
-### 5.5 診断 API
+### 6.5 診断 API
 - `hook:list`（現在の subscription 一覧）
 - `hook:stats`（配信件数 / throttle drop 件数）
 - dev-only panel での可視化
+- sequence number / since-token による欠落検出支援は §5.2 / §5.4 の非保証を前提とした診断面のみで提供する（再送は v2+ でも行わない）
 
-### 5.6 配信制御の高度化
+### 6.6 配信制御の高度化
 - priority queue / adaptive backoff
 - per-subscription rate limit / global rate limit
-- reconnect 時の差分配信（`since` token）
+- reconnect 時の差分配信（`since` token） — §5.4 の "replay なし" 原則は維持、あくまで **diagnostic な gap-closing** に限る
 
-### 5.7 Snapshot の拡張
+### 6.7 Snapshot の拡張
 - `initial-graph-with-titles`（entries title map を同梱） — ただし body は引き続き除外
 - differential snapshot（前回 snapshot からの差分）
 
-### 5.8 契約バージョニング
+### 6.8 契約バージョニング
 - `version: 2` envelope での breaking change は、本書と同レベルの acceptance contract を改めて起こしてから着手
+- §5 Non-Responsibility Boundary を変更する場合も必ず version bump を伴う
 
 **v2+ は v1 が十分 stable に稼働していることを前提条件とし、v1 未完成のうちに v2 機能を v1 実装に先行投入することを禁止する。**
 
-## 6. Final Position（最終方針）
+## 7. Final Position（最終方針）
 
-**PKC2 は、本書 §1〜§4 の条件すべてを満たす提案に限り、PKC-Message Hook Subscription Protocol の実装を受理する。**
+**PKC2 は、本書 §1〜§5 の条件すべてを満たし、§5 の Non-Responsibility Boundary を host 側が受諾する提案に限り、PKC-Message Hook Subscription Protocol の実装を受理する。**
 
 言い換え:
 - §1 Acceptance Preconditions を 1 つでも欠く提案は **実装 PR を merge しない**
 - §2 Mandatory Constraints for v1 を逸脱する実装は **差し戻す**
 - §3 Explicitly Rejected Patterns を踏む提案は **v1 / v2 を問わず採用しない**
 - §4 API Contract Direction に沿わない実装は **差し戻す**
-- §5 Future Expansion Path は **v1 実装に混ぜない**（v2+ 以降で別文書・別 PR）
+- §5 Non-Responsibility Boundary の **いずれかの保証** を PKC2 側に要求する提案は **差し戻す**（host 側で対応するか、設計を諦める）
+- §6 Future Expansion Path は **v1 実装に混ぜない**（v2+ 以降で別文書・別 PR）
 
-### 6.1 受理フロー
+### 7.1 受理フロー
 1. 本書 merge（docs-only / 本 PR）
-2. 提案側と §2〜§4 について text round-trip で合意（PR コメント or 別文書）
+2. 提案側と §2〜§5 について text round-trip で合意（PR コメント or 別文書）。特に §5 Non-Responsibility Boundary の内容を host 側が受諾していることを明示
 3. 実装 spec 文書（`pkc-message-hook-subscription-v1.md` 相当）を docs-only PR で先行 merge
 4. 実装 PR（transport 層のみ + テスト同梱 + dist 差分記録）
 5. 別オリジンのホスト側 PoC（PKC2 外）が hook を購読して動作することを確認
 6. v2+ の拡張要求が出た時点で本書の follow-up 改訂 PR を検討
 
-### 6.2 受理しないケースの明示例
+### 7.2 受理しないケースの明示例
 - 「`hook:subscribe` を standalone でも通したい」→ 却下（§2.1）
-- 「subscription を IndexedDB に保存して自動復元したい」→ 却下（§2.2 / §3.4）
+- 「subscription を IndexedDB に保存して自動復元したい」→ 却下（§2.2 / §3.4 / §5.8）
 - 「TTL なしで常時購読したい」→ 却下（§2.3 / §3.3）
-- 「entry の body を snapshot に入れたい」→ 却下（§2.6 / §3.7）
+- 「entry の body を snapshot に入れたい」→ 却下（§2.6 / §3.7 / §5.10）
 - 「DomainEvent をそのまま転送したい」→ 却下（§3.2 / §4.1）
 - 「`custom` で hook を包みたい」→ 却下（§3.6）
 - 「graph レイアウトを PKC2 本体に持ちたい」→ 却下（§3.5）
+- 「失われた event を再送してほしい」→ 却下（§5.2 / §5.4）
+- 「順序を保証してほしい」→ 却下（§5.3）
+- 「latency SLO を提示してほしい」→ 却下（§5.6）
+- 「複数 subscriber 間で同じ event 順を保証してほしい」→ 却下（§5.5）
+- 「bulk 変更を atomic に通知してほしい」→ 却下（§5.9）
 
-### 6.3 一行結論
-**Opt-in / layered / narrow / projected / time-boxed — この 5 原則を満たす提案のみ、PKC2 は hook 購読を実装する。**
+### 7.3 一行結論
+**Opt-in / layered / narrow / projected / time-boxed / notification-only — この 6 原則を満たす提案のみ、PKC2 は hook 購読を実装する。**
 
 ---
 
