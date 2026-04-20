@@ -1690,6 +1690,67 @@ describe('Renderer', () => {
     expect(relationBacklinks).not.toBe(linkIndexBacklinks);
   });
 
+  // ── Relation delete UI v1 ──
+
+  it('renders delete button on each relation row in editable context', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const outgoing = root.querySelector('[data-pkc-relation-direction="outgoing"]');
+    const btn = outgoing!.querySelector<HTMLButtonElement>('.pkc-relation-delete');
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-action')).toBe('delete-relation');
+    expect(btn!.getAttribute('data-pkc-relation-id')).toBe('r1');
+    expect(btn!.getAttribute('title')).toBe('Delete relation');
+    expect(btn!.textContent).toBe('×');
+  });
+
+  it('renders delete button on inbound relation row (Backlinks group)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const backlinks = root.querySelector('[data-pkc-relation-direction="backlinks"]');
+    const btn = backlinks!.querySelector<HTMLButtonElement>('.pkc-relation-delete');
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('data-pkc-relation-id')).toBe('r1');
+  });
+
+  it('does not render delete button in readonly context', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    // Relation row still visible (so users see what exists); delete button suppressed.
+    expect(root.querySelector('.pkc-relation-peer')).not.toBeNull();
+    expect(root.querySelector('.pkc-relation-delete')).toBeNull();
+  });
+
   it('shows relation creation form in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

@@ -3114,8 +3114,8 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
 
   const relSection = createElement('div', 'pkc-relations');
   relSection.setAttribute('data-pkc-region', 'relations');
-  relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound));
-  relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound));
+  relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
+  relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
   meta.appendChild(relSection);
 
   if (canEdit && container.entries.length > 1) {
@@ -3334,6 +3334,7 @@ function renderRelationGroup(
   label: string,
   direction: 'outgoing' | 'backlinks',
   relations: { relation: { id: string; kind: string }; direction: string; peer: Entry }[],
+  canEdit: boolean,
 ): HTMLElement {
   const group = createElement('div', 'pkc-relation-group');
   group.setAttribute('data-pkc-relation-direction', direction);
@@ -3363,6 +3364,19 @@ function renderRelationGroup(
     const kindBadge = createElement('span', 'pkc-relation-kind');
     kindBadge.textContent = r.relation.kind;
     item.appendChild(kindBadge);
+
+    // v1 relation delete UI: only rendered in editable contexts.
+    // Reducer-level `state.readonly` gate provides defence-in-depth.
+    // See docs/development/relation-delete-ui-v1.md.
+    if (canEdit) {
+      const deleteBtn = createElement('button', 'pkc-relation-delete');
+      deleteBtn.setAttribute('data-pkc-action', 'delete-relation');
+      deleteBtn.setAttribute('data-pkc-relation-id', r.relation.id);
+      deleteBtn.setAttribute('title', 'Delete relation');
+      deleteBtn.setAttribute('aria-label', 'Delete relation');
+      deleteBtn.textContent = '×';
+      item.appendChild(deleteBtn);
+    }
 
     list.appendChild(item);
   }
