@@ -1860,6 +1860,124 @@ describe('Renderer', () => {
     expect(linkIndexBacklinksHeading!.textContent).toMatch(/^Backlinks \(/);
   });
 
+  // ── References summary row v2 ──
+
+  it('renders References summary row with all three counts below the umbrella heading', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const summary = root.querySelector('[data-pkc-region="references-summary"]');
+    expect(summary).not.toBeNull();
+
+    const relItem = summary!.querySelector('[data-pkc-summary-key="relations"]');
+    const mdItem = summary!.querySelector('[data-pkc-summary-key="markdown-refs"]');
+    const brItem = summary!.querySelector('[data-pkc-summary-key="broken"]');
+    expect(relItem!.textContent).toBe('Relations: 0');
+    expect(mdItem!.textContent).toBe('Markdown refs: 0');
+    expect(brItem!.textContent).toBe('Broken: 0');
+  });
+
+  it('References summary row appears inside the umbrella and before sub-panels', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const references = root.querySelector('[data-pkc-region="references"]');
+    expect(references).not.toBeNull();
+    const children = Array.from(references!.children);
+    const headingIdx = children.findIndex((c) => c.classList.contains('pkc-references-heading'));
+    const summaryIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-region') === 'references-summary',
+    );
+    const relationsIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-region') === 'relations',
+    );
+    const linkIndexIdx = children.findIndex(
+      (c) => c.getAttribute('data-pkc-region') === 'link-index',
+    );
+    expect(headingIdx).toBeGreaterThanOrEqual(0);
+    expect(summaryIdx).toBe(headingIdx + 1);
+    expect(summaryIdx).toBeLessThan(relationsIdx);
+    expect(relationsIdx).toBeLessThan(linkIndexIdx);
+  });
+
+  it('References summary row counts relations (outgoing + inbound)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'e3', title: 'Entry Three', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'structural', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r2', from: 'e1', to: 'e3', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'r3', from: 'e3', to: 'e1', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const relItem = root.querySelector('[data-pkc-summary-key="relations"]');
+    // 2 outgoing (e1→e2, e1→e3) + 1 inbound (e3→e1) = 3
+    expect(relItem!.textContent).toBe('Relations: 3');
+  });
+
+  it('References summary row counts markdown refs (outgoing + backlinks) and broken separately', () => {
+    const containerWithMdRefs: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'e1', title: 'Entry One', body: 'link to [[entry:e2]] and [[entry:missing]]', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'e2', title: 'Entry Two', body: 'refers back to [[entry:e1]]', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithMdRefs,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const mdItem = root.querySelector('[data-pkc-summary-key="markdown-refs"]');
+    const brItem = root.querySelector('[data-pkc-summary-key="broken"]');
+    // e1 outgoing: [[entry:e2]] (resolved) + [[entry:missing]] (broken) = 2
+    // e1 backlinks: from e2 = 1
+    // total markdown refs = 3
+    expect(mdItem!.textContent).toBe('Markdown refs: 3');
+    // broken = 1 (missing target in e1's outgoing)
+    expect(brItem!.textContent).toBe('Broken: 1');
+    expect(brItem!.getAttribute('data-pkc-broken')).toBe('true');
+  });
+
+  it('References summary row Broken item carries broken marker only when count > 0', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const brItem = root.querySelector('[data-pkc-summary-key="broken"]');
+    expect(brItem!.textContent).toBe('Broken: 0');
+    // No marker when count is 0 (keeps it visually neutral).
+    expect(brItem!.getAttribute('data-pkc-broken')).toBeNull();
+  });
+
+  it('References summary row is not rendered when no entry is selected', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="references-summary"]')).toBeNull();
+  });
+
   // ── Relation delete UI v1 ──
 
   it('renders delete button on each relation row in editable context', () => {
