@@ -646,6 +646,37 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
         break;
       }
+      case 'open-backlinks': {
+        // v1 click jump for the sidebar backlink count badge. Ensure
+        // the target entry is selected in detail view, then scroll the
+        // meta pane's relations region into view on the next frame so
+        // the render pass has time to settle. See
+        // docs/development/backlink-badge-jump-v1.md.
+        if (!lid) break;
+        const openState = dispatcher.getState();
+        if (openState.viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
+        if (openState.selectedLid !== lid) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        }
+        const raf =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (cb: FrameRequestCallback) => {
+                cb(0 as unknown as number);
+                return 0;
+              };
+        raf(() => {
+          const region = root.querySelector<HTMLElement>(
+            '[data-pkc-region="relations"]',
+          );
+          if (region && typeof region.scrollIntoView === 'function') {
+            region.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+        break;
+      }
       case 'toggle-todo-status': {
         if (!lid) break;
         const state = dispatcher.getState();
