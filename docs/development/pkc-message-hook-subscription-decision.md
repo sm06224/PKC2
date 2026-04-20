@@ -216,7 +216,7 @@ S = 1h 以下, M = 数時間, L = 1 日以上（Claude / 人手問わず）
 - [ ] **G2**: 外部ツール（Graph Tool 等）が polling で **動作しているプロトタイプ** が存在し、polling では解決できない UX 課題が具体的に特定されている
 - [ ] **G3**: PKC2 の UX 強化フェーズの主要作業（unified backlinks v1 / entry autocomplete 完了 / relation kind 編集 UI）がすべて main に merge 済み
 - [ ] **G4**: hook 実装にリソースを割いても他 feature 進行が阻害されない（並行可能）
-- [ ] **G5**: Non-Responsibility Boundary が acceptance contract に昇格済み（§6.9 の PoC 記載だけでは不十分）
+- [x] **G5**: Non-Responsibility Boundary が acceptance contract に昇格済み（**acceptance §5 として 2026-04-20 に昇格、本条件は充足**。PoC §6.9 は以降 normative source を acceptance §5 に委譲した再掲）
 - [ ] **G6**: projector テスト戦略が具体的に設計されている（「何を通し、何を通さないか」のテーブルテスト）
 
 ### 7.2 No-Go の条件（1 つでも該当すれば不可）
