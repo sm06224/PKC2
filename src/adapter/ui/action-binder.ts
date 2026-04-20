@@ -4054,6 +4054,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
 
+  // v1.2: close any floating autocomplete / picker popups when phase
+  // transitions away from 'editing'. The root re-render wipes their DOM
+  // on COMMIT_EDIT / CANCEL_EDIT / SELECT_ENTRY mid-edit, but our module
+  // state would otherwise keep pointing at detached nodes. See
+  // docs/development/entry-autocomplete-v1.2-textlog.md §4.
+  let prevPhase: AppState['phase'] | null = dispatcher.getState().phase;
+  const unsubPopupCleanup = dispatcher.onState((state) => {
+    if (prevPhase === 'editing' && state.phase !== 'editing') {
+      closeSlashMenu();
+      closeAssetPicker();
+      closeAssetAutocomplete();
+      closeEntryRefAutocomplete();
+    }
+    prevPhase = state.phase;
+  });
+
   // Return cleanup function
   return () => {
     root.removeEventListener('mousedown', handleResizeMouseDown);
@@ -4097,6 +4113,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
     clearAllDragState();
+    unsubPopupCleanup();
     closeSlashMenu();
     closeAssetPicker();
     closeAssetAutocomplete();

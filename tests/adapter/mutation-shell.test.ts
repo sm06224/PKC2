@@ -481,4 +481,72 @@ describe('Mutation → Shell integration', () => {
     expect(root.querySelector('.pkc-attachment-mime-badge')!.textContent).toBe('text/plain');
     expect(root.querySelector('.pkc-attachment-size-badge')!.textContent).toBe('5 B');
   });
+
+  // v1.2: popup cleanup on phase transition out of 'editing'.
+  // See docs/development/entry-autocomplete-v1.2-textlog.md §4.
+  it('closes entry-ref autocomplete when editing phase ends (COMMIT_EDIT)', async () => {
+    const { openEntryRefAutocomplete, isEntryRefAutocompleteOpen } =
+      await import('@adapter/ui/entry-ref-autocomplete');
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    expect(dispatcher.getState().phase).toBe('editing');
+
+    // Simulate a popup being opened during edit
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    openEntryRefAutocomplete(
+      ta,
+      0,
+      '',
+      [
+        {
+          lid: 'other', title: 'Other', body: '', archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      root,
+    );
+    expect(isEntryRefAutocompleteOpen()).toBe(true);
+
+    dispatcher.dispatch({
+      type: 'COMMIT_EDIT', lid: 'e1', title: 'First', body: 'Body1',
+    });
+
+    // Phase transitioned editing → ready; state listener must have
+    // closed the popup so no stale module state dangles.
+    expect(dispatcher.getState().phase).toBe('ready');
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
+
+  it('closes entry-ref autocomplete when editing is cancelled', async () => {
+    const { openEntryRefAutocomplete, isEntryRefAutocompleteOpen } =
+      await import('@adapter/ui/entry-ref-autocomplete');
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    openEntryRefAutocomplete(
+      ta,
+      0,
+      '',
+      [
+        {
+          lid: 'other', title: 'Other', body: '', archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      root,
+    );
+    expect(isEntryRefAutocompleteOpen()).toBe(true);
+
+    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
 });
