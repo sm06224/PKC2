@@ -23,7 +23,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
-import { buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
@@ -1732,12 +1732,17 @@ function renderSidebar(state: AppState): HTMLElement {
   // only — link-index backlinks are not mixed in. See
   // docs/development/sidebar-backlink-badge-v1.md.
   const backlinkCounts = buildInboundCountMap(state.container?.relations ?? []);
+  // v1 orphan detection: set of lids that appear in ANY relation (from
+  // or to). Entries whose lid is NOT in this set are relations-based
+  // orphans. Same O(R+N) pattern as backlink counts — see
+  // docs/development/orphan-detection-ui-v1.md.
+  const connectedLids = buildConnectedLidSet(state.container?.relations ?? []);
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
     const query = state.searchQuery.trim();
     for (const entry of entries) {
-      list.appendChild(renderEntryItem(entry, state, backlinkCounts));
+      list.appendChild(renderEntryItem(entry, state, backlinkCounts, connectedLids));
       // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
       // search query AND the entry has sub-location matches, expand
       // them as clickable sidebar rows that scroll to the exact spot
@@ -1762,7 +1767,7 @@ function renderSidebar(state: AppState): HTMLElement {
       ? reorderTreeByEntries(tree, entries)
       : tree;
     for (const node of displayTree) {
-      renderTreeNode(node, list, state, backlinkCounts);
+      renderTreeNode(node, list, state, backlinkCounts, connectedLids);
     }
   }
   sidebar.appendChild(list);
@@ -2026,8 +2031,9 @@ function renderTreeNode(
   parent: HTMLElement,
   state: AppState,
   backlinkCounts?: ReadonlyMap<string, number>,
+  connectedLids?: ReadonlySet<string>,
 ): void {
-  const li = renderEntryItem(node.entry, state, backlinkCounts);
+  const li = renderEntryItem(node.entry, state, backlinkCounts, connectedLids);
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
   }
@@ -2068,7 +2074,7 @@ function renderTreeNode(
   // Skip rendering children when the folder is collapsed.
   if (isCollapsed) return;
   for (const child of node.children) {
-    renderTreeNode(child, parent, state, backlinkCounts);
+    renderTreeNode(child, parent, state, backlinkCounts, connectedLids);
   }
 }
 
@@ -2076,6 +2082,7 @@ function renderEntryItem(
   entry: Entry,
   state: AppState,
   backlinkCounts?: ReadonlyMap<string, number>,
+  connectedLids?: ReadonlySet<string>,
 ): HTMLElement {
   const li = createElement('li', 'pkc-entry-item');
   li.setAttribute('data-pkc-action', 'select-entry');
@@ -2146,6 +2153,19 @@ function renderEntryItem(
     badge.setAttribute('aria-label', `Jump to ${phrase}`);
     badge.textContent = `←${backlinkCount}`;
     li.appendChild(badge);
+  }
+
+  // v1 relations-based orphan marker — a subtle `○` shown for entries
+  // that participate in no relation (neither `from` nor `to`). Marker
+  // is informational only; no click behavior. See
+  // docs/development/orphan-detection-ui-v1.md.
+  if (connectedLids && !connectedLids.has(entry.lid)) {
+    li.setAttribute('data-pkc-orphan', 'true');
+    const marker = createElement('span', 'pkc-orphan-marker');
+    marker.setAttribute('title', 'No relations yet');
+    marker.setAttribute('aria-hidden', 'true');
+    marker.textContent = '○';
+    li.appendChild(marker);
   }
 
   // C-2 v1 (2026-04-17): Move up / Move down for the selected entry

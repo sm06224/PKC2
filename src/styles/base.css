@@ -835,6 +835,22 @@
   color: rgba(255,255,255,0.7);
 }
 
+/* ── Relations-based orphan marker (v1) ──
+ * Subtle `○` shown on entries that participate in no relation (neither
+ * `from` nor `to`). Information-only; no interaction. See
+ * docs/development/orphan-detection-ui-v1.md. */
+.pkc-orphan-marker {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+[data-pkc-selected="true"] .pkc-orphan-marker {
+  color: rgba(255,255,255,0.7);
+  opacity: 0.85;
+}
+
 /* ── Task completion badge ── */
 .pkc-task-badge {
   font-size: 0.6rem;

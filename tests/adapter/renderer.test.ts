@@ -436,6 +436,86 @@ describe('Renderer', () => {
     expect(root.querySelector('.pkc-backlink-badge')).toBeNull();
   });
 
+  // ── v1 relations-based orphan marker ──
+
+  it('marks entries with no relations as orphan', () => {
+    // mockContainer has relations: [] — both e1 and e2 are orphans.
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    expect(e1Row!.getAttribute('data-pkc-orphan')).toBe('true');
+    expect(e2Row!.getAttribute('data-pkc-orphan')).toBe('true');
+
+    const marker = e1Row!.querySelector<HTMLElement>('.pkc-orphan-marker');
+    expect(marker).not.toBeNull();
+    expect(marker!.textContent).toBe('○');
+    expect(marker!.getAttribute('title')).toBe('No relations yet');
+    expect(marker!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('does not mark entries that participate in any relation as orphan', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    // Both e1 (as from) and e2 (as to) appear in the relation → neither is orphan.
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    expect(e1Row!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(e2Row!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(root.querySelector('.pkc-orphan-marker')).toBeNull();
+  });
+
+  it('marks only the disconnected entry when one of several is connected', () => {
+    // Add a third entry e3 that has no relation.
+    const containerMixed: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        { lid: 'e3', title: 'Loner', body: '', archetype: 'text', created_at: '2026-01-01T00:02:00Z', updated_at: '2026-01-01T00:02:00Z' },
+      ],
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerMixed,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-lid="e1"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(root.querySelector('[data-pkc-lid="e2"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(root.querySelector('[data-pkc-lid="e3"]')!.getAttribute('data-pkc-orphan')).toBe('true');
+
+    const markers = root.querySelectorAll('.pkc-orphan-marker');
+    expect(markers.length).toBe(1);
+  });
+
+  it('shows orphan marker in readonly context (informational only)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    // Readonly doesn't suppress the marker — it's an informational signal.
+    expect(root.querySelectorAll('.pkc-orphan-marker').length).toBeGreaterThan(0);
+  });
+
   // ── v1 badge click: renders as <button> with open-backlinks action ──
 
   it('renders backlink badge as a <button> with open-backlinks action + aria-label', () => {
