@@ -53,6 +53,31 @@ export function resolveRelations(
 }
 
 /**
+ * Build the set of lids that appear in ANY relation, as either `from`
+ * or `to`. Used by the sidebar renderer (v1 relations-based orphan
+ * marker) so that per-row lookup is O(1) — see
+ * docs/development/orphan-detection-ui-v1.md.
+ *
+ * Notes:
+ * - Self-loop relations (`from === to`) contribute the lid once.
+ * - Dangling relations (pointing to a deleted entry) include the
+ *   missing lid in the set; that's harmless because the sidebar only
+ *   queries lids that exist in `container.entries`.
+ *
+ * Complexity: O(R) where R = relations.length.
+ */
+export function buildConnectedLidSet(
+  relations: readonly Relation[],
+): Set<string> {
+  const set = new Set<string>();
+  for (const r of relations) {
+    set.add(r.from);
+    set.add(r.to);
+  }
+  return set;
+}
+
+/**
  * Build a `Map<targetLid, inboundCount>` in one pass over the relations
  * array. Used by the sidebar renderer (v1 backlink count badge) so that
  * per-row lookup is O(1) rather than repeated `getRelationsForEntry`

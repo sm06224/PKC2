@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildConnectedLidSet,
   buildInboundCountMap,
   getRelationsForEntry,
   resolveRelations,
@@ -167,5 +168,63 @@ describe('buildInboundCountMap', () => {
     expect(map.get('e2')).toBe(1); // from r1 (e1→e2)
     expect(map.get('e3')).toBe(1); // from r3 (e2→e3)
     expect(map.size).toBe(3);
+  });
+});
+
+// ── buildConnectedLidSet (v1 relations-based orphan detection) ──
+
+describe('buildConnectedLidSet', () => {
+  it('returns an empty set for an empty relations array', () => {
+    const set = buildConnectedLidSet([]);
+    expect(set.size).toBe(0);
+  });
+
+  it('contains both endpoints of each relation', () => {
+    const set = buildConnectedLidSet([makeRelation('r1', 'a', 'b')]);
+    expect(set.has('a')).toBe(true);
+    expect(set.has('b')).toBe(true);
+    expect(set.size).toBe(2);
+  });
+
+  it('deduplicates lids that appear multiple times', () => {
+    const set = buildConnectedLidSet([
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'c'),
+      makeRelation('r3', 'a', 'c'),
+    ]);
+    expect(set.size).toBe(3);
+    expect([...set].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is kind-agnostic', () => {
+    const set = buildConnectedLidSet([
+      makeRelation('r1', 'a', 'b', 'structural'),
+      makeRelation('r2', 'c', 'd', 'semantic'),
+      makeRelation('r3', 'e', 'f', 'categorical'),
+      makeRelation('r4', 'g', 'h', 'temporal'),
+      makeRelation('r5', 'i', 'j', 'provenance'),
+    ]);
+    expect(set.size).toBe(10);
+  });
+
+  it('counts self-loop lids once', () => {
+    const set = buildConnectedLidSet([makeRelation('r1', 'x', 'x')]);
+    expect(set.size).toBe(1);
+    expect(set.has('x')).toBe(true);
+  });
+
+  it('returns dangling lids too (caller queries by existing lids only)', () => {
+    const set = buildConnectedLidSet([makeRelation('r1', 'a', 'ghost')]);
+    expect(set.has('a')).toBe(true);
+    expect(set.has('ghost')).toBe(true);
+  });
+
+  it('processes the shared relations fixture correctly', () => {
+    // r1: e1→e2, r2: e3→e1, r3: e2→e3 — every lid is involved
+    const set = buildConnectedLidSet(relations);
+    expect(set.size).toBe(3);
+    expect(set.has('e1')).toBe(true);
+    expect(set.has('e2')).toBe(true);
+    expect(set.has('e3')).toBe(true);
   });
 });
