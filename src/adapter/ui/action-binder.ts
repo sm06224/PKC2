@@ -124,14 +124,20 @@ import {
   handleEntryRefAutocompleteKeydown,
   isEntryRefAutocompleteOpen,
   openEntryRefAutocomplete,
+  openFragmentAutocomplete,
   registerEntryRefInsertCallback,
   updateEntryRefAutocompleteQuery,
+  updateFragmentAutocompleteQuery,
 } from './entry-ref-autocomplete';
 import {
   findBracketCompletionContext,
   findEntryCompletionContext,
   reorderByRecentFirst,
 } from '../../features/entry-ref/entry-ref-autocomplete';
+import {
+  collectFragmentCandidates,
+  findFragmentCompletionContext,
+} from '../../features/entry-ref/fragment-completion';
 import { isUserEntry } from '../../core/model/record';
 
 /**
@@ -2439,15 +2445,41 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
       }
 
-      // Entry-ref autocomplete — fires when the caret is inside
-      // `(entry:<query>` (v1) or `[[<query>` (v1.1 wiki-style). Both
-      // share the same popup; the insertion format differs per kind.
-      // Checks `(entry:` first, then `[[`; the two triggers can never
-      // both match at the same caret position.
+      // Entry-ref autocomplete — fires when the caret is inside:
+      //   `(entry:<lid>#<query>` (v1.4 fragment mode)  — checked first
+      //   `(entry:<query>`       (v1 entry-url mode)
+      //   `[[<query>`            (v1.1 wiki-style bracket mode)
+      // All three share the same popup. Contexts are structurally
+      // mutually exclusive — fragment requires `#`, entry-url forbids
+      // it, and bracket has different delimiters entirely.
       if (!isSlashMenuOpen() && !isAssetAutocompleteOpen()) {
-        const entryCtx = findEntryCompletionContext(text, caretPos);
-        const bracketCtx = entryCtx ? null : findBracketCompletionContext(text, caretPos);
-        if (entryCtx) {
+        const fragmentCtx = findFragmentCompletionContext(text, caretPos);
+        const entryCtx = fragmentCtx ? null : findEntryCompletionContext(text, caretPos);
+        const bracketCtx = fragmentCtx || entryCtx
+          ? null
+          : findBracketCompletionContext(text, caretPos);
+
+        if (fragmentCtx) {
+          if (isEntryRefAutocompleteOpen()) {
+            updateFragmentAutocompleteQuery(fragmentCtx.query);
+          } else {
+            const state = dispatcher.getState();
+            const container = state.container;
+            if (container) {
+              const entry = container.entries.find((e) => e.lid === fragmentCtx.lid);
+              // Open even with [] so an explicit "No fragments." state
+              // can communicate unsupported archetype or empty textlog.
+              const candidates = entry ? collectFragmentCandidates(entry) : [];
+              openFragmentAutocomplete(
+                target,
+                fragmentCtx.queryStart,
+                fragmentCtx.query,
+                candidates,
+                root,
+              );
+            }
+          }
+        } else if (entryCtx) {
           if (isEntryRefAutocompleteOpen()) {
             updateEntryRefAutocompleteQuery(entryCtx.query);
           } else {
