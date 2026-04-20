@@ -45,6 +45,7 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'ENTRY_RESTORED',
   'RELATION_CREATED',
   'RELATION_DELETED',
+  'RELATION_KIND_UPDATED',
   'CONTAINER_LOADED',
   'CONTAINER_IMPORTED',
   // FI-Settings v1 (2026-04-18): `SETTINGS_CHANGED` fires whenever any

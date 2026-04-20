@@ -31,6 +31,7 @@ describe('Action type boundaries', () => {
       { type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' },
       { type: 'CREATE_RELATION', from: '', to: '', kind: 'structural' },
       { type: 'DELETE_RELATION', id: '' },
+      { type: 'UPDATE_RELATION_KIND', id: '', kind: 'structural' },
       { type: 'PASTE_ATTACHMENT', name: '', mime: '', size: 0, assetKey: '', assetData: '', contextLid: '' },
     ];
     const types = typeSet(...actions);
@@ -55,7 +56,7 @@ describe('Action type boundaries', () => {
     const userTypes = new Set<string>([
       'SELECT_ENTRY', 'DESELECT_ENTRY', 'BEGIN_EDIT', 'COMMIT_EDIT',
       'CANCEL_EDIT', 'CREATE_ENTRY', 'DELETE_ENTRY', 'BEGIN_EXPORT',
-      'CREATE_RELATION', 'DELETE_RELATION',
+      'CREATE_RELATION', 'DELETE_RELATION', 'UPDATE_RELATION_KIND',
     ]);
     const sysTypes = new Set<string>([
       'SYS_INIT_COMPLETE', 'SYS_INIT_ERROR', 'SYS_FINISH_EXPORT', 'SYS_ERROR',

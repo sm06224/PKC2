@@ -76,6 +76,23 @@ export type UserAction =
   | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
   | { type: 'DELETE_RELATION'; id: string }
+  /**
+   * UPDATE_RELATION_KIND — relation-kind-edit v1 (2026-04-20).
+   *
+   * Changes the `kind` of an existing relation in place without
+   * deleting and recreating. Editable kinds are limited to the four
+   * user-exposable values ('structural' | 'categorical' | 'semantic' |
+   * 'temporal'). Relations with kind === 'provenance' are system-only
+   * (merge-duplicate / text-textlog conversion origin tracking) and
+   * the reducer treats this action as a no-op for them.
+   *
+   * Blocked when `readonly` is set. Missing relation id is a no-op.
+   * Same-kind is a no-op (no event emitted).
+   *
+   * Emits RELATION_KIND_UPDATED on actual change.
+   * See `docs/development/relation-kind-edit-v1.md`.
+   */
+  | { type: 'UPDATE_RELATION_KIND'; id: string; kind: RelationKind }
   | { type: 'ACCEPT_OFFER'; offer_id: string }
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }

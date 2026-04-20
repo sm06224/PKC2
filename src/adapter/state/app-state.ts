@@ -15,6 +15,7 @@ import {
   nextSelectedAfterRemove,
   addRelation,
   removeRelation,
+  updateRelationKind,
   snapshotEntry,
   restoreEntry,
   restoreDeletedEntry,
@@ -919,6 +920,31 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'RELATION_DELETED', id: action.id }],
+      };
+    }
+    case 'UPDATE_RELATION_KIND': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const existing = state.container.relations.find((r) => r.id === action.id);
+      if (!existing) return blocked(state, action);
+      // provenance is a system-only kind (merge-duplicate / text-textlog
+      // origin tracking). Manual edits would leave the provenance metadata
+      // contract inconsistent, so the reducer treats the action as a
+      // no-op. Also block *setting* kind → 'provenance' from UI.
+      if (existing.kind === 'provenance' || action.kind === 'provenance') {
+        return blocked(state, action);
+      }
+      if (existing.kind === action.kind) return { state, events: [] };
+      const container = updateRelationKind(state.container, action.id, action.kind, now());
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{
+          type: 'RELATION_KIND_UPDATED',
+          id: action.id,
+          kind: action.kind,
+          previous: existing.kind,
+        }],
       };
     }
     case 'SYS_IMPORT_COMPLETE': {

@@ -1692,7 +1692,7 @@ describe('Renderer', () => {
     );
   });
 
-  it('shows relation kind badge', () => {
+  it('shows relation kind via inline select in editable context (relation-kind-edit v1)', () => {
     const containerWithRels: Container = {
       ...mockContainer,
       relations: [
@@ -1705,9 +1705,9 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const kindBadge = root.querySelector('.pkc-relation-kind');
-    expect(kindBadge).not.toBeNull();
-    expect(kindBadge!.textContent).toBe('structural');
+    const kindSelect = root.querySelector<HTMLSelectElement>('select.pkc-relation-kind');
+    expect(kindSelect).not.toBeNull();
+    expect(kindSelect!.value).toBe('structural');
   });
 
   it('shows inbound relations for target entry', () => {
@@ -1919,6 +1919,90 @@ describe('Renderer', () => {
     // Relation row still visible (so users see what exists); delete button suppressed.
     expect(root.querySelector('.pkc-relation-peer')).not.toBeNull();
     expect(root.querySelector('.pkc-relation-delete')).toBeNull();
+  });
+
+  // ── Relation kind edit UI v1 ──
+
+  it('renders inline kind <select> on each relation row in editable context (outgoing)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const outgoing = root.querySelector('[data-pkc-relation-direction="outgoing"]');
+    const sel = outgoing!.querySelector<HTMLSelectElement>('select.pkc-relation-kind');
+    expect(sel).not.toBeNull();
+    expect(sel!.getAttribute('data-pkc-action')).toBe('update-relation-kind');
+    expect(sel!.getAttribute('data-pkc-relation-id')).toBe('r1');
+    expect(sel!.value).toBe('semantic');
+    // All 4 user-exposable kinds available
+    const values = Array.from(sel!.options).map((o) => o.value).sort();
+    expect(values).toEqual(['categorical', 'semantic', 'structural', 'temporal']);
+  });
+
+  it('renders inline kind <select> on inbound relation row (backlinks) with same affordance', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const backlinks = root.querySelector('[data-pkc-relation-direction="backlinks"]');
+    const sel = backlinks!.querySelector<HTMLSelectElement>('select.pkc-relation-kind');
+    expect(sel).not.toBeNull();
+    expect(sel!.getAttribute('data-pkc-relation-id')).toBe('r1');
+    expect(sel!.value).toBe('categorical');
+  });
+
+  it('renders read-only badge (not <select>) for provenance relations even in editable context', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'rp', from: 'e1', to: 'e2', kind: 'provenance', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('select.pkc-relation-kind')).toBeNull();
+    const badge = root.querySelector('span.pkc-relation-kind');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('provenance');
+  });
+
+  it('does not render kind <select> in readonly context (badge only)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'temporal', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('select.pkc-relation-kind')).toBeNull();
+    const badge = root.querySelector('span.pkc-relation-kind');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('temporal');
   });
 
   it('shows relation creation form in ready phase', () => {

@@ -223,6 +223,90 @@ describe('AppState reducer', () => {
     expect(events).toEqual([{ type: 'RELATION_DELETED', id: relId }]);
   });
 
+  // ── UPDATE_RELATION_KIND (relation-kind-edit v1) ──
+
+  it('UPDATE_RELATION_KIND changes kind and emits RELATION_KIND_UPDATED', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const relId = s1.container!.relations[0]!.id;
+
+    const { state: s2, events } = reduce(s1, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'semantic',
+    });
+    expect(s2.container!.relations[0]!.kind).toBe('semantic');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('RELATION_KIND_UPDATED');
+    const ev = events[0] as { type: string; id: string; kind: string; previous: string };
+    expect(ev.id).toBe(relId);
+    expect(ev.kind).toBe('semantic');
+    expect(ev.previous).toBe('structural');
+  });
+
+  it('UPDATE_RELATION_KIND is a no-op when kind unchanged (no event)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'categorical',
+    });
+    const relId = s1.container!.relations[0]!.id;
+
+    const { state: s2, events } = reduce(s1, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'categorical',
+    });
+    expect(s2).toBe(s1);
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND blocked when target relation is provenance', () => {
+    // Manually craft a container with a provenance relation (not reachable via CREATE_RELATION UI)
+    const base = readyState();
+    const provRel = {
+      id: 'prov-1', from: 'e1', to: 'e2', kind: 'provenance' as const,
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+    };
+    const seeded: AppState = {
+      ...base,
+      container: { ...base.container!, relations: [provRel] },
+    };
+    const { state, events } = reduce(seeded, {
+      type: 'UPDATE_RELATION_KIND', id: 'prov-1', kind: 'semantic',
+    });
+    expect(state.container!.relations[0]!.kind).toBe('provenance');
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND blocked when setting kind to provenance from UI', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const relId = s1.container!.relations[0]!.id;
+    const { state: s2, events } = reduce(s1, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'provenance',
+    });
+    expect(s2.container!.relations[0]!.kind).toBe('structural');
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND no-op on missing relation id', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'UPDATE_RELATION_KIND', id: 'nonexistent', kind: 'semantic',
+    });
+    expect(events).toEqual([]);
+    expect(state.container!.relations).toHaveLength(0);
+  });
+
+  it('UPDATE_RELATION_KIND blocked in readonly mode', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const ro: AppState = { ...s1, readonly: true };
+    const relId = s1.container!.relations[0]!.id;
+    const { state: s2, events } = reduce(ro, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'semantic',
+    });
+    expect(s2.container!.relations[0]!.kind).toBe('structural');
+    expect(events).toEqual([]);
+  });
+
   // ── editing: COMMIT_EDIT with mutation ───
   it('COMMIT_EDIT updates entry in container', () => {
     const base: AppState = {
