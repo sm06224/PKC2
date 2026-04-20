@@ -812,6 +812,17 @@
   color: rgba(255,255,255,0.7);
 }
 
+/* ── Sidebar backlink count badge (relations-based only; v1) ── */
+.pkc-backlink-badge {
+  font-size: 0.6rem;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+[data-pkc-selected="true"] .pkc-backlink-badge {
+  color: rgba(255,255,255,0.7);
+}
+
 /* ── Task completion badge ── */
 .pkc-task-badge {
   font-size: 0.6rem;

@@ -23,7 +23,7 @@ import type { SortKey, SortDirection } from '../../features/search/sort';
 import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
-import { getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import { buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
@@ -1727,11 +1727,17 @@ function renderSidebar(state: AppState): HTMLElement {
   const list = createElement('ul', 'pkc-entry-list');
   const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null;
 
+  // v1 backlink count badge: build `Map<targetLid, count>` once per
+  // sidebar render so per-row badge lookup stays O(1). Relations-based
+  // only — link-index backlinks are not mixed in. See
+  // docs/development/sidebar-backlink-badge-v1.md.
+  const backlinkCounts = buildInboundCountMap(state.container?.relations ?? []);
+
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
     const query = state.searchQuery.trim();
     for (const entry of entries) {
-      list.appendChild(renderEntryItem(entry, state));
+      list.appendChild(renderEntryItem(entry, state, backlinkCounts));
       // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
       // search query AND the entry has sub-location matches, expand
       // them as clickable sidebar rows that scroll to the exact spot
@@ -1756,7 +1762,7 @@ function renderSidebar(state: AppState): HTMLElement {
       ? reorderTreeByEntries(tree, entries)
       : tree;
     for (const node of displayTree) {
-      renderTreeNode(node, list, state);
+      renderTreeNode(node, list, state, backlinkCounts);
     }
   }
   sidebar.appendChild(list);
@@ -2015,8 +2021,13 @@ function reorderTreeByEntries(tree: TreeNode[], entries: readonly Entry[]): Tree
   return walk(tree);
 }
 
-function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): void {
-  const li = renderEntryItem(node.entry, state);
+function renderTreeNode(
+  node: TreeNode,
+  parent: HTMLElement,
+  state: AppState,
+  backlinkCounts?: ReadonlyMap<string, number>,
+): void {
+  const li = renderEntryItem(node.entry, state, backlinkCounts);
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
   }
@@ -2057,11 +2068,15 @@ function renderTreeNode(node: TreeNode, parent: HTMLElement, state: AppState): v
   // Skip rendering children when the folder is collapsed.
   if (isCollapsed) return;
   for (const child of node.children) {
-    renderTreeNode(child, parent, state);
+    renderTreeNode(child, parent, state, backlinkCounts);
   }
 }
 
-function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
+function renderEntryItem(
+  entry: Entry,
+  state: AppState,
+  backlinkCounts?: ReadonlyMap<string, number>,
+): HTMLElement {
   const li = createElement('li', 'pkc-entry-item');
   li.setAttribute('data-pkc-action', 'select-entry');
   li.setAttribute('data-pkc-lid', entry.lid);
@@ -2113,6 +2128,21 @@ function renderEntryItem(entry: Entry, state: AppState): HTMLElement {
       revBadge.textContent = `r${revCount}`;
       li.appendChild(revBadge);
     }
+  }
+
+  // v1 backlink count badge — relations-based only. Rendered only when
+  // count > 0. Visual form: `←N` with a `title` explaining the meaning
+  // without the ambiguous standalone word "backlink".
+  const backlinkCount = backlinkCounts?.get(entry.lid) ?? 0;
+  if (backlinkCount > 0) {
+    const badge = createElement('span', 'pkc-backlink-badge');
+    badge.setAttribute('data-pkc-backlink-count', String(backlinkCount));
+    badge.setAttribute(
+      'title',
+      backlinkCount === 1 ? '1 incoming relation' : `${backlinkCount} incoming relations`,
+    );
+    badge.textContent = `←${backlinkCount}`;
+    li.appendChild(badge);
   }
 
   // C-2 v1 (2026-04-17): Move up / Move down for the selected entry

@@ -51,3 +51,29 @@ export function resolveRelations(
   }
   return result;
 }
+
+/**
+ * Build a `Map<targetLid, inboundCount>` in one pass over the relations
+ * array. Used by the sidebar renderer (v1 backlink count badge) so that
+ * per-row lookup is O(1) rather than repeated `getRelationsForEntry`
+ * scans — see docs/development/sidebar-backlink-badge-v1.md.
+ *
+ * Notes:
+ * - Counts ALL inbound relations regardless of kind (semantic,
+ *   structural, categorical, temporal, provenance). Kind filtering is
+ *   not a v1 requirement.
+ * - A self-loop relation (`from === to`) is counted once on that entry.
+ * - Dangling relations (pointing to a deleted entry) remain in the map
+ *   harmlessly; callers that look up by existing lids are unaffected.
+ *
+ * Complexity: O(R) where R = relations.length.
+ */
+export function buildInboundCountMap(
+  relations: readonly Relation[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const r of relations) {
+    counts.set(r.to, (counts.get(r.to) ?? 0) + 1);
+  }
+  return counts;
+}

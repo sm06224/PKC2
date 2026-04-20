@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getRelationsForEntry, resolveRelations } from '@features/relation/selector';
+import {
+  buildInboundCountMap,
+  getRelationsForEntry,
+  resolveRelations,
+} from '@features/relation/selector';
 import type { Relation } from '@core/model/relation';
 import type { Entry } from '@core/model/record';
 
@@ -104,5 +108,64 @@ describe('resolveRelations', () => {
     const resolved = resolveRelations(directed, entries);
     expect(resolved[0]!.relation.kind).toBe('structural');
     expect(resolved[1]!.relation.kind).toBe('categorical');
+  });
+});
+
+// ── buildInboundCountMap (v1 sidebar backlink count badge) ──
+
+describe('buildInboundCountMap', () => {
+  it('returns an empty map for an empty relations array', () => {
+    const map = buildInboundCountMap([]);
+    expect(map.size).toBe(0);
+  });
+
+  it('counts one relation against its `to` lid', () => {
+    const map = buildInboundCountMap([makeRelation('r1', 'a', 'b')]);
+    expect(map.get('b')).toBe(1);
+    expect(map.get('a')).toBeUndefined();
+  });
+
+  it('sums multiple relations targeting the same entry', () => {
+    const map = buildInboundCountMap([
+      makeRelation('r1', 'a', 'target'),
+      makeRelation('r2', 'b', 'target'),
+      makeRelation('r3', 'c', 'target'),
+    ]);
+    expect(map.get('target')).toBe(3);
+  });
+
+  it('ignores relation kind (all kinds counted together)', () => {
+    const map = buildInboundCountMap([
+      makeRelation('r1', 'a', 'target', 'structural'),
+      makeRelation('r2', 'b', 'target', 'semantic'),
+      makeRelation('r3', 'c', 'target', 'categorical'),
+      makeRelation('r4', 'd', 'target', 'temporal'),
+      makeRelation('r5', 'e', 'target', 'provenance'),
+    ]);
+    expect(map.get('target')).toBe(5);
+  });
+
+  it('counts a self-loop (`from === to`) once on that entry', () => {
+    const map = buildInboundCountMap([makeRelation('r1', 'x', 'x')]);
+    expect(map.get('x')).toBe(1);
+  });
+
+  it('tolerates dangling targets (no entries cleanup performed)', () => {
+    // No entries provided / pertinent — helper is purely a counter
+    const map = buildInboundCountMap([
+      makeRelation('r1', 'a', 'ghost'),
+      makeRelation('r2', 'ghost', 'a'),
+    ]);
+    expect(map.get('ghost')).toBe(1);
+    expect(map.get('a')).toBe(1);
+  });
+
+  it('processes the sample relations fixture correctly', () => {
+    // relations contains r1: e1→e2, r2: e3→e1, r3: e2→e3
+    const map = buildInboundCountMap(relations);
+    expect(map.get('e1')).toBe(1); // from r2 (e3→e1)
+    expect(map.get('e2')).toBe(1); // from r1 (e1→e2)
+    expect(map.get('e3')).toBe(1); // from r3 (e2→e3)
+    expect(map.size).toBe(3);
   });
 });
