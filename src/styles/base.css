@@ -4311,6 +4311,25 @@ mark.pkc-search-mark {
   font-style: italic;
 }
 
+/* v1.4 fragment kind badge (log / day) */
+.pkc-entry-ref-autocomplete-fragment-kind {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono, monospace);
+}
+
+.pkc-entry-ref-autocomplete-item[data-pkc-selected="true"] .pkc-entry-ref-autocomplete-fragment-kind,
+.pkc-entry-ref-autocomplete-item:hover .pkc-entry-ref-autocomplete-fragment-kind {
+  color: var(--c-bg);
+}
+
 /* ── TEXTLOG ── */
 
 .pkc-textlog-view {
