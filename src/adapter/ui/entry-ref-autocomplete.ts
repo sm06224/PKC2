@@ -272,6 +272,16 @@ export function handleEntryRefAutocompleteKeydown(e: KeyboardEvent): boolean {
     return true;
   }
 
+  // v1.5: Ctrl/Cmd+Enter is reserved for editor-level shortcuts
+  // (notably textlog append via action-binder). Always close the popup
+  // and pass the event through so the underlying handler can run. Plain
+  // Enter still accepts the selected candidate. See
+  // docs/development/entry-autocomplete-v1.5-modifier-enter.md.
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    closeEntryRefAutocomplete();
+    return false;
+  }
+
   const count = visibleCount();
   if (count === 0) return false;
 

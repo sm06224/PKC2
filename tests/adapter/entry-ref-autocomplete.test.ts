@@ -409,3 +409,181 @@ describe('entry-ref autocomplete — insert callback', () => {
     expect(ta.value).toBe('[x](entry:alpha-1)');
   });
 });
+
+// ── v1.5: modifier-Enter handling (Ctrl/Cmd+Enter passes through) ──
+
+describe('entry-ref autocomplete — modifier-Enter (v1.5)', () => {
+  const cands: Entry[] = [
+    makeEntry('alpha-1', 'Alpha'),
+    makeEntry('beta-2', 'Beta'),
+  ];
+
+  it('Ctrl+Enter closes popup, leaves textarea unchanged, returns false', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '[click](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 16;
+
+    openEntryRefAutocomplete(ta, 14, 'al', cands, root);
+    expect(isEntryRefAutocompleteOpen()).toBe(true);
+
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+    // No insertion happened — value unchanged.
+    expect(ta.value).toBe('[click](entry:al)');
+  });
+
+  it('Cmd+Enter (metaKey) behaves identically to Ctrl+Enter', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '[click](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 16;
+
+    openEntryRefAutocomplete(ta, 14, 'al', cands, root);
+
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+    expect(ta.value).toBe('[click](entry:al)');
+  });
+
+  it('plain Enter (no modifier) still accepts — regression check', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '[click](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 16;
+
+    openEntryRefAutocomplete(ta, 14, 'al', cands, root);
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+    expect(ta.value).toBe('[click](entry:alpha-1)');
+  });
+
+  it('Shift+Enter still accepts (only Ctrl/Cmd modifier triggers pass-through)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 12;
+
+    openEntryRefAutocomplete(ta, 10, 'al', cands, root);
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('[x](entry:alpha-1)');
+  });
+
+  it('Alt+Enter still accepts (only Ctrl/Cmd modifier triggers pass-through)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 12;
+
+    openEntryRefAutocomplete(ta, 10, 'al', cands, root);
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', altKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('[x](entry:alpha-1)');
+  });
+
+  it('Ctrl+Enter on an empty list also closes popup + returns false', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+
+    openEntryRefAutocomplete(ta, 0, 'zzz', cands, root);
+    expect(isEntryRefAutocompleteOpen()).toBe(true);
+    expect(
+      root.querySelector('.pkc-entry-ref-autocomplete-empty'),
+    ).not.toBeNull();
+
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+  });
+
+  it('Ctrl+Enter does NOT fire the insert callback (no candidate accepted)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+
+    const seen: string[] = [];
+    registerEntryRefInsertCallback((lid) => seen.push(lid));
+
+    openEntryRefAutocomplete(ta, 0, '', cands, root);
+    handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(seen).toEqual([]);
+    registerEntryRefInsertCallback(null);
+  });
+
+  it('Ctrl+Tab is out of v1.5 scope (still accepts)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '[x](entry:al)';
+    ta.selectionStart = ta.selectionEnd = 12;
+
+    openEntryRefAutocomplete(ta, 10, 'al', cands, root);
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(ta.value).toBe('[x](entry:alpha-1)');
+  });
+});
+
+describe('fragment autocomplete — modifier-Enter (v1.5)', () => {
+  it('Ctrl+Enter on fragment popup closes + does not insert', async () => {
+    const { openFragmentAutocomplete } = await import(
+      '@adapter/ui/entry-ref-autocomplete'
+    );
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'textlog-append-text');
+    root.appendChild(ta);
+    ta.value = '[x](entry:tl#lo';
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+
+    openFragmentAutocomplete(
+      ta,
+      13,
+      'lo',
+      [{ kind: 'log', fragment: 'log/abc', label: '10:00 first' }],
+      root,
+    );
+    expect(isEntryRefAutocompleteOpen()).toBe(true);
+
+    const consumed = handleEntryRefAutocompleteKeydown(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }),
+    );
+
+    expect(consumed).toBe(false);
+    expect(isEntryRefAutocompleteOpen()).toBe(false);
+    expect(ta.value).toBe('[x](entry:tl#lo');
+  });
+});
