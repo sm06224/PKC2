@@ -3154,6 +3154,21 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   referencesHeading.textContent = 'References';
   referencesSection.appendChild(referencesHeading);
 
+  // References summary row (v2, 2026-04-20). Lightweight count line
+  // directly under the umbrella heading. Purely informational — no
+  // click behavior, no semantic merge. Labels stay distinct so the
+  // relations-based and markdown-reference systems remain visually
+  // separate. See docs/development/references-summary-row-v2.md.
+  const liOutgoing = linkIndex.outgoingBySource.get(entry.lid) ?? [];
+  const liBacklinks = linkIndex.backlinksByTarget.get(entry.lid) ?? [];
+  const liBroken = liOutgoing.filter((r) => !r.resolved);
+  const relationsCount = outbound.length + inbound.length;
+  const markdownRefsCount = liOutgoing.length + liBacklinks.length;
+  const brokenCount = liBroken.length;
+  referencesSection.appendChild(
+    renderReferencesSummary(relationsCount, markdownRefsCount, brokenCount),
+  );
+
   referencesSection.appendChild(relSection);
   referencesSection.appendChild(renderLinkIndexSections(entry, linkIndex, container));
 
@@ -3227,6 +3242,41 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   }
 
   return meta;
+}
+
+function renderReferencesSummary(
+  relationsCount: number,
+  markdownRefsCount: number,
+  brokenCount: number,
+): HTMLElement {
+  const row = createElement('div', 'pkc-references-summary');
+  row.setAttribute('data-pkc-region', 'references-summary');
+  row.setAttribute(
+    'aria-label',
+    `References summary: ${relationsCount} relations, ${markdownRefsCount} markdown references, ${brokenCount} broken`,
+  );
+
+  const items: { key: string; label: string; count: number; broken?: boolean }[] = [
+    { key: 'relations', label: 'Relations', count: relationsCount },
+    { key: 'markdown-refs', label: 'Markdown refs', count: markdownRefsCount },
+    { key: 'broken', label: 'Broken', count: brokenCount, broken: true },
+  ];
+
+  items.forEach((item, i) => {
+    if (i > 0) {
+      const sep = createElement('span', 'pkc-references-summary-sep');
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '·';
+      row.appendChild(sep);
+    }
+    const span = createElement('span', 'pkc-references-summary-item');
+    span.setAttribute('data-pkc-summary-key', item.key);
+    if (item.broken && item.count > 0) span.setAttribute('data-pkc-broken', 'true');
+    span.textContent = `${item.label}: ${item.count}`;
+    row.appendChild(span);
+  });
+
+  return row;
 }
 
 function renderLinkIndexSections(

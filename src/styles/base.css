@@ -1885,6 +1885,28 @@ mark.pkc-search-mark {
   margin-bottom: 0.25rem;
 }
 
+/* v2 References summary row — lightweight count line under the umbrella
+ * heading. Purely informational; muted styling so it doesn't compete
+ * with sub-panel content. Separator `·` between items. */
+.pkc-references-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  margin-bottom: 0.35rem;
+  padding-left: 0.1rem;
+}
+
+.pkc-references-summary-sep {
+  color: var(--c-border);
+}
+
+.pkc-references-summary-item[data-pkc-broken="true"] {
+  color: var(--c-danger);
+}
+
 /* ── Relations ── */
 .pkc-relations {
   padding: 0.25rem 0;
