@@ -278,6 +278,58 @@ describe('Mutation → Shell integration', () => {
     expect(chips).toHaveLength(0);
   });
 
+  // v1 relation delete UI: clicking `×` in a Relations / Backlinks row
+  // confirms then dispatches DELETE_RELATION. See
+  // docs/development/relation-delete-ui-v1.md.
+  it('delete-relation click with confirm removes the relation from container', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+    expect(dispatcher.getState().container!.relations).toHaveLength(1);
+
+    // Mock the native confirm to auto-accept.
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    try {
+      const deleteBtn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
+      );
+      expect(deleteBtn).not.toBeNull();
+      expect(deleteBtn!.getAttribute('data-pkc-relation-id')).toBeTruthy();
+      deleteBtn!.click();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+
+    expect(dispatcher.getState().container!.relations).toHaveLength(0);
+    // Row gone from the Outgoing relations group after re-render
+    const outgoing = root.querySelector('[data-pkc-relation-direction="outgoing"]');
+    expect(outgoing!.querySelector('.pkc-relation-item')).toBeNull();
+  });
+
+  it('delete-relation click is a no-op when confirm is cancelled', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
+    expect(dispatcher.getState().container!.relations).toHaveLength(1);
+
+    const originalConfirm = window.confirm;
+    window.confirm = () => false;
+    try {
+      const deleteBtn = root.querySelector<HTMLElement>(
+        '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
+      );
+      deleteBtn!.click();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+
+    // Relation survived the cancel.
+    expect(dispatcher.getState().container!.relations).toHaveLength(1);
+  });
+
   it('add-tag creates categorical relation via UI', () => {
     const { dispatcher } = setup();
 

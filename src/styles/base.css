@@ -1891,6 +1891,23 @@ mark.pkc-search-mark {
   font-style: italic;
 }
 
+/* v1 relation delete button — mirrors .pkc-tag-remove. Muted by default
+ * so it doesn't compete with the peer link; danger color on hover. */
+.pkc-relation-delete {
+  background: none;
+  border: none;
+  color: var(--c-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  margin-left: auto;
+}
+
+.pkc-relation-delete:hover {
+  color: var(--c-danger);
+}
+
 /* ── Relation create form ── */
 .pkc-relation-create {
   margin-top: 0.5rem;

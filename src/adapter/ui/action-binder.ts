@@ -635,6 +635,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'delete-relation': {
+        // v1 relation delete UI. Native confirm mirrors existing delete
+        // flows (entry trash, purge). Reducer also blocks on readonly
+        // for defence-in-depth. See
+        // docs/development/relation-delete-ui-v1.md.
+        const relId = target.getAttribute('data-pkc-relation-id');
+        if (!relId) break;
+        if (!confirm('Delete this relation?')) break;
+        dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
+        break;
+      }
       case 'toggle-todo-status': {
         if (!lid) break;
         const state = dispatcher.getState();
