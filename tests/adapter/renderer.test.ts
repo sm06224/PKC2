@@ -2123,6 +2123,190 @@ describe('Renderer', () => {
     expect(badge!.textContent).toBe('temporal');
   });
 
+  // ── Provenance metadata viewer v1 ──
+
+  it('renders provenance metadata viewer only for provenance rows that carry metadata', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: '2026-01-01T00:00:00Z',
+            source_content_hash: 'abcd1234ef567890',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const viewer = root.querySelector('[data-pkc-region="provenance-metadata"]');
+    expect(viewer).not.toBeNull();
+    // Collapsed by default — <details> without `open`.
+    expect((viewer as HTMLDetailsElement).open).toBe(false);
+    // Summary carries an accessible label.
+    const summary = viewer!.querySelector('.pkc-provenance-metadata-summary');
+    expect(summary).not.toBeNull();
+    expect(summary!.getAttribute('aria-label')).toBe('Show provenance metadata (read-only)');
+  });
+
+  it('provenance metadata viewer lists required keys first in canonical order', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            split_mode: 'heading',
+            converted_at: '2026-01-01T00:00:00Z',
+            segment_count: '3',
+            conversion_kind: 'text-to-textlog',
+            source_content_hash: 'abcd1234ef567890',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const keys = Array.from(
+      root.querySelectorAll('.pkc-provenance-metadata-key'),
+    ).map((el) => (el.textContent ?? '').trim());
+    // required two first, recommended third, then others alphabetical.
+    expect(keys).toEqual([
+      'conversion_kind',
+      'converted_at',
+      'source_content_hash',
+      'segment_count',
+      'split_mode',
+    ]);
+  });
+
+  it('provenance metadata viewer shows values next to each key', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'textlog-to-text',
+            converted_at: '2026-01-02T03:04:05.000Z',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const ck = root.querySelector('[data-pkc-metadata-value="conversion_kind"]');
+    const ca = root.querySelector('[data-pkc-metadata-value="converted_at"]');
+    expect(ck!.textContent).toBe('textlog-to-text');
+    expect(ca!.textContent).toBe('2026-01-02T03:04:05.000Z');
+  });
+
+  it('provenance metadata viewer is not rendered when metadata is missing or empty', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'rp1', from: 'e1', to: 'e2', kind: 'provenance', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'rp2', from: 'e1', to: 'e2', kind: 'provenance', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', metadata: {} },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="provenance-metadata"]')).toBeNull();
+  });
+
+  it('provenance metadata viewer is NOT rendered on non-provenance relations even when metadata is present', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'r1', from: 'e1', to: 'e2', kind: 'structural',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: { note: 'irrelevant' },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="provenance-metadata"]')).toBeNull();
+  });
+
+  it('provenance metadata viewer appears in readonly context (viewing is safe)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: { conversion_kind: 'text-to-textlog', converted_at: '2026-01-01T00:00:00Z' },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="provenance-metadata"]')).not.toBeNull();
+    // Still no edit affordance on provenance rows.
+    expect(root.querySelector('select.pkc-relation-kind')).toBeNull();
+    expect(root.querySelector('.pkc-relation-delete')).toBeNull();
+  });
+
+  it('provenance metadata viewer filters non-string metadata values (defensive)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          // Non-string values should be silently filtered; only string keys render.
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            bad: null as unknown as string,
+            bogus: 42 as unknown as string,
+            empty: '',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const keys = Array.from(
+      root.querySelectorAll('.pkc-provenance-metadata-key'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(keys).toEqual(['conversion_kind']);
+  });
+
   it('shows relation creation form in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,

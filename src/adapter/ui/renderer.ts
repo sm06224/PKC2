@@ -28,7 +28,7 @@ import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import type { TreeNode } from '../../features/relation/tree';
-import type { RelationKind } from '../../core/model/relation';
+import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { syncTextlogSelectionFromState } from './textlog-selection';
 import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
@@ -3419,7 +3419,7 @@ function renderTocSection(entry: Entry): HTMLElement | null {
 function renderRelationGroup(
   label: string,
   direction: 'outgoing' | 'backlinks',
-  relations: { relation: { id: string; kind: string }; direction: string; peer: Entry }[],
+  relations: { relation: Relation; direction: string; peer: Entry }[],
   canEdit: boolean,
 ): HTMLElement {
   const group = createElement('div', 'pkc-relation-group');
@@ -3473,6 +3473,16 @@ function renderRelationGroup(
       item.appendChild(kindBadge);
     }
 
+    // v1 provenance metadata viewer — read-only, collapsed by default.
+    // Only rendered for provenance relations that actually carry metadata.
+    // Non-provenance rows are untouched. Viewing is context-agnostic
+    // (shown even in readonly / manual contexts — no edit semantics).
+    // See docs/development/provenance-metadata-viewer-v1.md.
+    if (r.relation.kind === 'provenance') {
+      const viewer = renderProvenanceMetadataViewer(r.relation.metadata);
+      if (viewer) item.appendChild(viewer);
+    }
+
     // v1 relation delete UI: only rendered in editable contexts.
     // Reducer-level `state.readonly` gate provides defence-in-depth.
     // See docs/development/relation-delete-ui-v1.md.
@@ -3490,6 +3500,72 @@ function renderRelationGroup(
   }
   group.appendChild(list);
   return group;
+}
+
+/**
+ * provenance-metadata-viewer v1 (2026-04-20).
+ *
+ * Read-only viewer for `Relation.metadata` on provenance rows. Uses a
+ * native <details>/<summary> so no JS state is needed for toggle,
+ * outside-click, or focus management. Returns null when metadata is
+ * absent or empty — the caller skips appending in that case.
+ *
+ * Field ordering (v1): required two first, recommended third, then any
+ * other string keys in sorted order. All values render as-is (strings
+ * are the only spec-permitted value shape per
+ * docs/spec/provenance-relation-profile.md §2.2).
+ *
+ * This viewer does NOT introduce edit controls. provenance relations
+ * remain non-editable; see docs/development/provenance-metadata-viewer-v1.md.
+ */
+function renderProvenanceMetadataViewer(
+  metadata: Record<string, unknown> | undefined,
+): HTMLElement | null {
+  if (!metadata) return null;
+  const entries: [string, string][] = [];
+  for (const key of Object.keys(metadata)) {
+    const v = metadata[key];
+    if (typeof v === 'string' && v.length > 0) entries.push([key, v]);
+  }
+  if (entries.length === 0) return null;
+
+  const PRIORITY = ['conversion_kind', 'converted_at', 'source_content_hash'];
+  entries.sort((a, b) => {
+    const ai = PRIORITY.indexOf(a[0]);
+    const bi = PRIORITY.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a[0].localeCompare(b[0]);
+  });
+
+  const details = document.createElement('details');
+  details.className = 'pkc-provenance-metadata';
+  details.setAttribute('data-pkc-region', 'provenance-metadata');
+
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-provenance-metadata-summary';
+  summary.setAttribute('title', 'Show provenance metadata (read-only)');
+  summary.setAttribute('aria-label', 'Show provenance metadata (read-only)');
+  summary.textContent = 'ⓘ';
+  details.appendChild(summary);
+
+  const dl = document.createElement('dl');
+  dl.className = 'pkc-provenance-metadata-list';
+  for (const [key, value] of entries) {
+    const dt = document.createElement('dt');
+    dt.className = 'pkc-provenance-metadata-key';
+    dt.textContent = key;
+    dt.setAttribute('data-pkc-metadata-key', key);
+    const dd = document.createElement('dd');
+    dd.className = 'pkc-provenance-metadata-value';
+    dd.textContent = value;
+    dd.setAttribute('data-pkc-metadata-value', key);
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+  details.appendChild(dl);
+  return details;
 }
 
 function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): HTMLElement {
