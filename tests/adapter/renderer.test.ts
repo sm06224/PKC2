@@ -1796,6 +1796,70 @@ describe('Renderer', () => {
     expect(relationBacklinks).not.toBe(linkIndexBacklinks);
   });
 
+  // ── Unified Backlinks v1 (References umbrella, Option E) ──
+
+  it('renders a single References umbrella region when an entry is selected', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const references = root.querySelectorAll('[data-pkc-region="references"]');
+    expect(references.length).toBe(1);
+    const heading = references[0]!.querySelector('.pkc-references-heading');
+    expect(heading).not.toBeNull();
+    expect(heading!.textContent).toBe('References');
+  });
+
+  it('References umbrella contains both relations and link-index sub-panels', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const references = root.querySelector('[data-pkc-region="references"]');
+    expect(references).not.toBeNull();
+    // Existing sub-panel region ids are preserved inside the umbrella
+    // so per-panel selectors, scroll-to targets, and tests keep working.
+    expect(references!.querySelector('[data-pkc-region="relations"]')).not.toBeNull();
+    expect(references!.querySelector('[data-pkc-region="link-index"]')).not.toBeNull();
+  });
+
+  it('References umbrella is not rendered when no entry is selected', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    expect(root.querySelector('[data-pkc-region="references"]')).toBeNull();
+  });
+
+  it('relations-based backlinks heading and link-index backlinks heading both survive inside the umbrella', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const references = root.querySelector('[data-pkc-region="references"]');
+    expect(references).not.toBeNull();
+    const relationsBacklinks = references!.querySelector(
+      '[data-pkc-region="relations"] [data-pkc-relation-direction="backlinks"] .pkc-relation-heading',
+    );
+    const linkIndexBacklinksHeading = references!.querySelector(
+      '[data-pkc-region="link-index-backlinks"] .pkc-link-index-heading',
+    );
+    expect(relationsBacklinks).not.toBeNull();
+    expect(linkIndexBacklinksHeading).not.toBeNull();
+    // v1 keeps both "Backlinks (N)" sub-headings — umbrella only adds
+    // a containing region, it does not merge the sub-concepts.
+    expect(relationsBacklinks!.textContent).toMatch(/^Backlinks \(/);
+    expect(linkIndexBacklinksHeading!.textContent).toMatch(/^Backlinks \(/);
+  });
+
   // ── Relation delete UI v1 ──
 
   it('renders delete button on each relation row in editable context', () => {

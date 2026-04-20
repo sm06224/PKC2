@@ -3127,9 +3127,14 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
     meta.appendChild(picker);
   }
 
-  // Relations section — always rendered so users can see that relations exist
-  // as a first-class concept even when empty. Inbound is promoted to
-  // "Backlinks"; outbound to "Outgoing relations". See backlinks-panel-v1.md.
+  // Unified References umbrella (v1, Option E) — groups the two distinct
+  // reference systems under one heading so the meta pane stops having
+  // two separate "Backlinks (N)" sub-headings in unrelated places:
+  //   sub-panel 1: first-class relations (structural / semantic / ...)
+  //   sub-panel 2: link-index (markdown reference) outgoing / backlinks / broken
+  // Existing data-pkc-region ids of each sub-panel are preserved so per-
+  // panel tests, the sidebar badge scroll target, and the delete flow
+  // continue to work. See docs/development/unified-backlinks-v1.md.
   const directed = getRelationsForEntry(container.relations, entry.lid);
   const resolved = resolveRelations(directed, container.entries);
   const outbound = resolved.filter((r) => r.direction === 'outbound');
@@ -3139,7 +3144,20 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   relSection.setAttribute('data-pkc-region', 'relations');
   relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
   relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
-  meta.appendChild(relSection);
+
+  const linkIndex = buildLinkIndex(container);
+
+  const referencesSection = createElement('section', 'pkc-references');
+  referencesSection.setAttribute('data-pkc-region', 'references');
+
+  const referencesHeading = createElement('div', 'pkc-references-heading');
+  referencesHeading.textContent = 'References';
+  referencesSection.appendChild(referencesHeading);
+
+  referencesSection.appendChild(relSection);
+  referencesSection.appendChild(renderLinkIndexSections(entry, linkIndex, container));
+
+  meta.appendChild(referencesSection);
 
   if (canEdit && container.entries.length > 1) {
     meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
@@ -3207,11 +3225,6 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
       meta.appendChild(sandboxSection);
     }
   }
-
-  // Link-index sections (C-3 v1): outgoing / backlinks / broken for the
-  // selected entry. Runtime-only; derived at render time from container.
-  const linkIndex = buildLinkIndex(container);
-  meta.appendChild(renderLinkIndexSections(entry, linkIndex, container));
 
   return meta;
 }

@@ -1860,6 +1860,31 @@ mark.pkc-search-mark {
   font-family: var(--font-sans);
 }
 
+/* ── References umbrella (Unified Backlinks v1, Option E) ── */
+.pkc-references {
+  padding: 0.25rem 0;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-references-heading {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--c-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.15rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+/* Within the umbrella the relations sub-panel drops its own bottom
+ * border so only the umbrella frames the whole block. */
+.pkc-references .pkc-relations {
+  border-bottom: none;
+  margin-bottom: 0.25rem;
+}
+
 /* ── Relations ── */
 .pkc-relations {
   padding: 0.25rem 0;
