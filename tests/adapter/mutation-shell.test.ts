@@ -330,6 +330,35 @@ describe('Mutation → Shell integration', () => {
     expect(dispatcher.getState().container!.relations).toHaveLength(1);
   });
 
+  // v1 relation kind edit UI: changing the kind <select> in a relation
+  // row dispatches UPDATE_RELATION_KIND. See
+  // docs/development/relation-kind-edit-v1.md.
+  it('update-relation-kind change updates the relation in place', () => {
+    const { dispatcher } = setup();
+
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural' });
+    const relId = dispatcher.getState().container!.relations[0]!.id;
+
+    const kindSel = root.querySelector<HTMLSelectElement>(
+      '[data-pkc-region="relations"] select[data-pkc-action="update-relation-kind"]',
+    );
+    expect(kindSel).not.toBeNull();
+    expect(kindSel!.value).toBe('structural');
+
+    kindSel!.value = 'temporal';
+    kindSel!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const updated = dispatcher.getState().container!.relations.find((r) => r.id === relId)!;
+    expect(updated.kind).toBe('temporal');
+
+    // Re-render reflects the new kind in the select's value.
+    const selAfter = root.querySelector<HTMLSelectElement>(
+      '[data-pkc-region="relations"] select[data-pkc-action="update-relation-kind"]',
+    );
+    expect(selAfter!.value).toBe('temporal');
+  });
+
   it('add-tag creates categorical relation via UI', () => {
     const { dispatcher } = setup();
 

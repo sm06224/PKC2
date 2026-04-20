@@ -3397,9 +3397,31 @@ function renderRelationGroup(
     link.textContent = r.peer.title || '(untitled)';
     item.appendChild(link);
 
-    const kindBadge = createElement('span', 'pkc-relation-kind');
-    kindBadge.textContent = r.relation.kind;
-    item.appendChild(kindBadge);
+    // v1 relation-kind inline editor: user-exposable kinds are editable
+    // via a <select>; 'provenance' rows remain a read-only badge because
+    // they carry origin metadata that manual edits would desynchronise.
+    // Reducer-level readonly / provenance gate provides defence-in-depth.
+    // See docs/development/relation-kind-edit-v1.md.
+    if (canEdit && r.relation.kind !== 'provenance') {
+      const kindSelect = document.createElement('select');
+      kindSelect.className = 'pkc-relation-kind pkc-relation-kind-select';
+      kindSelect.setAttribute('data-pkc-action', 'update-relation-kind');
+      kindSelect.setAttribute('data-pkc-relation-id', r.relation.id);
+      kindSelect.setAttribute('title', 'Change relation kind');
+      kindSelect.setAttribute('aria-label', 'Change relation kind');
+      for (const opt of RELATION_KIND_OPTIONS) {
+        const el = document.createElement('option');
+        el.value = opt.kind;
+        el.textContent = opt.kind;
+        kindSelect.appendChild(el);
+      }
+      kindSelect.value = r.relation.kind;
+      item.appendChild(kindSelect);
+    } else {
+      const kindBadge = createElement('span', 'pkc-relation-kind');
+      kindBadge.textContent = r.relation.kind;
+      item.appendChild(kindBadge);
+    }
 
     // v1 relation delete UI: only rendered in editable contexts.
     // Reducer-level `state.readonly` gate provides defence-in-depth.

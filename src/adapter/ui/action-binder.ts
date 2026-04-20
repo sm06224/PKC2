@@ -2588,6 +2588,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Bulk move via select dropdown
     const action = target.getAttribute('data-pkc-action');
+
+    // v1 relation-kind inline edit. The <select> carries the relation id
+    // on itself; dispatch UPDATE_RELATION_KIND on change. Reducer blocks
+    // readonly / provenance / unknown id / same-kind as no-op.
+    // See docs/development/relation-kind-edit-v1.md.
+    if (action === 'update-relation-kind') {
+      const relId = target.getAttribute('data-pkc-relation-id');
+      const val = (target as HTMLSelectElement).value as RelationKind;
+      if (relId && val) {
+        dispatcher.dispatch({ type: 'UPDATE_RELATION_KIND', id: relId, kind: val });
+      }
+      return;
+    }
+
     if (action === 'bulk-move-select') {
       const val = (target as HTMLSelectElement).value;
       if (!val) return;

@@ -177,6 +177,27 @@ export function removeRelation(container: Container, id: string): Container {
   return { ...container, relations };
 }
 
+export function updateRelationKind(
+  container: Container,
+  id: string,
+  kind: RelationKind,
+  now: string,
+): Container {
+  let changed = false;
+  const relations = container.relations.map((r) => {
+    if (r.id !== id) return r;
+    if (r.kind === kind) return r;
+    changed = true;
+    return { ...r, kind, updated_at: now };
+  });
+  if (!changed) return container;
+  return {
+    ...container,
+    relations,
+    meta: { ...container.meta, updated_at: now },
+  };
+}
+
 // ── Revision operations ─────────────────────────
 
 /**

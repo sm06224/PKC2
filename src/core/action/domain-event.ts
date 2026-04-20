@@ -39,6 +39,7 @@ export type DomainEvent =
   | { type: 'ENTRY_DELETED'; lid: string }
   | { type: 'RELATION_CREATED'; id: string; from: string; to: string; kind: RelationKind }
   | { type: 'RELATION_DELETED'; id: string }
+  | { type: 'RELATION_KIND_UPDATED'; id: string; kind: RelationKind; previous: RelationKind }
   | { type: 'CONTAINER_LOADED'; container_id: string }
   | { type: 'CONTAINER_IMPORTED'; container_id: string; source: string }
   | { type: 'CONTAINER_MERGED'; container_id: string; source: string; added_entries: number; added_assets: number; added_relations: number; suppressed_by_keep_current: string[]; suppressed_by_skip: string[] }

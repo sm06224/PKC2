@@ -6,6 +6,7 @@ import {
   nextSelectedAfterRemove,
   addRelation,
   removeRelation,
+  updateRelationKind,
   snapshotEntry,
   getEntryRevisions,
   getLatestRevision,
@@ -187,6 +188,43 @@ describe('removeRelation', () => {
   it('returns same container if id not found', () => {
     const c = emptyContainer();
     expect(removeRelation(c, 'nonexistent')).toBe(c);
+  });
+});
+
+describe('updateRelationKind', () => {
+  const T2 = '2026-04-20T09:00:00Z';
+
+  it('updates the kind and updated_at of a matching relation', () => {
+    let c = emptyContainer();
+    c = addRelation(c, 'r1', 'a', 'b', 'structural', T);
+    const updated = updateRelationKind(c, 'r1', 'semantic', T2);
+    expect(updated.relations).toHaveLength(1);
+    expect(updated.relations[0]!.kind).toBe('semantic');
+    expect(updated.relations[0]!.updated_at).toBe(T2);
+    expect(updated.relations[0]!.created_at).toBe(T); // preserved
+    expect(updated.meta.updated_at).toBe(T2);
+  });
+
+  it('leaves other relations untouched', () => {
+    let c = emptyContainer();
+    c = addRelation(c, 'r1', 'a', 'b', 'structural', T);
+    c = addRelation(c, 'r2', 'b', 'c', 'categorical', T);
+    const updated = updateRelationKind(c, 'r1', 'temporal', T2);
+    const r2 = updated.relations.find((r) => r.id === 'r2')!;
+    expect(r2.kind).toBe('categorical');
+    expect(r2.updated_at).toBe(T);
+  });
+
+  it('returns same container if id not found', () => {
+    let c = emptyContainer();
+    c = addRelation(c, 'r1', 'a', 'b', 'structural', T);
+    expect(updateRelationKind(c, 'nonexistent', 'semantic', T2)).toBe(c);
+  });
+
+  it('returns same container if kind is unchanged (no-op)', () => {
+    let c = emptyContainer();
+    c = addRelation(c, 'r1', 'a', 'b', 'structural', T);
+    expect(updateRelationKind(c, 'r1', 'structural', T2)).toBe(c);
   });
 });
 

@@ -1937,6 +1937,26 @@ mark.pkc-search-mark {
   text-transform: uppercase;
 }
 
+/* v1 inline kind editor — <select> variant of the kind badge. Matches
+ * the badge's visual weight so unedited rows look identical to read-only
+ * rows. See docs/development/relation-kind-edit-v1.md. */
+.pkc-relation-kind-select {
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.pkc-relation-kind-select:hover {
+  border-color: var(--c-accent);
+}
+
+.pkc-relation-kind-select:focus {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
 .pkc-relation-empty {
   font-size: 0.75rem;
   color: var(--c-muted);
