@@ -1,6 +1,7 @@
 import type { ArchetypeId } from '../../core/model/record';
 import { ABOUT_LID } from '../../core/model/record';
 import type { RelationKind } from '../../core/model/relation';
+import { serializeProvenanceMetadataCanonical } from '../../features/provenance';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import type { Dispatcher } from '../state/dispatcher';
@@ -674,6 +675,52 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             region.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         });
+        break;
+      }
+      case 'copy-provenance-metadata': {
+        // v1 provenance metadata copy/export — write raw canonical JSON
+        // to the clipboard. Whole-metadata scope only (no per-field
+        // copy). Copy is NOT an edit — provenance relations remain
+        // non-mutable; no reducer dispatch / no state change. The
+        // button's transient "Copied" text is a local DOM flash
+        // managed here (no AppState field). See
+        // docs/development/provenance-metadata-copy-export-v1.md.
+        const relId = target.getAttribute('data-pkc-relation-id');
+        if (!relId) break;
+        const copyState = dispatcher.getState();
+        const rel = copyState.container?.relations.find((r) => r.id === relId);
+        if (!rel) break;
+        const json = serializeProvenanceMetadataCanonical(rel.metadata);
+        const btn = target as HTMLButtonElement;
+        const clip = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+        if (!clip || typeof clip.writeText !== 'function') {
+          // Clipboard API unavailable (e.g. insecure context, older
+          // environment). Mark the button so users and tests can tell.
+          btn.setAttribute('data-pkc-copy-status', 'unavailable');
+          break;
+        }
+        clip.writeText(json).then(
+          () => {
+            btn.setAttribute('data-pkc-copy-status', 'copied');
+            const prevText = 'Copy raw';
+            btn.textContent = 'Copied';
+            if (typeof setTimeout === 'function') {
+              setTimeout(() => {
+                // Defensive: only revert if the button is still the
+                // same element and still in the copied state. Avoids
+                // clobbering a later re-render that might have already
+                // rewritten the DOM.
+                if (btn.isConnected && btn.getAttribute('data-pkc-copy-status') === 'copied') {
+                  btn.removeAttribute('data-pkc-copy-status');
+                  btn.textContent = prevText;
+                }
+              }, 1500);
+            }
+          },
+          () => {
+            btn.setAttribute('data-pkc-copy-status', 'error');
+          },
+        );
         break;
       }
       case 'open-backlinks': {

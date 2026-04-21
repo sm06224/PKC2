@@ -2102,6 +2102,50 @@ mark.pkc-search-mark {
   font-family: var(--mono-font, monospace);
 }
 
+/* v1 provenance metadata copy/export — small button inside the viewer,
+ * only visible when user expands <details>. Muted, matches viewer
+ * typography. Transient "Copied" feedback via
+ * [data-pkc-copy-status="copied"]. See
+ * docs/development/provenance-metadata-copy-export-v1.md. */
+.pkc-provenance-metadata-copy-row {
+  margin: 0.3rem 0 0.1rem 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pkc-provenance-metadata-copy {
+  font: inherit;
+  font-size: 0.65rem;
+  color: var(--c-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.pkc-provenance-metadata-copy:hover {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+.pkc-provenance-metadata-copy:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
+.pkc-provenance-metadata-copy[data-pkc-copy-status="copied"] {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+.pkc-provenance-metadata-copy[data-pkc-copy-status="unavailable"],
+.pkc-provenance-metadata-copy[data-pkc-copy-status="error"] {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+
 /* ── Relation create form ── */
 .pkc-relation-create {
   margin-top: 0.5rem;
