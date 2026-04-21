@@ -2108,6 +2108,79 @@ describe('Renderer', () => {
     expect(root.querySelector('[data-pkc-region="references-summary"]')).toBeNull();
   });
 
+  // ── References summary clickable v3 ──
+
+  it('summary row items render as <button> with jump action and correct target (v3)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const rel = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="relations"]');
+    const md = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="markdown-refs"]');
+    const br = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="broken"]');
+
+    expect(rel!.tagName).toBe('BUTTON');
+    expect(md!.tagName).toBe('BUTTON');
+    expect(br!.tagName).toBe('BUTTON');
+
+    expect(rel!.getAttribute('type')).toBe('button');
+    expect(rel!.getAttribute('data-pkc-action')).toBe('jump-to-references-section');
+    expect(rel!.getAttribute('data-pkc-summary-target')).toBe('relations');
+    expect(md!.getAttribute('data-pkc-summary-target')).toBe('link-index');
+    expect(br!.getAttribute('data-pkc-summary-target')).toBe('link-index-broken');
+  });
+
+  it('summary buttons remain clickable when count is zero (still navigable to empty-state sub-panel)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const rel = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="relations"]');
+    expect(rel!.disabled).toBe(false);
+    expect(rel!.textContent).toBe('Relations: 0');
+    expect(rel!.hasAttribute('data-pkc-action')).toBe(true);
+  });
+
+  it('summary buttons expose accessible labels that avoid forbidden wording (v3)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const rel = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="relations"]');
+    const md = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="markdown-refs"]');
+    const br = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="broken"]');
+
+    for (const btn of [rel!, md!, br!]) {
+      const aria = btn.getAttribute('aria-label') ?? '';
+      const title = btn.getAttribute('title') ?? '';
+      expect(aria).toMatch(/^Jump to /);
+      expect(title).toMatch(/^Jump to /);
+      // Labels must not reintroduce ambiguous backlink wording.
+      expect(aria.toLowerCase()).not.toMatch(/\bunified\b/);
+      expect(title.toLowerCase()).not.toMatch(/\bunified\b/);
+    }
+  });
+
+  it('summary buttons render in readonly context (navigation is safe)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const buttons = root.querySelectorAll<HTMLButtonElement>(
+      '[data-pkc-region="references-summary"] button[data-pkc-action="jump-to-references-section"]',
+    );
+    expect(buttons.length).toBe(3);
+    for (const b of Array.from(buttons)) expect(b.disabled).toBe(false);
+  });
+
   // ── Relation delete UI v1 ──
 
   it('renders delete button on each relation row in editable context', () => {
