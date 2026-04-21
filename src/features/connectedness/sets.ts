@@ -45,10 +45,6 @@ const MARKDOWN_EVALUATED: ReadonlySet<ArchetypeId> = new Set<ArchetypeId>([
   'todo',
 ]);
 
-export function isMarkdownEvaluatedArchetype(archetype: ArchetypeId): boolean {
-  return MARKDOWN_EVALUATED.has(archetype);
-}
-
 export function buildConnectednessSets(container: Container): ConnectednessSets {
   // Contract §3.9: evaluation scope = user entries only. System entries
   // (system-about / system-settings / any future system-*) are excluded

@@ -6,6 +6,5 @@
 
 export {
   buildConnectednessSets,
-  isMarkdownEvaluatedArchetype,
   type ConnectednessSets,
 } from './sets';

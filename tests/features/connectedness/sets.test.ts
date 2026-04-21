@@ -5,10 +5,7 @@
  * Contract: docs/development/unified-orphan-detection-v3-contract.md
  */
 import { describe, it, expect } from 'vitest';
-import {
-  buildConnectednessSets,
-  isMarkdownEvaluatedArchetype,
-} from '@features/connectedness';
+import { buildConnectednessSets } from '@features/connectedness';
 import type { Container } from '@core/model/container';
 import type { Entry, ArchetypeId } from '@core/model/record';
 import type { Relation, RelationKind } from '@core/model/relation';
@@ -212,26 +209,5 @@ describe('buildConnectednessSets — additional contract invariants', () => {
     const sets = buildConnectednessSets(mkContainer(entries));
     expect(sets.markdownConnected.has('a')).toBe(true);
     expect(sets.markdownConnected.has('exists')).toBe(true);
-  });
-});
-
-describe('isMarkdownEvaluatedArchetype', () => {
-  it('returns true for text / textlog / folder / todo', () => {
-    expect(isMarkdownEvaluatedArchetype('text')).toBe(true);
-    expect(isMarkdownEvaluatedArchetype('textlog')).toBe(true);
-    expect(isMarkdownEvaluatedArchetype('folder')).toBe(true);
-    expect(isMarkdownEvaluatedArchetype('todo')).toBe(true);
-  });
-
-  it('returns false for form / attachment / generic / opaque', () => {
-    expect(isMarkdownEvaluatedArchetype('form')).toBe(false);
-    expect(isMarkdownEvaluatedArchetype('attachment')).toBe(false);
-    expect(isMarkdownEvaluatedArchetype('generic')).toBe(false);
-    expect(isMarkdownEvaluatedArchetype('opaque')).toBe(false);
-  });
-
-  it('returns false for system archetypes', () => {
-    expect(isMarkdownEvaluatedArchetype('system-about')).toBe(false);
-    expect(isMarkdownEvaluatedArchetype('system-settings')).toBe(false);
   });
 });
