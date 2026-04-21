@@ -3564,7 +3564,7 @@ function renderRelationGroup(
 }
 
 /**
- * provenance-metadata-viewer v1 (2026-04-20).
+ * provenance-metadata-viewer v1 (2026-04-20) + pretty-print v1.x (2026-04-20).
  *
  * Read-only viewer for `Relation.metadata` on provenance rows. Uses a
  * native <details>/<summary> so no JS state is needed for toggle,
@@ -3572,13 +3572,60 @@ function renderRelationGroup(
  * absent or empty — the caller skips appending in that case.
  *
  * Field ordering (v1): required two first, recommended third, then any
- * other string keys in sorted order. All values render as-is (strings
- * are the only spec-permitted value shape per
+ * other string keys in sorted order. Values display via
+ * `formatProvenanceMetadataValue` — see that helper for the per-key
+ * pretty-print rules. Non-formatted values render as-is (strings are
+ * the only spec-permitted value shape per
  * docs/spec/provenance-relation-profile.md §2.2).
  *
  * This viewer does NOT introduce edit controls. provenance relations
  * remain non-editable; see docs/development/provenance-metadata-viewer-v1.md.
  */
+
+/**
+ * Pretty-print a single provenance metadata value (v1.x).
+ *
+ * Key-scoped formatter — only canonical keys with known spec semantics
+ * get reformatted. Unknown keys fall through unchanged. Raw input is
+ * always returned alongside the display string so callers can preserve
+ * it via `title` / aria-label for recovery (contract continues to hold
+ * that canonical key/value is the source of truth).
+ *
+ * - `converted_at`         — ISO 8601 → locale-aware "MMM d, y, h:mm a"
+ * - `source_content_hash`  — ≥12-char hex → `first8…`
+ * - everything else        — unchanged (conservative; no speculative
+ *                            pattern matching)
+ *
+ * Fallback: parse failure → return raw `{ display: raw, formatted: false }`.
+ */
+function formatProvenanceMetadataValue(
+  key: string,
+  raw: string,
+): { display: string; formatted: boolean } {
+  if (key === 'converted_at') {
+    const ms = Date.parse(raw);
+    if (!Number.isNaN(ms)) {
+      try {
+        const fmt = new Intl.DateTimeFormat(undefined, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+        return { display: fmt.format(new Date(ms)), formatted: true };
+      } catch {
+        // Intl unavailable or options unsupported — fall through to raw.
+      }
+    }
+    return { display: raw, formatted: false };
+  }
+  if (key === 'source_content_hash') {
+    if (raw.length >= 12) {
+      return { display: `${raw.slice(0, 8)}…`, formatted: true };
+    }
+    return { display: raw, formatted: false };
+  }
+  return { display: raw, formatted: false };
+}
+
 function renderProvenanceMetadataViewer(
   metadata: Record<string, unknown> | undefined,
 ): HTMLElement | null {
@@ -3620,8 +3667,18 @@ function renderProvenanceMetadataViewer(
     dt.setAttribute('data-pkc-metadata-key', key);
     const dd = document.createElement('dd');
     dd.className = 'pkc-provenance-metadata-value';
-    dd.textContent = value;
+    const { display, formatted } = formatProvenanceMetadataValue(key, value);
+    dd.textContent = display;
     dd.setAttribute('data-pkc-metadata-value', key);
+    if (formatted) {
+      // v1.x pretty-print: display differs from canonical — expose raw
+      // via `title` / `aria-label` (hover + screen reader recovery) and
+      // mark the node for tests / CSS targeting. Raw canonical value
+      // remains the source of truth (contract: viewer stays read-only).
+      dd.setAttribute('title', value);
+      dd.setAttribute('aria-label', `${key}: ${value}`);
+      dd.setAttribute('data-pkc-metadata-formatted', 'true');
+    }
     dl.appendChild(dt);
     dl.appendChild(dd);
   }
