@@ -2416,9 +2416,15 @@ describe('Renderer', () => {
     render(state, root);
 
     const ck = root.querySelector('[data-pkc-metadata-value="conversion_kind"]');
-    const ca = root.querySelector('[data-pkc-metadata-value="converted_at"]');
+    const ca = root.querySelector<HTMLElement>('[data-pkc-metadata-value="converted_at"]');
+    // conversion_kind passes through as-is.
     expect(ck!.textContent).toBe('textlog-to-text');
-    expect(ca!.textContent).toBe('2026-01-02T03:04:05.000Z');
+    expect(ck!.hasAttribute('data-pkc-metadata-formatted')).toBe(false);
+    // converted_at is pretty-printed (v1.x). Display differs from raw,
+    // but raw is recoverable via `title` (hover / a11y) per contract.
+    expect(ca!.textContent).not.toBe('2026-01-02T03:04:05.000Z');
+    expect(ca!.getAttribute('title')).toBe('2026-01-02T03:04:05.000Z');
+    expect(ca!.getAttribute('data-pkc-metadata-formatted')).toBe('true');
   });
 
   it('provenance metadata viewer is not rendered when metadata is missing or empty', () => {
@@ -2508,6 +2514,208 @@ describe('Renderer', () => {
       root.querySelectorAll('.pkc-provenance-metadata-key'),
     ).map((el) => (el.textContent ?? '').trim());
     expect(keys).toEqual(['conversion_kind']);
+  });
+
+  // ── Provenance metadata pretty-print v1.x ──
+
+  it('pretty-prints converted_at as a locale datetime while preserving raw ISO in title', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: '2026-04-16T12:34:56Z',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const ca = root.querySelector<HTMLElement>('[data-pkc-metadata-value="converted_at"]');
+    // Pretty-printed display is locale-dependent; assert shape rather
+    // than exact text — must differ from raw ISO AND look datetime-ish.
+    expect(ca!.textContent).not.toBe('2026-04-16T12:34:56Z');
+    expect((ca!.textContent ?? '').length).toBeGreaterThan(0);
+    // Raw canonical value is recoverable via title / aria-label.
+    expect(ca!.getAttribute('title')).toBe('2026-04-16T12:34:56Z');
+    expect(ca!.getAttribute('aria-label')).toBe('converted_at: 2026-04-16T12:34:56Z');
+    expect(ca!.getAttribute('data-pkc-metadata-formatted')).toBe('true');
+  });
+
+  it('falls back to raw when converted_at is unparseable (defensive)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: 'not-a-date',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const ca = root.querySelector<HTMLElement>('[data-pkc-metadata-value="converted_at"]');
+    // Raw string pass-through on parse failure — no title, no marker.
+    expect(ca!.textContent).toBe('not-a-date');
+    expect(ca!.hasAttribute('title')).toBe(false);
+    expect(ca!.hasAttribute('data-pkc-metadata-formatted')).toBe(false);
+  });
+
+  it('pretty-prints source_content_hash as first 8 chars + ellipsis when ≥ 12 chars', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            // 16-char fnv1a64 hex per docs/spec/provenance-relation-profile.md §2.2.2
+            source_content_hash: 'abcd1234ef567890',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const hash = root.querySelector<HTMLElement>('[data-pkc-metadata-value="source_content_hash"]');
+    expect(hash!.textContent).toBe('abcd1234…');
+    expect(hash!.getAttribute('title')).toBe('abcd1234ef567890');
+    expect(hash!.getAttribute('aria-label')).toBe('source_content_hash: abcd1234ef567890');
+    expect(hash!.getAttribute('data-pkc-metadata-formatted')).toBe('true');
+  });
+
+  it('leaves short source_content_hash (< 12 chars) unchanged', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            source_content_hash: 'short',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const hash = root.querySelector<HTMLElement>('[data-pkc-metadata-value="source_content_hash"]');
+    expect(hash!.textContent).toBe('short');
+    expect(hash!.hasAttribute('title')).toBe(false);
+    expect(hash!.hasAttribute('data-pkc-metadata-formatted')).toBe(false);
+  });
+
+  it('unknown metadata keys pass through unchanged (no speculative formatting)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            split_mode: 'heading',
+            segment_count: '3',
+            // A future key we don't know about — must render as-is.
+            some_future_key: 'some-long-value-that-might-look-like-a-hash-abcd1234ef567890',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const split = root.querySelector<HTMLElement>('[data-pkc-metadata-value="split_mode"]');
+    const seg = root.querySelector<HTMLElement>('[data-pkc-metadata-value="segment_count"]');
+    const future = root.querySelector<HTMLElement>('[data-pkc-metadata-value="some_future_key"]');
+    expect(split!.textContent).toBe('heading');
+    expect(split!.hasAttribute('data-pkc-metadata-formatted')).toBe(false);
+    expect(seg!.textContent).toBe('3');
+    expect(future!.textContent).toBe('some-long-value-that-might-look-like-a-hash-abcd1234ef567890');
+    expect(future!.hasAttribute('data-pkc-metadata-formatted')).toBe(false);
+  });
+
+  it('pretty-print preserves read-only shape (no input elements added)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: '2026-04-16T12:34:56Z',
+            source_content_hash: 'abcd1234ef567890',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const viewer = root.querySelector('[data-pkc-region="provenance-metadata"]');
+    expect(viewer).not.toBeNull();
+    // No edit affordance added by pretty-print.
+    expect(viewer!.querySelector('input')).toBeNull();
+    expect(viewer!.querySelector('textarea')).toBeNull();
+    expect(viewer!.querySelector('select')).toBeNull();
+    expect(viewer!.querySelector('button')).toBeNull();
+  });
+
+  it('pretty-print is active in readonly context (viewing contract unchanged)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: '2026-04-16T12:34:56Z',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const ca = root.querySelector<HTMLElement>('[data-pkc-metadata-value="converted_at"]');
+    expect(ca!.getAttribute('data-pkc-metadata-formatted')).toBe('true');
+    expect(ca!.getAttribute('title')).toBe('2026-04-16T12:34:56Z');
   });
 
   it('shows relation creation form in ready phase', () => {
