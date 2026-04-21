@@ -2888,12 +2888,34 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
 
   view.appendChild(titleRow);
 
-  // Breadcrumb: show parent folder path + current entry
+  // Breadcrumb: always show path trail (root marker, ancestors, current).
+  // Spec: docs/development/breadcrumb-path-trail-v1.md
   if (container) {
     const breadcrumb = getBreadcrumb(container.relations, container.entries, entry.lid);
-    if (breadcrumb.length > 0) {
-      const bc = createElement('div', 'pkc-breadcrumb');
-      bc.setAttribute('data-pkc-region', 'breadcrumb');
+    const bc = createElement('div', 'pkc-breadcrumb');
+    bc.setAttribute('data-pkc-region', 'breadcrumb');
+
+    if (breadcrumb.length === 0) {
+      const rootMarker = createElement('span', 'pkc-breadcrumb-root');
+      rootMarker.textContent = 'Root';
+      bc.appendChild(rootMarker);
+      const sep = createElement('span', 'pkc-breadcrumb-sep');
+      sep.textContent = ' › ';
+      bc.appendChild(sep);
+    } else {
+      // If the oldest ancestor still has a structural parent, the chain
+      // was truncated by `getBreadcrumb`'s maxDepth cap.
+      const truncated =
+        getStructuralParent(container.relations, container.entries, breadcrumb[0]!.lid) !== null;
+      if (truncated) {
+        const trunc = createElement('span', 'pkc-breadcrumb-truncated');
+        trunc.setAttribute('title', '…（省略された祖先あり）');
+        trunc.textContent = '…';
+        bc.appendChild(trunc);
+        const sep = createElement('span', 'pkc-breadcrumb-sep');
+        sep.textContent = ' › ';
+        bc.appendChild(sep);
+      }
       for (const ancestor of breadcrumb) {
         const link = createElement('span', 'pkc-breadcrumb-item');
         link.setAttribute('data-pkc-action', 'select-entry');
@@ -2905,13 +2927,13 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
         sep.textContent = ' › ';
         bc.appendChild(sep);
       }
-      // Current entry (non-clickable)
-      const current = createElement('span', 'pkc-breadcrumb-current');
-      current.textContent = entry.title || '(untitled)';
-      bc.appendChild(current);
-
-      view.appendChild(bc);
     }
+    // Current entry (non-clickable)
+    const current = createElement('span', 'pkc-breadcrumb-current');
+    current.textContent = entry.title || '(untitled)';
+    bc.appendChild(current);
+
+    view.appendChild(bc);
   }
 
   // Archetype-dispatched body rendering.

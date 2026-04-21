@@ -3881,6 +3881,114 @@ describe('Folder UX Hardening', () => {
     expect(current!.textContent).toBe('Note in Folder');
   });
 
+  // ── Breadcrumb / Path Trail v1 (spec: docs/development/breadcrumb-path-trail-v1.md) ──
+
+  it('shows breadcrumb with Root marker for root-level entries (§6)', () => {
+    render({ ...baseState, selectedLid: 'e2' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    const rootMarker = bc!.querySelector('.pkc-breadcrumb-root');
+    expect(rootMarker).not.toBeNull();
+    expect(rootMarker!.textContent).toBe('Root');
+    // No ancestor items for root entries.
+    expect(bc!.querySelectorAll('.pkc-breadcrumb-item')).toHaveLength(0);
+    const current = bc!.querySelector('.pkc-breadcrumb-current');
+    expect(current!.textContent).toBe('Root Note');
+    // No truncation marker at root depth.
+    expect(bc!.querySelector('.pkc-breadcrumb-truncated')).toBeNull();
+  });
+
+  it('shows breadcrumb Root marker for a folder selected at root (§6)', () => {
+    render({ ...baseState, selectedLid: 'f1' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    expect(bc!.querySelector('.pkc-breadcrumb-root')).not.toBeNull();
+    expect(bc!.querySelector('.pkc-breadcrumb-current')!.textContent).toBe('My Folder');
+  });
+
+  it('shows … truncation marker when ancestry exceeds maxDepth (§7)', () => {
+    // Build a chain of 6 folders plus a leaf — getBreadcrumb caps at 4 ancestors,
+    // so 1 further ancestor remains above and must surface as `…`.
+    const ts = '2026-01-01T00:00:00Z';
+    const deepContainer: Container = {
+      meta: {
+        container_id: 'deep',
+        title: 'Deep',
+        created_at: ts,
+        updated_at: ts,
+        schema_version: 1,
+      },
+      entries: [
+        { lid: 'g0', title: 'G0', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'g1', title: 'G1', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'g2', title: 'G2', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'g3', title: 'G3', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'g4', title: 'G4', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'leaf', title: 'Leaf', body: '', archetype: 'text', created_at: ts, updated_at: ts },
+      ],
+      relations: [
+        { id: 'r0', from: 'g0', to: 'g1', kind: 'structural', created_at: ts, updated_at: ts },
+        { id: 'r1', from: 'g1', to: 'g2', kind: 'structural', created_at: ts, updated_at: ts },
+        { id: 'r2', from: 'g2', to: 'g3', kind: 'structural', created_at: ts, updated_at: ts },
+        { id: 'r3', from: 'g3', to: 'g4', kind: 'structural', created_at: ts, updated_at: ts },
+        { id: 'r4', from: 'g4', to: 'leaf', kind: 'structural', created_at: ts, updated_at: ts },
+      ],
+      revisions: [],
+      assets: {},
+    };
+    render({ ...baseState, container: deepContainer, selectedLid: 'leaf' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    const trunc = bc!.querySelector('.pkc-breadcrumb-truncated');
+    expect(trunc).not.toBeNull();
+    expect(trunc!.textContent).toBe('…');
+    // `…` is non-clickable (no data-pkc-action).
+    expect(trunc!.getAttribute('data-pkc-action')).toBeNull();
+    // 4 ancestors rendered (maxDepth); oldest in DOM is g1 (g0 truncated).
+    const items = bc!.querySelectorAll('.pkc-breadcrumb-item');
+    expect(items).toHaveLength(4);
+    expect(items[0]!.textContent).toBe('G1');
+    expect(items[3]!.textContent).toBe('G4');
+  });
+
+  it('does NOT show truncation marker when ancestry fits within maxDepth (§7)', () => {
+    render({ ...baseState, selectedLid: 'e1' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    expect(bc!.querySelector('.pkc-breadcrumb-truncated')).toBeNull();
+  });
+
+  it('under multi-parent, picks the first structural parent deterministically (§8)', () => {
+    const ts = '2026-01-01T00:00:00Z';
+    const mpContainer: Container = {
+      meta: {
+        container_id: 'mp',
+        title: 'MP',
+        created_at: ts,
+        updated_at: ts,
+        schema_version: 1,
+      },
+      entries: [
+        { lid: 'fA', title: 'Folder A', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'fB', title: 'Folder B', body: '', archetype: 'folder', created_at: ts, updated_at: ts },
+        { lid: 'shared', title: 'Shared', body: '', archetype: 'text', created_at: ts, updated_at: ts },
+      ],
+      // fA comes first in the relations array → must win.
+      relations: [
+        { id: 'r1', from: 'fA', to: 'shared', kind: 'structural', created_at: ts, updated_at: ts },
+        { id: 'r2', from: 'fB', to: 'shared', kind: 'structural', created_at: ts, updated_at: ts },
+      ],
+      revisions: [],
+      assets: {},
+    };
+    render({ ...baseState, container: mpContainer, selectedLid: 'shared' }, root);
+    const bc = root.querySelector('[data-pkc-region="breadcrumb"]');
+    expect(bc).not.toBeNull();
+    const items = bc!.querySelectorAll('.pkc-breadcrumb-item');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.textContent).toBe('Folder A');
+  });
+
   it('shows folder contents section when folder is selected', () => {
     render({ ...baseState, selectedLid: 'f1' }, root);
     const contents = root.querySelector('[data-pkc-region="folder-contents"]');

@@ -2610,6 +2610,17 @@ mark.pkc-search-mark {
   font-weight: 500;
 }
 
+.pkc-breadcrumb-root {
+  color: var(--c-muted);
+  font-style: italic;
+}
+
+.pkc-breadcrumb-truncated {
+  color: var(--c-muted);
+  cursor: default;
+  user-select: none;
+}
+
 /* ── Move to Folder ── */
 .pkc-move-to-folder {
   display: flex;

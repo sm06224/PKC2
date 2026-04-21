@@ -157,6 +157,33 @@ describe('getBreadcrumb', () => {
     const bc = getBreadcrumb(relations, entries, 'd', 2);
     expect(bc).toHaveLength(2); // Only last 2 ancestors
   });
+
+  it('under multi-parent, uses the first structural relation encountered', () => {
+    // Spec: docs/development/breadcrumb-path-trail-v1.md §8.
+    // v1 contract — "最初に見つかった structural parent を採用".
+    const entries = [
+      makeEntry('f1', 'Folder One', 'folder'),
+      makeEntry('f2', 'Folder Two', 'folder'),
+      makeEntry('leaf', 'Leaf'),
+    ];
+    // f1 appears first in the relations array, so it wins.
+    const relations = [
+      makeRelation('r1', 'f1', 'leaf'),
+      makeRelation('r2', 'f2', 'leaf'),
+    ];
+    const bc = getBreadcrumb(relations, entries, 'leaf');
+    expect(bc).toHaveLength(1);
+    expect(bc[0]!.lid).toBe('f1');
+
+    // Reversed order — now f2 wins.
+    const reversed = [
+      makeRelation('r2', 'f2', 'leaf'),
+      makeRelation('r1', 'f1', 'leaf'),
+    ];
+    const bc2 = getBreadcrumb(reversed, entries, 'leaf');
+    expect(bc2).toHaveLength(1);
+    expect(bc2[0]!.lid).toBe('f2');
+  });
 });
 
 describe('isDescendant', () => {
