@@ -190,6 +190,22 @@ export const ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG = 'pkc-entry-update-preview-ctx
 export const ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG = 'pkc-entry-update-view-body';
 
 /**
+ * Private message type name used for the parent → child refresh of
+ * entry-window title surfaces. See
+ * `docs/development/entry-window-title-live-refresh-v1.md` §3 for the
+ * full protocol.
+ *
+ * Payload shape:
+ *   { type: 'pkc-entry-update-title', title: string }
+ *
+ * The `title` field is the new plain-text title. The child applies it
+ * to `document.title`, `#title-display`, and `originalTitle`, subject
+ * to the dirty-state policy in §4 of the spec (edit-mode stashes into
+ * `pendingTitle` to avoid stomping an in-progress rename).
+ */
+export const ENTRY_WINDOW_TITLE_UPDATE_MSG = 'pkc-entry-update-title';
+
+/**
  * Push a fresh preview resolver context snapshot to an already-open
  * child window, updating both the parent-side map and the child's
  * local copy via postMessage.
@@ -309,6 +325,33 @@ export function pushViewBodyUpdate(
     '<em style="color:var(--c-muted)">(empty)</em>';
   child.postMessage(
     { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
+    '*',
+  );
+  return true;
+}
+
+/**
+ * Push a title refresh to an already-open child entry-window.
+ *
+ * See `docs/development/entry-window-title-live-refresh-v1.md` for the
+ * full contract. In brief: the child applies the new title to
+ * `document.title`, `#title-display`, and the script's `originalTitle`
+ * variable, unless the child is currently in edit mode (in which case
+ * the new title is stashed into `pendingTitle` to avoid stomping an
+ * in-progress rename).
+ *
+ * Returns `true` when a postMessage was dispatched to a live child,
+ * `false` when no open window exists for the lid (or the child has
+ * been closed).
+ */
+export function pushTitleUpdate(
+  lid: string,
+  title: string,
+): boolean {
+  const child = openWindows.get(lid);
+  if (!child || child.closed) return false;
+  child.postMessage(
+    { type: ENTRY_WINDOW_TITLE_UPDATE_MSG, title },
     '*',
   );
   return true;
@@ -1549,6 +1592,8 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
   <!-- Pending view-refresh notice (hidden by default) -->
   <div class="pkc-pending-view-notice" id="pending-view-notice" style="display:none">View refresh pending &mdash; will apply on save or cancel.</div>
+  <!-- Pending title-refresh notice (hidden by default) -->
+  <div class="pkc-pending-view-notice" id="pending-title-notice" style="display:none">Title refresh pending &mdash; will apply on save or cancel.</div>
 ${lightSource && entry.archetype === 'attachment' ? '  <div class="pkc-light-notice" data-pkc-region="light-notice">This is a Light export — attachment file data is not available.</div>' : ''}
   <!-- Scrollable content area -->
   <div class="pkc-window-content" id="window-content">
@@ -1661,6 +1706,18 @@ var childPreviewCtx = null;
  * one is applied on flush. Older snapshots are unreachable.
  */
 var pendingViewBody = null;
+
+/*
+ * Pending title, stashed when a parent → child
+ * 'pkc-entry-update-title' message arrives while the child is in edit
+ * mode. Mirrors pendingViewBody's policy: clean → apply immediately,
+ * dirty → stash + show #pending-title-notice, flush on cancelEdit
+ * and discard on 'pkc-entry-saved'. Holding only the most recent
+ * snapshot is intentional.
+ *
+ * See docs/development/entry-window-title-live-refresh-v1.md §4.
+ */
+var pendingTitle = null;
 
 document.getElementById('body-edit').value = originalBody;
 if (document.getElementById('title-input')) {
@@ -1890,6 +1947,44 @@ function hidePendingViewNotice() {
   if (el) el.style.display = 'none';
 }
 
+function showPendingTitleNotice() {
+  var el = document.getElementById('pending-title-notice');
+  if (el) el.style.display = '';
+}
+function hidePendingTitleNotice() {
+  var el = document.getElementById('pending-title-notice');
+  if (el) el.style.display = 'none';
+}
+
+/*
+ * Apply a stashed pendingTitle after a dirty → clean transition
+ * (cancelEdit). Updates document.title, #title-display, originalTitle
+ * in one atomic block and clears the pending state.
+ *
+ * 'pkc-entry-saved' does NOT use this helper — save's own rerender
+ * (originalTitle = title-input.value) is authoritative, so any stale
+ * pendingTitle is discarded instead.
+ */
+function flushPendingTitle() {
+  if (pendingTitle == null) return;
+  var nextTitle = pendingTitle;
+  document.title = nextTitle + ' — PKC2';
+  var titleEl = document.getElementById('title-display');
+  if (titleEl) titleEl.textContent = nextTitle;
+  var titleInputEl = document.getElementById('title-input');
+  /*
+   * Safe to write: flushPendingTitle is invoked after a dirty → clean
+   * transition (cancelEdit). The input has just been rolled back to
+   * the pre-flush originalTitle, so there is no in-progress user edit
+   * to stomp. Updating the input keeps it in sync with the new
+   * baseline for the next enterEdit().
+   */
+  if (titleInputEl) titleInputEl.value = nextTitle;
+  originalTitle = nextTitle;
+  pendingTitle = null;
+  hidePendingTitleNotice();
+}
+
 /*
  * Collect body from structured editor fields. Mirrors the center pane's
  * collectBody pattern for each archetype. Returns the serialized body
@@ -2114,6 +2209,7 @@ function cancelEdit() {
    * the view pane shows the freshest parent-side state.
    */
   flushPendingViewBody();
+  flushPendingTitle();
 }
 
 function showTab(tab) {
@@ -2194,6 +2290,13 @@ window.addEventListener('message', function(e) {
      */
     pendingViewBody = null;
     hidePendingViewNotice();
+    /*
+     * Same policy for a stashed pending title: save just wrote
+     * originalTitle from the live title-input, which is authoritative.
+     * Any earlier parent push is now stale, so discard it.
+     */
+    pendingTitle = null;
+    hidePendingTitleNotice();
   }
   if (e.data && e.data.type === 'pkc-entry-conflict') {
     var banner = document.getElementById('conflict-banner');
@@ -2266,6 +2369,43 @@ window.addEventListener('message', function(e) {
         pendingViewBody = null;
         hidePendingViewNotice();
         updateTaskBadge();
+      }
+    }
+  }
+  if (e.data && e.data.type === 'pkc-entry-update-title') {
+    /*
+     * Title live refresh. The parent has observed that this entry's
+     * title changed (rename) and pushed the new string here.
+     *
+     * Surfaces updated (see docs/development/entry-window-title-live-
+     * refresh-v1.md §2): document.title, #title-display.textContent,
+     * the script-scope originalTitle variable, and — when safe — the
+     * #title-input value.
+     *
+     * Dirty state policy (§4): if the child is currently in edit mode,
+     * stash into pendingTitle and surface #pending-title-notice. The
+     * user's in-progress #title-input value is NEVER overwritten while
+     * they are editing. The document.title (tab bar) is still updated
+     * immediately because it has no dirty-state semantics and users
+     * expect it to track the canonical source of truth.
+     *
+     * Flush / discard mirrors pendingViewBody: cancelEdit() flushes,
+     * 'pkc-entry-saved' discards (save path is authoritative).
+     */
+    if (typeof e.data.title === 'string') {
+      var nextTitle = e.data.title;
+      document.title = nextTitle + ' — PKC2';
+      if (currentMode === 'edit') {
+        pendingTitle = nextTitle;
+        showPendingTitleNotice();
+      } else {
+        var titleDisplayEl = document.getElementById('title-display');
+        if (titleDisplayEl) titleDisplayEl.textContent = nextTitle;
+        var titleInputElLive = document.getElementById('title-input');
+        if (titleInputElLive) titleInputElLive.value = nextTitle;
+        originalTitle = nextTitle;
+        pendingTitle = null;
+        hidePendingTitleNotice();
       }
     }
   }
