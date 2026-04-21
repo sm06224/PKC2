@@ -622,6 +622,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
+      case 'save-search': {
+        // Saved Searches v1 — spec: docs/development/saved-searches-v1.md §5.1.
+        // window.prompt is a minimal v1 label-entry UX; empty / cancel
+        // are silent no-ops (reducer also short-circuits on empty).
+        const raw = window.prompt('Save current search as:');
+        if (raw === null) break;
+        const name = raw.trim();
+        if (name === '') break;
+        dispatcher.dispatch({ type: 'SAVE_SEARCH', name });
+        break;
+      }
+      case 'apply-saved-search': {
+        const id = target.getAttribute('data-pkc-saved-id');
+        if (!id) break;
+        dispatcher.dispatch({ type: 'APPLY_SAVED_SEARCH', id });
+        break;
+      }
+      case 'delete-saved-search': {
+        const id = target.getAttribute('data-pkc-saved-id');
+        if (!id) break;
+        // Prevent the parent `apply-saved-search` li from swallowing
+        // this click into an APPLY dispatch (§5.2).
+        e.stopPropagation();
+        dispatcher.dispatch({ type: 'DELETE_SAVED_SEARCH', id });
+        break;
+      }
       case 'create-relation': {
         const form = target.closest<HTMLElement>('[data-pkc-region="relation-create"]');
         if (!form) break;

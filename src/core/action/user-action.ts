@@ -216,6 +216,41 @@ export type UserAction =
   | { type: 'SET_TAG_FILTER'; tagLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
   /**
+   * SAVE_SEARCH — create a new saved search record from the current
+   * searchQuery / archetypeFilter / tagFilter / sortKey / sortDirection
+   * / showArchived state. Spec: `docs/development/saved-searches-v1.md`
+   * §5–§6.
+   *
+   * - Blocked when no container is loaded or readonly.
+   * - Name is trimmed; empty name is a no-op (reducer returns state as-is).
+   * - Name is truncated to SAVED_SEARCH_NAME_MAX (80 chars).
+   * - Blocked when `container.meta.saved_searches.length` already equals
+   *   SAVED_SEARCH_CAP (20).
+   * - Appends a new `SavedSearch` to `container.meta.saved_searches` and
+   *   bumps `container.meta.updated_at`. No event emitted in v1.
+   */
+  | { type: 'SAVE_SEARCH'; name: string }
+  /**
+   * APPLY_SAVED_SEARCH — restore the 6 AppState fields from the saved
+   * search identified by `id`. Read-only with respect to the container.
+   *
+   * - Blocked when no container is loaded.
+   * - Blocked when `id` is not found.
+   * - Mirrors SET_SORT's manual-mode `entry_order` snapshot roll-in when
+   *   the saved sort key is `'manual'`.
+   * - Does NOT change `selectedLid`, `viewMode`, `phase`, or any
+   *   container field beyond the manual-sort roll-in.
+   */
+  | { type: 'APPLY_SAVED_SEARCH'; id: string }
+  /**
+   * DELETE_SAVED_SEARCH — remove a saved search by id.
+   *
+   * - Blocked when no container is loaded or readonly.
+   * - Silently no-ops when the id is not present.
+   * - Bumps `container.meta.updated_at` on actual removal.
+   */
+  | { type: 'DELETE_SAVED_SEARCH'; id: string }
+  /**
    * MOVE_ENTRY_UP / MOVE_ENTRY_DOWN — user-defined entry ordering
    * (C-2 v1, 2026-04-17). Contract:
    * `docs/spec/entry-ordering-v1-behavior-contract.md`.

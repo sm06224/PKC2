@@ -56,6 +56,11 @@ import {
   snapshotEntryOrder,
   type MoveDirection,
 } from '../../features/entry-order/entry-order';
+import {
+  createSavedSearch,
+  applySavedSearchFields,
+} from '../../features/search/saved-searches';
+import { SAVED_SEARCH_CAP } from '../../core/model/saved-search';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -1779,6 +1784,89 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_SHOW_ARCHIVED': {
       const next: AppState = { ...state, showArchived: !state.showArchived };
+      return { state: next, events: [] };
+    }
+    case 'SAVE_SEARCH': {
+      // Spec: docs/development/saved-searches-v1.md §5–§6.
+      if (!state.container) return blocked(state, action);
+      if (state.readonly) return blocked(state, action);
+      const trimmed = action.name.trim();
+      if (trimmed === '') return { state, events: [] };
+      const existing = state.container.meta.saved_searches ?? [];
+      if (existing.length >= SAVED_SEARCH_CAP) return blocked(state, action);
+      const ts = new Date().toISOString();
+      const saved = createSavedSearch(generateLid(), trimmed, ts, {
+        searchQuery: state.searchQuery,
+        archetypeFilter: state.archetypeFilter,
+        tagFilter: state.tagFilter,
+        sortKey: state.sortKey,
+        sortDirection: state.sortDirection,
+        showArchived: state.showArchived,
+      });
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          meta: {
+            ...state.container.meta,
+            saved_searches: [...existing, saved],
+            updated_at: ts,
+          },
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'APPLY_SAVED_SEARCH': {
+      if (!state.container) return blocked(state, action);
+      const existing = state.container.meta.saved_searches ?? [];
+      const saved = existing.find((s) => s.id === action.id);
+      if (!saved) return blocked(state, action);
+      const fields = applySavedSearchFields(saved);
+      // Mirror SET_SORT's manual-mode entry_order snapshot roll-in so
+      // switching into manual mode via a saved search behaves the same
+      // as switching via SET_SORT (contract §2.5, I-Order...).
+      let container = state.container;
+      if (
+        fields.sortKey === 'manual' &&
+        (container.meta.entry_order === undefined ||
+          container.meta.entry_order.length === 0)
+      ) {
+        const snapshot = snapshotEntryOrder(container.entries);
+        container = {
+          ...container,
+          meta: { ...container.meta, entry_order: snapshot },
+        };
+      }
+      const next: AppState = {
+        ...state,
+        container,
+        searchQuery: fields.searchQuery,
+        archetypeFilter: fields.archetypeFilter,
+        tagFilter: fields.tagFilter,
+        sortKey: fields.sortKey,
+        sortDirection: fields.sortDirection,
+        showArchived: fields.showArchived,
+      };
+      return { state: next, events: [] };
+    }
+    case 'DELETE_SAVED_SEARCH': {
+      if (!state.container) return blocked(state, action);
+      if (state.readonly) return blocked(state, action);
+      const existing = state.container.meta.saved_searches ?? [];
+      const remaining = existing.filter((s) => s.id !== action.id);
+      if (remaining.length === existing.length) return { state, events: [] };
+      const ts = new Date().toISOString();
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          meta: {
+            ...state.container.meta,
+            saved_searches: remaining,
+            updated_at: ts,
+          },
+        },
+      };
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {

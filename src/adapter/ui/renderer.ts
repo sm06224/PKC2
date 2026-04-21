@@ -1608,6 +1608,63 @@ function renderExportImportInline(state: AppState): HTMLElement {
 }
 
 /**
+/**
+ * Saved Searches Pane v1 — spec: docs/development/saved-searches-v1.md
+ *
+ * Lists `container.meta.saved_searches` as clickable chips. Each chip
+ * applies the saved filter / sort / search state when clicked and has
+ * a × delete button. Empty (undefined or []) → pane is not rendered.
+ * Hidden while an import preview is active, and the × button is
+ * hidden when `state.readonly` is true.
+ */
+function renderSavedSearchesPane(
+  state: AppState,
+): HTMLElement | null {
+  if (!state.container) return null;
+  if (state.importPreview) return null;
+  const saved = state.container.meta.saved_searches ?? [];
+  if (saved.length === 0) return null;
+
+  const pane = document.createElement('details');
+  pane.className = 'pkc-saved-searches-pane';
+  pane.setAttribute('data-pkc-region', 'saved-searches');
+  pane.open = true;
+
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-saved-searches-summary';
+  summary.textContent = `Saved (${saved.length})`;
+  pane.appendChild(summary);
+
+  const list = createElement('ul', 'pkc-saved-searches-list');
+  for (const s of saved) {
+    // Defensive skip: silently drop malformed records so a single
+    // corrupt entry cannot wedge the whole pane.
+    if (!s || typeof s.id !== 'string' || typeof s.name !== 'string') continue;
+    const li = createElement('li', 'pkc-saved-search-item');
+    li.setAttribute('data-pkc-action', 'apply-saved-search');
+    li.setAttribute('data-pkc-saved-id', s.id);
+    li.setAttribute('title', s.name || '(unnamed)');
+
+    const label = createElement('span', 'pkc-saved-search-label');
+    label.textContent = s.name || '(unnamed)';
+    li.appendChild(label);
+
+    if (!state.readonly) {
+      const delBtn = createElement('button', 'pkc-saved-search-delete');
+      delBtn.setAttribute('data-pkc-action', 'delete-saved-search');
+      delBtn.setAttribute('data-pkc-saved-id', s.id);
+      delBtn.setAttribute('title', 'Delete saved search');
+      delBtn.textContent = '×';
+      li.appendChild(delBtn);
+    }
+
+    list.appendChild(li);
+  }
+  pane.appendChild(list);
+  return pane;
+}
+
+/**
  * Recent Entries Pane v1 — spec: docs/development/recent-entries-pane-v1.md
  *
  * Derived-only pane listing up to 10 user entries sorted by
@@ -1679,6 +1736,17 @@ function renderSidebar(state: AppState): HTMLElement {
       searchRow.appendChild(clearBtn);
     }
 
+    // Saved Searches v1: Save button (spec §5.1). Hidden for readonly
+    // / import-preview artifacts since SAVE_SEARCH mutates the
+    // container and is blocked in those modes.
+    if (!state.readonly && !state.importPreview) {
+      const saveBtn = createElement('button', 'pkc-btn-small');
+      saveBtn.setAttribute('data-pkc-action', 'save-search');
+      saveBtn.setAttribute('title', 'Save current search');
+      saveBtn.textContent = '★';
+      searchRow.appendChild(saveBtn);
+    }
+
     sidebar.appendChild(searchRow);
 
     // Archetype filter bar
@@ -1686,6 +1754,13 @@ function renderSidebar(state: AppState): HTMLElement {
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
+  }
+
+  // Saved Searches Pane v1 — named snapshots of search/filter/sort
+  // state. See docs/development/saved-searches-v1.md.
+  {
+    const savedPane = renderSavedSearchesPane(state);
+    if (savedPane) sidebar.appendChild(savedPane);
   }
 
   // Recent Entries Pane v1 — derived-only list of the most recently

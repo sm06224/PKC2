@@ -674,6 +674,68 @@
   border-bottom: 1px solid var(--c-border);
 }
 
+/* ── Saved Searches Pane v1 ──
+   Spec: docs/development/saved-searches-v1.md */
+.pkc-saved-searches-pane {
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-saved-searches-summary {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.pkc-saved-searches-summary::-webkit-details-marker { display: none; }
+
+.pkc-saved-searches-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-saved-search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background var(--transition-fast);
+}
+
+.pkc-saved-search-item:hover {
+  background: var(--c-hover);
+}
+
+.pkc-saved-search-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkc-saved-search-delete {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--c-muted);
+  cursor: pointer;
+  padding: 0 0.25rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  border-radius: var(--radius);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.pkc-saved-search-delete:hover {
+  color: var(--c-fg);
+  background: var(--c-surface);
+}
+
 /* ── Recent Entries Pane v1 ──
    Spec: docs/development/recent-entries-pane-v1.md */
 .pkc-recent-pane {
