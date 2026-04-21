@@ -6,6 +6,8 @@
 （A〜E）の優先順位を確定する。本ドキュメントは **判断の固定** が
 責務で、実装・擬似コード・ファイル編集案は一切含まない。
 
+> **📌 2026-04-21 追補（forward pointer）**: Tier 3-1 / 3-2 は本書の判断通りに着地済み。**Tier 3-3 の再評価と採用（C-4 lint baseline 解消）は `TIER3_3_REEVALUATION.md` を参照**。それ以降の 2026-04-18〜21 wave（Relations / Backlinks / Provenance / Orphan v3 / P1-P5 / hook / transport record / dead-code round 3-5 等）は **Tier 3 粒度を超えて wave 単位で進行**しており、現時点の active candidate と Defer 項目は `HANDOVER_FINAL.md §22` / `USER_REQUEST_LEDGER.md §1.1` を参照する。本書は Tier 3 固定期間の歴史記録として保存。
+
 ---
 
 ## 0. 前提

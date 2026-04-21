@@ -459,6 +459,15 @@ export function buildConnectednessSets(container: Container): ConnectednessSets;
 
 ## 7. Exit criteria for implementation PR（実装着手条件）
 
+> **📌 2026-04-21 追補（status）**
+>
+> - **§7.1 E1–E9（S3 実装着手条件）**: 全項目 **satisfied**。S3 は `connectedness-s3-v1.md` として shipped
+> - **§7.2 S3 スコープ境界**: 遵守して着地済み
+> - **§7.3 E10–E14（S4 実装着手条件）**: 全項目 **satisfied**。S4 は `connectedness-s4-v1.md` として shipped（ただし公開 API は §5.4 表の `isMarkdownEvaluatedArchetype` を **inline 化** する後続判断あり、`connectedness-s3-v1.md` 2026-04-21 追補を参照）
+> - **§7.4 E15–E18（S5 実装着手条件）**: **Defer 確定**（本 contract §7.4 の optional 位置づけに従う）。`next-feature-prioritization-after-relations-wave.md §5` / `HANDOVER_FINAL §22.3` / LEDGER §1.1 も同方針
+>
+> 以下の本文はそれぞれの起票時点での gate 契約として保存する。再開時は本追補を優先判断に使う。
+
 S3（pure helper 実装）を起票するには、以下**すべて**が満たされている必要がある。1 つでも欠ければ差し戻す。
 
 ### 7.1 Preconditions（必須条件）

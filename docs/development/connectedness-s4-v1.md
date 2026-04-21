@@ -165,6 +165,8 @@ v1 既存 orphan tests（4 件）は **全数継続 pass**（contract §7.3 E12 
 
 ## 11. 次 slice（S5）への引継ぎ
 
+> **📌 2026-04-21 追補（status）**: S5 は **Defer 確定**。`unified-orphan-detection-v3-contract.md §7.4` の optional 位置づけに従い、S4 marker で "気づき" は完結したため filter は実需待ち。`next-feature-prioritization-after-relations-wave.md §5` / `HANDOVER_FINAL §22.3` / LEDGER §1.1 も同じく Defer として記録済み。以下の exit criteria 表は復活させる時に参照するためそのまま保存する。
+
 S5（optional filter）を起票するときには contract §7.4 の E15〜E18 を確認:
 - [ ] E15: 本 PR（S4）が main に merge 済み
 - [ ] E16: filter wording は §4.3 の 3 ラベル表から選ぶ
