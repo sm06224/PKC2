@@ -73,6 +73,9 @@
 
 ### 第5群: 開発記録（adapter 実装の細目）
 
+2026-04-18 以降の wave は本節末尾 **「2026-04-18〜21 wave」** にまとまっている。
+新セッションはこの節を起点に直近の実装群へ辿ること。
+
 | 位置 | 内容 |
 |-----|-----|
 | `../development/INDEX.md` | Issue 別実装 note のインデックス（CLOSED / COMPLETED / CANDIDATE）。Tier 1-1 / 1-2 / 2-1 / 2-2 は COMPLETED に反映済み |
@@ -94,6 +97,84 @@
 | `../spec/link-index-v1-minimum-scope.md` | C-3 link-index v1 — minimum scope / feasibility（2026-04-17） |
 | `../spec/link-index-v1-behavior-contract.md` | C-3 link-index v1 — behavior contract（`buildLinkIndex` / 3 section / I-LinkIdx1〜10、2026-04-17） |
 | `../development/link-index-v1-audit.md` | C-3 link-index v1 — post-implementation audit（欠陥 0、scope narrowing 2 件記録、2026-04-17） |
+
+#### 2026-04-18〜21 wave（relations / references / provenance / orphan / P1–P5 / hook subscription / transport）
+
+新しい Claude セッションが 4/18 以降の現況を把握するための直近 wave。
+`USER_REQUEST_LEDGER.md §1` と `../development/INDEX.md` の COMPLETED 末尾にも反映済み。
+
+**Relations / Backlinks 層（2026-04-19〜20）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/backlinks-panel-v1.md` | 関係別 sub-panel を meta pane に追加した v1（implementation、2026-04-19） |
+| `../development/sidebar-backlink-badge-v1.md` | sidebar に relations 由来の inbound 件数 badge を表示（implementation、2026-04-20） |
+| `../development/backlink-badge-jump-v1.md` | badge クリックで meta pane の References / relations セクションへ jump（implementation、2026-04-20） |
+| `../development/relation-delete-ui-v1.md` | relation 行から直接 1 本を削除する UI（implementation、2026-04-20） |
+| `../development/relation-kind-edit-v1.md` | relation kind の inline 編集 UI（provenance の 2 重ガード含む、implementation、2026-04-20） |
+| `../development/unified-backlinks-v0-draft.md` | References umbrella の設計 draft（docs-only、v1 に consumed、2026-04-20） |
+| `../development/unified-backlinks-v1.md` | References umbrella（Option E 採用）の実装（implementation、2026-04-20） |
+| `../development/references-summary-row-v2.md` | References の件数サマリ行を追加（implementation、2026-04-20） |
+| `../development/references-summary-clickable-v3.md` | サマリ行を clickable にして jump 動線を完成（implementation、2026-04-20） |
+
+**Provenance metadata 層（2026-04-20）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/provenance-metadata-viewer-v1.md` | `provenance` relation の metadata 参照 UI（implementation、2026-04-20） |
+| `../development/provenance-metadata-pretty-print-v1.md` | key scoped formatter で human-readable に整形（implementation、2026-04-20） |
+| `../development/provenance-metadata-copy-export-v1.md` | raw canonical JSON の copy / export（implementation、2026-04-20） |
+
+**Unified Orphan Detection v3 / Connectedness 層（2026-04-20）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/unified-orphan-detection-v3-draft.md` | 設計 draft（docs-only、contract に consumed、2026-04-20） |
+| `../development/unified-orphan-detection-v3-contract.md` | behavior contract（S3/S4 済み、S5 filter は Defer、docs-only、2026-04-20） |
+| `../development/connectedness-s3-v1.md` | `buildConnectednessSets` pure helper（implementation、2026-04-20） |
+| `../development/connectedness-s4-v1.md` | sidebar の fully-unconnected marker（implementation、2026-04-20） |
+| `../development/orphan-detection-ui-v1.md` | 関係ベース orphan 表示 UI の v1（implementation、2026-04-20） |
+
+**P1–P5 wave（2026-04-21）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/recent-entries-pane-v1.md` | P1 — recent entries pane（派生ビュー）の v1（design + implementation、2026-04-21） |
+| `../development/breadcrumb-path-trail-v1.md` | P2 — breadcrumb / path trail の spec + 追加 hardening（2026-04-21） |
+| `../development/entry-rename-freshness-audit.md` | P3 — entry rename 時の表示 freshness 監査（audit、docs-only、2026-04-21） |
+| `../development/entry-window-title-live-refresh-v1.md` | P3 follow-up — entry-window title を親の rename に追従（design + implementation、2026-04-21） |
+| `../development/saved-searches-v1.md` | P4 — saved searches v1（design + implementation、2026-04-21） |
+| `../development/extension-capture-v0-draft.md` | P5 — extension capture の設計 draft（docs-only、`record:offer` 再利用 Option B 推奨、実装はまだ、2026-04-21） |
+| `../development/next-feature-prioritization-after-relations-wave.md` | 直前 wave 後の軸選定 memo（docs-only、2026-04-21） |
+
+**Hook subscription（2026-04-20、canonical = Defer）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/pkc-message-hook-subscription-decision.md` | **canonical entry point**（結論: Defer、先に simpler proof path を通す）（docs-only、2026-04-20） |
+| `../development/pkc-message-hook-subscription-review.md` | 論点整理（docs-only、2026-04-20）— Defer 決定に supersede |
+| `../development/pkc-message-hook-subscription-poc.md` | PoC 設計（docs-only、2026-04-20）— Defer 期間中は凍結保存 |
+| `../development/pkc-message-hook-subscription-acceptance.md` | acceptance contract draft（docs-only、2026-04-20）— Defer 下で据え置き |
+
+**Transport record 層（2026-04-19）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/transport-record-accept-reject-consistency-review.md` | `record:accept` / `record:reject` の一貫性レビュー（PR #45 / #47 で解消、2026-04-19） |
+| `../development/transport-record-reject-decision.md` | sender-only 方針の決定（active、2026-04-19） |
+
+**Dead-code / dead-path maintenance（2026-04-19〜21）**
+
+| 位置 | 内容 |
+|-----|-----|
+| `../development/dead-code-inventory-after-relations-wave.md` | relations wave 後の未使用 export 監査 + Category A 解消（audit + cleanup、2026-04-21） |
+| `../development/dead-path-cleanup-inventory-01.md` | round 1（2026-04-19） |
+| `../development/dead-path-cleanup-inventory-02-adapter-ui.md` | round 2（2026-04-19） |
+| `../development/dead-path-cleanup-inventory-03-features.md` | round 3（2026-04-19） |
+| `../development/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | round 4（2026-04-19、PR #40 / #41 解消含む） |
+| `../development/dead-path-cleanup-inventory-05-round5.md` | round 5（2026-04-19、PR #44 / #46 / #47 解消含む） |
+| `../development/dead-path-decision-features-barrel.md` | features barrel 削除 + `entryMatchesQuery` 保持の決定（2026-04-19） |
+| `../development/dead-path-decision-isUlid-updateLogEntry.md` | `isUlid` 保持 / `updateLogEntry` 削除の決定（2026-04-19） |
 
 ## resolved/ 配下（原則非参照）
 

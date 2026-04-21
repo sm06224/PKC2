@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-15.
+Last updated: 2026-04-21.
 
 ## Status Legend
 
@@ -101,6 +101,93 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 77 | `data-model/revision-branch-restore.md` | H-6 — Revision.prev_rid / content_hash の optional 追加（USER_REQUEST_LEDGER S-22、自主運転モード第4号、記録面のみ） | 2026-04-15 | `Revision` に 2 additive optional field を追加（`prev_rid?` = 同 entry_lid の直前 revision id / `content_hash?` = snapshot の FNV-1a-64 16-char lowercase hex digest）。`src/core/operations/hash.ts` を新規追加し pure BigInt 実装（UTF-8 正規化、astral-plane surrogate pair 対応）、`snapshotEntry` が両 field を populate（旧 rev は absent 維持、lazy 補填なし）。`parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は両 field を**読まない**（non-intrusive）ため restore 契約は完全維持。reducer / UI / user-action / schema_version touch 0。spec `data-model.md §6.1 / §6.2 / §6.2.1 / §15.2 / §15.5` 更新、`schema-migration-policy.md §6` lazy 既存例追加、`HANDOVER_FINAL.md §5.8` に 2026-04-15 追記。テスト +22（hash 7 / content_hash 4 / prev_rid 5 / backward compat 3 / round-trip 1 / restore integration 2）、既存 3781 tests 全 pass。C-1 revision-branch-restore 実装時の記録面の下地。 |
 | 78 | `../spec/text-textlog-provenance.md` | H-8 — TEXT ↔ TEXTLOG 変換の非可逆境界と来歴設計（USER_REQUEST_LEDGER S-23、自主運転モード第5号、docs-only） | 2026-04-16 | `HANDOVER_FINAL.md §6.3` の「非可逆部分の未解消課題」を canonical spec として固定。TEXT→TEXTLOG / TEXTLOG→TEXT 非可逆境界を表形式で全項目網羅、許容損失の理由付け、`RelationKind = 'provenance'`（additive）の設計根拠・後方互換性、`Relation.metadata?: Record<string,string>`（additive）追加仕様、provenance ペイロード定義（`conversion_kind / split_mode / source_content_hash / converted_at / segment_count / selected_log_count`）、実装スライス A–D（A=本ドキュメント / B=RelationKind 追加 / C=metadata? 追加 / D=変換関数拡張）の順序と依存、テスト戦略スニペット、スキーマ互換性（全変更が v1 範囲内・SCHEMA_VERSION 更新不要）を記述。`data-model.md §5` RelationKind / Relation schema 更新（`provenance` 行追加 / `metadata?` フィールド行追加）、`textlog-text-conversion.md` 末尾に cross-link、`HANDOVER_FINAL.md §6.3` に解消マーカー追記。production code touch 0。テスト追加なし（Slice B–D 実装時に追加予定）。 |
 
+### COMPLETED — Relations / References / Backlinks wave（2026-04-19〜20）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 79 | `backlinks-panel-v1.md` | Backlinks Panel v1 — relations 別 sub-panel | 2026-04-19 | meta pane に relations 由来の backlinks を kind 別に表示する panel を v1 で追加。追加 reducer なし（pure derivation）、renderer のみ。以後 References umbrella / sidebar badge / badge-jump / relation delete UI / relation kind edit の起点 |
+| 80 | `sidebar-backlink-badge-v1.md` | Sidebar backlink count badge | 2026-04-20 | sidebar の entry 行に relations 由来の inbound 件数 badge を表示。件数 0 は非表示。pure count helper + renderer のみ、action 追加なし |
+| 81 | `backlink-badge-jump-v1.md` | Sidebar backlink badge → click jump | 2026-04-20 | badge クリックで meta pane の References / relations セクションへ scroll + flash。既存 `SELECT_ENTRY` 再利用、`data-pkc-action` delegation で実現 |
+| 82 | `relation-delete-ui-v1.md` | Relation delete UI | 2026-04-20 | relation 行 × ボタンで 1 本ずつ削除。confirm + `DELETE_RELATION` 追加。undo は非対象、provenance 二重ガードは kind 編集側で |
+| 83 | `relation-kind-edit-v1.md` | Relation kind inline edit | 2026-04-20 | relation 行の kind select で inline edit。`provenance` 行の保護は二重ガード（edit 禁止 + 削除 confirm 強化） |
+| 84 | `unified-backlinks-v0-draft.md` | Unified Backlinks v0 — design draft | 2026-04-20 | 5 案比較と Option E（References umbrella）採用理由の docs-only draft。v1 で consumed |
+| 85 | `unified-backlinks-v1.md` | Unified Backlinks v1 — References umbrella (Option E) | 2026-04-20 | relations / body refs / provenance を References として統一表示する umbrella。summary row v2 / clickable v3 の基盤 |
+| 86 | `references-summary-row-v2.md` | References summary row v2 | 2026-04-20 | References header に件数サマリ行を追加（canonical count 契約）。clickable v3 がそのまま継承 |
+| 87 | `references-summary-clickable-v3.md` | References summary clickable v3 | 2026-04-20 | サマリ行を clickable にして該当 section へ scroll + flash。sub-location-search の `NAVIGATE_TO_LOCATION` と非衝突 |
+
+### COMPLETED — Provenance metadata wave（2026-04-20）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 88 | `provenance-metadata-viewer-v1.md` | Provenance metadata viewer v1 | 2026-04-20 | `provenance` relation の `metadata` を meta pane の References 内で参照可能に。raw display + key 一覧 |
+| 89 | `provenance-metadata-pretty-print-v1.md` | Provenance metadata pretty-print v1.x | 2026-04-20 | key scoped formatter（`converted_at` / `source_content_hash` / `segment_count` 等）で human-readable 表示。raw 切替可 |
+| 90 | `provenance-metadata-copy-export-v1.md` | Provenance metadata copy / export v1 | 2026-04-20 | raw canonical JSON の copy（clipboard）+ export（`.json` download）。per-field copy / multi-relation bulk は scope 外で明示 |
+
+### COMPLETED — Unified Orphan Detection v3 / Connectedness wave（2026-04-20）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 91 | `unified-orphan-detection-v3-draft.md` | Unified Orphan Detection v3+ — design draft | 2026-04-20 | "fully unconnected" の定義候補の比較 + S1..S5 rollout 設計（docs-only）。contract に consumed |
+| 92 | `unified-orphan-detection-v3-contract.md` | Unified Orphan Detection v3 — behavior contract | 2026-04-20 | "any relation inbound/outbound + body ref 到達性" を fully unconnected 判定に。S3 / S4 実装の契約、S5 filter は Defer（§7.4） |
+| 93 | `connectedness-s3-v1.md` | Connectedness S3 — `buildConnectednessSets` | 2026-04-20 | pure helper。relation + body ref を横断的に連結成分として算出（S4 以降の基盤）。`isMarkdownEvaluatedArchetype` は後に inline 化（`dead-code-inventory-after-relations-wave.md §3.1` 参照） |
+| 94 | `connectedness-s4-v1.md` | Connectedness S4 — sidebar fully-unconnected marker | 2026-04-20 | sidebar で fully-unconnected entry を marker 表示。S3 sets を消費、reducer 変更なし |
+| 95 | `orphan-detection-ui-v1.md` | Orphan detection UI v1 | 2026-04-20 | relations ベースの orphan 表示 UI v1（v3 の fully-unconnected marker とは別軸、両立） |
+
+### COMPLETED — Dead-code / dead-path maintenance wave（2026-04-19〜21）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 96 | `dead-path-cleanup-inventory-01.md` | Dead-path cleanup round 1 | 2026-04-19 | 未使用 export / pseudo-API / spec-only シンボルの audit（core 寄り）。Resolution 表が正本 |
+| 97 | `dead-path-cleanup-inventory-02-adapter-ui.md` | Dead-path cleanup round 2（adapter/ui） | 2026-04-19 | adapter/ui 層の audit。A-class 不在、follow-up は intentional defer |
+| 98 | `dead-path-cleanup-inventory-03-features.md` | Dead-path cleanup round 3（features） | 2026-04-19 | features 層 audit。`isValidEntryRef` は仕様宣言のため保持、round 4 に継承 |
+| 99 | `dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | Dead-path cleanup round 4 | 2026-04-19 | platform / markdown / textlog / container 層 audit。PR #40（slugify 重複解消）/ PR #41（`updateLogEntry` 削除）を実施 |
+| 100 | `dead-path-cleanup-inventory-05-round5.md` | Dead-path cleanup round 5 | 2026-04-19 | round 5 audit。PR #44（features barrel 削除）/ PR #46（calendar month helper）/ PR #47（record:reject 整合）を実施 |
+| 101 | `dead-path-decision-features-barrel.md` | Decision — features barrel 削除 | 2026-04-19 | barrel 削除と `entryMatchesQuery` 保持を分離した決定ログ。PR #44 で執行済み |
+| 102 | `dead-path-decision-isUlid-updateLogEntry.md` | Decision — isUlid / updateLogEntry | 2026-04-19 | `isUlid` 保持 / `updateLogEntry` 削除の決定ログ。PR #41 で `updateLogEntry` 削除済み、`isUlid` は C（spec 宣言）として保持 |
+| 103 | `dead-code-inventory-after-relations-wave.md` | Dead-code inventory after relations wave | 2026-04-21 | relations wave 後の未使用 export 監査。Category A 2 件は同 PR 内で解消（`isMarkdownEvaluatedArchetype` inline 化 + 1 件削除）。Category B/C/D 空 |
+
+### COMPLETED — P1–P5 wave（2026-04-21）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 104 | `recent-entries-pane-v1.md` | P1 — Recent Entries Pane v1 | 2026-04-21 | `created_at` desc の派生ビューを sidebar 上段に開閉可能な `<details>` として追加。container 変更 / reducer 変更 / 新 action いずれも無し。S4 orphan marker と対の UX |
+| 105 | `breadcrumb-path-trail-v1.md` | P2 — Breadcrumb / Path Trail v1 | 2026-04-21 | 既存 breadcrumb 実装を spec 化し、軽微 hardening を追加。segment click で `SELECT_ENTRY`、sidebar scroll 不要な迷子補修 |
+| 106 | `entry-rename-freshness-audit.md` | P3 — Entry Rename Freshness Audit | 2026-04-21 | rename 直後の表示 freshness 監査（docs-only）。stale surface は 1 件（entry-window title）のみ。follow-up は #107 で実装 |
+| 107 | `entry-window-title-live-refresh-v1.md` | P3 follow-up — Entry-window title live refresh v1 | 2026-04-21 | entry-window の title を親 entry の rename に追従。既存 `QUICK_UPDATE_ENTRY` 経路再利用、archetype label など v1 非対象は §6 で明示 |
+| 108 | `saved-searches-v1.md` | P4 — Saved Searches v1 | 2026-04-21 | filter / query / sort 組み合わせを named slot に保存 / 復元。localStorage 永続化、container 契約は非変更。rename / pin / date-range 等は §9 で v1+ 明示 |
+| 109 | `extension-capture-v0-draft.md` | P5 — Extension Capture v0 draft | 2026-04-21 | 外部 extension → PKC2 capture の設計 draft（docs-only）。`record:offer` 再利用 Option B を推奨、次 PR は `docs/spec/record-offer-capture-profile.md` 策定。実装はまだ |
+| 110 | `next-feature-prioritization-after-relations-wave.md` | Next-feature prioritization memo | 2026-04-21 | P1–P5 軸の棚卸し docs-only memo。P1–P4 + P3 follow-up は本 wave で shipped、P5 のみ draft 段階 |
+
+### COMPLETED — Hook subscription / Transport record wave（2026-04-19〜20）
+
+| # | File | Topic | Completed | Summary |
+|---|------|-------|-----------|---------|
+| 111 | `transport-record-accept-reject-consistency-review.md` | Transport `record:accept` / `record:reject` consistency review | 2026-04-19 | 送受非対称の整合性レビュー。PR #45 / #47 で解消 |
+| 112 | `transport-record-reject-decision.md` | Transport `record:reject` — sender-only decision | 2026-04-19 | sender-only 方針を固定。関連 `capability.ts` / tests に反映 |
+| 113 | `pkc-message-hook-subscription-review.md` | Hook subscription — design review | 2026-04-20 | docs-only、論点整理。Defer 決定に supersede |
+| 114 | `pkc-message-hook-subscription-poc.md` | Hook subscription — PoC design | 2026-04-20 | docs-only、PoC 設計。Defer 期間中は凍結保存 |
+| 115 | `pkc-message-hook-subscription-acceptance.md` | Hook subscription — acceptance contract | 2026-04-20 | docs-only、acceptance 仕様。Defer 下で据え置き |
+| 116 | `pkc-message-hook-subscription-decision.md` | Hook subscription — Go/No-Go decision（**canonical entry point**） | 2026-04-20 | **結論: Defer**。実装前に simpler proof path（polling 等）を通す方針。以後、hook subscription の canonical reference はこの doc |
+
+## Post-Stabilization Wave — 2026-04-19〜21
+
+下の **Stabilization Phase — 2026-04-12** は当時の判断の履歴として残すが、
+2026-04-19 以降の relations / references / provenance / orphan / P1–P5 /
+hook subscription / transport wave が連続で landing したため、その節の
+「新規実装よりもユーザからの新たな痛み待ちが妥当」という判断は現況を
+反映していない。現況のサマリは:
+
+- Relations / References / Backlinks 層: 9 docs shipped（#79–#87）
+- Provenance metadata 層: 3 docs shipped（#88–#90）
+- Unified Orphan Detection v3 / Connectedness 層: 5 docs shipped（#91–#95）、**S5 filter は Defer**（contract §7.4）
+- Dead-code / dead-path maintenance: 8 docs shipped（#96–#103）
+- P1–P5 wave: **P1 / P2 / P3 / P3 follow-up / P4 shipped**、**P5 は docs-only draft（implementation pending）**（#104–#110）
+- Transport record: 2 docs shipped（#111–#112）
+- Hook subscription: 4 docs shipped（#113–#116）、**結論は Defer**
+
+次 wave の実装候補は `next-feature-prioritization-after-relations-wave.md`
+および本 `CANDIDATE` 節 §P5 / §Hook subscription / §S5 を参照。
+
 ## Stabilization Phase — 2026-04-12
 
 `project-priority-refresh.md` の棚卸し結果、直近のユーザ指摘は全て閉じ、残り候補は
@@ -108,6 +195,39 @@ All 42 historical docs passed strict close audit (2026-04-11).
 と判定。以下の CANDIDATE 群は参照目的で保持する（優先度の昇格は新規報告後に行う）。
 
 ## CANDIDATE — Next Feature
+
+### Relations / References / Provenance / Orphan / P1–P5 wave — 完了
+
+本 CANDIDATE 節はかつて keyboard navigation の Phase 集約を主軸に書かれていたが、
+2026-04-19〜21 の wave で軸は変わった。現況の候補は **P5 extension capture receiver side** が本命、
+その他は **Defer**。詳細は `next-feature-prioritization-after-relations-wave.md`。
+
+### Active candidate — P5 Extension Capture（receiver side）
+
+| 項目 | 内容 |
+|---|---|
+| Status | **draft / pending implementation** |
+| Draft | `extension-capture-v0-draft.md`（2026-04-21、docs-only、`record:offer` 再利用 Option B 推奨） |
+| 次 PR 候補 | `docs/spec/record-offer-capture-profile.md` を docs-only で策定（payload spec 固定） |
+| その後 | receiver 側実装（transport 拡張 / reducer capture action / provenance attach / origin allowlist / size cap / tests） |
+| size | medium |
+| arch risk | medium（transport 契約拡張 + 外部由来 sanitization） |
+
+### Deferred — S5 Orphan Filter
+
+| 項目 | 内容 |
+|---|---|
+| Status | **Defer**（canonical: `unified-orphan-detection-v3-contract.md §7.4`） |
+| 根拠 | S4 sidebar marker で "気づき" は成立。filter は実需の積み上げ待ち |
+| 昇格条件 | "orphan 一覧だけを取り出したい" 実需が明示されたとき |
+
+### Deferred — Hook Subscription 実装
+
+| 項目 | 内容 |
+|---|---|
+| Status | **Defer**（canonical: `pkc-message-hook-subscription-decision.md`） |
+| 根拠 | review / PoC / acceptance / decision の 4 doc で論点は固定。実装前に simpler proof path（polling 等）を通す方針 |
+| 昇格条件 | polling ベースの実用価値が検証され、かつ hook の追加投資に釣り合う pain が具体化したとき |
 
 ### Keyboard Navigation — Completion Snapshot
 
@@ -182,34 +302,33 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | # | File | Topic | Status |
 |---|------|-------|--------|
 | A-1 | `textlog-readability-hardening.md` | TEXTLOG 境界/日付/秒表示 | **COMPLETED 2026-04-12** |
-| A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit | STANDBY |
+| A-2 | `text-split-edit-in-entry-window.md` | entry window TEXT split edit | **COMPLETED 2026-04-14（S-13）** |
 | A-3 | `table-of-contents-right-pane.md` | 右ペイン TOC | **COMPLETED 2026-04-12** |
-| A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット | **NEXT IF PAIN REMAINS** |
+| A-4 | `search-ux-partial-reach.md` | 検索 sub-location ヒット | **COMPLETED 2026-04-14（S-15 + S-18、FULLY PROMOTED）** |
 
 **Stabilization re-entry (2026-04-12)**: A-1 + A-3 で「読める / 俯瞰できる」
-まで到達。A-4 は自然な次候補だが必須ではない。ユーザが A-1 / A-3 を実際に
-触って「まだ探しにくい」という痛みが残った場合のみ着手する。そうでなければ
-停止し、新たな痛み待ちに戻る。
+まで到達。**A-2 / A-4 は 2026-04-14 に USER_REQUEST_LEDGER §1 で正式昇格・完了済み**。
+Category A は全 4 件が完了に移行。
 
 ### Category B — Markdown / Rendering Extensions (`docs/development/markdown-extensions/`)
 
-| # | File | Topic |
-|---|------|-------|
-| B-1 | `markdown-csv-table-extension.md` | CSV fenced block → table |
-| B-2 | `markdown-code-block-highlighting.md` | code block syntax highlight |
-| B-3 | `markdown-quote-input-assist.md` | 引用入力補助 |
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| B-1 | `markdown-csv-table-extension.md` | CSV fenced block → table | **COMPLETED 2026-04-14（S-16）** |
+| B-2 | `markdown-code-block-highlighting.md` | code block syntax highlight | **COMPLETED 2026-04-13（P-13 retrofit）** |
+| B-3 | `markdown-quote-input-assist.md` | 引用入力補助 | **PARTIALLY COMPLETED — Slice α（continuation）2026-04-14（S-17）**。empty exit / bulk prefix / entry-window 同期は CONDITIONAL |
 
 ### Category C — Data Model Extensions (`docs/development/data-model/`)
 
-| # | File | Topic |
-|---|------|-------|
-| C-1 | `revision-branch-restore.md` | revision 復元 |
-| C-2 | `entry-ordering-model.md` | entry 手動 ordering |
-| C-3 | `link-index-entry.md` | link index entry |
-| C-4 | `spreadsheet-entry-archetype.md` | spreadsheet archetype |
-| C-5 | `complex-entry-archetype.md` | complex (composite) archetype |
-| C-6 | `document-set-archetype.md` | document-set archetype |
-| C-7 | `office-preview-strategy.md` | office file preview |
+| # | File | Topic | Status |
+|---|------|-------|--------|
+| C-1 | `revision-branch-restore.md` | revision 復元 | CANDIDATE（記録面は S-22 / H-6 で先置き済み） |
+| C-2 | `entry-ordering-model.md` | entry 手動 ordering | **COMPLETED 2026-04-17（S-32）** |
+| C-3 | `link-index-entry.md` | link index entry | **COMPLETED 2026-04-17（S-33）** |
+| C-4 | `spreadsheet-entry-archetype.md` | spreadsheet archetype | CANDIDATE |
+| C-5 | `complex-entry-archetype.md` | complex (composite) archetype | CANDIDATE |
+| C-6 | `document-set-archetype.md` | document-set archetype | CANDIDATE |
+| C-7 | `office-preview-strategy.md` | office file preview | CANDIDATE |
 
 ### Category D — Long-Term Vision (`docs/vision/`)
 
@@ -225,4 +344,5 @@ All 42 historical docs passed strict close audit (2026-04-11).
 - **First audit**: 2026-04-11 (broad scan)
 - **Strict re-audit**: 2026-04-11 (per-item evidence with code/test/doc check)
 - **CLOSE_NEEDS_REVIEW fixes**: 5 docs patched (container-wide-batch-import, folder-scoped-import, dnd-cleanup-robustness, textlog-polish, edit-preview-asset-resolution)
-- **Final result**: 42/42 CLOSED
+- **Initial result**: 42/42 CLOSED（2026-04-11 時点）
+- **追補（2026-04-21）**: その後 #43–#116 が COMPLETED として順次追加され、本ファイル上で **42 CLOSED + 74 COMPLETED（relations / references / provenance / orphan / P1–P5 / hook / transport / dead-path maintenance を含む）** に拡大。close 再監査は次 PR で整理予定
