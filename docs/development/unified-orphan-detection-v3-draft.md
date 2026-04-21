@@ -1,5 +1,13 @@
 # Unified Orphan Detection v3+ — Design Draft (docs-only)
 
+> **⚠️ superseded（2026-04-21 時点）**
+>
+> 本 v3 draft は **`unified-orphan-detection-v3-contract.md`**（behavior contract）に consumed され、
+> S3 `buildConnectednessSets` pure helper（`connectedness-s3-v1.md`）と S4 sidebar marker（`connectedness-s4-v1.md`）
+> の 2 slice で実装済み。§6.5 rollout table の S1–S4 はすべて landing、**S5 filter は Defer**（contract §7.4）。
+> 本文書は terminology / 定義候補 / 選択肢比較の history として保全する。
+> 現状の判定仕様は contract doc、実装詳細は S3 / S4 の dev doc を参照。
+
 **Status**: design draft — 2026-04-20. **No implementation in this PR**.
 **Purpose**: 現在の orphan 判定（`orphan-detection-ui-v1.md`）が意図的に relations-based only である前提を維持しつつ、将来 link-index / markdown-reference を含む broader な "unconnected" 概念を扱うための **terminology 分離 / 定義候補 / UX 選択肢 / データ面での負荷** を先に設計面で整理する。本書は実装着手の合意文書ではなく、**実装に踏み込む前に用語と境界を固定する** gate draft である。
 

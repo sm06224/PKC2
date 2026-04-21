@@ -1,5 +1,15 @@
 # PKC2 棚卸しレポート — Issue #41 完了時点
 
+> **⚠️ history-only inventory（2026-04-21 時点）**
+>
+> 本文書は **Issue #41 完了時点（2026-04-07）の凍結 inventory** であり、**現在のアーキテクチャ / archetype coverage を示す正本ではない**。
+> 本文書以降、folder / textlog archetype の追加、Tier 1/2/3、merge import、relations / references / provenance / orphan / P1–P5 が landing している。
+>
+> - **現行の棚卸し**: `HANDOVER_FINAL.md`（§1–§4 で設計現在地、§18–§22 で直近 wave）
+> - **recent wave（2026-04-18〜21）の入口**: `00_index.md` §第5群 末尾 / `../development/INDEX.md` §COMPLETED / `USER_REQUEST_LEDGER.md §1.1`
+>
+> 本文書は「Phase 1〜4 完了時点で何があったか」の history 専用。以後は更新しない。
+
 **作成日**: 2026-04-07
 **対象**: Issue #1〜#41 完了後の全体再構築
 

@@ -1,5 +1,17 @@
 # PKC2 Pre-Release Snapshot — v0.1.0
 
+> **⚠️ historical pre-release snapshot（2026-04-21 時点）**
+>
+> 本文書は **Issue #43 完了時点（v0.1.0 プレリリース直前）の凍結スナップショット**であり、**現在の機能状態を示す正本ではない**。
+> 本文書以降、folder / textlog archetype の追加、merge import、relations / references / provenance / orphan / P1–P4 が landing し、
+> 「機能凍結」の前提は**解除されている**（次の大きなフェーズに入っている）。
+>
+> - **現状の handover（canonical）**: `HANDOVER_FINAL.md`（§18–§22 に直近 wave）
+> - **recent wave（2026-04-18〜21）の入口**: `00_index.md` §第5群 末尾 / `../development/INDEX.md` §COMPLETED / `USER_REQUEST_LEDGER.md §1.1`
+> - **v0.1.0 の changelog**: `CHANGELOG_v0.1.0.md`
+>
+> 本文書は「v0.1.0 プレリリース時点で何を約束していたか」を示す history として保全するのみ。
+
 本文書は PKC2 の現時点（Issue #43 完了）をプレリリース可能な安定スナップショットとして
 固定・明文化するものです。
 

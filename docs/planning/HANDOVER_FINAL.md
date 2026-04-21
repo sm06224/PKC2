@@ -1,7 +1,8 @@
 # HANDOVER — PKC2 マージ前 最終整理
 
 **Status**: 引き継ぎ正本（canonical handover）
-**Last updated**: 2026-04-17（§21 C-2 entry-ordering v1 + C-3 link-index v1 完了追記）
+**Last updated**: 2026-04-21（§22 Recent Waves Addendum 追補）
+**Previous stamp**: 2026-04-17（§21 C-2 entry-ordering v1 + C-3 link-index v1 完了追記）
 **Branch**: `claude/pkc2-handover-restructure-WNRHU`
 **Supersedes**: `docs/planning/HANDOVER.md`（Issue #54 時点）/ `docs/planning/HANDOVER_SLICE6.md`（Slice 6 完了時点）
 **Release target**: v0.1.0（プレリリース）
@@ -1321,5 +1322,68 @@ docs-first pipeline（minimum scope → contract → 実装 → audit → manual
 
 - 本節（§21）以降の追加は §20.6 の運用ルールを継続（全段 pipeline 閉鎖後に新節追記）
 - C-2 / C-3 の §3 待機候補は「完了済み」に更新済み（LEDGER §3.3 参照）
+
+---
+
+## 22. Recent Waves Addendum（2026-04-18..2026-04-21 追補）
+
+§21 締めの 2026-04-17 以降、**docs-first pipeline を個別テーマに適用するのをやめ**、
+relations / references / provenance / orphan / P1–P5 / hook subscription / transport /
+dead-path maintenance を連続で流し込む **短 PR wave** に方針を切り替えた。
+本節は **2026-04-21 時点の handover addendum** であり、§1–§21 の本文は書き換えない。
+詳細は個別 docs を参照する方針で、ここではポインタと境界だけを残す。
+
+### 22.1 wave サマリ
+
+| wave | テーマ | 代表 doc | 状態 |
+|---|---|---|---|
+| Relations / Backlinks | backlinks panel / sidebar badge + jump / relation delete + kind edit / Unified Backlinks (Option E) / References summary v2 + clickable v3 | `../development/unified-backlinks-v1.md` 他 9 本 | **landed** |
+| Provenance metadata | viewer v1 → pretty-print v1.x → copy/export v1 | `../development/provenance-metadata-{viewer,pretty-print,copy-export}-v1.md` | **landed** |
+| Unified Orphan Detection v3 | S1 draft → S2 contract → S3 `buildConnectednessSets` → S4 sidebar marker | `../development/unified-orphan-detection-v3-contract.md` / `connectedness-s{3,4}-v1.md` | S1–S4 **landed** / **S5 filter = Defer** |
+| P1–P5 | Recent Entries Pane / Breadcrumb Path Trail / Entry Rename Freshness Audit / Entry-window title live refresh / Saved Searches / Extension Capture | `../development/recent-entries-pane-v1.md` 他 7 本 | P1–P4 + P3 follow-up **landed** / **P5 は docs-only draft（receiver 実装 pending）** |
+| Hook subscription | review / PoC / acceptance / **decision** | `../development/pkc-message-hook-subscription-decision.md`（canonical） | **Defer**（simpler proof path = polling 等を優先） |
+| Transport record | `record:accept`/`record:reject` consistency review + sender-only decision | `../development/transport-record-{accept-reject-consistency-review,reject-decision}.md` | **landed**（PR #45 / #47 で解消） |
+| Dead-path maintenance | round 1–5 + 2 decision doc + relations wave 後の dead-code inventory | `../development/dead-{path-cleanup-inventory-0{1..5},code-inventory-after-relations-wave,path-decision-*}.md` | **landed** |
+
+### 22.2 現在 active な candidate（2026-04-21）
+
+**P5 Extension Capture（receiver side）のみ**。
+
+- 現状: `../development/extension-capture-v0-draft.md` が docs-only draft（`record:offer` 再利用 Option B 推奨）
+- 次の 1 PR: `docs/spec/record-offer-capture-profile.md` を docs-only で策定（payload spec を固定）
+- その後: receiver 実装（transport 拡張 / reducer capture action / provenance attach / origin allowlist / size cap / tests）
+- arch risk: medium（transport 契約拡張 + 外部由来 sanitization）
+
+他の候補（S5 orphan filter / hook subscription 実装 / Calendar Phase 2 / Shift+Arrow range / graph visualization / telemetry）は **すべて Defer**。
+
+### 22.3 Defer 済みの決定（本節で confirm）
+
+| 項目 | canonical reference | 昇格条件 |
+|---|---|---|
+| S5 Orphan filter | `../development/unified-orphan-detection-v3-contract.md §7.4` | "orphan 一覧だけを取り出したい" の実需が明示されたとき |
+| Hook subscription 実装 | `../development/pkc-message-hook-subscription-decision.md` | simpler proof path（polling 等）が実用価値を示し、hook 追加投資に釣り合う pain が具体化したとき |
+| Graph visualization | `next-feature-prioritization-after-relations-wave.md §1` の前提 | 本 memo 以降は前提にしない |
+| Telemetry | 同上 | 同上 |
+
+### 22.4 §3 / §5 / §6 / §7 との関係
+
+- §3「設計の現在地」: relations / references / provenance 表示面が強化され、meta pane 側に References umbrella が登場した点を除き、アーキテクチャ層は不変
+- §5「意図的にやっていないこと」: 本節 §22.3 の 4 項目を **Defer として追加**（本文は touch しない）
+- §6「既知の制約」: 変更なし（P1–P4 で個別制約が足されたわけではなく、いずれも derived-only / additive optional に閉じた）
+- §7「次にやるべきこと」: **active candidate は §22.2 の 1 本のみ**。§7 の古い優先順位リストは本節で overridable
+
+### 22.5 運用メモ（§22 以降）
+
+- 本節は 2026-04-21 時点の **addendum**（補遺）であり、§1–§21 の本文を書き換えない
+- 次の大きなフェーズ（v0.1.0 超えの breaking change を伴う判断）に入る時に §22 を吸収して新しい canonical handover に再編集する
+- それまでは wave 単位の記録は `USER_REQUEST_LEDGER.md §1.1`（retrospective 一括追記）+ `../development/INDEX.md §COMPLETED`（#79–#116）+ `../planning/00_index.md §第5群 末尾`（2026-04-18〜21 wave）を一次資料とする
+
+### 22.6 関連文書（本 addendum の pointer）
+
+- `USER_REQUEST_LEDGER.md §1.1` — S-34〜S-51 retrospective（本 wave の 1 行サマリ一覧）
+- `../development/INDEX.md` §COMPLETED — #79–#116（wave 別の詳細行）
+- `../planning/00_index.md` §第5群 末尾 — nav seam（recent wave への入口）
+- `next-feature-prioritization-after-relations-wave.md` — wave 直前の軸選定 memo（§22.2 の根拠）
+- `extension-capture-v0-draft.md` — §22.2 active candidate の設計 draft
 
 ---

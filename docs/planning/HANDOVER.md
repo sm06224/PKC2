@@ -1,5 +1,16 @@
 # PKC2 新セッション受け継ぎプロンプト
 
+> **⚠️ historical / superseded（2026-04-21 時点）**
+>
+> 本文書は **Issue #54 時点の歴史的 handover** であり、**現役の canonical handover ではない**。
+> 本文書以降、folder / textlog / relations / references / provenance / orphan /
+> P1–P5 / hook subscription / transport / dead-path maintenance の多数の wave が landing している。
+>
+> - **現役 handover（canonical）**: `HANDOVER_FINAL.md`
+> - **recent wave（2026-04-18〜21）の入口**: `00_index.md` §第5群 末尾 / `../development/INDEX.md` §COMPLETED #79–#116 / `USER_REQUEST_LEDGER.md §1.1`
+>
+> 本文書は参照資料として保全するのみで、current source of truth として読まないこと。
+
 **最終更新**: Issue #54 完了時点（Persistent Drop Zone + File Attach Flow）
 
 このファイルは新しい Claude セッションへの引き継ぎ用です。
