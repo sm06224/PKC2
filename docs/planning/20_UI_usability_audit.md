@@ -1,5 +1,17 @@
 # PKC2 UI Usability Audit — Issue #45
 
+> **⚠️ historical audit（2026-04-21 時点）**
+>
+> 本文書は **Issue #45（2026-04-07）の凍結 UI usability audit** であり、**現在の UX 状態を示す正本ではない**。
+> 本文書以降、#46 / #47 / #49 等で主要 UI blocker が解消された後、Tier 1/2/3 / P0 / H-7 pane state persistence /
+> A-2 text split edit / A-3 TOC / A-4 search UX 完成 / P1 Recent Entries / P2 Breadcrumb / P3 rename freshness /
+> P4 Saved Searches 等により UX は大きく前進している。
+>
+> - **現状の handover（canonical）**: `HANDOVER_FINAL.md`
+> - **recent wave（2026-04-18〜21）の入口**: `00_index.md` §第5群 末尾 / `../development/INDEX.md` §COMPLETED / `USER_REQUEST_LEDGER.md §1.1`
+>
+> 本文書は audit の手法と 2026-04-07 時点の指摘を記録する history として保全する。以後 audit の再実施は別文書で行う。
+
 **実施日**: 2026-04-07
 **対象**: Pre-Release v0.1.0（Issue #44 完了時点）
 **目的**: PKC2 を「日常利用できる知識コンテナ」にするために、UI 実用性の現実を監査する

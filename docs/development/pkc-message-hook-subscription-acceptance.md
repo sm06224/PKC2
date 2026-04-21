@@ -1,5 +1,15 @@
 # PKC-Message Hook Subscription Protocol — Acceptance Contract (docs-only)
 
+> **📌 canonical pointer（2026-04-21 時点）**
+>
+> - **canonical entry point**: `pkc-message-hook-subscription-decision.md`
+> - **current decision**: **Defer**（本 acceptance 条件に沿った実装は未着手）
+> - **優先される proof path**: polling などの simpler な手段を先に通す
+>
+> 本文書は受理条件集として価値を保ち続けるが、**現時点では実装ゲートではない**。
+> Defer 下で据え置きであり、§7.1 の受理フローを「次の一手」と読まないこと。
+> 実装判断を再開するときはまず decision doc を読むこと。
+
 **Status**: acceptance contract draft — 2026-04-20. **本 PR は実装を含まない**。
 **Purpose**: `docs/development/pkc-message-hook-subscription-review.md` で確立した「設計検討としては受理、実装受理はまだしない」という方針を、**PKC2 側が実装に踏み切るための受理条件集**へ変換する。実装 PR を起こす前に本書で定めた条件が **すべて** 満たされていることが前提となる。
 

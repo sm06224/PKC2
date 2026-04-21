@@ -1,5 +1,14 @@
 # PKC-Message Hook Subscription — PoC Design (docs-only)
 
+> **📌 canonical pointer（2026-04-21 時点）**
+>
+> - **canonical entry point**: `pkc-message-hook-subscription-decision.md`
+> - **current decision**: **Defer**（PoC 着手は保留）
+> - **優先される proof path**: polling などの simpler な手段を先に通す
+>
+> 本文書は PoC 設計の価値を保ち続けるが、**現時点で着手すべき PoC ではない**。
+> Defer 期間中は凍結保存とし、実装判断を再開するときはまず decision doc を読むこと。
+
 **Status**: PoC design — 2026-04-20. **本 PR は実装を含まない**。
 **Purpose**: `pkc-message-hook-subscription-acceptance.md` の受理条件を**一切拡張せず**に満たす **最小 PoC 実装**の設計を提示する。これは実装判断のための材料であり、本書の merge は実装着手の承認ではない。
 **Baseline**: acceptance contract に従う。制約が競合する場合 acceptance を優先する。

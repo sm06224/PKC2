@@ -1,5 +1,13 @@
 # Unified Backlinks v0 — Design Draft (docs-only)
 
+> **⚠️ superseded（2026-04-21 時点）**
+>
+> 本 v0 draft は **`unified-backlinks-v1.md`**（Option E = References umbrella）に
+> 完全に consumed され、v1 実装 + `references-summary-row-v2.md` + `references-summary-clickable-v3.md` まで landing 済み。
+> §9「次のアクション」で挙げた v1 PR → kind 編集 → v2 summary bar の順序は全て完了。
+> 本文書は design rationale（5 案比較 / Option E の選定根拠）の history として保全する。
+> 現状の挙動仕様は v1 doc を参照。
+
 **Status**: design draft — 2026-04-20. **No implementation in this PR**.
 **Purpose**: PKC2 には現在「**relations-based backlinks**」と「**link-index / markdown-reference backlinks**」という **2 種類のバックリンク概念** が並立している。将来これらを unified に見せる可能性を検討する前段として、terminology / 境界 / UX 選択肢 / incremental 経路 を先に固定する。
 

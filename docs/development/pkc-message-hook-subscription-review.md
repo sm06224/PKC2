@@ -1,5 +1,14 @@
 # PKC-Message Hook Subscription Protocol — PKC2 側レビュー（docs-only）
 
+> **📌 canonical pointer（2026-04-21 時点）**
+>
+> - **canonical entry point**: `pkc-message-hook-subscription-decision.md`
+> - **current decision**: **Defer**（実装しない）
+> - **優先される proof path**: polling などの simpler な手段を先に通す
+>
+> 本文書は設計検討の論点整理として価値を保ち続けるが、**現時点の実装指示書ではない**。
+> 「次にこれを実装すべき」と読まないこと。実装判断を辿るときはまず decision doc を読むこと。
+
 **Status**: design review — 2026-04-20. **本 PR は実装を含まない**。
 **Purpose**: 外部から提案された「PKC-Message Hook Subscription Protocol (Opt-in / Secure / Compatible)」について、PKC2 実装チーム側の受理条件付きレビューを文章化する。
 

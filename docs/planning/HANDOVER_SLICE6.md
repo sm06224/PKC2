@@ -1,5 +1,16 @@
 # HANDOVER — Slice 6 完了時点
 
+> **⚠️ historical / superseded（2026-04-21 時点）**
+>
+> 本文書は **Slice 6 完了直後（2026-04-13）の凍結スナップショット**であり、**現役の canonical handover ではない**。
+> その後 Tier 1/2/3 / P0 / H-3〜H-10 / C-2 / C-3 / relations / references / provenance / orphan /
+> P1–P5 / hook subscription / transport / dead-path maintenance の多数の wave が landing している。
+>
+> - **現役 handover（canonical）**: `HANDOVER_FINAL.md`（§18〜§22 が本文書以降の追補）
+> - **recent wave（2026-04-18〜21）の入口**: `00_index.md` §第5群 末尾 / `../development/INDEX.md` §COMPLETED / `USER_REQUEST_LEDGER.md §1.1`
+>
+> 本文書は P0 方針決定時の参照資料として保全するのみ。current state は読み取れない。
+
 **最終更新**: 2026-04-13
 **対象**: Issue #1〜#56 完了 + P1 Slice 1〜6 完了（TEXTLOG↔TEXT 相互変換 / TODO embed / cycle・depth・missing・invalid ガード / TODO・FOLDER description の markdown 化 / build-subset closure 対応 / pane 再トグル shortcut）
 **ブランチ**: `claude/pkc2-handover-restructure-WNRHU`
