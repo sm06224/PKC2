@@ -12,6 +12,7 @@ import {
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
+import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { mountEventLog } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
@@ -215,6 +216,21 @@ async function boot(): Promise<void> {
   // `src/adapter/ui/entry-window-view-body-refresh.ts` for the
   // full contract.
   wireEntryWindowViewBodyRefresh(dispatcher);
+
+  // 2d. Entry-window title refresh wiring.
+  //
+  // Third of three live-refresh wires. Whenever an open
+  // entry-window child's host entry has its `title` field changed
+  // by the reducer (e.g. the user renamed the entry from the main
+  // window), the parent pushes the new title via
+  // `pushTitleUpdate`. The child applies it to `document.title`,
+  // `#title-display`, and the script's `originalTitle` variable —
+  // but only when it is not currently editing; edit-mode pushes
+  // are stashed into `pendingTitle` and flushed on cancelEdit so
+  // the user's in-progress rename is never stomped. See
+  // `src/adapter/ui/entry-window-title-refresh.ts` and
+  // `docs/development/entry-window-title-live-refresh-v1.md`.
+  wireEntryWindowTitleRefresh(dispatcher);
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
