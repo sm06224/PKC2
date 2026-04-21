@@ -1,5 +1,6 @@
 import { isUserEntry, type Entry } from './record';
 import type { Relation } from './relation';
+import type { SavedSearch } from './saved-search';
 
 /**
  * Container metadata. Persistent.
@@ -32,6 +33,19 @@ export interface ContainerMeta {
    * additive policy (Option A).
    */
   entry_order?: string[];
+  /**
+   * User-saved search / filter / sort snapshots (P4 Saved Searches v1,
+   * 2026-04-21). Additive-only, optional.
+   *
+   * Absent / empty → no saved searches. Each entry captures the six
+   * AppState fields that define a "search query" at save time
+   * (searchQuery, archetypeFilter, tagFilter, sortKey, sortDirection,
+   * showArchived). See `docs/development/saved-searches-v1.md` and
+   * `src/core/model/saved-search.ts`. Cap: 20 per container.
+   *
+   * SCHEMA_VERSION unchanged per additive policy.
+   */
+  saved_searches?: SavedSearch[];
 }
 
 /**

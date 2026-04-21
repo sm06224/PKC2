@@ -23,6 +23,14 @@
  * feature pushes past the budget, bump it here in a dedicated
  * commit so the increase shows up in PR review.
  *
+ * Re-alignment (P4 Saved Searches v1, 2026-04-21):
+ *   dist/bundle.js  ≈ 616.32 KB — P1 Recent Entries / P2 Breadcrumb /
+ *   P3 Entry rename audit / Entry-window title refresh / P4 Saved
+ *   Searches v1 が重なり、初期予算 615 KB を僅かに上回ったため 640 KB
+ *   に引き上げ。引き上げ幅は ~4% 分の headroom（次の P5 ~ P6 相当の
+ *   自然増を吸収する目安）で、突発的な重依存混入を依然として検知できる
+ *   タイト設定を維持する。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -37,7 +45,7 @@ const ROOT = resolve(__dirname, '..');
 
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
-  { file: 'dist/bundle.js', maxBytes: 615 * 1024 },  // 615 KB
+  { file: 'dist/bundle.js', maxBytes: 640 * 1024 },  // 640 KB
   { file: 'dist/bundle.css', maxBytes: 90 * 1024 },  // 90 KB
 ];
 

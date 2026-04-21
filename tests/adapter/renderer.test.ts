@@ -9196,3 +9196,170 @@ describe('Recent Entries Pane v1', () => {
     expect(pane.querySelector('[data-pkc-action="select-recent-entry"]')).not.toBeNull();
   });
 });
+
+// ── Saved Searches Pane v1 ──
+// Spec: docs/development/saved-searches-v1.md
+describe('Saved Searches Pane v1', () => {
+  function mkEntry(
+    lid: string,
+    archetype: Entry['archetype'] = 'text',
+    title: string = lid,
+  ): Entry {
+    return {
+      lid,
+      title,
+      body: '',
+      archetype,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  function mkSaved(id: string, name: string = `Saved ${id}`) {
+    return {
+      id,
+      name,
+      created_at: '2026-04-21T00:00:00Z',
+      updated_at: '2026-04-21T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as Entry['archetype'][],
+      tag_filter: null,
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+  }
+
+  function makeContainer(
+    entries: Entry[],
+    saved?: ReturnType<typeof mkSaved>[],
+  ): Container {
+    return {
+      meta: {
+        container_id: 'ss-test',
+        title: 'Saved Searches Test',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+        ...(saved ? { saved_searches: saved } : {}),
+      },
+      entries,
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  function makeState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: makeContainer([]),
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      ...overrides,
+    };
+  }
+
+  it('renders the Save button in the search row when entries exist and not readonly', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container }), root);
+    const btn = root.querySelector('[data-pkc-action="save-search"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.closest('.pkc-search-row')).not.toBeNull();
+  });
+
+  it('hides the Save button in readonly mode', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container, readonly: true }), root);
+    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
+  });
+
+  it('hides the Save button while an import preview is active', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(
+      makeState({
+        container,
+        importPreview: {
+          title: 'Incoming',
+          container_id: 'c2',
+          entry_count: 0,
+          revision_count: 0,
+          schema_version: 1,
+          source: 'x.json',
+          container: makeContainer([]),
+        },
+      }),
+      root,
+    );
+    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
+  });
+
+  it('does not render the pane when saved_searches is empty / undefined', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container }), root);
+    expect(root.querySelector('[data-pkc-region="saved-searches"]')).toBeNull();
+  });
+
+  it('renders one <li> per saved search with label and delete button', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [mkSaved('s1', 'First'), mkSaved('s2', 'Second')],
+    );
+    render(makeState({ container }), root);
+    const pane = root.querySelector('[data-pkc-region="saved-searches"]');
+    expect(pane).not.toBeNull();
+    const items = pane!.querySelectorAll('[data-pkc-action="apply-saved-search"]');
+    expect(items).toHaveLength(2);
+    expect(items[0]!.getAttribute('data-pkc-saved-id')).toBe('s1');
+    expect(items[0]!.querySelector('.pkc-saved-search-label')!.textContent).toBe('First');
+    expect(items[0]!.querySelector('[data-pkc-action="delete-saved-search"]')).not.toBeNull();
+    expect(items[1]!.getAttribute('data-pkc-saved-id')).toBe('s2');
+  });
+
+  it('renders the pane inside the sidebar, between sort controls and recent entries pane', () => {
+    const container = makeContainer(
+      [
+        mkEntry('a'),
+        { ...mkEntry('b'), updated_at: '2026-04-21T00:00:00Z' },
+      ],
+      [mkSaved('s1')],
+    );
+    render(makeState({ container }), root);
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const savedPane = sidebar.querySelector('[data-pkc-region="saved-searches"]');
+    const recentPane = sidebar.querySelector('[data-pkc-region="recent-entries"]');
+    expect(savedPane).not.toBeNull();
+    expect(recentPane).not.toBeNull();
+    // DOM order: saved-searches comes before recent-entries.
+    expect(
+      savedPane!.compareDocumentPosition(recentPane!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('omits delete buttons when readonly but still renders apply buttons', () => {
+    const container = makeContainer([mkEntry('a')], [mkSaved('s1', 'Read')]);
+    render(makeState({ container, readonly: true }), root);
+    const pane = root.querySelector('[data-pkc-region="saved-searches"]');
+    expect(pane).not.toBeNull();
+    expect(pane!.querySelector('[data-pkc-action="apply-saved-search"]')).not.toBeNull();
+    expect(pane!.querySelector('[data-pkc-action="delete-saved-search"]')).toBeNull();
+  });
+
+  it('hides the pane entirely while an import preview is active', () => {
+    const container = makeContainer([mkEntry('a')], [mkSaved('s1')]);
+    render(
+      makeState({
+        container,
+        importPreview: {
+          title: 'Incoming',
+          container_id: 'c2',
+          entry_count: 0,
+          revision_count: 0,
+          schema_version: 1,
+          source: 'x.json',
+          container: makeContainer([]),
+        },
+      }),
+      root,
+    );
+    expect(root.querySelector('[data-pkc-region="saved-searches"]')).toBeNull();
+  });
+});
