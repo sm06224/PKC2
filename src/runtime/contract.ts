@@ -10,5 +10,3 @@ export const SLOT = {
   STYLES: 'pkc-styles',
   THEME:  'pkc-theme',
 } as const;
-
-export type SlotId = typeof SLOT[keyof typeof SLOT];
