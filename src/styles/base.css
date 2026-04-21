@@ -851,6 +851,23 @@
   opacity: 0.85;
 }
 
+/* Unified Orphan Detection v3 — S4 additive marker. `◌` (U+25CC dotted
+ * circle) distinguishes `fully-unconnected` rows from v1 relations-
+ * orphan `○`. Muted, no warning color per contract §4.2. See
+ * docs/development/unified-orphan-detection-v3-contract.md §4.4. */
+.pkc-unconnected-marker {
+  font-size: 0.65rem;
+  color: var(--c-muted);
+  opacity: 0.7;
+  margin-left: 0.15rem;
+  white-space: nowrap;
+}
+
+[data-pkc-selected="true"] .pkc-unconnected-marker {
+  color: rgba(255,255,255,0.75);
+  opacity: 0.85;
+}
+
 /* ── Task completion badge ── */
 .pkc-task-badge {
   font-size: 0.6rem;
