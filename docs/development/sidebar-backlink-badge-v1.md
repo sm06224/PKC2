@@ -123,6 +123,13 @@ const backlinkCounts = buildInboundCountMap(state.container?.relations ?? []);
 
 ## 6. 非スコープ（v2+ 候補）
 
+> **📌 As of 2026-04-21（historical overlay）**: 当時の v2+ 候補のうち **クリック ジャンプは LANDED**。他は現状 active candidate ではない。
+>
+> - バッジクリック → relations section scroll — **LANDED** (`backlink-badge-jump-v1.md`)
+> - kind 別の色分け — **DEFERRED**
+> - link-index 件数との合算表示 — **採用しない**（`unified-backlinks-v1.md` §5-6 / `unified-backlinks-v0-draft.md §2` で意味論的合算は禁止、References umbrella で視覚的分離のみ実現）
+> - バッジ on/off 設定 — **DEFERRED**
+
 - バッジクリックで backlinks panel へフォーカス / ジャンプ
 - kind 別の色分け (semantic / categorical 等)
 - link-index backlinks の件数との合算表示（"unified backlinks" の一部）

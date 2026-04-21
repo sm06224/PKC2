@@ -180,6 +180,13 @@ v1 に含めないもの:
 
 ## 12. 後続 PR 候補
 
+> **📌 As of 2026-04-21（historical overlay）**: 4 件とも **LANDED**。本 viewer も current active candidate ではなく、**provenance wave は viewer v1 → pretty-print v1.x → copy-export v1 で段階的に完成**した。
+>
+> 1. Unified orphan detection (v3+) — **LANDED** (`unified-orphan-detection-v3-contract.md` + `connectedness-s3-v1.md` + `connectedness-s4-v1.md`。S5 filter のみ Defer)
+> 2. References summary clickable (v3) — **LANDED** (`references-summary-clickable-v3.md`)
+> 3. provenance metadata pretty-print — **LANDED** (`provenance-metadata-pretty-print-v1.md`)
+> 4. provenance metadata copy / export — **LANDED** (`provenance-metadata-copy-export-v1.md`)
+
 1. **Unified orphan detection draft (v3+)** — relations + markdown 合算 orphan 判定の別 draft
 2. **References summary clickable (v3)** — summary row にクリック動作（sub-panel への scrollIntoView）
 3. **provenance metadata pretty-print (optional)** — ISO → local datetime、hash 省略表示、container cid → title lookup などの値整形（viewing 契約は維持）

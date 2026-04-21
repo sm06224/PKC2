@@ -181,6 +181,12 @@ v2 と同じ用語契約を維持:
 
 ## 12. 後続 PR 候補
 
+> **📌 As of 2026-04-21（historical overlay）**: 3 件中 **2 件 LANDED / 1 件 Defer 継続**。
+>
+> 1. provenance metadata pretty-print — **LANDED** (`provenance-metadata-pretty-print-v1.md`)
+> 2. provenance metadata copy / export — **LANDED** (`provenance-metadata-copy-export-v1.md`)
+> 3. S5 optional orphan filter — **DEFERRED 継続**（`unified-orphan-detection-v3-contract.md §7.4` / `connectedness-s4-v1.md §11` / `next-feature-prioritization-after-relations-wave.md §5` と整合、S4 marker で「気づき」成立済みのため実需待ち）
+
 1. **provenance metadata pretty-print**: ISO → local datetime / hash 省略表示（`provenance-metadata-viewer-v1.md` §12 の後続候補）
 2. **provenance metadata copy / export**: 1 clipboard copy ボタン、optional
 3. **S5 — optional orphan filter** (`unified-orphan-detection-v3-contract.md` §7.4): 引き続き defer 推奨、S4 marker で「気づき」が成立しているため必要性が出るまで待つ

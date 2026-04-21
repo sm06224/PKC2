@@ -113,6 +113,14 @@ orphan 行のみ:
 
 ## 6. 非スコープ（v2+ 候補）
 
+> **📌 As of 2026-04-21（historical overlay）**: 下記のうち **link-index 合算 orphan 判定は v3 として LANDED**（ただし "合算" ではなく closed 3-set による並立構成）。他は現状 active candidate ではない。
+>
+> - orphan 一覧パネル / フィルタ UI — **DEFERRED**（S5 optional filter は `unified-orphan-detection-v3-contract.md §7.4` で意図的に optional、`next-feature-prioritization-after-relations-wave.md §5` / `connectedness-s4-v1.md §11` と整合）
+> - link-index を含む合算 orphan 判定 — **ADDRESSED BY v3**（`unified-orphan-detection-v3-contract.md` `fully-unconnected` 定義 + `connectedness-s3-v1.md` / `s4-v1.md`。意味論的合算ではなく `relations-orphan` / `fully-unconnected` の 2 set 並立として着地）
+> - folder 固有の判定 — **採用しない**（v3 contract §3.6 で folder 特別扱いを永続的に不採用）
+> - marker クリックで "関連を作成" ダイアログ — **採用しない**（v3 contract §4.2-5 で link 自動生成動線を永続的に非ゴール化）
+> - graph visualization との統合 — **永続的に DEFERRED**（`backlink-badge-jump-v1.md §6` / `unified-orphan-detection-v3-contract.md §6.2.1`）
+
 - **orphan 一覧パネル** / フィルタ UI（「orphan だけ表示」「orphan だけ一括削除」等）
 - **link-index を含む合算 orphan 判定**
 - **folder 固有の判定**（空フォルダ除外等）
