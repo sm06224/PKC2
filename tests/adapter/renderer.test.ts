@@ -2686,11 +2686,18 @@ describe('Renderer', () => {
 
     const viewer = root.querySelector('[data-pkc-region="provenance-metadata"]');
     expect(viewer).not.toBeNull();
-    // No edit affordance added by pretty-print.
+    // No edit affordance added by pretty-print. The only <button> inside
+    // the viewer is the copy/export action (v1 copy-export), which is
+    // read-only (no metadata mutation); see provenance-metadata-copy-
+    // export-v1.md. Edit-shape inputs must still be absent.
     expect(viewer!.querySelector('input')).toBeNull();
     expect(viewer!.querySelector('textarea')).toBeNull();
     expect(viewer!.querySelector('select')).toBeNull();
-    expect(viewer!.querySelector('button')).toBeNull();
+    // Only copy-export button allowed.
+    const buttons = Array.from(viewer!.querySelectorAll('button'));
+    for (const b of buttons) {
+      expect(b.getAttribute('data-pkc-action')).toBe('copy-provenance-metadata');
+    }
   });
 
   it('pretty-print is active in readonly context (viewing contract unchanged)', () => {
@@ -2716,6 +2723,95 @@ describe('Renderer', () => {
     const ca = root.querySelector<HTMLElement>('[data-pkc-metadata-value="converted_at"]');
     expect(ca!.getAttribute('data-pkc-metadata-formatted')).toBe('true');
     expect(ca!.getAttribute('title')).toBe('2026-04-16T12:34:56Z');
+  });
+
+  // ── Provenance metadata copy/export v1 ──
+
+  it('renders a single copy button inside the provenance metadata viewer', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: {
+            conversion_kind: 'text-to-textlog',
+            converted_at: '2026-04-16T12:34:56Z',
+          },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const viewer = root.querySelector('[data-pkc-region="provenance-metadata"]');
+    const btn = viewer!.querySelector<HTMLButtonElement>('.pkc-provenance-metadata-copy');
+    expect(btn).not.toBeNull();
+    expect(btn!.tagName).toBe('BUTTON');
+    expect(btn!.getAttribute('type')).toBe('button');
+    expect(btn!.getAttribute('data-pkc-action')).toBe('copy-provenance-metadata');
+    expect(btn!.getAttribute('data-pkc-relation-id')).toBe('rp');
+    expect(btn!.getAttribute('title')).toBe('Copy raw canonical metadata as JSON');
+    expect(btn!.textContent).toBe('Copy raw');
+    expect(btn!.hasAttribute('data-pkc-copy-status')).toBe(false);
+  });
+
+  it('copy button is rendered in readonly context (copy is not an edit)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rp', from: 'e1', to: 'e2', kind: 'provenance',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: { conversion_kind: 'text-to-textlog', converted_at: '2026-04-16T12:34:56Z' },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+    const btn = root.querySelector<HTMLButtonElement>('.pkc-provenance-metadata-copy');
+    expect(btn).not.toBeNull();
+    expect(btn!.disabled).toBe(false);
+  });
+
+  it('does not render a copy button when metadata is absent/empty (viewer itself is absent)', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'rp', from: 'e1', to: 'e2', kind: 'provenance', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+    expect(root.querySelector('.pkc-provenance-metadata-copy')).toBeNull();
+  });
+
+  it('does not render a copy button on non-provenance relation rows', () => {
+    const containerWithRels: Container = {
+      ...mockContainer,
+      relations: [
+        {
+          id: 'rs', from: 'e1', to: 'e2', kind: 'semantic',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          metadata: { note: 'should not expose copy' },
+        },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerWithRels,
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+    expect(root.querySelector('.pkc-provenance-metadata-copy')).toBeNull();
   });
 
   it('shows relation creation form in ready phase', () => {

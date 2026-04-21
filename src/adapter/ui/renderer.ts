@@ -3540,7 +3540,7 @@ function renderRelationGroup(
     // (shown even in readonly / manual contexts — no edit semantics).
     // See docs/development/provenance-metadata-viewer-v1.md.
     if (r.relation.kind === 'provenance') {
-      const viewer = renderProvenanceMetadataViewer(r.relation.metadata);
+      const viewer = renderProvenanceMetadataViewer(r.relation.id, r.relation.metadata);
       if (viewer) item.appendChild(viewer);
     }
 
@@ -3627,6 +3627,7 @@ function formatProvenanceMetadataValue(
 }
 
 function renderProvenanceMetadataViewer(
+  relationId: string,
   metadata: Record<string, unknown> | undefined,
 ): HTMLElement | null {
   if (!metadata) return null;
@@ -3683,6 +3684,26 @@ function renderProvenanceMetadataViewer(
     dl.appendChild(dd);
   }
   details.appendChild(dl);
+
+  // v1 provenance metadata copy/export. Single button, whole metadata
+  // only, raw canonical JSON (never the pretty-printed display form).
+  // action-binder reads the relation id from this button, looks the
+  // relation up in state, serializes via
+  // `serializeProvenanceMetadataCanonical`, and writes to clipboard.
+  // See docs/development/provenance-metadata-copy-export-v1.md.
+  const copyWrap = document.createElement('div');
+  copyWrap.className = 'pkc-provenance-metadata-copy-row';
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'pkc-provenance-metadata-copy';
+  copyBtn.setAttribute('data-pkc-action', 'copy-provenance-metadata');
+  copyBtn.setAttribute('data-pkc-relation-id', relationId);
+  copyBtn.setAttribute('title', 'Copy raw canonical metadata as JSON');
+  copyBtn.setAttribute('aria-label', 'Copy raw canonical provenance metadata as JSON');
+  copyBtn.textContent = 'Copy raw';
+  copyWrap.appendChild(copyBtn);
+  details.appendChild(copyWrap);
+
   return details;
 }
 
