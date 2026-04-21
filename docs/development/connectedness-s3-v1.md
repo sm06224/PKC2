@@ -4,6 +4,8 @@
 **Scope**: Unified Orphan Detection v3 contract §5 で規定した pure helper layer（S3 slice）のみを実装する。adapter / renderer / AppState / DOM / CSS に**一切触れない**。UI や filter は後続 S4 / S5 の責務。
 **Baseline**: `docs/development/unified-orphan-detection-v3-contract.md`（contract）/ `docs/development/unified-orphan-detection-v3-draft.md`（draft）。
 
+> **📌 2026-04-21 追補（post-S4 訂正）**: 公開 API に `isMarkdownEvaluatedArchetype` を含めるという初版計画は、S4 着地時点で **inline 化**（`MARKDOWN_EVALUATED` という module-private `ReadonlySet<ArchetypeId>` にまとめる）に変更された。現状の `src/features/connectedness/index.ts` の公開 symbol は `buildConnectednessSets` と `ConnectednessSets` 型の **2 点のみ**。§1 / §2 / §4 / §5 / §7 に出てくる `isMarkdownEvaluatedArchetype` 参照は歴史記録として残し、下記 §2 公開 API 表記は `MARKDOWN_EVALUATED` set による内部判定に読み替える。テストも helper 3 件が消えて **合計 15 tests**（contract §5.8 の 10 必須 + 追加不変 5）に収束している。
+
 ---
 
 ## 1. 実装量

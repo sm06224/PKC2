@@ -8,6 +8,8 @@
 （B / C-3 / C-4 / E）を **今の実害 + 要求 + 熟度** で再評価し、
 Tier 3-3 で取る 1 件を確定する。実装は伴わない。
 
+> **📌 2026-04-21 追補（forward pointer）**: 本書で Defer した B / C-3 / E は **現時点でも Defer 継続**（昇格条件は §5 に記載、本質的には unchanged）。本書以降、2026-04-18〜21 にかけて Relations / Backlinks / Provenance / Unified Orphan Detection v3 / P1-P5 wave / hook subscription decision / transport record decision / dead-code round 3-5 等が **Tier 3 枠を超えて wave として着地**している。現時点の active candidate（P5 Extension Capture receiver side）と Defer 項目は `HANDOVER_FINAL.md §22` / `USER_REQUEST_LEDGER.md §1.1` / `docs/planning/00_index.md §第5群「2026-04-18〜21 wave」` を参照。本書は Tier 3-3 決定時の歴史記録として保存する。
+
 ---
 
 ## 1. 短い結論

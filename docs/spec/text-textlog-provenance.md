@@ -217,6 +217,17 @@ TEXTLOG → TEXT 変換時：
 
 ## 8. 実装スライス
 
+> **📌 As-of 2026-04-21 追補（実装 status）**
+>
+> | スライス | status | 実装箇所 |
+> |---|---|---|
+> | Slice A（本ドキュメント） | **DONE** | 本ファイル（commit 済み） |
+> | Slice B（`RelationKind` に `'provenance'`） | **SHIPPED** | `src/core/model/relation.ts` — `'provenance'` が `RelationKind` union に含まれる |
+> | Slice C（`Relation.metadata?` フィールド） | **SHIPPED** | 同上 — `metadata?: Record<string, unknown>` が Relation interface に追加済み。merge-import（`container-ops.ts` の `conversion_kind: 'revision-branch'`）と concurrent-edit（`dual-edit-safety.ts` の `conversion_kind: 'concurrent-edit'`）両経路で provenance Relation が実体として生成・保存されている |
+> | Slice D（text/textlog 変換での provenance Relation 生成） | **未実装（意図的保留）** | `confirm-text-to-textlog` action は `CREATE_ENTRY` + `COMMIT_EDIT` 経由で TEXTLOG を新規作成し、provenance Relation は emit していない。来歴は従来どおり meta log（body 内 markdown）で保持。Slice B/C 実装は merge-import / concurrent-edit 側で先に効いたため、text/textlog 変換側の実装は需要待ち扱い |
+>
+> 結論: **本 spec の中核（Slice B + C）は shipped**。Slice D は `textToTextlog` / `textlogToText` 純粋関数の返り値拡張として残タスクであり、下記の当時の計画を参照可能なまま保存する。
+
 ### Slice A — 非可逆境界の仕様固定（本ドキュメント）
 
 - 成果物: `docs/spec/text-textlog-provenance.md`（本ファイル）

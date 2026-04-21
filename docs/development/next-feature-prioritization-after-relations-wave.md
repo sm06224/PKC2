@@ -5,6 +5,20 @@
 **Out of scope**: graph visualization / hook subscription / telemetry — 近い将来は入れない前提（今後数本の PR では前提にしない）。
 **Baseline**: main (6c5a831)。
 
+> **📌 As-of 2026-04-21 追補（実装後 status）**
+>
+> 本 memo は初版時点の棚卸しとして残す。**P1–P4 はすべて wave として着地**し、現時点で active candidate として残っているのは **P5（Extension Capture）の receiver side draft のみ**。
+>
+> | 順位 | 当時の候補 | 現状 | 参照 |
+> |---|---|---|---|
+> | P1 | recent-entries pane | **SHIPPED** | `recent-entries-pane-v1.md` |
+> | P2 | breadcrumb / path trail | **SHIPPED** | `breadcrumb-path-trail-v1.md` |
+> | P3 | entry-rename display freshness | **audit DONE + follow-up SHIPPED** | `entry-rename-freshness-audit.md` / `entry-window-title-live-refresh-v1.md` |
+> | P4 | saved searches | **SHIPPED** | `saved-searches-v1.md` |
+> | P5 | extension capture → provenance | **v0 draft のみ**（receiver side 未着手、唯一の active candidate） | `extension-capture-v0-draft.md` |
+>
+> §6 以下の本文は当時の推奨ロジックを歴史として保存しているが、**現時点での「次 PR」判断は P5 receiver side draft 化が基点**。LEDGER §1.1 / HANDOVER_FINAL §22.2 も同じ。
+
 ---
 
 ## 1. サマリ
@@ -119,23 +133,22 @@
 
 ## 6. 推奨次アクション
 
-**次 PR**: **P1 — recent-entries pane v1** を draft → 実装の 1 本で切る。
+> **📌 2026-04-21 更新**: P1–P4 はすべて wave として着地済み（冒頭 As-of 表参照）。本節の当時の "P1 を次 PR に" 推奨は **完了扱い**。以下は **P5 Extension Capture** に絞って現時点の推奨を示す。
+
+**次 PR**: **P5 — Extension Capture receiver side draft** を `docs/spec/record-offer-capture-profile.md` の docs-only PR として切る。
 
 理由:
 
-1. S4 orphan marker（"放置された entry を目立たせる"）と対になる UX（"新規 entry を目立たせる"）で意味が閉じる
-2. scope が 1 PR で確実に閉じる（derived-only, container 変更なし, reducer 変更なし, 新 action なし）
-3. `entry-autocomplete-v1.3-recent-first` で recent の "書き" 側は既にある。sidebar 側で recent "読み" 側を整えるのは自然な続き
-4. risk が very low — 失敗しても即戻せる規模
-
-**直後候補**（P1 が閉じたら連続で出せる）:
-
-- P2 — breadcrumb / path trail v1（P1 と独立、どちらを先でも良い）
+1. P5 以外の 4 候補は既に wave として閉じた（recent-entries pane / breadcrumb / rename freshness audit + title live refresh / saved searches）
+2. `extension-capture-v0-draft.md` が 2026-04-21 時点で唯一の active candidate（HANDOVER_FINAL §22.2 / LEDGER §1.1 S-51 と整合）
+3. receiver side を先に contract 化し、sender side（extension UX）は scope 外に据え置く方針が v0 draft 段階で固まっている
+4. 直前 wave と同じく **contract-first → 実装 slice 分割** で進める
 
 **保留で続ける**:
 
-- P3 audit は機運があれば随時（急がない）
-- P4 / P5 は実需 / 外部連携の要求が具体化したら contract から
+- hook subscription（canonical = `pkc-message-hook-subscription-decision.md`、現決定: Defer）
+- graph visualization / telemetry（§5 と同じく永続的な non-goal）
+- S5 orphan filter（`unified-orphan-detection-v3-contract.md §7.4`、実需待ち）
 
 ## 7. 関連文書
 

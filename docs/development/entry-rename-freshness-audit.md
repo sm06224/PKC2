@@ -203,6 +203,8 @@ pure reducer + pure renderer 構成が成立している。memoize も closure c
 
 ### 8.3 推奨する follow-up
 
+> **📌 2026-04-21 追補（status）**: 本節で推奨した follow-up は **`entry-window-title-live-refresh-v1.md` として SHIPPED** 済み。ENTRY_WINDOW_TITLE_UPDATE_MSG / `pushTitleUpdate` / `wireEntryWindowTitleRefresh` / child listener の dirty-agnostic policy いずれも設計通り実装され、pop-out entry-window の `<title>` / `#title-display` / `originalTitle` stale は解消済み。以下の記述は当時の設計メモとして保存する。
+
 後続 PR「**Entry-window title live refresh v1**」として切り出す。設計概要:
 
 - `ENTRY_WINDOW_TITLE_UPDATE_MSG = 'pkc-entry-update-title'` を追加
