@@ -338,10 +338,12 @@ describe('Listener isolation', () => {
     // 4. Fire dispatcherA — its listener should be unsubscribed, so root stays clean
     dispatcherA.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Ghost' });
 
-    // Root must still show only fresh1 — no contamination from dispatcherA
-    expect(root.querySelector('[data-pkc-lid="fresh1"]')).not.toBeNull();
-    expect(root.querySelector('[data-pkc-lid="stale1"]')).toBeNull();
-    const allLids = Array.from(root.querySelectorAll('[data-pkc-lid]')).map((el) => el.getAttribute('data-pkc-lid'));
+    // Root must still show only fresh1 — no contamination from dispatcherA.
+    // Scope to `.pkc-entry-item` so the Recent Entries pane's duplicate
+    // rows don't inflate the lid inventory.
+    expect(root.querySelector('.pkc-entry-item[data-pkc-lid="fresh1"]')).not.toBeNull();
+    expect(root.querySelector('.pkc-entry-item[data-pkc-lid="stale1"]')).toBeNull();
+    const allLids = Array.from(root.querySelectorAll('.pkc-entry-item[data-pkc-lid]')).map((el) => el.getAttribute('data-pkc-lid'));
     expect(allLids).toEqual(['fresh1']);
   });
 
@@ -674,16 +676,18 @@ describe('Keyboard navigation: Arrow Left / Right (Phase 3)', () => {
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' });
     render(dispatcher.getState(), root);
 
-    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
-    // Children visible in sidebar before collapse
-    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
-    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+    // Scope to `.pkc-entry-item` so the Recent Entries pane's duplicate
+    // rows don't mask the tree's collapse semantics.
+    const tree = () => root.querySelector('[data-pkc-region="sidebar"] ul.pkc-entry-list')!;
+    // Children visible in sidebar tree before collapse
+    expect(tree().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(tree().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
 
     pressArrowLR('ArrowLeft');
 
-    // Children hidden in sidebar after collapse (renderer skips them)
-    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
-    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).toBeNull();
+    // Children hidden in sidebar tree after collapse (renderer skips them)
+    expect(tree().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+    expect(tree().querySelector('[data-pkc-lid="c2"]')).toBeNull();
   });
 
   it('children reappear in sidebar after Arrow Right expand', () => {
@@ -692,15 +696,15 @@ describe('Keyboard navigation: Arrow Left / Right (Phase 3)', () => {
     dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'f1' });
     render(dispatcher.getState(), root);
 
-    const sidebar = () => root.querySelector('[data-pkc-region="sidebar"]')!;
-    // Children hidden in sidebar
-    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).toBeNull();
+    const tree = () => root.querySelector('[data-pkc-region="sidebar"] ul.pkc-entry-list')!;
+    // Children hidden in sidebar tree
+    expect(tree().querySelector('[data-pkc-lid="c1"]')).toBeNull();
 
     pressArrowLR('ArrowRight');
 
-    // Children visible again in sidebar
-    expect(sidebar().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
-    expect(sidebar().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
+    // Children visible again in sidebar tree
+    expect(tree().querySelector('[data-pkc-lid="c1"]')).not.toBeNull();
+    expect(tree().querySelector('[data-pkc-lid="c2"]')).not.toBeNull();
   });
 
   // ── Guard ──

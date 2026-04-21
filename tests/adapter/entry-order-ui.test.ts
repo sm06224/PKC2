@@ -151,7 +151,7 @@ describe('C-2 UI: Move up / Move down button visibility', () => {
       selectedLid: 'b',
     });
     render(state, root);
-    const selected = root.querySelector<HTMLElement>('[data-pkc-selected="true"]')!;
+    const selected = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-selected="true"]')!;
     expect(selected.querySelector('[data-pkc-action="move-entry-up"]')).not.toBeNull();
     expect(selected.querySelector('[data-pkc-action="move-entry-down"]')).not.toBeNull();
     // Non-selected entries have no buttons.
