@@ -516,6 +516,136 @@ describe('Renderer', () => {
     expect(root.querySelectorAll('.pkc-orphan-marker').length).toBeGreaterThan(0);
   });
 
+  // ── S4 Unified Orphan Detection v3 — additive sidebar marker ──
+
+  it('sets data-pkc-connectedness="fully-unconnected" and renders new marker for entries with no relations and no markdown refs', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('fully-unconnected');
+
+    const marker = e1Row!.querySelector<HTMLElement>('.pkc-unconnected-marker');
+    expect(marker).not.toBeNull();
+    expect(marker!.textContent).toBe('◌');
+    expect(marker!.getAttribute('title')).toBe('Fully unconnected (no relations, no markdown refs)');
+    expect(marker!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('v1 `.pkc-orphan-marker` and v3 `.pkc-unconnected-marker` coexist on fully-unconnected rows (contract §4.5)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    // v1 marker is NOT suppressed by v3 (contract §4.5: "fully-unconnected のとき v1 marker を非表示にしない")
+    expect(e1Row!.querySelector('.pkc-orphan-marker')).not.toBeNull();
+    expect(e1Row!.querySelector('.pkc-unconnected-marker')).not.toBeNull();
+    // v1 attribute unchanged
+    expect(e1Row!.getAttribute('data-pkc-orphan')).toBe('true');
+    // v3 attribute added
+    expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('fully-unconnected');
+  });
+
+  it('entry with only markdown refs (no relations) → connectedness="relations-orphan", v1 marker present, NO v3 marker', () => {
+    // e1 references e2 via markdown; e2 has an inbound backlink.
+    const containerMd: Container = {
+      ...mockContainer,
+      entries: [
+        { lid: 'e1', title: 'A', body: 'see entry:e2 for details', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { lid: 'e2', title: 'B', body: '', archetype: 'text', created_at: '2026-01-01T00:01:00Z', updated_at: '2026-01-01T00:01:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerMd,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    // Both are relations-orphan (no container.relations[]), but both have markdown edges,
+    // so neither is fully-unconnected.
+    expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('relations-orphan');
+    expect(e2Row!.getAttribute('data-pkc-connectedness')).toBe('relations-orphan');
+    // v1 marker still present (v1 authoritative for relations-orphan signal).
+    expect(e1Row!.querySelector('.pkc-orphan-marker')).not.toBeNull();
+    expect(e2Row!.querySelector('.pkc-orphan-marker')).not.toBeNull();
+    // v3 marker NOT present — contract §4.4 only renders for fully-unconnected.
+    expect(e1Row!.querySelector('.pkc-unconnected-marker')).toBeNull();
+    expect(e2Row!.querySelector('.pkc-unconnected-marker')).toBeNull();
+  });
+
+  it('entry with a relation → connectedness="connected", no markers', () => {
+    const containerRel: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'semantic', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const state: AppState = {
+      phase: 'ready', container: containerRel,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('connected');
+    expect(e2Row!.getAttribute('data-pkc-connectedness')).toBe('connected');
+    expect(root.querySelector('.pkc-orphan-marker')).toBeNull();
+    expect(root.querySelector('.pkc-unconnected-marker')).toBeNull();
+  });
+
+  it('shows v3 marker in readonly context (viewing is safe, contract §4.4 has no edit semantics)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const markers = root.querySelectorAll('.pkc-unconnected-marker');
+    expect(markers.length).toBeGreaterThan(0);
+    // v1 markers still coexist.
+    expect(root.querySelectorAll('.pkc-orphan-marker').length).toBeGreaterThan(0);
+  });
+
+  it('v3 marker tooltip avoids bare "orphan" wording (contract §4.2 / §1.2)', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    const marker = root.querySelector<HTMLElement>('.pkc-unconnected-marker');
+    expect(marker).not.toBeNull();
+    const tooltip = marker!.getAttribute('title') ?? '';
+    // Must not contain the banned bare word `orphan` (contract §1.2).
+    expect(tooltip).not.toMatch(/\borphan\b/i);
+    expect(tooltip).not.toMatch(/\bunified\b/i);
+    expect(tooltip).not.toMatch(/\bisolated\b/i);
+    expect(tooltip).not.toMatch(/\bdisconnected\b/i);
+    // Must contain the canonical concept phrase.
+    expect(tooltip).toMatch(/fully unconnected/i);
+  });
+
+  it('does not render v3 attribute/marker when container is null (initializing phase)', () => {
+    const state: AppState = {
+      phase: 'initializing', container: null,
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    };
+    render(state, root);
+
+    // No entries to render; marker/attribute absent by definition.
+    expect(root.querySelector('[data-pkc-connectedness]')).toBeNull();
+    expect(root.querySelector('.pkc-unconnected-marker')).toBeNull();
+  });
+
   // ── v1 badge click: renders as <button> with open-backlinks action ──
 
   it('renders backlink badge as a <button> with open-backlinks action + aria-label', () => {

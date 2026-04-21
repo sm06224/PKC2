@@ -24,6 +24,7 @@ import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
+import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
@@ -1737,12 +1738,20 @@ function renderSidebar(state: AppState): HTMLElement {
   // orphans. Same O(R+N) pattern as backlink counts — see
   // docs/development/orphan-detection-ui-v1.md.
   const connectedLids = buildConnectedLidSet(state.container?.relations ?? []);
+  // v3 connectedness sets (Unified Orphan Detection, S4). Additive layer
+  // built alongside the v1 helpers — v1 `connectedLids` stays authoritative
+  // for `.pkc-orphan-marker` / `data-pkc-orphan`; v3 sets drive the new
+  // `data-pkc-connectedness` attribute and `.pkc-unconnected-marker`. See
+  // docs/development/unified-orphan-detection-v3-contract.md §2.3 / §4.4.
+  const connectednessSets: ConnectednessSets | null = state.container
+    ? buildConnectednessSets(state.container)
+    : null;
 
   if (hasActiveFilter || !state.container) {
     // Flat mode when filters are active (tree doesn't make sense for search results)
     const query = state.searchQuery.trim();
     for (const entry of entries) {
-      list.appendChild(renderEntryItem(entry, state, backlinkCounts, connectedLids));
+      list.appendChild(renderEntryItem(entry, state, backlinkCounts, connectedLids, connectednessSets));
       // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
       // search query AND the entry has sub-location matches, expand
       // them as clickable sidebar rows that scroll to the exact spot
@@ -1767,7 +1776,7 @@ function renderSidebar(state: AppState): HTMLElement {
       ? reorderTreeByEntries(tree, entries)
       : tree;
     for (const node of displayTree) {
-      renderTreeNode(node, list, state, backlinkCounts, connectedLids);
+      renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
     }
   }
   sidebar.appendChild(list);
@@ -2032,8 +2041,9 @@ function renderTreeNode(
   state: AppState,
   backlinkCounts?: ReadonlyMap<string, number>,
   connectedLids?: ReadonlySet<string>,
+  connectednessSets?: ConnectednessSets | null,
 ): void {
-  const li = renderEntryItem(node.entry, state, backlinkCounts, connectedLids);
+  const li = renderEntryItem(node.entry, state, backlinkCounts, connectedLids, connectednessSets);
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
   }
@@ -2074,7 +2084,7 @@ function renderTreeNode(
   // Skip rendering children when the folder is collapsed.
   if (isCollapsed) return;
   for (const child of node.children) {
-    renderTreeNode(child, parent, state, backlinkCounts, connectedLids);
+    renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets);
   }
 }
 
@@ -2083,6 +2093,7 @@ function renderEntryItem(
   state: AppState,
   backlinkCounts?: ReadonlyMap<string, number>,
   connectedLids?: ReadonlySet<string>,
+  connectednessSets?: ConnectednessSets | null,
 ): HTMLElement {
   const li = createElement('li', 'pkc-entry-item');
   li.setAttribute('data-pkc-action', 'select-entry');
@@ -2166,6 +2177,32 @@ function renderEntryItem(
     marker.setAttribute('aria-hidden', 'true');
     marker.textContent = '○';
     li.appendChild(marker);
+  }
+
+  // S4 Unified Orphan Detection v3 — additive layer. v1 attribute /
+  // marker above are NOT touched. The new `data-pkc-connectedness`
+  // attribute is added whenever connectedness sets are available, and
+  // `.pkc-unconnected-marker` is shown only for the `fully-unconnected`
+  // state. Wording follows contract §4.1 / §4.2 (no bare "orphan",
+  // no warning color, no graph semantics). See
+  // docs/development/unified-orphan-detection-v3-contract.md §4.4.
+  if (connectednessSets) {
+    let connectedness: 'connected' | 'relations-orphan' | 'fully-unconnected';
+    if (connectednessSets.relationsConnected.has(entry.lid)) {
+      connectedness = 'connected';
+    } else if (connectednessSets.markdownConnected.has(entry.lid)) {
+      connectedness = 'relations-orphan';
+    } else {
+      connectedness = 'fully-unconnected';
+    }
+    li.setAttribute('data-pkc-connectedness', connectedness);
+    if (connectedness === 'fully-unconnected') {
+      const uMarker = createElement('span', 'pkc-unconnected-marker');
+      uMarker.setAttribute('title', 'Fully unconnected (no relations, no markdown refs)');
+      uMarker.setAttribute('aria-hidden', 'true');
+      uMarker.textContent = '◌';
+      li.appendChild(uMarker);
+    }
   }
 
   // C-2 v1 (2026-04-17): Move up / Move down for the selected entry
