@@ -646,6 +646,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
         break;
       }
+      case 'jump-to-references-section': {
+        // v3 References summary clickable — scroll the target sub-panel
+        // region into view. Navigation only, no filter / no selection /
+        // no semantic merge. The target entry is already selected (the
+        // summary row is only rendered for the current selection), so
+        // no SELECT_ENTRY dispatch is needed. See
+        // docs/development/references-summary-clickable-v3.md.
+        const targetKey = target.getAttribute('data-pkc-summary-target');
+        if (!targetKey) break;
+        // Allow-list: limit acceptable targets to the 3 known sub-panel
+        // region ids so a stray attribute can't scroll to unrelated DOM.
+        const ALLOWED = new Set(['relations', 'link-index', 'link-index-broken']);
+        if (!ALLOWED.has(targetKey)) break;
+        const raf =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (cb: FrameRequestCallback) => {
+                cb(0 as unknown as number);
+                return 0;
+              };
+        raf(() => {
+          const region = root.querySelector<HTMLElement>(
+            `[data-pkc-region="${targetKey}"]`,
+          );
+          if (region && typeof region.scrollIntoView === 'function') {
+            region.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+        break;
+      }
       case 'open-backlinks': {
         // v1 click jump for the sidebar backlink count badge. Ensure
         // the target entry is selected in detail view, then scroll the

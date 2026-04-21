@@ -850,3 +850,132 @@ describe('ActionBinder — Storage Profile dialog', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────
+// References summary clickable (v3) — clicking a summary button
+// scrollIntoView-s the matching sub-panel region. Navigation only;
+// no SELECT_ENTRY, no filter, no semantic merge. See
+// docs/development/references-summary-clickable-v3.md.
+// ─────────────────────────────────────────────────────────────────
+describe('ActionBinder — jump-to-references-section (v3)', () => {
+  const refContainer: Container = {
+    meta: {
+      container_id: 'ref-jump', title: 'Ref Jump',
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1,
+    },
+    entries: [
+      {
+        lid: 'a', title: 'A',
+        body: 'link to [b](entry:b) and a broken [g](entry:ghost)',
+        archetype: 'text',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        lid: 'b', title: 'B', body: '', archetype: 'text',
+        created_at: '2026-01-01T00:00:01Z',
+        updated_at: '2026-01-01T00:00:01Z',
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+
+  // Sync rAF so scrollIntoView is observable inside the click handler.
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0 as unknown as number;
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function setupRef(selectedLid: string) {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: refContainer });
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: selectedLid });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher };
+  }
+
+  it('clicking Relations summary button scrolls the relations sub-panel into view', () => {
+    setupRef('a');
+    const region = root.querySelector<HTMLElement>('[data-pkc-region="relations"]');
+    expect(region).not.toBeNull();
+    const spy = vi.fn();
+    region!.scrollIntoView = spy;
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="jump-to-references-section"][data-pkc-summary-target="relations"]',
+    );
+    expect(btn).not.toBeNull();
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const firstCall = spy.mock.calls[0] as [ScrollIntoViewOptions];
+    expect(firstCall[0].behavior).toBe('smooth');
+    expect(firstCall[0].block).toBe('start');
+  });
+
+  it('clicking Markdown refs summary button scrolls the link-index sub-panel into view', () => {
+    setupRef('a');
+    const region = root.querySelector<HTMLElement>('[data-pkc-region="link-index"]');
+    expect(region).not.toBeNull();
+    const spy = vi.fn();
+    region!.scrollIntoView = spy;
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="jump-to-references-section"][data-pkc-summary-target="link-index"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking Broken summary button scrolls the broken-links subsection into view specifically', () => {
+    setupRef('a');
+    const region = root.querySelector<HTMLElement>('[data-pkc-region="link-index-broken"]');
+    expect(region).not.toBeNull();
+    const spy = vi.fn();
+    region!.scrollIntoView = spy;
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="jump-to-references-section"][data-pkc-summary-target="link-index-broken"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking a summary button does NOT dispatch SELECT_ENTRY (navigation is pane-local)', () => {
+    const { dispatcher } = setupRef('a');
+    const before = dispatcher.getState().selectedLid;
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="jump-to-references-section"][data-pkc-summary-target="relations"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(dispatcher.getState().selectedLid).toBe(before);
+  });
+
+  it('keyboard activation via Enter click event triggers the same scroll (native <button> semantics)', () => {
+    // <button> elements translate Enter into a synthetic click, which we
+    // simulate directly here to stay within happy-dom's event model.
+    setupRef('a');
+    const region = root.querySelector<HTMLElement>('[data-pkc-region="relations"]');
+    const spy = vi.fn();
+    region!.scrollIntoView = spy;
+
+    const btn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="jump-to-references-section"][data-pkc-summary-target="relations"]',
+    );
+    btn!.click(); // same path Enter/Space triggers on <button>
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+

@@ -3293,10 +3293,22 @@ function renderReferencesSummary(
     `References summary: ${relationsCount} relations, ${markdownRefsCount} markdown references, ${brokenCount} broken`,
   );
 
-  const items: { key: string; label: string; count: number; broken?: boolean }[] = [
-    { key: 'relations', label: 'Relations', count: relationsCount },
-    { key: 'markdown-refs', label: 'Markdown refs', count: markdownRefsCount },
-    { key: 'broken', label: 'Broken', count: brokenCount, broken: true },
+  // v3: each summary item is a <button> so keyboard activation works
+  // natively. Click / Enter / Space all fire via action-binder's
+  // `jump-to-references-section` handler, which scrollIntoView-s the
+  // target sub-panel region. Semantics stay navigation-only — no
+  // filtering, no semantic merge. See
+  // docs/development/references-summary-clickable-v3.md.
+  const items: {
+    key: string;
+    label: string;
+    count: number;
+    target: string;
+    broken?: boolean;
+  }[] = [
+    { key: 'relations',     label: 'Relations',     count: relationsCount,     target: 'relations' },
+    { key: 'markdown-refs', label: 'Markdown refs', count: markdownRefsCount,  target: 'link-index' },
+    { key: 'broken',        label: 'Broken',        count: brokenCount,        target: 'link-index-broken', broken: true },
   ];
 
   items.forEach((item, i) => {
@@ -3306,11 +3318,23 @@ function renderReferencesSummary(
       sep.textContent = '·';
       row.appendChild(sep);
     }
-    const span = createElement('span', 'pkc-references-summary-item');
-    span.setAttribute('data-pkc-summary-key', item.key);
-    if (item.broken && item.count > 0) span.setAttribute('data-pkc-broken', 'true');
-    span.textContent = `${item.label}: ${item.count}`;
-    row.appendChild(span);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pkc-references-summary-item';
+    btn.setAttribute('data-pkc-summary-key', item.key);
+    btn.setAttribute('data-pkc-action', 'jump-to-references-section');
+    btn.setAttribute('data-pkc-summary-target', item.target);
+    btn.setAttribute(
+      'title',
+      `Jump to ${item.label.toLowerCase()} section (${item.count})`,
+    );
+    btn.setAttribute(
+      'aria-label',
+      `Jump to ${item.label.toLowerCase()} section, ${item.count} item${item.count === 1 ? '' : 's'}`,
+    );
+    if (item.broken && item.count > 0) btn.setAttribute('data-pkc-broken', 'true');
+    btn.textContent = `${item.label}: ${item.count}`;
+    row.appendChild(btn);
   });
 
   return row;
