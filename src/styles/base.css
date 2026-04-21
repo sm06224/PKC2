@@ -674,6 +674,56 @@
   border-bottom: 1px solid var(--c-border);
 }
 
+/* ── Recent Entries Pane v1 ──
+   Spec: docs/development/recent-entries-pane-v1.md */
+.pkc-recent-pane {
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-recent-summary {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-muted);
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.pkc-recent-summary::-webkit-details-marker { display: none; }
+
+.pkc-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background var(--transition-fast);
+}
+
+.pkc-recent-item:hover {
+  background: var(--c-hover);
+}
+
+.pkc-recent-icon {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  text-align: center;
+}
+
+.pkc-recent-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Entry list ── */
 .pkc-entry-list {
   list-style: none;

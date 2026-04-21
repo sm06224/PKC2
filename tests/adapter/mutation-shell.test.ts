@@ -138,7 +138,7 @@ describe('Mutation → Shell integration', () => {
     });
 
     // Sidebar shows updated title (find e1 by lid, not by position — sort may reorder)
-    const e1Item = root.querySelector('[data-pkc-lid="e1"]');
+    const e1Item = root.querySelector('.pkc-entry-item[data-pkc-lid="e1"]');
     const e1Title = e1Item!.querySelector('.pkc-entry-title');
     expect(e1Title?.textContent).toContain('Updated Title');
 

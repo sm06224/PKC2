@@ -260,6 +260,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'select-recent-entry': {
+        // Recent Entries Pane v1 — click handler. Spec:
+        // docs/development/recent-entries-pane-v1.md §4.
+        // Same effect as a plain sidebar click, but no multi-select /
+        // range-select so recent-pane clicks never start a selection set.
+        if (!lid) break;
+        const me = e as MouseEvent;
+        if (me.detail >= 2) {
+          handleDblClickAction(target, lid);
+          break;
+        }
+        if (dispatcher.getState().viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        break;
+      }
       case 'navigate-to-location': {
         // S-18 (A-4 FULL, 2026-04-14): sidebar sub-location row click.
         // The data attributes carry the entry lid + sub-id. We issue

@@ -394,7 +394,7 @@ describe('Renderer', () => {
     render(state, root);
 
     // e2 is the target of 2 relations → badge with count 2 on e2's row
-    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    const e2Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e2"]');
     expect(e2Row).not.toBeNull();
     const badge = e2Row!.querySelector('.pkc-backlink-badge');
     expect(badge).not.toBeNull();
@@ -403,7 +403,7 @@ describe('Renderer', () => {
     expect(badge!.getAttribute('title')).toBe('2 incoming relations');
 
     // e1 is a source only → no badge
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
     expect(e1Row!.querySelector('.pkc-backlink-badge')).toBeNull();
   });
 
@@ -421,7 +421,7 @@ describe('Renderer', () => {
     render(state, root);
 
     const badge = root.querySelector<HTMLElement>(
-      '[data-pkc-lid="e2"] .pkc-backlink-badge',
+      '.pkc-entry-item[data-pkc-lid="e2"] .pkc-backlink-badge',
     );
     expect(badge!.textContent).toBe('←1');
     expect(badge!.getAttribute('title')).toBe('1 incoming relation');
@@ -446,8 +446,8 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
-    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e2"]');
     expect(e1Row!.getAttribute('data-pkc-orphan')).toBe('true');
     expect(e2Row!.getAttribute('data-pkc-orphan')).toBe('true');
 
@@ -497,9 +497,9 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    expect(root.querySelector('[data-pkc-lid="e1"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
-    expect(root.querySelector('[data-pkc-lid="e2"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
-    expect(root.querySelector('[data-pkc-lid="e3"]')!.getAttribute('data-pkc-orphan')).toBe('true');
+    expect(root.querySelector('.pkc-entry-item[data-pkc-lid="e1"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(root.querySelector('.pkc-entry-item[data-pkc-lid="e2"]')!.hasAttribute('data-pkc-orphan')).toBe(false);
+    expect(root.querySelector('.pkc-entry-item[data-pkc-lid="e3"]')!.getAttribute('data-pkc-orphan')).toBe('true');
 
     const markers = root.querySelectorAll('.pkc-orphan-marker');
     expect(markers.length).toBe(1);
@@ -525,7 +525,7 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
     expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('fully-unconnected');
 
     const marker = e1Row!.querySelector<HTMLElement>('.pkc-unconnected-marker');
@@ -542,7 +542,7 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
     // v1 marker is NOT suppressed by v3 (contract §4.5: "fully-unconnected のとき v1 marker を非表示にしない")
     expect(e1Row!.querySelector('.pkc-orphan-marker')).not.toBeNull();
     expect(e1Row!.querySelector('.pkc-unconnected-marker')).not.toBeNull();
@@ -567,8 +567,8 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
-    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e2"]');
     // Both are relations-orphan (no container.relations[]), but both have markdown edges,
     // so neither is fully-unconnected.
     expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('relations-orphan');
@@ -594,8 +594,8 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Row = root.querySelector<HTMLElement>('[data-pkc-lid="e1"]');
-    const e2Row = root.querySelector<HTMLElement>('[data-pkc-lid="e2"]');
+    const e1Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e1"]');
+    const e2Row = root.querySelector<HTMLElement>('.pkc-entry-item[data-pkc-lid="e2"]');
     expect(e1Row!.getAttribute('data-pkc-connectedness')).toBe('connected');
     expect(e2Row!.getAttribute('data-pkc-connectedness')).toBe('connected');
     expect(root.querySelector('.pkc-orphan-marker')).toBeNull();
@@ -1472,8 +1472,8 @@ describe('Renderer', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: ['e1', 'e2'], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
     };
     render(state, root);
-    const e1 = root.querySelector('[data-pkc-lid="e1"]');
-    const e2 = root.querySelector('[data-pkc-lid="e2"]');
+    const e1 = root.querySelector('.pkc-entry-item[data-pkc-lid="e1"]');
+    const e2 = root.querySelector('.pkc-entry-item[data-pkc-lid="e2"]');
     expect(e1!.getAttribute('data-pkc-multi-selected')).toBe('true');
     expect(e2!.getAttribute('data-pkc-multi-selected')).toBe('true');
   });
@@ -1491,10 +1491,10 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    const e1Item = root.querySelector('[data-pkc-lid="e1"]');
+    const e1Item = root.querySelector('.pkc-entry-item[data-pkc-lid="e1"]');
     expect(e1Item!.getAttribute('data-pkc-has-history')).toBe('true');
 
-    const e2Item = root.querySelector('[data-pkc-lid="e2"]');
+    const e2Item = root.querySelector('.pkc-entry-item[data-pkc-lid="e2"]');
     expect(e2Item!.hasAttribute('data-pkc-has-history')).toBe(false);
   });
 
@@ -5003,7 +5003,7 @@ describe('Todo Archive Foundation', () => {
     };
     render(state, root);
 
-    const archivedItem = root.querySelector('[data-pkc-lid="t2"]');
+    const archivedItem = root.querySelector('.pkc-entry-item[data-pkc-lid="t2"]');
     expect(archivedItem).not.toBeNull();
     expect(archivedItem!.getAttribute('data-pkc-todo-archived')).toBe('true');
     const badge = archivedItem!.querySelector('.pkc-todo-archived-sidebar');
@@ -5497,7 +5497,7 @@ describe('Todo View Interaction Consistency', () => {
       for (const mode of ['detail', 'calendar', 'kanban'] as const) {
         render(makeState(mode), root);
         const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
-        const item = sidebar.querySelector('[data-pkc-lid="t1"]');
+        const item = sidebar.querySelector('.pkc-entry-item[data-pkc-lid="t1"]');
         expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
       }
     });
@@ -6864,8 +6864,8 @@ describe('Calendar/Kanban Multi-Select Visual Feedback', () => {
   it('Sidebar: multi-selected attribute is consistent with Calendar view', () => {
     render(msState({ viewMode: 'calendar', multiSelectedLids: ['t1', 't3'] }), root);
     const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
-    const sidebarT1 = sidebar.querySelector('[data-pkc-lid="t1"]');
-    const sidebarT3 = sidebar.querySelector('[data-pkc-lid="t3"]');
+    const sidebarT1 = sidebar.querySelector('.pkc-entry-item[data-pkc-lid="t1"]');
+    const sidebarT3 = sidebar.querySelector('.pkc-entry-item[data-pkc-lid="t3"]');
     expect(sidebarT1!.getAttribute('data-pkc-multi-selected')).toBe('true');
     expect(sidebarT3!.getAttribute('data-pkc-multi-selected')).toBe('true');
   });
@@ -8054,7 +8054,7 @@ describe('Task completion badge', () => {
         { lid: 'tx3', title: 'All Done', body: '- [x] A\n- [x] B', archetype: 'text', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
       ]);
       render(baseState({ container }), root);
-      const li = root.querySelector('[data-pkc-lid="tx3"]');
+      const li = root.querySelector('.pkc-entry-item[data-pkc-lid="tx3"]');
       expect(li!.getAttribute('data-pkc-task-complete')).toBe('true');
       const badge = li!.querySelector('.pkc-task-badge');
       expect(badge!.textContent).toBe('2/2');
@@ -8107,7 +8107,7 @@ describe('Task completion badge', () => {
         assets: {},
       };
       render(baseState({ container }), root);
-      const li = root.querySelector('[data-pkc-lid="tx5"]');
+      const li = root.querySelector('.pkc-entry-item[data-pkc-lid="tx5"]');
       expect(li!.querySelector('.pkc-task-badge')).not.toBeNull();
       expect(li!.querySelector('.pkc-revision-badge')).not.toBeNull();
     });
@@ -8908,5 +8908,183 @@ describe('FI-08.x — editor textarea and read-mode autolink (T-FBC-12, T-FBC-13
     expect(anchor).not.toBeNull();
     expect(anchor!.getAttribute('target')).toBe('_blank');
     expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+});
+
+// ── Recent Entries Pane v1 ──
+// Spec: docs/development/recent-entries-pane-v1.md
+describe('Recent Entries Pane v1', () => {
+  function mkEntry(
+    lid: string,
+    archetype: Entry['archetype'],
+    updated_at: string,
+    created_at: string = updated_at,
+    title: string = lid,
+  ): Entry {
+    return { lid, title, body: '', archetype, created_at, updated_at };
+  }
+
+  function makeContainer(entries: Entry[]): Container {
+    return {
+      meta: {
+        container_id: 'recent-test',
+        title: 'Recent Test',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        schema_version: 1,
+      },
+      entries,
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  function makeState(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: makeContainer([]),
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), tagFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      ...overrides,
+    };
+  }
+
+  it('renders the pane inside sidebar when user entries exist', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]');
+    expect(pane).not.toBeNull();
+    expect(pane!.closest('[data-pkc-region="sidebar"]')).not.toBeNull();
+    expect(pane!.tagName.toLowerCase()).toBe('details');
+    expect((pane as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it('omits the pane when container has no user entries', () => {
+    render(makeState({ container: makeContainer([]) }), root);
+    expect(root.querySelector('[data-pkc-region="recent-entries"]')).toBeNull();
+  });
+
+  it('omits the pane when container has only system-* entries', () => {
+    const container = makeContainer([
+      mkEntry('sys1', 'system-about', '2026-04-20T00:00:00Z'),
+      mkEntry('sys2', 'system-settings', '2026-04-21T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+    expect(root.querySelector('[data-pkc-region="recent-entries"]')).toBeNull();
+  });
+
+  it('omits the pane when state.container is null', () => {
+    render(makeState({ container: null }), root);
+    expect(root.querySelector('[data-pkc-region="recent-entries"]')).toBeNull();
+  });
+
+  it('orders items by updated_at desc', () => {
+    const container = makeContainer([
+      mkEntry('old', 'text', '2026-01-01T00:00:00Z'),
+      mkEntry('new', 'text', '2026-04-20T00:00:00Z'),
+      mkEntry('mid', 'text', '2026-02-15T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-recent-entry"]');
+    expect(items).toHaveLength(3);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('new');
+    expect(items[1]!.getAttribute('data-pkc-lid')).toBe('mid');
+    expect(items[2]!.getAttribute('data-pkc-lid')).toBe('old');
+  });
+
+  it('caps the pane at 10 items and shows "Recent (N)" in summary', () => {
+    const entries = Array.from({ length: 15 }, (_, i) =>
+      mkEntry(`e${String(i).padStart(2, '0')}`, 'text', `2026-04-${String(i + 1).padStart(2, '0')}T00:00:00Z`),
+    );
+    render(makeState({ container: makeContainer(entries) }), root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-recent-entry"]');
+    expect(items).toHaveLength(10);
+
+    const summary = root.querySelector('[data-pkc-region="recent-entries"] summary');
+    expect(summary?.textContent).toBe('Recent (10)');
+  });
+
+  it('marks the selected lid in the pane with data-pkc-selected', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+      mkEntry('b', 'text', '2026-04-21T00:00:00Z'),
+    ]);
+    render(makeState({ container, selectedLid: 'a' }), root);
+
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]')!;
+    const selected = pane.querySelector('[data-pkc-selected="true"]');
+    expect(selected).not.toBeNull();
+    expect(selected!.getAttribute('data-pkc-lid')).toBe('a');
+
+    const nonSelected = pane.querySelector('[data-pkc-lid="b"]');
+    expect(nonSelected!.hasAttribute('data-pkc-selected')).toBe(false);
+  });
+
+  it('excludes system-* entries even when mixed with user entries', () => {
+    const container = makeContainer([
+      mkEntry('sys', 'system-about', '2026-04-21T00:00:00Z'),
+      mkEntry('usr', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+
+    const items = root.querySelectorAll('[data-pkc-action="select-recent-entry"]');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.getAttribute('data-pkc-lid')).toBe('usr');
+  });
+
+  it('renders title, with "(untitled)" fallback when empty', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z', '2026-04-20T00:00:00Z', 'Titled'),
+      mkEntry('b', 'text', '2026-04-21T00:00:00Z', '2026-04-21T00:00:00Z', ''),
+    ]);
+    render(makeState({ container }), root);
+
+    const items = Array.from(root.querySelectorAll<HTMLElement>(
+      '[data-pkc-action="select-recent-entry"] .pkc-recent-title',
+    ));
+    expect(items.map((el) => el.textContent)).toEqual(['(untitled)', 'Titled']);
+  });
+
+  it('pane is placed between sort controls and archive toggle in sidebar', () => {
+    const container = makeContainer([
+      mkEntry('t', 'todo', '2026-04-20T00:00:00Z', '2026-04-20T00:00:00Z', 'T'),
+    ]);
+    // Inject an archived todo so the archive toggle renders too.
+    container.entries.push({
+      lid: 'arch',
+      title: 'Archived',
+      body: JSON.stringify({ status: 'done', description: '', archived: true }),
+      archetype: 'todo',
+      created_at: '2026-04-19T00:00:00Z',
+      updated_at: '2026-04-19T00:00:00Z',
+    });
+    render(makeState({ container }), root);
+
+    const sidebar = root.querySelector('[data-pkc-region="sidebar"]')!;
+    const children = Array.from(sidebar.children);
+    const sortIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'sort-controls');
+    const paneIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'recent-entries');
+    const toggleIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'show-archived-toggle');
+
+    expect(sortIdx).toBeGreaterThanOrEqual(0);
+    expect(paneIdx).toBeGreaterThan(sortIdx);
+    expect(toggleIdx).toBeGreaterThan(paneIdx);
+  });
+
+  it('uses a dedicated action name distinct from select-entry', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]')!;
+    // No `select-entry` inside the pane (avoids sidebar keyboard-nav
+    // clashes per spec §4.2 / §6).
+    expect(pane.querySelector('[data-pkc-action="select-entry"]')).toBeNull();
+    expect(pane.querySelector('[data-pkc-action="select-recent-entry"]')).not.toBeNull();
   });
 });

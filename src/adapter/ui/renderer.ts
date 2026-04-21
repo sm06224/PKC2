@@ -21,6 +21,7 @@ import { applyFilters } from '../../features/search/filter';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { applyManualOrder } from '../../features/entry-order/entry-order';
+import { selectRecentEntries } from '../../features/entry-order/recent-entries';
 import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
@@ -1606,6 +1607,52 @@ function renderExportImportInline(state: AppState): HTMLElement {
   return group;
 }
 
+/**
+ * Recent Entries Pane v1 — spec: docs/development/recent-entries-pane-v1.md
+ *
+ * Derived-only pane listing up to 10 user entries sorted by
+ * `updated_at` desc (tie: `created_at` desc, then `lid` asc). Shown
+ * as a default-open `<details>` between sort controls and archive
+ * toggle. Non-describe when container has zero user entries.
+ */
+function renderRecentEntriesPane(
+  userEntries: readonly Entry[],
+  selectedLid: string | null,
+): HTMLElement | null {
+  if (userEntries.length === 0) return null;
+  const rows = selectRecentEntries(userEntries);
+  if (rows.length === 0) return null;
+
+  const pane = document.createElement('details');
+  pane.className = 'pkc-recent-pane';
+  pane.setAttribute('data-pkc-region', 'recent-entries');
+  pane.open = true;
+
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-recent-summary';
+  summary.textContent = `Recent (${rows.length})`;
+  pane.appendChild(summary);
+
+  const list = createElement('ul', 'pkc-recent-list');
+  for (const entry of rows) {
+    const li = createElement('li', 'pkc-recent-item');
+    li.setAttribute('data-pkc-action', 'select-recent-entry');
+    li.setAttribute('data-pkc-lid', entry.lid);
+    if (entry.lid === selectedLid) {
+      li.setAttribute('data-pkc-selected', 'true');
+    }
+    const icon = createElement('span', 'pkc-recent-icon');
+    icon.textContent = archetypeIcon(entry.archetype);
+    li.appendChild(icon);
+    const title = createElement('span', 'pkc-recent-title');
+    title.textContent = entry.title || '(untitled)';
+    li.appendChild(title);
+    list.appendChild(li);
+  }
+  pane.appendChild(list);
+  return pane;
+}
+
 function renderSidebar(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
@@ -1639,6 +1686,13 @@ function renderSidebar(state: AppState): HTMLElement {
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
+  }
+
+  // Recent Entries Pane v1 — derived-only list of the most recently
+  // updated user entries. See docs/development/recent-entries-pane-v1.md.
+  {
+    const recentPane = renderRecentEntriesPane(allEntries, state.selectedLid);
+    if (recentPane) sidebar.appendChild(recentPane);
   }
 
   // Show archived toggle (only when there are archived todos)
