@@ -96,6 +96,15 @@
 
 ## 8. 非スコープ (v2+ 候補)
 
+> **📌 As of 2026-04-21（historical overlay）**: 下記の当時 v2+ 候補のうち **5 件が LANDED** 済み。現在 active candidate ではなくなった項目は各行に status を上書き。
+>
+> - relation kind によるフィルタ UI — **DEFERRED**（relation-kind-edit UI は着地済、kind 別 *filter* は未実装）
+> - orphan 一括検出 — **ADDRESSED**（`orphan-detection-ui-v1.md` + `unified-orphan-detection-v3-contract.md` + `connectedness-s3-v1.md` / `s4-v1.md`。S5 filter 部分のみ Defer）
+> - relations + link-index 合流 Unified Backlinks — **ADDRESSED**（`unified-backlinks-v1.md` References umbrella として landed。ただし意味論的な合算は意図的に不採用）
+> - relation クリックでの hover preview — **DEFERRED**
+> - 選択 entry への backlink 件数 sidebar badge — **LANDED** (`sidebar-backlink-badge-v1.md` + `backlink-badge-jump-v1.md`)
+> - relation の削除 UI — **LANDED** (`relation-delete-ui-v1.md`)
+
 - relation kind によるフィルタ UI
 - orphan (backlink 0 件 + outgoing 0 件) 一括検出
 - relations + link-index を合流した Unified Backlinks

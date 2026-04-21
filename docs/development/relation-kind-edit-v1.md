@@ -188,6 +188,13 @@ if (action === 'update-relation-kind') {
 
 ## 10. 後続 PR 候補
 
+> **📌 As of 2026-04-21（historical overlay）**: 4 件中 **3 件 LANDED / 1 件 Defer**。
+>
+> 1. References summary row (v2) — **LANDED** (`references-summary-row-v2.md`、`references-summary-clickable-v3.md` で clickable 化まで着地)
+> 2. Non-Responsibility Boundary の acceptance 昇格 — **DEFERRED**（canonical = `pkc-message-hook-subscription-decision.md`、現決定は Defer）
+> 3. Unified orphan detection draft (v3+) — **LANDED** (`unified-orphan-detection-v3-contract.md` + `connectedness-s3-v1.md` + `connectedness-s4-v1.md`。S5 filter のみ Defer)
+> 4. provenance relation の metadata 閲覧 UI — **LANDED** (`provenance-metadata-viewer-v1.md` + `provenance-metadata-pretty-print-v1.md` + `provenance-metadata-copy-export-v1.md`)
+
 1. **References summary row (v2)**: `"Relations: N  |  Markdown refs: M  |  Broken: K"` を umbrella heading 下に
 2. **Non-Responsibility Boundary の acceptance 昇格**（PKC-Message Hook 系列 docs）
 3. **Unified orphan detection draft**（v3+）

@@ -99,6 +99,12 @@ v0 draft §6.3 / §7 の defer policy を継承:
 
 ## 8. 後続 PR 候補
 
+> **📌 As of 2026-04-21（historical overlay）**: 3 件とも **LANDED**。
+>
+> 1. Relation kind 編集 UI — **LANDED** (`relation-kind-edit-v1.md`)
+> 2. References summary row (v2) — **LANDED** (`references-summary-row-v2.md` + clickable 化は `references-summary-clickable-v3.md`)
+> 3. Unified orphan detection (v3+) — **LANDED** (`unified-orphan-detection-v3-contract.md` + `connectedness-s3-v1.md` + `connectedness-s4-v1.md`。S5 optional filter のみ Defer)
+
 v0 draft §6.5 の順序方針を踏襲:
 1. **Relation kind 編集 UI**: 既存 relation の kind を後から変更する UI。References umbrella 下の `pkc-relations` sub-panel の行レベルで実装想定
 2. **References summary row (v2)**: umbrella heading 直下に `"Relations: N  |  Markdown refs: M  |  Broken: K"` を追加

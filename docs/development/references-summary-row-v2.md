@@ -129,6 +129,13 @@ link-index の outgoing のうち `!resolved` のもの:
 
 ## 11. 後続 PR 候補
 
+> **📌 As of 2026-04-21（historical overlay）**: 4 件中 **3 件 LANDED / 1 件 Defer**。
+>
+> - Non-Responsibility Boundary の acceptance 昇格 — **DEFERRED**（canonical = `pkc-message-hook-subscription-decision.md`、現決定は Defer）
+> - provenance relation の metadata 閲覧 UI — **LANDED** (`provenance-metadata-viewer-v1.md` + `provenance-metadata-pretty-print-v1.md` + `provenance-metadata-copy-export-v1.md`)
+> - Unified orphan detection (v3+) — **LANDED** (`unified-orphan-detection-v3-contract.md` + `connectedness-s3-v1.md` + `connectedness-s4-v1.md`。S5 filter のみ Defer)
+> - References summary clickable (v3) — **LANDED** (`references-summary-clickable-v3.md`)
+
 - **Non-Responsibility Boundary の acceptance 昇格** — PKC-Message Hook 系列
 - **provenance relation の metadata 閲覧 UI** — provenance 行の badge は読み取り専用のまま、`conversion_kind` 等の表示
 - **Unified orphan detection draft (v3+)** — relations + markdown 合算 orphan 判定
