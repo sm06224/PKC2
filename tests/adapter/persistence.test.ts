@@ -94,6 +94,33 @@ describe('mountPersistence', () => {
     expect(saveSpy.mock.calls.length).toBe(countAfterInit);
   });
 
+  it('saves after ORPHAN_ASSETS_PURGED (manual cleanup persistence fix)', async () => {
+    // Regression guard for the manual orphan asset cleanup bug:
+    // without `ORPHAN_ASSETS_PURGED` in SAVE_TRIGGERS the pruned
+    // `container.assets` never reached IndexedDB and a reload
+    // restored the orphans. See `src/adapter/platform/persistence.ts`
+    // SAVE_TRIGGERS and the `PURGE_ORPHAN_ASSETS` reducer path.
+    const containerWithOrphan: Container = {
+      ...mockContainer,
+      assets: { 'orphan-key': 'base64data' },
+    };
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithOrphan });
+    await vi.advanceTimersByTimeAsync(100);
+    const countAfterInit = saveSpy.mock.calls.length;
+
+    dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(saveSpy.mock.calls.length).toBe(countAfterInit + 1);
+    const lastSavedContainer = saveSpy.mock.calls[saveSpy.mock.calls.length - 1]![0] as Container;
+    expect(Object.keys(lastSavedContainer.assets)).not.toContain('orphan-key');
+  });
+
   it('does not save on EDIT_CANCELLED (no persistent change)', async () => {
     const store = createMemoryStore();
     const saveSpy = vi.spyOn(store, 'save');
