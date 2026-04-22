@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { recordOfferHandler } from '@adapter/transport/record-offer-handler';
+import { recordOfferHandler, BODY_SIZE_CAP_BYTES } from '@adapter/transport/record-offer-handler';
 import type { HandlerContext } from '@adapter/transport/message-handler';
 import type { MessageEnvelope } from '@core/model/message';
 import type { Dispatcher } from '@adapter/state/dispatcher';
@@ -109,5 +109,90 @@ describe('recordOfferHandler', () => {
     const id1 = (ctx1.dispatcher.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]![0].offer.offer_id;
     const id2 = (ctx2.dispatcher.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]![0].offer.offer_id;
     expect(id1).not.toBe(id2);
+  });
+
+  // ── Capture profile v0 (docs/spec/record-offer-capture-profile.md) ──
+
+  it('accepts payload with 4 capture-specific optional fields', () => {
+    const ctx = makeCtx({
+      title: 'T', body: 'B',
+      source_url: 'https://example.com/a',
+      captured_at: '2026-04-21T12:00:00Z',
+      selection_text: 'snippet',
+      page_title: '<title>',
+    });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(true);
+    const action = (ctx.dispatcher.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(action.offer.source_url).toBe('https://example.com/a');
+    expect(action.offer.captured_at).toBe('2026-04-21T12:00:00Z');
+  });
+
+  it('accepts payload without optional capture fields (default null)', () => {
+    const ctx = makeCtx({ title: 'T', body: 'B' });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(true);
+    const action = (ctx.dispatcher.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(action.offer.source_url).toBeNull();
+    expect(action.offer.captured_at).toBeNull();
+  });
+
+  it('accepts body exactly at the size cap', () => {
+    const body = 'x'.repeat(BODY_SIZE_CAP_BYTES);
+    const ctx = makeCtx({ title: 'T', body });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(true);
+  });
+
+  it('rejects body one byte over the size cap', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = 'x'.repeat(BODY_SIZE_CAP_BYTES + 1);
+    const ctx = makeCtx({ title: 'T', body });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+    expect(ctx.dispatcher.dispatch).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('rejects payload when source_url is not a string', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = makeCtx({ title: 'T', body: 'B', source_url: 123 });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('rejects payload when captured_at is not a string', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = makeCtx({ title: 'T', body: 'B', captured_at: false });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('rejects payload when selection_text is not a string', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = makeCtx({ title: 'T', body: 'B', selection_text: ['a'] });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('rejects payload when page_title is not a string', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = makeCtx({ title: 'T', body: 'B', page_title: { x: 1 } });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('silently ignores unknown extra fields (spec §7.3)', () => {
+    const ctx = makeCtx({
+      title: 'T', body: 'B',
+      future_field_v1: 'some-value',
+      another_unknown: 42,
+    });
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(true);
   });
 });
