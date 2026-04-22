@@ -1904,10 +1904,17 @@ document.addEventListener('click', function(e) {
 
 /*
  * PR-ζ₁ (cluster D) — minimal child-window keyboard bridge. Scope is
- * deliberately narrow: only Ctrl+S / Cmd+S (save) and Escape (cancel
- * edit → view, or close the window in view mode). Every other
- * shortcut stays the main window's concern — the child deliberately
- * does NOT reproduce the main-shell handleKeydown catalog.
+ * deliberately narrow: Ctrl+S / Cmd+S (save), Escape (cancel edit →
+ * view, or close in view mode). Every other shortcut stays the main
+ * window's concern.
+ *
+ * PR-ζ₂ extends the bridge with the six date/time insertion
+ * shortcuts (Ctrl+; / Ctrl+: / Ctrl+Shift+; / Ctrl+D / Ctrl+Shift+D
+ * / Ctrl+Shift+Alt+D). Only fires during \`currentMode === 'edit'\`
+ * and when a text input (title or body textarea) is focused, so the
+ * view mode and non-input targets are unaffected. Formatters are
+ * inlined because this script runs in the child document and cannot
+ * import \`features/datetime/datetime-format\` at runtime.
  *
  * The save path reuses the same pkc-entry-save postMessage the save
  * button already triggers, so parent-side routing does not change.
@@ -1931,7 +1938,67 @@ document.addEventListener('keydown', function(e) {
     }
     return;
   }
+  /* PR-ζ₂: date/time shortcut parity. Only in edit mode, only when
+   * a text input / textarea is focused. Mirrors the main-shell
+   * catalog (see action-binder.ts getDateTimeShortcutText). */
+  if (mod && currentMode === 'edit') {
+    var txt = getDateTimeShortcutText(e);
+    if (txt !== null) {
+      e.preventDefault();
+      insertAtCursor(txt);
+      return;
+    }
+  }
 });
+/* Inline date/time helpers — duplicates features/datetime because the
+ * child runs as a standalone document with no module graph. Kept
+ * compact; each formatter's output matches the main-shell spec
+ * verbatim so copy/paste across windows stays byte-identical. */
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+function fmtDate(d) { return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()); }
+function fmtTime(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); }
+function fmtDateTime(d) { return fmtDate(d) + ' ' + fmtTime(d); }
+function fmtShortDate(d) {
+  var day = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d);
+  return pad2(d.getFullYear() % 100) + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + day;
+}
+function fmtShortDateTime(d) { return fmtShortDate(d) + ' ' + fmtTime(d); }
+function fmtISO8601(d) {
+  var offset = -d.getTimezoneOffset();
+  var sign = offset >= 0 ? '+' : '-';
+  var abs = Math.abs(offset);
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + fmtTime(d) + sign + pad2(Math.floor(abs / 60)) + ':' + pad2(abs % 60);
+}
+function getDateTimeShortcutText(e) {
+  var now = new Date();
+  if (e.key === ';' && !e.shiftKey && !e.altKey) return fmtDate(now);
+  if ((e.key === ':' || (e.key === ';' && e.shiftKey)) && !e.altKey) {
+    return e.shiftKey ? fmtDateTime(now) : fmtTime(now);
+  }
+  if (e.key === 'd' || e.key === 'D') {
+    if (e.shiftKey && e.altKey) return fmtISO8601(now);
+    if (e.shiftKey) return fmtShortDateTime(now);
+    if (!e.altKey) return fmtShortDate(now);
+  }
+  return null;
+}
+function insertAtCursor(text) {
+  var el = document.activeElement;
+  if (!el) return;
+  var isText = el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text');
+  if (!isText) return;
+  var start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  var end = el.selectionEnd != null ? el.selectionEnd : start;
+  el.focus();
+  try { el.setSelectionRange(start, end); } catch (_) {}
+  var inserted = false;
+  try { inserted = document.execCommand('insertText', false, text); } catch (_) {}
+  if (!inserted) {
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
 window.addEventListener('pagehide', revokeAllBlobUrls);
 window.addEventListener('unload', revokeAllBlobUrls);
 bootAttachmentPreview();
