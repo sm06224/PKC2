@@ -1795,14 +1795,17 @@ describe('sort', () => {
     expect(state.viewMode).toBe('detail');
   });
 
-  // ── SELECT_ENTRY auto-expand ancestors ───────────────
+  // ── SELECT_ENTRY auto-expand ancestors (opt-in via `revealInSidebar`) ───
   //
-  // When an entry is selected from outside the tree (Storage Profile
-  // jump, entry-ref click, calendar / kanban tap), its ancestor
+  // PR-ε₁ (cluster C'): When an entry is selected from outside the
+  // tree (Storage Profile jump, `entry:<lid>` body link), its ancestor
   // folders may still be collapsed — the selected entry would be
-  // invisible in the sidebar.  SELECT_ENTRY therefore removes any
-  // ancestor folder lids from `collapsedFolders` so the selection is
-  // always rendered.
+  // invisible in the sidebar.  Those callers pass
+  // `revealInSidebar: true` so SELECT_ENTRY removes any ancestor
+  // folder lids from `collapsedFolders`.  Without the flag (default
+  // = most callers, including sidebar click / backlink badge / recent
+  // pane / calendar / kanban) the reducer preserves the user's
+  // explicit collapse state.
 
   function containerWithFolderTree(): Container {
     // root(folder) → mid(folder) → leaf(text)
@@ -1845,7 +1848,7 @@ describe('sort', () => {
     };
   }
 
-  it('SELECT_ENTRY expands ancestor folders that were collapsed', () => {
+  it('SELECT_ENTRY with revealInSidebar: true expands ancestor folders', () => {
     const container = containerWithFolderTree();
     const before: AppState = {
       ...createInitialState(),
@@ -1853,13 +1856,15 @@ describe('sort', () => {
       container,
       collapsedFolders: ['root', 'mid'],
     };
-    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'leaf', revealInSidebar: true,
+    });
     expect(state.selectedLid).toBe('leaf');
     // Both ancestor folders are now expanded so `leaf` is visible.
     expect(state.collapsedFolders).toEqual([]);
   });
 
-  it('SELECT_ENTRY preserves unrelated collapsed folders', () => {
+  it('SELECT_ENTRY with revealInSidebar: true preserves unrelated collapsed folders', () => {
     // Two disjoint subtrees share `collapsedFolders`; selecting in
     // one must not reset the user's explicit collapse of the other.
     const container: Container = {
@@ -1879,8 +1884,42 @@ describe('sort', () => {
       container,
       collapsedFolders: ['root', 'mid', 'other'],
     };
-    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'leaf', revealInSidebar: true,
+    });
     expect(state.collapsedFolders).toEqual(['other']);
+  });
+
+  it('SELECT_ENTRY (default = no revealInSidebar) preserves collapsed ancestors — PR-ε₁ opt-in', () => {
+    // Default behavior after PR-ε₁: tree-internal selections, backlink
+    // badge clicks, recent pane, calendar, kanban, etc. must leave
+    // the user's explicit folds alone.
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    expect(state.selectedLid).toBe('leaf');
+    // Reference-equal: nothing in collapsedFolders was touched.
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
+  });
+
+  it('SELECT_ENTRY with revealInSidebar: false preserves collapsed ancestors', () => {
+    // Explicit `false` is the same as omitting the flag.
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'leaf', revealInSidebar: false,
+    });
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
   });
 
   it('SELECT_ENTRY is a no-op on collapsedFolders when no ancestor was collapsed', () => {
@@ -1891,7 +1930,9 @@ describe('sort', () => {
       container,
       collapsedFolders: ['unrelated'],
     };
-    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'leaf', revealInSidebar: true,
+    });
     // Reference-equal when nothing matched — downstream listeners
     // can use `===` to skip work.
     expect(state.collapsedFolders).toBe(before.collapsedFolders);
@@ -1904,7 +1945,9 @@ describe('sort', () => {
       container: null,
       collapsedFolders: ['root'],
     };
-    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'leaf' });
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'leaf', revealInSidebar: true,
+    });
     // container is null so the walk is skipped entirely.
     expect(state.collapsedFolders).toBe(before.collapsedFolders);
     expect(state.selectedLid).toBe('leaf');
@@ -1919,8 +1962,40 @@ describe('sort', () => {
       collapsedFolders: ['root', 'mid'],
     };
     // `root` itself has no parent so no ancestor expansion happens.
-    const { state } = reduce(before, { type: 'SELECT_ENTRY', lid: 'root' });
+    const { state } = reduce(before, {
+      type: 'SELECT_ENTRY', lid: 'root', revealInSidebar: true,
+    });
     expect(state.collapsedFolders).toBe(before.collapsedFolders);
+  });
+
+  // Parity with SELECT_ENTRY: NAVIGATE_TO_LOCATION uses the same opt-in flag.
+  it('NAVIGATE_TO_LOCATION (default) preserves collapsed ancestors — PR-ε₁', () => {
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    const { state } = reduce(before, {
+      type: 'NAVIGATE_TO_LOCATION', lid: 'leaf', subId: 'h-1', ticket: 1,
+    });
+    expect(state.selectedLid).toBe('leaf');
+    expect(state.collapsedFolders).toBe(before.collapsedFolders);
+  });
+
+  it('NAVIGATE_TO_LOCATION with revealInSidebar: true expands ancestor folders', () => {
+    const container = containerWithFolderTree();
+    const before: AppState = {
+      ...createInitialState(),
+      phase: 'ready',
+      container,
+      collapsedFolders: ['root', 'mid'],
+    };
+    const { state } = reduce(before, {
+      type: 'NAVIGATE_TO_LOCATION', lid: 'leaf', subId: 'h-1', ticket: 1, revealInSidebar: true,
+    });
+    expect(state.collapsedFolders).toEqual([]);
   });
 
   // ── Multi-select ──────────────────────────

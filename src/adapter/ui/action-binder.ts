@@ -1546,7 +1546,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!st.container) break;
         const exists = st.container.entries.some((entry) => entry.lid === lid);
         if (!exists) break;
-        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        // PR-ε₁: external jump from the Storage Profile overlay. The
+        // target entry may sit under a collapsed folder, so opt into
+        // the ancestor auto-expand to surface it in the sidebar tree.
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
         dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
         break;
       }
@@ -1693,7 +1696,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // (re)created since the last click on this anchor.
         target.removeAttribute('data-pkc-ref-broken');
         if (st.selectedLid !== parsed.lid) {
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid });
+          // PR-ε₁: body `entry:<lid>` link → external jump, target
+          // may live under a collapsed folder. Opt into reveal so
+          // the sidebar tree surfaces the destination.
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid, revealInSidebar: true });
         }
         // The dispatch triggered a synchronous re-render, but some
         // layouts (virtualized lists, deferred TEXTLOG builds) settle
