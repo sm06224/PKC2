@@ -211,6 +211,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Slice 4: `Alt+Click` on a TEXTLOG log row body is the modifier
+    // gesture that replaces the old dblclick-to-edit. Native dblclick
+    // is left to the browser so word / block selection works again.
+    // We intentionally ignore clicks inside the log header buttons
+    // (flag, anchor, edit) and asset chip anchors — their own
+    // handlers already cover those targets.
+    const mouseEvt = e instanceof MouseEvent ? e : null;
+    if (mouseEvt && mouseEvt.altKey && rawTarget) {
+      const logRow = rawTarget.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid]');
+      if (
+        logRow
+        && !rawTarget.closest('.pkc-textlog-flag-btn')
+        && !rawTarget.closest('.pkc-textlog-anchor-btn')
+        && !rawTarget.closest('.pkc-textlog-edit-btn')
+        && !rawTarget.closest('a[href^="#asset-"]')
+      ) {
+        const tlLid = logRow.getAttribute('data-pkc-lid');
+        if (tlLid) {
+          e.preventDefault();
+          beginLogEdit(tlLid);
+          return;
+        }
+      }
+    }
+
     // Non-image asset chip: markdown `[label](asset:key)` is rewritten
     // to a `<a href="#asset-KEY">` link by the asset resolver. Intercept
     // the click here and trigger a download of the underlying asset
@@ -1139,6 +1164,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!ent || ent.archetype !== 'textlog') break;
         const ref = formatLogLineReference(ent, logId);
         if (ref) void copyPlainText(ref);
+        break;
+      }
+      case 'edit-log': {
+        // Slice 4 (TEXTLOG dblclick revision): explicit hover ✏︎
+        // affordance. Shares the same readonly / selection-mode /
+        // phase guard as the Alt+Click modifier gesture; both funnel
+        // through `beginLogEdit`.
+        if (!lid) break;
+        // Stop propagation so the surrounding article does not also
+        // pick this click up as an Alt-less log-row click.
+        e.stopPropagation();
+        beginLogEdit(lid);
         break;
       }
       case 'open-rendered-viewer': {
@@ -4121,50 +4158,37 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     );
   }
 
+  /**
+   * Shared TEXTLOG log-row edit trigger (Slice 4, cluster — revise
+   * TEXTLOG dblclick-to-edit). Used by both the explicit ✏︎ button
+   * (`edit-log` action) and the `Alt+Click` modifier gesture on the
+   * log article. Raw dblclick is deliberately NOT a trigger anymore:
+   * it now falls through to the browser's native word / block
+   * selection on the log body.
+   */
+  function beginLogEdit(tlLid: string): void {
+    if (isTextlogSelectionModeActive(tlLid)) return;
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+    const ent = state.container?.entries.find((en) => en.lid === tlLid);
+    if (!ent || ent.archetype !== 'textlog') return;
+    if (state.selectedLid !== tlLid) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: tlLid });
+    }
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: tlLid });
+  }
+
   // ── dblclick fallback (secondary path) ──
   // Primary double-click detection is in handleClick via MouseEvent.detail >= 2.
   // This fallback catches cases where the dblclick event reaches root
   // (e.g., when the entry was already selected and re-render didn't replace DOM).
+  //
+  // Slice 4 (TEXTLOG dblclick revision): the log-row branch that used
+  // to enter edit mode on plain dblclick has been removed so the
+  // browser's native word / block selection is restored. Explicit
+  // edit entry points are the per-row ✏︎ button (`edit-log` action)
+  // and `Alt+Click` on the row body.
   function handleDblClick(e: MouseEvent): void {
-    // TEXTLOG row dblclick (center pane): enter in-place edit mode.
-    // The existing Edit button stays untouched so both paths coexist;
-    // double-click is the fast path for users who already live inside
-    // a log. We intentionally ignore clicks on the flag button, the
-    // copy-anchor button, the timestamp tooltip holder, asset chip
-    // anchors, and the append textarea so the existing single-click
-    // handlers on those targets are not hijacked. The append area
-    // sits outside `.pkc-textlog-log` so it is already out of scope —
-    // the exclusions inside the article are the only ones we need to
-    // filter.
-    const rawTarget = e.target as HTMLElement | null;
-    const textlogRow = rawTarget?.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid]');
-    if (textlogRow) {
-      if (rawTarget?.closest('.pkc-textlog-flag-btn')) return;
-      if (rawTarget?.closest('.pkc-textlog-anchor-btn')) return;
-      if (rawTarget?.closest('a[href^="#asset-"]')) return;
-      const tlLid = textlogRow.getAttribute('data-pkc-lid');
-      if (!tlLid) return;
-      // Slice 4: do NOT open the log editor when the user is in
-      // selection mode. Double-clicks inside a log article in that
-      // mode are expected to either toggle selection (via the
-      // checkbox) or do nothing — definitely not to transition into
-      // editing, which would silently drop the in-flight selection.
-      if (isTextlogSelectionModeActive(tlLid)) {
-        e.preventDefault();
-        return;
-      }
-      const state = dispatcher.getState();
-      if (state.phase !== 'ready' || state.readonly) return;
-      const ent = state.container?.entries.find((en) => en.lid === tlLid);
-      if (!ent || ent.archetype !== 'textlog') return;
-      e.preventDefault();
-      if (state.selectedLid !== tlLid) {
-        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: tlLid });
-      }
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: tlLid });
-      return;
-    }
-
     const entryItem = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
     if (!entryItem) return;
     const lid = entryItem.getAttribute('data-pkc-lid');

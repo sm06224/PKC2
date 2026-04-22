@@ -4957,6 +4957,32 @@ mark.pkc-search-mark {
   opacity: 1;
 }
 
+/* Slice 4 (TEXTLOG dblclick revision): explicit edit affordance.
+ * Hidden by default, fades in on log-row hover or keyboard focus so
+ * the row is still available for native word / block selection when
+ * the user simply wants to read or copy text. The old
+ * dblclick-to-edit shortcut has been removed in favor of this
+ * button plus `Alt+Click` on the row body. */
+.pkc-textlog-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 0.15rem;
+  line-height: 1;
+  color: var(--c-muted);
+  opacity: 0;
+  transition: opacity 0.12s linear;
+}
+.pkc-textlog-log:hover .pkc-textlog-edit-btn,
+.pkc-textlog-edit-btn:focus-visible,
+.pkc-textlog-edit-btn:hover {
+  opacity: 1;
+}
+.pkc-textlog-edit-btn:hover {
+  color: var(--c-fg);
+}
+
 .pkc-textlog-timestamp {
   color: var(--c-muted);
   font-size: 0.75rem;
