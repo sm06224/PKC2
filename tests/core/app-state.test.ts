@@ -2644,18 +2644,23 @@ describe('sort', () => {
   });
 
   // ── PR-γ: Recent pane collapse state ──
+  //
+  // S3 (2026-04-22): default flipped to `true` (pane starts closed).
+  // PR-γ's runtime state / toggle / renderer wiring is unchanged;
+  // only the initial value moves so a fresh session does not show
+  // the pane expanded on top of the tree.
 
-  it('createInitialState has recentPaneCollapsed === false', () => {
-    expect(createInitialState().recentPaneCollapsed).toBe(false);
+  it('createInitialState has recentPaneCollapsed === true (S3: default closed)', () => {
+    expect(createInitialState().recentPaneCollapsed).toBe(true);
   });
 
   it('TOGGLE_RECENT_PANE flips recentPaneCollapsed', () => {
     const s0 = readyState();
-    expect(s0.recentPaneCollapsed).toBe(false);
+    expect(s0.recentPaneCollapsed).toBe(true);
     const { state: s1 } = reduce(s0, { type: 'TOGGLE_RECENT_PANE' });
-    expect(s1.recentPaneCollapsed).toBe(true);
+    expect(s1.recentPaneCollapsed).toBe(false);
     const { state: s2 } = reduce(s1, { type: 'TOGGLE_RECENT_PANE' });
-    expect(s2.recentPaneCollapsed).toBe(false);
+    expect(s2.recentPaneCollapsed).toBe(true);
   });
 
   it('TOGGLE_RECENT_PANE does not change container, selection, or other collapse state', () => {

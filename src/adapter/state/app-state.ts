@@ -211,9 +211,12 @@ export interface AppState {
   collapsedFolders: string[];
   /**
    * Sidebar Recent Entries pane collapse state. Runtime-only, not
-   * persisted. `false` (default) keeps the existing open-on-mount
-   * behavior. Optional on the TS surface so legacy test fixtures
-   * that spell out AppState by hand remain valid without updates.
+   * persisted. Initial value is `true` (S3 — default closed): a
+   * fresh session starts with the pane collapsed so the sidebar tree
+   * is unobstructed on first mount. Once the user toggles the pane,
+   * state persists across re-renders via the PR-γ wiring. Optional
+   * on the TS surface so legacy test fixtures that spell out
+   * AppState by hand remain valid without updates.
    */
   recentPaneCollapsed?: boolean;
   /**
@@ -409,7 +412,7 @@ export function createInitialState(): AppState {
     calendarMonth: new Date().getMonth() + 1,
     multiSelectedLids: [],
     collapsedFolders: [],
-    recentPaneCollapsed: false,
+    recentPaneCollapsed: true,
     storageProfileOpen: false,
     shortcutHelpOpen: false,
     todoAddPopover: null,
