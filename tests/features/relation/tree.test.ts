@@ -94,6 +94,109 @@ describe('buildTree', () => {
     expect(tree).toHaveLength(1);
     expect(tree[0]!.children).toEqual([]); // missing child ignored
   });
+
+  // ── F-cycle hotfix: structural cycles must not hide entries ──
+  // The previous implementation picked roots solely by
+  // `hasParent`. A structural cycle leaves every member with a
+  // parent, so no root was emitted and the entire component
+  // vanished from the sidebar. These cases cover the rescue path.
+
+  it('self-loop A→A: A is still emitted as a fallback root', () => {
+    const entries = [makeEntry('a', 'A', 'folder')];
+    const relations = [makeRelation('r1', 'a', 'a')];
+    const tree = buildTree(entries, relations);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.entry.lid).toBe('a');
+    // A self-loop must not expand into a runaway child chain.
+    expect(tree[0]!.children).toEqual([]);
+  });
+
+  it('2-cycle A↔B: both entries are represented in the result (fallback root)', () => {
+    const entries = [makeEntry('a', 'A', 'folder'), makeEntry('b', 'B', 'folder')];
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'a'),
+    ];
+    const tree = buildTree(entries, relations);
+    // Previously the result was `[]`; the sidebar went empty.
+    expect(tree.length).toBeGreaterThan(0);
+    const flat = new Set<string>();
+    function collect(node: { entry: { lid: string }; children: unknown[] }): void {
+      flat.add(node.entry.lid);
+      for (const c of node.children) collect(c as { entry: { lid: string }; children: unknown[] });
+    }
+    for (const n of tree) collect(n);
+    expect(flat.has('a')).toBe(true);
+    expect(flat.has('b')).toBe(true);
+  });
+
+  it('3-cycle A→B→C→A: terminates and every member is represented', () => {
+    const entries = [
+      makeEntry('a', 'A', 'folder'),
+      makeEntry('b', 'B', 'folder'),
+      makeEntry('c', 'C', 'folder'),
+    ];
+    const relations = [
+      makeRelation('r1', 'a', 'b'),
+      makeRelation('r2', 'b', 'c'),
+      makeRelation('r3', 'c', 'a'),
+    ];
+    const tree = buildTree(entries, relations);
+    expect(tree.length).toBeGreaterThan(0);
+    const flat = new Set<string>();
+    function collect(node: { entry: { lid: string }; children: unknown[] }): void {
+      flat.add(node.entry.lid);
+      for (const c of node.children) collect(c as { entry: { lid: string }; children: unknown[] });
+    }
+    for (const n of tree) collect(n);
+    expect(flat.has('a')).toBe(true);
+    expect(flat.has('b')).toBe(true);
+    expect(flat.has('c')).toBe(true);
+  });
+
+  it('mixed graph (healthy DAG + isolated cycle): both branches survive', () => {
+    const entries = [
+      makeEntry('root', 'Root', 'folder'),
+      makeEntry('leaf', 'Leaf'),
+      makeEntry('c', 'C', 'folder'),
+      makeEntry('d', 'D', 'folder'),
+    ];
+    const relations = [
+      // Healthy branch
+      makeRelation('r1', 'root', 'leaf'),
+      // Isolated cycle between c and d
+      makeRelation('r2', 'c', 'd'),
+      makeRelation('r3', 'd', 'c'),
+    ];
+    const tree = buildTree(entries, relations);
+    // Healthy root comes first and keeps its child.
+    expect(tree[0]!.entry.lid).toBe('root');
+    expect(tree[0]!.children[0]!.entry.lid).toBe('leaf');
+    // The cycle component is rescued into the tail of the root
+    // list so both c and d remain visible.
+    const fallbackLids = tree.slice(1).map((n) => n.entry.lid);
+    expect(fallbackLids).toContain('c');
+    const flat = new Set<string>();
+    function collect(node: { entry: { lid: string }; children: unknown[] }): void {
+      flat.add(node.entry.lid);
+      for (const c of node.children) collect(c as { entry: { lid: string }; children: unknown[] });
+    }
+    for (const n of tree) collect(n);
+    expect(flat.has('c')).toBe(true);
+    expect(flat.has('d')).toBe(true);
+  });
+
+  it('dangling parent ref (missing→a): a is rescued as a fallback root', () => {
+    // Regression: the naive root test only checks `hasParent`; a
+    // relation whose `from` points to a non-existent entry still
+    // marks the child as "has a parent", hiding it from the tree.
+    const entries = [makeEntry('a', 'A')];
+    const relations = [makeRelation('r1', 'missing', 'a')];
+    const tree = buildTree(entries, relations);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.entry.lid).toBe('a');
+    expect(tree[0]!.children).toEqual([]);
+  });
 });
 
 describe('getStructuralParent', () => {
