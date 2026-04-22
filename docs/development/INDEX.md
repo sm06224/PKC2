@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-21.
+Last updated: 2026-04-22（UI continuity wave closure を反映）.
 
 ## Status Legend
 
@@ -168,6 +168,20 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 114 | `pkc-message-hook-subscription-poc.md` | Hook subscription — PoC design | 2026-04-20 | docs-only、PoC 設計。Defer 期間中は凍結保存 |
 | 115 | `pkc-message-hook-subscription-acceptance.md` | Hook subscription — acceptance contract | 2026-04-20 | docs-only、acceptance 仕様。Defer 下で据え置き |
 | 116 | `pkc-message-hook-subscription-decision.md` | Hook subscription — Go/No-Go decision（**canonical entry point**） | 2026-04-20 | **結論: Defer**。実装前に simpler proof path（polling 等）を通す方針。以後、hook subscription の canonical reference はこの doc |
+
+### COMPLETED — UI continuity wave（2026-04-22）
+
+ユーザ報告 7 件を起点にした docs-first investigation × 最小 PR × 複数本 の連鎖。`HANDOVER_FINAL.md §23` で closure record。
+
+| # | File / PR | Topic | Completed | Summary |
+|---|---|---|---|---|
+| 117 | PR #99 | Cluster B: scroll-preservation helper | 2026-04-22 | `preserveCenterPaneScroll(mutate)` を `bindActions` local に 1 本追加、`toggle-todo-status` / `toggle-sandbox-attr` / `toggle-log-flag` を統合。TEXTLOG checkbox / HTML 許可 checkbox の上戻りを解消 |
+| 118 | PR #100 | Cluster C: recent pane collapse state | 2026-04-22 | `AppState.recentPaneCollapsed?: boolean` + `TOGGLE_RECENT_PANE` action + renderer state 駆動化。Recent pane を畳んでも次 render で復活する現象を解消 |
+| 119 | PR #101 | Cluster A: state-driven storage profile overlay | 2026-04-22 | `AppState.storageProfileOpen?: boolean` + `OPEN/CLOSE_STORAGE_PROFILE` actions + renderer 所有化。`root.innerHTML = ''` による即消滅を解消。メニュー全体の event wiring 主因も同 PR で除去 |
+| 120 | PR #102 | Cluster E (low-risk optimization): shared `LinkIndex` per render | 2026-04-22 | `buildConnectednessSets(container, linkIndex?)` に optional 引数追加、renderShell で 1 回計算して sidebar / meta で共有。compute 半減、bundle +0.05 kB |
+| 121 | PR #103 | Cluster C' first wave: opt-in reveal policy | 2026-04-22 | `SELECT_ENTRY` / `NAVIGATE_TO_LOCATION` に `revealInSidebar?: boolean` を additive 追加、reducer を opt-in gate、reveal 必須 2 経路（storage-profile / entry-ref）のみ明示 opt-in |
+| 122 | PR #104 | Cluster C' follow-up: reveal policy lockdown | 2026-04-22 | 残り 6 経路（recent pane / calendar kb nav / kanban kb nav / calendar drop / kanban drop / relative folder nav）の reveal 不要を決定理由コメント + 回帰テストで固定。実コード不変、bundle size 変化なし |
+| 123 | PR #105 | Cluster D first slice: child window shortcut bridge | 2026-04-22 | child window inline script に keydown listener を追加、Ctrl+S → 既存 `pkc-entry-save` path、Escape → `cancelEdit()` / `window.close()`。parent 側は完全に不変 |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
