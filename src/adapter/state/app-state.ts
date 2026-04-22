@@ -45,7 +45,7 @@ import {
 } from '../../core/model/system-settings-payload';
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
-import { getAncestorFolderLids } from '../../features/relation/tree';
+import { getAncestorFolderLids, isDescendant } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
 import { applyFilters } from '../../features/search/filter';
 import { filterByTag } from '../../features/relation/tag-filter';
@@ -985,6 +985,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CREATE_RELATION': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
+      // P2: structural cycle guard — reducer-side entry defense.
+      // Pairs with the features-side rescue in `buildTree()` (P1).
+      // Self-loops and any new edge that closes a structural cycle
+      // (`to` can already reach `from` in the existing structural
+      // graph) are rejected. Non-structural relations are free of
+      // this constraint and fall through unchanged.
+      if (action.kind === 'structural') {
+        if (action.from === action.to) return blocked(state, action);
+        if (isDescendant(state.container.relations, action.to, action.from)) {
+          return blocked(state, action);
+        }
+      }
       const id = generateLid();
       const ts = now();
       const container = addRelation(
@@ -1022,6 +1034,21 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         return blocked(state, action);
       }
       if (existing.kind === action.kind) return { state, events: [] };
+      // P2: structural cycle guard — if the update promotes a
+      // non-structural relation into `structural`, the resulting
+      // graph must stay acyclic. The existing relation is
+      // non-structural (we just checked kind inequality above and
+      // `structural → structural` would have returned as no-op), so
+      // it is invisible to the structural walk and the current
+      // relations can be consulted as-is. Demotions structural →
+      // non-structural only remove edges, so they never introduce a
+      // cycle and skip this check.
+      if (action.kind === 'structural') {
+        if (existing.from === existing.to) return blocked(state, action);
+        if (isDescendant(state.container.relations, existing.to, existing.from)) {
+          return blocked(state, action);
+        }
+      }
       const container = updateRelationKind(state.container, action.id, action.kind, now());
       const next: AppState = { ...state, container };
       return {
