@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildConnectednessSets } from '@features/connectedness';
+import { buildLinkIndex } from '@features/link-index/link-index';
 import type { Container } from '@core/model/container';
 import type { Entry, ArchetypeId } from '@core/model/record';
 import type { Relation, RelationKind } from '@core/model/relation';
@@ -209,5 +210,27 @@ describe('buildConnectednessSets — additional contract invariants', () => {
     const sets = buildConnectednessSets(mkContainer(entries));
     expect(sets.markdownConnected.has('a')).toBe(true);
     expect(sets.markdownConnected.has('exists')).toBe(true);
+  });
+
+  // PR-δ: shared-LinkIndex overload — contract §5.4 / §5.7. Accepting a
+  // pre-computed LinkIndex lets the renderer share one pass per render
+  // between the sidebar connectedness marker and the References summary
+  // row. The result must be identical to the default (compute-inline)
+  // path.
+  it('accepts a pre-computed LinkIndex and yields identical sets', () => {
+    const entries = [
+      mkEntry('writer', 'text', 'pointer entry:target here'),
+      mkEntry('target', 'text'),
+      mkEntry('lonely', 'text'),
+    ];
+    const container = mkContainer(entries);
+    const baseline = buildConnectednessSets(container);
+    const shared = buildConnectednessSets(container, buildLinkIndex(container));
+    expect(Array.from(shared.relationsConnected).sort())
+      .toEqual(Array.from(baseline.relationsConnected).sort());
+    expect(Array.from(shared.markdownConnected).sort())
+      .toEqual(Array.from(baseline.markdownConnected).sort());
+    expect(Array.from(shared.fullyUnconnected).sort())
+      .toEqual(Array.from(baseline.fullyUnconnected).sort());
   });
 });

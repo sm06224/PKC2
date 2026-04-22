@@ -25,7 +25,7 @@
 import type { Container } from '../../core/model/container';
 import type { ArchetypeId } from '../../core/model/record';
 import { isUserEntry } from '../../core/model/record';
-import { buildLinkIndex } from '../link-index/link-index';
+import { buildLinkIndex, type LinkIndex } from '../link-index/link-index';
 
 export interface ConnectednessSets {
   readonly relationsConnected: ReadonlySet<string>;
@@ -45,7 +45,10 @@ const MARKDOWN_EVALUATED: ReadonlySet<ArchetypeId> = new Set<ArchetypeId>([
   'todo',
 ]);
 
-export function buildConnectednessSets(container: Container): ConnectednessSets {
+export function buildConnectednessSets(
+  container: Container,
+  linkIndex?: LinkIndex,
+): ConnectednessSets {
   // Contract §3.9: evaluation scope = user entries only. System entries
   // (system-about / system-settings / any future system-*) are excluded
   // from all three output sets.
@@ -69,11 +72,17 @@ export function buildConnectednessSets(container: Container): ConnectednessSets 
   // `ref.resolved` filter) and §3.5 (archetype gate). Non-markdown-
   // evaluated archetypes are never added — their fullyUnconnected
   // reduces to ¬relationsConnected, matching the contract.
-  const linkIndex = buildLinkIndex(container);
+  //
+  // Contract §5.4 / §5.7: callers that already hold a `LinkIndex`
+  // (typically the renderer, which also feeds the References summary
+  // row) may pass it in to avoid a second per-render `buildLinkIndex`
+  // pass over the container. When absent we fall back to the v1
+  // behavior and build one inline.
+  const effectiveLinkIndex = linkIndex ?? buildLinkIndex(container);
   const markdownConnected = new Set<string>();
   for (const e of userEntries) {
     if (!MARKDOWN_EVALUATED.has(e.archetype)) continue;
-    const outgoing = linkIndex.outgoingBySource.get(e.lid) ?? [];
+    const outgoing = effectiveLinkIndex.outgoingBySource.get(e.lid) ?? [];
     let hasResolvedOutgoing = false;
     for (const ref of outgoing) {
       if (ref.resolved) {
@@ -81,7 +90,7 @@ export function buildConnectednessSets(container: Container): ConnectednessSets 
         break;
       }
     }
-    const backlinks = linkIndex.backlinksByTarget.get(e.lid) ?? [];
+    const backlinks = effectiveLinkIndex.backlinksByTarget.get(e.lid) ?? [];
     if (hasResolvedOutgoing || backlinks.length > 0) {
       markdownConnected.add(e.lid);
     }

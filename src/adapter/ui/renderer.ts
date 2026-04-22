@@ -422,8 +422,14 @@ function renderShell(state: AppState): HTMLElement {
   leftTray.setAttribute('data-pkc-region', 'tray-left');
   main.appendChild(leftTray);
 
+  // PR-δ (spec §5.7): compute LinkIndex once per render pass so
+  // `buildConnectednessSets` (sidebar) and the References sub-panels
+  // (meta pane) share the same result instead of each invoking a
+  // second `buildLinkIndex(container)` over the same container.
+  const linkIndex = state.container ? buildLinkIndex(state.container) : null;
+
   // Left pane: entry list / tree / search / filters
-  const sidebar = renderSidebar(state);
+  const sidebar = renderSidebar(state, linkIndex);
   if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(sidebar);
 
@@ -449,7 +455,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex);
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -1724,7 +1730,7 @@ function renderRecentEntriesPane(
   return pane;
 }
 
-function renderSidebar(state: AppState): HTMLElement {
+function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
@@ -1887,7 +1893,7 @@ function renderSidebar(state: AppState): HTMLElement {
   // `data-pkc-connectedness` attribute and `.pkc-unconnected-marker`. See
   // docs/development/unified-orphan-detection-v3-contract.md §2.3 / §4.4.
   const connectednessSets: ConnectednessSets | null = state.container
-    ? buildConnectednessSets(state.container)
+    ? buildConnectednessSets(state.container, sharedLinkIndex ?? undefined)
     : null;
 
   if (hasActiveFilter || !state.container) {
@@ -3063,7 +3069,12 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
 }
 
 /** Right pane: meta information — tags, relations, history, move-to-folder. */
-function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | null): HTMLElement {
+function renderMetaPane(
+  entry: Entry,
+  canEdit: boolean,
+  container: Container | null,
+  sharedLinkIndex: LinkIndex | null = null,
+): HTMLElement {
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
 
@@ -3347,7 +3358,11 @@ function renderMetaPane(entry: Entry, canEdit: boolean, container: Container | n
   relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
   relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
 
-  const linkIndex = buildLinkIndex(container);
+  // PR-δ: reuse LinkIndex computed at `renderShell` level (spec §5.7)
+  // so the sidebar connectedness pass and the References sub-panels
+  // share the same per-render result. Fallback keeps this function
+  // callable in isolation (tests / future call sites).
+  const linkIndex = sharedLinkIndex ?? buildLinkIndex(container);
 
   const referencesSection = createElement('section', 'pkc-references');
   referencesSection.setAttribute('data-pkc-region', 'references');
