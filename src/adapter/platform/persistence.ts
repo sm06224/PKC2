@@ -48,6 +48,14 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'RELATION_KIND_UPDATED',
   'CONTAINER_LOADED',
   'CONTAINER_IMPORTED',
+  // Manual `PURGE_ORPHAN_ASSETS` mutates `container.assets` and emits
+  // `ORPHAN_ASSETS_PURGED` as the only corresponding event (no
+  // `ENTRY_*` fires because no entry is touched). Without this
+  // trigger the cleanup stays memory-only and a reload restores the
+  // orphans. Auto-GC paths (SYS_IMPORT_COMPLETE / CONFIRM_IMPORT /
+  // CONFIRM_MERGE_IMPORT) already emit `ENTRY_*` or `CONTAINER_*`
+  // events from their parent actions, so they persist independently.
+  'ORPHAN_ASSETS_PURGED',
   // FI-Settings v1 (2026-04-18): `SETTINGS_CHANGED` fires whenever any
   // theme/display/locale setting is mutated. The reducer has already
   // upserted `__settings__` into the container by the time we see the
