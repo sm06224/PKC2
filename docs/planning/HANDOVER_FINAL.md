@@ -1470,6 +1470,8 @@ investigation-only PR として残す:
 2. **P5 Extension Capture receiver 実装**（§22.2 の本命、本 wave と独立 track）
 3. **Artifact-size low-risk pass 2**（`RecordAcceptPayload` docs-first 削除 + `buildInboundCountMap` shared 化などの小 win を束ねる）
 
+**次 UX wave の design contract**: `../development/todo-editor-in-continuous-edit-wave.md` — Todo add / Editor-in / TEXTLOG dblclick revision / child window continuous edit を 5 slice に分解した docs-only 契約（2026-04-22 策定）。本 wave と並行で実装 slice に入れる。
+
 ### 23.7 関連文書（本節の pointer）
 
 - `USER_REQUEST_LEDGER.md §1.2` — S-52〜S-58 retrospective（本 wave の 1 行サマリ一覧）
