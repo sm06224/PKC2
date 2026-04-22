@@ -712,15 +712,19 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
 function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
   switch (action.type) {
     case 'SELECT_ENTRY': {
-      // Auto-expand ancestor folders so the newly selected entry is
-      // actually visible in the tree. This closes the "selected but
-      // hidden under a collapsed folder" gap for Storage Profile /
-      // entry-ref / calendar / kanban jumps. Pure read against the
-      // container — no mutation, no new action type, and no-op when
-      // no ancestors are collapsed (state.collapsedFolders reference
-      // is preserved for downstream `===` checks).
+      // PR-ε₁ (cluster C'): ancestor auto-expand is opt-in via
+      // `action.revealInSidebar === true`. Default = preserve the
+      // user's folded state. External jumps (Storage Profile row,
+      // `entry:<lid>` body link) pass the flag so the target shows
+      // up in the tree; tree-internal clicks and other already-visible
+      // surfaces leave the flag off so a fold stays folded.
+      //
+      // Pure read against the container — no mutation, no new action
+      // type, and no-op when no ancestors are collapsed
+      // (`state.collapsedFolders` reference is preserved for
+      // downstream `===` checks).
       let collapsedFolders = state.collapsedFolders;
-      if (state.container && state.collapsedFolders.length > 0) {
+      if (action.revealInSidebar === true && state.container && state.collapsedFolders.length > 0) {
         const ancestorFolders = getAncestorFolderLids(
           state.container.relations,
           state.container.entries,
@@ -758,14 +762,20 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'NAVIGATE_TO_LOCATION': {
       // S-18 (A-4 FULL): same selection semantics as SELECT_ENTRY
-      // (auto-expand ancestors, clear per-entry transient UI when
-      // the selection target changes), PLUS record a post-render
-      // hint so main.ts can scroll to the sub-location and flash
-      // the highlight. `ticket` is caller-supplied and monotonic.
+      // (clear per-entry transient UI when the selection target
+      // changes), PLUS record a post-render hint so main.ts can
+      // scroll to the sub-location and flash the highlight. `ticket`
+      // is caller-supplied and monotonic.
+      //
+      // PR-ε₁: ancestor auto-expand is opt-in via
+      // `action.revealInSidebar === true`, matching SELECT_ENTRY.
+      // The sole current dispatch site (sidebar sub-location row
+      // click) clicks on an already-visible row, so the flag is
+      // absent and we preserve `collapsedFolders` as-is.
       if (state.phase !== 'ready') return blocked(state, action);
       if (!state.container) return blocked(state, action);
       let collapsedFolders = state.collapsedFolders;
-      if (state.collapsedFolders.length > 0) {
+      if (action.revealInSidebar === true && state.collapsedFolders.length > 0) {
         const ancestorFolders = getAncestorFolderLids(
           state.container.relations,
           state.container.entries,

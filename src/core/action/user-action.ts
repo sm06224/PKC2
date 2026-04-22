@@ -21,7 +21,18 @@ export type ExportMutability = 'editable' | 'readonly';
  * All type literals are string constants (minify-safe).
  */
 export type UserAction =
-  | { type: 'SELECT_ENTRY'; lid: string }
+  /**
+   * SELECT_ENTRY — change the active entry.
+   *
+   * `revealInSidebar` (PR-ε₁, cluster C'): opt-in reveal of ancestor
+   * folders. When omitted or `false` the reducer preserves
+   * `state.collapsedFolders` as-is so a user-initiated fold is not
+   * silently undone by unrelated selection changes (sidebar click,
+   * backlink badge, recent pane, calendar/kanban etc.). Callers that
+   * jump from a non-tree surface (Storage Profile, `entry:<lid>`
+   * body link, …) may pass `true` to surface the target in the tree.
+   */
+  | { type: 'SELECT_ENTRY'; lid: string; revealInSidebar?: boolean }
   | { type: 'DESELECT_ENTRY' }
   | { type: 'BEGIN_EDIT'; lid: string }
   /**
@@ -113,6 +124,13 @@ export type UserAction =
       lid: string;
       subId: string;
       ticket: number;
+      /**
+       * PR-ε₁: same opt-in reveal policy as `SELECT_ENTRY`. The sole
+       * current dispatch site (sidebar sub-location row click) relies
+       * on the row already being visible, so the reveal flag stays
+       * absent and the reducer preserves `collapsedFolders` as-is.
+       */
+      revealInSidebar?: boolean;
     }
   | { type: 'CONFIRM_BATCH_IMPORT' }
   | { type: 'CANCEL_BATCH_IMPORT' }

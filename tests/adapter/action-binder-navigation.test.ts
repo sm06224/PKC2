@@ -351,6 +351,21 @@ describe('ActionBinder — navigate-entry-ref (P1 Slice 5-A)', () => {
     expect(dispatcher.getState().selectedLid).toBe('dst');
   });
 
+  it('entry-ref click opts into ancestor reveal (PR-ε₁)', () => {
+    // External jump from body markdown link → target may live under
+    // a collapsed folder; `revealInSidebar: true` must be threaded so
+    // the reducer expands ancestors.
+    const { dispatcher } = setupNav('src');
+    const dispatchSpy = vi.spyOn(dispatcher, 'dispatch');
+    findAnchor('go-entry').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const selectCalls = dispatchSpy.mock.calls
+      .map((c) => c[0] as { type: string })
+      .filter((a) => a.type === 'SELECT_ENTRY');
+    expect(selectCalls).toHaveLength(1);
+    expect((selectCalls[0] as { revealInSidebar?: boolean }).revealInSidebar).toBe(true);
+    dispatchSpy.mockRestore();
+  });
+
   it('entry kind: preventDefault so the browser does not try to navigate entry:', () => {
     setupNav('src');
     const anchor = findAnchor('go-entry');
@@ -823,6 +838,30 @@ describe('ActionBinder — Storage Profile dialog', () => {
     expect(
       root.querySelector('[data-pkc-region="storage-profile"]'),
     ).toBeNull();
+  });
+
+  it('storage-profile jump opts into ancestor reveal (PR-ε₁)', () => {
+    // External jump from the overlay → target may sit under a
+    // collapsed folder; `revealInSidebar: true` must be threaded
+    // through so the reducer expands ancestors.
+    const dispatcher = setupJumpContainer();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const dispatchSpy = vi.spyOn(dispatcher, 'dispatch');
+    root
+      .querySelector<HTMLButtonElement>(
+        'button[data-pkc-action="select-from-storage-profile"][data-pkc-lid="hot-1"]',
+      )!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const selectCalls = dispatchSpy.mock.calls
+      .map((c) => c[0] as { type: string })
+      .filter((a) => a.type === 'SELECT_ENTRY');
+    expect(selectCalls).toHaveLength(1);
+    expect((selectCalls[0] as { revealInSidebar?: boolean }).revealInSidebar).toBe(true);
+    dispatchSpy.mockRestore();
   });
 
   it('jump click to an unknown lid is a no-op — overlay stays open, selection unchanged', () => {
