@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-22（Storage Profile footprint scope を反映）.
+Last updated: 2026-04-22（child window shortcut parity 残件監査の正本化を反映）.
 
 ## Status Legend
 
@@ -183,6 +183,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 122 | PR #104 | Cluster C' follow-up: reveal policy lockdown | 2026-04-22 | 残り 6 経路（recent pane / calendar kb nav / kanban kb nav / calendar drop / kanban drop / relative folder nav）の reveal 不要を決定理由コメント + 回帰テストで固定。実コード不変、bundle size 変化なし |
 | 123 | PR #105 | Cluster D first slice: child window shortcut bridge | 2026-04-22 | child window inline script に keydown listener を追加、Ctrl+S → 既存 `pkc-entry-save` path、Escape → `cancelEdit()` / `window.close()`。parent 側は完全に不変 |
 | 124 | `storage-profile-footprint-scope.md` | Storage Profile — asset-only vs full container footprint の scope 固定（docs-only） | 2026-04-22 | 現状 Storage Profile が `container.assets` のみを集計する asset-only profile であることと、ユーザが期待していた "text body / relations / revisions を含む full container footprint" が未実装かつ別概念であることを正本化。Slice A(UI label clarification) / B(body bytes column) / C(relations & revisions) / D(persisted vs export size) / E(manual & doc update) の additive 実装候補を整理、`storage-profile-ui.md` 側にも冒頭 scope note を cross-link 追加。実コード変更なし |
+| 125 | `child-window-shortcut-parity-status.md` | Child window shortcut parity — 残件監査の正本化（docs-lite） | 2026-04-22 | PR-ζ₁(#105, Ctrl/Cmd+S + Escape) / PR-ζ₂(date/time 6 shortcut) の後、残る main-shell shortcut を **parity / intentional non-parity / backlog** の 3 bucket に棚卸し。`mod+?` / pane toggle / `mod+N` / `mod+Enter` / arrow / Enter / `/` / asset picker 系は child の UI 不在により意図的 non-parity、`mod+Z/Y` は親子共通 backlog。audit の結果 tiny omission は無し、コード変更なし |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
