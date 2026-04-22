@@ -371,6 +371,14 @@ async function boot(): Promise<void> {
       bridgeMounted = true;
       bridgeHandle = mountMessageBridge({
         containerId: state.container.meta.container_id,
+        // Explicit allowlist closes the accept-all default per
+        // `docs/spec/record-offer-capture-profile.md` §9.1. v0
+        // policy: same-origin only. When `window.location.origin`
+        // evaluates to `"null"` (e.g. `file://` distribution), that
+        // string is still added — this is an explicit opt-in at the
+        // mount site (§9.2). Cross-origin embedded / extension flows
+        // are a follow-up; add their origin here when wired.
+        allowedOrigins: [window.location.origin],
         onMessage: (envelope, origin, sourceWindow) => {
           console.log(`[PKC2] Message received: ${envelope.type} from ${origin}`);
 

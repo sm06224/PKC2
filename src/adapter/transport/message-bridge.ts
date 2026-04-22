@@ -9,7 +9,10 @@
  * - Provide a typed send API for outgoing messages
  *
  * Design decisions:
- * - origin verification is configurable (default: accept all for dev)
+ * - origin verification is configurable; the empty/`*` default
+ *   accepts all origins except the special `"null"` origin, which
+ *   must be opted in explicitly (see `BridgeOptions.allowedOrigins`
+ *   and `docs/spec/record-offer-capture-profile.md` §9.2).
  * - unknown message types are rejected and logged, not thrown
  * - ping/pong is handled automatically (bridge-internal, no reducer)
  * - other message types are delegated to onMessage callback
@@ -33,8 +36,14 @@ export interface BridgeOptions {
   containerId: string;
 
   /**
-   * Allowed origins. If empty or ['*'], accept all origins.
-   * Otherwise, only accept messages from listed origins.
+   * Allowed origins. If empty or `['*']`, accept all origins except
+   * the special `"null"` origin (opaque origins from file:// or
+   * sandboxed iframes), which must always be opted in explicitly via
+   * `allowedOrigins: [..., 'null']`. Otherwise, only accept messages
+   * from listed origins.
+   *
+   * Production bootstrap should pass an explicit list per
+   * `docs/spec/record-offer-capture-profile.md` §9.1 / §9.2.
    */
   allowedOrigins?: string[];
 
@@ -104,7 +113,19 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     // 1. Quick filter: skip non-PKC messages silently
     if (!isPkcMessage(event.data)) return;
 
-    // 2. Origin check
+    // 2a. Origin `"null"` (file:// sender, sandboxed iframe, opaque
+    //     origin) is rejected unless explicitly opt-in via
+    //     `allowedOrigins: [..., 'null']`. Per
+    //     `docs/spec/record-offer-capture-profile.md` §9.2, `"null"`
+    //     must not ride on the accept-all path — requiring an explicit
+    //     list membership keeps the file:// / sandboxed-iframe opt-in
+    //     auditable at the mount site.
+    if (event.origin === 'null' && !allowedOrigins.includes('null')) {
+      onReject?.(event.data, `Origin rejected: null (explicit opt-in required)`);
+      return;
+    }
+
+    // 2b. Origin allowlist check
     if (!acceptAllOrigins && !allowedOrigins.includes(event.origin)) {
       onReject?.(event.data, `Origin rejected: ${event.origin}`);
       return;
