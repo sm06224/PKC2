@@ -413,6 +413,21 @@ function renderLogArticle(
   anchorBtn.textContent = '🔗';
   header.appendChild(anchorBtn);
 
+  // Slice 4 (TEXTLOG dblclick revision): hover-only ✏︎ edit affordance
+  // replaces the old dblclick-to-edit shortcut. dblclick is returned
+  // to the browser for native word / block selection; this button (or
+  // `Alt+Click` on the row body) is the explicit edit entry point.
+  // The readonly / selection-mode gates live in the action handler.
+  const editBtn = document.createElement('button');
+  editBtn.className = 'pkc-textlog-edit-btn';
+  editBtn.setAttribute('data-pkc-action', 'edit-log');
+  editBtn.setAttribute('data-pkc-lid', lid);
+  editBtn.setAttribute('data-pkc-log-id', log.id);
+  editBtn.setAttribute('title', 'Edit this log (Alt+Click also works)');
+  editBtn.setAttribute('aria-label', 'Edit this log');
+  editBtn.textContent = '✏︎';
+  header.appendChild(editBtn);
+
   article.appendChild(header);
 
   // Text content — resolve asset references (image embeds and

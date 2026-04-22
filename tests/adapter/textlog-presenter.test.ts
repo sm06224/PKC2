@@ -131,13 +131,23 @@ describe('textlog renderBody', () => {
     expect(logs[1]!.getAttribute('data-pkc-log-important')).toBe('true');
   });
 
-  it('each article carries data-pkc-lid so dblclick → BEGIN_EDIT can resolve the owning entry', () => {
+  it('each article carries data-pkc-lid so Alt+Click / edit-log can resolve the owning entry', () => {
     const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-owner'));
     const logs = el.querySelectorAll<HTMLElement>('.pkc-textlog-log');
     expect(logs.length).toBe(3);
     for (const a of logs) {
       expect(a.getAttribute('data-pkc-lid')).toBe('tl-owner');
       expect(a.getAttribute('data-pkc-log-id')).toBeTruthy();
+    }
+  });
+
+  it('Slice 4: each article carries an explicit ✏︎ edit-log button', () => {
+    const el = textlogPresenter.renderBody(makeEntry(sampleBody, 'tl-owner'));
+    const editBtns = el.querySelectorAll<HTMLElement>('[data-pkc-action="edit-log"]');
+    expect(editBtns.length).toBe(3);
+    for (const btn of Array.from(editBtns)) {
+      expect(btn.getAttribute('data-pkc-lid')).toBe('tl-owner');
+      expect(btn.getAttribute('data-pkc-log-id')).toBeTruthy();
     }
   });
 
