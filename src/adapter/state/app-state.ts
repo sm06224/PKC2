@@ -210,6 +210,13 @@ export interface AppState {
    */
   collapsedFolders: string[];
   /**
+   * Sidebar Recent Entries pane collapse state. Runtime-only, not
+   * persisted. `false` (default) keeps the existing open-on-mount
+   * behavior. Optional on the TS surface so legacy test fixtures
+   * that spell out AppState by hand remain valid without updates.
+   */
+  recentPaneCollapsed?: boolean;
+  /**
    * entry-ref autocomplete v1.3: LRU of lids accepted from the
    * autocomplete popup (most recent first). Powers recent-first
    * ordering of suggestions. Runtime-only, not persisted. Capped at
@@ -364,6 +371,7 @@ export function createInitialState(): AppState {
     calendarMonth: new Date().getMonth() + 1,
     multiSelectedLids: [],
     collapsedFolders: [],
+    recentPaneCollapsed: false,
     recentEntryRefLids: [],
     textlogSelection: null,
     textToTextlogModal: null,
@@ -2271,6 +2279,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ? state.collapsedFolders.filter((l) => l !== action.lid)
         : [...state.collapsedFolders, action.lid];
       const next: AppState = { ...state, collapsedFolders: lids };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_RECENT_PANE': {
+      const next: AppState = { ...state, recentPaneCollapsed: !state.recentPaneCollapsed };
       return { state: next, events: [] };
     }
     case 'SYS_ERROR': {

@@ -9103,6 +9103,35 @@ describe('Recent Entries Pane v1', () => {
     expect(items[2]!.getAttribute('data-pkc-lid')).toBe('old');
   });
 
+  // ── PR-γ: Recent pane collapse state ──
+  it('renders the pane closed when state.recentPaneCollapsed is true', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container, recentPaneCollapsed: true }), root);
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]') as HTMLDetailsElement;
+    expect(pane).not.toBeNull();
+    expect(pane.open).toBe(false);
+  });
+
+  it('renders the pane open when state.recentPaneCollapsed is false', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container, recentPaneCollapsed: false }), root);
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]') as HTMLDetailsElement;
+    expect(pane.open).toBe(true);
+  });
+
+  it('summary carries data-pkc-action="toggle-recent-pane"', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container }), root);
+    const summary = root.querySelector('[data-pkc-region="recent-entries"] summary');
+    expect(summary?.getAttribute('data-pkc-action')).toBe('toggle-recent-pane');
+  });
+
   it('caps the pane at 10 items and shows "Recent (N)" in summary', () => {
     const entries = Array.from({ length: 15 }, (_, i) =>
       mkEntry(`e${String(i).padStart(2, '0')}`, 'text', `2026-04-${String(i + 1).padStart(2, '0')}T00:00:00Z`),
