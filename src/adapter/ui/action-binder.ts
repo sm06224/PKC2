@@ -231,7 +231,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const tlLid = logRow.getAttribute('data-pkc-lid');
         if (tlLid) {
           e.preventDefault();
-          beginLogEdit(tlLid);
+          // B4: thread the row's log-id through so the editor lands
+          // on the clicked row, not the entry title.
+          beginLogEdit(tlLid, logRow.getAttribute('data-pkc-log-id'));
           return;
         }
       }
@@ -1171,12 +1173,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Slice 4 (TEXTLOG dblclick revision): explicit hover ✏︎
         // affordance. Shares the same readonly / selection-mode /
         // phase guard as the Alt+Click modifier gesture; both funnel
-        // through `beginLogEdit`.
+        // through `beginLogEdit`. B4: pass the button's own log-id so
+        // the editor lands focused on the matching row's textarea
+        // instead of the title input.
         if (!lid) break;
         // Stop propagation so the surrounding article does not also
         // pick this click up as an Alt-less log-row click.
         e.stopPropagation();
-        beginLogEdit(lid);
+        const logIdAttr = target.getAttribute('data-pkc-log-id');
+        beginLogEdit(lid, logIdAttr);
         break;
       }
       case 'open-rendered-viewer': {
@@ -4170,8 +4175,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * log article. Raw dblclick is deliberately NOT a trigger anymore:
    * it now falls through to the browser's native word / block
    * selection on the log body.
+   *
+   * B4 (2026-04-22): when the caller passes a `logId`, the function
+   * also moves focus onto the matching per-log textarea after the
+   * BEGIN_EDIT re-render. Without this, `main.ts` defaults to the
+   * title input, which forces the user to tab away before reaching
+   * the row they clicked. `dispatcher.dispatch` is synchronous and
+   * main.ts's state listener (render + default focus) runs inside
+   * the dispatch call, so focusing the textarea afterwards wins.
    */
-  function beginLogEdit(tlLid: string): void {
+  function beginLogEdit(tlLid: string, logId?: string | null): void {
     if (isTextlogSelectionModeActive(tlLid)) return;
     const state = dispatcher.getState();
     if (state.phase !== 'ready' || state.readonly) return;
@@ -4181,6 +4194,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: tlLid });
     }
     dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: tlLid });
+    if (logId) {
+      const textarea = root.querySelector<HTMLTextAreaElement>(
+        `textarea[data-pkc-field="textlog-entry-text"][data-pkc-log-id="${CSS.escape(logId)}"]`,
+      );
+      if (textarea) {
+        textarea.focus();
+        try { textarea.setSelectionRange(0, 0); } catch { /* ignored */ }
+        textarea.scrollIntoView({ block: 'nearest' });
+      }
+    }
   }
 
   // ── dblclick fallback (secondary path) ──

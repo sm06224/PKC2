@@ -454,6 +454,31 @@ describe('TEXTLOG row edit affordance (Slice 4 dblclick revision)', () => {
     expect(dispatcher.getState().editingLid).toBe('tl1');
   });
 
+  // B4 (2026-04-22): the ✏︎ button must not leave focus on the entry
+  // title input — users click the per-row affordance because they
+  // want to edit *that* row. The beginLogEdit helper receives the
+  // row's log id and forwards focus onto the matching per-log
+  // textarea after the BEGIN_EDIT re-render lands.
+  it('B4: clicking the ✏︎ edit-log button focuses the matching per-log textarea', () => {
+    mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      { id: 'log-2', text: 'second', createdAt: '2026-04-09T11:00:00Z' },
+    ]);
+    const btn = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-2"] [data-pkc-action="edit-log"]',
+    );
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const expectedTextarea = root.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="textlog-entry-text"][data-pkc-log-id="log-2"]',
+    );
+    expect(expectedTextarea).not.toBeNull();
+    // Active element (falls back to body when unset in jsdom) must be
+    // the target row's textarea, NOT the title input.
+    expect(document.activeElement).toBe(expectedTextarea);
+    const titleInput = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+    expect(document.activeElement).not.toBe(titleInput);
+  });
+
   it('Alt+Click on a log row body enters edit mode', () => {
     const { dispatcher } = mountTextlogContainer([
       { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
@@ -464,6 +489,23 @@ describe('TEXTLOG row edit affordance (Slice 4 dblclick revision)', () => {
     textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, altKey: true }));
     expect(dispatcher.getState().phase).toBe('editing');
     expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  // B4: same focus expectation for the Alt+Click entry path.
+  it('B4: Alt+Click on a log row focuses the matching per-log textarea', () => {
+    mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      { id: 'log-2', text: 'second', createdAt: '2026-04-09T11:00:00Z' },
+    ]);
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, altKey: true }));
+    const expectedTextarea = root.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="textlog-entry-text"][data-pkc-log-id="log-1"]',
+    );
+    expect(expectedTextarea).not.toBeNull();
+    expect(document.activeElement).toBe(expectedTextarea);
   });
 
   it('Alt+Click on the flag button does NOT begin editing (flag handler wins)', () => {
