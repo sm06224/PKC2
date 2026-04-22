@@ -8771,6 +8771,54 @@ describe('Storage Profile dialog (renderer)', () => {
     ).not.toBeNull();
   });
 
+  // Slice A (2026-04-22): asset-only scope must be explicit in the
+  // overlay so operators cannot mis-read it as a container-wide
+  // footprint. See docs/development/storage-profile-footprint-scope.md.
+  it('Slice A: heading + note make the asset-only scope explicit', () => {
+    const overlay = buildStorageProfileOverlay(makeProfileContainer());
+    const heading = overlay.querySelector<HTMLElement>('.pkc-storage-profile-heading');
+    expect(heading).not.toBeNull();
+    // Title is scoped — "Assets" must appear so the dialog cannot be
+    // mistaken for a full container footprint.
+    expect(heading!.textContent).toContain('Assets');
+    const note = overlay.querySelector<HTMLElement>('.pkc-storage-profile-note');
+    expect(note).not.toBeNull();
+    expect(note!.textContent).toContain('asset bytes only');
+    expect(note!.textContent).toMatch(/text bodies/i);
+    expect(note!.textContent).toMatch(/full container footprint/i);
+  });
+
+  it('Slice A: summary line label is "Total asset bytes" (no ambiguous "Total size")', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e1', 'k1', 'Alpha')],
+        assets: { k1: base64Of(1500) },
+      }),
+    );
+    const summary = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary).not.toBeNull();
+    expect(summary!.textContent).toContain('Total asset bytes');
+    // The old ambiguous label is gone.
+    expect(summary!.textContent).not.toMatch(/Total size/);
+  });
+
+  it('Slice A: top-entries label reads "Top entries by asset bytes"', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('e1', 'k1', 'Alpha')],
+        assets: { k1: base64Of(1500) },
+      }),
+    );
+    const top = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-top"]',
+    );
+    expect(top).not.toBeNull();
+    expect(top!.textContent).toContain('Top entries by asset bytes');
+    expect(top!.textContent).not.toMatch(/Top entries by size/);
+  });
+
   it('summary surfaces total asset count and total size', () => {
     const overlay = buildStorageProfileOverlay(
       makeProfileContainer({

@@ -231,7 +231,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const tlLid = logRow.getAttribute('data-pkc-lid');
         if (tlLid) {
           e.preventDefault();
-          beginLogEdit(tlLid);
+          // B4: thread the row's log-id through so the editor lands
+          // on the clicked row, not the entry title.
+          beginLogEdit(tlLid, logRow.getAttribute('data-pkc-log-id'));
           return;
         }
       }
@@ -1171,12 +1173,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Slice 4 (TEXTLOG dblclick revision): explicit hover ✏︎
         // affordance. Shares the same readonly / selection-mode /
         // phase guard as the Alt+Click modifier gesture; both funnel
-        // through `beginLogEdit`.
+        // through `beginLogEdit`. B4: pass the button's own log-id so
+        // the editor lands focused on the matching row's textarea
+        // instead of the title input.
         if (!lid) break;
         // Stop propagation so the surrounding article does not also
         // pick this click up as an Alt-less log-row click.
         e.stopPropagation();
-        beginLogEdit(lid);
+        const logIdAttr = target.getAttribute('data-pkc-log-id');
+        beginLogEdit(lid, logIdAttr);
         break;
       }
       case 'open-rendered-viewer': {
@@ -1332,20 +1337,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // ancestor folders). Distinct from `export-selected-entry`:
         // that builds a `.text.zip` / `.textlog.zip` for re-import,
         // this builds a `.pkc2.html` for direct viewing / editing.
+        //
+        // S2 (2026-04-22): multi-selection is honored by passing every
+        // selected lid (primary + multi) into the subset builder's
+        // new multi-root overload. A single selection retains the
+        // original single-root semantics and filename derivation.
         const st = dispatcher.getState();
-        const selLid = st.selectedLid;
-        if (!selLid || !st.container) {
+        if (!st.container) {
           showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
           break;
         }
-        const subset = buildSubsetContainer(st.container, selLid);
+        const selectedLids = getAllSelected(st);
+        if (selectedLids.length === 0) {
+          showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
+          break;
+        }
+        const subset = buildSubsetContainer(st.container, selectedLids);
         if (!subset) {
           showToast({ kind: 'info', message: 'Selected entry is no longer available.', autoDismissMs: 2400 });
           break;
         }
         if (subset.missingAssetKeys.size > 0) {
+          const rootLabel = selectedLids.length === 1
+            ? '選択中エントリ'
+            : `選択中 ${selectedLids.length} 件のエントリ`;
           const msg = [
-            `選択中エントリが参照するアセットのうち、${subset.missingAssetKeys.size} 件が見つかりません。`,
+            `${rootLabel}が参照するアセットのうち、${subset.missingAssetKeys.size} 件が見つかりません。`,
             'このまま HTML を生成しますか？',
             '',
             '- 見つからないアセットは埋め込まれません',
@@ -1353,12 +1370,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           ].join('\n');
           if (!confirm(msg)) break;
         }
-        // Override the subset's container title with the entry title so
-        // (a) the recipient's browser tab shows the entry name and
-        // (b) `generateExportFilename` derives its slug from the same
-        // string instead of the source container's title.
-        const rootEntry = subset.container.entries.find((e) => e.lid === selLid);
-        const entryTitle = rootEntry?.title?.trim() || 'entry';
+        // Override the subset's container title so (a) the recipient's
+        // browser tab shows something informative and (b)
+        // `generateExportFilename` derives its slug from the same
+        // string. For single-root: use the entry's title. For
+        // multi-root: use the first selected entry's title plus a
+        // `(+N more)` suffix so the filename stays scannable.
+        const firstLid = selectedLids[0]!;
+        const rootEntry = subset.container.entries.find((e) => e.lid === firstLid);
+        const rootTitle = rootEntry?.title?.trim() || 'entry';
+        const entryTitle = selectedLids.length === 1
+          ? rootTitle
+          : `${rootTitle} (+${selectedLids.length - 1} more)`;
         const retitledSubset: Container = {
           ...subset.container,
           meta: { ...subset.container.meta, title: entryTitle },
@@ -4170,8 +4193,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * log article. Raw dblclick is deliberately NOT a trigger anymore:
    * it now falls through to the browser's native word / block
    * selection on the log body.
+   *
+   * B4 (2026-04-22): when the caller passes a `logId`, the function
+   * also moves focus onto the matching per-log textarea after the
+   * BEGIN_EDIT re-render. Without this, `main.ts` defaults to the
+   * title input, which forces the user to tab away before reaching
+   * the row they clicked. `dispatcher.dispatch` is synchronous and
+   * main.ts's state listener (render + default focus) runs inside
+   * the dispatch call, so focusing the textarea afterwards wins.
    */
-  function beginLogEdit(tlLid: string): void {
+  function beginLogEdit(tlLid: string, logId?: string | null): void {
     if (isTextlogSelectionModeActive(tlLid)) return;
     const state = dispatcher.getState();
     if (state.phase !== 'ready' || state.readonly) return;
@@ -4181,6 +4212,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: tlLid });
     }
     dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: tlLid });
+    if (logId) {
+      const textarea = root.querySelector<HTMLTextAreaElement>(
+        `textarea[data-pkc-field="textlog-entry-text"][data-pkc-log-id="${CSS.escape(logId)}"]`,
+      );
+      if (textarea) {
+        textarea.focus();
+        try { textarea.setSelectionRange(0, 0); } catch { /* ignored */ }
+        textarea.scrollIntoView({ block: 'nearest' });
+      }
+    }
   }
 
   // ── dblclick fallback (secondary path) ──

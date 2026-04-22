@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-22（UI continuity wave closure を反映）.
+Last updated: 2026-04-22（Storage Profile footprint scope を反映）.
 
 ## Status Legend
 
@@ -182,6 +182,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 121 | PR #103 | Cluster C' first wave: opt-in reveal policy | 2026-04-22 | `SELECT_ENTRY` / `NAVIGATE_TO_LOCATION` に `revealInSidebar?: boolean` を additive 追加、reducer を opt-in gate、reveal 必須 2 経路（storage-profile / entry-ref）のみ明示 opt-in |
 | 122 | PR #104 | Cluster C' follow-up: reveal policy lockdown | 2026-04-22 | 残り 6 経路（recent pane / calendar kb nav / kanban kb nav / calendar drop / kanban drop / relative folder nav）の reveal 不要を決定理由コメント + 回帰テストで固定。実コード不変、bundle size 変化なし |
 | 123 | PR #105 | Cluster D first slice: child window shortcut bridge | 2026-04-22 | child window inline script に keydown listener を追加、Ctrl+S → 既存 `pkc-entry-save` path、Escape → `cancelEdit()` / `window.close()`。parent 側は完全に不変 |
+| 124 | `storage-profile-footprint-scope.md` | Storage Profile — asset-only vs full container footprint の scope 固定（docs-only） | 2026-04-22 | 現状 Storage Profile が `container.assets` のみを集計する asset-only profile であることと、ユーザが期待していた "text body / relations / revisions を含む full container footprint" が未実装かつ別概念であることを正本化。Slice A(UI label clarification) / B(body bytes column) / C(relations & revisions) / D(persisted vs export size) / E(manual & doc update) の additive 実装候補を整理、`storage-profile-ui.md` 側にも冒頭 scope note を cross-link 追加。実コード変更なし |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 

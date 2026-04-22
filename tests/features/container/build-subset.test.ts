@@ -792,6 +792,139 @@ describe('buildSubsetContainer — subset stays bounded under cycles', () => {
   });
 });
 
+// ── S2: multi-root overload ──────────────────────────────────────
+//
+// Multi-root tests pin the additive multi-select HTML export
+// revival. The single-root overload and its tests above remain the
+// authoritative contract; the array overload is an extension that
+// unions reachability across every valid root.
+
+describe('buildSubsetContainer — multi-root overload (S2)', () => {
+  it('array of two independent roots includes both and their references', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'c', title: 'C', body: '[D](entry:d)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'd', title: 'D', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'z', title: 'Z', body: 'unrelated', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, ['a', 'c'])!;
+    const lids = new Set(r.container.entries.map((e) => e.lid));
+    expect(lids.has('a')).toBe(true);
+    expect(lids.has('b')).toBe(true); // a → b
+    expect(lids.has('c')).toBe(true);
+    expect(lids.has('d')).toBe(true); // c → d
+    expect(lids.has('z')).toBe(false);
+  });
+
+  it('shared descendant is not duplicated', () => {
+    // Both roots reference `shared`. It must appear exactly once in
+    // the subset's entry list.
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[S](entry:shared)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '[S](entry:shared)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'shared', title: 'Shared', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, ['a', 'b'])!;
+    const sharedCount = r.container.entries.filter((e) => e.lid === 'shared').length;
+    expect(sharedCount).toBe(1);
+  });
+
+  it('duplicate root lids in input collapse to one', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, ['a', 'a', 'a'])!;
+    expect(r.container.entries).toHaveLength(1);
+    expect(r.includedLids.size).toBe(1);
+  });
+
+  it('mixed valid + invalid root lids: invalid ones are silently dropped', () => {
+    // A stale multi-selection (e.g. one entry just deleted) must
+    // not fail the whole export — proceed with the valid roots.
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const r = buildSubsetContainer(c, ['a', 'ghost', 'b'])!;
+    const lids = new Set(r.container.entries.map((e) => e.lid));
+    expect(lids.has('a')).toBe(true);
+    expect(lids.has('b')).toBe(true);
+    expect(r.missingEntryLids.has('ghost')).toBe(false); // not a dangling body ref
+  });
+
+  it('returns null only when every root lid is missing', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    expect(buildSubsetContainer(c, ['ghost-1', 'ghost-2'])).toBeNull();
+  });
+
+  it('empty array returns null (nothing to export)', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    expect(buildSubsetContainer(c, [] as readonly string[])).toBeNull();
+  });
+
+  it('single-element array matches single-root overload output shape', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '[B](entry:b)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    const viaString = buildSubsetContainer(c, 'a')!;
+    const viaArray = buildSubsetContainer(c, ['a'])!;
+    const stringLids = [...viaString.container.entries.map((e) => e.lid)].sort();
+    const arrayLids = [...viaArray.container.entries.map((e) => e.lid)].sort();
+    expect(arrayLids).toEqual(stringLids);
+    expect(viaArray.includedLids.size).toBe(viaString.includedLids.size);
+  });
+
+  it('shared asset key across two roots surfaces once in missingAssetKeys', () => {
+    // Two TEXT entries reference the same asset key; it is absent
+    // from `assets`, so it is reported missing. It must be reported
+    // exactly once — union semantics, not duplicated.
+    const c = makeContainer({
+      entries: [
+        { lid: 'a', title: 'A', body: '![png](asset:k)', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'b', title: 'B', body: '![png](asset:k)', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+      assets: {}, // `k` is missing
+    });
+    const r = buildSubsetContainer(c, ['a', 'b'])!;
+    expect(r.missingAssetKeys.size).toBe(1);
+    expect(r.missingAssetKeys.has('k')).toBe(true);
+  });
+
+  it('deterministic entry order matches container.entries order, not input order', () => {
+    const c = makeContainer({
+      entries: [
+        { lid: 'first', title: 'First', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'second', title: 'Second', body: '', archetype: 'text', created_at: '', updated_at: '' },
+        { lid: 'third', title: 'Third', body: '', archetype: 'text', created_at: '', updated_at: '' },
+      ],
+    });
+    // Inputs in reversed order — output still follows container
+    // entries order.
+    const r = buildSubsetContainer(c, ['third', 'first', 'second'])!;
+    expect(r.container.entries.map((e) => e.lid)).toEqual(['first', 'second', 'third']);
+  });
+});
+
 describe('buildSubsetContainer — relation filter under cycles', () => {
   it('cycle + dangling relation: final subset has no dangling relations', () => {
     const c = makeContainer({

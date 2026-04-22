@@ -2991,4 +2991,55 @@ describe('Entry Window', () => {
       expect(html).toMatch(/if \(mod && \(e\.key === 's' \|\| e\.key === 'S'\)\) \{[\s\S]*e\.preventDefault\(\);/);
     });
   });
+
+  // ── PR-ζ₂ (cluster D, slice 2): date/time shortcut parity ──
+  //
+  // Main-shell exposes six date/time insertion shortcuts while editing
+  // (Ctrl+; / Ctrl+: / Ctrl+Shift+; / Ctrl+D / Ctrl+Shift+D /
+  // Ctrl+Shift+Alt+D). The child window previously caught none of
+  // them, so a user editing inside the detached window had to type
+  // dates by hand. This slice extends the PR-ζ₁ keydown listener with
+  // an inline date/time catalog that matches the main-shell spec
+  // verbatim. Every other main-shell shortcut (navigation, panes,
+  // shortcut help, new entry …) remains intentionally out of scope.
+  describe('Keyboard bridge date/time shortcuts (PR-ζ₂)', () => {
+    it('exposes getDateTimeShortcutText helper in child inline script', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain('function getDateTimeShortcutText(e)');
+    });
+
+    it('exposes insertAtCursor helper in child inline script', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain('function insertAtCursor(text)');
+    });
+
+    it('keydown handler calls getDateTimeShortcutText + insertAtCursor only when currentMode === edit', async () => {
+      const html = await openAndCapture();
+      // The gate `mod && currentMode === 'edit'` comes first, so the
+      // view mode is untouched.
+      expect(html).toMatch(/if \(mod && currentMode === 'edit'\) \{[\s\S]*?getDateTimeShortcutText\(e\)[\s\S]*?insertAtCursor\(txt\)/);
+    });
+
+    it('covers the six main-shell date/time shortcut variants', async () => {
+      const html = await openAndCapture();
+      // Ctrl+;
+      expect(html).toMatch(/e\.key === ';'[^\n]*!e\.shiftKey[^\n]*!e\.altKey[^\n]*fmtDate/);
+      // Ctrl+: / Ctrl+Shift+;  → time / datetime
+      expect(html).toMatch(/e\.key === ':'[^\n]*e\.key === ';'[^\n]*e\.shiftKey/);
+      expect(html).toMatch(/e\.shiftKey \? fmtDateTime\(now\) : fmtTime\(now\)/);
+      // Ctrl+D variants
+      expect(html).toMatch(/fmtShortDate\(now\)/);
+      expect(html).toMatch(/fmtShortDateTime\(now\)/);
+      expect(html).toMatch(/fmtISO8601\(now\)/);
+    });
+
+    it('insertAtCursor guards on text-like focus + prefers execCommand for undo stack', async () => {
+      const html = await openAndCapture();
+      // Only textarea / text-typed input is a valid target.
+      expect(html).toMatch(/el\.tagName === 'TEXTAREA'[\s\S]*el\.tagName === 'INPUT' && el\.type === 'text'/);
+      // execCommand first, manual fallback second (mirrors main-shell insertTextAtCursor).
+      expect(html).toMatch(/document\.execCommand\('insertText', false, text\)/);
+      expect(html).toMatch(/el\.dispatchEvent\(new Event\('input', \{ bubbles: true \}\)\)/);
+    });
+  });
 });

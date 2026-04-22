@@ -75,28 +75,62 @@ export interface BuildSubsetResult {
 }
 
 /**
- * Build a subset container rooted at `rootLid`.
+ * Build a subset container rooted at `rootLid` (or multiple roots).
  *
- * Returns `null` when `rootLid` does not resolve to any entry in
- * `container.entries` — callers should treat that as an inert case
- * (the UI is already gated but a stale selection could still reach
- * this helper).
+ * Single-root: returns `null` when `rootLid` does not resolve to any
+ * entry in `container.entries` — callers should treat that as an
+ * inert case (the UI is already gated but a stale selection could
+ * still reach this helper).
+ *
+ * Multi-root (S2): accepts `readonly string[]`. Invalid / missing
+ * root lids are silently dropped so a stale multi-selection does
+ * not fail the entire export; only when *every* provided root is
+ * missing (or the array is empty) does the function return `null`.
+ * Duplicate roots collapse via the shared `includedLids` set. Root
+ * order in `container.entries` remains deterministic (the filter
+ * pass preserves `container.entries` order, not the input root
+ * order), matching the single-root contract.
  */
 export function buildSubsetContainer(
   container: Container,
   rootLid: string,
+): BuildSubsetResult | null;
+export function buildSubsetContainer(
+  container: Container,
+  rootLids: readonly string[],
+): BuildSubsetResult | null;
+export function buildSubsetContainer(
+  container: Container,
+  rootLidOrLids: string | readonly string[],
 ): BuildSubsetResult | null {
-  const root = container.entries.find((e) => e.lid === rootLid);
-  if (!root) return null;
+  const entryByLid = new Map<string, Entry>();
+  for (const e of container.entries) entryByLid.set(e.lid, e);
+
+  // Normalise the two overloads into a deduped list of valid root
+  // lids. Strict single-root null-on-missing is preserved; multi-root
+  // silently drops missing lids and returns null only when nothing
+  // resolves.
+  let validRootLids: string[];
+  if (typeof rootLidOrLids === 'string') {
+    if (!entryByLid.has(rootLidOrLids)) return null;
+    validRootLids = [rootLidOrLids];
+  } else {
+    const seen = new Set<string>();
+    validRootLids = [];
+    for (const lid of rootLidOrLids) {
+      if (seen.has(lid)) continue;
+      seen.add(lid);
+      if (entryByLid.has(lid)) validRootLids.push(lid);
+    }
+    if (validRootLids.length === 0) return null;
+  }
 
   // ─── 1. Close over entry refs (transclusion + link + bare) ───
-  const includedLids = new Set<string>([root.lid]);
+  const includedLids = new Set<string>(validRootLids);
   const missingEntryLids = new Set<string>();
   const assetKeysFromBodies = new Set<string>();
 
-  const pending: string[] = [root.lid];
-  const entryByLid = new Map<string, Entry>();
-  for (const e of container.entries) entryByLid.set(e.lid, e);
+  const pending: string[] = [...validRootLids];
 
   let iter = 0;
   while (pending.length > 0) {

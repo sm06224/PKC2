@@ -3,6 +3,7 @@ import { SLOT } from './runtime/contract';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
+import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
   bindActions,
   populateAttachmentPreviews,
@@ -168,7 +169,21 @@ async function boot(): Promise<void> {
         }
       }
     } else if (state.phase === 'editing') {
-      const target = root.querySelector<HTMLElement>('[data-pkc-field="title"]');
+      // S1 (2026-04-22): prefer the archetype's main body/description
+      // field over the title input so a user entering edit mode can
+      // start typing where they actually work. Falls back to title
+      // when no body field is available (attachment, textlog — the
+      // latter's per-log editing is owned by B4's explicit focus in
+      // `beginLogEdit`, which has already run by this point and wins
+      // over anything this branch selects; for non-B4 textlog edit
+      // starts the title remains the safest default).
+      const editingEntry = state.editingLid && state.container
+        ? state.container.entries.find((e) => e.lid === state.editingLid) ?? null
+        : null;
+      const bodyFieldSelector = preferredEditFocusSelector(editingEntry?.archetype);
+      const target =
+        (bodyFieldSelector ? root.querySelector<HTMLElement>(bodyFieldSelector) : null)
+        ?? root.querySelector<HTMLElement>('[data-pkc-field="title"]');
       target?.focus();
     }
 

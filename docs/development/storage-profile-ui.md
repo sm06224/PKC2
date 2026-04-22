@@ -4,6 +4,14 @@ Read-only diagnostic surface that answers the question
 **"which entries and folder subtrees weigh most in `container.assets`?"**
 when the user encounters a capacity warning.
 
+> **Scope note (2026-04-22)**: this dialog is an *asset-only*
+> profile — it reports bytes held by `container.assets`, not a
+> full container footprint (text bodies, relations, revisions).
+> The difference is documented in
+> [`storage-profile-footprint-scope.md`](./storage-profile-footprint-scope.md),
+> along with the candidate additive slices for surfacing
+> body-bytes / persisted-size / export-size separately.
+
 ## Role in the capacity-warning stack
 
 ```
