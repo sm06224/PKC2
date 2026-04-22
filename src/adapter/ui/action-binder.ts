@@ -1337,20 +1337,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // ancestor folders). Distinct from `export-selected-entry`:
         // that builds a `.text.zip` / `.textlog.zip` for re-import,
         // this builds a `.pkc2.html` for direct viewing / editing.
+        //
+        // S2 (2026-04-22): multi-selection is honored by passing every
+        // selected lid (primary + multi) into the subset builder's
+        // new multi-root overload. A single selection retains the
+        // original single-root semantics and filename derivation.
         const st = dispatcher.getState();
-        const selLid = st.selectedLid;
-        if (!selLid || !st.container) {
+        if (!st.container) {
           showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
           break;
         }
-        const subset = buildSubsetContainer(st.container, selLid);
+        const selectedLids = getAllSelected(st);
+        if (selectedLids.length === 0) {
+          showToast({ kind: 'info', message: 'Select an entry first.', autoDismissMs: 2400 });
+          break;
+        }
+        const subset = buildSubsetContainer(st.container, selectedLids);
         if (!subset) {
           showToast({ kind: 'info', message: 'Selected entry is no longer available.', autoDismissMs: 2400 });
           break;
         }
         if (subset.missingAssetKeys.size > 0) {
+          const rootLabel = selectedLids.length === 1
+            ? '選択中エントリ'
+            : `選択中 ${selectedLids.length} 件のエントリ`;
           const msg = [
-            `選択中エントリが参照するアセットのうち、${subset.missingAssetKeys.size} 件が見つかりません。`,
+            `${rootLabel}が参照するアセットのうち、${subset.missingAssetKeys.size} 件が見つかりません。`,
             'このまま HTML を生成しますか？',
             '',
             '- 見つからないアセットは埋め込まれません',
@@ -1358,12 +1370,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           ].join('\n');
           if (!confirm(msg)) break;
         }
-        // Override the subset's container title with the entry title so
-        // (a) the recipient's browser tab shows the entry name and
-        // (b) `generateExportFilename` derives its slug from the same
-        // string instead of the source container's title.
-        const rootEntry = subset.container.entries.find((e) => e.lid === selLid);
-        const entryTitle = rootEntry?.title?.trim() || 'entry';
+        // Override the subset's container title so (a) the recipient's
+        // browser tab shows something informative and (b)
+        // `generateExportFilename` derives its slug from the same
+        // string. For single-root: use the entry's title. For
+        // multi-root: use the first selected entry's title plus a
+        // `(+N more)` suffix so the filename stays scannable.
+        const firstLid = selectedLids[0]!;
+        const rootEntry = subset.container.entries.find((e) => e.lid === firstLid);
+        const rootTitle = rootEntry?.title?.trim() || 'entry';
+        const entryTitle = selectedLids.length === 1
+          ? rootTitle
+          : `${rootTitle} (+${selectedLids.length - 1} more)`;
         const retitledSubset: Container = {
           ...subset.container,
           meta: { ...subset.container.meta, title: entryTitle },
