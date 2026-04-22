@@ -2548,6 +2548,81 @@ describe('sort', () => {
     expect(s2.storageProfileOpen).toBe(true);
     expect(s2.menuOpen).toBe(false);
   });
+
+  // ── Slice 1: Kanban Todo add popover ──
+
+  it('createInitialState has kanbanTodoAddPopover === null', () => {
+    expect(createInitialState().kanbanTodoAddPopover).toBeNull();
+  });
+
+  it('OPEN_TODO_ADD_POPOVER stores the column status', () => {
+    const { state } = reduce(readyState(), {
+      type: 'OPEN_TODO_ADD_POPOVER', status: 'open',
+    });
+    expect(state.kanbanTodoAddPopover).toEqual({ status: 'open' });
+  });
+
+  it('OPEN_TODO_ADD_POPOVER is idempotent when the same status is already open', () => {
+    const s: AppState = { ...readyState(), kanbanTodoAddPopover: { status: 'done' } };
+    const { state } = reduce(s, { type: 'OPEN_TODO_ADD_POPOVER', status: 'done' });
+    expect(state).toBe(s);
+  });
+
+  it('OPEN_TODO_ADD_POPOVER replaces the state when a different status is requested', () => {
+    const s: AppState = { ...readyState(), kanbanTodoAddPopover: { status: 'open' } };
+    const { state } = reduce(s, { type: 'OPEN_TODO_ADD_POPOVER', status: 'done' });
+    expect(state.kanbanTodoAddPopover).toEqual({ status: 'done' });
+  });
+
+  it('CLOSE_TODO_ADD_POPOVER clears the popover state', () => {
+    const s: AppState = { ...readyState(), kanbanTodoAddPopover: { status: 'open' } };
+    const { state } = reduce(s, { type: 'CLOSE_TODO_ADD_POPOVER' });
+    expect(state.kanbanTodoAddPopover).toBeNull();
+  });
+
+  it('COMMIT_TODO_ADD creates a todo entry inheriting the popover status', () => {
+    const s: AppState = { ...readyState(), kanbanTodoAddPopover: { status: 'done' } };
+    const beforeCount = s.container!.entries.length;
+    const { state, events } = reduce(s, { type: 'COMMIT_TODO_ADD', title: 'Clean desk' });
+    expect(state.container!.entries.length).toBeGreaterThan(beforeCount);
+    const created = state.container!.entries.find(
+      (e) => e.archetype === 'todo' && e.title === 'Clean desk',
+    )!;
+    expect(created).toBeDefined();
+    const parsed = JSON.parse(created.body);
+    expect(parsed.status).toBe('done');
+    expect(parsed.description).toBe('');
+    expect(parsed.date).toBeUndefined();
+    expect(state.selectedLid).toBe(created.lid);
+    expect(state.kanbanTodoAddPopover).toBeNull();
+    expect(state.phase).toBe('ready');
+    expect(state.editingLid).toBeNull();
+    expect(events.some((e) => e.type === 'ENTRY_CREATED' && e.archetype === 'todo')).toBe(true);
+  });
+
+  it('COMMIT_TODO_ADD trims the title and rejects blank input', () => {
+    const s: AppState = { ...readyState(), kanbanTodoAddPopover: { status: 'open' } };
+    const { state, events } = reduce(s, { type: 'COMMIT_TODO_ADD', title: '   ' });
+    expect(state).toBe(s); // blocked → identity
+    expect(events).toHaveLength(0);
+  });
+
+  it('COMMIT_TODO_ADD is blocked when no popover is open', () => {
+    const { state, events } = reduce(readyState(), { type: 'COMMIT_TODO_ADD', title: 'x' });
+    expect(state.container!.entries.every((e) => e.title !== 'x')).toBe(true);
+    expect(events).toHaveLength(0);
+  });
+
+  it('COMMIT_TODO_ADD is blocked in readonly mode', () => {
+    const s: AppState = {
+      ...readyState(),
+      readonly: true,
+      kanbanTodoAddPopover: { status: 'open' },
+    };
+    const { state, events } = reduce(s, { type: 'COMMIT_TODO_ADD', title: 'x' });
+    expect(state).toBe(s);
+    expect(events).toHaveLength(0);
+  });
 });
 
 // ── PASTE_ATTACHMENT ────────────────────────

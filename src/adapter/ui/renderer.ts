@@ -2677,6 +2677,9 @@ function renderKanbanView(state: AppState): HTMLElement {
 
   const board = createElement('div', 'pkc-kanban-board');
 
+  const popover = state.kanbanTodoAddPopover ?? null;
+  const canEditKanban = !state.readonly && !!state.container;
+
   for (const col of KANBAN_COLUMNS) {
     const column = createElement('div', 'pkc-kanban-column');
     column.setAttribute('data-pkc-kanban-status', col.status);
@@ -2691,7 +2694,41 @@ function renderKanbanView(state: AppState): HTMLElement {
     badge.textContent = String(count);
     header.appendChild(badge);
 
+    // Slice 1 (Todo add popover foundation): per-column "+ Add" trigger.
+    // Hidden in readonly mode so the reducer guard is not provoked.
+    // See docs/development/todo-editor-in-continuous-edit-wave.md §4.
+    if (canEditKanban) {
+      const addBtn = createElement('button', 'pkc-kanban-column-add');
+      addBtn.setAttribute('data-pkc-action', 'open-kanban-todo-add');
+      addBtn.setAttribute('data-pkc-kanban-status', col.status);
+      addBtn.setAttribute('title', `Add new Todo (${col.label})`);
+      addBtn.setAttribute('aria-label', `Add new Todo to ${col.label}`);
+      addBtn.textContent = '+ Add';
+      header.appendChild(addBtn);
+    }
+
     column.appendChild(header);
+
+    // Render the popover INSIDE the column it was opened from so the
+    // context is visually anchored. Single-instance: the reducer
+    // guarantees at most one popover is open across all columns.
+    if (popover && popover.status === col.status && canEditKanban) {
+      const popEl = createElement('div', 'pkc-kanban-add-popover');
+      popEl.setAttribute('data-pkc-region', 'kanban-todo-add-popover');
+      popEl.setAttribute('data-pkc-context', 'kanban');
+      popEl.setAttribute('data-pkc-context-value', col.status);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'pkc-kanban-add-input';
+      input.setAttribute('data-pkc-field', 'kanban-todo-add-title');
+      input.setAttribute('placeholder', 'New todo…');
+      input.setAttribute('autofocus', 'true');
+      popEl.appendChild(input);
+      const hint = createElement('span', 'pkc-kanban-add-hint');
+      hint.textContent = 'Enter to add · Esc to cancel';
+      popEl.appendChild(hint);
+      column.appendChild(popEl);
+    }
 
     const list = createElement('div', 'pkc-kanban-list');
     list.setAttribute('data-pkc-kanban-drop-target', col.status);

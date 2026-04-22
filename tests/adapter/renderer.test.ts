@@ -5505,6 +5505,53 @@ describe('Todo Kanban Foundation', () => {
     const archivedCards = kanban.querySelectorAll('.pkc-kanban-card[data-pkc-todo-archived]');
     expect(archivedCards).toHaveLength(0);
   });
+
+  // ── Slice 1: Todo add popover foundation (Kanban 優先) ──
+  it('renders a "+ Add" trigger in every column header when editable', () => {
+    render(kanbanState(), root);
+    const triggers = root.querySelectorAll<HTMLButtonElement>(
+      '.pkc-kanban-column-header [data-pkc-action="open-kanban-todo-add"]',
+    );
+    expect(triggers).toHaveLength(2);
+    const statuses = Array.from(triggers).map((b) => b.getAttribute('data-pkc-kanban-status'));
+    expect(statuses).toEqual(expect.arrayContaining(['open', 'done']));
+  });
+
+  it('hides "+ Add" triggers in readonly mode', () => {
+    render(kanbanState({ readonly: true }), root);
+    const triggers = root.querySelectorAll('[data-pkc-action="open-kanban-todo-add"]');
+    expect(triggers).toHaveLength(0);
+  });
+
+  it('mounts the add popover inside the matching column when state.kanbanTodoAddPopover is set', () => {
+    render(
+      kanbanState({ kanbanTodoAddPopover: { status: 'open' } }),
+      root,
+    );
+    // Scoped to the open column so a mismatch would fail loudly.
+    const openColumn = root.querySelector<HTMLElement>(
+      '.pkc-kanban-column[data-pkc-kanban-status="open"]',
+    )!;
+    const popover = openColumn.querySelector<HTMLElement>(
+      '[data-pkc-region="kanban-todo-add-popover"]',
+    );
+    expect(popover).not.toBeNull();
+    expect(popover!.getAttribute('data-pkc-context')).toBe('kanban');
+    expect(popover!.getAttribute('data-pkc-context-value')).toBe('open');
+    const input = popover!.querySelector<HTMLInputElement>(
+      'input[data-pkc-field="kanban-todo-add-title"]',
+    );
+    expect(input).not.toBeNull();
+    // Exactly one popover across all columns.
+    expect(root.querySelectorAll('[data-pkc-region="kanban-todo-add-popover"]')).toHaveLength(1);
+  });
+
+  it('does not mount the popover when state.kanbanTodoAddPopover is null', () => {
+    render(kanbanState(), root);
+    expect(
+      root.querySelector('[data-pkc-region="kanban-todo-add-popover"]'),
+    ).toBeNull();
+  });
 });
 
 // ── Issue #61: Todo View Interaction Consistency ──

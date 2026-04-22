@@ -225,6 +225,16 @@ export interface AppState {
    */
   storageProfileOpen?: boolean;
   /**
+   * Kanban "+ Add" popover state (Slice 1 of the Todo / Editor-in /
+   * continuous-edit wave). Runtime-only, not persisted. When `null` or
+   * absent the popover is closed; when present the renderer mounts a
+   * small input popover anchored to the column whose `status` matches,
+   * so a new Todo created through the popover inherits that status as
+   * its body context. See
+   * `docs/development/todo-editor-in-continuous-edit-wave.md §4`.
+   */
+  kanbanTodoAddPopover?: { status: 'open' | 'done' } | null;
+  /**
    * entry-ref autocomplete v1.3: LRU of lids accepted from the
    * autocomplete popup (most recent first). Powers recent-first
    * ordering of suggestions. Runtime-only, not persisted. Capped at
@@ -381,6 +391,7 @@ export function createInitialState(): AppState {
     collapsedFolders: [],
     recentPaneCollapsed: false,
     storageProfileOpen: false,
+    kanbanTodoAddPopover: null,
     recentEntryRefLids: [],
     textlogSelection: null,
     textToTextlogModal: null,
@@ -2313,6 +2324,101 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!state.storageProfileOpen) return { state, events: [] };
       const next: AppState = { ...state, storageProfileOpen: false };
       return { state: next, events: [] };
+    }
+    case 'OPEN_TODO_ADD_POPOVER': {
+      // Slice 1 of the Todo / Editor-in / continuous-edit wave. The
+      // popover is renderer-owned; the reducer only holds the column
+      // context (status). Blocked in readonly mode — edit-like flows
+      // must go through the same guard as CREATE_ENTRY below.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const desired = { status: action.status };
+      if (
+        state.kanbanTodoAddPopover
+        && state.kanbanTodoAddPopover.status === desired.status
+      ) {
+        return { state, events: [] };
+      }
+      const next: AppState = { ...state, kanbanTodoAddPopover: desired };
+      return { state: next, events: [] };
+    }
+    case 'CLOSE_TODO_ADD_POPOVER': {
+      if (!state.kanbanTodoAddPopover) return { state, events: [] };
+      const next: AppState = { ...state, kanbanTodoAddPopover: null };
+      return { state: next, events: [] };
+    }
+    case 'COMMIT_TODO_ADD': {
+      // Atomic Todo creation with status inherited from the popover
+      // column. Unlike CREATE_ENTRY this path does NOT transition to
+      // `editing` phase and does NOT change `viewMode` — the user
+      // stays in Kanban and the new card is already populated with
+      // the popover's title + status, so no follow-up edit is needed.
+      //
+      // Auto-placement (TODOS subfolder under the current context) is
+      // applied in the same reduction, matching the existing CREATE_
+      // ENTRY handling.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (!state.kanbanTodoAddPopover) return blocked(state, action);
+      const trimmed = action.title.trim();
+      if (trimmed.length === 0) return blocked(state, action);
+      const status = state.kanbanTodoAddPopover.status;
+      const ts = now();
+      const events: DomainEvent[] = [];
+      let container = state.container;
+
+      // Auto-placement: reuse the same resolver the toolbar "+ Todo"
+      // uses, but inside the reducer so placement is atomic with the
+      // entry creation and the status body write below.
+      const autoPlacementParent = resolveAutoPlacementFolder(container, state.selectedLid ?? null);
+      let placementParentLid: string | null = null;
+      if (autoPlacementParent) {
+        const parent = container.entries.find((e) => e.lid === autoPlacementParent);
+        if (parent && parent.archetype === 'folder') {
+          placementParentLid = parent.lid;
+          const sub = 'TODOS';
+          if (parent.title !== sub) {
+            const existing = findSubfolder(container, parent.lid, sub);
+            if (existing) {
+              placementParentLid = existing;
+            } else {
+              const subLid = generateLid();
+              container = addEntry(container, subLid, 'folder', sub, ts);
+              events.push({ type: 'ENTRY_CREATED', lid: subLid, archetype: 'folder' });
+              const subRelId = generateLid();
+              container = addRelation(container, subRelId, parent.lid, subLid, 'structural', ts);
+              events.push({
+                type: 'RELATION_CREATED', id: subRelId,
+                from: parent.lid, to: subLid, kind: 'structural',
+              });
+              placementParentLid = subLid;
+            }
+          }
+        }
+      }
+
+      const lid = generateLid();
+      container = addEntry(container, lid, 'todo', trimmed, ts);
+      const body = serializeTodoBody({ status, description: '' });
+      container = updateEntry(container, lid, trimmed, body, ts);
+      events.push({ type: 'ENTRY_CREATED', lid, archetype: 'todo' });
+
+      if (placementParentLid) {
+        const relId = generateLid();
+        container = addRelation(container, relId, placementParentLid, lid, 'structural', ts);
+        events.push({
+          type: 'RELATION_CREATED', id: relId,
+          from: placementParentLid, to: lid, kind: 'structural',
+        });
+      }
+
+      const next: AppState = {
+        ...state,
+        container,
+        selectedLid: lid,
+        kanbanTodoAddPopover: null,
+      };
+      return { state: next, events };
     }
     case 'SYS_ERROR': {
       const next: AppState = { ...state, phase: 'error', error: action.error };
