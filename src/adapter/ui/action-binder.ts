@@ -1578,14 +1578,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'show-shortcut-help': {
-        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
-        if (helpOverlay) helpOverlay.style.display = '';
+        // B1: state-driven. The overlay is mounted by the renderer
+        // based on `state.shortcutHelpOpen`, so the subsequent
+        // `CLOSE_MENU` re-render no longer wipes it.
+        dispatcher.dispatch({ type: 'OPEN_SHORTCUT_HELP' });
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-shortcut-help': {
-        const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
-        if (helpOverlay) helpOverlay.style.display = 'none';
+        dispatcher.dispatch({ type: 'CLOSE_SHORTCUT_HELP' });
         break;
       }
       case 'show-storage-profile': {
@@ -2140,8 +2141,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       && state.phase !== 'editing'
     ) {
       e.preventDefault();
-      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
-      if (helpOverlay) helpOverlay.style.display = helpOverlay.style.display === 'none' ? '' : 'none';
+      // B1: state-driven toggle. Matches the OPEN/CLOSE pair used by
+      // the menu button so the overlay always reflects AppState.
+      dispatcher.dispatch({
+        type: state.shortcutHelpOpen ? 'CLOSE_SHORTCUT_HELP' : 'OPEN_SHORTCUT_HELP',
+      });
       return;
     }
 
@@ -2232,10 +2236,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
         return;
       }
-      // Close shortcut help if open
-      const helpOverlay = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
-      if (helpOverlay && helpOverlay.style.display !== 'none') {
-        helpOverlay.style.display = 'none';
+      // Close shortcut help if open (B1: state-driven — dispatch
+      // instead of mutating DOM directly).
+      if (state.shortcutHelpOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_SHORTCUT_HELP' });
         return;
       }
       // Close shell menu if open

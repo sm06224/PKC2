@@ -2549,6 +2549,43 @@ describe('sort', () => {
     expect(s2.menuOpen).toBe(false);
   });
 
+  // ── B1: Shortcut-help overlay state ──
+
+  it('createInitialState has shortcutHelpOpen === false', () => {
+    expect(createInitialState().shortcutHelpOpen).toBe(false);
+  });
+
+  it('OPEN_SHORTCUT_HELP sets shortcutHelpOpen to true', () => {
+    const { state } = reduce(readyState(), { type: 'OPEN_SHORTCUT_HELP' });
+    expect(state.shortcutHelpOpen).toBe(true);
+  });
+
+  it('CLOSE_SHORTCUT_HELP sets shortcutHelpOpen to false', () => {
+    const s: AppState = { ...readyState(), shortcutHelpOpen: true };
+    const { state } = reduce(s, { type: 'CLOSE_SHORTCUT_HELP' });
+    expect(state.shortcutHelpOpen).toBe(false);
+  });
+
+  it('OPEN_SHORTCUT_HELP is idempotent (same-reference no-op when already open)', () => {
+    const s: AppState = { ...readyState(), shortcutHelpOpen: true };
+    const { state } = reduce(s, { type: 'OPEN_SHORTCUT_HELP' });
+    expect(state).toBe(s);
+  });
+
+  it('CLOSE_SHORTCUT_HELP is idempotent (same-reference no-op when already closed)', () => {
+    const s: AppState = { ...readyState(), shortcutHelpOpen: false };
+    const { state } = reduce(s, { type: 'CLOSE_SHORTCUT_HELP' });
+    expect(state).toBe(s);
+  });
+
+  it('OPEN_SHORTCUT_HELP + CLOSE_MENU keeps shortcutHelpOpen true (B1 regression)', () => {
+    const s0: AppState = { ...readyState(), menuOpen: true };
+    const { state: s1 } = reduce(s0, { type: 'OPEN_SHORTCUT_HELP' });
+    const { state: s2 } = reduce(s1, { type: 'CLOSE_MENU' });
+    expect(s2.shortcutHelpOpen).toBe(true);
+    expect(s2.menuOpen).toBe(false);
+  });
+
   // ── Slice 1: Kanban Todo add popover ──
 
   it('createInitialState has todoAddPopover === null', () => {

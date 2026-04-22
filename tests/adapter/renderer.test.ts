@@ -7997,7 +7997,7 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(menu!.textContent).toContain('PKC2');
   });
 
-  it('renders shortcut help overlay (hidden by default)', () => {
+  it('shortcut help overlay is absent by default (B1: state-driven)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false,
@@ -8006,9 +8006,20 @@ describe('Shell Menu & Help Foundation (P2)', () => {
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
     };
     render(state, root);
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).toBeNull();
+  });
+
+  it('renders shortcut help overlay when shortcutHelpOpen is true', () => {
+    const state: AppState = {
+      phase: 'ready', container: mockContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
+      tagFilter: null, sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], shortcutHelpOpen: true,
+    };
+    render(state, root);
     const overlay = root.querySelector('[data-pkc-region="shortcut-help"]');
     expect(overlay).not.toBeNull();
-    expect((overlay as HTMLElement).style.display).toBe('none');
     // Contains shortcut descriptions
     expect(overlay!.textContent).toContain('Ctrl+N');
     expect(overlay!.textContent).toContain('Ctrl+S');
