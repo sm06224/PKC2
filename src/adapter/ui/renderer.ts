@@ -1213,12 +1213,21 @@ export function buildStorageProfileOverlay(
   const card = createElement('div', 'pkc-storage-profile-card');
 
   const heading = createElement('h2', 'pkc-storage-profile-heading');
-  heading.textContent = 'Storage Profile';
+  // Slice A (2026-04-22): explicit scope in the title so the dialog
+  // cannot be mis-read as a container-wide footprint. See
+  // docs/development/storage-profile-footprint-scope.md.
+  heading.textContent = 'Storage Profile — Assets';
   card.appendChild(heading);
 
   const note = createElement('div', 'pkc-storage-profile-note');
+  // Slice A: call out the asset-only scope up front so operators do
+  // not read "Total size" as the full container footprint. Full
+  // container footprint (text bodies / relations / revisions) is
+  // documented as future work in the footprint-scope doc.
   note.textContent =
-    'Estimate based on embedded assets and asset references. Actual browser storage usage may differ.';
+    'Shows asset bytes only. Text bodies, relations, and revisions are NOT counted — '
+    + 'full container footprint is not yet implemented. Numbers are estimates; '
+    + 'actual browser storage usage may differ.';
   card.appendChild(note);
 
   // Compute profile once and reuse for summary + rows + Export CSV
@@ -1280,7 +1289,10 @@ function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
   const { summary, orphanBytes, orphanCount } = profile;
   const lines: { label: string; value: string; raw?: number }[] = [
     { label: 'Total assets', value: String(summary.assetCount) },
-    { label: 'Total size', value: formatBytes(summary.totalBytes), raw: summary.totalBytes },
+    // Slice A: "Total size" was misread as a container-wide total.
+    // Renamed so the scope is unambiguous. The underlying number
+    // (`summary.totalBytes`) is unchanged.
+    { label: 'Total asset bytes', value: formatBytes(summary.totalBytes), raw: summary.totalBytes },
   ];
   if (summary.largestAsset) {
     const ownerHint = summary.largestAssetOwnerTitle
@@ -1334,7 +1346,10 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
   section.setAttribute('data-pkc-region', 'storage-profile-top');
 
   const label = createElement('span', 'pkc-shell-menu-label');
-  label.textContent = `Top entries by size (showing ${Math.min(profile.rows.length, TOP_N)} of ${profile.rows.length})`;
+  // Slice A: clarify the ranking basis — rows are ordered by
+  // `subtreeBytes`, which is an asset-byte rollup, not a whole-entry
+  // footprint.
+  label.textContent = `Top entries by asset bytes (showing ${Math.min(profile.rows.length, TOP_N)} of ${profile.rows.length})`;
   section.appendChild(label);
 
   if (profile.rows.length === 0) {
