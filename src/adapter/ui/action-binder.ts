@@ -178,6 +178,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dispatcher.dispatch({ type: 'RECORD_ENTRY_REF_SELECTION', lid });
   });
 
+  /**
+   * Run `mutate` while preserving the scroll position of
+   * `.pkc-center-content` across the full re-render triggered by the
+   * reducer. The renderer does `root.innerHTML = ''` on every
+   * dispatch, which would otherwise snap the viewport to the top of
+   * the center pane for purely local toggles (checkbox flip, todo
+   * status toggle, sandbox attribute flip, etc.).
+   *
+   * Usage is narrow on purpose: only the toggle handlers that
+   * cascade into a `QUICK_UPDATE_ENTRY` full re-render and live on
+   * long panes should wrap their work in this helper. See cluster B
+   * of the UI-continuity investigation for rationale.
+   */
+  function preserveCenterPaneScroll(mutate: () => void): void {
+    const scroller = root.querySelector<HTMLElement>('.pkc-center-content');
+    const savedScroll = scroller ? scroller.scrollTop : null;
+    mutate();
+    if (savedScroll !== null) {
+      requestAnimationFrame(() => {
+        const fresh = root.querySelector<HTMLElement>('.pkc-center-content');
+        if (fresh) fresh.scrollTop = savedScroll;
+      });
+    }
+  }
+
   function handleClick(e: Event): void {
     // Shell menu backdrop click: close menu if user clicked outside the card.
     const rawTarget = e.target as HTMLElement | null;
@@ -807,7 +832,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           ...todo,
           status: todo.status === 'done' ? 'open' : 'done',
         });
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        });
         break;
       }
       case 'append-log-entry': {
@@ -830,25 +857,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         e.preventDefault();
         e.stopPropagation();
 
-        // Preserve the scroll position of the center pane across the
-        // full re-render triggered by `QUICK_UPDATE_ENTRY`. The
-        // renderer does `root.innerHTML = ''` on every dispatch, which
-        // would otherwise reset `.pkc-center-content`'s scrollTop to 0
-        // and snap the viewport to the top of the log — surprising for
-        // what should feel like a purely local flag toggle.
-        const scroller = root.querySelector<HTMLElement>('.pkc-center-content');
-        const savedScroll = scroller ? scroller.scrollTop : null;
-
         const log = parseTextlogBody(ent.body);
         const updated = serializeTextlogBody(toggleLogFlag(log, logId, 'important'));
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
-
-        if (savedScroll !== null) {
-          requestAnimationFrame(() => {
-            const fresh = root.querySelector<HTMLElement>('.pkc-center-content');
-            if (fresh) fresh.scrollTop = savedScroll;
-          });
-        }
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        });
         break;
       }
       case 'delete-log-entry': {
@@ -984,7 +997,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           ? [...currentAllow, sandboxAttr]
           : currentAllow.filter((a) => a !== sandboxAttr);
         const updatedBody = serializeAttachmentBody({ ...att, sandbox_allow: newAllow });
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        });
         break;
       }
       case 'move-to-folder': {
