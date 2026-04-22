@@ -434,6 +434,29 @@ function now(): string {
 }
 
 /**
+ * Inject the v0 capture provenance header per
+ * `docs/spec/record-offer-capture-profile.md` §10.4. Header lines are
+ * emitted only for fields explicitly provided (non-null, non-empty
+ * strings); when neither is provided the body is returned unchanged so
+ * the existing ACCEPT_OFFER behavior stays bit-for-bit compatible.
+ *
+ * Format:
+ *   > Source: <url>
+ *   > Captured: <iso>
+ *   <single blank line>
+ *   <original body>
+ *
+ * Order is fixed: Source then Captured (spec §10.4).
+ */
+function injectCaptureHeader(body: string, sourceUrl: string | null, capturedAt: string | null): string {
+  const lines: string[] = [];
+  if (sourceUrl) lines.push(`> Source: ${sourceUrl}`);
+  if (capturedAt) lines.push(`> Captured: ${capturedAt}`);
+  if (lines.length === 0) return body;
+  return `${lines.join('\n')}\n\n${body}`;
+}
+
+/**
  * FI-Settings v1 (2026-04-18): read the effective SystemSettingsPayload
  * for a state, synthesizing it from the legacy mirror fields when
  * `state.settings` has not been populated yet (pre-RESTORE_SETTINGS
@@ -1009,8 +1032,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const container = addEntry(
         state.container, lid, offer.archetype, offer.title, ts,
       );
+      // Inject capture provenance header per
+      // `docs/spec/record-offer-capture-profile.md` §10.4. Header is
+      // emitted only when at least one of `source_url` / `captured_at`
+      // is present; absent → body unchanged (existing behavior).
+      const finalBody = injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
-      const updatedContainer = updateEntry(container, lid, offer.title, offer.body, ts);
+      const updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
       const next: AppState = {
         ...state,
         container: updatedContainer,

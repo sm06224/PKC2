@@ -578,6 +578,63 @@ describe('AppState reducer', () => {
     const { state: back } = reduce(editing, { type: 'CANCEL_EDIT' });
     expect(back.pendingOffers).toHaveLength(1);
   });
+
+  // ── Capture profile v0 (docs/spec/record-offer-capture-profile.md §10.4) ──
+
+  it('ACCEPT_OFFER injects both Source and Captured header lines when both provided', () => {
+    const offer = {
+      offer_id: 'cap1', title: 'Captured', body: 'original body',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-04-21T00:00:00Z',
+      source_url: 'https://example.com/article',
+      captured_at: '2026-04-21T12:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'cap1' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.title).toBe('Captured');
+    expect(newEntry.body).toBe(
+      '> Source: https://example.com/article\n> Captured: 2026-04-21T12:00:00Z\n\noriginal body',
+    );
+  });
+
+  it('ACCEPT_OFFER injects only Source header line when captured_at absent', () => {
+    const offer = {
+      offer_id: 'cap2', title: 'OnlySource', body: 'b',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-04-21T00:00:00Z',
+      source_url: 'https://example.com/x',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'cap2' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toBe('> Source: https://example.com/x\n\nb');
+  });
+
+  it('ACCEPT_OFFER injects only Captured header line when source_url absent', () => {
+    const offer = {
+      offer_id: 'cap3', title: 'OnlyCaptured', body: 'b',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-04-21T00:00:00Z',
+      captured_at: '2026-04-21T12:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'cap3' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toBe('> Captured: 2026-04-21T12:00:00Z\n\nb');
+  });
+
+  it('ACCEPT_OFFER leaves body unchanged when neither capture field provided (existing behavior)', () => {
+    const offer = {
+      offer_id: 'cap4', title: 'Plain', body: 'unchanged body',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-04-21T00:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'cap4' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toBe('unchanged body');
+  });
 });
 
 // ── Import confirmation ────────────────────────
