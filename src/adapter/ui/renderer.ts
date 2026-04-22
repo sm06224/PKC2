@@ -268,6 +268,16 @@ export function render(state: AppState, root: HTMLElement): void {
       break;
   }
 
+  // PR-α (cluster A): Storage Profile overlay is owned by the
+  // renderer, not by an ad-hoc `root.appendChild` inside the action
+  // handler. The handler now just dispatches `OPEN_STORAGE_PROFILE`;
+  // this branch rebuilds the overlay from the live container each
+  // render pass so a subsequent `CLOSE_MENU` re-render does not wipe
+  // it. `close-storage-profile` dispatches `CLOSE_STORAGE_PROFILE`.
+  if (state.storageProfileOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
+    root.appendChild(buildStorageProfileOverlay(state.container));
+  }
+
   // Post-render: if the current selection changed since the last
   // render, nudge the sidebar tree node into view.  Pairs with the
   // ancestor auto-expand in the SELECT_ENTRY reducer — together they

@@ -338,6 +338,15 @@ export type UserAction =
    */
   | { type: 'TOGGLE_RECENT_PANE' }
   /**
+   * OPEN_STORAGE_PROFILE / CLOSE_STORAGE_PROFILE — show / hide the
+   * Storage Profile overlay. Runtime-only UI state, driven by
+   * `state.storageProfileOpen`. The renderer owns the overlay DOM
+   * so it survives full re-renders triggered by e.g. `CLOSE_MENU`.
+   * Does NOT mutate the container.
+   */
+  | { type: 'OPEN_STORAGE_PROFILE' }
+  | { type: 'CLOSE_STORAGE_PROFILE' }
+  /**
    * PASTE_ATTACHMENT — create an attachment entry from pasted image data
    * without changing phase or editing state.
    *

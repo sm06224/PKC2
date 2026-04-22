@@ -51,7 +51,7 @@ import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, buildStorageProfileOverlay, clampMenuToViewport } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport } from './renderer';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -1522,38 +1522,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'show-storage-profile': {
-        // Open the Storage Profile dialog. The overlay is built on
-        // demand (NOT rendered per render) so the profile compute
-        // and DOM allocation only happen at click time. Re-mounts
-        // each open so the numbers reflect the live container.
-        const existing = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
-        if (existing) existing.remove();
-        const st = dispatcher.getState();
-        const overlay = buildStorageProfileOverlay(st.container);
-        root.appendChild(overlay);
+        // Open the Storage Profile dialog via state. The renderer
+        // rebuilds the overlay from the live container on each render
+        // pass (see `render()` in renderer.ts), so the subsequent
+        // CLOSE_MENU dispatch no longer wipes it.
+        dispatcher.dispatch({ type: 'OPEN_STORAGE_PROFILE' });
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
       case 'close-storage-profile': {
-        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
-        if (overlay) overlay.remove();
+        dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
         break;
       }
       case 'select-from-storage-profile': {
         // Direct-jump from the Storage Profile row to the underlying
         // entry. Read-only: re-uses SELECT_ENTRY; no deletion or
-        // data-model mutation. Overlay is closed only when the entry
-        // still exists — a stale profile (rare: container swap between
-        // render and click) leaves the dialog intact so the user can
-        // recover without losing context.
+        // data-model mutation. The overlay is closed via state only
+        // when the target entry still exists — a stale profile (rare:
+        // container swap between render and click) leaves the dialog
+        // intact so the user can recover without losing context.
         if (!lid) break;
         const st = dispatcher.getState();
         if (!st.container) break;
         const exists = st.container.entries.some((entry) => entry.lid === lid);
         if (!exists) break;
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-        const overlay = root.querySelector<HTMLElement>('[data-pkc-region="storage-profile"]');
-        if (overlay) overlay.remove();
+        dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
         break;
       }
       case 'export-storage-profile-csv': {
@@ -2124,15 +2118,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeSlashMenu();
         return;
       }
-      // Close storage profile if mounted (sits visually on top of
-      // the shell menu so close it first when both are visible). The
-      // overlay is mounted on demand, so its presence alone means
-      // "open" — no display-toggling needed.
-      const profileOverlay = root.querySelector<HTMLElement>(
-        '[data-pkc-region="storage-profile"]',
-      );
-      if (profileOverlay) {
-        profileOverlay.remove();
+      // Close storage profile if open (sits visually on top of the
+      // shell menu so close it first when both are visible). PR-α:
+      // overlay is state-driven, so dispatch CLOSE_STORAGE_PROFILE
+      // rather than mutating DOM directly.
+      if (state.storageProfileOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
         return;
       }
       // Close shortcut help if open
