@@ -59,6 +59,7 @@ import type { Entry, ArchetypeId } from '../../core/model/record';
 import { extractAssetReferences } from '../markdown/asset-resolver';
 import { parseTextlogBody } from '../textlog/textlog-body';
 import { collectDescendantLids } from '../relation/tree';
+import { pad2 } from '../datetime/datetime-format';
 
 /**
  * Decode-free base64 byte-size estimate.  Identical in semantics to
@@ -328,7 +329,6 @@ export function formatStorageProfileCsv(profile: StorageProfile): string {
  * test suite can pin the output.
  */
 export function storageProfileCsvFilename(date: Date = new Date()): string {
-  const pad2 = (n: number): string => n.toString().padStart(2, '0');
   const y = date.getFullYear();
   const m = pad2(date.getMonth() + 1);
   const d = pad2(date.getDate());

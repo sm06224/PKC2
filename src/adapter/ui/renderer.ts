@@ -40,6 +40,7 @@ import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
+import { pad2 } from '../../features/datetime/datetime-format';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
@@ -2705,7 +2706,7 @@ function renderCalendarView(state: AppState): HTMLElement {
   cal.appendChild(grid);
 
   // Empty state: hint when no dated todos exist for this month
-  const monthKey = `${state.calendarYear}-${String(state.calendarMonth).padStart(2, '0')}`;
+  const monthKey = `${state.calendarYear}-${pad2(state.calendarMonth)}`;
   const hasTodosThisMonth = Object.keys(todoMap).some((k) => k.startsWith(monthKey));
   if (!hasTodosThisMonth) {
     const empty = createElement('div', 'pkc-calendar-empty');

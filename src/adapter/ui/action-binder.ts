@@ -78,6 +78,7 @@ import {
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
+import { dateKey } from '../../features/calendar/calendar-data';
 import {
   formatDate,
   formatTime,
@@ -2335,7 +2336,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         for (let offset = step; ; offset += step) {
           const target = new Date(baseDate);
           target.setUTCDate(target.getUTCDate() + offset);
-          const tk = `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(target.getUTCDate()).padStart(2, '0')}`;
+          const tk = dateKey(target.getUTCFullYear(), target.getUTCMonth() + 1, target.getUTCDate());
 
           const targetCell = calendar.querySelector<HTMLElement>(`[data-pkc-date="${tk}"]`);
           if (!targetCell) return; // past month boundary → no-op
