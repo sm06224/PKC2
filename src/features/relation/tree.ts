@@ -18,8 +18,22 @@ export interface TreeNode {
  * "from is the parent, to is the child".
  * i.e., from = folder, to = contained entry.
  *
- * Returns root-level nodes (entries with no structural parent).
- * Children are nested within their parent's TreeNode.
+ * Returns root-level nodes (entries with no structural parent) plus
+ * a fallback tail of any entry that the root pass failed to reach.
+ *
+ * ── Cycle-safety (F-cycle hotfix) ───────────────────────────────
+ * The naive root rule ("entry has no structural parent") leaves a
+ * structural cycle (A→B and B→A, 3-cycle A→B→C→A, …) with every
+ * member marked `hasParent = true`, so none are picked as root and
+ * the whole component disappears from the sidebar. The `placedLids`
+ * sweep at the end rescues any entry still missing after the normal
+ * pass, treating it as a fallback root. A per-walk `visited` set
+ * inside `buildNode` keeps cycle recursion from looping back on
+ * itself (also covers self-loops A→A and dangling parent refs
+ * where the referenced parent lid is not in `entries`).
+ *
+ * Normal DAG output is preserved: the fallback sweep only fires
+ * when entries are truly unreachable from the root pass.
  *
  * Max depth is capped to prevent runaway recursion.
  */
@@ -42,16 +56,46 @@ export function buildTree(
 
   const entryMap = new Map(entries.map((e) => [e.lid, e]));
 
-  function buildNode(lid: string, depth: number): TreeNode | null {
+  // Every lid that has been materialised into the returned tree,
+  // whether as a root or as a descendant. Populated by `buildNode`;
+  // consulted by the fallback sweep below.
+  const placedLids = new Set<string>();
+
+  // When `maxDepth` truncates display, we still need to record that
+  // the truncated descendants are structurally reachable — otherwise
+  // the fallback sweep below would misread them as isolated and
+  // promote them to a second root. Pure bookkeeping: it mutates only
+  // the shared `placedLids` / `walkVisited` sets, it does not build
+  // TreeNodes.
+  function markReachableBelowCap(lid: string, walkVisited: Set<string>): void {
+    if (!entryMap.has(lid)) return;
+    if (walkVisited.has(lid)) return;
+    walkVisited.add(lid);
+    placedLids.add(lid);
+    const childLids = childrenOf.get(lid) ?? [];
+    for (const childLid of childLids) {
+      markReachableBelowCap(childLid, walkVisited);
+    }
+  }
+
+  function buildNode(lid: string, depth: number, walkVisited: Set<string>): TreeNode | null {
     const entry = entryMap.get(lid);
     if (!entry) return null;
+    // Per-walk cycle guard: if the current walk has already seen
+    // this lid, cut the recursion. Self-loops and mutual cycles
+    // both hit this path.
+    if (walkVisited.has(lid)) return null;
+    walkVisited.add(lid);
+    placedLids.add(lid);
 
     const children: TreeNode[] = [];
-    if (depth < maxDepth) {
-      const childLids = childrenOf.get(lid) ?? [];
-      for (const childLid of childLids) {
-        const child = buildNode(childLid, depth + 1);
+    const childLids = childrenOf.get(lid) ?? [];
+    for (const childLid of childLids) {
+      if (depth < maxDepth) {
+        const child = buildNode(childLid, depth + 1, walkVisited);
         if (child) children.push(child);
+      } else {
+        markReachableBelowCap(childLid, walkVisited);
       }
     }
 
@@ -62,7 +106,23 @@ export function buildTree(
   const roots: TreeNode[] = [];
   for (const entry of entries) {
     if (!hasParent.has(entry.lid)) {
-      const node = buildNode(entry.lid, 0);
+      const node = buildNode(entry.lid, 0, new Set<string>());
+      if (node) roots.push(node);
+    }
+  }
+
+  // Fallback sweep — rescue entries that the root pass did not
+  // reach. Two causes in practice:
+  //   (a) a structural cycle in which every member has a parent,
+  //       so no natural root exists (mutual / 3-cycle / self-loop);
+  //   (b) a dangling `from` pointing at a lid not in `entries`,
+  //       which incorrectly marks the referenced child as "has a
+  //       parent" even though that parent is absent.
+  // Entries order is preserved so fallback placement is
+  // deterministic.
+  for (const entry of entries) {
+    if (!placedLids.has(entry.lid)) {
+      const node = buildNode(entry.lid, 0, new Set<string>());
       if (node) roots.push(node);
     }
   }
