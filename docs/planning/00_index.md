@@ -176,6 +176,21 @@
 | `../development/dead-path-decision-features-barrel.md` | features barrel 削除 + `entryMatchesQuery` 保持の決定（2026-04-19） |
 | `../development/dead-path-decision-isUlid-updateLogEntry.md` | `isUlid` 保持 / `updateLogEntry` 削除の決定（2026-04-19） |
 
+#### 2026-04-22 UI continuity wave（closure）
+
+ユーザが直接報告した UI 不具合 7 件を起点に、docs-first investigation × 最小 PR 複数本 で一巡クローズした wave。
+**closure record は `HANDOVER_FINAL.md §23`**、retrospective 一覧は `USER_REQUEST_LEDGER.md §1.2`。
+
+| 位置 | 内容 |
+|-----|-----|
+| PR #99 | **cluster B** — `preserveCenterPaneScroll(mutate)` helper を `bindActions` 内 local に追加、`toggle-todo-status` / `toggle-sandbox-attr` / `toggle-log-flag` を統合（2026-04-22）|
+| PR #100 | **cluster C** — `AppState.recentPaneCollapsed?: boolean` + `TOGGLE_RECENT_PANE` で Recent pane 畳み状態を state 駆動化（2026-04-22）|
+| PR #101 | **cluster A** — `AppState.storageProfileOpen?: boolean` + `OPEN/CLOSE_STORAGE_PROFILE` で storage profile overlay を renderer 所有化（2026-04-22、メニュー event wiring の主因も同 PR で除去）|
+| PR #102 | **cluster E low-risk optimization** — `buildConnectednessSets(container, linkIndex?)` に optional 引数、`buildLinkIndex` を renderShell で 1 回計算 / sidebar+meta 共有（2026-04-22）|
+| PR #103 | **cluster C' first wave** — `SELECT_ENTRY` / `NAVIGATE_TO_LOCATION` に `revealInSidebar?: boolean` を additive 追加、reducer を opt-in gate、storage-profile と entry-ref のみ明示 opt-in（2026-04-22）|
+| PR #104 | **cluster C' lockdown** — 残り 6 経路（recent pane / calendar & kanban kb nav / drop handler / relative folder kb nav）の reveal 不要を決定理由コメント + 回帰テストで固定（2026-04-22、実コード不変）|
+| PR #105 | **cluster D first slice** — child window inline script に keydown listener を追加、Ctrl+S → 既存 `pkc-entry-save` path、Escape → `cancelEdit()` / `window.close()`（2026-04-22、parent 側不変）|
+
 ## resolved/ 配下（原則非参照）
 
 ### requirements 分析（Issue #0 相当）
