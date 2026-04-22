@@ -2436,6 +2436,43 @@ describe('sort', () => {
     const { state: s1 } = reduce(s0, { type: 'SELECT_ENTRY', lid: 'e1' });
     expect(s1.recentPaneCollapsed).toBe(true);
   });
+
+  // ── PR-α: Storage Profile overlay state ──
+
+  it('createInitialState has storageProfileOpen === false', () => {
+    expect(createInitialState().storageProfileOpen).toBe(false);
+  });
+
+  it('OPEN_STORAGE_PROFILE sets storageProfileOpen to true', () => {
+    const { state } = reduce(readyState(), { type: 'OPEN_STORAGE_PROFILE' });
+    expect(state.storageProfileOpen).toBe(true);
+  });
+
+  it('CLOSE_STORAGE_PROFILE sets storageProfileOpen to false', () => {
+    const s: AppState = { ...readyState(), storageProfileOpen: true };
+    const { state } = reduce(s, { type: 'CLOSE_STORAGE_PROFILE' });
+    expect(state.storageProfileOpen).toBe(false);
+  });
+
+  it('OPEN_STORAGE_PROFILE is idempotent (same-reference no-op when already open)', () => {
+    const s: AppState = { ...readyState(), storageProfileOpen: true };
+    const { state } = reduce(s, { type: 'OPEN_STORAGE_PROFILE' });
+    expect(state).toBe(s);
+  });
+
+  it('CLOSE_STORAGE_PROFILE is idempotent (same-reference no-op when already closed)', () => {
+    const s: AppState = { ...readyState(), storageProfileOpen: false };
+    const { state } = reduce(s, { type: 'CLOSE_STORAGE_PROFILE' });
+    expect(state).toBe(s);
+  });
+
+  it('OPEN_STORAGE_PROFILE + CLOSE_MENU keeps storageProfileOpen true (cluster A regression)', () => {
+    const s0: AppState = { ...readyState(), menuOpen: true };
+    const { state: s1 } = reduce(s0, { type: 'OPEN_STORAGE_PROFILE' });
+    const { state: s2 } = reduce(s1, { type: 'CLOSE_MENU' });
+    expect(s2.storageProfileOpen).toBe(true);
+    expect(s2.menuOpen).toBe(false);
+  });
 });
 
 // ── PASTE_ATTACHMENT ────────────────────────

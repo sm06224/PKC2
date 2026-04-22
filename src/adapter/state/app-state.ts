@@ -217,6 +217,14 @@ export interface AppState {
    */
   recentPaneCollapsed?: boolean;
   /**
+   * Storage Profile overlay visibility. Runtime-only, not persisted.
+   * `false` (default) = overlay closed. When `true`, the renderer
+   * rebuilds the Storage Profile overlay on every render pass so the
+   * numbers always reflect the live container. Optional on the TS
+   * surface so legacy test fixtures stay valid.
+   */
+  storageProfileOpen?: boolean;
+  /**
    * entry-ref autocomplete v1.3: LRU of lids accepted from the
    * autocomplete popup (most recent first). Powers recent-first
    * ordering of suggestions. Runtime-only, not persisted. Capped at
@@ -372,6 +380,7 @@ export function createInitialState(): AppState {
     multiSelectedLids: [],
     collapsedFolders: [],
     recentPaneCollapsed: false,
+    storageProfileOpen: false,
     recentEntryRefLids: [],
     textlogSelection: null,
     textToTextlogModal: null,
@@ -2283,6 +2292,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_RECENT_PANE': {
       const next: AppState = { ...state, recentPaneCollapsed: !state.recentPaneCollapsed };
+      return { state: next, events: [] };
+    }
+    case 'OPEN_STORAGE_PROFILE': {
+      if (state.storageProfileOpen) return { state, events: [] };
+      const next: AppState = { ...state, storageProfileOpen: true };
+      return { state: next, events: [] };
+    }
+    case 'CLOSE_STORAGE_PROFILE': {
+      if (!state.storageProfileOpen) return { state, events: [] };
+      const next: AppState = { ...state, storageProfileOpen: false };
       return { state: next, events: [] };
     }
     case 'SYS_ERROR': {

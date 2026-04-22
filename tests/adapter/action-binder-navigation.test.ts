@@ -635,6 +635,45 @@ describe('ActionBinder — Storage Profile dialog', () => {
     expect(overlays.length).toBe(1);
   });
 
+  // PR-α regression: previously `show-storage-profile` appended the
+  // overlay outside the renderer and then dispatched CLOSE_MENU,
+  // whose re-render did `root.innerHTML = ''` and wiped the overlay
+  // on the same tick (cluster A).
+  it('overlay survives CLOSE_MENU re-render after show-storage-profile', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    // Open the shell menu first so the subsequent CLOSE_MENU actually
+    // flips state (and therefore triggers the re-render that used to
+    // wipe the ad-hoc overlay).
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    expect(dispatcher.getState().menuOpen).toBe(true);
+
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // After `show-storage-profile`: menu is closed AND the overlay is
+    // still mounted — the bug was that the overlay disappeared here.
+    expect(dispatcher.getState().menuOpen).toBe(false);
+    expect(dispatcher.getState().storageProfileOpen).toBe(true);
+    expect(root.querySelector('[data-pkc-region="storage-profile"]')).not.toBeNull();
+  });
+
+  it('unrelated state change does not wipe the storage profile overlay', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(root.querySelector('[data-pkc-region="storage-profile"]')).not.toBeNull();
+
+    // Any unrelated dispatch triggers a full re-render. In the old
+    // ad-hoc model the overlay was wiped by `root.innerHTML = ''`;
+    // the state-driven model keeps it mounted.
+    dispatcher.dispatch({ type: 'TOGGLE_RECENT_PANE' });
+
+    expect(dispatcher.getState().storageProfileOpen).toBe(true);
+    expect(root.querySelector('[data-pkc-region="storage-profile"]')).not.toBeNull();
+  });
+
   it('Export CSV click creates a Blob URL and triggers a download anchor', () => {
     // A container with at least one byte-contributing row so the
     // Export CSV button is actually mounted in the overlay.
