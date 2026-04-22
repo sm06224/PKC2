@@ -326,6 +326,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
+      case 'toggle-recent-pane': {
+        // Recent Entries pane collapse: prevent the native <details>
+        // click-to-toggle from mutating the DOM directly. `pane.open`
+        // is derived from `state.recentPaneCollapsed` so the reducer
+        // is the single source of truth — see PR-γ / cluster C.
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_RECENT_PANE' });
+        break;
+      }
       case 'move-entry-up': {
         // C-2 v1 (2026-04-17): manual-mode Move up. Stop propagation
         // so the surrounding <li data-pkc-action="select-entry"> does

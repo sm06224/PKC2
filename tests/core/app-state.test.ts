@@ -2407,6 +2407,35 @@ describe('sort', () => {
     expect(state.container).toBe(s.container);
     expect(state.selectedLid).toBe('e1');
   });
+
+  // ── PR-γ: Recent pane collapse state ──
+
+  it('createInitialState has recentPaneCollapsed === false', () => {
+    expect(createInitialState().recentPaneCollapsed).toBe(false);
+  });
+
+  it('TOGGLE_RECENT_PANE flips recentPaneCollapsed', () => {
+    const s0 = readyState();
+    expect(s0.recentPaneCollapsed).toBe(false);
+    const { state: s1 } = reduce(s0, { type: 'TOGGLE_RECENT_PANE' });
+    expect(s1.recentPaneCollapsed).toBe(true);
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_RECENT_PANE' });
+    expect(s2.recentPaneCollapsed).toBe(false);
+  });
+
+  it('TOGGLE_RECENT_PANE does not change container, selection, or other collapse state', () => {
+    const s: AppState = { ...readyState(), selectedLid: 'e1', collapsedFolders: ['f1'] };
+    const { state } = reduce(s, { type: 'TOGGLE_RECENT_PANE' });
+    expect(state.container).toBe(s.container);
+    expect(state.selectedLid).toBe('e1');
+    expect(state.collapsedFolders).toEqual(['f1']);
+  });
+
+  it('recentPaneCollapsed persists across unrelated dispatches (re-render regression)', () => {
+    const s0: AppState = { ...readyState(), recentPaneCollapsed: true };
+    const { state: s1 } = reduce(s0, { type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(s1.recentPaneCollapsed).toBe(true);
+  });
 });
 
 // ── PASTE_ATTACHMENT ────────────────────────

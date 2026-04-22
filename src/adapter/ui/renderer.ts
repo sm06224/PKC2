@@ -1675,6 +1675,7 @@ function renderSavedSearchesPane(
 function renderRecentEntriesPane(
   userEntries: readonly Entry[],
   selectedLid: string | null,
+  collapsed: boolean,
 ): HTMLElement | null {
   if (userEntries.length === 0) return null;
   const rows = selectRecentEntries(userEntries);
@@ -1683,10 +1684,13 @@ function renderRecentEntriesPane(
   const pane = document.createElement('details');
   pane.className = 'pkc-recent-pane';
   pane.setAttribute('data-pkc-region', 'recent-entries');
-  pane.open = true;
+  // Drive open/closed from AppState so a user-initiated collapse is
+  // preserved across subsequent re-renders. See PR-γ / cluster C.
+  pane.open = !collapsed;
 
   const summary = document.createElement('summary');
   summary.className = 'pkc-recent-summary';
+  summary.setAttribute('data-pkc-action', 'toggle-recent-pane');
   summary.textContent = `Recent (${rows.length})`;
   pane.appendChild(summary);
 
@@ -1766,7 +1770,7 @@ function renderSidebar(state: AppState): HTMLElement {
   // Recent Entries Pane v1 — derived-only list of the most recently
   // updated user entries. See docs/development/recent-entries-pane-v1.md.
   {
-    const recentPane = renderRecentEntriesPane(allEntries, state.selectedLid);
+    const recentPane = renderRecentEntriesPane(allEntries, state.selectedLid, state.recentPaneCollapsed ?? false);
     if (recentPane) sidebar.appendChild(recentPane);
   }
 

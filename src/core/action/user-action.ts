@@ -332,6 +332,12 @@ export type UserAction =
    */
   | { type: 'TOGGLE_FOLDER_COLLAPSE'; lid: string }
   /**
+   * TOGGLE_RECENT_PANE — collapse or expand the sidebar Recent Entries
+   * pane. Runtime-only UI state. Flips `state.recentPaneCollapsed`.
+   * Does NOT mutate the container.
+   */
+  | { type: 'TOGGLE_RECENT_PANE' }
+  /**
    * PASTE_ATTACHMENT — create an attachment entry from pasted image data
    * without changing phase or editing state.
    *
