@@ -2951,4 +2951,44 @@ describe('Entry Window', () => {
       expect(html).toMatch(/@media\s*\(max-width:\s*640px\)\s*\{[^}]*#view-pane\[data-pkc-has-toc="true"\]\s*\{\s*flex-direction:\s*column/);
     });
   });
+
+  // ── PR-ζ₁ (cluster D): child window keyboard bridge ──
+  //
+  // The child window opens in a separate document / JS context so the
+  // main-shell keydown listener cannot observe its key events. A
+  // minimal local keydown handler is registered inside the inline
+  // script to wire Ctrl+S / Cmd+S → saveEntry (which reuses the
+  // existing pkc-entry-save postMessage path) and Escape →
+  // cancelEdit / window.close.
+  describe('Keyboard bridge (PR-ζ₁)', () => {
+    it('registers a keydown listener on the child document', async () => {
+      const html = await openAndCapture();
+      expect(html).toContain("document.addEventListener('keydown'");
+    });
+
+    it('Ctrl+S / Cmd+S routes to saveEntry() when in edit mode', async () => {
+      const html = await openAndCapture();
+      // Modifier check handles both ctrlKey (win/linux) and metaKey (mac).
+      expect(html).toMatch(/e\.ctrlKey\s*\|\|\s*e\.metaKey/);
+      // The save key (lower-case 's' for the typical keystroke and upper-
+      // case 'S' for the shifted form) must trigger saveEntry.
+      expect(html).toMatch(/e\.key === 's'.*e\.key === 'S'/s);
+      expect(html).toMatch(/if \(currentMode === 'edit'\) saveEntry\(\);/);
+    });
+
+    it('Escape in edit mode cancels the edit; in view mode closes the window', async () => {
+      const html = await openAndCapture();
+      // In edit mode → cancelEdit() (discard in-progress edits, stay open).
+      expect(html).toMatch(/e\.key === 'Escape'[\s\S]*currentMode === 'edit'[\s\S]*cancelEdit\(\)/);
+      // In view mode → window.close() (no in-progress state to discard).
+      expect(html).toMatch(/window\.close\(\)/);
+    });
+
+    it('Ctrl+S preventDefault is always called so the browser save dialog stays out', async () => {
+      const html = await openAndCapture();
+      // The keydown handler preventDefaults regardless of edit mode so
+      // the browser "Save Page" overlay never surfaces in the child.
+      expect(html).toMatch(/if \(mod && \(e\.key === 's' \|\| e\.key === 'S'\)\) \{[\s\S]*e\.preventDefault\(\);/);
+    });
+  });
 });

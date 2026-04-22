@@ -1901,6 +1901,37 @@ document.addEventListener('click', function(e) {
     if (action === 'download-attachment') { e.preventDefault(); downloadAttachmentFromChild(); return; }
   }
 });
+
+/*
+ * PR-ζ₁ (cluster D) — minimal child-window keyboard bridge. Scope is
+ * deliberately narrow: only Ctrl+S / Cmd+S (save) and Escape (cancel
+ * edit → view, or close the window in view mode). Every other
+ * shortcut stays the main window's concern — the child deliberately
+ * does NOT reproduce the main-shell handleKeydown catalog.
+ *
+ * The save path reuses the same pkc-entry-save postMessage the save
+ * button already triggers, so parent-side routing does not change.
+ */
+document.addEventListener('keydown', function(e) {
+  var mod = e.ctrlKey || e.metaKey;
+  if (mod && (e.key === 's' || e.key === 'S')) {
+    /* Always preventDefault so the browser "save page" dialog stays out
+     * of the way, even when we are not in edit mode. */
+    e.preventDefault();
+    if (currentMode === 'edit') saveEntry();
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (currentMode === 'edit') {
+      e.preventDefault();
+      cancelEdit();
+    } else {
+      e.preventDefault();
+      window.close();
+    }
+    return;
+  }
+});
 window.addEventListener('pagehide', revokeAllBlobUrls);
 window.addEventListener('unload', revokeAllBlobUrls);
 bootAttachmentPreview();
