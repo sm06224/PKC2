@@ -2605,9 +2605,49 @@ function renderCalendarView(state: AppState): HTMLElement {
         cell.setAttribute('data-pkc-calendar-today', 'true');
       }
 
+      const dayHeader = createElement('div', 'pkc-calendar-day-header');
       const dayNum = createElement('div', 'pkc-calendar-day');
       dayNum.textContent = String(day);
-      cell.appendChild(dayNum);
+      dayHeader.appendChild(dayNum);
+
+      // Slice 2: per-cell "+ Add" trigger, visible only when editable.
+      // See docs/development/todo-editor-in-continuous-edit-wave.md §4.
+      if (!state.readonly && state.container) {
+        const addBtn = createElement('button', 'pkc-calendar-day-add');
+        addBtn.setAttribute('data-pkc-action', 'open-calendar-todo-add');
+        addBtn.setAttribute('data-pkc-date', key);
+        addBtn.setAttribute('title', `Add new Todo on ${key}`);
+        addBtn.setAttribute('aria-label', `Add new Todo on ${key}`);
+        addBtn.textContent = '+';
+        dayHeader.appendChild(addBtn);
+      }
+      cell.appendChild(dayHeader);
+
+      // Slice 2: render the Calendar-context popover inside the cell
+      // whose date matches the popover state. Single-instance
+      // (the reducer guarantees at most one).
+      if (
+        state.todoAddPopover
+        && state.todoAddPopover.context === 'calendar'
+        && state.todoAddPopover.date === key
+        && !state.readonly
+      ) {
+        const popEl = createElement('div', 'pkc-calendar-add-popover');
+        popEl.setAttribute('data-pkc-region', 'calendar-todo-add-popover');
+        popEl.setAttribute('data-pkc-context', 'calendar');
+        popEl.setAttribute('data-pkc-context-value', key);
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'pkc-calendar-add-input';
+        input.setAttribute('data-pkc-field', 'calendar-todo-add-title');
+        input.setAttribute('placeholder', 'New todo…');
+        input.setAttribute('autofocus', 'true');
+        popEl.appendChild(input);
+        const hint = createElement('span', 'pkc-calendar-add-hint');
+        hint.textContent = 'Enter · Esc';
+        popEl.appendChild(hint);
+        cell.appendChild(popEl);
+      }
 
       const todos = todoMap[key];
       if (todos && todos.length > 0) {
@@ -2677,7 +2717,12 @@ function renderKanbanView(state: AppState): HTMLElement {
 
   const board = createElement('div', 'pkc-kanban-board');
 
-  const popover = state.kanbanTodoAddPopover ?? null;
+  // Slice 1 / 2: the shared `todoAddPopover` can be in `kanban` or
+  // `calendar` context; only the Kanban variant is mounted from this
+  // renderer path. Calendar variant is handled in `renderCalendarView`.
+  const popover = state.todoAddPopover && state.todoAddPopover.context === 'kanban'
+    ? state.todoAddPopover
+    : null;
   const canEditKanban = !state.readonly && !!state.container;
 
   for (const col of KANBAN_COLUMNS) {

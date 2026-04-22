@@ -4187,6 +4187,62 @@ mark.pkc-search-mark {
   padding-bottom: 0.15rem;
 }
 
+/* Slice 2 (Calendar Todo add popover): per-cell header + "+" trigger +
+ * inline input popover. See
+ * docs/development/todo-editor-in-continuous-edit-wave.md §4. */
+.pkc-calendar-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem;
+  padding-bottom: 0.15rem;
+}
+.pkc-calendar-day-add {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--c-muted);
+  background: transparent;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius);
+  padding: 0 0.3rem;
+  line-height: 1.1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s linear;
+}
+.pkc-calendar-cell:hover .pkc-calendar-day-add,
+.pkc-calendar-day-add:focus {
+  opacity: 1;
+}
+.pkc-calendar-day-add:hover {
+  color: var(--c-fg);
+  border-color: var(--c-fg);
+}
+.pkc-calendar-add-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.2rem;
+  padding: 0.25rem 0.3rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+.pkc-calendar-add-input {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: transparent;
+  color: var(--c-fg);
+  border: none;
+  outline: none;
+  padding: 0;
+}
+.pkc-calendar-add-hint {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--c-muted);
+}
+
 .pkc-calendar-cell[data-pkc-calendar-today="true"] .pkc-calendar-day {
   color: var(--c-accent);
   font-weight: 600;

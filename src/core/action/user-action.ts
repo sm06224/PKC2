@@ -365,25 +365,27 @@ export type UserAction =
   | { type: 'OPEN_STORAGE_PROFILE' }
   | { type: 'CLOSE_STORAGE_PROFILE' }
   /**
-   * OPEN_TODO_ADD_POPOVER — open the Kanban column "+ Add" popover.
-   * `status` selects which column context applies; the created Todo
-   * inherits that status. Runtime-only UI state; the reducer sets
-   * `state.kanbanTodoAddPopover = { status }`.
+   * OPEN_TODO_ADD_POPOVER — open the "+ Add" popover anchored to the
+   * caller's context. Two variants (Slice 1 Kanban / Slice 2
+   * Calendar), mutually exclusive because only one popover is open at
+   * a time. Runtime-only UI state; the reducer sets
+   * `state.todoAddPopover` to the matching tagged variant.
    *
    * CLOSE_TODO_ADD_POPOVER — close the popover without creating an
-   * entry. Clears `state.kanbanTodoAddPopover`.
+   * entry. Clears `state.todoAddPopover`.
    *
    * COMMIT_TODO_ADD — atomically create a new Todo entry using the
-   * popover's status context, plus the provided title, WITHOUT
-   * transitioning the reducer into `editing` phase (unlike
-   * `CREATE_ENTRY`). The user stays in the Kanban view. Auto-
-   * placement (TODOS subfolder under the current context) is
-   * applied. The popover is closed as part of the same reduction.
+   * popover's context, plus the provided title, WITHOUT transitioning
+   * the reducer into `editing` phase (unlike `CREATE_ENTRY`). The
+   * user stays in the current view. Auto-placement (TODOS subfolder
+   * under the current selection context) is applied. The popover is
+   * closed as part of the same reduction.
    *
    * See `docs/development/todo-editor-in-continuous-edit-wave.md §4
    * (Todo add contract)` for the full v0 contract.
    */
-  | { type: 'OPEN_TODO_ADD_POPOVER'; status: 'open' | 'done' }
+  | { type: 'OPEN_TODO_ADD_POPOVER'; context: 'kanban'; status: 'open' | 'done' }
+  | { type: 'OPEN_TODO_ADD_POPOVER'; context: 'calendar'; date: string }
   | { type: 'CLOSE_TODO_ADD_POPOVER' }
   | { type: 'COMMIT_TODO_ADD'; title: string }
   /**

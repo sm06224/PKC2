@@ -335,16 +335,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'open-kanban-todo-add': {
         // Slice 1 of the Todo / Editor-in / continuous-edit wave.
-        // The "+ Add" trigger sits inside the column header; reading
-        // the status from its data attribute keeps the mapping
-        // explicit (and lets a future Calendar slice reuse the same
-        // dispatch path with a different attribute).
+        // The "+ Add" trigger sits inside the Kanban column header.
         const st = dispatcher.getState();
         if (st.readonly) break;
         if (st.viewMode !== 'kanban') break;
         const status = target.getAttribute('data-pkc-kanban-status');
         if (status !== 'open' && status !== 'done') break;
-        dispatcher.dispatch({ type: 'OPEN_TODO_ADD_POPOVER', status });
+        dispatcher.dispatch({ type: 'OPEN_TODO_ADD_POPOVER', context: 'kanban', status });
+        break;
+      }
+      case 'open-calendar-todo-add': {
+        // Slice 2: Calendar day cell "+ Add" trigger. Reads the day's
+        // `YYYY-MM-DD` key from the button's data attribute so the
+        // popover is anchored to the cell the user clicked.
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        if (st.viewMode !== 'calendar') break;
+        const date = target.getAttribute('data-pkc-date');
+        if (!date) break;
+        dispatcher.dispatch({ type: 'OPEN_TODO_ADD_POPOVER', context: 'calendar', date });
         break;
       }
       case 'toggle-recent-pane': {
@@ -1925,18 +1934,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (handleSlashMenuKeydown(e)) return;
     }
 
-    // Slice 1: Kanban Todo-add popover input takes priority for Enter /
-    // Escape so the user can commit / cancel without global shortcuts
-    // (Ctrl+S, shortcut-help etc.) intercepting.
+    // Slice 1 / 2: Kanban / Calendar Todo-add popover input takes
+    // priority for Enter / Escape so the user can commit / cancel
+    // without global shortcuts (Ctrl+S, shortcut-help etc.) intercepting.
+    // Both inputs share the same commit / close dispatch pair — the
+    // reducer reads `state.todoAddPopover.context` to branch body
+    // construction.
     {
       const kbTarget = e.target as HTMLElement | null;
+      const fieldName = kbTarget instanceof HTMLInputElement
+        ? kbTarget.getAttribute('data-pkc-field')
+        : null;
       if (
-        kbTarget instanceof HTMLInputElement
-        && kbTarget.getAttribute('data-pkc-field') === 'kanban-todo-add-title'
+        fieldName === 'kanban-todo-add-title'
+        || fieldName === 'calendar-todo-add-title'
       ) {
         if (e.key === 'Enter' && !e.isComposing) {
           e.preventDefault();
-          const title = kbTarget.value;
+          const title = (kbTarget as HTMLInputElement).value;
           if (title.trim().length > 0) {
             dispatcher.dispatch({ type: 'COMMIT_TODO_ADD', title });
           } else {
