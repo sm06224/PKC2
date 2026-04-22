@@ -5038,6 +5038,82 @@ describe('Todo Calendar Foundation', () => {
 
     expect(root.querySelector('[data-pkc-region="calendar-view"]')).toBeNull();
   });
+
+  // ── Slice 2: Calendar Todo add popover (shared `todoAddPopover`) ──
+
+  function calendarStateWithPopover(overrides?: Partial<AppState>): AppState {
+    return {
+      phase: 'ready', container: calendarContainer,
+      selectedLid: null, editingLid: null, error: null, embedded: false,
+      pendingOffers: [], importPreview: null, batchImportPreview: null,
+      searchQuery: '', archetypeFilter: new Set(), tagFilter: null,
+      sortKey: 'created_at', sortDirection: 'desc',
+      exportMode: null, exportMutability: null,
+      readonly: false, lightSource: false, showArchived: false,
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
+      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      ...overrides,
+    };
+  }
+
+  it('renders a "+ Add" trigger on each Calendar day cell when editable', () => {
+    render(calendarStateWithPopover(), root);
+    const triggers = root.querySelectorAll<HTMLButtonElement>(
+      '[data-pkc-action="open-calendar-todo-add"]',
+    );
+    // All non-null cells in the month carry the trigger; assert a lower
+    // bound instead of pinning the exact count (weeks layout differs by
+    // year/month).
+    expect(triggers.length).toBeGreaterThanOrEqual(28);
+    // Each trigger carries a `YYYY-MM-DD` date context.
+    for (const btn of Array.from(triggers)) {
+      expect(btn.getAttribute('data-pkc-date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it('hides "+ Add" Calendar triggers in readonly mode', () => {
+    render(calendarStateWithPopover({ readonly: true }), root);
+    expect(
+      root.querySelectorAll('[data-pkc-action="open-calendar-todo-add"]'),
+    ).toHaveLength(0);
+  });
+
+  it('mounts the Calendar popover inside the cell matching the popover date', () => {
+    render(
+      calendarStateWithPopover({
+        todoAddPopover: { context: 'calendar', date: '2026-04-15' },
+      }),
+      root,
+    );
+    const cell = root.querySelector<HTMLElement>(
+      '[data-pkc-calendar-drop-target][data-pkc-date="2026-04-15"]',
+    )!;
+    const popover = cell.querySelector<HTMLElement>(
+      '[data-pkc-region="calendar-todo-add-popover"]',
+    );
+    expect(popover).not.toBeNull();
+    expect(popover!.getAttribute('data-pkc-context')).toBe('calendar');
+    expect(popover!.getAttribute('data-pkc-context-value')).toBe('2026-04-15');
+    expect(
+      popover!.querySelector<HTMLInputElement>('input[data-pkc-field="calendar-todo-add-title"]'),
+    ).not.toBeNull();
+    // Exactly one Calendar popover across the month.
+    expect(
+      root.querySelectorAll('[data-pkc-region="calendar-todo-add-popover"]'),
+    ).toHaveLength(1);
+  });
+
+  it('does not mount the Calendar popover when state.todoAddPopover is kanban-context', () => {
+    render(
+      calendarStateWithPopover({
+        todoAddPopover: { context: 'kanban', status: 'open' },
+      }),
+      root,
+    );
+    expect(
+      root.querySelector('[data-pkc-region="calendar-todo-add-popover"]'),
+    ).toBeNull();
+  });
 });
 
 // ── Issue #58: Todo Archive Foundation ──
@@ -5523,9 +5599,9 @@ describe('Todo Kanban Foundation', () => {
     expect(triggers).toHaveLength(0);
   });
 
-  it('mounts the add popover inside the matching column when state.kanbanTodoAddPopover is set', () => {
+  it('mounts the add popover inside the matching column when state.todoAddPopover is kanban', () => {
     render(
-      kanbanState({ kanbanTodoAddPopover: { status: 'open' } }),
+      kanbanState({ todoAddPopover: { context: 'kanban', status: 'open' } }),
       root,
     );
     // Scoped to the open column so a mismatch would fail loudly.
@@ -5546,8 +5622,18 @@ describe('Todo Kanban Foundation', () => {
     expect(root.querySelectorAll('[data-pkc-region="kanban-todo-add-popover"]')).toHaveLength(1);
   });
 
-  it('does not mount the popover when state.kanbanTodoAddPopover is null', () => {
+  it('does not mount the popover when state.todoAddPopover is null', () => {
     render(kanbanState(), root);
+    expect(
+      root.querySelector('[data-pkc-region="kanban-todo-add-popover"]'),
+    ).toBeNull();
+  });
+
+  it('does not mount the Kanban popover when state.todoAddPopover is calendar-context', () => {
+    render(
+      kanbanState({ todoAddPopover: { context: 'calendar', date: '2026-04-15' } }),
+      root,
+    );
     expect(
       root.querySelector('[data-pkc-region="kanban-todo-add-popover"]'),
     ).toBeNull();

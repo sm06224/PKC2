@@ -225,15 +225,25 @@ export interface AppState {
    */
   storageProfileOpen?: boolean;
   /**
-   * Kanban "+ Add" popover state (Slice 1 of the Todo / Editor-in /
-   * continuous-edit wave). Runtime-only, not persisted. When `null` or
+   * Todo "+ Add" popover state (Slice 1 of the Todo / Editor-in /
+   * continuous-edit wave, extended by Slice 2 to carry Calendar
+   * context as well). Runtime-only, not persisted. When `null` or
    * absent the popover is closed; when present the renderer mounts a
-   * small input popover anchored to the column whose `status` matches,
-   * so a new Todo created through the popover inherits that status as
-   * its body context. See
-   * `docs/development/todo-editor-in-continuous-edit-wave.md §4`.
+   * small input popover anchored to the view surface whose context
+   * matches, so a new Todo created through the popover inherits the
+   * context value as its body field:
+   *
+   * - `context === 'kanban'` → `body.status` = `status`
+   * - `context === 'calendar'` → `body.date` = `date`
+   *
+   * Only one popover is open at a time (Kanban and Calendar are
+   * mutually exclusive view modes). See
+   * `docs/development/todo-editor-in-continuous-edit-wave.md §4.7`.
    */
-  kanbanTodoAddPopover?: { status: 'open' | 'done' } | null;
+  todoAddPopover?:
+    | { context: 'kanban'; status: 'open' | 'done' }
+    | { context: 'calendar'; date: string }
+    | null;
   /**
    * entry-ref autocomplete v1.3: LRU of lids accepted from the
    * autocomplete popup (most recent first). Powers recent-first
@@ -391,7 +401,7 @@ export function createInitialState(): AppState {
     collapsedFolders: [],
     recentPaneCollapsed: false,
     storageProfileOpen: false,
-    kanbanTodoAddPopover: null,
+    todoAddPopover: null,
     recentEntryRefLids: [],
     textlogSelection: null,
     textToTextlogModal: null,
@@ -2326,43 +2336,54 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'OPEN_TODO_ADD_POPOVER': {
-      // Slice 1 of the Todo / Editor-in / continuous-edit wave. The
-      // popover is renderer-owned; the reducer only holds the column
-      // context (status). Blocked in readonly mode — edit-like flows
-      // must go through the same guard as CREATE_ENTRY below.
+      // Slice 1 (Kanban) + Slice 2 (Calendar) of the Todo / Editor-in
+      // / continuous-edit wave. The popover is renderer-owned; the
+      // reducer holds only the context (status | date). Blocked in
+      // readonly / no-container — edit-like flows share the same
+      // guard as CREATE_ENTRY.
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
-      const desired = { status: action.status };
+      const desired = action.context === 'kanban'
+        ? { context: 'kanban' as const, status: action.status }
+        : { context: 'calendar' as const, date: action.date };
+      // Identity when the same popover is already open — keeps
+      // downstream `===` listeners from flipping for redundant opens.
+      const current = state.todoAddPopover;
       if (
-        state.kanbanTodoAddPopover
-        && state.kanbanTodoAddPopover.status === desired.status
+        current
+        && current.context === desired.context
+        && (
+          (current.context === 'kanban' && desired.context === 'kanban' && current.status === desired.status)
+          || (current.context === 'calendar' && desired.context === 'calendar' && current.date === desired.date)
+        )
       ) {
         return { state, events: [] };
       }
-      const next: AppState = { ...state, kanbanTodoAddPopover: desired };
+      const next: AppState = { ...state, todoAddPopover: desired };
       return { state: next, events: [] };
     }
     case 'CLOSE_TODO_ADD_POPOVER': {
-      if (!state.kanbanTodoAddPopover) return { state, events: [] };
-      const next: AppState = { ...state, kanbanTodoAddPopover: null };
+      if (!state.todoAddPopover) return { state, events: [] };
+      const next: AppState = { ...state, todoAddPopover: null };
       return { state: next, events: [] };
     }
     case 'COMMIT_TODO_ADD': {
-      // Atomic Todo creation with status inherited from the popover
-      // column. Unlike CREATE_ENTRY this path does NOT transition to
-      // `editing` phase and does NOT change `viewMode` — the user
-      // stays in Kanban and the new card is already populated with
-      // the popover's title + status, so no follow-up edit is needed.
+      // Atomic Todo creation with context inherited from the popover.
+      // Unlike CREATE_ENTRY this path does NOT transition to `editing`
+      // phase and does NOT change `viewMode` — the user stays in the
+      // Kanban / Calendar view and the new card/tile is already
+      // populated with the popover's title + context, so no follow-up
+      // edit is needed.
       //
       // Auto-placement (TODOS subfolder under the current context) is
       // applied in the same reduction, matching the existing CREATE_
       // ENTRY handling.
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
-      if (!state.kanbanTodoAddPopover) return blocked(state, action);
+      if (!state.todoAddPopover) return blocked(state, action);
       const trimmed = action.title.trim();
       if (trimmed.length === 0) return blocked(state, action);
-      const status = state.kanbanTodoAddPopover.status;
+      const popover = state.todoAddPopover;
       const ts = now();
       const events: DomainEvent[] = [];
       let container = state.container;
@@ -2399,7 +2420,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
 
       const lid = generateLid();
       container = addEntry(container, lid, 'todo', trimmed, ts);
-      const body = serializeTodoBody({ status, description: '' });
+      // Context-specific body:
+      //   - kanban  → status from popover, no date
+      //   - calendar → date from popover, default status 'open'
+      // Calendar-context adds deliberately default to `open`: the
+      // Calendar view is date-focused and does not expose a status
+      // selector at the add point. Users who want to log already-done
+      // work on a date can still toggle status after the fact.
+      const body = popover.context === 'kanban'
+        ? serializeTodoBody({ status: popover.status, description: '' })
+        : serializeTodoBody({ status: 'open', description: '', date: popover.date });
       container = updateEntry(container, lid, trimmed, body, ts);
       events.push({ type: 'ENTRY_CREATED', lid, archetype: 'todo' });
 
@@ -2416,7 +2446,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container,
         selectedLid: lid,
-        kanbanTodoAddPopover: null,
+        todoAddPopover: null,
       };
       return { state: next, events };
     }
