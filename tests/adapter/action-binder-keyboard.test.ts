@@ -2655,38 +2655,43 @@ describe('Shortcut help overlay: Ctrl+? toggle', () => {
   }
 
   it('bare `?` does NOT open the shortcut help overlay', () => {
-    setupHelp();
-    expect(overlay()!.style.display).toBe('none');
+    const { dispatcher } = setupHelp();
+    expect(overlay()).toBeNull();
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(false);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
 
-    // still hidden — plain `?` must not disturb typing
-    expect(overlay()!.style.display).toBe('none');
+    // still closed — plain `?` must not disturb typing
+    expect(overlay()).toBeNull();
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(false);
   });
 
   it('Ctrl+? opens the overlay, Ctrl+? again closes it', () => {
-    setupHelp();
-    expect(overlay()!.style.display).toBe('none');
+    const { dispatcher } = setupHelp();
+    expect(overlay()).toBeNull();
 
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
     );
-    expect(overlay()!.style.display).toBe('');
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(true);
+    expect(overlay()).not.toBeNull();
 
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
     );
-    expect(overlay()!.style.display).toBe('none');
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(false);
+    expect(overlay()).toBeNull();
   });
 
   it('⌘+? opens the overlay (mac)', () => {
-    setupHelp();
-    expect(overlay()!.style.display).toBe('none');
+    const { dispatcher } = setupHelp();
+    expect(overlay()).toBeNull();
 
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: '?', metaKey: true, shiftKey: true, bubbles: true }),
     );
-    expect(overlay()!.style.display).toBe('');
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(true);
+    expect(overlay()).not.toBeNull();
   });
 
   it('Ctrl+? is inert while in editing phase (keeps typing uninterrupted)', () => {
@@ -2700,6 +2705,7 @@ describe('Shortcut help overlay: Ctrl+? toggle', () => {
       new KeyboardEvent('keydown', { key: '?', ctrlKey: true, shiftKey: true, bubbles: true }),
     );
 
-    expect(overlay()!.style.display).toBe('none');
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(false);
+    expect(overlay()).toBeNull();
   });
 });

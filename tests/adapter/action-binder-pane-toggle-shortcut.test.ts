@@ -201,16 +201,19 @@ describe('Slice 6: pane re-toggle shortcut', () => {
 
   it('Ctrl+? (help) still works — not clobbered by the new handler', () => {
     bootstrap();
-    const help = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
-    expect(help).not.toBeNull();
-    expect(help!.style.display).toBe('none');
+    // B1: overlay is state-driven and absent until opened.
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).toBeNull();
     keydown({ key: '?', ctrl: true });
-    expect(help!.style.display).not.toBe('none');
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).not.toBeNull();
   });
 
   it('help overlay lists the new pane shortcuts', () => {
     bootstrap();
+    // B1: open the overlay first (state-driven mount) before asserting
+    // on its content.
+    keydown({ key: '?', ctrl: true });
     const help = root.querySelector<HTMLElement>('[data-pkc-region="shortcut-help"]');
+    expect(help).not.toBeNull();
     expect(help?.textContent).toContain('Toggle sidebar');
     expect(help?.textContent).toContain('Toggle meta pane');
     expect(help?.textContent).toContain('Ctrl+\\');

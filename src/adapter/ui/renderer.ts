@@ -278,6 +278,14 @@ export function render(state: AppState, root: HTMLElement): void {
     root.appendChild(buildStorageProfileOverlay(state.container));
   }
 
+  // B1: shortcut-help overlay is state-driven. Rebuilt from
+  // `state.shortcutHelpOpen` on each render pass so a subsequent
+  // `CLOSE_MENU` re-render does not wipe it. `close-shortcut-help`
+  // dispatches `CLOSE_SHORTCUT_HELP`.
+  if (state.shortcutHelpOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
+    root.appendChild(renderShortcutHelp());
+  }
+
   // Post-render: if the current selection changed since the last
   // render, nudge the sidebar tree node into view.  Pairs with the
   // ancestor auto-expand in the SELECT_ENTRY reducer — together they
@@ -394,8 +402,10 @@ function renderShell(state: AppState): HTMLElement {
   const currentTheme = getCurrentThemeMode();
   shell.appendChild(renderShellMenu(currentTheme, state));
 
-  // Shortcut help overlay (hidden by default, toggled by ? key)
-  shell.appendChild(renderShortcutHelp());
+  // Shortcut help overlay — state-driven (B1). Mounted from the
+  // top-level `render()` when `state.shortcutHelpOpen` is true so
+  // it survives `CLOSE_MENU` re-renders just like the storage
+  // profile overlay.
 
   // Storage profile overlay is mounted on demand by `action-binder`
   // when the user opens the dialog (and removed on close). Mounting
@@ -1110,7 +1120,6 @@ function renderShellMenuMaintenance(container: Container): HTMLElement {
 function renderShortcutHelp(): HTMLElement {
   const overlay = createElement('div', 'pkc-shortcut-overlay');
   overlay.setAttribute('data-pkc-region', 'shortcut-help');
-  overlay.style.display = 'none';
 
   const card = createElement('div', 'pkc-shortcut-card');
 

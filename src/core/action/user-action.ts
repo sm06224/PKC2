@@ -365,6 +365,18 @@ export type UserAction =
   | { type: 'OPEN_STORAGE_PROFILE' }
   | { type: 'CLOSE_STORAGE_PROFILE' }
   /**
+   * OPEN_SHORTCUT_HELP / CLOSE_SHORTCUT_HELP — show / hide the
+   * keyboard-shortcut help overlay. Runtime-only UI state, driven by
+   * `state.shortcutHelpOpen`. The renderer owns the overlay DOM so it
+   * survives full re-renders triggered by e.g. `CLOSE_MENU`. Mirrors
+   * the `OPEN_STORAGE_PROFILE` contract; the ad-hoc DOM mutation in
+   * `action-binder` that this pair replaces was the cluster-A "menu →
+   * ショートカット一覧が開かない" regression (B1).
+   * Does NOT mutate the container.
+   */
+  | { type: 'OPEN_SHORTCUT_HELP' }
+  | { type: 'CLOSE_SHORTCUT_HELP' }
+  /**
    * OPEN_TODO_ADD_POPOVER — open the "+ Add" popover anchored to the
    * caller's context. Two variants (Slice 1 Kanban / Slice 2
    * Calendar), mutually exclusive because only one popover is open at

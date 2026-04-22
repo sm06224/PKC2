@@ -225,6 +225,16 @@ export interface AppState {
    */
   storageProfileOpen?: boolean;
   /**
+   * Shortcut-help overlay visibility. Runtime-only, not persisted.
+   * `false` (default) = overlay closed. Mirrors `storageProfileOpen`
+   * so the shortcut overlay is owned by the renderer and survives a
+   * subsequent `CLOSE_MENU` re-render (B1 fix: previously the
+   * `show-shortcut-help` handler mutated DOM directly, then the
+   * re-render wiped the overlay on the same tick). Optional on the TS
+   * surface so legacy test fixtures stay valid.
+   */
+  shortcutHelpOpen?: boolean;
+  /**
    * Todo "+ Add" popover state (Slice 1 of the Todo / Editor-in /
    * continuous-edit wave, extended by Slice 2 to carry Calendar
    * context as well). Runtime-only, not persisted. When `null` or
@@ -401,6 +411,7 @@ export function createInitialState(): AppState {
     collapsedFolders: [],
     recentPaneCollapsed: false,
     storageProfileOpen: false,
+    shortcutHelpOpen: false,
     todoAddPopover: null,
     recentEntryRefLids: [],
     textlogSelection: null,
@@ -2333,6 +2344,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CLOSE_STORAGE_PROFILE': {
       if (!state.storageProfileOpen) return { state, events: [] };
       const next: AppState = { ...state, storageProfileOpen: false };
+      return { state: next, events: [] };
+    }
+    case 'OPEN_SHORTCUT_HELP': {
+      if (state.shortcutHelpOpen) return { state, events: [] };
+      const next: AppState = { ...state, shortcutHelpOpen: true };
+      return { state: next, events: [] };
+    }
+    case 'CLOSE_SHORTCUT_HELP': {
+      if (!state.shortcutHelpOpen) return { state, events: [] };
+      const next: AppState = { ...state, shortcutHelpOpen: false };
       return { state: next, events: [] };
     }
     case 'OPEN_TODO_ADD_POPOVER': {

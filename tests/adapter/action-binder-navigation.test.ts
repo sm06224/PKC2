@@ -929,6 +929,97 @@ describe('ActionBinder — Storage Profile dialog', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// B1: Shortcut-help overlay (state-driven)
+// ─────────────────────────────────────────────────────────────────
+//
+// Mirrors the Storage Profile dialog coverage above. Pins the
+// open/close lifecycle and — most importantly — the regression that
+// previously wiped the overlay on the `CLOSE_MENU` re-render dispatched
+// from `show-shortcut-help`.
+
+describe('ActionBinder — Shortcut help overlay (B1)', () => {
+  function setupWithMenuOpen() {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return { dispatcher };
+  }
+
+  it('clicking show-shortcut-help mounts the overlay on the root', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).toBeNull();
+
+    const launchBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-action="show-shortcut-help"]',
+    );
+    expect(launchBtn).not.toBeNull();
+    launchBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const overlay = root.querySelector<HTMLElement>(
+      '[data-pkc-region="shortcut-help"]',
+    );
+    expect(overlay).not.toBeNull();
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(true);
+    expect(
+      overlay!.querySelector('[data-pkc-action="close-shortcut-help"]'),
+    ).not.toBeNull();
+  });
+
+  it('clicking close-shortcut-help removes the overlay from the root', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    dispatcher.dispatch({ type: 'OPEN_SHORTCUT_HELP' });
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).not.toBeNull();
+
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="close-shortcut-help"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).toBeNull();
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(false);
+  });
+
+  // B1 regression: previously `show-shortcut-help` set the overlay's
+  // `style.display = ''` and then dispatched CLOSE_MENU, whose re-
+  // render re-appended a fresh overlay with `display = 'none'` —
+  // wiping the open state on the same tick.
+  it('overlay survives CLOSE_MENU re-render after show-shortcut-help', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    // Open the shell menu first so the subsequent CLOSE_MENU actually
+    // flips state (and therefore triggers the re-render that used to
+    // wipe the ad-hoc overlay).
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    expect(dispatcher.getState().menuOpen).toBe(true);
+
+    root
+      .querySelector<HTMLElement>('[data-pkc-action="show-shortcut-help"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // After `show-shortcut-help`: menu is closed AND the overlay is
+    // still mounted — the bug was that the overlay disappeared here.
+    expect(dispatcher.getState().menuOpen).toBe(false);
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(true);
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).not.toBeNull();
+  });
+
+  it('unrelated state change does not wipe the shortcut help overlay', () => {
+    const { dispatcher } = setupWithMenuOpen();
+    dispatcher.dispatch({ type: 'OPEN_SHORTCUT_HELP' });
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).not.toBeNull();
+
+    // Any unrelated dispatch triggers a full re-render. In the old
+    // ad-hoc model the overlay was wiped by `root.innerHTML = ''`;
+    // the state-driven model keeps it mounted.
+    dispatcher.dispatch({ type: 'TOGGLE_RECENT_PANE' });
+
+    expect(dispatcher.getState().shortcutHelpOpen).toBe(true);
+    expect(root.querySelector('[data-pkc-region="shortcut-help"]')).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
 // References summary clickable (v3) — clicking a summary button
 // scrollIntoView-s the matching sub-panel region. Navigation only;
 // no SELECT_ENTRY, no filter, no semantic merge. See
