@@ -251,6 +251,83 @@ describe('mountMessageBridge', () => {
 
     expect(onMessage).not.toHaveBeenCalled();
   });
+
+  // ── Capture profile v0 §9.1 / §9.2: explicit allowlist + null opt-in ──
+
+  it('rejects "null" origin by default even when allowedOrigins is empty (accept-all)', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage, onReject });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'null'));
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect(onReject.mock.calls[0]![1]).toContain('null');
+  });
+
+  it('rejects "null" origin even when a non-null allowlist is set', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: ['http://trusted.example'],
+      onMessage,
+      onReject,
+    });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'null'));
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts "null" origin only when explicitly opted in via allowlist', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: ['null'],
+      onMessage,
+    });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'null'));
+
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects non-listed origin when explicit allowedOrigins is set (production path shape)', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: ['http://pkc.local'],
+      onMessage,
+      onReject,
+    });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'http://evil.example'));
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts origin that matches explicit allowedOrigins entry', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: ['http://pkc.local'],
+      onMessage,
+    });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'http://pkc.local'));
+
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('MessageSender', () => {
