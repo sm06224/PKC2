@@ -307,6 +307,166 @@ describe('AppState reducer', () => {
     expect(events).toEqual([]);
   });
 
+  // ── P2: structural cycle guard on CREATE_RELATION ──
+
+  it('CREATE_RELATION blocks structural self-loop (e1 → e1)', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e1', kind: 'structural',
+    });
+    expect(state.container!.relations).toHaveLength(0);
+    expect(events).toEqual([]);
+  });
+
+  it('CREATE_RELATION blocks structural 2-cycle (e1 → e2 then e2 → e1)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    expect(s1.container!.relations).toHaveLength(1);
+    const { state: s2, events } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e1', kind: 'structural',
+    });
+    expect(s2.container!.relations).toHaveLength(1);
+    expect(events).toEqual([]);
+  });
+
+  it('CREATE_RELATION blocks structural 3-cycle (e1 → e2 → e3 then e3 → e1)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const { state: s2 } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e3', kind: 'structural',
+    });
+    expect(s2.container!.relations).toHaveLength(2);
+    const { state: s3, events } = reduce(s2, {
+      type: 'CREATE_RELATION', from: 'e3', to: 'e1', kind: 'structural',
+    });
+    expect(s3.container!.relations).toHaveLength(2);
+    expect(events).toEqual([]);
+  });
+
+  it('CREATE_RELATION allows a non-cycle structural edge (e1 → e2 → e3)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const { state: s2, events } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e3', kind: 'structural',
+    });
+    expect(s2.container!.relations).toHaveLength(2);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('RELATION_CREATED');
+  });
+
+  it('CREATE_RELATION allows non-structural self-loop (guard is scoped to structural)', () => {
+    // A categorical self-reference is unusual but not structurally
+    // cyclic, so the P2 guard should not reject it. Keeps the scope
+    // narrow and preserves existing contract for non-structural kinds.
+    const { state, events } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e1', kind: 'categorical',
+    });
+    expect(state.container!.relations).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('RELATION_CREATED');
+  });
+
+  it('CREATE_RELATION allows non-structural edge closing a structural chain (e2 → e1 categorical on top of e1 → e2 structural)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const { state: s2, events } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e1', kind: 'semantic',
+    });
+    expect(s2.container!.relations).toHaveLength(2);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('RELATION_CREATED');
+  });
+
+  // ── P2: structural cycle guard on UPDATE_RELATION_KIND ──
+
+  it('UPDATE_RELATION_KIND blocks promotion to structural that would form a 2-cycle', () => {
+    // Seed: e1 → e2 structural, plus e2 → e1 categorical. Promoting
+    // the categorical edge to structural would close a structural
+    // cycle on top of the existing one.
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const { state: s2 } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e1', kind: 'categorical',
+    });
+    const categoricalId = s2.container!.relations.find((r) => r.kind === 'categorical')!.id;
+    const { state: s3, events } = reduce(s2, {
+      type: 'UPDATE_RELATION_KIND', id: categoricalId, kind: 'structural',
+    });
+    expect(s3.container!.relations.find((r) => r.id === categoricalId)!.kind).toBe('categorical');
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND blocks promotion to structural that would form a 3-cycle', () => {
+    // Seed: e1 → e2 structural, e2 → e3 structural, e3 → e1 semantic.
+    // Promoting the semantic edge to structural closes a 3-cycle.
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const { state: s2 } = reduce(s1, {
+      type: 'CREATE_RELATION', from: 'e2', to: 'e3', kind: 'structural',
+    });
+    const { state: s3 } = reduce(s2, {
+      type: 'CREATE_RELATION', from: 'e3', to: 'e1', kind: 'semantic',
+    });
+    const semanticId = s3.container!.relations.find((r) => r.kind === 'semantic')!.id;
+    const { state: s4, events } = reduce(s3, {
+      type: 'UPDATE_RELATION_KIND', id: semanticId, kind: 'structural',
+    });
+    expect(s4.container!.relations.find((r) => r.id === semanticId)!.kind).toBe('semantic');
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND blocks promotion of a non-structural self-loop', () => {
+    // Seed a categorical self-loop manually (CREATE_RELATION allows
+    // non-structural self-loops per scope decision above). Promoting
+    // to structural must be rejected.
+    const base = readyState();
+    const selfRel = {
+      id: 'self-1', from: 'e1', to: 'e1', kind: 'categorical' as const,
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+    };
+    const seeded: AppState = {
+      ...base,
+      container: { ...base.container!, relations: [selfRel] },
+    };
+    const { state, events } = reduce(seeded, {
+      type: 'UPDATE_RELATION_KIND', id: 'self-1', kind: 'structural',
+    });
+    expect(state.container!.relations[0]!.kind).toBe('categorical');
+    expect(events).toEqual([]);
+  });
+
+  it('UPDATE_RELATION_KIND allows promotion to structural when no cycle is formed', () => {
+    // Seed: e1 → e2 semantic only. Promoting to structural keeps the
+    // graph acyclic, so the update must go through.
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic',
+    });
+    const relId = s1.container!.relations[0]!.id;
+    const { state: s2, events } = reduce(s1, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'structural',
+    });
+    expect(s2.container!.relations[0]!.kind).toBe('structural');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('RELATION_KIND_UPDATED');
+  });
+
+  it('UPDATE_RELATION_KIND allows demotion from structural (no cycle check needed)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'structural',
+    });
+    const relId = s1.container!.relations[0]!.id;
+    const { state: s2, events } = reduce(s1, {
+      type: 'UPDATE_RELATION_KIND', id: relId, kind: 'categorical',
+    });
+    expect(s2.container!.relations[0]!.kind).toBe('categorical');
+    expect(events).toHaveLength(1);
+  });
+
   // ── editing: COMMIT_EDIT with mutation ───
   it('COMMIT_EDIT updates entry in container', () => {
     const base: AppState = {
