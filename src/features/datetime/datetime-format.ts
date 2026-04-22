@@ -15,7 +15,14 @@ function localizedDay(d: Date, opts?: FormatLocaleOptions): string {
   return new Intl.DateTimeFormat(opts?.locale, { weekday: 'short', timeZone: opts?.timeZone }).format(d);
 }
 
-function pad2(n: number): string {
+/**
+ * Zero-pad a number to 2 digits (e.g. 5 → "05", 12 → "12").
+ * Used across modules that format month / day / hour / minute /
+ * second components. Exported so the features/adapter layers can
+ * share a single canonical implementation instead of re-declaring
+ * their own inline `pad` helpers.
+ */
+export function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 

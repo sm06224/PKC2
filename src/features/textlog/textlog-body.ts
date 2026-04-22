@@ -7,7 +7,7 @@
  * No browser APIs — features layer.
  */
 
-import { formatDate } from '../datetime/datetime-format';
+import { formatDate, pad2 } from '../datetime/datetime-format';
 import { generateLogId as generateUlidLogId } from './log-id';
 
 export type TextlogFlag = 'important';
@@ -110,9 +110,8 @@ export function deleteLogEntry(body: TextlogBody, entryId: string): TextlogBody 
 export function formatLogTimestampWithSeconds(iso: string, locale?: string, timeZone?: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const day = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone }).format(d);
-  return `${formatDate(d)} ${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${formatDate(d)} ${day} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 // Slice 4-B (TEXTLOG Viewer & Linkability Redesign): the legacy

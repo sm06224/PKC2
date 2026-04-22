@@ -28,6 +28,7 @@
  */
 
 import type { Container } from '../../core/model/container';
+import { pad2 } from '../../features/datetime/datetime-format';
 
 // ── Types ────────────────────────
 
@@ -731,10 +732,7 @@ export function slugify(s: string): string {
  * bundle formats can stamp filenames with the same compact date.
  */
 export function formatDateCompact(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}${m}${day}`;
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
 }
 
 function generateZipFilename(container: Container): string {

@@ -1,6 +1,7 @@
 import type { Entry } from '../../core/model/record';
 import { parseTodoBody } from '../todo/todo-body';
 import type { TodoBody } from '../todo/todo-body';
+import { pad2 } from '../datetime/datetime-format';
 
 export interface CalendarTodo {
   entry: Entry;
@@ -68,9 +69,7 @@ export function getMonthGrid(year: number, month: number): (number | null)[][] {
  * Format a date key string (YYYY-MM-DD) from year, month, day.
  */
 export function dateKey(year: number, month: number, day: number): string {
-  const m = String(month).padStart(2, '0');
-  const d = String(day).padStart(2, '0');
-  return `${year}-${m}-${d}`;
+  return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
 /**
