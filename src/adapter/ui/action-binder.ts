@@ -290,6 +290,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // docs/development/recent-entries-pane-v1.md §4.
         // Same effect as a plain sidebar click, but no multi-select /
         // range-select so recent-pane clicks never start a selection set.
+        //
+        // PR-ε₂ (cluster C'): intentionally NO `revealInSidebar: true`.
+        // The Recent pane is a focused shortcut and the user may have
+        // deliberately folded sidebar branches to reduce clutter;
+        // unfolding them silently on every recent-item click would
+        // undo that choice. The detail pane switch alone is enough
+        // feedback that the new entry is now active.
         if (!lid) break;
         const me = e as MouseEvent;
         if (me.detail >= 2) {
@@ -2156,6 +2163,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     // Arrow Up / Arrow Down: move selection through sidebar entries (or kanban column)
+    //
+    // PR-ε₂ (cluster C'): every `SELECT_ENTRY` emitted from this and
+    // the Arrow Left / Right block below intentionally omits
+    // `revealInSidebar`. Calendar / kanban keyboard navigation stays
+    // inside its own view; tree-internal arrow navigation addresses
+    // rows already visible under the currently-expanded ancestors.
+    // In both cases the user's folded branches must survive the
+    // keystroke.
     if (
       (e.key === 'ArrowDown' || e.key === 'ArrowUp')
       && !mod
@@ -2357,6 +2372,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     // Arrow Left / Arrow Right: calendar day / kanban cross-column / collapse/expand folder in sidebar
+    //
+    // PR-ε₂ (cluster C'): all `SELECT_ENTRY` dispatches in this block
+    // (calendar day step, kanban cross-column, non-folder parent jump,
+    // relative folder parent / first-child jump) deliberately omit
+    // `revealInSidebar`. Calendar / kanban keystrokes stay inside
+    // their own view; tree-internal parent / child jumps move between
+    // rows that are already visible because the user chose the
+    // current expansion state. Unfolding more would contradict that
+    // choice.
     if (
       (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && !mod && !e.shiftKey && !e.altKey
@@ -3054,6 +3078,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     // Select the dragged entry
+    //
+    // PR-ε₂ (cluster C'): kanban drop — same rationale as the
+    // keyboard navigation block above. The user is working inside
+    // the kanban view; `revealInSidebar` stays omitted so folded
+    // sidebar branches are not unfolded silently by the drop.
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
     // Clean up both possible drag sources
@@ -3151,6 +3180,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     // Select the dragged entry
+    //
+    // PR-ε₂ (cluster C'): calendar drop — same rationale as kanban
+    // drop above. User-focus stays in the calendar view and folded
+    // sidebar branches must survive the drop; `revealInSidebar` is
+    // intentionally omitted.
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
     // Clean up both possible drag sources

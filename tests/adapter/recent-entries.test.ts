@@ -107,6 +107,22 @@ describe('Recent Entries Pane v1 — click behavior (§4)', () => {
     expect(events.some((e) => e.type === 'ENTRY_SELECTED')).toBe(true);
   });
 
+  it('single click does NOT opt into revealInSidebar (PR-ε₂ lockdown)', () => {
+    // Recent pane is a focused shortcut — folded sidebar branches
+    // must survive a recent-item click. If a future refactor adds
+    // `revealInSidebar: true` here the expansion would silently
+    // override the user's collapse choice.
+    const { dispatcher } = setup();
+    const dispatchSpy = vi.spyOn(dispatcher, 'dispatch');
+    paneItem('older').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    const selectCalls = dispatchSpy.mock.calls
+      .map((c) => c[0] as { type: string })
+      .filter((a) => a.type === 'SELECT_ENTRY');
+    expect(selectCalls).toHaveLength(1);
+    expect((selectCalls[0] as { revealInSidebar?: boolean }).revealInSidebar).toBeUndefined();
+    dispatchSpy.mockRestore();
+  });
+
   it('single click from non-detail view also dispatches SET_VIEW_MODE to detail', () => {
     const { dispatcher } = setup();
     dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'calendar' });

@@ -2336,6 +2336,28 @@ describe('Calendar keyboard navigation (Phase 1)', () => {
     expect(dispatcher.getState().selectedLid).toBe('c2');
   });
 
+  it('calendar Arrow nav does NOT unfold sidebar ancestors (PR-ε₂ lockdown)', () => {
+    // Calendar keyboard navigation must leave `state.collapsedFolders`
+    // alone: the user is working inside the calendar view and any
+    // folded sidebar branches should survive the keystroke. This is
+    // a regression guard on the `revealInSidebar`-less default path.
+    const { dispatcher } = setupCalendar();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1', revealInSidebar: true });
+    // Now fold a folder that is NOT an ancestor of any currently-
+    // selected calendar todo so the fold is unambiguously a
+    // user-initiated one.
+    dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid: 'cf1' });
+    const beforeFolded = dispatcher.getState().collapsedFolders;
+    expect(beforeFolded).toContain('cf1');
+    render(dispatcher.getState(), root);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    // Reference-equal: the reducer saw no revealInSidebar flag, so
+    // collapsedFolders was never replaced with a filtered copy.
+    expect(dispatcher.getState().collapsedFolders).toBe(beforeFolded);
+  });
+
   it('Arrow Left moves to previous date with todos', () => {
     const { dispatcher } = setupCalendar();
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c4' }); // Apr 10
