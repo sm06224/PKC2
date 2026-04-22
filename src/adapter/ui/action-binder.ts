@@ -333,6 +333,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_FOLDER_COLLAPSE', lid });
         break;
       }
+      case 'open-kanban-todo-add': {
+        // Slice 1 of the Todo / Editor-in / continuous-edit wave.
+        // The "+ Add" trigger sits inside the column header; reading
+        // the status from its data attribute keeps the mapping
+        // explicit (and lets a future Calendar slice reuse the same
+        // dispatch path with a different attribute).
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        if (st.viewMode !== 'kanban') break;
+        const status = target.getAttribute('data-pkc-kanban-status');
+        if (status !== 'open' && status !== 'done') break;
+        dispatcher.dispatch({ type: 'OPEN_TODO_ADD_POPOVER', status });
+        break;
+      }
       case 'toggle-recent-pane': {
         // Recent Entries pane collapse: prevent the native <details>
         // click-to-toggle from mutating the DOM directly. `pane.open`
@@ -1909,6 +1923,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
+    }
+
+    // Slice 1: Kanban Todo-add popover input takes priority for Enter /
+    // Escape so the user can commit / cancel without global shortcuts
+    // (Ctrl+S, shortcut-help etc.) intercepting.
+    {
+      const kbTarget = e.target as HTMLElement | null;
+      if (
+        kbTarget instanceof HTMLInputElement
+        && kbTarget.getAttribute('data-pkc-field') === 'kanban-todo-add-title'
+      ) {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          const title = kbTarget.value;
+          if (title.trim().length > 0) {
+            dispatcher.dispatch({ type: 'COMMIT_TODO_ADD', title });
+          } else {
+            dispatcher.dispatch({ type: 'CLOSE_TODO_ADD_POPOVER' });
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          dispatcher.dispatch({ type: 'CLOSE_TODO_ADD_POPOVER' });
+          return;
+        }
+      }
     }
 
     const state = dispatcher.getState();
