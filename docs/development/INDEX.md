@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-23（W1 Tag / Color tag / Relation 概念分離 docs-first を反映）.
+Last updated: 2026-04-23（W1 Slice A UI vocabulary 固定を反映）.
 
 ## Status Legend
 
@@ -185,6 +185,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 124 | `storage-profile-footprint-scope.md` | Storage Profile — asset-only vs full container footprint の scope 固定（docs-only） | 2026-04-22 | 現状 Storage Profile が `container.assets` のみを集計する asset-only profile であることと、ユーザが期待していた "text body / relations / revisions を含む full container footprint" が未実装かつ別概念であることを正本化。Slice A(UI label clarification) / B(body bytes column) / C(relations & revisions) / D(persisted vs export size) / E(manual & doc update) の additive 実装候補を整理、`storage-profile-ui.md` 側にも冒頭 scope note を cross-link 追加。実コード変更なし |
 | 125 | `child-window-shortcut-parity-status.md` | Child window shortcut parity — 残件監査の正本化（docs-lite） | 2026-04-22 | PR-ζ₁(#105, Ctrl/Cmd+S + Escape) / PR-ζ₂(date/time 6 shortcut) の後、残る main-shell shortcut を **parity / intentional non-parity / backlog** の 3 bucket に棚卸し。`mod+?` / pane toggle / `mod+N` / `mod+Enter` / arrow / Enter / `/` / asset picker 系は child の UI 不在により意図的 non-parity、`mod+Z/Y` は親子共通 backlog。audit の結果 tiny omission は無し、コード変更なし |
 | 126 | `../spec/tag-color-tag-relation-separation.md` | W1: Tag / Color tag / Relation 概念分離（docs-first） | 2026-04-23 | 次 feature wave(tag / search / UI)前に概念境界を正本化。Tag = 自由文字列の軽量属性、Color tag = 固定 palette の視覚フォーカス属性、Relation = entry 間の型付きリンクを明確に分離。categorical relation は残し新 Tag と併存、structural relation は木構造専用で本ドラフト不変。判断フレーム(4 問) / UI 命名(タグ/カラー/関連/配置/由来) / 5 軸検索(全文/archetype/Tag/Color/Relation) / additive migration 方針(schema bump なし、既存 categorical を即時変換しない) / next slice A-F を整理。実コード変更なし |
+| 127 | `ui-vocabulary-tag-color-relation.md` | W1 Slice A: UI vocabulary 固定（docs-only） | 2026-04-23 | #126 の続編。実際に UI で使う日本語 / 英語 label を 10 語の表として固定(タグ / カラー / 関連 / 分類・意味・時系列・由来 / 配置 / 被参照 / 参照)。Tag chip と Color 色バーと Relation list を視覚的に別レイヤに保つ規約、avoid / banned wording 一覧(categorical を "タグ" と呼ばない / structural を "関連" 単独で書かない 等)、5 軸 filter バーの見せ方、検索構文の prefix 予約(`tag:` / `color:` / `rel:` / `type:`、実装は Slice C で)を整理。実コード変更なし、manual 同期は Tag UI 実装着地後 Slice D で対応 |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
