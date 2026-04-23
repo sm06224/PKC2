@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildStorageProfile,
   estimateBase64Size,
+  estimateUtf8Size,
   formatBytes,
   formatStorageProfileCsv,
   storageProfileCsvFilename,
@@ -212,8 +213,19 @@ describe('buildStorageProfile', () => {
     const attRow = profile.rows.find((r) => r.lid === 'e-att')!;
     expect(attRow.ownedCount).toBe(1);
     expect(attRow.selfBytes).toBeGreaterThan(0);
-    // Text entry is filtered out because subtreeBytes === 0
-    expect(profile.rows.find((r) => r.lid === 'e-note')).toBeUndefined();
+    // Slice B (2026-04-22): the text entry now surfaces because it
+    // has `subtreeBodyBytes > 0` — body-only rows are additively
+    // included in the result. Assertions that used to rely on
+    // "text entry is filtered out" move to the body-byte axis: the
+    // text entry carries zero asset bytes but non-zero body bytes.
+    const noteRow = profile.rows.find((r) => r.lid === 'e-note')!;
+    expect(noteRow).toBeDefined();
+    expect(noteRow.selfBytes).toBe(0);
+    expect(noteRow.subtreeBytes).toBe(0);
+    expect(noteRow.ownedCount).toBe(0);
+    expect(noteRow.referencedCount).toBeGreaterThan(0);
+    expect(noteRow.bodyBytes).toBeGreaterThan(0);
+    expect(noteRow.subtreeBodyBytes).toBe(noteRow.bodyBytes);
   });
 
   it('rolls up folder subtree size across structural descendants', () => {
@@ -320,9 +332,18 @@ describe('buildStorageProfile', () => {
       assets: { 'ast-orphan': base64OfSize(42) },
     });
     const profile = buildStorageProfile(container);
-    // No owner attribution → asset is orphan
-    expect(profile.rows).toEqual([]);
+    // No owner attribution → asset is orphan.
     expect(profile.orphanCount).toBe(1);
+    // Slice B: the malformed attachment body is still a non-empty
+    // string, so the entry now surfaces with body bytes > 0 and
+    // zero asset bytes. (Pre-Slice-B behavior: the row was filtered
+    // out entirely.) The "no owner attribution" invariant is still
+    // pinned via `ownedCount` / `selfBytes`.
+    const badRow = profile.rows.find((r) => r.lid === 'e-bad');
+    expect(badRow).toBeDefined();
+    expect(badRow!.ownedCount).toBe(0);
+    expect(badRow!.selfBytes).toBe(0);
+    expect(badRow!.bodyBytes).toBeGreaterThan(0);
   });
 
   it('tallies referencedCount for extra text / textlog readers of an owned asset', () => {
@@ -373,7 +394,15 @@ describe('buildStorageProfile', () => {
     const profile = buildStorageProfile(container);
     expect(profile.summary.assetCount).toBe(0);
     expect(profile.orphanCount).toBe(0);
-    expect(profile.rows).toEqual([]);
+    // Slice B: the ghost row now surfaces because its body carries
+    // non-zero bytes, even though no asset resolves. Asset-side
+    // invariants (assetCount / orphanCount / selfBytes) remain
+    // untouched.
+    const ghostRow = profile.rows.find((r) => r.lid === 'e-ghost');
+    expect(ghostRow).toBeDefined();
+    expect(ghostRow!.selfBytes).toBe(0);
+    expect(ghostRow!.subtreeBytes).toBe(0);
+    expect(ghostRow!.bodyBytes).toBeGreaterThan(0);
   });
 
   it('tracks largestAssetBytes per row', () => {
@@ -417,6 +446,8 @@ function makeRow(partial: Partial<EntryStorageRow> & { lid: string }): EntryStor
     selfBytes: partial.selfBytes ?? 0,
     subtreeBytes: partial.subtreeBytes ?? 0,
     largestAssetBytes: partial.largestAssetBytes ?? 0,
+    bodyBytes: partial.bodyBytes ?? 0,
+    subtreeBodyBytes: partial.subtreeBodyBytes ?? 0,
   };
 }
 
@@ -428,6 +459,7 @@ function makeProfile(rows: EntryStorageRow[]): StorageProfile {
       largestAsset: null,
       largestAssetOwnerTitle: null,
       largestEntry: rows[0] ?? null,
+      totalBodyBytes: 0,
     },
     rows,
     orphanBytes: 0,
@@ -472,8 +504,11 @@ describe('formatStorageProfileCsv', () => {
     const csv = formatStorageProfileCsv(profile).slice(1); // strip BOM
     const lines = csv.split('\r\n');
     expect(lines[0]).toBe(STORAGE_PROFILE_CSV_COLUMNS.join(','));
-    expect(lines[1]).toBe('a,Alpha,attachment,2,1,500,500,400');
-    expect(lines[2]).toBe('b,Beta,folder,0,0,0,300,0');
+    // Slice B: columns now end with `bodyBytes,subtreeBodyBytes`.
+    // `makeRow` defaults both to 0 when callers omit them, so the
+    // tail of each pre-Slice-B row becomes `,0,0`.
+    expect(lines[1]).toBe('a,Alpha,attachment,2,1,500,500,400,0,0');
+    expect(lines[2]).toBe('b,Beta,folder,0,0,0,300,0,0,0');
     // Trailing empty element after final CRLF.
     expect(lines[3]).toBe('');
     expect(lines.length).toBe(4);
@@ -497,8 +532,10 @@ describe('formatStorageProfileCsv', () => {
     // Instead of re-splitting the whole string, assert the field appears.
     expect(csv).toContain('c3,"line\nbreak",');
     expect(csv).toContain('c4,"crlf\r\ninside",');
-    // Plain value left unquoted.
-    expect(lines[lines.length - 2]).toBe('c5,plain,text,0,0,0,0,0');
+    // Plain value left unquoted. Slice B appended
+    // `bodyBytes,subtreeBodyBytes` to the CSV column list, both
+    // defaulted to 0 by `makeRow`.
+    expect(lines[lines.length - 2]).toBe('c5,plain,text,0,0,0,0,0,0,0');
   });
 
   it('reuses profile.rows order verbatim (callers are responsible for sorting)', () => {
@@ -553,5 +590,205 @@ describe('storageProfileCsvFilename', () => {
   it('zero-pads each component', () => {
     const d = new Date(2026, 0, 5, 9, 7, 3); // 2026-01-05 09:07:03 local
     expect(storageProfileCsvFilename(d)).toBe('pkc-storage-profile-20260105-090703.csv');
+  });
+});
+
+// ── Slice B: body-bytes axis ────────────────────────────────────────
+//
+// Storage Profile previously counted only `container.assets` bytes.
+// Slice B adds a parallel body-bytes axis on the same aggregator,
+// additively — asset-only numbers stay byte-identical, and the two
+// axes are never summed into a single total. See
+// `docs/development/storage-profile-footprint-scope.md` §5 Slice B.
+
+describe('estimateUtf8Size (Slice B)', () => {
+  it('zero for the empty string', () => {
+    expect(estimateUtf8Size('')).toBe(0);
+  });
+
+  it('one byte per ASCII character', () => {
+    expect(estimateUtf8Size('hello')).toBe(5);
+    expect(estimateUtf8Size('a'.repeat(100))).toBe(100);
+  });
+
+  it('three bytes per BMP CJK character', () => {
+    // "日本語" = 3 code points, 3 UTF-8 bytes each.
+    expect(estimateUtf8Size('日本語')).toBe(9);
+  });
+
+  it('four bytes per non-BMP (emoji) character', () => {
+    // "🙂" = 1 code point, 4 UTF-8 bytes.
+    expect(estimateUtf8Size('🙂')).toBe(4);
+  });
+
+  it('mixes ASCII + BMP + non-BMP correctly', () => {
+    // "a" (1) + "é" = U+00E9 (2) + "日" (3) + "🙂" (4) = 10
+    expect(estimateUtf8Size('aé日🙂')).toBe(10);
+  });
+});
+
+describe('buildStorageProfile — body bytes (Slice B)', () => {
+  it('entries surface their body bytes on the row', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'e1', title: 'Note', archetype: 'text', body: 'hello' }),
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    const row = profile.rows.find((r) => r.lid === 'e1');
+    expect(row).toBeDefined();
+    expect(row!.bodyBytes).toBe(5); // "hello"
+    expect(row!.subtreeBodyBytes).toBe(5);
+    expect(row!.selfBytes).toBe(0);
+    expect(row!.subtreeBytes).toBe(0);
+  });
+
+  it('body-only entry is now included in rows (previously filtered)', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'e1', title: 'Text', archetype: 'text', body: 'some text' }),
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    expect(profile.rows).toHaveLength(1);
+    expect(profile.rows[0]!.lid).toBe('e1');
+  });
+
+  it('empty body yields zero body bytes and keeps the row filtered out', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'e1', title: 'Blank', archetype: 'text', body: '' }),
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    expect(profile.rows).toHaveLength(0); // filtered: no asset bytes, no body bytes
+  });
+
+  it('folder rolls body bytes up across structural descendants', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'root', title: 'Root', archetype: 'folder', body: '' }),
+        makeEntry({ lid: 'c1', title: 'A', archetype: 'text', body: 'AAAA' }),
+        makeEntry({ lid: 'c2', title: 'B', archetype: 'text', body: 'BBB' }),
+      ],
+      relations: [
+        { id: 'r1', from: 'root', to: 'c1', kind: 'structural', created_at: '', updated_at: '' },
+        { id: 'r2', from: 'root', to: 'c2', kind: 'structural', created_at: '', updated_at: '' },
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    const root = profile.rows.find((r) => r.lid === 'root')!;
+    expect(root.bodyBytes).toBe(0); // folder body is empty
+    expect(root.subtreeBodyBytes).toBe(7); // 4 + 3
+  });
+
+  it('summary carries totalBodyBytes summed across every entry', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'e1', title: 'A', archetype: 'text', body: 'ab' }),
+        makeEntry({ lid: 'e2', title: 'B', archetype: 'text', body: 'cde' }),
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    expect(profile.summary.totalBodyBytes).toBe(5); // 2 + 3
+  });
+
+  it('totalBodyBytes ignores double-counting from folder subtree rollup', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'root', title: 'Root', archetype: 'folder', body: '' }),
+        makeEntry({ lid: 'c1', title: 'C1', archetype: 'text', body: 'xxxxx' }),
+      ],
+      relations: [
+        { id: 'r1', from: 'root', to: 'c1', kind: 'structural', created_at: '', updated_at: '' },
+      ],
+      assets: {},
+    });
+    const profile = buildStorageProfile(container);
+    // Even though root.subtreeBodyBytes covers c1, the summary total
+    // is summed per-entry `bodyBytes`, not `subtreeBodyBytes`.
+    expect(profile.summary.totalBodyBytes).toBe(5);
+  });
+
+  it('asset-only metrics are unchanged when body bytes are present', () => {
+    // A container that used to carry only attachment assets still
+    // reports the same asset-side numbers after Slice B. Body bytes
+    // are additive on top.
+    const container = makeContainer({
+      entries: [
+        makeEntry({
+          lid: 'att',
+          title: 'image',
+          archetype: 'attachment',
+          body: JSON.stringify({ name: 'image.png', mime: 'image/png', asset_key: 'k1' }),
+        }),
+      ],
+      assets: { k1: base64OfSize(1024) },
+    });
+    const profile = buildStorageProfile(container);
+    expect(profile.summary.assetCount).toBe(1);
+    expect(profile.summary.totalBytes).toBeGreaterThan(1000);
+    const att = profile.rows.find((r) => r.lid === 'att')!;
+    expect(att.ownedCount).toBe(1);
+    expect(att.selfBytes).toBeGreaterThan(1000);
+    // Body bytes = the attachment metadata JSON length.
+    expect(att.bodyBytes).toBeGreaterThan(0);
+    expect(att.bodyBytes).toBeLessThan(200);
+    // Axes are not summed.
+    expect(profile.summary.totalBodyBytes).toBe(att.bodyBytes);
+  });
+
+  it('sort order stays asset-bytes primary; body-only rows follow', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({
+          lid: 'heavy',
+          title: 'Heavy',
+          archetype: 'attachment',
+          body: JSON.stringify({ name: 'h', mime: 'application/octet-stream', asset_key: 'k1' }),
+        }),
+        makeEntry({ lid: 'talky', title: 'Talky', archetype: 'text', body: 'x'.repeat(500) }),
+        makeEntry({ lid: 'quiet', title: 'Quiet', archetype: 'text', body: 'hi' }),
+      ],
+      assets: { k1: base64OfSize(2000) },
+    });
+    const profile = buildStorageProfile(container);
+    // Asset-heavy row first (subtreeBytes primary key).
+    expect(profile.rows[0]!.lid).toBe('heavy');
+    // Body-only rows follow, ordered by subtreeBodyBytes desc then title.
+    expect(profile.rows[1]!.lid).toBe('talky');
+    expect(profile.rows[2]!.lid).toBe('quiet');
+  });
+});
+
+describe('formatStorageProfileCsv — body-bytes columns (Slice B)', () => {
+  it('STORAGE_PROFILE_CSV_COLUMNS appends bodyBytes + subtreeBodyBytes', () => {
+    expect(STORAGE_PROFILE_CSV_COLUMNS).toContain('bodyBytes');
+    expect(STORAGE_PROFILE_CSV_COLUMNS).toContain('subtreeBodyBytes');
+    // They come after the pre-Slice-B columns — consumers that key
+    // off the original columns keep working.
+    const idxSelf = STORAGE_PROFILE_CSV_COLUMNS.indexOf('subtreeBytes');
+    const idxBody = STORAGE_PROFILE_CSV_COLUMNS.indexOf('bodyBytes');
+    expect(idxBody).toBeGreaterThan(idxSelf);
+  });
+
+  it('emits per-row body + subtree-body values in the appended columns', () => {
+    const profile = makeProfile([
+      makeRow({
+        lid: 'e1',
+        title: 'Note',
+        archetype: 'text',
+        bodyBytes: 42,
+        subtreeBodyBytes: 42,
+      }),
+    ]);
+    const csv = formatStorageProfileCsv(profile).slice(1);
+    const lines = csv.split('\r\n');
+    expect(lines[1]).toBe('e1,Note,text,0,0,0,0,0,42,42');
   });
 });

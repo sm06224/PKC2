@@ -771,6 +771,56 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'add-entry-tag': {
+        // W1 Slice F — attach a free-form Tag value to the entry.
+        // The input sits in the same `[data-pkc-region="entry-tag-add"]`
+        // container as the button. The reducer runs the value through
+        // Slice B §4 normalization and silently no-ops on reject.
+        const addForm = target.closest<HTMLElement>('[data-pkc-region="entry-tag-add"]');
+        if (!addForm) break;
+        const addLid = addForm.getAttribute('data-pkc-lid');
+        const inputEl = addForm.querySelector<HTMLInputElement>('[data-pkc-field="entry-tag-input"]');
+        const raw = inputEl?.value ?? '';
+        if (!addLid) break;
+        dispatcher.dispatch({ type: 'ADD_ENTRY_TAG', lid: addLid, raw });
+        // Clear the input on successful dispatch. Re-render will
+        // rebuild the input element; clearing the live element here
+        // keeps the caret-at-start behavior consistent in the rare
+        // case the reducer rejected the value.
+        if (inputEl) inputEl.value = '';
+        break;
+      }
+      case 'remove-entry-tag': {
+        // W1 Slice F — detach a free-form Tag value. Exact match
+        // lookup (case-sensitive) mirrors `normalizeTagInput` R6.
+        const removeLid = target.getAttribute('data-pkc-lid');
+        const tagValue = target.getAttribute('data-pkc-entry-tag-value');
+        if (removeLid && tagValue !== null) {
+          dispatcher.dispatch({ type: 'REMOVE_ENTRY_TAG', lid: removeLid, tag: tagValue });
+        }
+        break;
+      }
+      case 'toggle-tag-filter': {
+        // W1 Slice F-2 — click on an entry Tag chip label OR the ×
+        // button of a sidebar active-filter chip. Both carry
+        // `data-pkc-tag-value` so a single reducer call handles add
+        // / remove symmetrically (the reducer case is idempotent
+        // toggle).
+        const tfValue = target.getAttribute('data-pkc-tag-value');
+        if (tfValue !== null) {
+          dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag: tfValue });
+        }
+        break;
+      }
+      case 'clear-entry-tag-filter': {
+        // W1 Slice F-2 — "Clear all" button on the sidebar
+        // Tag-filter indicator (appears only when 2+ values are
+        // active). Distinct action name from `clear-tag-filter`
+        // (which targets the legacy categorical peer filter) so
+        // the two indicators never cross-fire.
+        dispatcher.dispatch({ type: 'CLEAR_TAG_FILTER' });
+        break;
+      }
       case 'delete-relation': {
         // v1 relation delete UI. Native confirm mirrors existing delete
         // flows (entry trash, purge). Reducer also blocks on readonly
@@ -1092,10 +1142,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'filter-by-tag':
-        if (lid) dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: lid });
+        // Legacy data-pkc-action name; filters by categorical relation
+        // peer lid. Renamed internally (W1 Slice B followup) — the
+        // DOM action-name stays stable to avoid breaking renderer DOM
+        // selectors. See `src/core/action/user-action.ts`
+        // `SET_CATEGORICAL_PEER_FILTER`.
+        if (lid) dispatcher.dispatch({ type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: lid });
         break;
       case 'clear-tag-filter':
-        dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: null });
+        dispatcher.dispatch({ type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: null });
         break;
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
@@ -2026,6 +2081,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           dispatcher.dispatch({ type: 'CLOSE_TODO_ADD_POPOVER' });
           return;
         }
+      }
+    }
+
+    // W1 Slice F — Enter on the Tag chip input commits the typed
+    // value through the ADD_ENTRY_TAG reducer. Same pattern as the
+    // todo-add popover input above, scoped to `entry-tag-input`.
+    {
+      const tagTarget = e.target as HTMLElement | null;
+      if (
+        tagTarget instanceof HTMLInputElement
+        && tagTarget.getAttribute('data-pkc-field') === 'entry-tag-input'
+        && e.key === 'Enter'
+        && !e.isComposing
+      ) {
+        e.preventDefault();
+        const tagLid = tagTarget.getAttribute('data-pkc-lid');
+        const raw = tagTarget.value;
+        if (tagLid && raw.trim().length > 0) {
+          dispatcher.dispatch({ type: 'ADD_ENTRY_TAG', lid: tagLid, raw });
+          tagTarget.value = '';
+        }
+        return;
       }
     }
 

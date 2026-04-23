@@ -231,12 +231,52 @@ export type UserAction =
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
   | { type: 'CLEAR_FILTERS' }
-  | { type: 'SET_TAG_FILTER'; tagLid: string | null }
+  // Rename (W1 Slice B followup): `SET_TAG_FILTER` / `tagLid` was a
+  // legacy name from when categorical-relation-based "tags" were the
+  // only tag-like construct. The new free-form Tag concept (§3.1 of
+  // `docs/spec/tag-color-tag-relation-separation.md`) needs the
+  // `tag`/`Tag` name space, so this action is renamed to reflect what
+  // it actually filters by: a single categorical-relation peer lid.
+  // Behavior is unchanged.
+  | { type: 'SET_CATEGORICAL_PEER_FILTER'; peerLid: string | null }
+  /**
+   * W1 Slice D — free-form Tag filter axis actions.
+   *
+   * TOGGLE_TAG_FILTER adds or removes a single tag from the active
+   * Tag filter Set. CLEAR_TAG_FILTER resets the Set to empty. No
+   * bulk SET action is exposed in this slice — the UI (Slice F)
+   * adds them one chip at a time, matching the archetype-filter
+   * pattern (TOGGLE_ARCHETYPE_FILTER / CLEAR_FILTERS).
+   *
+   * Tag filter semantics: AND-by-default across the Set
+   * (`docs/spec/search-filter-semantics-v1.md` §4.2). Empty Set =
+   * axis off.
+   */
+  | { type: 'TOGGLE_TAG_FILTER'; tag: string }
+  | { type: 'CLEAR_TAG_FILTER' }
+  /**
+   * W1 Slice F — attach / detach a single Tag on an entry.
+   *
+   * ADD_ENTRY_TAG: validates + normalizes `raw` through
+   * `features/tag/normalize.ts` (Slice B R1-R8) and, if it passes,
+   * appends to `entry.tags`. Rejected input silently no-ops in v1;
+   * inline error UI is a later slice.
+   *
+   * REMOVE_ENTRY_TAG: removes the exact-match value from
+   * `entry.tags`. No-op if `tag` is not present. Empties the
+   * array → `updateEntryTags` drops the field entirely (Slice B
+   * §3.3).
+   *
+   * Both emit `ENTRY_UPDATED` so persistence / renderer listeners
+   * refresh identically to other entry edits.
+   */
+  | { type: 'ADD_ENTRY_TAG'; lid: string; raw: string }
+  | { type: 'REMOVE_ENTRY_TAG'; lid: string; tag: string }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
   /**
    * SAVE_SEARCH — create a new saved search record from the current
-   * searchQuery / archetypeFilter / tagFilter / sortKey / sortDirection
-   * / showArchived state. Spec: `docs/development/saved-searches-v1.md`
+   * searchQuery / archetypeFilter / categoricalPeerFilter / sortKey /
+   * sortDirection / showArchived state. Spec: `docs/development/saved-searches-v1.md`
    * §5–§6.
    *
    * - Blocked when no container is loaded or readonly.

@@ -72,6 +72,35 @@ export function estimateBase64Size(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding;
 }
 
+/**
+ * UTF-8 byte length of a string, without building a `Uint8Array`
+ * (Slice B, 2026-04-22). Counts the persisted body shape — e.g. for
+ * TEXTLOG this includes the JSON wrapper, for TODO/FORM the field
+ * serialization. Slice B surfaces this alongside asset bytes as a
+ * separate axis; callers must not sum the two into a container-wide
+ * total (see `storage-profile-footprint-scope.md §3 / §4`).
+ *
+ * Uses `TextEncoder` when available (browser / modern Node) and
+ * falls back to a code-point walk that mirrors RFC 3629. Both paths
+ * agree on BMP and non-BMP sequences; the fallback exists only so
+ * the features layer stays independent of the runtime feature list.
+ */
+export function estimateUtf8Size(str: string): number {
+  if (!str) return 0;
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(str).length;
+  }
+  let bytes = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)!;
+    if (cp < 0x80) bytes += 1;
+    else if (cp < 0x800) bytes += 2;
+    else if (cp < 0x10000) bytes += 3;
+    else bytes += 4;
+  }
+  return bytes;
+}
+
 export interface AssetSizeEntry {
   key: string;
   bytes: number;
@@ -97,6 +126,17 @@ export interface EntryStorageRow {
   subtreeBytes: number;
   /** Bytes of the single largest owned asset. */
   largestAssetBytes: number;
+  /**
+   * Slice B (2026-04-22): UTF-8 byte length of this entry's own
+   * `body` string. NOT summed with `selfBytes`; body and asset
+   * bytes are surfaced on separate axes.
+   */
+  bodyBytes: number;
+  /**
+   * Folder: `bodyBytes` + sum of structural descendants' bodyBytes.
+   * Non-folder: equal to `bodyBytes`.
+   */
+  subtreeBodyBytes: number;
 }
 
 export interface StorageProfileSummary {
@@ -110,6 +150,13 @@ export interface StorageProfileSummary {
   largestAssetOwnerTitle: string | null;
   /** Row with the largest `subtreeBytes`, or null when no rows. */
   largestEntry: EntryStorageRow | null;
+  /**
+   * Slice B (2026-04-22): sum of per-entry `bodyBytes` across every
+   * entry in the container (not just surfaced rows). Reported on a
+   * separate line in the overlay; never merged with `totalBytes`
+   * (asset bytes).
+   */
+  totalBodyBytes: number;
 }
 
 export interface StorageProfile {
@@ -169,6 +216,7 @@ export function buildStorageProfile(container: Container): StorageProfile {
   // Build one row per entry (keep empties; drop at sort stage).
   const rowsByLid = new Map<string, EntryStorageRow>();
   for (const e of container.entries) {
+    const bodyBytes = estimateUtf8Size(typeof e.body === 'string' ? e.body : '');
     rowsByLid.set(e.lid, {
       lid: e.lid,
       title: e.title,
@@ -178,6 +226,9 @@ export function buildStorageProfile(container: Container): StorageProfile {
       selfBytes: 0,
       subtreeBytes: 0,
       largestAssetBytes: 0,
+      bodyBytes,
+      // Non-folder default; folders overwritten in the rollup below.
+      subtreeBodyBytes: bodyBytes,
     });
   }
 
@@ -203,28 +254,41 @@ export function buildStorageProfile(container: Container): StorageProfile {
     }
   }
 
-  // Subtree rollup for folders.
+  // Subtree rollup for folders. Asset bytes and body bytes roll up
+  // on separate axes — Slice B's key invariant is that they are
+  // never summed into a single "total".
   for (const row of rowsByLid.values()) {
     if (row.archetype !== 'folder') {
       row.subtreeBytes = row.selfBytes;
+      // `subtreeBodyBytes` was pre-set to `bodyBytes` at row
+      // creation; nothing to roll up for non-folder entries.
       continue;
     }
     const descendants = collectDescendantLids(container.relations, row.lid);
-    let sum = row.selfBytes;
+    let assetSum = row.selfBytes;
+    let bodySum = row.bodyBytes;
     for (const descLid of descendants) {
       const descRow = rowsByLid.get(descLid);
-      if (descRow) sum += descRow.selfBytes;
+      if (!descRow) continue;
+      assetSum += descRow.selfBytes;
+      bodySum += descRow.bodyBytes;
     }
-    row.subtreeBytes = sum;
+    row.subtreeBytes = assetSum;
+    row.subtreeBodyBytes = bodySum;
   }
 
-  // Sort and filter: only surface rows that actually contribute
-  // bytes.  Empty folders and caption-only text entries are noise in
-  // a capacity-focused view.
+  // Sort and filter: surface rows that contribute EITHER asset bytes
+  // OR body bytes (Slice B — additively include body-only entries
+  // like pure-text notes that previously never appeared). Empty
+  // rows (no body, no assets, no descendants) are still dropped.
+  // Sort key stays asset-bytes primary so existing asset-weighted
+  // ranking is preserved; body-only rows collate at the bottom
+  // grouped by title.
   const rows = Array.from(rowsByLid.values())
-    .filter((r) => r.subtreeBytes > 0)
+    .filter((r) => r.subtreeBytes > 0 || r.subtreeBodyBytes > 0)
     .sort((a, b) => {
       if (b.subtreeBytes !== a.subtreeBytes) return b.subtreeBytes - a.subtreeBytes;
+      if (b.subtreeBodyBytes !== a.subtreeBodyBytes) return b.subtreeBodyBytes - a.subtreeBodyBytes;
       return a.title.localeCompare(b.title);
     });
 
@@ -257,6 +321,14 @@ export function buildStorageProfile(container: Container): StorageProfile {
     }
   }
 
+  // Slice B: container-wide body bytes total, summed across every
+  // entry's own bodyBytes (not subtreeBodyBytes — that would double-
+  // count folder descendants).
+  let totalBodyBytes = 0;
+  for (const row of rowsByLid.values()) {
+    totalBodyBytes += row.bodyBytes;
+  }
+
   return {
     summary: {
       assetCount: assetBytes.size,
@@ -264,6 +336,7 @@ export function buildStorageProfile(container: Container): StorageProfile {
       largestAsset,
       largestAssetOwnerTitle,
       largestEntry,
+      totalBodyBytes,
     },
     rows,
     orphanBytes,
@@ -286,6 +359,10 @@ export const STORAGE_PROFILE_CSV_COLUMNS = [
   'selfBytes',
   'subtreeBytes',
   'largestAssetBytes',
+  // Slice B (2026-04-22): body-byte axis appended to the end so
+  // existing column order / downstream consumers are unaffected.
+  'bodyBytes',
+  'subtreeBodyBytes',
 ] as const;
 
 /**
@@ -317,6 +394,9 @@ export function formatStorageProfileCsv(profile: StorageProfile): string {
         String(row.selfBytes),
         String(row.subtreeBytes),
         String(row.largestAssetBytes),
+        // Slice B: appended to match STORAGE_PROFILE_CSV_COLUMNS.
+        String(row.bodyBytes),
+        String(row.subtreeBodyBytes),
       ].join(','),
     );
   }

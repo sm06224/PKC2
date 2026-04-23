@@ -50,7 +50,7 @@ function baseState(overrides?: Partial<AppState>): AppState {
     },
     importMode: 'merge',
     batchImportPreview: null, batchImportResult: null,
-    searchQuery: '', archetypeFilter: new Set(), tagFilter: null,
+    searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null,
     sortKey: 'title', sortDirection: 'asc',
     exportMode: null, exportMutability: null,
     readonly: false, lightSource: false, showArchived: false,

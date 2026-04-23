@@ -11,6 +11,7 @@ import { classifyFolderRestore } from '../../features/batch-import/import-planne
 import {
   addEntry,
   updateEntry,
+  updateEntryTags,
   removeEntry,
   nextSelectedAfterRemove,
   addRelation,
@@ -23,6 +24,7 @@ import {
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
+import { normalizeTagInput } from '../../features/tag/normalize';
 import {
   captureEditBase,
   checkSaveConflict,
@@ -165,8 +167,34 @@ export interface AppState {
    * fields without also updating `settings`.
    */
   settings?: SystemSettingsPayload;
-  /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
-  tagFilter: string | null;
+  /**
+   * W1 Slice D — Free-form Tag filter axis.
+   *
+   * `Set<string>` of normalized Tag values. Empty set / absent =
+   * Tag axis off. Non-empty = AND-by-default over every value
+   * (spec: `docs/spec/search-filter-semantics-v1.md` §4.2).
+   *
+   * Independent from `categoricalPeerFilter` below — the two axes
+   * coexist (spec §3). Runtime-only, not persisted. Saved Search
+   * round-trip for Tag filter lands in Slice E.
+   *
+   * Optional on the TS surface so legacy test fixtures that hand-
+   * spell AppState don't need updating before the Tag UI lands;
+   * every read path treats absent as equivalent to an empty Set.
+   */
+  tagFilter?: ReadonlySet<string>;
+  /**
+   * Categorical relation peer filter. Stores the lid of a "tag entry"
+   * (categorical relation `to` endpoint) to filter by. Runtime-only.
+   * `null` = no filter active.
+   *
+   * Rename note (W1 Slice B followup): this field used to be called
+   * `tagFilter`. The new free-form Tag concept (see
+   * `docs/spec/tag-color-tag-relation-separation.md` §3.1) needs the
+   * `tag`/`Tag` name for itself, so this field was renamed with no
+   * semantic change. Filter path is still categorical-relation based.
+   */
+  categoricalPeerFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
   sortKey: SortKey;
   /** Current sort direction (runtime-only, feature layer). */
@@ -389,6 +417,7 @@ export function createInitialState(): AppState {
     searchQuery: '',
     archetypeFilter: new Set<ArchetypeId>(),
     archetypeFilterExpanded: false,
+    tagFilter: new Set<string>(),
     showScanline: false,
     accentColor: undefined,
     // FI-Settings v1: left undefined until main.ts dispatches
@@ -398,7 +427,7 @@ export function createInitialState(): AppState {
     // fixtures that only populate showScanline / accentColor continue
     // to drive the DOM through the mirror-fallback path.
     settings: undefined,
-    tagFilter: null,
+    categoricalPeerFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
     exportMode: null,
@@ -649,10 +678,11 @@ function reduceMoveEntry(
   const hasActiveFilter =
     state.searchQuery !== '' ||
     state.archetypeFilter.size > 0 ||
-    state.tagFilter !== null;
-  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
-  if (state.tagFilter) {
-    filtered = filterByTag(filtered, container.relations, state.tagFilter);
+    (state.tagFilter?.size ?? 0) > 0 ||
+    state.categoricalPeerFilter !== null;
+  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter, state.tagFilter);
+  if (state.categoricalPeerFilter) {
+    filtered = filterByTag(filtered, container.relations, state.categoricalPeerFilter);
   }
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
@@ -1836,13 +1866,82 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!state.menuOpen) return { state, events: [] };
       return { state: { ...state, menuOpen: false }, events: [] };
     }
-    case 'SET_TAG_FILTER': {
-      const next: AppState = { ...state, tagFilter: action.tagLid };
+    case 'SET_CATEGORICAL_PEER_FILTER': {
+      const next: AppState = { ...state, categoricalPeerFilter: action.peerLid };
       return { state: next, events: [] };
+    }
+    case 'TOGGLE_TAG_FILTER': {
+      // W1 Slice D — add or remove a single tag from the active Tag
+      // filter Set. Mirrors TOGGLE_ARCHETYPE_FILTER's pattern so UI
+      // chip toggling stays predictable across both filter axes.
+      const next = new Set(state.tagFilter ?? []);
+      if (next.has(action.tag)) {
+        next.delete(action.tag);
+      } else {
+        next.add(action.tag);
+      }
+      return { state: { ...state, tagFilter: next }, events: [] };
+    }
+    case 'CLEAR_TAG_FILTER': {
+      // Identity no-op when already empty or absent — keeps `state`
+      // reference stable so downstream listeners that use `===` stay
+      // quiet.
+      if ((state.tagFilter?.size ?? 0) === 0) return { state, events: [] };
+      return { state: { ...state, tagFilter: new Set<string>() }, events: [] };
+    }
+    case 'ADD_ENTRY_TAG': {
+      // W1 Slice F — validate the user input through the single
+      // Slice B R1-R8 normalizer, then append to `entry.tags`.
+      // Rejected input silently no-ops in v1 (inline error surface
+      // is a later slice); `===` reference identity is preserved so
+      // downstream listeners do not re-render on a no-op attempt.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const existing = entry.tags ?? [];
+      const result = normalizeTagInput(action.raw, existing);
+      if (!result.ok) return { state, events: [] };
+      const nextTags = [...existing, result.value];
+      const ts = new Date().toISOString();
+      const container = updateEntryTags(state.container, action.lid, nextTags, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
+    case 'REMOVE_ENTRY_TAG': {
+      // W1 Slice F — detach a single Tag value by exact match. If
+      // `tag` is not present we silently no-op (same identity-stable
+      // behavior as ADD_ENTRY_TAG's reject path).
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const existing = entry.tags ?? [];
+      if (!existing.includes(action.tag)) return { state, events: [] };
+      const nextTags = existing.filter((t) => t !== action.tag);
+      const ts = new Date().toISOString();
+      const container = updateEntryTags(state.container, action.lid, nextTags, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
     }
     case 'CLEAR_FILTERS': {
       // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), tagFilter: null };
+      // Slice D (2026-04-23): clearing filters also resets the Tag
+      // axis so "Clear filters" remains the single escape hatch for
+      // every active filter axis.
+      const next: AppState = {
+        ...state,
+        searchQuery: '',
+        archetypeFilter: new Set<ArchetypeId>(),
+        tagFilter: new Set<string>(),
+        categoricalPeerFilter: null,
+      };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {
@@ -1915,7 +2014,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const saved = createSavedSearch(generateLid(), trimmed, ts, {
         searchQuery: state.searchQuery,
         archetypeFilter: state.archetypeFilter,
-        tagFilter: state.tagFilter,
+        categoricalPeerFilter: state.categoricalPeerFilter,
+        // Slice E (2026-04-23) — Tag axis round-trip. `state.tagFilter`
+        // is optional on the TS surface (post-Slice-D additive field);
+        // fall back to an empty Set so `createSavedSearch` always gets
+        // a non-null `ReadonlySet<string>`.
+        tagFilter: state.tagFilter ?? new Set<string>(),
         sortKey: state.sortKey,
         sortDirection: state.sortDirection,
         showArchived: state.showArchived,
@@ -1959,6 +2063,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         container,
         searchQuery: fields.searchQuery,
         archetypeFilter: fields.archetypeFilter,
+        categoricalPeerFilter: fields.categoricalPeerFilter,
+        // Slice E: Tag axis round-trip. Missing `tag_filter_v2` in the
+        // stored record resolves to an empty Set here, so loading a
+        // pre-Slice-E saved search leaves the Tag axis off.
         tagFilter: fields.tagFilter,
         sortKey: fields.sortKey,
         sortDirection: fields.sortDirection,
@@ -2497,6 +2605,15 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container,
         selectedLid: lid,
+        // PR-ε₂ invariant (2026-04-22 audit): COMMIT_TODO_ADD fires
+        // from the Kanban / Calendar popover, not from the sidebar.
+        // The newly created todo may land under a collapsed ancestor
+        // folder (auto-placement targets the nearest TODOS subfolder),
+        // but we deliberately preserve `state.collapsedFolders` by
+        // reference — the user's folding intent must survive the
+        // add, matching PR-ε₂'s "view-local operations do not unfold
+        // sidebar branches" lockdown. External reveal (storage
+        // profile / entry-ref) is the only opt-in path.
         todoAddPopover: null,
       };
       return { state: next, events };

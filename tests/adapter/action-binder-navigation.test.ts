@@ -758,10 +758,30 @@ describe('ActionBinder — Storage Profile dialog', () => {
   });
 
   it('Export CSV is a no-op when profile has no byte-contributing rows', () => {
-    // With only the default mockContainer (no assets), profile.rows is
-    // empty so the button should not be mounted.  Confirm that the
-    // button is absent and a manually dispatched action is inert.
-    setupWithMenuOpen();
+    // The gating condition is `profile.rows.length === 0`. Slice B
+    // additively surfaces body-only entries, so the fixture now has
+    // to carry an entry with an empty body AND no assets to produce
+    // an empty profile. Override the default fixture for this test
+    // only so the invariant we care about ("button absent when
+    // profile.rows is empty") is still exercised.
+    const emptyContainer: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'e-empty',
+          title: 'Empty',
+          body: '',
+          archetype: 'text',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: emptyContainer });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
     root
       .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));

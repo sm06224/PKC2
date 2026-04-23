@@ -1674,62 +1674,263 @@ describe('sort', () => {
     expect(events).toHaveLength(0);
   });
 
-  // ── SET_TAG_FILTER ──
+  // ── SET_CATEGORICAL_PEER_FILTER ── (formerly SET_TAG_FILTER,
+  // renamed so the `tag` name space is available for the new
+  // free-form Tag concept introduced by W1 Slice B.)
 
-  it('SET_TAG_FILTER sets tagFilter in ready phase', () => {
+  it('SET_CATEGORICAL_PEER_FILTER sets categoricalPeerFilter in ready phase', () => {
     const { state, events } = reduce(readyState(), {
-      type: 'SET_TAG_FILTER', tagLid: 'e2',
+      type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2',
     });
-    expect(state.tagFilter).toBe('e2');
+    expect(state.categoricalPeerFilter).toBe('e2');
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER with null clears tag filter', () => {
-    const base = { ...readyState(), tagFilter: 'e2' };
-    const { state } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: null });
-    expect(state.tagFilter).toBeNull();
+  it('SET_CATEGORICAL_PEER_FILTER with null clears the filter', () => {
+    const base = { ...readyState(), categoricalPeerFilter: 'e2' };
+    const { state } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: null });
+    expect(state.categoricalPeerFilter).toBeNull();
   });
 
-  it('SET_TAG_FILTER is blocked during initializing', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during initializing', () => {
     const base: AppState = { ...readyState(), phase: 'initializing' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e1' });
     expect(state.phase).toBe('initializing');
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER is blocked during editing', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during editing', () => {
     const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', selectedLid: 'e1' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e2' });
-    expect(state.tagFilter).toBeNull();
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2' });
+    expect(state.categoricalPeerFilter).toBeNull();
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER is blocked during exporting', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during exporting', () => {
     const base: AppState = { ...readyState(), phase: 'exporting' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e1' });
     expect(state).toBe(base);
     expect(events).toHaveLength(0);
   });
 
-  it('CLEAR_FILTERS also clears tagFilter', () => {
-    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: new Set(['text'] as const), tagFilter: 'e2' };
+  it('CLEAR_FILTERS also clears categoricalPeerFilter', () => {
+    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: new Set(['text'] as const), categoricalPeerFilter: 'e2' };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
     expect(state.archetypeFilter).toEqual(new Set());
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
   });
 
-  it('CLEAR_FILTERS preserves sort when clearing tag filter', () => {
-    const base = { ...readyState(), tagFilter: 'e2', sortKey: 'title' as const, sortDirection: 'asc' as const };
+  it('CLEAR_FILTERS preserves sort when clearing categoricalPeerFilter', () => {
+    const base = { ...readyState(), categoricalPeerFilter: 'e2', sortKey: 'title' as const, sortDirection: 'asc' as const };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
     expect(state.sortKey).toBe('title');
     expect(state.sortDirection).toBe('asc');
   });
 
-  it('default tagFilter is null', () => {
+  it('default categoricalPeerFilter is null', () => {
     const state = readyState();
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
+  });
+
+  // ── W1 Slice D: free-form Tag filter (TOGGLE_TAG_FILTER / CLEAR_TAG_FILTER) ──
+  //
+  // Spec: `docs/spec/search-filter-semantics-v1.md` §3-§4, Slice B
+  // `tag-data-model-v1-minimum-scope.md`. Separate axis from
+  // `categoricalPeerFilter`; Tag is AND-by-default within the Set.
+
+  it('default tagFilter is an empty Set', () => {
+    const state = readyState();
+    // Optional on the TS surface; treat absent as empty Set.
+    expect(state.tagFilter?.size ?? 0).toBe(0);
+  });
+
+  it('TOGGLE_TAG_FILTER adds a tag when absent', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(state.tagFilter?.has('urgent')).toBe(true);
+    expect(state.tagFilter?.size).toBe(1);
+  });
+
+  it('TOGGLE_TAG_FILTER removes a tag when present (toggle semantics)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(s2.tagFilter?.has('urgent')).toBe(false);
+    expect(s2.tagFilter?.size).toBe(0);
+  });
+
+  it('TOGGLE_TAG_FILTER accumulates multiple tags (AND-by-default at filter time)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'review' });
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+    expect(s2.tagFilter?.has('review')).toBe(true);
+    expect(s2.tagFilter?.size).toBe(2);
+  });
+
+  it('TOGGLE_TAG_FILTER is case-sensitive (Slice B §4.3 raw ===)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'Urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(s2.tagFilter?.has('Urgent')).toBe(true);
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+    expect(s2.tagFilter?.size).toBe(2);
+  });
+
+  it('CLEAR_TAG_FILTER empties the Set', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'CLEAR_TAG_FILTER' });
+    expect(s2.tagFilter?.size).toBe(0);
+  });
+
+  it('CLEAR_TAG_FILTER is a reference-stable no-op when already empty', () => {
+    const base = readyState();
+    const { state } = reduce(base, { type: 'CLEAR_TAG_FILTER' });
+    expect(state).toBe(base);
+  });
+
+  it('TOGGLE_TAG_FILTER does not collide with categoricalPeerFilter', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    // Both axes carry their own independent value.
+    expect(s2.categoricalPeerFilter).toBe('e2');
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+  });
+
+  it('CLEAR_FILTERS also clears the Tag axis', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'review' });
+    const { state: s3 } = reduce(s2, {
+      type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2',
+    });
+    const { state: s4 } = reduce(s3, { type: 'CLEAR_FILTERS' });
+    expect(s4.tagFilter?.size ?? 0).toBe(0);
+    expect(s4.categoricalPeerFilter).toBeNull();
+    expect(s4.archetypeFilter.size).toBe(0);
+    expect(s4.searchQuery).toBe('');
+  });
+
+  // ── W1 Slice F: ADD_ENTRY_TAG / REMOVE_ENTRY_TAG ──
+  //
+  // Spec: `docs/spec/tag-data-model-v1-minimum-scope.md` §4 R1-R8
+  // + Slice F UI prototype wiring. ADD_ENTRY_TAG runs normalization
+  // through `features/tag/normalize`; rejected input silently no-ops.
+  // REMOVE_ENTRY_TAG performs exact-match removal.
+
+  it('ADD_ENTRY_TAG appends the normalized value to entry.tags', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('ENTRY_UPDATED');
+  });
+
+  it('ADD_ENTRY_TAG trims the value before storing (R1)', () => {
+    const { state } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: '   urgent   ',
+    });
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+  });
+
+  it('ADD_ENTRY_TAG rejects blank input (R2)', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: '   ',
+    });
+    expect(state).toBe(base); // reference-stable no-op
+    expect(events).toHaveLength(0);
+  });
+
+  it('ADD_ENTRY_TAG rejects duplicate in same entry (R7)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const { state: s2, events } = reduce(s1, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    expect(s2).toBe(s1);
+    expect(events).toHaveLength(0);
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+  });
+
+  it('ADD_ENTRY_TAG keeps case-sensitive distinct values (R6)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const { state: s2 } = reduce(s1, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'Urgent',
+    });
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent', 'Urgent']);
+  });
+
+  it('ADD_ENTRY_TAG preserves insertion order across multiple calls', () => {
+    const seq = ['zebra', 'alpha', 'mango'];
+    let state = readyState();
+    for (const raw of seq) {
+      state = reduce(state, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw }).state;
+    }
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(seq);
+  });
+
+  it('ADD_ENTRY_TAG rejects control characters (R4)', () => {
+    const base = readyState();
+    const { state } = reduce(base, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'line\nbreak',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('ADD_ENTRY_TAG is blocked in readonly mode', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'x' });
+    expect(state).toBe(ro);
+  });
+
+  it('ADD_ENTRY_TAG no-ops on unknown lid', () => {
+    const base = readyState();
+    const { state } = reduce(base, { type: 'ADD_ENTRY_TAG', lid: 'ghost', raw: 'x' });
+    expect(state).toBe(base);
+  });
+
+  it('REMOVE_ENTRY_TAG removes the matching value and preserves the rest', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'a',
+    });
+    const { state: s2 } = reduce(s1, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'b' });
+    const { state: s3, events } = reduce(s2, {
+      type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'a',
+    });
+    const e1 = s3.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['b']);
+    expect(events[0]!.type).toBe('ENTRY_UPDATED');
+  });
+
+  it('REMOVE_ENTRY_TAG of the last tag drops the tags field (Slice B §3.3)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'only',
+    });
+    const { state: s2 } = reduce(s1, { type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'only' });
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toBeUndefined();
+  });
+
+  it('REMOVE_ENTRY_TAG is a reference-stable no-op when tag is absent', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'nonexistent',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('REMOVE_ENTRY_TAG is blocked in readonly mode', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'x' });
+    expect(state).toBe(ro);
   });
 
   // ── QUICK_UPDATE_ENTRY ─────────────────────────
@@ -2824,6 +3025,29 @@ describe('sort', () => {
     const { state, events } = reduce(s, { type: 'COMMIT_TODO_ADD', title: 'x' });
     expect(state).toBe(s);
     expect(events).toHaveLength(0);
+  });
+
+  // PR-ε₂ invariant (2026-04-22 audit): COMMIT_TODO_ADD runs from
+  // the Kanban / Calendar popover — a view-local add flow. Even when
+  // the new todo auto-places under a collapsed TODOS ancestor, the
+  // user's `collapsedFolders` intent must survive the commit. The
+  // reveal opt-in (`revealInSidebar: true`) is reserved for external
+  // jumps (Storage Profile row, entry-ref body links).
+  it('COMMIT_TODO_ADD does not expand ancestor folders (PR-ε₂ lockdown)', () => {
+    const s: AppState = {
+      ...readyState(),
+      todoAddPopover: { context: 'kanban', status: 'open' },
+      // Seed a collapsedFolders array so the reference-identity
+      // assertion below is meaningful (an empty array could be
+      // short-circuited by the reducer trivially).
+      collapsedFolders: ['some-folder-lid'],
+    };
+    const prevCollapsed = s.collapsedFolders;
+    const { state } = reduce(s, { type: 'COMMIT_TODO_ADD', title: 'Added via Kanban' });
+    // Same reference — the reducer must not reallocate the array
+    // and must not strip any ancestor of the newly-created todo.
+    expect(state.collapsedFolders).toBe(prevCollapsed);
+    expect(state.collapsedFolders).toEqual(['some-folder-lid']);
   });
 
   // ── Slice 2: Calendar Todo add popover ──

@@ -466,7 +466,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter);
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -1281,6 +1281,10 @@ function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
   section.setAttribute('data-pkc-region', 'storage-profile-summary');
   section.setAttribute('data-pkc-asset-count', String(profile.summary.assetCount));
   section.setAttribute('data-pkc-total-bytes', String(profile.summary.totalBytes));
+  // Slice B: body bytes is an independent axis. Expose via a separate
+  // dataset attribute so tests / tooling can read it without
+  // scraping the rendered label.
+  section.setAttribute('data-pkc-total-body-bytes', String(profile.summary.totalBodyBytes));
 
   const label = createElement('span', 'pkc-shell-menu-label');
   label.textContent = 'Summary';
@@ -1293,6 +1297,9 @@ function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
     // Renamed so the scope is unambiguous. The underlying number
     // (`summary.totalBytes`) is unchanged.
     { label: 'Total asset bytes', value: formatBytes(summary.totalBytes), raw: summary.totalBytes },
+    // Slice B: body bytes surfaced as a separate line. Never summed
+    // with asset bytes; see docs/development/storage-profile-footprint-scope.md.
+    { label: 'Total body bytes', value: formatBytes(summary.totalBodyBytes), raw: summary.totalBodyBytes },
   ];
   if (summary.largestAsset) {
     const ownerHint = summary.largestAssetOwnerTitle
@@ -1366,6 +1373,9 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     li.setAttribute('data-pkc-lid', row.lid);
     li.setAttribute('data-pkc-archetype', row.archetype);
     li.setAttribute('data-pkc-subtree-bytes', String(row.subtreeBytes));
+    // Slice B: body bytes as a separate attribute so downstream
+    // tooling can read it without parsing the rendered detail text.
+    li.setAttribute('data-pkc-subtree-body-bytes', String(row.subtreeBodyBytes));
 
     // Each row is a real <button> so Enter/Space work without a
     // bespoke keydown handler. The button carries data-pkc-action +
@@ -1405,6 +1415,11 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     if (row.referencedCount > 0) parts.push(`${row.referencedCount} refs`);
     if (row.largestAssetBytes > 0) {
       parts.push(`largest ${formatBytes(row.largestAssetBytes)}`);
+    }
+    // Slice B: body-byte contribution, flagged explicitly so it is
+    // never mistaken for an asset-bytes number.
+    if (row.subtreeBodyBytes > 0) {
+      parts.push(`body ${formatBytes(row.subtreeBodyBytes)}`);
     }
     detail.textContent = parts.join(' · ');
     trigger.appendChild(detail);
@@ -1830,9 +1845,13 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     sidebar.appendChild(toggle);
   }
 
-  // Active tag filter indicator
-  if (state.tagFilter && state.container) {
-    const tagEntry = state.container.entries.find((e) => e.lid === state.tagFilter);
+  // Active tag filter indicator (categorical relation peer).
+  // The `tagFilter` state field was renamed to `categoricalPeerFilter`
+  // post W1 Slice B; the user-visible label and data-pkc-action names
+  // ("Tag:", "clear-tag-filter") are intentionally preserved so
+  // the existing categorical-relation UI vocabulary stays stable.
+  if (state.categoricalPeerFilter && state.container) {
+    const tagEntry = state.container.entries.find((e) => e.lid === state.categoricalPeerFilter);
     if (tagEntry) {
       const indicator = createElement('div', 'pkc-tag-filter-indicator');
       indicator.setAttribute('data-pkc-region', 'tag-filter-indicator');
@@ -1851,10 +1870,65 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     }
   }
 
-  // Pipeline: query → archetype → tag → archive → sort
-  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
-  if (state.tagFilter && state.container) {
-    filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  // W1 Slice F-2 \u2014 free-form Tag filter indicator.
+  // Shown only when `state.tagFilter` has at least one value. Each
+  // active value renders as a small chip; clicking its \u00d7 dispatches
+  // TOGGLE_TAG_FILTER (idempotent remove since the value is already
+  // in the filter). A "Clear all" button surfaces only when there
+  // are \u2265 2 active values so the single-chip case keeps the UI
+  // dense. The section uses distinct classes / DOM region /
+  // action names from the categorical indicator above to keep
+  // selectors unambiguous.
+  if ((state.tagFilter?.size ?? 0) > 0) {
+    const activeTags = Array.from(state.tagFilter!);
+
+    const indicator = createElement('div', 'pkc-entry-tag-filter');
+    indicator.setAttribute('data-pkc-region', 'entry-tag-filter');
+
+    const label = createElement('span', 'pkc-entry-tag-filter-label');
+    label.textContent = '\u30bf\u30b0:';
+    indicator.appendChild(label);
+
+    for (const tagValue of activeTags) {
+      const chip = createElement('span', 'pkc-entry-tag-filter-chip');
+      chip.setAttribute('data-pkc-entry-tag-value', tagValue);
+
+      const chipLabel = createElement('span', 'pkc-entry-tag-filter-chip-label');
+      chipLabel.textContent = tagValue;
+      chip.appendChild(chipLabel);
+
+      const removeBtn = createElement('button', 'pkc-entry-tag-filter-remove');
+      // TOGGLE is idempotent \u2014 clicking an already-active value
+      // removes it. A dedicated remove action would duplicate the
+      // reducer branch without adding semantic clarity, so we
+      // reuse toggle here.
+      removeBtn.setAttribute('data-pkc-action', 'toggle-tag-filter');
+      removeBtn.setAttribute('data-pkc-tag-value', tagValue);
+      removeBtn.setAttribute('title', `Remove filter: ${tagValue}`);
+      removeBtn.textContent = '\u00d7';
+      chip.appendChild(removeBtn);
+
+      indicator.appendChild(chip);
+    }
+
+    if (activeTags.length >= 2) {
+      const clearAllBtn = createElement('button', 'pkc-btn-small pkc-entry-tag-filter-clear-all');
+      clearAllBtn.setAttribute('data-pkc-action', 'clear-entry-tag-filter');
+      clearAllBtn.setAttribute('title', 'Clear all Tag filters');
+      clearAllBtn.textContent = 'Clear all';
+      indicator.appendChild(clearAllBtn);
+    }
+
+    sidebar.appendChild(indicator);
+  }
+
+  // Pipeline: query → archetype → tag → categorical peer → archive → sort
+  // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
+  // with AND-by-default semantics (see
+  // `docs/spec/search-filter-semantics-v1.md` §4.2).
+  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter, state.tagFilter);
+  if (state.categoricalPeerFilter && state.container) {
+    filtered = filterByTag(filtered, state.container.relations, state.categoricalPeerFilter);
   }
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
@@ -1870,7 +1944,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -1900,7 +1974,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based
@@ -3181,6 +3255,12 @@ function renderMetaPane(
   canEdit: boolean,
   container: Container | null,
   sharedLinkIndex: LinkIndex | null = null,
+  /**
+   * W1 Slice F-2 — active Tag filter Set so each entry Tag chip can
+   * mark itself as "already filtered". Optional to avoid touching
+   * every caller that pre-dates the Tag filter axis.
+   */
+  activeTagFilter: ReadonlySet<string> | undefined = undefined,
 ): HTMLElement {
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
@@ -3207,13 +3287,94 @@ function renderMetaPane(
 
   if (!container) return meta;
 
-  // Tags section
+  // W1 Slice F — free-form Tag chip section. This precedes the
+  // categorical-relation "Categorical" section below so the
+  // lightweight per-entry Tag attribute appears first in the meta
+  // pane's visual order (W1 Slice A §5.2 visual hierarchy: Tag chip
+  // row sits ahead of Relation lists).
+  const entryTagSection = createElement('div', 'pkc-entry-tags');
+  entryTagSection.setAttribute('data-pkc-region', 'entry-tags');
+  entryTagSection.setAttribute('data-pkc-lid', entry.lid);
+
+  const entryTagHeading = createElement('span', 'pkc-entry-tags-label');
+  entryTagHeading.textContent = 'Tags';
+  entryTagSection.appendChild(entryTagHeading);
+
+  const entryTags = entry.tags ?? [];
+  for (const tagValue of entryTags) {
+    const chip = createElement('span', 'pkc-entry-tag-chip');
+    chip.setAttribute('data-pkc-entry-tag-value', tagValue);
+    // Slice F-2 — surface whether this value is currently part of
+    // the active Tag filter, so CSS / selectors can style "already
+    // filtered" chips distinctly. Users can still toggle from
+    // either state (click = add, click again = remove).
+    if (activeTagFilter?.has(tagValue)) {
+      chip.setAttribute('data-pkc-entry-tag-filter-active', 'true');
+    }
+
+    // Slice F-2 — chip label click toggles Tag filter. The role
+    // split with the `×` button is strict: label = filter toggle,
+    // × = remove tag from entry. action-binder's event delegation
+    // uses `closest()` to pick the nearest `data-pkc-action`, so
+    // clicking `×` resolves to the button first and the filter
+    // toggle never fires.
+    const chipLabel = createElement('span', 'pkc-entry-tag-label');
+    chipLabel.setAttribute('data-pkc-action', 'toggle-tag-filter');
+    chipLabel.setAttribute('data-pkc-tag-value', tagValue);
+    chipLabel.setAttribute('title', `Toggle tag filter: ${tagValue}`);
+    chipLabel.textContent = tagValue;
+    chip.appendChild(chipLabel);
+
+    if (canEdit) {
+      const removeBtn = createElement('button', 'pkc-entry-tag-remove');
+      removeBtn.setAttribute('data-pkc-action', 'remove-entry-tag');
+      removeBtn.setAttribute('data-pkc-lid', entry.lid);
+      removeBtn.setAttribute('data-pkc-entry-tag-value', tagValue);
+      removeBtn.setAttribute('title', `Remove tag: ${tagValue}`);
+      removeBtn.textContent = '×';
+      chip.appendChild(removeBtn);
+    }
+
+    entryTagSection.appendChild(chip);
+  }
+
+  if (canEdit) {
+    const addForm = createElement('span', 'pkc-entry-tag-add');
+    addForm.setAttribute('data-pkc-region', 'entry-tag-add');
+    addForm.setAttribute('data-pkc-lid', entry.lid);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pkc-entry-tag-input';
+    input.setAttribute('data-pkc-field', 'entry-tag-input');
+    input.setAttribute('data-pkc-lid', entry.lid);
+    input.setAttribute('placeholder', '+ タグ');
+    input.setAttribute('maxlength', '64');
+    addForm.appendChild(input);
+
+    const addBtn = createElement('button', 'pkc-btn-small pkc-entry-tag-add-btn');
+    addBtn.setAttribute('data-pkc-action', 'add-entry-tag');
+    addBtn.setAttribute('data-pkc-lid', entry.lid);
+    addBtn.setAttribute('title', 'Add a tag to this entry');
+    addBtn.textContent = 'Add';
+    addForm.appendChild(addBtn);
+
+    entryTagSection.appendChild(addForm);
+  }
+
+  meta.appendChild(entryTagSection);
+
+  // Tags section (categorical relation — Slice A §2 "Categorical").
+  // The DOM region / class / action names stay stable so existing
+  // tests and CSS selectors keep working; only the visible label
+  // was renamed from "Tags" → "Categorical" to reclaim the "Tags"
+  // wording for the free-form Tag axis above.
   const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
   const tagSection = createElement('div', 'pkc-tags');
   tagSection.setAttribute('data-pkc-region', 'tags');
 
   const tagHeading = createElement('span', 'pkc-tags-label');
-  tagHeading.textContent = 'Tags';
+  tagHeading.textContent = 'Categorical';
   tagSection.appendChild(tagHeading);
 
   for (const tag of tags) {

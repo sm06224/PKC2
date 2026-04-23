@@ -57,7 +57,12 @@ function mkSaved(id: string, overrides: Partial<SavedSearch> = {}): SavedSearch 
     updated_at: '2026-04-21T00:00:00Z',
     search_query: '',
     archetype_filter: [],
-    tag_filter: null,
+    // Post-rename (W1 Slice B followup): fresh saved-search records
+    // emit `categorical_peer_filter`, not the legacy `tag_filter` key.
+    // A dedicated backward-compat test in
+    // `tests/features/search/saved-searches.test.ts` covers the
+    // legacy read path separately.
+    categorical_peer_filter: null,
     sort_key: 'created_at',
     sort_direction: 'desc',
     show_archived: false,
@@ -71,7 +76,7 @@ describe('SAVE_SEARCH', () => {
       container: mkContainer([mkEntry('a')]),
       searchQuery: 'foo',
       archetypeFilter: new Set(['text', 'todo']),
-      tagFilter: null,
+      categoricalPeerFilter: null,
       sortKey: 'updated_at',
       sortDirection: 'asc',
       showArchived: true,
@@ -144,7 +149,7 @@ describe('APPLY_SAVED_SEARCH', () => {
     const saved = mkSaved('s1', {
       search_query: 'restored',
       archetype_filter: ['todo'],
-      tag_filter: 't1',
+      categorical_peer_filter: 't1',
       sort_key: 'title',
       sort_direction: 'asc',
       show_archived: true,
@@ -156,10 +161,53 @@ describe('APPLY_SAVED_SEARCH', () => {
     expect(next.searchQuery).toBe('restored');
     expect(next.archetypeFilter instanceof Set).toBe(true);
     expect([...next.archetypeFilter]).toEqual(['todo']);
-    expect(next.tagFilter).toBe('t1');
+    expect(next.categoricalPeerFilter).toBe('t1');
     expect(next.sortKey).toBe('title');
     expect(next.sortDirection).toBe('asc');
     expect(next.showArchived).toBe(true);
+  });
+
+  // W1 Slice E — Tag axis round-trip at the reducer level.
+  // SAVE_SEARCH must project `state.tagFilter` into the persisted
+  // `tag_filter_v2` array; APPLY_SAVED_SEARCH must restore it.
+  it('Slice E: SAVE_SEARCH + APPLY_SAVED_SEARCH round-trips state.tagFilter', () => {
+    const seeded: AppState = {
+      ...readyState({ container: mkContainer([mkEntry('a')]) }),
+      tagFilter: new Set(['urgent', 'review']),
+    };
+    const { state: afterSave } = reduce(seeded, { type: 'SAVE_SEARCH', name: 'Tagged' });
+    const persisted = afterSave.container!.meta.saved_searches![0]!;
+    expect(persisted.tag_filter_v2).toEqual(['urgent', 'review']);
+
+    // Pretend the user later cleared their filters in-memory, then
+    // applied the saved search — the tag axis must come back.
+    const afterClear: AppState = {
+      ...afterSave,
+      tagFilter: new Set<string>(),
+    };
+    const { state: afterApply } = reduce(afterClear, {
+      type: 'APPLY_SAVED_SEARCH',
+      id: persisted.id,
+    });
+    expect(afterApply.tagFilter instanceof Set).toBe(true);
+    expect((afterApply.tagFilter as ReadonlySet<string>).has('urgent')).toBe(true);
+    expect((afterApply.tagFilter as ReadonlySet<string>).has('review')).toBe(true);
+  });
+
+  it('Slice E: APPLY_SAVED_SEARCH on a pre-Slice-E record leaves tagFilter empty', () => {
+    // `mkSaved` default emits no `tag_filter_v2`, matching pre-Slice-E
+    // records on disk. Restoring from it must not pollute the Tag
+    // axis with stale values.
+    const saved = mkSaved('pre-slice-e');
+    const seeded: AppState = {
+      ...readyState({ container: mkContainer([mkEntry('a')], [saved]) }),
+      tagFilter: new Set(['should-be-cleared']),
+    };
+    const { state: next } = reduce(seeded, {
+      type: 'APPLY_SAVED_SEARCH',
+      id: 'pre-slice-e',
+    });
+    expect((next.tagFilter as ReadonlySet<string>).size).toBe(0);
   });
 
   it('does not bump container.meta.updated_at (read-only operation)', () => {
