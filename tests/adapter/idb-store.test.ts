@@ -144,6 +144,63 @@ describe('MemoryStore: assets separation (Phase 1)', () => {
     expect(loaded1!.assets['ast-1']).toBe('from-c1');
     expect(loaded2!.assets['ast-1']).toBe('from-c2');
   });
+
+  // B5 (2026-04-22): orphan-purge + reload resurrection fix.
+  // Previous save() was put-only, so asset keys removed from
+  // `container.assets` in memory (e.g. after PURGE_ORPHAN_ASSETS)
+  // were never deleted from the backing store. A subsequent load /
+  // reassemble would resurrect them. The tests below pin the diff
+  // semantics that make purge + reload stay purged.
+
+  it('B5: second save drops asset keys that are no longer in container.assets', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B', 'ast-c': 'C' }));
+    // Simulate PURGE_ORPHAN_ASSETS collapsing the in-memory container
+    // down to {a, b} — `c` was an orphan and is gone.
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B' }));
+
+    const loaded = await store.load('c1');
+    expect(loaded!.assets['ast-a']).toBe('A');
+    expect(loaded!.assets['ast-b']).toBe('B');
+    expect(loaded!.assets['ast-c']).toBeUndefined();
+    // Low-level invariant: deleteAsset / loadAsset agree with the
+    // higher-level diff.
+    expect(await store.loadAsset('c1', 'ast-c')).toBeNull();
+    expect(await store.listAssetKeys('c1')).toEqual(
+      expect.arrayContaining(['ast-a', 'ast-b']),
+    );
+    expect(await store.listAssetKeys('c1')).not.toContain('ast-c');
+  });
+
+  it('B5: save with assets = {} clears every previously saved asset for that container', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B' }));
+    // Edge case: purge removes the last asset. The put-only flow
+    // would have skipped the assets branch entirely, leaving A / B
+    // in the backing store.
+    await store.save(mockContainer('c1', {}));
+
+    expect(await store.listAssetKeys('c1')).toEqual([]);
+    const loaded = await store.load('c1');
+    expect(loaded!.assets).toEqual({});
+  });
+
+  it('B5: save scoped to its own container_id — other containers\' assets untouched', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'from-c1-old', 'ast-keep': 'keep-c1' }));
+    await store.save(mockContainer('c2', { 'ast-1': 'from-c2', 'ast-only-c2': 'only-c2' }));
+
+    // Saving a purged c1 (lost `ast-keep`) must not disturb c2 at all.
+    await store.save(mockContainer('c1', { 'ast-1': 'from-c1-new' }));
+
+    const c1 = await store.load('c1');
+    expect(c1!.assets['ast-1']).toBe('from-c1-new');
+    expect(c1!.assets['ast-keep']).toBeUndefined();
+
+    const c2 = await store.load('c2');
+    expect(c2!.assets['ast-1']).toBe('from-c2');
+    expect(c2!.assets['ast-only-c2']).toBe('only-c2');
+  });
 });
 
 describe('MemoryStore: asset CRUD operations', () => {

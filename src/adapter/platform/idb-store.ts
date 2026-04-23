@@ -116,14 +116,30 @@ export function createIDBStore(): ContainerStore {
     const db = await openDB();
     const cid = container.meta.container_id;
 
-    // Save assets separately
-    const assetEntries = Object.entries(container.assets);
-    if (assetEntries.length > 0) {
-      const assetsTx = db.transaction(ASSETS_STORE, 'readwrite');
-      const assetsStore = assetsTx.objectStore(ASSETS_STORE);
-      for (const [key, data] of assetEntries) {
-        assetsStore.put(data, `${cid}:${key}`);
+    // B5 (2026-04-22): orphan-purge + reload resurrection fix.
+    // Previously this function was put-only, so asset keys removed
+    // from `container.assets` in memory (e.g. via
+    // PURGE_ORPHAN_ASSETS) were never deleted from IDB. Reload then
+    // reassembled the stale keys and the orphans came back.
+    // Now we compute the diff against the current IDB contents for
+    // this container_id and delete any key the incoming container
+    // no longer carries, before putting the incoming set. Same
+    // transaction so the window between delete and put is minimal.
+    const prefix = `${cid}:`;
+    const assetsTx = db.transaction(ASSETS_STORE, 'readwrite');
+    const assetsStore = assetsTx.objectStore(ASSETS_STORE);
+    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
+    const existingFullKeys = (await wrap(assetsStore.getAllKeys(range))) as string[];
+    const incomingFullKeys = new Set(
+      Object.keys(container.assets).map((k) => `${prefix}${k}`),
+    );
+    for (const fullKey of existingFullKeys) {
+      if (!incomingFullKeys.has(fullKey)) {
+        assetsStore.delete(fullKey);
       }
+    }
+    for (const [key, data] of Object.entries(container.assets)) {
+      assetsStore.put(data, `${prefix}${key}`);
     }
 
     // Save container WITHOUT assets
@@ -373,9 +389,22 @@ export function createMemoryStore(): ContainerStore {
   return {
     async save(container) {
       const cid = container.meta.container_id;
-      // Save assets separately
+      const prefix = `${cid}:`;
+      // B5: mirror the real IDB save's delete-diff semantics. Keys
+      // present in `assets` under this container_id but missing from
+      // the incoming `container.assets` must be removed; otherwise
+      // tests and any code paths using the memory backing store hit
+      // the same "purge then save leaves stale data" bug as IDB.
+      const incomingFullKeys = new Set(
+        Object.keys(container.assets).map((k) => `${prefix}${k}`),
+      );
+      for (const existingKey of [...assets.keys()]) {
+        if (existingKey.startsWith(prefix) && !incomingFullKeys.has(existingKey)) {
+          assets.delete(existingKey);
+        }
+      }
       for (const [key, data] of Object.entries(container.assets)) {
-        assets.set(`${cid}:${key}`, data);
+        assets.set(`${prefix}${key}`, data);
       }
       // Store container without assets
       containers.set(cid, structuredClone(stripAssets(container)));
