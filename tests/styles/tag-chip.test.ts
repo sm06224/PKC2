@@ -22,15 +22,22 @@ const baseCss = readFileSync(
   'utf-8',
 );
 
+// A selector "has a rule" whether it appears standalone or in a
+// comma-separated selector group (where multiple selectors share
+// one block) — both forms are semantically equivalent CSS.
 function hasRule(selector: string): boolean {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`${escaped}\\s*\\{`).test(baseCss);
+  return new RegExp(`${escaped}\\s*[,{]`).test(baseCss);
 }
 
+// Focus-visible rings may be expressed either as a single-selector
+// rule OR a comma-separated group shared with sibling elements
+// (the D-1 CSS groups remove / input rings to reduce bundle bytes).
+// The regex allows any preceding comma-separated list of selectors.
 function focusVisibleRing(selector: string): RegExp {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(
-    `${escaped}:focus-visible\\s*\\{[^}]*outline:\\s*2px\\s+solid\\s+var\\(--c-accent\\)`,
+    `${escaped}:focus-visible[\\s,.\\w:[\\]=\\-"]*\\{[^}]*outline:\\s*2px\\s+solid\\s+var\\(--c-accent\\)`,
   );
 }
 

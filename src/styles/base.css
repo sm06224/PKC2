@@ -667,15 +667,43 @@
 }
 
 /* ── W1 Tag wave — D-1: free-form Tag visuals ──
-   Slice F / F-2 / F-3 introduced the DOM for entry Tag chips,
-   sidebar Tag filter chips, and Saved Search row Tag chips, but
-   left styling unset. These rules give the chip family a compact,
-   muted visual identity in the existing PKC2 palette (accent /
-   border / muted tokens only — no new colors). Intentionally
-   neutral so a future Color tag slice can layer its own treatment
-   on top without a repaint. */
+   Chip family for entry meta / sidebar filter / Saved Search row.
+   Uses only existing palette tokens so a future Color tag slice
+   can layer on top without a repaint. Selectors are grouped via
+   comma-lists where the rule is identical to keep raw-byte cost
+   in check; see build/check-bundle-size.cjs for the budget. */
 
-/* Sidebar free-form Tag filter indicator */
+/* Shared chip shell — entry meta + sidebar filter. */
+.pkc-entry-tag-chip,
+.pkc-entry-tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+/* Sidebar-side chip carries an accent tint — it represents an
+   active filter, not a neutral tag. Overrides the shared shell. */
+.pkc-entry-tag-filter-chip {
+  border-color: var(--c-accent-dim);
+  background: color-mix(in srgb, var(--c-accent) 10%, transparent);
+  font-size: 0.65rem;
+}
+
+/* Active-filter marker on an entry chip. */
+.pkc-entry-tag-chip[data-pkc-entry-tag-filter-active="true"] {
+  border-color: var(--c-accent-dim);
+  background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface));
+}
+
+/* Sidebar free-form Tag filter container. */
 .pkc-entry-tag-filter {
   display: flex;
   flex-wrap: wrap;
@@ -686,31 +714,41 @@
   font-size: 0.7rem;
 }
 
-.pkc-entry-tag-filter-label {
+.pkc-entry-tag-filter-label,
+.pkc-entry-tags-label,
+.pkc-saved-search-tags-label {
   color: var(--c-muted);
   font-weight: 500;
 }
 
-.pkc-entry-tag-filter-chip {
-  display: inline-flex;
+.pkc-entry-tags-label { font-size: 0.7rem; font-weight: 600; margin-right: 0.15rem; }
+.pkc-saved-search-tags-label { font-size: 0.65rem; }
+
+/* Entry meta Tag section container. */
+.pkc-entry-tags {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.05rem 0.35rem;
-  border: 1px solid var(--c-accent-dim);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--c-accent) 10%, transparent);
-  color: var(--c-fg);
-  font-size: 0.65rem;
-  line-height: 1.4;
-  max-width: 100%;
+  gap: 0.2rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.35rem;
 }
 
+/* Chip label text. Click toggles Tag filter (meta-pane side). */
+.pkc-entry-tag-label,
 .pkc-entry-tag-filter-chip-label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.pkc-entry-tag-label { cursor: pointer; }
+.pkc-entry-tag-label:hover { color: var(--c-accent); }
+
+/* Shared × button — identical shape in both meta chip and sidebar
+   filter chip. Grouping saves ~120 bytes of duplication. */
+.pkc-entry-tag-remove,
 .pkc-entry-tag-filter-remove {
   flex: 0 0 auto;
   background: transparent;
@@ -724,92 +762,20 @@
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
+.pkc-entry-tag-remove:hover,
 .pkc-entry-tag-filter-remove:hover {
   color: var(--c-fg);
   background: var(--c-hover);
 }
 
-.pkc-entry-tag-filter-remove:focus-visible {
+.pkc-entry-tag-remove:focus-visible,
+.pkc-entry-tag-filter-remove:focus-visible,
+.pkc-entry-tag-input:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 1px;
 }
 
-/* Entry meta Tag section (meta pane) */
-.pkc-entry-tags {
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--c-border);
-  margin-bottom: 0.35rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem;
-  align-items: center;
-}
-
-.pkc-entry-tags-label {
-  color: var(--c-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  margin-right: 0.15rem;
-}
-
-.pkc-entry-tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.05rem 0.35rem;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  background: var(--c-surface);
-  color: var(--c-fg);
-  font-size: 0.7rem;
-  line-height: 1.4;
-  max-width: 100%;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-/* Chip that is currently a member of the active Tag filter. A
-   subtle accent-dim border — the role is "click me again to
-   remove from filter", not "this is a special tag". */
-.pkc-entry-tag-chip[data-pkc-entry-tag-filter-active="true"] {
-  border-color: var(--c-accent-dim);
-  background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface));
-}
-
-.pkc-entry-tag-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.pkc-entry-tag-label:hover {
-  color: var(--c-accent);
-}
-
-.pkc-entry-tag-remove {
-  flex: 0 0 auto;
-  background: transparent;
-  border: none;
-  color: var(--c-muted);
-  cursor: pointer;
-  padding: 0 0.15rem;
-  font-size: 0.8rem;
-  line-height: 1;
-  border-radius: var(--radius);
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-
-.pkc-entry-tag-remove:hover {
-  color: var(--c-fg);
-  background: var(--c-hover);
-}
-
-.pkc-entry-tag-remove:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
-}
-
-/* Inline add-tag form */
+/* Inline add-tag form. */
 .pkc-entry-tag-add {
   display: inline-flex;
   align-items: center;
@@ -828,12 +794,8 @@
   max-width: 8rem;
 }
 
-.pkc-entry-tag-input:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
-}
-
-/* Saved Search row — tag chip strip */
+/* Saved Search row — tag chip strip. Display-only; clicks fall
+   through to the row's apply-saved-search via closest(). */
 .pkc-saved-search-tags {
   display: inline-flex;
   flex-wrap: wrap;
@@ -841,12 +803,6 @@
   gap: 0.15rem;
   margin-left: 0.25rem;
   min-width: 0;
-}
-
-.pkc-saved-search-tags-label {
-  color: var(--c-muted);
-  font-size: 0.65rem;
-  font-weight: 500;
 }
 
 .pkc-saved-search-tag-chip {
@@ -862,8 +818,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* Chips are display-only — no data-pkc-action. Click passes to
-     the row's apply-saved-search via closest(). */
   pointer-events: none;
 }
 
@@ -2973,22 +2927,6 @@ mark.pkc-search-mark {
   margin-bottom: 0.75rem;
 }
 
-.pkc-attachment-field {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.25rem 0;
-  font-size: 0.85rem;
-  border-bottom: 1px solid var(--c-border);
-}
-
-.pkc-attachment-field strong {
-  font-size: 0.75rem;
-  color: var(--c-muted);
-  min-width: 50px;
-  flex-shrink: 0;
-}
-
 .pkc-attachment-empty {
   color: var(--c-muted);
   font-size: 0.85rem;
@@ -3319,13 +3257,6 @@ mark.pkc-search-mark {
 }
 
 /* ── Guardrail warnings ── */
-.pkc-guardrail-info {
-  color: var(--c-muted);
-  font-size: 0.7rem;
-  padding: 0.15rem 0;
-  margin-top: 0.2rem;
-}
-
 .pkc-guardrail-warning {
   margin-top: 0.2rem;
   padding: 0.2rem 0.4rem;
@@ -3701,14 +3632,6 @@ mark.pkc-search-mark {
 
 .pkc-detached-preview {
   margin-bottom: 0.5rem;
-}
-
-.pkc-detached-preview-img {
-  max-width: 100%;
-  max-height: 60vh;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  object-fit: contain;
 }
 
 /* ── Resizable Pane Handles ── */
