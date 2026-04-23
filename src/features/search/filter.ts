@@ -26,6 +26,7 @@
  */
 
 import type { Entry, ArchetypeId } from '../../core/model/record';
+import { parseSearchQuery } from './query-parser';
 
 /**
  * Filter entries by a search query.
@@ -46,14 +47,20 @@ export function filterEntries(entries: Entry[], query: string): Entry[] {
 /**
  * Check if an entry matches the current search query.
  * Useful for highlighting or per-entry match checks.
+ *
+ * Parser slice (2026-04-23): the caller may pass the raw query
+ * from `state.searchQuery`; this helper delegates to
+ * `parseSearchQuery` and tests only the FullText portion. Any
+ * `tag:` tokens that appear in the query are handled by
+ * `filterByTags` elsewhere in the pipeline, not by this function.
  */
 export function entryMatchesQuery(entry: Entry, query: string): boolean {
-  const trimmed = query.trim().toLowerCase();
-  if (trimmed === '') return true;
+  const fullText = parseSearchQuery(query).fullText.trim().toLowerCase();
+  if (fullText === '') return true;
 
   return (
-    entry.title.toLowerCase().includes(trimmed) ||
-    entry.body.toLowerCase().includes(trimmed)
+    entry.title.toLowerCase().includes(fullText) ||
+    entry.body.toLowerCase().includes(fullText)
   );
 }
 
@@ -119,6 +126,13 @@ export function filterByTags(
  * acquired a tag filter (or tests that predate Slice D) pass no
  * extra arg and get the pre-Slice-D behavior.
  *
+ * Parser slice (2026-04-23): the raw `query` is now run through
+ * `parseSearchQuery` inside this function so `tag:<value>` tokens
+ * are lifted out of FullText and AND-composed with `tagFilter`
+ * (spec §5.2 / §4.2). The raw string stored in
+ * `state.searchQuery` is intentionally left untouched at the
+ * reducer — this function sees the same raw text every tick.
+ *
  * Axis composition is spec-mandated AND across all active axes
  * (`docs/spec/search-filter-semantics-v1.md` §4.1).
  */
@@ -128,8 +142,23 @@ export function applyFilters(
   filter: ReadonlySet<ArchetypeId>,
   tagFilter?: ReadonlySet<string>,
 ): Entry[] {
-  const byText = filterEntries(entries, query);
+  const parsed = parseSearchQuery(query);
+
+  // FullText axis runs on the query with `tag:` tokens stripped.
+  // An all-tag query (e.g. `"tag:urgent"`) becomes an empty text
+  // match, which `filterEntries` already treats as "no narrowing".
+  const byText = filterEntries(entries, parsed.fullText);
   const byType = filterByArchetypes(byText, filter);
-  if (!tagFilter || tagFilter.size === 0) return byType;
-  return filterByTags(byType, tagFilter);
+
+  // Tag axis: UI-driven `tagFilter` (set membership) and the
+  // parser-extracted terms combine via union — spec §5.2 says
+  // multiple `tag:` tokens AND within the Tag axis, and §4.2 says
+  // Tag axis itself is AND-by-default, so unioning the two
+  // sources gives "every value must appear on the entry".
+  const uiSize = tagFilter?.size ?? 0;
+  if (uiSize === 0 && parsed.tags.size === 0) return byType;
+  const combined = new Set<string>();
+  if (tagFilter) for (const t of tagFilter) combined.add(t);
+  for (const t of parsed.tags) combined.add(t);
+  return filterByTags(byType, combined);
 }

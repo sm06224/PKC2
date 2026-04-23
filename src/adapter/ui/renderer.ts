@@ -18,6 +18,7 @@ import {
 } from '../../core/operations/container-ops';
 import type { ArchetypeId } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
+import { parseSearchQuery } from '../../features/search/query-parser';
 import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { applyManualOrder } from '../../features/entry-order/entry-order';
@@ -3287,8 +3288,14 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   // user can see WHERE the entry matched. Code blocks (`<pre>`) are
   // skipped to keep B-2 syntax-highlight token markup intact. The
   // helper is idempotent so re-rendering the same entry is safe.
-  if (searchQuery.trim() !== '') {
-    highlightMatchesIn(view, searchQuery);
+  // Parser slice (2026-04-23): highlight the FullText portion only.
+  // `tag:<value>` tokens contribute to the Tag axis and must NOT
+  // be highlighted as literal body text — otherwise a query like
+  // `foo tag:urgent` would paint the literal string `tag:urgent`
+  // yellow whenever an entry happens to contain that substring.
+  const highlightText = parseSearchQuery(searchQuery).fullText;
+  if (highlightText.trim() !== '') {
+    highlightMatchesIn(view, highlightText);
   }
 
   return view;
