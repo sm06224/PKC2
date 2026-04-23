@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-23（W1 Slice B Tag data model additive minimum-scope draft を反映）.
+Last updated: 2026-04-23（W1 Slice C Search / filter semantics draft + Rename slice を反映）.
 
 ## Status Legend
 
@@ -187,6 +187,8 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 126 | `../spec/tag-color-tag-relation-separation.md` | W1: Tag / Color tag / Relation 概念分離（docs-first） | 2026-04-23 | 次 feature wave(tag / search / UI)前に概念境界を正本化。Tag = 自由文字列の軽量属性、Color tag = 固定 palette の視覚フォーカス属性、Relation = entry 間の型付きリンクを明確に分離。categorical relation は残し新 Tag と併存、structural relation は木構造専用で本ドラフト不変。判断フレーム(4 問) / UI 命名(タグ/カラー/関連/配置/由来) / 5 軸検索(全文/archetype/Tag/Color/Relation) / additive migration 方針(schema bump なし、既存 categorical を即時変換しない) / next slice A-F を整理。実コード変更なし |
 | 127 | `ui-vocabulary-tag-color-relation.md` | W1 Slice A: UI vocabulary 固定（docs-only） | 2026-04-23 | #126 の続編。実際に UI で使う日本語 / 英語 label を 10 語の表として固定(タグ / カラー / 関連 / 分類・意味・時系列・由来 / 配置 / 被参照 / 参照)。Tag chip と Color 色バーと Relation list を視覚的に別レイヤに保つ規約、avoid / banned wording 一覧(categorical を "タグ" と呼ばない / structural を "関連" 単独で書かない 等)、5 軸 filter バーの見せ方、検索構文の prefix 予約(`tag:` / `color:` / `rel:` / `type:`、実装は Slice C で)を整理。実コード変更なし、manual 同期は Tag UI 実装着地後 Slice D で対応 |
 | 128 | `../spec/tag-data-model-v1-minimum-scope.md` | W1 Slice B: Tag data model additive minimum-scope draft（docs-only） | 2026-04-23 | #126 / #127 の続編。`entry.tags?: string[]` を additive 追加する最小 schema を固定: 欠落=空配列同義、insertion-order 保持、重複・空文字・改行は reject、R1-R8 normalization ルール(trim / max 64 char / max 32 件 / 制御文字 reject / 大文字小文字区別 / NFC は minimum scope 外)、schema_version bump なしの additive migration、既存 categorical relation と併存。`state.tagFilter` (現 categorical peer lid 単一) を `state.categoricalPeerFilter` に rename する計画を 7.1-7.6 で提示、saved-search の persisted key `tag_filter` は旧 key 読み込み互換を 1-2 release 保持。実コード変更なし、rename は別 slice、Slice C/D/E/F を next-step 整理 |
+| 129 | Rename slice | `state.tagFilter` → `state.categoricalPeerFilter` 機械的一括 rename | 2026-04-23 | Slice B §7 計画の実施。in-memory は `categoricalPeerFilter` / `SET_CATEGORICAL_PEER_FILTER { peerLid }` / `SavedSearchSourceFields.categoricalPeerFilter` に刷新。persisted JSON は `categorical_peer_filter` を write、legacy `tag_filter` は read-only fallback で 1-2 release 維持。DOM action-name(`filter-by-tag` / `clear-tag-filter`)は renderer 契約維持のため意図的に不変。5027/5027 tests pass(+2 backward-compat)、bundle rebuild。grep audit 済、live reference 残存なし |
+| 130 | `../spec/search-filter-semantics-v1.md` | W1 Slice C: Search / filter semantics draft（docs-only） | 2026-04-23 | Rename slice 後の正本として 5 軸(FullText / Archetype / Tag / Color / CategoricalPeer)の semantics を固定。軸間 AND、Tag は軸内 AND-by-default、Color は軸内 OR、Archetype は軸内 OR、FullText / CategoricalPeer は単一値。prefix 構文 `tag:` / `color:` / `type:` / `rel:` を予約(parser は別 slice G)、quote / OR(`\|`) / negation は部分予約のみ。Saved Search additive: `tag_filter_v2?: string[]`(legacy `tag_filter` との名前衝突回避)+ `color_filter?: ColorTagId[] \| null`。flat fallback 契約は変更せず、filter / selection / reveal の責務分離を明示(PR-ε₁/ε₂ 整合)。次 slice D(Tag filter data-path)→ E(Saved Search schema)→ F(Tag chip UI)→ G(parser)推奨 |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
