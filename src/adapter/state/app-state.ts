@@ -2497,6 +2497,15 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container,
         selectedLid: lid,
+        // PR-ε₂ invariant (2026-04-22 audit): COMMIT_TODO_ADD fires
+        // from the Kanban / Calendar popover, not from the sidebar.
+        // The newly created todo may land under a collapsed ancestor
+        // folder (auto-placement targets the nearest TODOS subfolder),
+        // but we deliberately preserve `state.collapsedFolders` by
+        // reference — the user's folding intent must survive the
+        // add, matching PR-ε₂'s "view-local operations do not unfold
+        // sidebar branches" lockdown. External reveal (storage
+        // profile / entry-ref) is the only opt-in path.
         todoAddPopover: null,
       };
       return { state: next, events };

@@ -2826,6 +2826,29 @@ describe('sort', () => {
     expect(events).toHaveLength(0);
   });
 
+  // PR-ε₂ invariant (2026-04-22 audit): COMMIT_TODO_ADD runs from
+  // the Kanban / Calendar popover — a view-local add flow. Even when
+  // the new todo auto-places under a collapsed TODOS ancestor, the
+  // user's `collapsedFolders` intent must survive the commit. The
+  // reveal opt-in (`revealInSidebar: true`) is reserved for external
+  // jumps (Storage Profile row, entry-ref body links).
+  it('COMMIT_TODO_ADD does not expand ancestor folders (PR-ε₂ lockdown)', () => {
+    const s: AppState = {
+      ...readyState(),
+      todoAddPopover: { context: 'kanban', status: 'open' },
+      // Seed a collapsedFolders array so the reference-identity
+      // assertion below is meaningful (an empty array could be
+      // short-circuited by the reducer trivially).
+      collapsedFolders: ['some-folder-lid'],
+    };
+    const prevCollapsed = s.collapsedFolders;
+    const { state } = reduce(s, { type: 'COMMIT_TODO_ADD', title: 'Added via Kanban' });
+    // Same reference — the reducer must not reallocate the array
+    // and must not strip any ancestor of the newly-created todo.
+    expect(state.collapsedFolders).toBe(prevCollapsed);
+    expect(state.collapsedFolders).toEqual(['some-folder-lid']);
+  });
+
   // ── Slice 2: Calendar Todo add popover ──
 
   it('OPEN_TODO_ADD_POPOVER stores the Calendar date with context tag', () => {
