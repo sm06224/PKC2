@@ -3477,6 +3477,140 @@ describe('Renderer', () => {
     expect(importBtn).not.toBeNull();
     expect(importBtn!.textContent).toBe('Import');
   });
+
+  // ── W1 Slice F: Tag chip UI prototype ──────────────────
+  //
+  // Spec: `docs/spec/tag-data-model-v1-minimum-scope.md` §3 + Slice
+  // A UI vocabulary. The new free-form Tag section lives ABOVE the
+  // pre-existing categorical-relation section, which was relabeled
+  // from "Tags" to "Categorical" to reclaim the "Tags" wording for
+  // the free-form axis.
+
+  function sliceFState(container: Container, overrides: Partial<AppState> = {}): AppState {
+    return {
+      phase: 'ready',
+      container,
+      selectedLid: 'e1',
+      editingLid: null,
+      error: null,
+      embedded: false,
+      pendingOffers: [],
+      importPreview: null,
+      batchImportPreview: null,
+      searchQuery: '',
+      archetypeFilter: new Set(),
+      categoricalPeerFilter: null,
+      sortKey: 'created_at',
+      sortDirection: 'desc',
+      exportMode: null,
+      exportMutability: null,
+      readonly: false,
+      lightSource: false,
+      showArchived: false,
+      viewMode: 'detail',
+      calendarYear: 2026,
+      calendarMonth: 4,
+      multiSelectedLids: [],
+      batchImportResult: null,
+      collapsedFolders: [],
+      recentEntryRefLids: [],
+      ...overrides,
+    };
+  }
+
+  function sliceFContainerWithTags(tags: string[]): Container {
+    return {
+      ...mockContainer,
+      entries: [
+        { ...mockContainer.entries[0]!, tags },
+        ...mockContainer.entries.slice(1),
+      ],
+    };
+  }
+
+  it('Slice F: renders the new entry-tags region with label "Tags"', () => {
+    render(sliceFState(sliceFContainerWithTags(['urgent', 'review'])), root);
+    const entryTagRegion = root.querySelector('[data-pkc-region="entry-tags"]');
+    expect(entryTagRegion).not.toBeNull();
+    expect(entryTagRegion!.getAttribute('data-pkc-lid')).toBe('e1');
+    const label = entryTagRegion!.querySelector('.pkc-entry-tags-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe('Tags');
+  });
+
+  it('Slice F: renders one chip per entry.tags value with the raw text', () => {
+    render(sliceFState(sliceFContainerWithTags(['urgent', 'review', '日本語'])), root);
+    const chips = root.querySelectorAll('[data-pkc-region="entry-tags"] .pkc-entry-tag-chip');
+    expect(chips).toHaveLength(3);
+    const labels = Array.from(chips).map((c) => c.querySelector('.pkc-entry-tag-label')!.textContent);
+    expect(labels).toEqual(['urgent', 'review', '日本語']);
+  });
+
+  it('Slice F: each chip carries a remove button with entry-tag-value + lid', () => {
+    render(sliceFState(sliceFContainerWithTags(['urgent'])), root);
+    const removeBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-region="entry-tags"] [data-pkc-action="remove-entry-tag"]',
+    );
+    expect(removeBtn).not.toBeNull();
+    expect(removeBtn!.getAttribute('data-pkc-lid')).toBe('e1');
+    expect(removeBtn!.getAttribute('data-pkc-entry-tag-value')).toBe('urgent');
+  });
+
+  it('Slice F: add form surfaces a single text input plus Add button in canEdit mode', () => {
+    render(sliceFState(mockContainer), root);
+    const addForm = root.querySelector('[data-pkc-region="entry-tag-add"]');
+    expect(addForm).not.toBeNull();
+    const input = addForm!.querySelector<HTMLInputElement>('[data-pkc-field="entry-tag-input"]');
+    expect(input).not.toBeNull();
+    expect(input!.type).toBe('text');
+    expect(input!.getAttribute('data-pkc-lid')).toBe('e1');
+    const addBtn = addForm!.querySelector('[data-pkc-action="add-entry-tag"]');
+    expect(addBtn).not.toBeNull();
+  });
+
+  it('Slice F: add form is hidden in readonly mode', () => {
+    render(sliceFState(mockContainer, { readonly: true }), root);
+    const addForm = root.querySelector('[data-pkc-region="entry-tag-add"]');
+    expect(addForm).toBeNull();
+  });
+
+  it('Slice F: empty entry.tags renders the section without chips', () => {
+    render(sliceFState(mockContainer), root);
+    const region = root.querySelector('[data-pkc-region="entry-tags"]');
+    expect(region).not.toBeNull();
+    const chips = region!.querySelectorAll('.pkc-entry-tag-chip');
+    expect(chips).toHaveLength(0);
+  });
+
+  it('Slice F: the pre-existing categorical section is relabeled "Categorical"', () => {
+    const containerWithCategorical: Container = {
+      ...mockContainer,
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    render(sliceFState(containerWithCategorical), root);
+    const tagRegion = root.querySelector('[data-pkc-region="tags"]');
+    expect(tagRegion).not.toBeNull(); // region name kept stable for selectors
+    const label = tagRegion!.querySelector('.pkc-tags-label');
+    expect(label!.textContent).toBe('Categorical');
+  });
+
+  it('Slice F: the new Tag section precedes the Categorical section in DOM order', () => {
+    const containerWithBoth: Container = {
+      ...sliceFContainerWithTags(['urgent']),
+      relations: [
+        { id: 'r1', from: 'e1', to: 'e2', kind: 'categorical', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    render(sliceFState(containerWithBoth), root);
+    const regions = Array.from(
+      root.querySelectorAll('[data-pkc-region="entry-tags"], [data-pkc-region="tags"]'),
+    );
+    expect(regions).toHaveLength(2);
+    expect(regions[0]!.getAttribute('data-pkc-region')).toBe('entry-tags');
+    expect(regions[1]!.getAttribute('data-pkc-region')).toBe('tags');
+  });
 });
 
 // ── Container-wide TEXTLOG export ──

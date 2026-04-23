@@ -3229,13 +3229,78 @@ function renderMetaPane(
 
   if (!container) return meta;
 
-  // Tags section
+  // W1 Slice F — free-form Tag chip section. This precedes the
+  // categorical-relation "Categorical" section below so the
+  // lightweight per-entry Tag attribute appears first in the meta
+  // pane's visual order (W1 Slice A §5.2 visual hierarchy: Tag chip
+  // row sits ahead of Relation lists).
+  const entryTagSection = createElement('div', 'pkc-entry-tags');
+  entryTagSection.setAttribute('data-pkc-region', 'entry-tags');
+  entryTagSection.setAttribute('data-pkc-lid', entry.lid);
+
+  const entryTagHeading = createElement('span', 'pkc-entry-tags-label');
+  entryTagHeading.textContent = 'Tags';
+  entryTagSection.appendChild(entryTagHeading);
+
+  const entryTags = entry.tags ?? [];
+  for (const tagValue of entryTags) {
+    const chip = createElement('span', 'pkc-entry-tag-chip');
+    chip.setAttribute('data-pkc-entry-tag-value', tagValue);
+
+    const chipLabel = createElement('span', 'pkc-entry-tag-label');
+    chipLabel.textContent = tagValue;
+    chip.appendChild(chipLabel);
+
+    if (canEdit) {
+      const removeBtn = createElement('button', 'pkc-entry-tag-remove');
+      removeBtn.setAttribute('data-pkc-action', 'remove-entry-tag');
+      removeBtn.setAttribute('data-pkc-lid', entry.lid);
+      removeBtn.setAttribute('data-pkc-entry-tag-value', tagValue);
+      removeBtn.setAttribute('title', `Remove tag: ${tagValue}`);
+      removeBtn.textContent = '×';
+      chip.appendChild(removeBtn);
+    }
+
+    entryTagSection.appendChild(chip);
+  }
+
+  if (canEdit) {
+    const addForm = createElement('span', 'pkc-entry-tag-add');
+    addForm.setAttribute('data-pkc-region', 'entry-tag-add');
+    addForm.setAttribute('data-pkc-lid', entry.lid);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pkc-entry-tag-input';
+    input.setAttribute('data-pkc-field', 'entry-tag-input');
+    input.setAttribute('data-pkc-lid', entry.lid);
+    input.setAttribute('placeholder', '+ タグ');
+    input.setAttribute('maxlength', '64');
+    addForm.appendChild(input);
+
+    const addBtn = createElement('button', 'pkc-btn-small pkc-entry-tag-add-btn');
+    addBtn.setAttribute('data-pkc-action', 'add-entry-tag');
+    addBtn.setAttribute('data-pkc-lid', entry.lid);
+    addBtn.setAttribute('title', 'Add a tag to this entry');
+    addBtn.textContent = 'Add';
+    addForm.appendChild(addBtn);
+
+    entryTagSection.appendChild(addForm);
+  }
+
+  meta.appendChild(entryTagSection);
+
+  // Tags section (categorical relation — Slice A §2 "Categorical").
+  // The DOM region / class / action names stay stable so existing
+  // tests and CSS selectors keep working; only the visible label
+  // was renamed from "Tags" → "Categorical" to reclaim the "Tags"
+  // wording for the free-form Tag axis above.
   const tags = getTagsForEntry(container.relations, container.entries, entry.lid);
   const tagSection = createElement('div', 'pkc-tags');
   tagSection.setAttribute('data-pkc-region', 'tags');
 
   const tagHeading = createElement('span', 'pkc-tags-label');
-  tagHeading.textContent = 'Tags';
+  tagHeading.textContent = 'Categorical';
   tagSection.appendChild(tagHeading);
 
   for (const tag of tags) {

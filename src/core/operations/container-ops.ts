@@ -73,6 +73,49 @@ export function updateEntry(
   };
 }
 
+/**
+ * Update only `entry.tags`, preserving title / body / archetype.
+ * Used by the Tag chip UI (W1 Slice F) so Tag attach / detach does
+ * not interfere with body editing state and does not require a
+ * revision snapshot (tags are not body content).
+ *
+ * - `nextTags` empty → remove the field entirely (Slice B §3.3:
+ *   missing and empty-array are equivalent; storing missing keeps
+ *   JSON output identical to pre-Slice-F shape for un-tagged
+ *   entries).
+ * - `nextTags` non-empty → store a fresh array (insertion order
+ *   preserved by caller, Slice B §5.1).
+ *
+ * Pure. No normalization here — caller is responsible for passing
+ * an already-validated list (see `features/tag/normalize.ts`).
+ */
+export function updateEntryTags(
+  container: Container,
+  lid: string,
+  nextTags: string[],
+  now: string,
+): Container {
+  const idx = container.entries.findIndex((e) => e.lid === lid);
+  if (idx === -1) return container;
+
+  const old = container.entries[idx]!;
+  // Slice B §3.3: empty list is semantically equivalent to "no tags".
+  // Drop the field so the on-disk shape matches pre-Slice-F entries
+  // that never had the key.
+  const { tags: _drop, ...rest } = old;
+  const updated: Entry = nextTags.length > 0
+    ? { ...rest, tags: [...nextTags], updated_at: now }
+    : { ...rest, updated_at: now };
+  const entries = [...container.entries];
+  entries[idx] = updated;
+
+  return {
+    ...container,
+    entries,
+    meta: { ...container.meta, updated_at: now },
+  };
+}
+
 export function removeEntry(container: Container, lid: string): Container {
   const entries = container.entries.filter((e) => e.lid !== lid);
   if (entries.length === container.entries.length) return container;

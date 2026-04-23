@@ -1808,6 +1808,131 @@ describe('sort', () => {
     expect(s4.searchQuery).toBe('');
   });
 
+  // ── W1 Slice F: ADD_ENTRY_TAG / REMOVE_ENTRY_TAG ──
+  //
+  // Spec: `docs/spec/tag-data-model-v1-minimum-scope.md` §4 R1-R8
+  // + Slice F UI prototype wiring. ADD_ENTRY_TAG runs normalization
+  // through `features/tag/normalize`; rejected input silently no-ops.
+  // REMOVE_ENTRY_TAG performs exact-match removal.
+
+  it('ADD_ENTRY_TAG appends the normalized value to entry.tags', () => {
+    const { state, events } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('ENTRY_UPDATED');
+  });
+
+  it('ADD_ENTRY_TAG trims the value before storing (R1)', () => {
+    const { state } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: '   urgent   ',
+    });
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+  });
+
+  it('ADD_ENTRY_TAG rejects blank input (R2)', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: '   ',
+    });
+    expect(state).toBe(base); // reference-stable no-op
+    expect(events).toHaveLength(0);
+  });
+
+  it('ADD_ENTRY_TAG rejects duplicate in same entry (R7)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const { state: s2, events } = reduce(s1, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    expect(s2).toBe(s1);
+    expect(events).toHaveLength(0);
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent']);
+  });
+
+  it('ADD_ENTRY_TAG keeps case-sensitive distinct values (R6)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'urgent',
+    });
+    const { state: s2 } = reduce(s1, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'Urgent',
+    });
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['urgent', 'Urgent']);
+  });
+
+  it('ADD_ENTRY_TAG preserves insertion order across multiple calls', () => {
+    const seq = ['zebra', 'alpha', 'mango'];
+    let state = readyState();
+    for (const raw of seq) {
+      state = reduce(state, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw }).state;
+    }
+    const e1 = state.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(seq);
+  });
+
+  it('ADD_ENTRY_TAG rejects control characters (R4)', () => {
+    const base = readyState();
+    const { state } = reduce(base, {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'line\nbreak',
+    });
+    expect(state).toBe(base);
+  });
+
+  it('ADD_ENTRY_TAG is blocked in readonly mode', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'x' });
+    expect(state).toBe(ro);
+  });
+
+  it('ADD_ENTRY_TAG no-ops on unknown lid', () => {
+    const base = readyState();
+    const { state } = reduce(base, { type: 'ADD_ENTRY_TAG', lid: 'ghost', raw: 'x' });
+    expect(state).toBe(base);
+  });
+
+  it('REMOVE_ENTRY_TAG removes the matching value and preserves the rest', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'a',
+    });
+    const { state: s2 } = reduce(s1, { type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'b' });
+    const { state: s3, events } = reduce(s2, {
+      type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'a',
+    });
+    const e1 = s3.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toEqual(['b']);
+    expect(events[0]!.type).toBe('ENTRY_UPDATED');
+  });
+
+  it('REMOVE_ENTRY_TAG of the last tag drops the tags field (Slice B §3.3)', () => {
+    const { state: s1 } = reduce(readyState(), {
+      type: 'ADD_ENTRY_TAG', lid: 'e1', raw: 'only',
+    });
+    const { state: s2 } = reduce(s1, { type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'only' });
+    const e1 = s2.container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.tags).toBeUndefined();
+  });
+
+  it('REMOVE_ENTRY_TAG is a reference-stable no-op when tag is absent', () => {
+    const base = readyState();
+    const { state, events } = reduce(base, {
+      type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'nonexistent',
+    });
+    expect(state).toBe(base);
+    expect(events).toHaveLength(0);
+  });
+
+  it('REMOVE_ENTRY_TAG is blocked in readonly mode', () => {
+    const ro: AppState = { ...readyState(), readonly: true };
+    const { state } = reduce(ro, { type: 'REMOVE_ENTRY_TAG', lid: 'e1', tag: 'x' });
+    expect(state).toBe(ro);
+  });
+
   // ── QUICK_UPDATE_ENTRY ─────────────────────────
   // Contract: body-only update in ready phase, title preserved, snapshot created.
   // Intended for small immediate operations (e.g., todo status toggle).

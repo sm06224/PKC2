@@ -11,6 +11,7 @@ import { classifyFolderRestore } from '../../features/batch-import/import-planne
 import {
   addEntry,
   updateEntry,
+  updateEntryTags,
   removeEntry,
   nextSelectedAfterRemove,
   addRelation,
@@ -23,6 +24,7 @@ import {
   mergeAssets,
   purgeTrash,
 } from '../../core/operations/container-ops';
+import { normalizeTagInput } from '../../features/tag/normalize';
 import {
   captureEditBase,
   checkSaveConflict,
@@ -1886,6 +1888,47 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // quiet.
       if ((state.tagFilter?.size ?? 0) === 0) return { state, events: [] };
       return { state: { ...state, tagFilter: new Set<string>() }, events: [] };
+    }
+    case 'ADD_ENTRY_TAG': {
+      // W1 Slice F — validate the user input through the single
+      // Slice B R1-R8 normalizer, then append to `entry.tags`.
+      // Rejected input silently no-ops in v1 (inline error surface
+      // is a later slice); `===` reference identity is preserved so
+      // downstream listeners do not re-render on a no-op attempt.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const existing = entry.tags ?? [];
+      const result = normalizeTagInput(action.raw, existing);
+      if (!result.ok) return { state, events: [] };
+      const nextTags = [...existing, result.value];
+      const ts = new Date().toISOString();
+      const container = updateEntryTags(state.container, action.lid, nextTags, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
+    case 'REMOVE_ENTRY_TAG': {
+      // W1 Slice F — detach a single Tag value by exact match. If
+      // `tag` is not present we silently no-op (same identity-stable
+      // behavior as ADD_ENTRY_TAG's reject path).
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const existing = entry.tags ?? [];
+      if (!existing.includes(action.tag)) return { state, events: [] };
+      const nextTags = existing.filter((t) => t !== action.tag);
+      const ts = new Date().toISOString();
+      const container = updateEntryTags(state.container, action.lid, nextTags, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
     }
     case 'CLEAR_FILTERS': {
       // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).

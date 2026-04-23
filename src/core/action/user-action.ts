@@ -254,6 +254,24 @@ export type UserAction =
    */
   | { type: 'TOGGLE_TAG_FILTER'; tag: string }
   | { type: 'CLEAR_TAG_FILTER' }
+  /**
+   * W1 Slice F — attach / detach a single Tag on an entry.
+   *
+   * ADD_ENTRY_TAG: validates + normalizes `raw` through
+   * `features/tag/normalize.ts` (Slice B R1-R8) and, if it passes,
+   * appends to `entry.tags`. Rejected input silently no-ops in v1;
+   * inline error UI is a later slice.
+   *
+   * REMOVE_ENTRY_TAG: removes the exact-match value from
+   * `entry.tags`. No-op if `tag` is not present. Empties the
+   * array → `updateEntryTags` drops the field entirely (Slice B
+   * §3.3).
+   *
+   * Both emit `ENTRY_UPDATED` so persistence / renderer listeners
+   * refresh identically to other entry edits.
+   */
+  | { type: 'ADD_ENTRY_TAG'; lid: string; raw: string }
+  | { type: 'REMOVE_ENTRY_TAG'; lid: string; tag: string }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
   /**
    * SAVE_SEARCH — create a new saved search record from the current
