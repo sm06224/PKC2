@@ -1281,6 +1281,10 @@ function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
   section.setAttribute('data-pkc-region', 'storage-profile-summary');
   section.setAttribute('data-pkc-asset-count', String(profile.summary.assetCount));
   section.setAttribute('data-pkc-total-bytes', String(profile.summary.totalBytes));
+  // Slice B: body bytes is an independent axis. Expose via a separate
+  // dataset attribute so tests / tooling can read it without
+  // scraping the rendered label.
+  section.setAttribute('data-pkc-total-body-bytes', String(profile.summary.totalBodyBytes));
 
   const label = createElement('span', 'pkc-shell-menu-label');
   label.textContent = 'Summary';
@@ -1293,6 +1297,9 @@ function renderStorageProfileSummary(profile: StorageProfile): HTMLElement {
     // Renamed so the scope is unambiguous. The underlying number
     // (`summary.totalBytes`) is unchanged.
     { label: 'Total asset bytes', value: formatBytes(summary.totalBytes), raw: summary.totalBytes },
+    // Slice B: body bytes surfaced as a separate line. Never summed
+    // with asset bytes; see docs/development/storage-profile-footprint-scope.md.
+    { label: 'Total body bytes', value: formatBytes(summary.totalBodyBytes), raw: summary.totalBodyBytes },
   ];
   if (summary.largestAsset) {
     const ownerHint = summary.largestAssetOwnerTitle
@@ -1366,6 +1373,9 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     li.setAttribute('data-pkc-lid', row.lid);
     li.setAttribute('data-pkc-archetype', row.archetype);
     li.setAttribute('data-pkc-subtree-bytes', String(row.subtreeBytes));
+    // Slice B: body bytes as a separate attribute so downstream
+    // tooling can read it without parsing the rendered detail text.
+    li.setAttribute('data-pkc-subtree-body-bytes', String(row.subtreeBodyBytes));
 
     // Each row is a real <button> so Enter/Space work without a
     // bespoke keydown handler. The button carries data-pkc-action +
@@ -1405,6 +1415,11 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
     if (row.referencedCount > 0) parts.push(`${row.referencedCount} refs`);
     if (row.largestAssetBytes > 0) {
       parts.push(`largest ${formatBytes(row.largestAssetBytes)}`);
+    }
+    // Slice B: body-byte contribution, flagged explicitly so it is
+    // never mistaken for an asset-bytes number.
+    if (row.subtreeBodyBytes > 0) {
+      parts.push(`body ${formatBytes(row.subtreeBodyBytes)}`);
     }
     detail.textContent = parts.join(' · ');
     trigger.appendChild(detail);

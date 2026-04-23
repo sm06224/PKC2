@@ -8837,6 +8837,64 @@ describe('Storage Profile dialog (renderer)', () => {
     expect(summary!.textContent).toContain('Alpha');
   });
 
+  // Slice B (2026-04-22): body bytes surfaced as a separate axis.
+  // The asset-side dataset attribute + "Total asset bytes" label
+  // from Slice A stay byte-identical; body bytes get their own
+  // data-pkc-total-body-bytes attribute + "Total body bytes" line.
+  it('Slice B: summary exposes total body bytes on a separate line + dataset attribute', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [
+          // Attachment body is small metadata JSON; text body is a
+          // long string so body bytes clearly dominate.
+          attachmentEntryWithKey('e1', 'k1', 'Alpha'),
+          {
+            lid: 'note',
+            title: 'Longform',
+            archetype: 'text',
+            body: 'x'.repeat(500),
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        assets: { k1: base64Of(1500) },
+      }),
+    );
+    const summary = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-summary"]',
+    );
+    expect(summary).not.toBeNull();
+    // Asset-side numbers are unchanged.
+    expect(summary!.getAttribute('data-pkc-asset-count')).toBe('1');
+    expect(Number(summary!.getAttribute('data-pkc-total-bytes'))).toBeGreaterThan(1000);
+    // Body-side numbers appear independently.
+    const totalBodyBytes = Number(summary!.getAttribute('data-pkc-total-body-bytes'));
+    expect(totalBodyBytes).toBeGreaterThan(500);
+    expect(summary!.textContent).toContain('Total body bytes');
+    // The asset label from Slice A is still present and not merged.
+    expect(summary!.textContent).toContain('Total asset bytes');
+  });
+
+  it('Slice B: entry row exposes subtree body bytes as a dataset attribute', () => {
+    const overlay = buildStorageProfileOverlay(
+      makeProfileContainer({
+        entries: [attachmentEntryWithKey('att', 'k1', 'Att')],
+        assets: { k1: base64Of(2000) },
+      }),
+    );
+    const row = overlay.querySelector<HTMLElement>(
+      '[data-pkc-region="storage-profile-row"]',
+    );
+    expect(row).not.toBeNull();
+    // Existing asset-byte attribute unchanged.
+    expect(Number(row!.getAttribute('data-pkc-subtree-bytes'))).toBeGreaterThan(1000);
+    // New body-byte attribute — attachment metadata JSON has some
+    // bytes but not thousands.
+    const bodyBytes = Number(row!.getAttribute('data-pkc-subtree-body-bytes'));
+    expect(bodyBytes).toBeGreaterThan(0);
+    expect(bodyBytes).toBeLessThan(300);
+  });
+
   it('renders one row per byte-carrying entry in the top list', () => {
     const overlay = buildStorageProfileOverlay(
       makeProfileContainer({
