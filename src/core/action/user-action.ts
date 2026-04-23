@@ -390,6 +390,16 @@ export type UserAction =
    */
   | { type: 'TOGGLE_FOLDER_COLLAPSE'; lid: string }
   /**
+   * RESTORE_COLLAPSED_FOLDERS — A-4 (2026-04-23). Replace
+   * `state.collapsedFolders` wholesale from a previously-persisted
+   * snapshot. Dispatched by main.ts at bootstrap (after
+   * SYS_INIT_COMPLETE) and never by user interaction. Runtime-only;
+   * does NOT mutate the container. The payload is already
+   * deduplicated / validated by the persistence layer, so the
+   * reducer assigns it verbatim.
+   */
+  | { type: 'RESTORE_COLLAPSED_FOLDERS'; lids: readonly string[] }
+  /**
    * TOGGLE_RECENT_PANE — collapse or expand the sidebar Recent Entries
    * pane. Runtime-only UI state. Flips `state.recentPaneCollapsed`.
    * Does NOT mutate the container.

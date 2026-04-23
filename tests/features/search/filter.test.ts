@@ -268,3 +268,115 @@ describe('applyFilters — Tag axis composition', () => {
     expect(result.map((e) => e.lid)).toEqual(['t8']);
   });
 });
+
+// ── Parser slice (2026-04-23) — `tag:` token integration ──
+// Pins the spec §5.2 behaviour: parser-extracted `tag:` terms
+// contribute to the Tag axis, are AND-composed within the axis
+// and AND-composed with the UI-driven `tagFilter`. FullText runs
+// on the query with `tag:` tokens stripped.
+
+describe('applyFilters — tag: parser integration', () => {
+  const taggedEntries: Entry[] = [
+    makeEntry('p1', 'Urgent bug', 'needs immediate attention', 'text', ['urgent']),
+    makeEntry('p2', 'Review item', 'to look at', 'text', ['review']),
+    makeEntry('p3', 'Urgent + Review', 'both', 'text', ['urgent', 'review']),
+    makeEntry('p4', 'Plain', 'no tags', 'text'),
+    makeEntry('p5', 'Bugfix note', 'also urgent work', 'text', ['urgent']),
+  ];
+
+  it('`tag:urgent` filters to entries tagged urgent (FullText axis off)', () => {
+    const r = applyFilters(taggedEntries, 'tag:urgent', new Set());
+    expect(r.map((e) => e.lid).sort()).toEqual(['p1', 'p3', 'p5']);
+  });
+
+  it('two `tag:` tokens AND within the axis', () => {
+    const r = applyFilters(taggedEntries, 'tag:urgent tag:review', new Set());
+    expect(r.map((e) => e.lid)).toEqual(['p3']);
+  });
+
+  it('FullText portion filters independently of the stripped `tag:` token', () => {
+    // `bugfix` is the FullText term; `tag:urgent` is the parsed
+    // Tag term. Only p5 matches both.
+    const r = applyFilters(taggedEntries, 'bugfix tag:urgent', new Set());
+    expect(r.map((e) => e.lid)).toEqual(['p5']);
+  });
+
+  it('empty FullText (query is only a tag: token) does not narrow beyond the tag axis', () => {
+    // A query like `tag:urgent` produces `fullText=""`. The text
+    // filter should act as a no-op, so entries are narrowed only
+    // by the Tag axis — exercises that we don't accidentally
+    // reject everything when fullText is empty.
+    const r = applyFilters(taggedEntries, 'tag:urgent', new Set());
+    expect(r.length).toBe(3);
+    expect(r.every((e) => e.tags?.includes('urgent'))).toBe(true);
+  });
+
+  it('UI `tagFilter` and parser `tag:` AND-compose as a union of required values', () => {
+    // UI side requires `review`; parser side requires `urgent`.
+    // Entry must carry both.
+    const r = applyFilters(
+      taggedEntries,
+      'tag:urgent',
+      new Set(),
+      new Set(['review']),
+    );
+    expect(r.map((e) => e.lid)).toEqual(['p3']);
+  });
+
+  it('UI `tagFilter` alone still works when no parser terms are present', () => {
+    const r = applyFilters(taggedEntries, '', new Set(), new Set(['review']));
+    expect(r.map((e) => e.lid).sort()).toEqual(['p2', 'p3']);
+  });
+
+  it('a bare `tag:` in the query is ignored (no tag axis narrowing)', () => {
+    const r = applyFilters(taggedEntries, 'tag:', new Set());
+    // Tag axis is not activated; fullText is also empty; all
+    // entries survive.
+    expect(r.length).toBe(taggedEntries.length);
+  });
+
+  it('uppercase `TAG:` is treated as plain FullText (spec §5.6)', () => {
+    // Entry body contains "TAG:urgent work" so FullText hits only
+    // that one. No entry gets lifted into the Tag axis.
+    const extra: Entry = makeEntry('p6', 'Meta', 'has TAG:urgent inside', 'text');
+    const r = applyFilters([...taggedEntries, extra], 'TAG:urgent', new Set());
+    expect(r.map((e) => e.lid)).toEqual(['p6']);
+  });
+
+  it('archetype filter still AND-composes with the parser axis', () => {
+    const mixed: Entry[] = [
+      makeEntry('m1', 'Todo urgent', '', 'todo', ['urgent']),
+      makeEntry('m2', 'Text urgent', '', 'text', ['urgent']),
+      makeEntry('m3', 'Todo plain', '', 'todo'),
+    ];
+    const r = applyFilters(mixed, 'tag:urgent', new Set<ArchetypeId>(['todo']));
+    expect(r.map((e) => e.lid)).toEqual(['m1']);
+  });
+
+  it('parser does not touch state: raw query survives verbatim through callers', () => {
+    // Indirect assertion — applyFilters' contract is pure, and
+    // nothing here mutates the string input. This test documents
+    // that applyFilters can be called repeatedly with the same
+    // raw string and produces the same classified view.
+    const raw = 'bugfix tag:urgent parser';
+    const a = applyFilters(taggedEntries, raw, new Set());
+    const b = applyFilters(taggedEntries, raw, new Set());
+    expect(raw).toBe('bugfix tag:urgent parser');
+    expect(a.map((e) => e.lid)).toEqual(b.map((e) => e.lid));
+  });
+});
+
+describe('entryMatchesQuery — tag: aware', () => {
+  it('ignores `tag:` tokens when testing FullText match', () => {
+    const e = makeEntry('x', 'Apple', 'pie', 'text', ['urgent']);
+    // Raw query has a parser token + plain word; only the plain
+    // word must decide match.
+    expect(entryMatchesQuery(e, 'apple tag:urgent')).toBe(true);
+    expect(entryMatchesQuery(e, 'banana tag:urgent')).toBe(false);
+  });
+
+  it('a query that is only a `tag:` token matches any entry (FullText empty = no narrowing)', () => {
+    const e = makeEntry('y', 'Anything', 'anything', 'text');
+    expect(entryMatchesQuery(e, 'tag:urgent')).toBe(true);
+  });
+});

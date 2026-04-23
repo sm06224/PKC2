@@ -2470,6 +2470,25 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, collapsedFolders: lids };
       return { state: next, events: [] };
     }
+    case 'RESTORE_COLLAPSED_FOLDERS': {
+      // A-4 (2026-04-23): boot-time restore from the viewer-local
+      // folder-prefs store. Payload is already deduped by the
+      // persistence layer, but we still normalise to a fresh
+      // mutable string[] so downstream `===` checks can identify
+      // the boot transition. No-op when nothing meaningful is
+      // stored and nothing is currently collapsed — avoids a
+      // spurious listener fire on identity-new-but-value-equal
+      // arrays.
+      const incoming = Array.from(action.lids);
+      if (
+        incoming.length === 0
+        && state.collapsedFolders.length === 0
+      ) {
+        return { state, events: [] };
+      }
+      const next: AppState = { ...state, collapsedFolders: incoming };
+      return { state: next, events: [] };
+    }
     case 'TOGGLE_RECENT_PANE': {
       const next: AppState = { ...state, recentPaneCollapsed: !state.recentPaneCollapsed };
       return { state: next, events: [] };

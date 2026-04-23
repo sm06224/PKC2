@@ -31,6 +31,24 @@
  *   自然増を吸収する目安）で、突発的な重依存混入を依然として検知できる
  *   タイト設定を維持する。
  *
+ * Re-alignment (W1 D-1 Tag chip CSS, 2026-04-23):
+ *   dist/bundle.css ≈ 91.07 KB — W1 Slice A / F / F-2 / F-3 で追加
+ *   された Tag / Saved Search chip 用 DOM 構造に D-1 で最低限の
+ *   スタイル（chip / label / remove / focus-visible ring / active
+ *   state / `タグ:` strip）を入れた結果、初期予算 90 KB を超過。
+ *
+ *   先行コミット `perf(css): consolidate Tag chip rules` で
+ *   D-1 の重複ルール集約と 3 件の未参照クラス
+ *   （`.pkc-attachment-field` / `.pkc-detached-preview-img` /
+ *   `.pkc-guardrail-info`）除去により 92.15 KB → 91.07 KB まで
+ *   -1.08 KB 削減。残差は D-1 が DOM 20+ クラスに初見のスタイル
+ *   を与える不可避のコスト。
+ *
+ *   そこで budget は 96 KB ではなく **94 KB** に引き上げる — 現サイズ
+ *   91.07 KB に ~3.2% の headroom（~2.93 KB）を上乗せした最小枠。
+ *   Color tag / parser など次 wave の自然増を吸収しつつ、重依存の
+ *   混入を依然としてタイトに検知できる設定を維持する。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -46,7 +64,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 640 * 1024 },  // 640 KB
-  { file: 'dist/bundle.css', maxBytes: 90 * 1024 },  // 90 KB
+  { file: 'dist/bundle.css', maxBytes: 94 * 1024 },  // 94 KB (W1 D-1 post-optimize re-alignment)
 ];
 
 function formatKB(bytes) {
