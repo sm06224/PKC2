@@ -37,6 +37,13 @@ export interface SavedSearchSourceFields {
    * see `createSavedSearch` / `applySavedSearchFields` below.
    */
   categoricalPeerFilter: string | null;
+  /**
+   * W1 Slice E — free-form Tag filter values. Mirrors
+   * `AppState.tagFilter: ReadonlySet<string>`. Empty Set = axis
+   * off. Serialized to `SavedSearch.tag_filter_v2: string[]` in
+   * insertion order.
+   */
+  tagFilter: ReadonlySet<string>;
   sortKey: SavedSearchSortKey;
   sortDirection: SavedSearchSortDirection;
   showArchived: boolean;
@@ -54,7 +61,14 @@ export function createSavedSearch(
   // containers that carry it remain readable via the fallback in
   // `applySavedSearchFields`, but new writes standardise on the
   // renamed field.
-  return {
+  //
+  // W1 Slice E — `tag_filter_v2` is only emitted when the Tag
+  // filter is non-empty. Omitting when empty keeps unused saved
+  // searches (the common case) identical to their pre-Slice-E JSON
+  // shape, so round-trips through an older reader or through
+  // export → import don't accumulate empty arrays. Readers treat
+  // missing and `[]` as equivalent per spec §6.2.
+  const record: SavedSearch = {
     id,
     name: trimmed,
     created_at: timestamp,
@@ -66,6 +80,12 @@ export function createSavedSearch(
     sort_direction: fields.sortDirection,
     show_archived: fields.showArchived,
   };
+  if (fields.tagFilter.size > 0) {
+    // `Set` iteration is insertion-order in JavaScript, matching
+    // Slice B §5.1's deterministic-order invariant.
+    record.tag_filter_v2 = Array.from(fields.tagFilter);
+  }
+  return record;
 }
 
 /**
@@ -82,6 +102,10 @@ export function createSavedSearch(
  * when only the old shape is present. Treat both missing as `null`.
  * The fallback is scheduled to be removed 1-2 releases after the
  * rename ships.
+ *
+ * W1 Slice E — `tag_filter_v2` (array) restores into
+ * `tagFilter: ReadonlySet<string>`. Missing or `[]` → empty Set
+ * (Tag axis off).
  */
 export function applySavedSearchFields(saved: SavedSearch): SavedSearchSourceFields {
   const categoricalPeerFilter = saved.categorical_peer_filter !== undefined
@@ -91,6 +115,7 @@ export function applySavedSearchFields(saved: SavedSearch): SavedSearchSourceFie
     searchQuery: saved.search_query,
     archetypeFilter: new Set(saved.archetype_filter),
     categoricalPeerFilter,
+    tagFilter: new Set(saved.tag_filter_v2 ?? []),
     sortKey: saved.sort_key,
     sortDirection: saved.sort_direction,
     showArchived: saved.show_archived,

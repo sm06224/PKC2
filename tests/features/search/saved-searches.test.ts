@@ -15,6 +15,9 @@ function mkFields(overrides: Partial<SavedSearchSourceFields> = {}): SavedSearch
     searchQuery: '',
     archetypeFilter: new Set<ArchetypeId>(),
     categoricalPeerFilter: null,
+    // Slice E: Tag axis is required on the in-memory source fields.
+    // Empty Set = axis off, serialized as an absent JSON key.
+    tagFilter: new Set<string>(),
     sortKey: 'created_at',
     sortDirection: 'desc',
     showArchived: false,
@@ -130,5 +133,107 @@ describe('applySavedSearchFields', () => {
     };
     const restored = applySavedSearchFields(bare);
     expect(restored.categoricalPeerFilter).toBeNull();
+  });
+
+  // W1 Slice E — Tag axis round-trip. `tag_filter_v2` is the
+  // canonical JSON key; missing / empty = axis off.
+  it('Slice E: tag_filter_v2 restores into tagFilter as a Set', () => {
+    const saved = createSavedSearch('id-tag', 'tag-carrier', '2026-04-23T00:00:00Z', mkFields({
+      tagFilter: new Set(['urgent', 'review']),
+    }));
+    expect(saved.tag_filter_v2).toEqual(['urgent', 'review']);
+    const restored = applySavedSearchFields(saved);
+    expect(restored.tagFilter instanceof Set).toBe(true);
+    expect(restored.tagFilter.has('urgent')).toBe(true);
+    expect(restored.tagFilter.has('review')).toBe(true);
+    expect(restored.tagFilter.size).toBe(2);
+  });
+
+  it('Slice E: empty tagFilter omits tag_filter_v2 from the persisted record', () => {
+    const saved = createSavedSearch('id-empty', 'empty', '2026-04-23T00:00:00Z', mkFields());
+    // Omit, not write [] — keeps unused saved searches shape-identical
+    // to their pre-Slice-E form.
+    expect(saved.tag_filter_v2).toBeUndefined();
+  });
+
+  it('Slice E: missing tag_filter_v2 on the saved record restores into an empty Set', () => {
+    const bare = {
+      id: 'bare-slice-e',
+      name: 'bare',
+      created_at: '2026-04-23T00:00:00Z',
+      updated_at: '2026-04-23T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as ArchetypeId[],
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+    const restored = applySavedSearchFields(bare);
+    expect(restored.tagFilter instanceof Set).toBe(true);
+    expect(restored.tagFilter.size).toBe(0);
+  });
+
+  it('Slice E: empty tag_filter_v2 array also restores into an empty Set', () => {
+    const bare = {
+      id: 'bare-empty-array',
+      name: 'bare',
+      created_at: '2026-04-23T00:00:00Z',
+      updated_at: '2026-04-23T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as ArchetypeId[],
+      tag_filter_v2: [] as string[],
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+    const restored = applySavedSearchFields(bare);
+    expect(restored.tagFilter.size).toBe(0);
+  });
+
+  it('Slice E: Tag axis coexists with categorical_peer_filter without collision', () => {
+    const saved = createSavedSearch('id-both', 'both', '2026-04-23T00:00:00Z', mkFields({
+      categoricalPeerFilter: 'cat-peer',
+      tagFilter: new Set(['urgent']),
+    }));
+    expect(saved.categorical_peer_filter).toBe('cat-peer');
+    expect(saved.tag_filter_v2).toEqual(['urgent']);
+    const restored = applySavedSearchFields(saved);
+    expect(restored.categoricalPeerFilter).toBe('cat-peer');
+    expect(restored.tagFilter.has('urgent')).toBe(true);
+  });
+
+  it('Slice E: tag_filter_v2 preserves insertion order from the Set', () => {
+    const input = new Set<string>();
+    input.add('zebra');
+    input.add('alpha');
+    input.add('mango');
+    const saved = createSavedSearch('id-order', 'order', '2026-04-23T00:00:00Z', mkFields({
+      tagFilter: input,
+    }));
+    // Slice B §5.1 insertion-order invariant — the serialized array
+    // must equal the Set's iteration order, NOT sorted.
+    expect(saved.tag_filter_v2).toEqual(['zebra', 'alpha', 'mango']);
+  });
+
+  it('Slice E: Tag axis is independent from legacy tag_filter read-compat', () => {
+    // Legacy `tag_filter` stores a categorical peer lid as a string
+    // (rename-era shape). A record that carries ONLY `tag_filter`
+    // (legacy) must restore its value into categoricalPeerFilter and
+    // leave the Tag axis empty — the two share no data.
+    const legacy = {
+      id: 'legacy-only',
+      name: 'legacy',
+      created_at: '2026-04-23T00:00:00Z',
+      updated_at: '2026-04-23T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as ArchetypeId[],
+      tag_filter: 'legacy-peer-lid',
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+    const restored = applySavedSearchFields(legacy);
+    expect(restored.categoricalPeerFilter).toBe('legacy-peer-lid');
+    expect(restored.tagFilter.size).toBe(0);
   });
 });

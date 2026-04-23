@@ -51,6 +51,24 @@ export interface SavedSearch {
   categorical_peer_filter?: string | null;
   /** @deprecated Legacy alias for `categorical_peer_filter`. Read-only for backward compat; writers must not emit this key. */
   tag_filter?: string | null;
+  /**
+   * Free-form Tag filter values (W1 Slice E, 2026-04-23).
+   *
+   * Independent axis from `categorical_peer_filter`. Array shape
+   * holds the `ReadonlySet<string>` from `AppState.tagFilter` in
+   * insertion order — Slice B §5.1 mandates insertion-order
+   * preservation, and JavaScript Set iteration already honors it,
+   * so `Array.from(set)` is the canonical serialization.
+   *
+   * `_v2` suffix avoids collision with the legacy `tag_filter` key
+   * (which stored a single categorical peer lid). Slice C §6.2
+   * enumerates the options considered.
+   *
+   * Missing or empty array = Tag axis off (spec §3.1, §6.2).
+   * Writers MAY omit the field entirely when the filter is empty;
+   * readers MUST treat missing and `[]` as equivalent.
+   */
+  tag_filter_v2?: string[];
   sort_key: SavedSearchSortKey;
   sort_direction: SavedSearchSortDirection;
   show_archived: boolean;

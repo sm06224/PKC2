@@ -1972,6 +1972,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         searchQuery: state.searchQuery,
         archetypeFilter: state.archetypeFilter,
         categoricalPeerFilter: state.categoricalPeerFilter,
+        // Slice E (2026-04-23) — Tag axis round-trip. `state.tagFilter`
+        // is optional on the TS surface (post-Slice-D additive field);
+        // fall back to an empty Set so `createSavedSearch` always gets
+        // a non-null `ReadonlySet<string>`.
+        tagFilter: state.tagFilter ?? new Set<string>(),
         sortKey: state.sortKey,
         sortDirection: state.sortDirection,
         showArchived: state.showArchived,
@@ -2016,6 +2021,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         searchQuery: fields.searchQuery,
         archetypeFilter: fields.archetypeFilter,
         categoricalPeerFilter: fields.categoricalPeerFilter,
+        // Slice E: Tag axis round-trip. Missing `tag_filter_v2` in the
+        // stored record resolves to an empty Set here, so loading a
+        // pre-Slice-E saved search leaves the Tag axis off.
+        tagFilter: fields.tagFilter,
         sortKey: fields.sortKey,
         sortDirection: fields.sortDirection,
         showArchived: fields.showArchived,

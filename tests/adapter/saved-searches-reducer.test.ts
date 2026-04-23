@@ -167,6 +167,49 @@ describe('APPLY_SAVED_SEARCH', () => {
     expect(next.showArchived).toBe(true);
   });
 
+  // W1 Slice E — Tag axis round-trip at the reducer level.
+  // SAVE_SEARCH must project `state.tagFilter` into the persisted
+  // `tag_filter_v2` array; APPLY_SAVED_SEARCH must restore it.
+  it('Slice E: SAVE_SEARCH + APPLY_SAVED_SEARCH round-trips state.tagFilter', () => {
+    const seeded: AppState = {
+      ...readyState({ container: mkContainer([mkEntry('a')]) }),
+      tagFilter: new Set(['urgent', 'review']),
+    };
+    const { state: afterSave } = reduce(seeded, { type: 'SAVE_SEARCH', name: 'Tagged' });
+    const persisted = afterSave.container!.meta.saved_searches![0]!;
+    expect(persisted.tag_filter_v2).toEqual(['urgent', 'review']);
+
+    // Pretend the user later cleared their filters in-memory, then
+    // applied the saved search — the tag axis must come back.
+    const afterClear: AppState = {
+      ...afterSave,
+      tagFilter: new Set<string>(),
+    };
+    const { state: afterApply } = reduce(afterClear, {
+      type: 'APPLY_SAVED_SEARCH',
+      id: persisted.id,
+    });
+    expect(afterApply.tagFilter instanceof Set).toBe(true);
+    expect((afterApply.tagFilter as ReadonlySet<string>).has('urgent')).toBe(true);
+    expect((afterApply.tagFilter as ReadonlySet<string>).has('review')).toBe(true);
+  });
+
+  it('Slice E: APPLY_SAVED_SEARCH on a pre-Slice-E record leaves tagFilter empty', () => {
+    // `mkSaved` default emits no `tag_filter_v2`, matching pre-Slice-E
+    // records on disk. Restoring from it must not pollute the Tag
+    // axis with stale values.
+    const saved = mkSaved('pre-slice-e');
+    const seeded: AppState = {
+      ...readyState({ container: mkContainer([mkEntry('a')], [saved]) }),
+      tagFilter: new Set(['should-be-cleared']),
+    };
+    const { state: next } = reduce(seeded, {
+      type: 'APPLY_SAVED_SEARCH',
+      id: 'pre-slice-e',
+    });
+    expect((next.tagFilter as ReadonlySet<string>).size).toBe(0);
+  });
+
   it('does not bump container.meta.updated_at (read-only operation)', () => {
     const saved = mkSaved('s2');
     const state = readyState({ container: mkContainer([mkEntry('a')], [saved]) });
