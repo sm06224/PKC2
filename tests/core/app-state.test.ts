@@ -1734,6 +1734,80 @@ describe('sort', () => {
     expect(state.categoricalPeerFilter).toBeNull();
   });
 
+  // ── W1 Slice D: free-form Tag filter (TOGGLE_TAG_FILTER / CLEAR_TAG_FILTER) ──
+  //
+  // Spec: `docs/spec/search-filter-semantics-v1.md` §3-§4, Slice B
+  // `tag-data-model-v1-minimum-scope.md`. Separate axis from
+  // `categoricalPeerFilter`; Tag is AND-by-default within the Set.
+
+  it('default tagFilter is an empty Set', () => {
+    const state = readyState();
+    // Optional on the TS surface; treat absent as empty Set.
+    expect(state.tagFilter?.size ?? 0).toBe(0);
+  });
+
+  it('TOGGLE_TAG_FILTER adds a tag when absent', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(state.tagFilter?.has('urgent')).toBe(true);
+    expect(state.tagFilter?.size).toBe(1);
+  });
+
+  it('TOGGLE_TAG_FILTER removes a tag when present (toggle semantics)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(s2.tagFilter?.has('urgent')).toBe(false);
+    expect(s2.tagFilter?.size).toBe(0);
+  });
+
+  it('TOGGLE_TAG_FILTER accumulates multiple tags (AND-by-default at filter time)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'review' });
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+    expect(s2.tagFilter?.has('review')).toBe(true);
+    expect(s2.tagFilter?.size).toBe(2);
+  });
+
+  it('TOGGLE_TAG_FILTER is case-sensitive (Slice B §4.3 raw ===)', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'Urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    expect(s2.tagFilter?.has('Urgent')).toBe(true);
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+    expect(s2.tagFilter?.size).toBe(2);
+  });
+
+  it('CLEAR_TAG_FILTER empties the Set', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'CLEAR_TAG_FILTER' });
+    expect(s2.tagFilter?.size).toBe(0);
+  });
+
+  it('CLEAR_TAG_FILTER is a reference-stable no-op when already empty', () => {
+    const base = readyState();
+    const { state } = reduce(base, { type: 'CLEAR_TAG_FILTER' });
+    expect(state).toBe(base);
+  });
+
+  it('TOGGLE_TAG_FILTER does not collide with categoricalPeerFilter', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    // Both axes carry their own independent value.
+    expect(s2.categoricalPeerFilter).toBe('e2');
+    expect(s2.tagFilter?.has('urgent')).toBe(true);
+  });
+
+  it('CLEAR_FILTERS also clears the Tag axis', () => {
+    const { state: s1 } = reduce(readyState(), { type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    const { state: s2 } = reduce(s1, { type: 'TOGGLE_TAG_FILTER', tag: 'review' });
+    const { state: s3 } = reduce(s2, {
+      type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2',
+    });
+    const { state: s4 } = reduce(s3, { type: 'CLEAR_FILTERS' });
+    expect(s4.tagFilter?.size ?? 0).toBe(0);
+    expect(s4.categoricalPeerFilter).toBeNull();
+    expect(s4.archetypeFilter.size).toBe(0);
+    expect(s4.searchQuery).toBe('');
+  });
+
   // ── QUICK_UPDATE_ENTRY ─────────────────────────
   // Contract: body-only update in ready phase, title preserved, snapshot created.
   // Intended for small immediate operations (e.g., todo status toggle).

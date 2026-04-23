@@ -80,14 +80,56 @@ export function filterByArchetypes(
 }
 
 /**
- * Apply combined filters: text query AND archetype filter.
- * Empty query = no text filter; empty set = no type filter.
+ * W1 Slice D — Tag axis filter (free-form entry-level tags).
+ *
+ * Semantics: AND-by-default (spec:
+ * `docs/spec/search-filter-semantics-v1.md` §4.2). Every value in
+ * `filter` must appear in `entry.tags` for the entry to match.
+ *
+ * - Empty set → axis off, returns `entries` unchanged.
+ * - An entry whose `tags` is missing or empty array never matches
+ *   a non-empty filter (spec §3.1, Slice B §3.3 "missing ≡ empty").
+ * - String comparison is raw `===` (case-sensitive), matching
+ *   Slice B §4.3. Future normalizers must preserve the stored
+ *   strings, so no lowercasing here.
+ *
+ * Pure / features-layer.
+ */
+export function filterByTags(
+  entries: Entry[],
+  filter: ReadonlySet<string>,
+): Entry[] {
+  if (filter.size === 0) return entries;
+  return entries.filter((entry) => {
+    const tags = entry.tags;
+    if (!tags || tags.length === 0) return false;
+    for (const required of filter) {
+      if (!tags.includes(required)) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Apply combined filters: text AND archetype AND tag (all axes).
+ *
+ * W1 Slice D extended `applyFilters` with an optional `tagFilter`
+ * parameter. The original 3-argument signature is preserved for
+ * backward compatibility — existing callers that have not yet
+ * acquired a tag filter (or tests that predate Slice D) pass no
+ * extra arg and get the pre-Slice-D behavior.
+ *
+ * Axis composition is spec-mandated AND across all active axes
+ * (`docs/spec/search-filter-semantics-v1.md` §4.1).
  */
 export function applyFilters(
   entries: Entry[],
   query: string,
   filter: ReadonlySet<ArchetypeId>,
+  tagFilter?: ReadonlySet<string>,
 ): Entry[] {
   const byText = filterEntries(entries, query);
-  return filterByArchetypes(byText, filter);
+  const byType = filterByArchetypes(byText, filter);
+  if (!tagFilter || tagFilter.size === 0) return byType;
+  return filterByTags(byType, tagFilter);
 }

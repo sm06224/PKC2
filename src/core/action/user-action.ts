@@ -239,6 +239,21 @@ export type UserAction =
   // it actually filters by: a single categorical-relation peer lid.
   // Behavior is unchanged.
   | { type: 'SET_CATEGORICAL_PEER_FILTER'; peerLid: string | null }
+  /**
+   * W1 Slice D — free-form Tag filter axis actions.
+   *
+   * TOGGLE_TAG_FILTER adds or removes a single tag from the active
+   * Tag filter Set. CLEAR_TAG_FILTER resets the Set to empty. No
+   * bulk SET action is exposed in this slice — the UI (Slice F)
+   * adds them one chip at a time, matching the archetype-filter
+   * pattern (TOGGLE_ARCHETYPE_FILTER / CLEAR_FILTERS).
+   *
+   * Tag filter semantics: AND-by-default across the Set
+   * (`docs/spec/search-filter-semantics-v1.md` §4.2). Empty Set =
+   * axis off.
+   */
+  | { type: 'TOGGLE_TAG_FILTER'; tag: string }
+  | { type: 'CLEAR_TAG_FILTER' }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
   /**
    * SAVE_SEARCH — create a new saved search record from the current

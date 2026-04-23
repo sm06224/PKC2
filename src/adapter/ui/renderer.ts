@@ -1870,8 +1870,11 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     }
   }
 
-  // Pipeline: query → archetype → categorical peer → archive → sort
-  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
+  // Pipeline: query → archetype → tag → categorical peer → archive → sort
+  // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
+  // with AND-by-default semantics (see
+  // `docs/spec/search-filter-semantics-v1.md` §4.2).
+  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter, state.tagFilter);
   if (state.categoricalPeerFilter && state.container) {
     filtered = filterByTag(filtered, state.container.relations, state.categoricalPeerFilter);
   }
@@ -1889,7 +1892,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.categoricalPeerFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -1919,7 +1922,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.categoricalPeerFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based

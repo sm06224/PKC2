@@ -166,6 +166,22 @@ export interface AppState {
    */
   settings?: SystemSettingsPayload;
   /**
+   * W1 Slice D — Free-form Tag filter axis.
+   *
+   * `Set<string>` of normalized Tag values. Empty set / absent =
+   * Tag axis off. Non-empty = AND-by-default over every value
+   * (spec: `docs/spec/search-filter-semantics-v1.md` §4.2).
+   *
+   * Independent from `categoricalPeerFilter` below — the two axes
+   * coexist (spec §3). Runtime-only, not persisted. Saved Search
+   * round-trip for Tag filter lands in Slice E.
+   *
+   * Optional on the TS surface so legacy test fixtures that hand-
+   * spell AppState don't need updating before the Tag UI lands;
+   * every read path treats absent as equivalent to an empty Set.
+   */
+  tagFilter?: ReadonlySet<string>;
+  /**
    * Categorical relation peer filter. Stores the lid of a "tag entry"
    * (categorical relation `to` endpoint) to filter by. Runtime-only.
    * `null` = no filter active.
@@ -399,6 +415,7 @@ export function createInitialState(): AppState {
     searchQuery: '',
     archetypeFilter: new Set<ArchetypeId>(),
     archetypeFilterExpanded: false,
+    tagFilter: new Set<string>(),
     showScanline: false,
     accentColor: undefined,
     // FI-Settings v1: left undefined until main.ts dispatches
@@ -659,8 +676,9 @@ function reduceMoveEntry(
   const hasActiveFilter =
     state.searchQuery !== '' ||
     state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
     state.categoricalPeerFilter !== null;
-  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
+  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter, state.tagFilter);
   if (state.categoricalPeerFilter) {
     filtered = filterByTag(filtered, container.relations, state.categoricalPeerFilter);
   }
@@ -1850,9 +1868,37 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, categoricalPeerFilter: action.peerLid };
       return { state: next, events: [] };
     }
+    case 'TOGGLE_TAG_FILTER': {
+      // W1 Slice D — add or remove a single tag from the active Tag
+      // filter Set. Mirrors TOGGLE_ARCHETYPE_FILTER's pattern so UI
+      // chip toggling stays predictable across both filter axes.
+      const next = new Set(state.tagFilter ?? []);
+      if (next.has(action.tag)) {
+        next.delete(action.tag);
+      } else {
+        next.add(action.tag);
+      }
+      return { state: { ...state, tagFilter: next }, events: [] };
+    }
+    case 'CLEAR_TAG_FILTER': {
+      // Identity no-op when already empty or absent — keeps `state`
+      // reference stable so downstream listeners that use `===` stay
+      // quiet.
+      if ((state.tagFilter?.size ?? 0) === 0) return { state, events: [] };
+      return { state: { ...state, tagFilter: new Set<string>() }, events: [] };
+    }
     case 'CLEAR_FILTERS': {
       // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), categoricalPeerFilter: null };
+      // Slice D (2026-04-23): clearing filters also resets the Tag
+      // axis so "Clear filters" remains the single escape hatch for
+      // every active filter axis.
+      const next: AppState = {
+        ...state,
+        searchQuery: '',
+        archetypeFilter: new Set<ArchetypeId>(),
+        tagFilter: new Set<string>(),
+        categoricalPeerFilter: null,
+      };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {

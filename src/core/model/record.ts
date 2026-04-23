@@ -60,4 +60,18 @@ export interface Entry {
   archetype: ArchetypeId;
   created_at: string;
   updated_at: string;
+  /**
+   * W1 Slice B / Slice D — additive optional Tag attribute. Each
+   * entry in the list is a Slice B §4 normalized string (trimmed,
+   * non-empty, ≤ 64 chars, no control chars, case-sensitive,
+   * deduped). Order is insertion-order.
+   *
+   * Missing and empty-array are treated as equivalent by all read
+   * paths ("no tags"). Write paths(Tag UI / import / record:offer)
+   * will route through a single normalizer as they land in later
+   * slices; Slice D's filter pipeline only reads this field.
+   *
+   * Canonical spec: `docs/spec/tag-data-model-v1-minimum-scope.md`.
+   */
+  tags?: string[];
 }
