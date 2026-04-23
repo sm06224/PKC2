@@ -466,7 +466,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter);
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -1870,6 +1870,58 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     }
   }
 
+  // W1 Slice F-2 \u2014 free-form Tag filter indicator.
+  // Shown only when `state.tagFilter` has at least one value. Each
+  // active value renders as a small chip; clicking its \u00d7 dispatches
+  // TOGGLE_TAG_FILTER (idempotent remove since the value is already
+  // in the filter). A "Clear all" button surfaces only when there
+  // are \u2265 2 active values so the single-chip case keeps the UI
+  // dense. The section uses distinct classes / DOM region /
+  // action names from the categorical indicator above to keep
+  // selectors unambiguous.
+  if ((state.tagFilter?.size ?? 0) > 0) {
+    const activeTags = Array.from(state.tagFilter!);
+
+    const indicator = createElement('div', 'pkc-entry-tag-filter');
+    indicator.setAttribute('data-pkc-region', 'entry-tag-filter');
+
+    const label = createElement('span', 'pkc-entry-tag-filter-label');
+    label.textContent = '\u30bf\u30b0:';
+    indicator.appendChild(label);
+
+    for (const tagValue of activeTags) {
+      const chip = createElement('span', 'pkc-entry-tag-filter-chip');
+      chip.setAttribute('data-pkc-entry-tag-value', tagValue);
+
+      const chipLabel = createElement('span', 'pkc-entry-tag-filter-chip-label');
+      chipLabel.textContent = tagValue;
+      chip.appendChild(chipLabel);
+
+      const removeBtn = createElement('button', 'pkc-entry-tag-filter-remove');
+      // TOGGLE is idempotent \u2014 clicking an already-active value
+      // removes it. A dedicated remove action would duplicate the
+      // reducer branch without adding semantic clarity, so we
+      // reuse toggle here.
+      removeBtn.setAttribute('data-pkc-action', 'toggle-tag-filter');
+      removeBtn.setAttribute('data-pkc-tag-value', tagValue);
+      removeBtn.setAttribute('title', `Remove filter: ${tagValue}`);
+      removeBtn.textContent = '\u00d7';
+      chip.appendChild(removeBtn);
+
+      indicator.appendChild(chip);
+    }
+
+    if (activeTags.length >= 2) {
+      const clearAllBtn = createElement('button', 'pkc-btn-small pkc-entry-tag-filter-clear-all');
+      clearAllBtn.setAttribute('data-pkc-action', 'clear-entry-tag-filter');
+      clearAllBtn.setAttribute('title', 'Clear all Tag filters');
+      clearAllBtn.textContent = 'Clear all';
+      indicator.appendChild(clearAllBtn);
+    }
+
+    sidebar.appendChild(indicator);
+  }
+
   // Pipeline: query → archetype → tag → categorical peer → archive → sort
   // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
   // with AND-by-default semantics (see
@@ -3203,6 +3255,12 @@ function renderMetaPane(
   canEdit: boolean,
   container: Container | null,
   sharedLinkIndex: LinkIndex | null = null,
+  /**
+   * W1 Slice F-2 — active Tag filter Set so each entry Tag chip can
+   * mark itself as "already filtered". Optional to avoid touching
+   * every caller that pre-dates the Tag filter axis.
+   */
+  activeTagFilter: ReadonlySet<string> | undefined = undefined,
 ): HTMLElement {
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
@@ -3246,8 +3304,24 @@ function renderMetaPane(
   for (const tagValue of entryTags) {
     const chip = createElement('span', 'pkc-entry-tag-chip');
     chip.setAttribute('data-pkc-entry-tag-value', tagValue);
+    // Slice F-2 — surface whether this value is currently part of
+    // the active Tag filter, so CSS / selectors can style "already
+    // filtered" chips distinctly. Users can still toggle from
+    // either state (click = add, click again = remove).
+    if (activeTagFilter?.has(tagValue)) {
+      chip.setAttribute('data-pkc-entry-tag-filter-active', 'true');
+    }
 
+    // Slice F-2 — chip label click toggles Tag filter. The role
+    // split with the `×` button is strict: label = filter toggle,
+    // × = remove tag from entry. action-binder's event delegation
+    // uses `closest()` to pick the nearest `data-pkc-action`, so
+    // clicking `×` resolves to the button first and the filter
+    // toggle never fires.
     const chipLabel = createElement('span', 'pkc-entry-tag-label');
+    chipLabel.setAttribute('data-pkc-action', 'toggle-tag-filter');
+    chipLabel.setAttribute('data-pkc-tag-value', tagValue);
+    chipLabel.setAttribute('title', `Toggle tag filter: ${tagValue}`);
     chipLabel.textContent = tagValue;
     chip.appendChild(chipLabel);
 

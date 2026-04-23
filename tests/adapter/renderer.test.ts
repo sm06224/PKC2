@@ -3611,6 +3611,92 @@ describe('Renderer', () => {
     expect(regions[0]!.getAttribute('data-pkc-region')).toBe('entry-tags');
     expect(regions[1]!.getAttribute('data-pkc-region')).toBe('tags');
   });
+
+  // ── W1 Slice F-2: Sidebar Tag filter UI ──────────────────
+
+  it('Slice F-2: sidebar entry-tag-filter indicator is hidden when tagFilter is empty', () => {
+    render(sliceFState(mockContainer), root);
+    const indicator = root.querySelector('[data-pkc-region="entry-tag-filter"]');
+    expect(indicator).toBeNull();
+  });
+
+  it('Slice F-2: indicator renders one chip per active Tag with Japanese label', () => {
+    render(
+      sliceFState(mockContainer, { tagFilter: new Set(['urgent', 'review']) }),
+      root,
+    );
+    const indicator = root.querySelector<HTMLElement>('[data-pkc-region="entry-tag-filter"]');
+    expect(indicator).not.toBeNull();
+    const label = indicator!.querySelector('.pkc-entry-tag-filter-label');
+    expect(label!.textContent).toBe('タグ:');
+    const chips = indicator!.querySelectorAll('.pkc-entry-tag-filter-chip');
+    expect(chips).toHaveLength(2);
+    const values = Array.from(chips).map((c) => c.getAttribute('data-pkc-entry-tag-value'));
+    expect(values).toEqual(['urgent', 'review']);
+  });
+
+  it('Slice F-2: each active chip × carries toggle-tag-filter + tag-value', () => {
+    render(sliceFState(mockContainer, { tagFilter: new Set(['urgent']) }), root);
+    const removeBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-region="entry-tag-filter"] [data-pkc-action="toggle-tag-filter"]',
+    );
+    expect(removeBtn).not.toBeNull();
+    expect(removeBtn!.getAttribute('data-pkc-tag-value')).toBe('urgent');
+  });
+
+  it('Slice F-2: single active Tag does NOT show Clear all (UI stays dense)', () => {
+    render(sliceFState(mockContainer, { tagFilter: new Set(['urgent']) }), root);
+    const clearAll = root.querySelector('[data-pkc-action="clear-entry-tag-filter"]');
+    expect(clearAll).toBeNull();
+  });
+
+  it('Slice F-2: two or more active Tags surface a Clear all button', () => {
+    render(sliceFState(mockContainer, { tagFilter: new Set(['urgent', 'review']) }), root);
+    const clearAll = root.querySelector('[data-pkc-action="clear-entry-tag-filter"]');
+    expect(clearAll).not.toBeNull();
+    expect(clearAll!.textContent).toBe('Clear all');
+  });
+
+  it('Slice F-2: entry Tag chip label carries toggle-tag-filter action', () => {
+    render(sliceFState(sliceFContainerWithTags(['urgent'])), root);
+    const entryChipLabel = root.querySelector<HTMLElement>(
+      '[data-pkc-region="entry-tags"] .pkc-entry-tag-label',
+    );
+    expect(entryChipLabel).not.toBeNull();
+    expect(entryChipLabel!.getAttribute('data-pkc-action')).toBe('toggle-tag-filter');
+    expect(entryChipLabel!.getAttribute('data-pkc-tag-value')).toBe('urgent');
+  });
+
+  it('Slice F-2: entry Tag chip × keeps its remove-entry-tag role (no conflict with label toggle)', () => {
+    render(sliceFState(sliceFContainerWithTags(['urgent'])), root);
+    const removeBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-region="entry-tags"] [data-pkc-action="remove-entry-tag"]',
+    );
+    expect(removeBtn).not.toBeNull();
+    // The × is a distinct button, not the toggle-filter label.
+    expect(removeBtn!.getAttribute('data-pkc-action')).not.toBe('toggle-tag-filter');
+  });
+
+  it('Slice F-2: entry chip marks filter-active state when the tag is currently filtered', () => {
+    render(
+      sliceFState(sliceFContainerWithTags(['urgent', 'review']), {
+        tagFilter: new Set(['urgent']),
+      }),
+      root,
+    );
+    const chips = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="entry-tags"] .pkc-entry-tag-chip',
+    );
+    const urgentChip = Array.from(chips).find(
+      (c) => c.getAttribute('data-pkc-entry-tag-value') === 'urgent',
+    );
+    const reviewChip = Array.from(chips).find(
+      (c) => c.getAttribute('data-pkc-entry-tag-value') === 'review',
+    );
+    expect(urgentChip!.getAttribute('data-pkc-entry-tag-filter-active')).toBe('true');
+    // `review` is not in the active filter, so no marker attribute.
+    expect(reviewChip!.getAttribute('data-pkc-entry-tag-filter-active')).toBeNull();
+  });
 });
 
 // ── Container-wide TEXTLOG export ──

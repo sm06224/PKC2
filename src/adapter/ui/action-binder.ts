@@ -800,6 +800,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'toggle-tag-filter': {
+        // W1 Slice F-2 — click on an entry Tag chip label OR the ×
+        // button of a sidebar active-filter chip. Both carry
+        // `data-pkc-tag-value` so a single reducer call handles add
+        // / remove symmetrically (the reducer case is idempotent
+        // toggle).
+        const tfValue = target.getAttribute('data-pkc-tag-value');
+        if (tfValue !== null) {
+          dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag: tfValue });
+        }
+        break;
+      }
+      case 'clear-entry-tag-filter': {
+        // W1 Slice F-2 — "Clear all" button on the sidebar
+        // Tag-filter indicator (appears only when 2+ values are
+        // active). Distinct action name from `clear-tag-filter`
+        // (which targets the legacy categorical peer filter) so
+        // the two indicators never cross-fire.
+        dispatcher.dispatch({ type: 'CLEAR_TAG_FILTER' });
+        break;
+      }
       case 'delete-relation': {
         // v1 relation delete UI. Native confirm mirrors existing delete
         // flows (entry trash, purge). Reducer also blocks on readonly
