@@ -39,8 +39,8 @@ export interface ContainerMeta {
    *
    * Absent / empty → no saved searches. Each entry captures the six
    * AppState fields that define a "search query" at save time
-   * (searchQuery, archetypeFilter, tagFilter, sortKey, sortDirection,
-   * showArchived). See `docs/development/saved-searches-v1.md` and
+   * (searchQuery, archetypeFilter, categoricalPeerFilter, sortKey,
+   * sortDirection, showArchived). See `docs/development/saved-searches-v1.md` and
    * `src/core/model/saved-search.ts`. Cap: 20 per container.
    *
    * SCHEMA_VERSION unchanged per additive policy.

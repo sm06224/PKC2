@@ -55,7 +55,7 @@ function mkState(container: Container, selectedLid: string | null): AppState {
     batchImportPreview: null,
     searchQuery: '',
     archetypeFilter: new Set(),
-    tagFilter: null,
+    categoricalPeerFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',
     exportMode: null,

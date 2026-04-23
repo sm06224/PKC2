@@ -1092,10 +1092,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'filter-by-tag':
-        if (lid) dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: lid });
+        // Legacy data-pkc-action name; filters by categorical relation
+        // peer lid. Renamed internally (W1 Slice B followup) — the
+        // DOM action-name stays stable to avoid breaking renderer DOM
+        // selectors. See `src/core/action/user-action.ts`
+        // `SET_CATEGORICAL_PEER_FILTER`.
+        if (lid) dispatcher.dispatch({ type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: lid });
         break;
       case 'clear-tag-filter':
-        dispatcher.dispatch({ type: 'SET_TAG_FILTER', tagLid: null });
+        dispatcher.dispatch({ type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: null });
         break;
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);

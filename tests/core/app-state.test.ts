@@ -1674,62 +1674,64 @@ describe('sort', () => {
     expect(events).toHaveLength(0);
   });
 
-  // ── SET_TAG_FILTER ──
+  // ── SET_CATEGORICAL_PEER_FILTER ── (formerly SET_TAG_FILTER,
+  // renamed so the `tag` name space is available for the new
+  // free-form Tag concept introduced by W1 Slice B.)
 
-  it('SET_TAG_FILTER sets tagFilter in ready phase', () => {
+  it('SET_CATEGORICAL_PEER_FILTER sets categoricalPeerFilter in ready phase', () => {
     const { state, events } = reduce(readyState(), {
-      type: 'SET_TAG_FILTER', tagLid: 'e2',
+      type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2',
     });
-    expect(state.tagFilter).toBe('e2');
+    expect(state.categoricalPeerFilter).toBe('e2');
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER with null clears tag filter', () => {
-    const base = { ...readyState(), tagFilter: 'e2' };
-    const { state } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: null });
-    expect(state.tagFilter).toBeNull();
+  it('SET_CATEGORICAL_PEER_FILTER with null clears the filter', () => {
+    const base = { ...readyState(), categoricalPeerFilter: 'e2' };
+    const { state } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: null });
+    expect(state.categoricalPeerFilter).toBeNull();
   });
 
-  it('SET_TAG_FILTER is blocked during initializing', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during initializing', () => {
     const base: AppState = { ...readyState(), phase: 'initializing' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e1' });
     expect(state.phase).toBe('initializing');
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER is blocked during editing', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during editing', () => {
     const base: AppState = { ...readyState(), phase: 'editing', editingLid: 'e1', selectedLid: 'e1' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e2' });
-    expect(state.tagFilter).toBeNull();
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e2' });
+    expect(state.categoricalPeerFilter).toBeNull();
     expect(events).toHaveLength(0);
   });
 
-  it('SET_TAG_FILTER is blocked during exporting', () => {
+  it('SET_CATEGORICAL_PEER_FILTER is blocked during exporting', () => {
     const base: AppState = { ...readyState(), phase: 'exporting' };
-    const { state, events } = reduce(base, { type: 'SET_TAG_FILTER', tagLid: 'e1' });
+    const { state, events } = reduce(base, { type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'e1' });
     expect(state).toBe(base);
     expect(events).toHaveLength(0);
   });
 
-  it('CLEAR_FILTERS also clears tagFilter', () => {
-    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: new Set(['text'] as const), tagFilter: 'e2' };
+  it('CLEAR_FILTERS also clears categoricalPeerFilter', () => {
+    const base = { ...readyState(), searchQuery: 'test', archetypeFilter: new Set(['text'] as const), categoricalPeerFilter: 'e2' };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
     expect(state.searchQuery).toBe('');
     expect(state.archetypeFilter).toEqual(new Set());
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
   });
 
-  it('CLEAR_FILTERS preserves sort when clearing tag filter', () => {
-    const base = { ...readyState(), tagFilter: 'e2', sortKey: 'title' as const, sortDirection: 'asc' as const };
+  it('CLEAR_FILTERS preserves sort when clearing categoricalPeerFilter', () => {
+    const base = { ...readyState(), categoricalPeerFilter: 'e2', sortKey: 'title' as const, sortDirection: 'asc' as const };
     const { state } = reduce(base, { type: 'CLEAR_FILTERS' });
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
     expect(state.sortKey).toBe('title');
     expect(state.sortDirection).toBe('asc');
   });
 
-  it('default tagFilter is null', () => {
+  it('default categoricalPeerFilter is null', () => {
     const state = readyState();
-    expect(state.tagFilter).toBeNull();
+    expect(state.categoricalPeerFilter).toBeNull();
   });
 
   // ── QUICK_UPDATE_ENTRY ─────────────────────────

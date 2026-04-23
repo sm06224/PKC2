@@ -231,12 +231,19 @@ export type UserAction =
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
   | { type: 'CLEAR_FILTERS' }
-  | { type: 'SET_TAG_FILTER'; tagLid: string | null }
+  // Rename (W1 Slice B followup): `SET_TAG_FILTER` / `tagLid` was a
+  // legacy name from when categorical-relation-based "tags" were the
+  // only tag-like construct. The new free-form Tag concept (§3.1 of
+  // `docs/spec/tag-color-tag-relation-separation.md`) needs the
+  // `tag`/`Tag` name space, so this action is renamed to reflect what
+  // it actually filters by: a single categorical-relation peer lid.
+  // Behavior is unchanged.
+  | { type: 'SET_CATEGORICAL_PEER_FILTER'; peerLid: string | null }
   | { type: 'SET_SORT'; key: 'title' | 'created_at' | 'updated_at' | 'manual'; direction: 'asc' | 'desc' }
   /**
    * SAVE_SEARCH — create a new saved search record from the current
-   * searchQuery / archetypeFilter / tagFilter / sortKey / sortDirection
-   * / showArchived state. Spec: `docs/development/saved-searches-v1.md`
+   * searchQuery / archetypeFilter / categoricalPeerFilter / sortKey /
+   * sortDirection / showArchived state. Spec: `docs/development/saved-searches-v1.md`
    * §5–§6.
    *
    * - Blocked when no container is loaded or readonly.

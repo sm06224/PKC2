@@ -1845,9 +1845,13 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     sidebar.appendChild(toggle);
   }
 
-  // Active tag filter indicator
-  if (state.tagFilter && state.container) {
-    const tagEntry = state.container.entries.find((e) => e.lid === state.tagFilter);
+  // Active tag filter indicator (categorical relation peer).
+  // The `tagFilter` state field was renamed to `categoricalPeerFilter`
+  // post W1 Slice B; the user-visible label and data-pkc-action names
+  // ("Tag:", "clear-tag-filter") are intentionally preserved so
+  // the existing categorical-relation UI vocabulary stays stable.
+  if (state.categoricalPeerFilter && state.container) {
+    const tagEntry = state.container.entries.find((e) => e.lid === state.categoricalPeerFilter);
     if (tagEntry) {
       const indicator = createElement('div', 'pkc-tag-filter-indicator');
       indicator.setAttribute('data-pkc-region', 'tag-filter-indicator');
@@ -1866,10 +1870,10 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     }
   }
 
-  // Pipeline: query → archetype → tag → archive → sort
+  // Pipeline: query → archetype → categorical peer → archive → sort
   let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter);
-  if (state.tagFilter && state.container) {
-    filtered = filterByTag(filtered, state.container.relations, state.tagFilter);
+  if (state.categoricalPeerFilter && state.container) {
+    filtered = filterByTag(filtered, state.container.relations, state.categoricalPeerFilter);
   }
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
@@ -1885,7 +1889,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.categoricalPeerFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -1915,7 +1919,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.tagFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || state.categoricalPeerFilter !== null;
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based

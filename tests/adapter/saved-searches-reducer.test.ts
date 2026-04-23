@@ -57,7 +57,12 @@ function mkSaved(id: string, overrides: Partial<SavedSearch> = {}): SavedSearch 
     updated_at: '2026-04-21T00:00:00Z',
     search_query: '',
     archetype_filter: [],
-    tag_filter: null,
+    // Post-rename (W1 Slice B followup): fresh saved-search records
+    // emit `categorical_peer_filter`, not the legacy `tag_filter` key.
+    // A dedicated backward-compat test in
+    // `tests/features/search/saved-searches.test.ts` covers the
+    // legacy read path separately.
+    categorical_peer_filter: null,
     sort_key: 'created_at',
     sort_direction: 'desc',
     show_archived: false,
@@ -71,7 +76,7 @@ describe('SAVE_SEARCH', () => {
       container: mkContainer([mkEntry('a')]),
       searchQuery: 'foo',
       archetypeFilter: new Set(['text', 'todo']),
-      tagFilter: null,
+      categoricalPeerFilter: null,
       sortKey: 'updated_at',
       sortDirection: 'asc',
       showArchived: true,
@@ -144,7 +149,7 @@ describe('APPLY_SAVED_SEARCH', () => {
     const saved = mkSaved('s1', {
       search_query: 'restored',
       archetype_filter: ['todo'],
-      tag_filter: 't1',
+      categorical_peer_filter: 't1',
       sort_key: 'title',
       sort_direction: 'asc',
       show_archived: true,
@@ -156,7 +161,7 @@ describe('APPLY_SAVED_SEARCH', () => {
     expect(next.searchQuery).toBe('restored');
     expect(next.archetypeFilter instanceof Set).toBe(true);
     expect([...next.archetypeFilter]).toEqual(['todo']);
-    expect(next.tagFilter).toBe('t1');
+    expect(next.categoricalPeerFilter).toBe('t1');
     expect(next.sortKey).toBe('title');
     expect(next.sortDirection).toBe('asc');
     expect(next.showArchived).toBe(true);

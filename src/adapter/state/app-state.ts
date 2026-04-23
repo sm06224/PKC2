@@ -165,8 +165,18 @@ export interface AppState {
    * fields without also updating `settings`.
    */
   settings?: SystemSettingsPayload;
-  /** Current tag filter: lid of tag entry to filter by (runtime-only). null = no tag filter. */
-  tagFilter: string | null;
+  /**
+   * Categorical relation peer filter. Stores the lid of a "tag entry"
+   * (categorical relation `to` endpoint) to filter by. Runtime-only.
+   * `null` = no filter active.
+   *
+   * Rename note (W1 Slice B followup): this field used to be called
+   * `tagFilter`. The new free-form Tag concept (see
+   * `docs/spec/tag-color-tag-relation-separation.md` §3.1) needs the
+   * `tag`/`Tag` name for itself, so this field was renamed with no
+   * semantic change. Filter path is still categorical-relation based.
+   */
+  categoricalPeerFilter: string | null;
   /** Current sort key (runtime-only, feature layer). */
   sortKey: SortKey;
   /** Current sort direction (runtime-only, feature layer). */
@@ -398,7 +408,7 @@ export function createInitialState(): AppState {
     // fixtures that only populate showScanline / accentColor continue
     // to drive the DOM through the mirror-fallback path.
     settings: undefined,
-    tagFilter: null,
+    categoricalPeerFilter: null,
     sortKey: 'title',
     sortDirection: 'asc',
     exportMode: null,
@@ -649,10 +659,10 @@ function reduceMoveEntry(
   const hasActiveFilter =
     state.searchQuery !== '' ||
     state.archetypeFilter.size > 0 ||
-    state.tagFilter !== null;
+    state.categoricalPeerFilter !== null;
   let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter);
-  if (state.tagFilter) {
-    filtered = filterByTag(filtered, container.relations, state.tagFilter);
+  if (state.categoricalPeerFilter) {
+    filtered = filterByTag(filtered, container.relations, state.categoricalPeerFilter);
   }
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
@@ -1836,13 +1846,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!state.menuOpen) return { state, events: [] };
       return { state: { ...state, menuOpen: false }, events: [] };
     }
-    case 'SET_TAG_FILTER': {
-      const next: AppState = { ...state, tagFilter: action.tagLid };
+    case 'SET_CATEGORICAL_PEER_FILTER': {
+      const next: AppState = { ...state, categoricalPeerFilter: action.peerLid };
       return { state: next, events: [] };
     }
     case 'CLEAR_FILTERS': {
       // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
-      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), tagFilter: null };
+      const next: AppState = { ...state, searchQuery: '', archetypeFilter: new Set<ArchetypeId>(), categoricalPeerFilter: null };
       return { state: next, events: [] };
     }
     case 'SET_SORT': {
@@ -1915,7 +1925,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const saved = createSavedSearch(generateLid(), trimmed, ts, {
         searchQuery: state.searchQuery,
         archetypeFilter: state.archetypeFilter,
-        tagFilter: state.tagFilter,
+        categoricalPeerFilter: state.categoricalPeerFilter,
         sortKey: state.sortKey,
         sortDirection: state.sortDirection,
         showArchived: state.showArchived,
@@ -1959,7 +1969,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         container,
         searchQuery: fields.searchQuery,
         archetypeFilter: fields.archetypeFilter,
-        tagFilter: fields.tagFilter,
+        categoricalPeerFilter: fields.categoricalPeerFilter,
         sortKey: fields.sortKey,
         sortDirection: fields.sortDirection,
         showArchived: fields.showArchived,

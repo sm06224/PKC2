@@ -14,7 +14,7 @@ function mkFields(overrides: Partial<SavedSearchSourceFields> = {}): SavedSearch
   return {
     searchQuery: '',
     archetypeFilter: new Set<ArchetypeId>(),
-    tagFilter: null,
+    categoricalPeerFilter: null,
     sortKey: 'created_at',
     sortDirection: 'desc',
     showArchived: false,
@@ -29,7 +29,7 @@ describe('createSavedSearch', () => {
     const saved = createSavedSearch('id-1', 'my search', ts, mkFields({
       searchQuery: 'todo',
       archetypeFilter: new Set<ArchetypeId>(['todo', 'text']),
-      tagFilter: 'tag-1',
+      categoricalPeerFilter: 'tag-1',
       sortKey: 'updated_at',
       sortDirection: 'asc',
       showArchived: true,
@@ -37,7 +37,11 @@ describe('createSavedSearch', () => {
     expect(saved.id).toBe('id-1');
     expect(saved.name).toBe('my search');
     expect(saved.search_query).toBe('todo');
-    expect(saved.tag_filter).toBe('tag-1');
+    // Rename (W1 Slice B followup): the new key `categorical_peer_filter`
+    // is emitted on write; the legacy `tag_filter` key must NOT appear
+    // on freshly-created records.
+    expect(saved.categorical_peer_filter).toBe('tag-1');
+    expect(saved.tag_filter).toBeUndefined();
     expect(saved.sort_key).toBe('updated_at');
     expect(saved.sort_direction).toBe('asc');
     expect(saved.show_archived).toBe(true);
@@ -74,7 +78,7 @@ describe('applySavedSearchFields', () => {
     const saved = createSavedSearch('id', 'x', '2026-04-21T00:00:00Z', mkFields({
       searchQuery: 'foo',
       archetypeFilter: new Set<ArchetypeId>(['text', 'todo']),
-      tagFilter: 't1',
+      categoricalPeerFilter: 't1',
       sortKey: 'title',
       sortDirection: 'asc',
       showArchived: true,
@@ -83,9 +87,48 @@ describe('applySavedSearchFields', () => {
     expect(restored.searchQuery).toBe('foo');
     expect(restored.archetypeFilter instanceof Set).toBe(true);
     expect([...restored.archetypeFilter].sort()).toEqual(['text', 'todo']);
-    expect(restored.tagFilter).toBe('t1');
+    expect(restored.categoricalPeerFilter).toBe('t1');
     expect(restored.sortKey).toBe('title');
     expect(restored.sortDirection).toBe('asc');
     expect(restored.showArchived).toBe(true);
+  });
+
+  // Rename (W1 Slice B followup) backward-compat read path: a saved
+  // search persisted before the rename carries only the legacy
+  // `tag_filter` key. `applySavedSearchFields` must fall back to it
+  // so pre-existing containers keep restoring correctly. Scheduled
+  // to be removable 1-2 releases after the rename ships.
+  it('falls back to legacy `tag_filter` key when `categorical_peer_filter` is absent', () => {
+    const legacy = {
+      id: 'legacy-1',
+      name: 'legacy',
+      created_at: '2026-04-21T00:00:00Z',
+      updated_at: '2026-04-21T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as ArchetypeId[],
+      // No `categorical_peer_filter` — only the old key.
+      tag_filter: 'legacy-peer',
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+    const restored = applySavedSearchFields(legacy);
+    expect(restored.categoricalPeerFilter).toBe('legacy-peer');
+  });
+
+  it('defaults to null when neither `categorical_peer_filter` nor `tag_filter` is present', () => {
+    const bare = {
+      id: 'bare',
+      name: 'bare',
+      created_at: '2026-04-21T00:00:00Z',
+      updated_at: '2026-04-21T00:00:00Z',
+      search_query: '',
+      archetype_filter: [] as ArchetypeId[],
+      sort_key: 'created_at' as const,
+      sort_direction: 'desc' as const,
+      show_archived: false,
+    };
+    const restored = applySavedSearchFields(bare);
+    expect(restored.categoricalPeerFilter).toBeNull();
   });
 });

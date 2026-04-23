@@ -36,7 +36,21 @@ export interface SavedSearch {
 
   search_query: string;
   archetype_filter: ArchetypeId[];
-  tag_filter: string | null;
+  /**
+   * Categorical-relation peer filter (lid of a "tag entry").
+   *
+   * Rename history (W1 Slice B followup): the in-memory AppState
+   * field was renamed `tagFilter` → `categoricalPeerFilter`, and
+   * the persisted JSON key followed suit. Writers emit only
+   * `categorical_peer_filter`; readers prefer this key but fall
+   * back to the legacy `tag_filter` key for 1-2 releases so saved
+   * searches created before the rename keep working. Both fields
+   * are marked optional so the type is permissive enough to round-
+   * trip either shape.
+   */
+  categorical_peer_filter?: string | null;
+  /** @deprecated Legacy alias for `categorical_peer_filter`. Read-only for backward compat; writers must not emit this key. */
+  tag_filter?: string | null;
   sort_key: SavedSearchSortKey;
   sort_direction: SavedSearchSortDirection;
   show_archived: boolean;
