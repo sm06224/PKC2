@@ -26,6 +26,10 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import {
+  loadCollapsedFolders,
+  saveCollapsedFolders,
+} from './adapter/platform/folder-prefs';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -166,6 +170,37 @@ async function boot(): Promise<void> {
     populateAttachmentPreviews(root, dispatcher);
     // Populate inline asset previews for non-image chips in rendered markdown
     populateInlineAssetPreviews(root, dispatcher);
+  });
+
+  // 2a-A4. Collapsed-folder persistence (viewer-local). Writes
+  // through to localStorage whenever `state.collapsedFolders`
+  // changes identity. Reducer cases `TOGGLE_FOLDER_COLLAPSE`,
+  // `SELECT_ENTRY` / `NAVIGATE_TO_LOCATION` (with
+  // `revealInSidebar`), and `RESTORE_COLLAPSED_FOLDERS` all
+  // produce new array identities only when the set actually
+  // changes, so `prev !== curr` reliably gates writes. Keyed by
+  // `container_id` so multiple containers in the same browser
+  // keep independent fold state. See `folder-prefs.ts`.
+  let prevCollapsedFolders: string[] | null = null;
+  let prevContainerId: string | null = null;
+  dispatcher.onState((state) => {
+    const cid = state.container?.meta?.container_id ?? null;
+    const curr = state.collapsedFolders;
+    const containerSwitched = cid !== prevContainerId;
+    if (containerSwitched) {
+      // First tick for this container — take the current fold
+      // state as baseline, do not write (the restore dispatch
+      // already reflects persisted state). This also handles
+      // legitimate switches between containers without flushing
+      // one's fold state over another's.
+      prevContainerId = cid;
+      prevCollapsedFolders = curr;
+      return;
+    }
+    if (curr !== prevCollapsedFolders && cid) {
+      saveCollapsedFolders(cid, curr);
+      prevCollapsedFolders = curr;
+    }
   });
 
   // 2b. Entry-window live refresh wiring.
@@ -464,6 +499,7 @@ async function boot(): Promise<void> {
           viewOnlySource: chosen.viewOnlySource,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        restoreCollapsedFoldersForContainer(dispatcher, container);
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
         }
@@ -483,6 +519,7 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        restoreCollapsedFoldersForContainer(dispatcher, container);
         return;
       }
       case 'empty': {
@@ -496,6 +533,7 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        restoreCollapsedFoldersForContainer(dispatcher, container);
         return;
       }
     }
@@ -522,6 +560,24 @@ function restoreSettingsFromContainer(
   );
   const settings = resolveSettingsPayload(entry?.body);
   dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings });
+}
+
+/**
+ * A-4 (2026-04-23): after SYS_INIT_COMPLETE, hydrate
+ * `state.collapsedFolders` from the viewer-local folder-prefs
+ * store, keyed by `container_id`. This is a runtime UI preference
+ * — nothing is ever written back into the container — so the
+ * dispatch is silent (no event emitted by the reducer).
+ */
+function restoreCollapsedFoldersForContainer(
+  dispatcher: Dispatcher,
+  container: Container,
+): void {
+  const cid = container.meta?.container_id ?? '';
+  if (!cid) return;
+  const lids = loadCollapsedFolders(cid);
+  if (lids.length === 0) return;
+  dispatcher.dispatch({ type: 'RESTORE_COLLAPSED_FOLDERS', lids });
 }
 
 function createEmptyContainer(): Container {

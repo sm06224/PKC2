@@ -2844,6 +2844,43 @@ describe('sort', () => {
     expect(state.selectedLid).toBe('e1');
   });
 
+  // ── A-4: RESTORE_COLLAPSED_FOLDERS ──
+
+  it('RESTORE_COLLAPSED_FOLDERS replaces collapsedFolders wholesale', () => {
+    const s: AppState = { ...readyState(), collapsedFolders: ['old-1'] };
+    const { state, events } = reduce(s, {
+      type: 'RESTORE_COLLAPSED_FOLDERS',
+      lids: ['restored-1', 'restored-2'],
+    });
+    expect(state.collapsedFolders).toEqual(['restored-1', 'restored-2']);
+    // Boot replay is not a user modification — no events emitted.
+    expect(events).toEqual([]);
+  });
+
+  it('RESTORE_COLLAPSED_FOLDERS accepts an empty payload (all-expanded)', () => {
+    const s: AppState = { ...readyState(), collapsedFolders: ['old-1'] };
+    const { state } = reduce(s, { type: 'RESTORE_COLLAPSED_FOLDERS', lids: [] });
+    expect(state.collapsedFolders).toEqual([]);
+  });
+
+  it('RESTORE_COLLAPSED_FOLDERS is a no-op when both sides are empty (keeps reference stable)', () => {
+    const s = readyState();
+    const { state } = reduce(s, { type: 'RESTORE_COLLAPSED_FOLDERS', lids: [] });
+    // Reference stability matters for the `prev !== curr` write-
+    // suppression in main.ts — restoring an empty set at boot
+    // must not spuriously fire the save listener.
+    expect(state.collapsedFolders).toBe(s.collapsedFolders);
+  });
+
+  it('RESTORE_COLLAPSED_FOLDERS does not touch the container', () => {
+    const s = readyState();
+    const { state } = reduce(s, {
+      type: 'RESTORE_COLLAPSED_FOLDERS',
+      lids: ['restored-1'],
+    });
+    expect(state.container).toBe(s.container);
+  });
+
   // ── PR-γ: Recent pane collapse state ──
   //
   // S3 (2026-04-22): default flipped to `true` (pane starts closed).
