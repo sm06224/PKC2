@@ -5,6 +5,10 @@ import { render } from './adapter/ui/renderer';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
 import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
+  captureRenderContinuity,
+  restoreRenderContinuity,
+} from './adapter/ui/render-continuity';
+import {
   bindActions,
   populateAttachmentPreviews,
   populateInlineAssetPreviews,
@@ -102,30 +106,20 @@ async function boot(): Promise<void> {
   const locationNavTracker = createLocationNavTracker();
 
   dispatcher.onState((state) => {
-    // Save scroll positions and active element info before re-render
-    const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
-    const detail = root.querySelector('.pkc-detail');
-    const sidebarScroll = sidebar?.scrollTop ?? 0;
-    const detailScroll = detail?.scrollTop ?? 0;
-    // Capture the focused field + caret position so we can restore
-    // both after re-render. Bug S-14 (2026-04-14): the previous code
-    // only restored focus in `state.phase === 'editing'`, so search
-    // input lost focus on every keystroke (and IME composition was
-    // killed). Now we restore for any field with `data-pkc-field`.
-    const activeEl = document.activeElement;
-    const focusField =
-      activeEl instanceof HTMLElement
-        ? activeEl.getAttribute('data-pkc-field')
-        : null;
-    let caretStart: number | null = null;
-    let caretEnd: number | null = null;
-    if (
-      activeEl instanceof HTMLInputElement
-      || activeEl instanceof HTMLTextAreaElement
-    ) {
-      caretStart = activeEl.selectionStart;
-      caretEnd = activeEl.selectionEnd;
-    }
+    // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
+    // full re-render wipes `root.innerHTML`. The helper records
+    // scroll positions of every `data-pkc-region` scroller, and
+    // the focused element + caret when present. Restoration after
+    // render is a silent no-op when the target is no longer in
+    // the DOM, so this is safe to run unconditionally.
+    //
+    // Replaces the previous hand-rolled capture that matched
+    // `.pkc-detail` (a class that was renamed to
+    // `.pkc-center-content` without updating this hook — the
+    // center pane scroll was therefore never actually restored,
+    // which is why markdown-checklist clicks snapped to the top
+    // of the page).
+    const continuity = captureRenderContinuity(root);
 
     const currentCount = state.container?.entries.length ?? 0;
     const justCreated = currentCount > prevEntryCount && state.selectedLid && state.selectedLid !== prevSelectedLid;
@@ -135,48 +129,16 @@ async function boot(): Promise<void> {
 
     render(state, root);
 
-    // Restore scroll positions
-    const newSidebar = root.querySelector('[data-pkc-region="sidebar"]');
-    const newDetail = root.querySelector('.pkc-detail');
-    if (newSidebar) newSidebar.scrollTop = sidebarScroll;
-    if (newDetail) newDetail.scrollTop = detailScroll;
+    restoreRenderContinuity(root, continuity);
 
-    // Restore focus + caret. Two cases:
-    //   1. A specific data-pkc-field had focus before — restore it
-    //      regardless of phase. This covers the search input
-    //      (phase = 'ready') and the editor title / body (phase =
-    //      'editing'), the two surfaces where keystrokes drive
-    //      re-renders.
-    //   2. No specific field had focus AND we're entering edit mode
-    //      — default to the title input as before.
-    if (focusField) {
-      const target = root.querySelector<HTMLElement>(
-        `[data-pkc-field="${focusField}"]`,
-      );
-      if (target) {
-        target.focus();
-        if (
-          caretStart !== null
-          && (target instanceof HTMLInputElement
-            || target instanceof HTMLTextAreaElement)
-        ) {
-          try {
-            target.setSelectionRange(caretStart, caretEnd ?? caretStart);
-          } catch {
-            /* setSelectionRange throws for input types that don't
-             * support text selection (e.g. type=number); harmless. */
-          }
-        }
-      }
-    } else if (state.phase === 'editing') {
-      // S1 (2026-04-22): prefer the archetype's main body/description
-      // field over the title input so a user entering edit mode can
-      // start typing where they actually work. Falls back to title
-      // when no body field is available (attachment, textlog — the
-      // latter's per-log editing is owned by B4's explicit focus in
-      // `beginLogEdit`, which has already run by this point and wins
-      // over anything this branch selects; for non-B4 textlog edit
-      // starts the title remains the safest default).
+    // Edit-mode focus default: when NOTHING was focused before the
+    // re-render and we've just entered edit mode, point the caret
+    // at the archetype's main body/description field. Falls back
+    // to the title when no body field is available. This preserves
+    // S1 (2026-04-22): the non-B4 textlog path still lets its
+    // explicit `beginLogEdit` focus win because it runs before
+    // this branch on the same tick.
+    if (!continuity.focus && state.phase === 'editing') {
       const editingEntry = state.editingLid && state.container
         ? state.container.entries.find((e) => e.lid === state.editingLid) ?? null
         : null;

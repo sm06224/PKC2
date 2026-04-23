@@ -2622,8 +2622,11 @@ function renderCenter(state: AppState): HTMLElement {
     return center;
   }
 
-  // Content area (scrollable)
+  // Content area (scrollable). `data-pkc-region="center-content"`
+  // so the render-continuity helper can preserve its scrollTop
+  // across full re-renders (A-1 / A-2).
   const content = createElement('div', 'pkc-center-content');
+  content.setAttribute('data-pkc-region', 'center-content');
 
   // Light mode notice for attachment entries
   if (state.lightSource && selected.archetype === 'attachment') {
