@@ -163,6 +163,82 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
     expect(state.showArchived).toBe(true);
   });
 
+  // ── W1 Slice F-4: Quick-save shortcut ──
+
+  it('Slice F-4: quick-save button captures current filter state with a default name', () => {
+    const dispatcher = setup();
+    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'hello' });
+    render(dispatcher.getState(), root);
+
+    const btn = root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]');
+    expect(btn).not.toBeNull();
+    btn!.click();
+
+    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
+    expect(saved).toHaveLength(1);
+    // Default name starts with "Saved " and is non-empty beyond the prefix.
+    expect(saved[0]!.name.startsWith('Saved ')).toBe(true);
+    expect(saved[0]!.name.length).toBeGreaterThan('Saved '.length);
+    // Filter state is captured (round-trip via applySavedSearchFields).
+    expect(saved[0]!.search_query).toBe('hello');
+  });
+
+  it('Slice F-4: quick-save captures the Tag filter axis into tag_filter_v2', () => {
+    const dispatcher = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag: 'review' });
+    render(dispatcher.getState(), root);
+
+    root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]')!.click();
+
+    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
+    expect(saved).toHaveLength(1);
+    const tags = saved[0]!.tag_filter_v2 ?? [];
+    // Order within a Set is insertion order, so both values round-trip.
+    expect([...tags].sort()).toEqual(['review', 'urgent']);
+  });
+
+  it('Slice F-4: quick-save captures Tag + categorical peer together on a single row', () => {
+    const dispatcher = setup();
+    dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag: 'urgent' });
+    dispatcher.dispatch({ type: 'SET_CATEGORICAL_PEER_FILTER', peerLid: 'peer-lid-xyz' });
+    render(dispatcher.getState(), root);
+
+    root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]')!.click();
+
+    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.tag_filter_v2).toEqual(['urgent']);
+    expect(saved[0]!.categorical_peer_filter).toBe('peer-lid-xyz');
+  });
+
+  it('Slice F-4: quick-save does NOT prompt the user (dispatch is synchronous)', () => {
+    const dispatcher = setup();
+    const promptSpy = vi.spyOn(window, 'prompt');
+    try {
+      root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]')!.click();
+    } finally {
+      promptSpy.mockRestore();
+    }
+    expect(promptSpy).not.toHaveBeenCalled();
+    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
+    expect(saved).toHaveLength(1);
+  });
+
+  it('Slice F-4: existing ★ (save-search) flow is unchanged — name comes from prompt', () => {
+    const dispatcher = setup();
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Named');
+    try {
+      root.querySelector<HTMLElement>('[data-pkc-action="save-search"]')!.click();
+    } finally {
+      promptSpy.mockRestore();
+    }
+    // The explicit prompt-based name survives — quick-save's default
+    // name format ("Saved <datetime>") is NOT applied to the ★ path.
+    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
+    expect(saved.map((s) => s.name)).toEqual(['Named']);
+  });
+
   it('delete × button removes the saved search and does NOT fire apply', () => {
     const saved = [
       mkSaved('keep', 'Keep'),

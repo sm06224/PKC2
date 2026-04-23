@@ -1705,6 +1705,36 @@ function renderSavedSearchesPane(
     label.textContent = s.name || '(unnamed)';
     li.appendChild(label);
 
+    // W1 Slice F-3 — surface any saved `tag_filter_v2` values as
+    // read-only chips inline with the row so users can see which
+    // Tag filters a Saved Search will restore before clicking.
+    // Chips carry no `data-pkc-action` — click bubbles up to the
+    // row's `apply-saved-search` via closest(), which is the
+    // desired behavior (the whole row stays a single target).
+    // The legacy `tag_filter` key (categorical peer) is
+    // intentionally NOT visualized here; Slice A / Rename split
+    // made it a different axis and rendering it with the same
+    // "タグ" label would re-introduce the very vocabulary
+    // collision the rename fixed.
+    const savedTags = Array.isArray(s.tag_filter_v2) ? s.tag_filter_v2 : [];
+    if (savedTags.length > 0) {
+      const tagsWrap = createElement('span', 'pkc-saved-search-tags');
+      tagsWrap.setAttribute('data-pkc-region', 'saved-search-tags');
+
+      const tagsLabel = createElement('span', 'pkc-saved-search-tags-label');
+      tagsLabel.textContent = 'タグ:';
+      tagsWrap.appendChild(tagsLabel);
+
+      for (const tagValue of savedTags) {
+        const chip = createElement('span', 'pkc-saved-search-tag-chip');
+        chip.setAttribute('data-pkc-saved-tag-value', tagValue);
+        chip.textContent = tagValue;
+        tagsWrap.appendChild(chip);
+      }
+
+      li.appendChild(tagsWrap);
+    }
+
     if (!state.readonly) {
       const delBtn = createElement('button', 'pkc-saved-search-delete');
       delBtn.setAttribute('data-pkc-action', 'delete-saved-search');
@@ -1805,6 +1835,18 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       saveBtn.setAttribute('title', 'Save current search');
       saveBtn.textContent = '★';
       searchRow.appendChild(saveBtn);
+
+      // W1 Slice F-4 — quick-save shortcut. One click captures the
+      // full current filter state (search / archetype / categorical
+      // peer / Tag / sort / archived) under a timestamp-based
+      // default name, so the round-trip "set → save → see →
+      // restore" no longer requires typing a name. The ★ button
+      // above is retained for the name-first flow.
+      const quickSaveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
+      quickSaveBtn.setAttribute('data-pkc-action', 'quick-save-search');
+      quickSaveBtn.setAttribute('title', '現在の絞り込みを保存');
+      quickSaveBtn.textContent = '★+';
+      searchRow.appendChild(quickSaveBtn);
     }
 
     sidebar.appendChild(searchRow);

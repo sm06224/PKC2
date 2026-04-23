@@ -10,6 +10,7 @@ import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
+import type { SavedSearch } from '@core/model/saved-search';
 
 const mockContainer: Container = {
   meta: {
@@ -9714,17 +9715,17 @@ describe('Saved Searches Pane v1', () => {
     };
   }
 
-  function mkSaved(id: string, name: string = `Saved ${id}`) {
+  function mkSaved(id: string, name: string = `Saved ${id}`): SavedSearch {
     return {
       id,
       name,
       created_at: '2026-04-21T00:00:00Z',
       updated_at: '2026-04-21T00:00:00Z',
       search_query: '',
-      archetype_filter: [] as Entry['archetype'][],
+      archetype_filter: [],
       tag_filter: null,
-      sort_key: 'created_at' as const,
-      sort_direction: 'desc' as const,
+      sort_key: 'created_at',
+      sort_direction: 'desc',
       show_archived: false,
     };
   }
@@ -9860,5 +9861,166 @@ describe('Saved Searches Pane v1', () => {
       root,
     );
     expect(root.querySelector('[data-pkc-region="saved-searches"]')).toBeNull();
+  });
+
+  // ── W1 Slice F-3: Tag filter visualization on saved search rows ──
+
+  it('Slice F-3: renders a Tag chip for a single saved tag_filter_v2 value', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [{ ...mkSaved('s1', 'One tag'), tag_filter_v2: ['urgent'] }],
+    );
+    render(makeState({ container }), root);
+    const row = root.querySelector<HTMLElement>(
+      '[data-pkc-action="apply-saved-search"][data-pkc-saved-id="s1"]',
+    );
+    expect(row).not.toBeNull();
+    const tagsRegion = row!.querySelector('[data-pkc-region="saved-search-tags"]');
+    expect(tagsRegion).not.toBeNull();
+    const label = tagsRegion!.querySelector('.pkc-saved-search-tags-label');
+    expect(label!.textContent).toBe('タグ:');
+    const chips = tagsRegion!.querySelectorAll('.pkc-saved-search-tag-chip');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.getAttribute('data-pkc-saved-tag-value')).toBe('urgent');
+    expect(chips[0]!.textContent).toBe('urgent');
+  });
+
+  it('Slice F-3: renders multiple chips preserving saved order', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [{ ...mkSaved('s1', 'Many'), tag_filter_v2: ['urgent', 'review', '日本語'] }],
+    );
+    render(makeState({ container }), root);
+    const chips = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-saved-id="s1"] [data-pkc-region="saved-search-tags"] .pkc-saved-search-tag-chip',
+    );
+    expect(chips).toHaveLength(3);
+    const values = Array.from(chips).map((c) => c.getAttribute('data-pkc-saved-tag-value'));
+    expect(values).toEqual(['urgent', 'review', '日本語']);
+  });
+
+  it('Slice F-3: does NOT render the tags region when tag_filter_v2 is missing or empty', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [
+        mkSaved('no-field', 'No field'),
+        { ...mkSaved('empty-arr', 'Empty array'), tag_filter_v2: [] },
+      ],
+    );
+    render(makeState({ container }), root);
+    const rowA = root.querySelector<HTMLElement>('[data-pkc-saved-id="no-field"]');
+    const rowB = root.querySelector<HTMLElement>('[data-pkc-saved-id="empty-arr"]');
+    expect(rowA!.querySelector('[data-pkc-region="saved-search-tags"]')).toBeNull();
+    expect(rowB!.querySelector('[data-pkc-region="saved-search-tags"]')).toBeNull();
+    // Existing row contents are preserved (label + delete still rendered).
+    expect(rowA!.querySelector('.pkc-saved-search-label')!.textContent).toBe('No field');
+    expect(rowA!.querySelector('[data-pkc-action="delete-saved-search"]')).not.toBeNull();
+  });
+
+  it('Slice F-3: tag chips are display-only — no data-pkc-action on the chips themselves', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [{ ...mkSaved('s1'), tag_filter_v2: ['urgent'] }],
+    );
+    render(makeState({ container }), root);
+    const chip = root.querySelector<HTMLElement>(
+      '[data-pkc-saved-id="s1"] .pkc-saved-search-tag-chip',
+    );
+    // Click bubbles up to the row's apply-saved-search via closest().
+    // The chip itself must not introduce its own action.
+    expect(chip!.hasAttribute('data-pkc-action')).toBe(false);
+  });
+
+  it('Slice F-3: does NOT visualize the legacy categorical `tag_filter` field as a Tag chip', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      // Only the categorical peer legacy key is set; tag_filter_v2 is missing.
+      [{ ...mkSaved('s1', 'Legacy only'), tag_filter: 'peer-lid-xyz' }],
+    );
+    render(makeState({ container }), root);
+    const row = root.querySelector<HTMLElement>('[data-pkc-saved-id="s1"]');
+    // Vocabulary split (Slice A / Rename): the categorical axis must
+    // not render under the「タグ」label used for free-form Tags.
+    expect(row!.querySelector('[data-pkc-region="saved-search-tags"]')).toBeNull();
+  });
+
+  it('Slice F-3: coexists with categorical_peer_filter on the same row without conflict', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [
+        {
+          ...mkSaved('s1', 'Both axes'),
+          categorical_peer_filter: 'peer-lid-xyz',
+          tag_filter_v2: ['urgent', 'review'],
+        },
+      ],
+    );
+    render(makeState({ container }), root);
+    const row = root.querySelector<HTMLElement>('[data-pkc-saved-id="s1"]');
+    expect(row).not.toBeNull();
+    // Label preserved.
+    expect(row!.querySelector('.pkc-saved-search-label')!.textContent).toBe('Both axes');
+    // Tag filter is surfaced.
+    const chips = row!.querySelectorAll('.pkc-saved-search-tag-chip');
+    expect(chips).toHaveLength(2);
+    // Delete button still reachable (row operations intact).
+    expect(row!.querySelector('[data-pkc-action="delete-saved-search"]')).not.toBeNull();
+    // Row itself is still the apply target.
+    expect(row!.getAttribute('data-pkc-action')).toBe('apply-saved-search');
+  });
+
+  // ── W1 Slice F-4: Quick-save shortcut renders alongside the ★ ──
+
+  it('Slice F-4: renders the quick-save button next to ★ when not readonly / not preview', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container }), root);
+    const quickBtn = root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]');
+    expect(quickBtn).not.toBeNull();
+    expect(quickBtn!.closest('.pkc-search-row')).not.toBeNull();
+    // ★ remains — the name-first flow is not replaced.
+    expect(root.querySelector('[data-pkc-action="save-search"]')).not.toBeNull();
+  });
+
+  it('Slice F-4: hides the quick-save button in readonly mode', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container, readonly: true }), root);
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
+  });
+
+  it('Slice F-4: hides the quick-save button while an import preview is active', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(
+      makeState({
+        container,
+        importPreview: {
+          title: 'Incoming',
+          container_id: 'c2',
+          entry_count: 0,
+          revision_count: 0,
+          schema_version: 1,
+          source: 'x.json',
+          container: makeContainer([]),
+        },
+      }),
+      root,
+    );
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
+  });
+
+  it('Slice F-3: tag chips render inside the row but outside the label span', () => {
+    const container = makeContainer(
+      [mkEntry('a')],
+      [{ ...mkSaved('s1', 'Row with tags'), tag_filter_v2: ['urgent'] }],
+    );
+    render(makeState({ container }), root);
+    const row = root.querySelector<HTMLElement>('[data-pkc-saved-id="s1"]');
+    const label = row!.querySelector('.pkc-saved-search-label')!;
+    const tagsRegion = row!.querySelector('[data-pkc-region="saved-search-tags"]')!;
+    // Chip container is a sibling of the label, not a descendant, so
+    // CSS text-overflow on the label cannot truncate the chips.
+    expect(label.contains(tagsRegion)).toBe(false);
+    // DOM order: label comes before the tags region.
+    const follows = label.compareDocumentPosition(tagsRegion) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(follows).toBeTruthy();
   });
 });
