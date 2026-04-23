@@ -725,6 +725,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SAVE_SEARCH', name });
         break;
       }
+      case 'quick-save-search': {
+        // W1 Slice F-4 — one-click capture of the current filter
+        // axes. A timestamp-based default name keeps the dispatch
+        // synchronous (no prompt) and gives rows in the Saved
+        // Search list a sortable, human-readable label. Reducer
+        // guards (readonly / SAVED_SEARCH_CAP / empty container)
+        // still apply, so this remains a safe dispatch-and-forget.
+        const name = `Saved ${formatDateTime(new Date())}`;
+        dispatcher.dispatch({ type: 'SAVE_SEARCH', name });
+        break;
+      }
       case 'apply-saved-search': {
         const id = target.getAttribute('data-pkc-saved-id');
         if (!id) break;

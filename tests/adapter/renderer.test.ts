@@ -9969,6 +9969,44 @@ describe('Saved Searches Pane v1', () => {
     expect(row!.getAttribute('data-pkc-action')).toBe('apply-saved-search');
   });
 
+  // ── W1 Slice F-4: Quick-save shortcut renders alongside the ★ ──
+
+  it('Slice F-4: renders the quick-save button next to ★ when not readonly / not preview', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container }), root);
+    const quickBtn = root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]');
+    expect(quickBtn).not.toBeNull();
+    expect(quickBtn!.closest('.pkc-search-row')).not.toBeNull();
+    // ★ remains — the name-first flow is not replaced.
+    expect(root.querySelector('[data-pkc-action="save-search"]')).not.toBeNull();
+  });
+
+  it('Slice F-4: hides the quick-save button in readonly mode', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(makeState({ container, readonly: true }), root);
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
+  });
+
+  it('Slice F-4: hides the quick-save button while an import preview is active', () => {
+    const container = makeContainer([mkEntry('a')]);
+    render(
+      makeState({
+        container,
+        importPreview: {
+          title: 'Incoming',
+          container_id: 'c2',
+          entry_count: 0,
+          revision_count: 0,
+          schema_version: 1,
+          source: 'x.json',
+          container: makeContainer([]),
+        },
+      }),
+      root,
+    );
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
+  });
+
   it('Slice F-3: tag chips render inside the row but outside the label span', () => {
     const container = makeContainer(
       [mkEntry('a')],

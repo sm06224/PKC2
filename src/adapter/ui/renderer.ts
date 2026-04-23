@@ -1835,6 +1835,18 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       saveBtn.setAttribute('title', 'Save current search');
       saveBtn.textContent = '★';
       searchRow.appendChild(saveBtn);
+
+      // W1 Slice F-4 — quick-save shortcut. One click captures the
+      // full current filter state (search / archetype / categorical
+      // peer / Tag / sort / archived) under a timestamp-based
+      // default name, so the round-trip "set → save → see →
+      // restore" no longer requires typing a name. The ★ button
+      // above is retained for the name-first flow.
+      const quickSaveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
+      quickSaveBtn.setAttribute('data-pkc-action', 'quick-save-search');
+      quickSaveBtn.setAttribute('title', '現在の絞り込みを保存');
+      quickSaveBtn.textContent = '★+';
+      searchRow.appendChild(quickSaveBtn);
     }
 
     sidebar.appendChild(searchRow);
