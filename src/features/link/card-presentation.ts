@@ -18,17 +18,21 @@
  *   @[card:timeline](<target>)         → variant: 'timeline'
  *
  * Target grammar is validated against the canonical v0 target forms
- * shared with link / embed:
+ * for card presentation. Spec §5.4 / §8 mark `asset:<key>` and
+ * `pkc://<cid>/asset/<key>` as **❌ 非対応** for card — asset preview
+ * cards are a **v0 future dialect** (see
+ * `../../../docs/development/card-asset-target-coordination-audit.md`,
+ * Option C). The parser therefore only accepts entry-flavoured targets:
  *
  *   entry:<lid>[#<fragment>]           — via parseEntryRef
- *   asset:<key>                        — TOKEN_RE key
- *   pkc://<cid>/<kind>/<id>[#<frag>]   — via parsePortablePkcReference
+ *   pkc://<cid>/entry/<lid>[#<frag>]   — via parsePortablePkcReference,
+ *                                        `kind === 'entry'` only
  *
- * Any other scheme is rejected at parse time. Ordinary `https://` /
- * `http://` / `javascript:` URLs, External Permalink (`<base>#pkc?…`)
- * and clickable-image (`[![]](…)`) are explicitly rejected —
- * card-embed-presentation-v0.md §7 / §8 mark those as 🚫 do-not-emit
- * or ❌ invalid for card presentation.
+ * Any other scheme — including `asset:` / `pkc://<cid>/asset/<key>` /
+ * ordinary `https:` / `javascript:` / External Permalink / clickable-
+ * image — is rejected at parse time. Card-embed-presentation-v0.md
+ * §7 / §8 mark those as 🚫 do-not-emit or ❌ invalid for card
+ * presentation.
  *
  * Invariants:
  *   - pure: no side effects, no DOM, no state, no I/O
@@ -69,7 +73,6 @@ const VARIANT_WHITELIST: readonly CardVariant[] = [
   'wide',
   'timeline',
 ] as const;
-const ASSET_KEY_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Parse a card presentation string. Returns `null` for anything that
@@ -80,6 +83,8 @@ const ASSET_KEY_RE = /^[A-Za-z0-9_-]+$/;
  *   - `[card](...)`         — missing `@` prefix, plain link
  *   - `@[card:unknown](...)` — unknown variant
  *   - `@[card]()` / `@[card]( )` — empty / whitespace-only target
+ *   - `@[card](asset:key)`  — v0 future dialect (spec §5.4 ❌ 非対応)
+ *   - `@[card](pkc://cid/asset/key)` — v0 future dialect
  *   - `@[card](https://...)` — ordinary URL is not a v0 target
  *   - `@[card](javascript:…)` — foreign scheme
  *   - `[![](asset:a1)](asset:a1)` — clickable-image is a different
@@ -165,11 +170,15 @@ function isValidCardTarget(target: string): boolean {
   if (target.startsWith('entry:')) {
     return isValidEntryRef(target);
   }
-  if (target.startsWith('asset:')) {
-    return ASSET_KEY_RE.test(target.slice('asset:'.length));
-  }
   if (target.startsWith('pkc://')) {
-    return parsePortablePkcReference(target) !== null;
+    // Portable reference: only the `entry/` kind is canonical for
+    // card in v0. `pkc://<cid>/asset/<key>` is rejected for the same
+    // reason `asset:<key>` is — spec §5.4 / §8 list both as
+    // ❌ 非対応 for card, see the coordination audit Option C.
+    const parsed = parsePortablePkcReference(target);
+    return parsed !== null && parsed.kind === 'entry';
   }
+  // `asset:<key>` and everything else falls through — future dialect
+  // or foreign scheme, either way not a canonical v0 card target.
   return false;
 }

@@ -228,13 +228,16 @@ describe('card renderer hook — escaping / safety', () => {
 // `asset:` is NOT on the markdown-it `validateLink` allowlist, so
 // when an asset-target card reaches `renderMarkdown()` directly
 // (without running `asset-resolver.ts` first) the link tokens are
-// rejected before the card hook sees them. This is the safe
-// default: unresolved asset refs survive as literal characters
-// instead of becoming `<a href="asset:…">` anchors pointing
-// nowhere. Asset-target cards in the real pipeline are handled at
-// the asset-resolver coordination layer (a future slice) — not at
-// this renderer hook. These tests pin the current boundary so a
-// later change to the allowlist is noticed immediately.
+// rejected before the card hook sees them. As of Slice-3.5 the
+// Slice-1 parser (`parseCardPresentation`) also rejects asset /
+// `pkc://<cid>/asset/<key>` targets, matching the spec §5.4 ❌ 非対応
+// and audit Option C. This is the safe default: unresolved asset
+// refs survive as literal characters instead of becoming
+// `<a href="asset:…">` anchors pointing nowhere. Asset-target cards
+// in the real pipeline are handled at the asset-resolver
+// coordination layer (a future slice) — not at this renderer hook.
+// These tests pin the current boundary so a later change to the
+// allowlist is noticed immediately.
 
 describe('card renderer hook — asset target (Slice-2 boundary)', () => {
   it('does NOT turn @[card](asset:key) into a card placeholder at the renderer layer', () => {
