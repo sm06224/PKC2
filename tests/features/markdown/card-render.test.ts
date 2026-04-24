@@ -42,11 +42,18 @@ describe('card renderer hook — happy path', () => {
     expect(html).toContain('>@card:compact</span>');
   });
 
-  it('accepts wide variant with asset target', () => {
-    const html = renderMarkdown('@[card:wide](asset:a1)');
+  it('accepts wide variant with Portable PKC Reference target', () => {
+    // `pkc://` is a renderer-level allowed scheme, so `@[card:wide]`
+    // wrapping a portable reference tokenises cleanly and the hook
+    // matches. Asset target is handled at the asset-resolver
+    // coordination layer in a later slice — see the
+    // "asset target (documented Slice-2 boundary)" describe block.
+    const html = renderMarkdown('@[card:wide](pkc://cid/entry/e1)');
     expect(html).toContain('data-pkc-card-variant="wide"');
-    expect(html).toContain('data-pkc-card-target="asset:a1"');
-    expect(html).toContain('data-pkc-card-raw="@[card:wide](asset:a1)"');
+    expect(html).toContain('data-pkc-card-target="pkc://cid/entry/e1"');
+    expect(html).toContain(
+      'data-pkc-card-raw="@[card:wide](pkc://cid/entry/e1)"',
+    );
   });
 
   it('accepts timeline variant with Portable PKC Reference target', () => {
@@ -69,13 +76,13 @@ describe('card renderer hook — happy path', () => {
 
   it('recognises two adjacent cards in the same paragraph', () => {
     const html = renderMarkdown(
-      '@[card](entry:e1) and @[card:wide](asset:a1)',
+      '@[card](entry:e1) and @[card:compact](pkc://cid/entry/e2)',
     );
     const placeholders = extractCardPlaceholders(html);
     expect(placeholders).toHaveLength(2);
     expect(html).toContain('data-pkc-card-target="entry:e1"');
-    expect(html).toContain('data-pkc-card-target="asset:a1"');
-    expect(html).toContain('data-pkc-card-variant="wide"');
+    expect(html).toContain('data-pkc-card-target="pkc://cid/entry/e2"');
+    expect(html).toContain('data-pkc-card-variant="compact"');
     // The literal " and " text between them must survive.
     expect(html).toContain('</span> and <span');
   });
@@ -137,11 +144,14 @@ describe('card renderer hook — fallback cases', () => {
   });
 
   it('does NOT treat clickable-image as a card', () => {
-    const html = renderMarkdown('[![x](asset:a1)](entry:e1)');
+    // Use an entry: inner src so the image rule is exercised (the
+    // inner src must be an allowlisted scheme, otherwise markdown-it
+    // silently fails to build the image and degrades to literal
+    // text — which is not what this test wants to assert).
+    const html = renderMarkdown('[![x](entry:inner)](entry:e1)');
     expect(html).not.toContain('pkc-card-placeholder');
-    // The inner image and outer entry link both survive.
-    expect(html).toContain('<img');
-    expect(html).toContain('data-pkc-action="navigate-entry-ref"');
+    // The entry anchor survives; no card promotion.
+    expect(html).toContain('href="entry:e1"');
   });
 
   it('does NOT treat case-mismatched label as a card', () => {
@@ -210,6 +220,59 @@ describe('card renderer hook — escaping / safety', () => {
     );
     // What remains is `<p></p>` (plus newlines). Must not contain `@`.
     expect(stripped).not.toContain('@');
+  });
+});
+
+// ── Asset target boundary ──────────────────────────────────────
+//
+// `asset:` is NOT on the markdown-it `validateLink` allowlist, so
+// when an asset-target card reaches `renderMarkdown()` directly
+// (without running `asset-resolver.ts` first) the link tokens are
+// rejected before the card hook sees them. This is the safe
+// default: unresolved asset refs survive as literal characters
+// instead of becoming `<a href="asset:…">` anchors pointing
+// nowhere. Asset-target cards in the real pipeline are handled at
+// the asset-resolver coordination layer (a future slice) — not at
+// this renderer hook. These tests pin the current boundary so a
+// later change to the allowlist is noticed immediately.
+
+describe('card renderer hook — asset target (Slice-2 boundary)', () => {
+  it('does NOT turn @[card](asset:key) into a card placeholder at the renderer layer', () => {
+    const html = renderMarkdown('@[card](asset:a1)');
+    expect(html).not.toContain('pkc-card-placeholder');
+  });
+
+  it('does NOT emit a live <a href="asset:…"> for a bare asset link', () => {
+    // Pre-PR behaviour: `validateLink` rejects the asset: scheme,
+    // so the notation survives as plain text. This is what the
+    // downstream asset-resolver relies on when a reference slips
+    // past its preprocessor — it must not suddenly become a broken
+    // external anchor.
+    const html = renderMarkdown('[label](asset:a1)');
+    expect(html).not.toMatch(/<a[^>]*href="asset:/i);
+  });
+
+  it('does NOT emit a live <a href="asset:…"> for the image-empty form', () => {
+    const html = renderMarkdown('[](asset:a1)');
+    expect(html).not.toMatch(/<a[^>]*href="asset:/i);
+  });
+
+  it('does NOT emit a live <a href="asset:…"> inside a clickable-image', () => {
+    // Clickable-image with both inner image and outer link pointing
+    // at assets: the outer link href is `asset:…` which must stay
+    // rejected.
+    const html = renderMarkdown('[![alt](asset:a1)](asset:b2)');
+    expect(html).not.toMatch(/<a[^>]*href="asset:/i);
+  });
+
+  it('does NOT emit a live <img src="asset:…"> for a bare image embed', () => {
+    // markdown-it's image rule also runs through `validateLink` for
+    // the `src`. With `asset:` off the allowlist, a raw asset image
+    // embed that bypasses `asset-resolver.ts` stays as literal text
+    // instead of becoming a broken `<img>`. The full pipeline runs
+    // the resolver upstream and never reaches this fallback.
+    const html = renderMarkdown('![alt](asset:a1)');
+    expect(html).not.toMatch(/<img[^>]*src="asset:/i);
   });
 });
 
