@@ -192,6 +192,28 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     expect(textarea.value).not.toContain('Example');
   });
 
+  // Post-correction: External Permalink also runs through this hook.
+  it('converts a same-container External Permalink (`<base>#pkc?...`) on paste', () => {
+    const { textarea } = setupEditingText();
+    const url = `https://example.com/pkc2.html#pkc?container=${SELF}&entry=e1`;
+
+    const evt = firePaste(textarea, { plain: url });
+
+    expect(evt.defaultPrevented).toBe(true);
+    expect(textarea.value).toBe('[](entry:e1)');
+  });
+
+  it('does NOT preventDefault on a cross-container External Permalink', () => {
+    const { textarea } = setupEditingText();
+    const before = textarea.value;
+    const url = `https://example.com/pkc2.html#pkc?container=${OTHER}&entry=e1`;
+
+    const evt = firePaste(textarea, { plain: url });
+
+    expect(evt.defaultPrevented).toBe(false);
+    expect(textarea.value).toBe(before);
+  });
+
   it('does not wrap a bare entry: reference the user pasted', () => {
     // The user already chose the internal form; we leave it to the
     // browser default paste so they get the literal text back.

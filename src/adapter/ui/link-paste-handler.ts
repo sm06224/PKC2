@@ -68,11 +68,16 @@ export function maybeHandleLinkPaste(
     return false;
   }
 
-  // Only `pkc://` permalinks trigger the wrapping. Bare internal
-  // refs (`entry:` / `asset:`) the user typed by hand should be
-  // left untouched even though `convertPastedText` would classify
-  // them as internal — wrapping them silently surprises the writer.
-  if (!rawText.startsWith(PKC_SCHEME)) return false;
+  // Trigger only on the two forms paste-conversion can demote:
+  //   - Portable PKC Reference: `pkc://<cid>/...`
+  //   - External Permalink:     `<base>#pkc?...`
+  // Bare internal refs (`entry:` / `asset:`) the user typed by hand
+  // should be left untouched — wrapping them silently surprises the
+  // writer. Plain text / ordinary URLs / Office URI / obsidian /
+  // vscode / mailto are out of scope by the same trigger guard.
+  const isPortableReference = rawText.startsWith(PKC_SCHEME);
+  const isExternalPermalink = rawText.includes(PKC_FRAGMENT_MARKER);
+  if (!isPortableReference && !isExternalPermalink) return false;
 
   const result = convertPastedText(rawText, currentContainerId);
   if (result.type !== 'internal') return false;
@@ -84,6 +89,8 @@ export function maybeHandleLinkPaste(
   insertIntoEditable(target, inserted);
   return true;
 }
+
+const PKC_FRAGMENT_MARKER = '#pkc?';
 
 /**
  * Splice `text` into `target` at the caret / selection. Prefers

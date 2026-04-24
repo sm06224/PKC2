@@ -136,6 +136,21 @@ function setupAndSelect(
   render(dispatcher.getState(), root);
 }
 
+/**
+ * Post-correction (docs/spec/pkc-link-unification-v0.md §4):
+ * Copy emits **External Permalink** (`<base>#pkc?...`), NOT the
+ * Portable PKC Reference (`pkc://...`). Tests use whatever
+ * `window.location.href` happy-dom resolves to as the base URL.
+ */
+function expectedExternalEntry(lid: string): string {
+  const base = window.location.href.split('#')[0]!;
+  return `${base}#pkc?container=${SELF}&entry=${lid}`;
+}
+function expectedExternalAsset(key: string): string {
+  const base = window.location.href.split('#')[0]!;
+  return `${base}#pkc?container=${SELF}&asset=${key}`;
+}
+
 describe('Copy permalink — entry meta pane', () => {
   it('renders a "Copy link" button in the entry meta header', () => {
     setupAndSelect('e1');
@@ -146,17 +161,15 @@ describe('Copy permalink — entry meta pane', () => {
     expect(btn!.textContent).toContain('Copy link');
   });
 
-  it('copies pkc://<cid>/entry/<lid> on click', async () => {
+  it('copies an External Permalink (`<base>#pkc?container=&entry=`) on click', async () => {
     setupAndSelect('e1');
     const btn = root.querySelector<HTMLButtonElement>(
       '[data-pkc-action="copy-entry-permalink"][data-pkc-lid="e1"]',
     );
     expect(btn).not.toBeNull();
     btn!.click();
-    // Promise chain — give the microtask queue a tick so the
-    // clipboard write resolves.
     await Promise.resolve();
-    expect(writes).toEqual([`pkc://${SELF}/entry/e1`]);
+    expect(writes).toEqual([expectedExternalEntry('e1')]);
   });
 
   it('does NOT copy when the container has no container_id (safe fail)', async () => {
@@ -194,7 +207,7 @@ describe('Copy permalink — attachment action row', () => {
     expect(btn).toBeNull();
   });
 
-  it('copies pkc://<cid>/asset/<key> on click', async () => {
+  it('copies an External Permalink (`<base>#pkc?container=&asset=`) on click', async () => {
     setupAndSelect('att1');
     const btn = root.querySelector<HTMLButtonElement>(
       '[data-pkc-action="copy-asset-permalink"][data-pkc-lid="att1"]',
@@ -202,14 +215,10 @@ describe('Copy permalink — attachment action row', () => {
     expect(btn).not.toBeNull();
     btn!.click();
     await Promise.resolve();
-    expect(writes).toEqual([`pkc://${SELF}/asset/ast-001`]);
+    expect(writes).toEqual([expectedExternalAsset('ast-001')]);
   });
 
   it('entry meta "Copy link" on an attachment entry still emits the entry permalink (not asset)', async () => {
-    // Both buttons exist for an attachment — the meta-pane one
-    // shares the entry-level action and should produce an
-    // `entry/<lid>` URL, not `asset/<key>`. Documents the intended
-    // separation so a future refactor doesn't silently merge them.
     setupAndSelect('att1');
     const entryBtn = root.querySelector<HTMLButtonElement>(
       '[data-pkc-action="copy-entry-permalink"][data-pkc-lid="att1"]',
@@ -217,16 +226,16 @@ describe('Copy permalink — attachment action row', () => {
     expect(entryBtn).not.toBeNull();
     entryBtn!.click();
     await Promise.resolve();
-    expect(writes).toEqual([`pkc://${SELF}/entry/att1`]);
+    expect(writes).toEqual([expectedExternalEntry('att1')]);
   });
 });
 
 describe('Copy permalink — canonical form matches paste-side contract', () => {
-  it('copied permalink is exactly the canonical form the paste wiring demotes', async () => {
-    // The paste side (action-binder-link-paste.test.ts) already
-    // proves `pkc://<self>/entry/<lid>` demotes to `[](entry:<lid>)`.
-    // Here we pin that the COPY side emits that same canonical
-    // string verbatim, so the UX loop closes without any transform
+  it('copied External Permalink is exactly what paste-conversion demotes back', async () => {
+    // The paste side (action-binder-link-paste.test.ts +
+    // paste-conversion.test.ts post-correction) demotes
+    // `<base>#pkc?container=<self>&entry=<lid>` back to
+    // `[](entry:<lid>)`. Here we pin the COPY side emits that same
     // in between.
     setupAndSelect('e1');
     const btn = root.querySelector<HTMLButtonElement>(
@@ -234,6 +243,6 @@ describe('Copy permalink — canonical form matches paste-side contract', () => 
     );
     btn!.click();
     await Promise.resolve();
-    expect(writes[0]).toBe(`pkc://${SELF}/entry/e1`);
+    expect(writes[0]).toBe(expectedExternalEntry('e1'));
   });
 });

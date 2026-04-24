@@ -27,7 +27,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import { makeSlugCounter } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
-import { parsePermalink } from '../link/permalink';
+import { parsePortablePkcReference } from '../link/permalink';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
@@ -125,41 +125,48 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
     token.attrSet('data-pkc-action', 'navigate-entry-ref');
     token.attrSet('data-pkc-entry-ref', href);
   } else if (href.startsWith('pkc:')) {
-    // `pkc://` permalink — spec/pkc-link-unification-v0.md §4.
-    // Paste conversion normally demotes same-container permalinks
-    // to `entry:` internal refs, so any `pkc://` that lands in
-    // a rendered body is almost always cross-container. We tag
-    // it with placeholder data-attributes so CSS can render it
-    // as an external badge, and keep the raw href so a future
-    // resolver (P2P / import) can pick it up verbatim.
+    // Portable PKC Reference — spec/pkc-link-unification-v0.md §5.5
+    // (post-correction). Despite the historical name, `pkc://` is
+    // NOT a permalink (no OS protocol handler, not clickable in
+    // external apps). It is the **machine identifier form** used
+    // by paste conversion / cross-PKC marshalling.
+    //
+    // Paste conversion normally demotes same-container Portable
+    // References to `entry:` / `asset:` internal refs, so any
+    // `pkc://` that lands in a rendered body is almost always
+    // cross-container. We tag it with placeholder data-attributes
+    // so CSS can render it as a portable-reference badge, and
+    // keep the raw href so a future resolver (P2P / import / share
+    // UI) can pick it up verbatim.
     //
     // Malformed `pkc://...` values fall back to the default
     // external-link treatment below so the body isn't silently
     // suppressed.
-    const parsed = parsePermalink(href);
+    const parsed = parsePortablePkcReference(href);
     const rawEnv = (env ?? {}) as { currentContainerId?: unknown };
     const currentContainerId =
       typeof rawEnv.currentContainerId === 'string' ? rawEnv.currentContainerId : '';
     if (parsed && currentContainerId && parsed.containerId === currentContainerId) {
-      // Same-container permalink left behind in the body (rare —
-      // paste conversion should have already demoted it). Render
-      // as an ordinary anchor with the raw href; a follow-up
+      // Same-container Portable Reference left behind in the body
+      // (rare — paste conversion should have already demoted it).
+      // Render as an ordinary anchor with the raw href; a follow-up
       // slice may promote this to an `entry:` internal link.
       token.attrSet('rel', 'noopener noreferrer');
     } else if (parsed) {
-      // Cross-container (or currentContainerId is unknown — treat as
-      // cross for safety): emit the external-PKC placeholder.
+      // Cross-container (or currentContainerId is unknown — treat
+      // as cross for safety): emit the portable-reference placeholder.
       const cls = token.attrGet('class');
-      token.attrSet('class', cls ? `${cls} pkc-permalink-external` : 'pkc-permalink-external');
-      token.attrSet('data-pkc-permalink-container', parsed.containerId);
-      token.attrSet('data-pkc-permalink-kind', parsed.kind);
-      token.attrSet('data-pkc-permalink-target', parsed.targetId);
+      const placeholderClass = 'pkc-portable-reference-placeholder';
+      token.attrSet('class', cls ? `${cls} ${placeholderClass}` : placeholderClass);
+      token.attrSet('data-pkc-portable-container', parsed.containerId);
+      token.attrSet('data-pkc-portable-kind', parsed.kind);
+      token.attrSet('data-pkc-portable-target', parsed.targetId);
       if (parsed.fragment !== undefined) {
-        token.attrSet('data-pkc-permalink-fragment', parsed.fragment);
+        token.attrSet('data-pkc-portable-fragment', parsed.fragment);
       }
       token.attrSet(
         'title',
-        `External PKC ${parsed.kind} · container ${parsed.containerId} · target ${parsed.targetId}`,
+        `Portable PKC ${parsed.kind} · container ${parsed.containerId} · target ${parsed.targetId}`,
       );
       token.attrSet('rel', 'noopener noreferrer');
     } else {

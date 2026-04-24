@@ -8,7 +8,7 @@ import { renderMarkdown } from '@features/markdown/markdown-render';
  *
  * Behaviour pinned here:
  *   - `[](pkc://<other>/entry/<lid>)` → `<a>` with class
- *     `pkc-permalink-external` and `data-pkc-permalink-*`
+ *     `pkc-portable-reference-placeholder` and `data-pkc-portable-*`
  *     attributes so the CSS badge (base.css) can show it as
  *     an external reference.
  *   - Same-container permalink → ordinary anchor, no placeholder
@@ -27,10 +27,10 @@ describe('renderMarkdown — cross-container PKC permalink placeholder', () => {
     const html = renderMarkdown('[link](pkc://other-cid/entry/e123)', {
       currentContainerId: SELF,
     });
-    expect(html).toContain('class="pkc-permalink-external"');
-    expect(html).toContain('data-pkc-permalink-container="other-cid"');
-    expect(html).toContain('data-pkc-permalink-kind="entry"');
-    expect(html).toContain('data-pkc-permalink-target="e123"');
+    expect(html).toContain('class="pkc-portable-reference-placeholder"');
+    expect(html).toContain('data-pkc-portable-container="other-cid"');
+    expect(html).toContain('data-pkc-portable-kind="entry"');
+    expect(html).toContain('data-pkc-portable-target="e123"');
     // href is preserved verbatim for downstream resolvers.
     expect(html).toContain('href="pkc://other-cid/entry/e123"');
   });
@@ -39,10 +39,10 @@ describe('renderMarkdown — cross-container PKC permalink placeholder', () => {
     const html = renderMarkdown('[file](pkc://other-cid/asset/a456)', {
       currentContainerId: SELF,
     });
-    expect(html).toContain('class="pkc-permalink-external"');
-    expect(html).toContain('data-pkc-permalink-container="other-cid"');
-    expect(html).toContain('data-pkc-permalink-kind="asset"');
-    expect(html).toContain('data-pkc-permalink-target="a456"');
+    expect(html).toContain('class="pkc-portable-reference-placeholder"');
+    expect(html).toContain('data-pkc-portable-container="other-cid"');
+    expect(html).toContain('data-pkc-portable-kind="asset"');
+    expect(html).toContain('data-pkc-portable-target="a456"');
   });
 
   it('preserves the fragment on an entry permalink', () => {
@@ -50,7 +50,7 @@ describe('renderMarkdown — cross-container PKC permalink placeholder', () => {
       '[anchor](pkc://other-cid/entry/e123#log/abc)',
       { currentContainerId: SELF },
     );
-    expect(html).toContain('data-pkc-permalink-fragment="#log/abc"');
+    expect(html).toContain('data-pkc-portable-fragment="#log/abc"');
     expect(html).toContain('href="pkc://other-cid/entry/e123#log/abc"');
   });
 });
@@ -60,8 +60,8 @@ describe('renderMarkdown — same-container permalink', () => {
     const html = renderMarkdown(`[link](pkc://${SELF}/entry/e1)`, {
       currentContainerId: SELF,
     });
-    expect(html).not.toContain('pkc-permalink-external');
-    expect(html).not.toContain('data-pkc-permalink-container');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
+    expect(html).not.toContain('data-pkc-portable-container');
     // The anchor still renders (href preserved) — a future slice may
     // demote same-container permalinks to `entry:` internal refs.
     expect(html).toContain(`href="pkc://${SELF}/entry/e1"`);
@@ -72,8 +72,8 @@ describe('renderMarkdown — same-container permalink', () => {
     // loaded a container yet should render conservatively so no one's
     // lid namespace leaks into another's.
     const html = renderMarkdown('[x](pkc://any/entry/e1)');
-    expect(html).toContain('pkc-permalink-external');
-    expect(html).toContain('data-pkc-permalink-container="any"');
+    expect(html).toContain('pkc-portable-reference-placeholder');
+    expect(html).toContain('data-pkc-portable-container="any"');
   });
 });
 
@@ -83,7 +83,7 @@ describe('renderMarkdown — malformed pkc:// falls through', () => {
       currentContainerId: SELF,
     });
     // Not a placeholder — the parser rejected the shape.
-    expect(html).not.toContain('pkc-permalink-external');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
     // Still an anchor (we added `pkc:` to the safe allowlist so
     // users don't see their body silently drop). Ordinary external
     // link treatment applies.
@@ -95,7 +95,7 @@ describe('renderMarkdown — malformed pkc:// falls through', () => {
     const html = renderMarkdown('[x](pkc://other-cid/folder/f1)', {
       currentContainerId: SELF,
     });
-    expect(html).not.toContain('pkc-permalink-external');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
     expect(html).toContain('target="_blank"');
   });
 });
@@ -108,7 +108,7 @@ describe('renderMarkdown — unchanged behaviour for non-PKC URLs', () => {
     expect(html).toContain('href="https://example.com"');
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
-    expect(html).not.toContain('pkc-permalink-external');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
   });
 
   it('keeps entry: internal links routed to navigate-entry-ref', () => {
@@ -117,7 +117,7 @@ describe('renderMarkdown — unchanged behaviour for non-PKC URLs', () => {
     });
     expect(html).toContain('data-pkc-action="navigate-entry-ref"');
     expect(html).toContain('data-pkc-entry-ref="entry:lid_a"');
-    expect(html).not.toContain('pkc-permalink-external');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
   });
 });
 

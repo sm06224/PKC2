@@ -5987,14 +5987,16 @@ mark.pkc-search-mark {
   font-size: 0.78rem;
 }
 
-/* ── External PKC permalink placeholder ──
-   spec: docs/spec/pkc-link-unification-v0.md §8.3.
-   Cross-container `pkc://<other>/...` links in a rendered body
-   surface as a compact inline badge so the reader can tell the
+/* ── Portable PKC Reference placeholder ──
+   spec: docs/spec/pkc-link-unification-v0.md §5.5 / §8.3.
+   Cross-container `pkc://<other>/...` (Portable PKC Reference)
+   surfaces as a compact inline badge so the reader can tell the
    target is NOT resolvable inside this container. Target data
-   (`data-pkc-permalink-*`) is kept on the anchor so a future
-   P2P / import resolver can pick it up without re-parsing. */
-.pkc-permalink-external {
+   (`data-pkc-portable-*`) is kept on the anchor so a future
+   P2P / import resolver can pick it up without re-parsing.
+   This is NOT an "external permalink" — that term is reserved
+   for `<base>#pkc?...` which IS clickable in external apps. */
+.pkc-portable-reference-placeholder {
   display: inline-flex;
   align-items: baseline;
   gap: 0.3em;
@@ -6006,11 +6008,11 @@ mark.pkc-search-mark {
   text-decoration: none;
   font-size: 0.92em;
 }
-.pkc-permalink-external::before {
+.pkc-portable-reference-placeholder::before {
   content: "🌐";
   font-size: 0.88em;
   flex: none;
 }
-.pkc-permalink-external:hover {
+.pkc-portable-reference-placeholder:hover {
   text-decoration: underline;
 }
