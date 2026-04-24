@@ -120,6 +120,66 @@ function resolveModules(deps: Record<string, string> | undefined): AboutModule[]
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Release summary for the current user-visible version.
+ *
+ * Source of truth for the About view's highlights / known-limitations
+ * block(v2.1.0+). Kept as a build-time constant so a stale dist/
+ * HTML can still surface the summary offline without network or
+ * runtime fetch. Full detail lives in
+ * `docs/release/CHANGELOG_v<version>.md`; keep bullets short and
+ * user-facing here.
+ *
+ * When bumping the semver, update this block together with the
+ * CHANGELOG doc — `docs/development/versioning-policy.md` §3 codifies
+ * the rule that About summary and changelog must stay in sync.
+ */
+const RELEASE_SUMMARY = {
+  '2.1.0': {
+    highlights: [
+      'Link system: Copy link / paste conversion / External Permalink receive',
+      'Tags: entry tags, Tag filter, Saved Search tag persistence, `tag:` parser',
+      'Storage Profile: asset bytes + body bytes breakdown',
+      'UI continuity: scroll / focus / caret restore, folder collapse persistence',
+      'Data correctness: orphan asset cleanup persistence, IDB asset delete diff',
+      'Relation / tree safety: structural cycle display rescue + reducer guard',
+    ],
+    knownLimitations: [
+      'Link migration tool is designed (spec v1) but not implemented',
+      'Card / embed presentation is not implemented yet',
+      'Color tag is spec-only — implementation deferred to a future wave',
+      'Cross-container resolver / P2P is not implemented',
+      'OS protocol handler for `pkc://` is not implemented',
+      'Full container footprint (body + relations + revisions) is not implemented — Storage Profile is asset-only',
+    ],
+    changelog: 'docs/release/CHANGELOG_v2.1.0.md',
+  },
+} as const;
+
+/**
+ * Look up the `release` block for a given semver. Falls back to an
+ * empty summary when the version is not in `RELEASE_SUMMARY` (typical
+ * for dev builds between tagged releases). We still emit the field
+ * so consumers can count on the shape.
+ */
+function resolveRelease(version: string): {
+  highlights: string[];
+  knownLimitations: string[];
+  changelog?: string;
+} {
+  const hit = (RELEASE_SUMMARY as Record<string, {
+    highlights: readonly string[];
+    knownLimitations: readonly string[];
+    changelog: string;
+  } | undefined>)[version];
+  if (!hit) return { highlights: [], knownLimitations: [] };
+  return {
+    highlights: [...hit.highlights],
+    knownLimitations: [...hit.knownLimitations],
+    ...(hit.changelog ? { changelog: hit.changelog } : {}),
+  };
+}
+
 export function buildAboutEntry(
   pkg: PkgJson,
   buildAt: string,
@@ -129,6 +189,7 @@ export function buildAboutEntry(
   const dependencies = resolveModules(pkg.dependencies);
   const devDependencies = resolveModules(pkg.devDependencies);
   const contributors = resolveContributors(pkg);
+  const release = resolveRelease(pkg.version);
 
   const payload = {
     type: 'pkc2-about' as const,
@@ -157,6 +218,7 @@ export function buildAboutEntry(
     dependencies,
     devDependencies,
     contributors,
+    release,
   };
 
   return {

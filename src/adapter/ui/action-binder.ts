@@ -1297,14 +1297,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'copy-log-line-ref': {
+        // Phase 1 step 2 (G1 + G2) — TEXTLOG log の通常ユーザー向け
+        // コピーを External Permalink に揃える。従来 emit していた
+        // `[title › ts](entry:<lid>#<logId>)` 形は legacy 扱いで、
+        // Internal Markdown Dialect(spec §5.7 / audit §9)の正本形
+        // `log/<logId>` を External Permalink の fragment として載
+        // せる。action 名 `copy-log-line-ref` は既存 DOM binding が
+        // 各所にあるため維持(diff 最小化、audit §3.3 / spec note)。
+        //
+        // 出力: `<base>#pkc?container=<cid>&entry=<lid>&fragment=log/<logId>`
+        //
+        // Paste conversion 側(#145 受信 / #147 label 合成)は既に
+        // External Permalink + fragment を解釈できるので、この URL
+        // を別 PKC editor に貼ると
+        // `[Log Label](entry:<lid>#log/<logId>)` に変換される(Phase
+        // 1 step 3 で label 合成の log-label support を拡張予定)。
         if (!lid) break;
         const logId = target.getAttribute('data-pkc-log-id');
         if (!logId) break;
         const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent || ent.archetype !== 'textlog') break;
-        const ref = formatLogLineReference(ent, logId);
-        if (ref) void copyPlainText(ref);
+        const baseUrl = currentDocumentBaseUrl();
+        if (!baseUrl) break;
+        const url = formatExternalPermalink({
+          baseUrl,
+          kind: 'entry',
+          containerId: cid,
+          targetId: lid,
+          fragment: `log/${logId}`,
+        });
+        if (!url) break;
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Log link をコピーしました' : 'Log link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
         break;
       }
       case 'edit-log': {
@@ -2019,6 +2054,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
               break;
             }
           }
+        });
+        break;
+      }
+      case 'navigate-asset-ref': {
+        // Phase 1 step 4 (audit G3) — body 内に残った
+        // `[label](pkc://<self>/asset/<key>)` を、その asset を
+        // 持っている attachment entry への navigation に寄せる。
+        // markdown-render の same-container Portable Reference
+        // fallback(§5.5)が data 属性を付与して、ここに届く。
+        //
+        // 挙動:
+        //   owner found     → SELECT_ENTRY + revealInSidebar: true
+        //   owner not found → info toast、state は変更しない
+        //   malformed body  → skip(owner 扱いしない)
+        //
+        // preventDefault は dispatch/toast のどちらを走らせても
+        // 必須(`pkc://` は OS で解決不能なので native navigation
+        // を止める)。
+        e.preventDefault();
+        const assetKey = target.getAttribute('data-pkc-asset-key');
+        if (!assetKey) break;
+        const ownerLid = findAttachmentOwnerLid(dispatcher, assetKey);
+        if (ownerLid === null) {
+          showToast({
+            kind: 'info',
+            message: `アセット (${assetKey}) の所有エントリが見つかりませんでした。`,
+            autoDismissMs: 4000,
+          });
+          break;
+        }
+        dispatcher.dispatch({
+          type: 'SELECT_ENTRY',
+          lid: ownerLid,
+          revealInSidebar: true,
         });
         break;
       }
@@ -4852,6 +4921,43 @@ function formatEntryReference(entry: Entry): string {
 }
 
 /**
+ * Find the lid of the attachment entry that owns the given asset
+ * key. Mirrors the asset-lookup logic used by the External Permalink
+ * boot receiver (`resolveTargetLid` in `external-permalink-receive.ts`)
+ * without introducing a shared module dependency — the helpers are
+ * each small, and the one in `external-permalink-receive` is scoped
+ * to `ParsedExternalPermalink` input rather than a bare asset key.
+ *
+ * Rules:
+ *   - Only considers `archetype === 'attachment'` entries
+ *   - Malformed attachment body (non-JSON / non-string asset_key) is
+ *     silently skipped — never throws
+ *   - Returns the first matching entry in container order when
+ *     multiple attachments reference the same asset_key
+ *   - Returns `null` when no match exists (caller surfaces a toast)
+ */
+function findAttachmentOwnerLid(
+  dispatcher: Dispatcher,
+  assetKey: string,
+): string | null {
+  const state = dispatcher.getState();
+  const entries = state.container?.entries;
+  if (!entries) return null;
+  for (const entry of entries) {
+    if (entry.archetype !== 'attachment') continue;
+    if (typeof entry.body !== 'string' || entry.body === '') continue;
+    let parsed: { asset_key?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(entry.body) as { asset_key?: unknown };
+    } catch {
+      continue;
+    }
+    if (parsed && parsed.asset_key === assetKey) return entry.lid;
+  }
+  return null;
+}
+
+/**
  * Resolve the host URL the External Permalink should point at.
  *
  * Returns `window.location.href` with any pre-existing `#fragment`
@@ -4898,41 +5004,6 @@ function formatAssetReference(entry: Entry): string {
   const previewType = classifyPreviewType(att.mime);
   const prefix = previewType === 'image' ? '!' : '';
   return `${prefix}[${label}](asset:${att.asset_key})`;
-}
-
-/**
- * Build a textlog line reference string.
- *
- * Format: `[title › yyyy/MM/dd ddd HH:mm](entry:lid#log-id)`
- *
- * The fragment identifier targets a specific log row inside the
- * parent TEXTLOG entry. Callers that know how to resolve the
- * fragment (e.g. a future "scroll to log" handler) can split on
- * `#` and match against `data-pkc-log-id`. Consumers that do not
- * understand the fragment still get a readable, unambiguous
- * reference to the parent entry.
- *
- * Returns an empty string if the logId is unknown in the parent
- * body (e.g. the row was deleted between the context menu opening
- * and the copy action firing).
- */
-function formatLogLineReference(entry: Entry, logId: string): string {
-  try {
-    const log = parseTextlogBody(entry.body);
-    const row = log.entries.find((r) => r.id === logId);
-    if (!row) return '';
-    // Label uses the raw ISO timestamp so millisecond fidelity survives
-    // the copy action — the UI-side seconds formatter is intentionally
-    // not used here. See
-    // `docs/development/textlog-readability-hardening.md` §6 (UI vs
-    // export responsibility split).
-    const label = escapeMarkdownLabel(
-      `${entry.title || '(untitled)'} › ${row.createdAt}`,
-    );
-    return `[${label}](entry:${entry.lid}#${logId})`;
-  } catch {
-    return '';
-  }
 }
 
 /**

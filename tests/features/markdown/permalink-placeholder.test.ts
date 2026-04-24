@@ -89,17 +89,49 @@ describe('renderMarkdown — same-container permalink', () => {
     expect(html).toContain('data-pkc-entry-ref="entry:e1#log/xyz"');
   });
 
-  it('same-container ASSET permalink does NOT get navigate-entry-ref (entry-only fallback)', () => {
-    // Asset navigation belongs to a separate action handler; for
-    // now the anchor renders without the routing data attr so
-    // nothing tries to parse `asset:<key>` as an entry ref.
+  it('same-container ASSET permalink routes through navigate-asset-ref (Phase 1 step 4)', () => {
+    // G3 fix: `pkc://<self>/asset/<key>` now gets an asset-specific
+    // routing attribute so the action-binder handler can hop to the
+    // owning attachment entry on click. The anchor still keeps the
+    // raw href for downstream resolvers (migration tool / share UI).
     const html = renderMarkdown(`[file](pkc://${SELF}/asset/a1)`, {
       currentContainerId: SELF,
     });
+    expect(html).toContain('data-pkc-action="navigate-asset-ref"');
+    expect(html).toContain('data-pkc-asset-key="a1"');
+    // Not the entry path, and not the cross-container placeholder.
     expect(html).not.toContain('data-pkc-action="navigate-entry-ref"');
     expect(html).not.toContain('data-pkc-entry-ref');
     expect(html).not.toContain('pkc-portable-reference-placeholder');
+    // Raw href preserved verbatim.
     expect(html).toContain(`href="pkc://${SELF}/asset/a1"`);
+  });
+
+  it('cross-container ASSET permalink stays a portable-reference placeholder (unchanged)', () => {
+    // G3 only touched the same-container path. Cross-container asset
+    // refs must still render as the 🌐 badge so the reader can tell
+    // the asset is not resolvable locally.
+    const html = renderMarkdown('[file](pkc://other-cid/asset/a1)', {
+      currentContainerId: SELF,
+    });
+    expect(html).toContain('pkc-portable-reference-placeholder');
+    expect(html).toContain('data-pkc-portable-container="other-cid"');
+    expect(html).toContain('data-pkc-portable-kind="asset"');
+    expect(html).toContain('data-pkc-portable-target="a1"');
+    expect(html).not.toContain('data-pkc-action="navigate-asset-ref"');
+  });
+
+  it('malformed same-container ASSET permalink does NOT get the navigate-asset-ref attr', () => {
+    // parsePortablePkcReference returns null on bad shape; the asset
+    // branch is guarded behind the same condition as the entry branch,
+    // so malformed refs fall through to the ordinary external-link
+    // treatment (`target=_blank`).
+    const html = renderMarkdown(`[file](pkc://${SELF}/asset/bad%20key)`, {
+      currentContainerId: SELF,
+    });
+    expect(html).not.toContain('data-pkc-action="navigate-asset-ref"');
+    expect(html).not.toContain('data-pkc-asset-key');
+    expect(html).toContain('target="_blank"');
   });
 
   it('treats missing currentContainerId as "every permalink is external" (safe default)', () => {

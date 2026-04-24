@@ -400,16 +400,18 @@ function renderLogArticle(
   tsEl.setAttribute('title', log.createdAt);
   header.appendChild(tsEl);
 
-  // Copy-anchor button — emits the canonical `entry:<lid>#log/<id>`
-  // reference via the existing `copy-log-line-ref` action. The action
-  // string is shared with the right-click menu; Slice 5 will route
-  // both through a single formatter.
+  // Copy-link button — emits an External Permalink whose fragment
+  // points at this specific log row. Post-Phase-1 G1/G2 fix: the
+  // `copy-log-line-ref` action name is kept for DOM-binding stability,
+  // but the output format is now the canonical External Permalink
+  // `<base>#pkc?container=<cid>&entry=<lid>&fragment=log/<logId>`.
+  // See action-binder.ts `copy-log-line-ref` handler + spec §5.7.
   const anchorBtn = document.createElement('button');
   anchorBtn.className = 'pkc-textlog-anchor-btn';
   anchorBtn.setAttribute('data-pkc-action', 'copy-log-line-ref');
   anchorBtn.setAttribute('data-pkc-lid', lid);
   anchorBtn.setAttribute('data-pkc-log-id', log.id);
-  anchorBtn.setAttribute('title', 'Copy log line reference');
+  anchorBtn.setAttribute('title', 'このログ行の共有リンクをコピー');
   anchorBtn.textContent = '🔗';
   header.appendChild(anchorBtn);
 

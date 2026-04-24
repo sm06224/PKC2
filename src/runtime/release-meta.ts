@@ -81,8 +81,14 @@ export const APP_ID = 'pkc2' as const;
 /**
  * Source-side version (semver).
  * Builder may override in pkc-meta; this is the source default.
+ *
+ * Bumped to 2.1.0 (Phase 3 release visibility correction): the
+ * v2.0 line accumulated a large backlog of user-visible features
+ * (Link system foundation, W1 Tag wave, Storage Profile, UI
+ * continuity, data correctness fixes). See docs/release/
+ * CHANGELOG_v2.1.0.md and docs/development/versioning-policy.md.
  */
-export const VERSION = '2.0.0' as const;
+export const VERSION = '2.1.0' as const;
 
 /**
  * Data schema version. Increment when Container shape changes

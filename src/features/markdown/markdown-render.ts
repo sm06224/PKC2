@@ -159,21 +159,25 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
       //   pkc://<self>/entry/<lid>           → entry:<lid>
       //   pkc://<self>/entry/<lid>#log/xyz   → entry:<lid>#log/xyz
       //
-      // `data-pkc-action="navigate-entry-ref"` routes through the
-      // existing `action-binder.ts` handler (the same one that
-      // services `entry:` anchors), which parses `data-pkc-entry-ref`
-      // with `parseEntryRef` — no new action type required.
+      // Entry portable references route through
+      // `navigate-entry-ref` (same handler that services `entry:`
+      // anchors). Asset portable references route through the new
+      // `navigate-asset-ref` handler (Phase 1 step 4 / audit G3),
+      // which hops to the attachment entry whose `body.asset_key`
+      // matches — mirroring the External Permalink receive
+      // behaviour for `&asset=<key>`.
       //
-      // Asset portable references (`pkc://<self>/asset/<key>`) do
-      // NOT take this shortcut because the `navigate-entry-ref`
-      // handler only knows entry grammars. Asset fallback
-      // navigation (hop to the owning attachment entry, the way
-      // the boot receiver does) would need a new action and
-      // belongs in a follow-up slice.
+      //   pkc://<self>/entry/<lid>           → entry:<lid>
+      //   pkc://<self>/entry/<lid>#log/xyz   → entry:<lid>#log/xyz
+      //   pkc://<self>/asset/<key>           → owner attachment entry
       if (parsed.kind === 'entry') {
         const frag = parsed.fragment ?? '';
         token.attrSet('data-pkc-action', 'navigate-entry-ref');
         token.attrSet('data-pkc-entry-ref', `entry:${parsed.targetId}${frag}`);
+      } else {
+        // kind === 'asset'
+        token.attrSet('data-pkc-action', 'navigate-asset-ref');
+        token.attrSet('data-pkc-asset-key', parsed.targetId);
       }
       token.attrSet('rel', 'noopener noreferrer');
     } else if (parsed) {

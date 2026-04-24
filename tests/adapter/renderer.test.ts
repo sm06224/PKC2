@@ -3994,12 +3994,20 @@ describe('Action surface consolidation', () => {
     expect(folderImportBtn).toBeNull();
   });
 
-  it('context menu labels are concise and tooltips are descriptive', () => {
+  it('context menu Markdown source labels are concise and tooltips are descriptive', () => {
+    // Phase 1 step 5: the legacy Internal Reference copy items live
+    // under a "Markdown source" group with 📝 icons so they do not
+    // collide with the primary 🔗 Copy link(External Permalink).
     const menu = renderContextMenu('lid', 0, 0, { hasParent: false, canEdit: true, archetype: 'attachment' });
     const assetRef = menu.querySelector('[data-pkc-action="copy-asset-ref"]');
     expect(assetRef).not.toBeNull();
-    expect(assetRef!.textContent).toBe('📎 Asset ref');
+    expect(assetRef!.textContent).toBe('📝 Markdown asset link');
     expect(assetRef!.getAttribute('title')).toContain('Markdown');
+    // markdown-source grouping attribute + section header render once.
+    expect(assetRef!.getAttribute('data-pkc-menu-group')).toBe('markdown-source');
+    expect(
+      menu.querySelector('[data-pkc-region="context-menu-markdown-source"]'),
+    ).not.toBeNull();
   });
 
   it('todo/folder archetypes have no More… overflow (only primary actions)', () => {
@@ -4703,23 +4711,25 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true), Entry ref, Embed ref.
+    // Edit, Delete, Move to Root (shown because hasParent=true),
+    // Markdown link, Markdown embed (Phase 1 step 5 rename).
     expect(items.length).toBe(5);
     expect(items[0]!.textContent).toContain('Edit');
     expect(items[1]!.textContent).toContain('Delete');
     expect(items[2]!.textContent).toContain('Root');
-    expect(items[3]!.textContent).toContain('Entry ref');
-    expect(items[4]!.textContent).toContain('Embed ref');
+    expect(items[3]!.textContent).toContain('Markdown link');
+    expect(items[4]!.textContent).toContain('Markdown embed');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Entry ref, Embed ref (Move to Root hidden, hasParent=false).
+    // Edit, Delete, Markdown link, Markdown embed
+    //   (Move to Root hidden, hasParent=false).
     expect(items.length).toBe(4);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
-    expect(texts.some(t => t!.includes('Entry ref'))).toBe(true);
+    expect(texts.some(t => t!.includes('Markdown link'))).toBe(true);
   });
 
   it('context menu items have correct data-pkc-action and data-pkc-lid', () => {

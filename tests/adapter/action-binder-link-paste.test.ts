@@ -48,6 +48,18 @@ const baseContainer: Container = {
       created_at: T,
       updated_at: T,
     },
+    {
+      lid: 'tl1',
+      title: 'Work Log',
+      body: JSON.stringify({
+        entries: [
+          { id: 'log-1', text: 'first log note', createdAt: '2026-04-20T09:15:00Z', flags: [] },
+        ],
+      }),
+      archetype: 'textlog',
+      created_at: T,
+      updated_at: T,
+    },
   ],
   relations: [],
   revisions: [],
@@ -225,6 +237,22 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
 
     expect(evt.defaultPrevented).toBe(false);
     expect(textarea.value).toBe(before);
+  });
+
+  // Phase 1 step 3 — log External Permalink paste produces a
+  // `[<entry title> › <log snippet>](entry:<lid>#log/<logId>)` link
+  // end-to-end through the action-binder paste hook. Unit tests
+  // cover the label branches; this case pins the integration.
+  it('converts a TEXTLOG log External Permalink to [Title › snippet](entry:lid#log/id)', () => {
+    const { textarea } = setupEditingText();
+    const url = `https://example.com/pkc2.html#pkc?container=${SELF}&entry=tl1&fragment=log/log-1`;
+
+    const evt = firePaste(textarea, { plain: url });
+
+    expect(evt.defaultPrevented).toBe(true);
+    expect(textarea.value).toBe(
+      '[Work Log › first log note](entry:tl1#log/log-1)',
+    );
   });
 
   it('does not wrap a bare entry: reference the user pasted', () => {

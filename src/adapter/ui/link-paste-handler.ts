@@ -37,6 +37,7 @@
 
 import { convertPastedText } from '../../features/link/paste-conversion';
 import type { Entry } from '../../core/model/record';
+import { parseTextlogBody } from '../../features/textlog/textlog-body';
 
 /**
  * Either the textarea or the text-capable input that received the
@@ -123,10 +124,32 @@ function resolveLabel(
 
   if (internalTarget.startsWith('entry:')) {
     const rest = internalTarget.slice('entry:'.length);
-    const lid = rest.split('#', 1)[0] ?? rest;
+    const hashIdx = rest.indexOf('#');
+    const lid = hashIdx === -1 ? rest : rest.slice(0, hashIdx);
+    const fragment = hashIdx === -1 ? '' : rest.slice(hashIdx + 1);
     if (!lid) return fallback;
     const hit = entries.find((e) => e.lid === lid);
-    return escapeMarkdownLabel(hit?.title || fallback);
+    const entryTitle = hit?.title || fallback;
+
+    // Log fragment specialisation — Phase 1 step 3 (audit G1/G2 pair).
+    // When the canonical `log/<logId>` fragment points at an existing
+    // TEXTLOG row, synthesise `<entry title> › <snippet>` so the
+    // pasted link names the specific row rather than the whole entry.
+    // Legacy fragments(`entry:<lid>#<bare-logId>` / `#day/...` /
+    // heading-style `#log/<id>/<slug>` / range `#log/a..b`) fall
+    // through to the entry-title label — we do not auto-normalise
+    // legacy shapes here, only emit fresh canonical paste output.
+    if (fragment.startsWith('log/') && hit?.archetype === 'textlog') {
+      const snippet = resolveLogSnippet(hit, fragment.slice('log/'.length));
+      if (snippet !== null) {
+        return escapeMarkdownLabel(`${entryTitle} › ${snippet}`);
+      }
+      // Log row missing (deleted / unknown id) — keep target intact
+      // but generalise the label so the anchor still reads cleanly.
+      return escapeMarkdownLabel(`${entryTitle} › Log`);
+    }
+
+    return escapeMarkdownLabel(entryTitle);
   }
 
   if (internalTarget.startsWith('asset:')) {
@@ -156,6 +179,42 @@ function resolveLabel(
   }
 
   return fallback;
+}
+
+const LOG_SNIPPET_MAX = 40;
+
+/**
+ * Build a short, single-line snippet for a log row, or `null` when
+ * the row cannot be located. Callers use the `null` return to fall
+ * back to a generic `Log` label, so we keep this function strict
+ * about what counts as "a single log row":
+ *
+ *   - range fragments (`log/a..b`)          → null
+ *   - heading fragments (`log/<id>/<slug>`) → null
+ *   - empty id                              → null
+ *
+ * Snippet priority: first-line of `text` trimmed + whitespace
+ * collapsed, capped at 40 chars with a trailing `…`. Falls back to
+ * `row.createdAt` when the row has no text at all.
+ */
+function resolveLogSnippet(entry: Entry, logIdPart: string): string | null {
+  if (logIdPart === '' || logIdPart.includes('..') || logIdPart.includes('/')) {
+    return null;
+  }
+  try {
+    const body = parseTextlogBody(entry.body);
+    const row = body.entries.find((r) => r.id === logIdPart);
+    if (!row) return null;
+    const text = (row.text ?? '').replace(/\s+/g, ' ').trim();
+    if (text !== '') {
+      return text.length > LOG_SNIPPET_MAX
+        ? `${text.slice(0, LOG_SNIPPET_MAX)}…`
+        : text;
+    }
+    return row.createdAt;
+  } catch {
+    return null;
+  }
 }
 
 /**
