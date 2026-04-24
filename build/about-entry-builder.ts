@@ -169,6 +169,8 @@ const RELEASE_SUMMARY = {
       'Color tag is spec-only — implementation deferred to a future wave',
       'Cross-container resolver / P2P is not implemented',
       'OS protocol handler for `pkc://` is not implemented',
+      'External Permalink body residue rendering is not implemented — a `<base>#pkc?...` string left inside body text is rendered as a plain external anchor; only boot-time receive resolves it',
+      'External Permalink receive fragment scroll is not implemented — `&fragment=log/<logId>` on an External Permalink selects the entry but does not scroll to the log row',
       'Full container footprint (body + relations + revisions) is not implemented — Storage Profile is asset-only',
     ],
     changelog: 'docs/release/CHANGELOG_v2.1.1.md',
