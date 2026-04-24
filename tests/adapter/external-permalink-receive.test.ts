@@ -20,7 +20,7 @@ import {
 } from '@adapter/ui/external-permalink-receive';
 import type { Container } from '@core/model/container';
 import type { Dispatcher } from '@adapter/state/dispatcher';
-import type { Dispatchable } from '@core/action/user-action';
+import type { Dispatchable } from '@core/action';
 
 const T = '2026-04-24T00:00:00Z';
 const SELF = 'c-self';
