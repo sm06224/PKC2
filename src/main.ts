@@ -65,6 +65,7 @@ import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
 import { textlogPresenter } from './adapter/ui/textlog-presenter';
+import { applyExternalPermalinkOnBoot } from './adapter/ui/external-permalink-receive';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
@@ -500,6 +501,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container);
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
         }
@@ -520,6 +522,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container);
         return;
       }
       case 'empty': {
@@ -534,6 +537,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container);
         return;
       }
     }
