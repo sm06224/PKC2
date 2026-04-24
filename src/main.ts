@@ -509,7 +509,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
-        applyExternalPermalinkOnBoot(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
         }
@@ -530,7 +530,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
-        applyExternalPermalinkOnBoot(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
       case 'empty': {
@@ -545,7 +545,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
-        applyExternalPermalinkOnBoot(dispatcher, container);
+        applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
     }

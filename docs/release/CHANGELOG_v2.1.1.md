@@ -15,6 +15,7 @@ v2.1.1 の主題は **Link migration tool v1 の完成** です。v2.1.0 Known l
 - **Stale-candidate safety** — Preview と Apply の間に本文が変わった場合、当該候補は自動で skip され、隣接候補のみが適用されます("source text changed" bar で件数が見えます)
 - **Harbor-safe dialect gate** — 標準 Markdown の clickable-image `[![alt](url)](url)` を誤って書き換えないよう、Candidate D を scanner v1 から撤去し、clickable-image を future dialect として reservation に降ろしました(詳細は `docs/development/clickable-image-renderer-audit.md`)
 - **Manual sync** — 日常操作 / トラブルシューティング / 用語集 が Link migration tool v1 に同期
+- **External Permalink receive fragment scroll(2.1.1 patch)** — `fragment=log/<logId>` を含む External Permalink を外部からクリックして開いたとき、対象エントリを選択した直後に該当 TEXTLOG log row まで自動スクロールします(v2.1.0 Known limitations の G4、本リリース内の consistency patch で解消)
 
 詳細は以下のセクション:
 
@@ -144,7 +145,6 @@ Slice 4 で以下を `docs/manual/` に反映済み:
 - **Cross-container resolver / P2P 未実装** — `pkc://<other>/...` や cross-container External Permalink を別 container 自動ロードする機構はない(手動で該当 container の PKC を開き直す必要あり)
 - **OS protocol handler 未実装** — `pkc://` を OS に登録してクリックだけで PKC を起動する機構は外部ツール連携になるため v2.1 には含まない
 - **External Permalink body residue rendering 未実装** — body 内に直接 `<base>#pkc?...` を手入力 / import した場合の内部 navigate fallback は v1 対象外(外部クリックの受信側は既存 External Permalink receive で対応済み)
-- **External Permalink receive fragment scroll 未実装** — `&fragment=log/<logId>` を指定した External Permalink をクリックしたときの log 行レベル scroll は未接続(v2.1.0 Known limitations の G4、本 release でも未着手)
 - **Full container footprint 未実装** — Storage Profile は asset bytes のみを扱い、body / relations / revisions を含めた total 計測は未対応
 
 ---

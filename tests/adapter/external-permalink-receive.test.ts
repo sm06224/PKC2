@@ -305,3 +305,262 @@ describe('applyExternalPermalinkOnBoot — base URL flavours', () => {
     expect(calls[0]).toMatchObject({ type: 'SELECT_ENTRY', lid: 'e1' });
   });
 });
+
+// ────────────────────────────────────────────────────────────
+// Fragment scroll (v2.1.x patch)
+// ────────────────────────────────────────────────────────────
+//
+// Pins the behaviour added to resolve the v2.1.1 Known limitation
+// "External Permalink receive fragment scroll is not implemented".
+//
+// Scope(by design):
+//   - entry + fragment=log/<id> on a textlog with the row → scheduled
+//   - entry + fragment=log/<id> but entry is not textlog → target-missing
+//   - entry + fragment=log/<id> but row id missing → target-missing
+//   - entry + fragment in unsupported shape (day/, log/a..b, heading,
+//     unknown) → outcome has no `fragmentScroll` field, navigation
+//     still succeeds
+//   - no root passed → outcome still carries fragmentScroll, but no
+//     DOM scroll attempt
+//   - cross-container / malformed / missing entry → never reach here
+//
+// DOM scroll is verified by spying on `scrollIntoView` on the row
+// element that the renderer produces via `data-pkc-log-id` +
+// `data-pkc-lid` attributes.
+
+function makeContainerWithTextlog(): Container {
+  const T_ = T;
+  return {
+    meta: {
+      container_id: SELF,
+      title: 'Test',
+      created_at: T_,
+      updated_at: T_,
+      schema_version: 1,
+    },
+    entries: [
+      { lid: 'e1', title: 'Entry 1', body: 'b', archetype: 'text', created_at: T_, updated_at: T_ },
+      {
+        lid: 'tl',
+        title: 'Work Log',
+        body: JSON.stringify({
+          entries: [
+            { id: 'log-1', text: 'first', createdAt: T_, flags: [] },
+            { id: 'log-2', text: 'second', createdAt: T_, flags: [] },
+          ],
+        }),
+        archetype: 'textlog',
+        created_at: T_,
+        updated_at: T_,
+      },
+    ],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
+}
+
+/**
+ * Minimal DOM stand-in: an app root with an article element that
+ * matches the `data-pkc-log-id` + `data-pkc-lid` contract the real
+ * textlog presenter emits. `scrollIntoView` is stubbed on the row
+ * element because happy-dom does not implement it by default.
+ */
+function mountTextlogRow(
+  tlLid: string,
+  logId: string,
+): { root: HTMLElement; row: HTMLElement; scrollSpy: ReturnType<typeof vi.fn> } {
+  const root = document.createElement('div');
+  root.id = 'pkc-root';
+  const row = document.createElement('article');
+  row.setAttribute('data-pkc-log-id', logId);
+  row.setAttribute('data-pkc-lid', tlLid);
+  const scrollSpy = vi.fn();
+  // happy-dom doesn't implement scrollIntoView; attach a stub so the
+  // adapter's feature-detect branch still fires.
+  (row as unknown as { scrollIntoView: typeof scrollSpy }).scrollIntoView = scrollSpy;
+  root.appendChild(row);
+  document.body.appendChild(root);
+  return { root, row, scrollSpy };
+}
+
+describe('applyExternalPermalinkOnBoot — fragment scroll (log/<id>)', () => {
+  it('schedules a scrollIntoView when the fragment points at an existing textlog row', async () => {
+    const { dispatcher, calls } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+    const { root, scrollSpy } = mountTextlogRow('tl', 'log-1');
+
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=tl&fragment=log%2Flog-1`,
+      { root },
+    );
+
+    // SELECT_ENTRY happens immediately, fragmentScroll is "scheduled".
+    expect(outcome.kind).toBe('navigated');
+    if (outcome.kind === 'navigated') {
+      expect(outcome.fragmentScroll).toEqual({ kind: 'scheduled', logId: 'log-1' });
+    }
+    expect(calls[0]).toMatchObject({ type: 'SELECT_ENTRY', lid: 'tl', revealInSidebar: true });
+
+    // Let the queued rAF fire and confirm scrollIntoView was called.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+  });
+
+  it('reports target-missing when the textlog has no row with that id', () => {
+    const { dispatcher } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+    const { root, scrollSpy } = mountTextlogRow('tl', 'log-1');
+
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=tl&fragment=log%2Fghost`,
+      { root },
+    );
+
+    expect(outcome.kind).toBe('navigated');
+    if (outcome.kind === 'navigated') {
+      expect(outcome.fragmentScroll).toEqual({ kind: 'target-missing', logId: 'ghost' });
+    }
+    // No rAF scheduled → scroll never fires.
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports target-missing when the fragment points at a non-textlog entry', () => {
+    const { dispatcher, calls } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+    const { root, scrollSpy } = mountTextlogRow('tl', 'log-1');
+
+    // e1 is a plain TEXT entry — log/<id> is meaningless here, but
+    // the helper must still select the entry and mark the scroll as
+    // target-missing rather than throw.
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=e1&fragment=log%2Flog-1`,
+      { root },
+    );
+
+    expect(outcome.kind).toBe('navigated');
+    if (outcome.kind === 'navigated') {
+      expect(outcome.fragmentScroll).toEqual({ kind: 'target-missing', logId: 'log-1' });
+    }
+    expect(calls[0]).toMatchObject({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves fragmentScroll absent when the fragment shape is out of v1 scope', () => {
+    // Unsupported shapes stay forward-compatible: navigation succeeds,
+    // no fragmentScroll field is attached.  This test covers day/,
+    // log/a..b (range), log/<id>/<slug> (heading), and unknown.
+    const container = makeContainerWithTextlog();
+    const { root, scrollSpy } = mountTextlogRow('tl', 'log-1');
+
+    for (const frag of [
+      'day/2026-04-24',
+      'log/log-1..log-2',
+      'log/log-1/heading-slug',
+      'experimental-hash',
+    ]) {
+      const outcome = applyExternalPermalinkOnBoot(
+        makeDispatcher().dispatcher,
+        container,
+        `${BASE}#pkc?container=${SELF}&entry=tl&fragment=${encodeURIComponent(frag)}`,
+        { root },
+      );
+      expect(outcome.kind).toBe('navigated');
+      if (outcome.kind === 'navigated') {
+        expect(outcome.fragmentScroll).toBeUndefined();
+      }
+    }
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves fragmentScroll absent when no fragment is present (backward compat)', () => {
+    const { dispatcher } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=tl`,
+    );
+    expect(outcome.kind).toBe('navigated');
+    if (outcome.kind === 'navigated') {
+      expect(outcome.fragmentScroll).toBeUndefined();
+    }
+  });
+
+  it('reports fragmentScroll without attempting DOM scroll when root is omitted', async () => {
+    // Headless / no-DOM boot: the outcome still reports the fragment
+    // state (useful for telemetry / tests) but we skip scroll entirely
+    // because there is no DOM to query.
+    const { dispatcher } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=tl&fragment=log%2Flog-1`,
+    );
+
+    expect(outcome.kind).toBe('navigated');
+    if (outcome.kind === 'navigated') {
+      expect(outcome.fragmentScroll).toEqual({ kind: 'scheduled', logId: 'log-1' });
+    }
+    // rAF is still scheduled but there is no DOM mutation to observe.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  });
+
+  it('cross-container permalink with log fragment stays cross-container (no fragmentScroll)', () => {
+    const { dispatcher, calls } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+    const { root, scrollSpy } = mountTextlogRow('tl', 'log-1');
+
+    const outcome = applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${OTHER}&entry=tl&fragment=log%2Flog-1`,
+      { root },
+    );
+
+    expect(outcome.kind).toBe('cross-container');
+    expect(calls).toHaveLength(0);
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses data-pkc-log-id + data-pkc-lid selector (minify-safe, NOT class names)', async () => {
+    // Regression guard against anyone switching the DOM lookup to a
+    // class selector. If the adapter starts relying on a `.pkc-...`
+    // class instead of the data attributes, this test falls back to
+    // the absence of the row (row has only data-* attributes) and
+    // scrollIntoView is never called.
+    const { dispatcher } = makeDispatcher();
+    const container = makeContainerWithTextlog();
+
+    const root = document.createElement('div');
+    root.id = 'pkc-root';
+    const row = document.createElement('article');
+    row.setAttribute('data-pkc-log-id', 'log-1');
+    row.setAttribute('data-pkc-lid', 'tl');
+    // Intentionally no class name on the row.
+    const scrollSpy = vi.fn();
+    (row as unknown as { scrollIntoView: typeof scrollSpy }).scrollIntoView = scrollSpy;
+    root.appendChild(row);
+    document.body.appendChild(root);
+
+    applyExternalPermalinkOnBoot(
+      dispatcher,
+      container,
+      `${BASE}#pkc?container=${SELF}&entry=tl&fragment=log%2Flog-1`,
+      { root },
+    );
+
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+  });
+});
