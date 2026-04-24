@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-24（PKC Link Unification v0 foundation spec を追加: Color UI の前に参照基盤を確定）.
+Last updated: 2026-04-24（Paste Conversion Engine 実装 slice 追加: Link system の安全な入口を先に確定、parser/renderer は後続）.
 
 ## Status Legend
 
@@ -197,6 +197,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 136 | `docs/spec/search-filter-semantics-v1.md` (UPDATED) | W1 Tag wave クローズ docs-only sync | 2026-04-23 | §1.1 as-of 追加、§3 Tag 行を ✅ 実装済みに更新、§3.1 Tag 詳細更新、§5.1 を 実装済み/予約 split に再構成、§5.7 を parser 実装済み記述に更新、§9 を着地済み/残作業 split に書き換え、Status 行を W1 wave クローズとして更新 |
 | 137 | `../spec/color-tag-data-model-v1-minimum-scope.md` (NEW) | Color tag data model minimum-scope spec（docs-only） | 2026-04-24 | W1 Tag wave クローズ直後の隣接概念整理。`entry.color_tag?: ColorTagId \| null` を additive 追加する最小 schema を固定: 1 entry に 1 color、固定 palette、ID のみ保存(色値は保存しない / theme 変更に追従)、ID は lowercase ASCII fixed、未知 ID は read で `null` にフォールバックしつつ round-trip で保持、schema_version bump なし。filter 軸は OR semantics、`color:` prefix は既に `search-filter-semantics-v1.md` §5.1 で予約、Saved Search `color_filter?: ColorTagId[] \| null` は additive。Tag / categorical relation と自動変換しない契約。palette 具体 ID は次 slice で fix、それまで Slice 2-4(Saved Search / UI / parser)は着手不可。実コード変更なし |
 | 138 | `../spec/pkc-link-unification-v0.md` (NEW) | PKC Link Unification v0 foundation spec（docs-only） | 2026-04-24 | Color UI の前に置く参照基盤正本化。target と presentation を厳密に分離: **target** は `entry:<lid>` / `asset:<key>` / **permalink** `pkc://<container_id>/entry/<lid>[#frag]`、**presentation** は link `[label](entry:...)` / embed `![alt](entry:...)` / card `@[card](entry:...)` の 3 形を記法で区別。paste 変換は permalink → internal への **降格は同一 container のみ**、cross-container は permalink 維持。`@[card]` 採用の根拠(§10.1): target/presentation 混同回避 / 既存 markdown fallback / extract scanner 単一化 / variant 拡張余地。missing target は body から消さず placeholder 描画、循環 embed は 1 段展開、export は subset scanner 経由で依存閉包。`schema_version` bump なし、既存 `entry:` / `asset:` grammar(`entry-ref.ts`)は不変。Slice 1-5(permalink parser → paste → cross-container render → card render → share UI)を next-step として整理、実コード変更なし |
+| 139 | `src/features/link/paste-conversion.ts` (NEW) | Paste Conversion Engine — Link system safe entry point（impl slice） | 2026-04-24 | spec #138 §7 の paste 変換規則を最小実装。**Link system の唯一の入口** として、clipboard / DnD / P2P 受信 / extension 入力すべてが将来ここを経由する前提の pure function を先に確定。`convertPastedText(raw, currentContainerId)` → `{ type: 'internal' \| 'external', target, presentation: 'link' }` を返す。`pkc://<container_id>/entry/<lid>[#frag]` を解析し、**自 container_id と exact match した場合のみ** `entry:<lid>[#frag]` に降格(§7.1)、差分があれば permalink 維持(§7.2)、`entry:` / `asset:` は internal pass-through(§7.3)、plain text / https URL / malformed permalink は external fallback(§7.4)。冪等性 / fragment 保存 / 非 string 防御 / cross-container safety を 31 テストで固定。embed / card は別 slice、renderer / markdown parser は一切触らない。Slice 順序を **parser 先行 → paste 先行に修正**(paste が実質の UX 入口で依存方向の根、parser は中間部品)した判断を反映 |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
