@@ -5393,6 +5393,17 @@ export function renderContextMenu(
     lid?: string;
     logId?: string;
     show: boolean;
+    /**
+     * Optional visual grouping. `'markdown-source'` buckets together
+     * the legacy Internal Reference copy actions(`copy-entry-ref` /
+     * `copy-asset-ref` / `copy-entry-embed-ref`) so they render under
+     * a separator + `Markdown source` header, visually distinct from
+     * the primary `🔗 Copy link`(External Permalink)导线.
+     * Phase 1 step 5 / audit G6 — we keep the legacy actions for
+     * power-user / markdown-authoring workflows but demote them from
+     * equal-surface standing to clearly "advanced" territory.
+     */
+    group?: 'markdown-source';
   };
 
   const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
@@ -5407,28 +5418,10 @@ export function renderContextMenu(
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'このエントリを完全に削除（元に戻せません）', lid, show: canEdit },
     { action: 'delete-log-entry', label: '✕ Delete log', tip: 'このログ行を削除', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
     { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: '現在のフォルダから取り出してルートに移動', lid, show: canEdit && hasParent },
-    // Reference-string actions — never mutate, always shown.
-    {
-      action: 'copy-entry-ref',
-      label: '🔗 Entry ref',
-      tip: 'このエントリへの Markdown リンクをコピー [title](entry:lid)',
-      lid,
-      show: true,
-    },
-    {
-      action: 'copy-entry-embed-ref',
-      label: '🖼️ Embed ref',
-      tip: 'このエントリの埋め込み参照をコピー',
-      lid,
-      show: true,
-    },
-    {
-      action: 'copy-asset-ref',
-      label: '📎 Asset ref',
-      tip: 'この添付ファイルへの Markdown 参照をコピー ![name](asset:key)',
-      lid,
-      show: opts.archetype === 'attachment',
-    },
+    // Primary Copy link — External Permalink for a TEXTLOG log row.
+    // Only this row uses the 🔗 Copy link label in context menu; the
+    // entry-level / asset-level Copy link lives in the meta pane and
+    // attachment card respectively(intentionally not duplicated here).
     {
       action: 'copy-log-line-ref',
       label: '🔗 Copy link',
@@ -5437,15 +5430,58 @@ export function renderContextMenu(
       logId: opts.logId,
       show: !!(opts.archetype === 'textlog' && opts.logId),
     },
+    // Advanced: Markdown source copies(Internal Reference form).
+    // Phase 1 step 5 — we keep these for markdown-authoring workflows
+    // but rename them so the user does not confuse them with the
+    // primary 🔗 Copy link(External Permalink). Label convention:
+    // `📝 Markdown <kind>` + tip that names the exact Markdown shape.
+    {
+      action: 'copy-entry-ref',
+      label: '📝 Markdown link',
+      tip: 'PKC 内 Markdown 用のリンクをコピー: [title](entry:lid)',
+      lid,
+      show: true,
+      group: 'markdown-source',
+    },
+    {
+      action: 'copy-entry-embed-ref',
+      label: '📝 Markdown embed',
+      tip: 'PKC 内 Markdown 用の埋め込み参照をコピー: ![title](entry:lid)',
+      lid,
+      show: true,
+      group: 'markdown-source',
+    },
+    {
+      action: 'copy-asset-ref',
+      label: '📝 Markdown asset link',
+      tip: 'PKC 内 Markdown 用の添付参照をコピー: ![name](asset:key)',
+      lid,
+      show: opts.archetype === 'attachment',
+      group: 'markdown-source',
+    },
   ];
 
+  // Track whether we have already emitted the `Markdown source`
+  // section header so it appears exactly once, right above the
+  // first legacy Internal Reference copy action.
+  let emittedMarkdownSectionHeader = false;
   for (const item of items) {
     if (!item.show) continue;
+    if (item.group === 'markdown-source' && !emittedMarkdownSectionHeader) {
+      const sep = createElement('div', 'pkc-context-menu-separator');
+      menu.appendChild(sep);
+      const header = createElement('div', 'pkc-context-menu-label');
+      header.setAttribute('data-pkc-region', 'context-menu-markdown-source');
+      header.textContent = '📝 Markdown source';
+      menu.appendChild(header);
+      emittedMarkdownSectionHeader = true;
+    }
     const btn = createElement('button', 'pkc-context-menu-item');
     btn.setAttribute('data-pkc-action', item.action);
     btn.setAttribute('title', item.tip);
     if (item.lid) btn.setAttribute('data-pkc-lid', item.lid);
     if (item.logId) btn.setAttribute('data-pkc-log-id', item.logId);
+    if (item.group) btn.setAttribute('data-pkc-menu-group', item.group);
     btn.textContent = item.label;
     menu.appendChild(btn);
   }
