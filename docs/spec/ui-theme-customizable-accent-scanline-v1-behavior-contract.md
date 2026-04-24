@@ -1,6 +1,6 @@
 # FI-12 UI テーマ（scanline / Kanban highlight） v1 Behavior Contract
 
-Status: DRAFT 2026-04-18  
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。FI-12 v1 本体は 2026-04-18 commit `9078e90`、FI-12 follow-up は commit `c68f1da` で closing。実装の現物は `src/adapter/state/app-state.ts` の `showScanline` / `accentColor` / `TOGGLE_SCANLINE` / `SET_ACCENT_COLOR` 系 / `tests/adapter/fi12-scanline-kanban.test.ts` / Shell menu の scanline + accent UI。本書は behavior contract / historical design record として保持。
 Pipeline position: behavior contract  
 Predecessor: `docs/spec/ui-theme-customizable-accent-scanline-v1-minimum-scope.md`
 
