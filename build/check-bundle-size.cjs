@@ -49,6 +49,29 @@
  *   Color tag / parser など次 wave の自然増を吸収しつつ、重依存の
  *   混入を依然としてタイトに検知できる設定を維持する。
  *
+ * Re-alignment (W1 Link slice — Paste event wiring, 2026-04-24):
+ *   dist/bundle.js ≈ 640.52 KB — PKC permalink → internal markdown
+ *   link 変換の adapter 層 wiring が action-binder.ts に組み込まれた
+ *   ことで、これまで tree-shake されていた `src/features/link/*` 系
+ *   (paste-conversion / permalink / convertPastedText / parsePermalink
+ *   / isSamePermalinkContainer) と新規 `link-paste-handler.ts` が
+ *   bundle に乗り、初期予算 640 KB を 0.52 KB 超過。
+ *
+ *   先行で link-paste-handler.ts 内の防御的 try/catch を 4 → 1 に
+ *   削減（focus / execCommand 周りは throw しない通常パスなので不要、
+ *   setSelectionRange のみ <input type=number/email> 互換のため残置）
+ *   して 0.09 KB 削減した上で残差。link システムは Link Unification
+ *   v0 spec に基づく参照基盤の最小成立分(spec / pure parser /
+ *   features-layer paste-conversion / adapter wiring + tests 92件)で
+ *   構成されており、これ以上の削減は防御性 / コメント密度 / 機能性を
+ *   損なう。
+ *
+ *   そこで budget は **648 KB** に引き上げる — 現サイズ 640.52 KB に
+ *   ~1.2% の headroom（~7.48 KB）を上乗せした最小枠。次 slice
+ *   (Copy permalink UI / card / embed renderer / cross-container
+ *   placeholder) 2-3 件分の自然増を吸収しつつ、重依存の混入を依然
+ *   としてタイトに検知できる設定を維持する。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -63,7 +86,7 @@ const ROOT = resolve(__dirname, '..');
 
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
-  { file: 'dist/bundle.js', maxBytes: 640 * 1024 },  // 640 KB
+  { file: 'dist/bundle.js', maxBytes: 648 * 1024 },  // 648 KB (W1 Link paste-wiring re-alignment)
   { file: 'dist/bundle.css', maxBytes: 94 * 1024 },  // 94 KB (W1 D-1 post-optimize re-alignment)
 ];
 

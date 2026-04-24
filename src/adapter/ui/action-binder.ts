@@ -47,6 +47,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
+import { maybeHandleLinkPaste } from './link-paste-handler';
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -3966,6 +3967,39 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     'textlog-entry-text',
   ]);
 
+  /**
+   * PKC permalink → internal markdown link.
+   *
+   * Runs first in the text-payload branch. Reads `text/plain` from
+   * the clipboard, asks the link-paste-handler whether the payload
+   * should demote to an internal reference, and lets the helper
+   * splice `[](entry:<lid>)` / `[](asset:<key>)` into the textarea
+   * when the answer is yes. Returns true when the paste was
+   * handled — caller `preventDefault`s only on that branch so
+   * cross-container / malformed / ordinary URL pastes keep their
+   * native browser behavior.
+   *
+   * Scope: same allowlist as the HTML path (TEXT body + textlog
+   * append/entry textareas). Spec: pkc-link-unification-v0.md §7.
+   */
+  function maybeHandlePkcPermalinkPaste(e: ClipboardEvent): boolean {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return false;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return false;
+
+    const raw = e.clipboardData?.getData('text/plain') ?? '';
+    if (raw === '') return false;
+
+    // `container` is nullable until SYS_INIT_COMPLETE lands; opt out
+    // of conversion in that pre-boot window so we never demote a
+    // permalink before the host knows its own container_id.
+    const containerId = dispatcher.getState().container?.meta.container_id ?? '';
+    const handled = maybeHandleLinkPaste(target, raw, containerId);
+    if (handled) e.preventDefault();
+    return handled;
+  }
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
@@ -4018,6 +4052,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
     }
     if (!imageItem) {
+      // ── PKC permalink → internal markdown link (text/plain) ──
+      //
+      // spec/pkc-link-unification-v0.md §7.1. Runs before the HTML
+      // path because PKC permalinks travel as plain text, and a
+      // matched same-container permalink should win over the
+      // default paste. Cross-container / malformed / non-PKC URLs
+      // return false here and fall through to the existing paths.
+      if (maybeHandlePkcPermalinkPaste(e)) return;
+
       // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
       //
       // No image on the clipboard → check for text/html. When the
