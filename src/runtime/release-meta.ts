@@ -82,13 +82,15 @@ export const APP_ID = 'pkc2' as const;
  * Source-side version (semver).
  * Builder may override in pkc-meta; this is the source default.
  *
- * Bumped to 2.1.0 (Phase 3 release visibility correction): the
- * v2.0 line accumulated a large backlog of user-visible features
- * (Link system foundation, W1 Tag wave, Storage Profile, UI
- * continuity, data correctness fixes). See docs/release/
- * CHANGELOG_v2.1.0.md and docs/development/versioning-policy.md.
+ * Bumped to 2.1.1 (Phase 3 / Phase 2 Link migration tool v1 close):
+ * v2.1.0 shipped the Link system foundation with the migration tool
+ * listed as "designed but not implemented"; v2.1.1 promotes it to
+ * fully implemented (scanner + preview UI + Apply all safe +
+ * revision-backed undo + manual sync). schema_version is unchanged.
+ * See docs/release/CHANGELOG_v2.1.1.md and
+ * docs/development/versioning-policy.md.
  */
-export const VERSION = '2.1.0' as const;
+export const VERSION = '2.1.1' as const;
 
 /**
  * Data schema version. Increment when Container shape changes
