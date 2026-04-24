@@ -9,12 +9,19 @@
  * deterministic `LinkMigrationPreview` they can render or further
  * filter.
  *
- * Four candidate kinds(spec §3):
+ * Three candidate kinds(spec §3, v1 safe-harbor set):
  *
  *   A — empty-label link                        `[](entry:lid)` etc
  *   B — legacy TEXTLOG log fragment             `entry:<lid>#<logId>`
  *   C — same-container Portable PKC Reference   `pkc://<self>/...`
- *   D — legacy asset image embed(optional)      `![](asset:key)`
+ *
+ * Note — `![alt](asset:<key>)` is the **current canonical image embed**
+ * form(asset resolver expands it to a `data:` URI). v1 leaves it
+ * untouched. The standard CommonMark clickable-image form
+ * `[![alt](url)](url)` is reserved as a future PKC dialect but the
+ * current renderer cannot dock it safely(`asset:` is not in
+ * `SAFE_URL_RE`), so scanner v1 never emits migrations towards it —
+ * see `docs/spec/link-migration-tool-v1.md` §14.
  *
  * Grammar is delegated to existing parsers(`parseEntryRef`,
  * `parsePortablePkcReference`)so this module never re-implements
@@ -50,8 +57,7 @@ import { parseTextlogBody } from '../textlog/textlog-body';
 export type LinkMigrationCandidateKind =
   | 'empty-label'
   | 'legacy-log-fragment'
-  | 'same-container-portable-reference'
-  | 'legacy-asset-image-embed';
+  | 'same-container-portable-reference';
 
 export type LinkMigrationLocation =
   | { readonly kind: 'body'; readonly start: number; readonly end: number }
@@ -82,18 +88,12 @@ export interface LinkMigrationPreview {
 }
 
 /**
- * Scanner options. All optional, all default to the conservative
- * `Apply-all-safe` posture described in spec §9.2.
+ * Scanner options. Reserved for future knobs — v1 has none. Keeping
+ * the type export stable so callers can opt into future toggles
+ * without re-plumbing the call sites.
  */
 export interface ScanOptions {
-  /**
-   * Enable Candidate D(legacy asset image embed →
-   * `[![]](asset:<key>)` bracket-wrapping). Default **false** —
-   * spec §3.5 leaves this off because the current `![alt](asset:)`
-   * form already renders correctly and future embed presentation
-   * grammar is unsettled.
-   */
-  readonly enableAssetEmbedMigration?: boolean;
+  readonly _reserved?: never;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ export interface ScanOptions {
  */
 export function buildLinkMigrationPreview(
   container: Container,
-  options: ScanOptions = {},
+  _options: ScanOptions = {},
 ): LinkMigrationPreview {
   const candidates: LinkMigrationCandidate[] = [];
   const affectedLids = new Set<string>();
@@ -123,7 +123,7 @@ export function buildLinkMigrationPreview(
   for (const entry of container.entries) {
     if (!isScanTarget(entry)) continue;
     const before = candidates.length;
-    scanEntry(entry, container, options, candidates);
+    scanEntry(entry, container, candidates);
     if (candidates.length > before) affectedLids.add(entry.lid);
   }
 
@@ -168,20 +168,18 @@ function isScanTarget(entry: Entry): boolean {
 function scanEntry(
   entry: Entry,
   container: Container,
-  options: ScanOptions,
   out: LinkMigrationCandidate[],
 ): void {
   if (entry.archetype === 'textlog') {
-    scanTextlogEntry(entry, container, options, out);
+    scanTextlogEntry(entry, container, out);
     return;
   }
-  scanPlainBody(entry, container, options, out);
+  scanPlainBody(entry, container, out);
 }
 
 function scanPlainBody(
   entry: Entry,
   container: Container,
-  options: ScanOptions,
   out: LinkMigrationCandidate[],
 ): void {
   if (typeof entry.body !== 'string' || entry.body === '') return;
@@ -190,8 +188,6 @@ function scanPlainBody(
     const candidate = classifyMatch(
       entry,
       container,
-      options,
-      entry.body,
       m,
       { kind: 'body' },
     );
@@ -202,7 +198,6 @@ function scanPlainBody(
 function scanTextlogEntry(
   entry: Entry,
   container: Container,
-  options: ScanOptions,
   out: LinkMigrationCandidate[],
 ): void {
   let body;
@@ -218,8 +213,6 @@ function scanTextlogEntry(
       const candidate = classifyMatch(
         entry,
         container,
-        options,
-        row.text,
         m,
         { kind: 'textlog-row', logId: row.id },
       );
@@ -303,8 +296,6 @@ type RawLocation =
 function classifyMatch(
   entry: Entry,
   container: Container,
-  options: ScanOptions,
-  sourceText: string,
   match: LinkMatch,
   loc: RawLocation,
 ): LinkMigrationCandidate | null {
@@ -313,10 +304,10 @@ function classifyMatch(
     return classifyEntryHref(entry, container, match, loc);
   }
   if (href.startsWith('asset:')) {
-    return classifyAssetHref(entry, container, options, match, loc, sourceText);
+    return classifyAssetHref(entry, container, match, loc);
   }
   if (href.startsWith('pkc://')) {
-    return classifyPortableHref(entry, container, match, loc, sourceText);
+    return classifyPortableHref(entry, container, match, loc);
   }
   // Everything else is non-PKC — never touched.
   return null;
@@ -384,31 +375,18 @@ function classifyEntryHref(
 function classifyAssetHref(
   entry: Entry,
   container: Container,
-  options: ScanOptions,
   match: LinkMatch,
   loc: RawLocation,
-  _sourceText: string,
 ): LinkMigrationCandidate | null {
   const key = match.href.slice('asset:'.length);
   if (key === '' || !/^[A-Za-z0-9_-]+$/.test(key)) return null;
 
-  // D — legacy asset image embed(opt-in).
-  if (match.isImage && options.enableAssetEmbedMigration === true) {
-    return {
-      entryLid: entry.lid,
-      archetype: entry.archetype,
-      location: toPublicLocation(loc, match.start, match.end),
-      kind: 'legacy-asset-image-embed',
-      before: match.full,
-      after: `[${match.full}](asset:${key})`,
-      confidence: 'review',
-      reason: 'Wrap asset image embed in a reserved-presentation form(opt-in).',
-    };
-  }
-
-  // Only plain link form produces empty-label candidate. The
-  // image form(`![alt](asset:key)`)is the canonical embed
-  // form and is skipped unless the opt-in above fires.
+  // `![alt](asset:<key>)` is the current canonical image embed — the
+  // asset resolver expands it to a `data:` URI. scanner v1 never
+  // rewrites it. Future clickable-image dialect
+  // `[![alt](asset:<key>)](asset:<key>)` is not a v1 migration target
+  // because the current renderer's `SAFE_URL_RE` allowlist would
+  // reject the outer link; see spec §14.
   if (match.isImage) return null;
 
   if (match.label !== '') return null;
@@ -434,7 +412,6 @@ function classifyPortableHref(
   container: Container,
   match: LinkMatch,
   loc: RawLocation,
-  _sourceText: string,
 ): LinkMigrationCandidate | null {
   const parsed: ParsedPortablePkcReference | null = parsePortablePkcReference(match.href);
   if (parsed === null) return null;
@@ -595,7 +572,6 @@ function summarize(
     'empty-label': 0,
     'legacy-log-fragment': 0,
     'same-container-portable-reference': 0,
-    'legacy-asset-image-embed': 0,
   };
   let safe = 0;
   let review = 0;

@@ -277,6 +277,19 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 - 空 label link: `[](entry:...)` / `[](asset:...)`
 - body 内 `pkc://...`(Copy surface が External Permalink に一本化されたため)
 - `[card:<lid>]` 独自記法(spec §10.1 で不採用確定)
+- `[![<alt>]](<target>)`(字面どおり markdown-it は literal `![]` label の anchor として扱い clickable image にならない、§5.7.5 参照)
+
+#### 5.7.5 Future dialect reservations(現行は非 canonical、migration 対象外)
+
+標準 Markdown として自然な形でも、**現行 PKC2 renderer が safe に解釈できない** ものは canonical にしない / 新規 emit しない / migration tool v1 は生成しない。
+
+| form | 標準 Markdown 扱い | 現行 PKC2 扱い | 将来の検討 |
+|---|---|---|---|
+| `[![<alt>](<target>)](<target>)` | clickable image(`<a><img></a>` nest、README バッジで頻出) | `asset:` 外側 link は `SAFE_URL_RE` allowlist 未登録のため validateLink reject、`[` `]` `(asset:...)` が literal 漏れ。`entry:` 版は anchor 自体は動くが `<div class="pkc-transclusion-placeholder">` を `<a>` が囲み HTML semantics 不正 | renderer 側で (a) `asset:` を allowlist 追加、(b) resolver の link-form pass を outer bracket に効かせる、(c) click target を chip に demote、の 3 点実装後に migration tool v2 で正式採用検討 |
+| `[![]](<target>)` | anchor + literal text `![]`(clickable image ではない) | 上と同じく outer link reject で literal 漏れ | 採用しない(誤読を誘発するだけで harbor 4 層のどれでも価値が無い)|
+| `@[card](<target>)` / `@[card:<variant>](<target>)` | `@` literal + 普通の link | renderer hook 未実装(`<p>@<a>…</a></p>`)| Phase 4 card / embed 実装とセットで migration tool v2 |
+
+**Harbor 原則**(詳細は `./link-migration-tool-v1.md` §14): PKC 内で未解決の future dialect を migration tool が生成すると、apply 直後に body が visibly 壊れる。scanner v1 は before / after 双方でこれらの form を **生成も検出もしない**。
 
 ---
 

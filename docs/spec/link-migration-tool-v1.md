@@ -48,8 +48,9 @@
 ### 2.2 含めない(v1 非対象)
 
 - **ordinary URL / Office URI scheme の rewrite**(絶対に触らない、§4)
-- **cross-container portable reference の internal 化**(container_id 不明、§3.5)
-- **non-empty user label の強制上書き**(ユーザー意図を優先、§3.5)
+- **cross-container portable reference の internal 化**(container_id 不明、§3.6)
+- **non-empty user label の強制上書き**(ユーザー意図を優先、§3.6)
+- **future dialect(clickable-image / card / `[![]](target)`)の生成**(§14)
 - **card / embed grammar の migration**(本 tool は **link 正規化 v1** が主軸、card / embed は future migration tool v2 で別契約)
 - **attachment metadata 系 migration**(body.name / mime 等、スコープ外)
 - **raw HTML 内の PKC link 解釈**(security surface が広すぎる、future option)
@@ -131,35 +132,30 @@ label 合成ルールは `link-paste-handler.ts` の `resolveLabel` と一致(#1
 
 **safety level**: **safe**(target は同一意味、表現だけ shorten)
 
-### 3.5 Candidate D — Legacy asset image embed promotion(optional)
-
-| Before | After |
-|---|---|
-| `![<alt>](asset:<key>)` | `[![<alt>]](asset:<key>)` |
-
-現行 markdown renderer は `![](asset:<key>)` を画像 embed として既に正しく解釈する(`resolveAssetReferences` 経由)。spec §5.7 future "embed presentation" への移行候補だが、**card / embed 本体が Phase 4 で未着地** なので v1 では **default OFF**(option 扱い)。
-
-**default ON/OFF 推奨**: **OFF**
-- 理由: 現状表示が壊れていない / embed presentation 記法は未確定 / migration 不要な改変はしない
-- 将来 card / embed が正本化された時点で v2 option / 強制を再検討
-
-**safety level**: **review**(optional、default 無効)
-
-### 3.6 Non-candidate — Already canonical
+### 3.5 Non-candidate — Already canonical
 
 以下は **candidate を生成しない**(既に正本):
 
 ```
 [<label>](entry:<lid>)                      # 非空 label
 [<label>](entry:<lid>#log/<logId>)          # canonical log fragment
-[<label>](asset:<key>)                      # 非空 label
+[<label>](asset:<key>)                      # 非空 label(非 image MIME は resolver が chip 化)
 [<label>](entry:<lid>#day/<yyyy-mm-dd>)
 [<label>](entry:<lid>#log/<logId>/<slug>)
-![<alt>](asset:<key>)                       # asset image embed 現行形
-@[card](entry:<lid>)                        # future presentation(v1 対象外)
+![<alt>](asset:<key>)                       # 現行 canonical image embed(data URI 展開)
+![<alt>](entry:<lid>)                       # 現行 canonical transclusion
+@[card](entry:<lid>)                        # future presentation(v1 対象外、§14)
+[![<alt>](<target>)](<target>)              # future clickable-image(v1 対象外、§14)
 ```
 
-### 3.7 Candidate にならないが触れない(user 意図保護)
+`![<alt>](asset:<key>)` は **asset resolver が `data:` URI に展開して `<img>` を emit している現行 canonical**。scanner v1 は **touch しない**。
+
+Spec の旧版(Phase 2 step 1 初稿)には「Candidate D — Legacy asset image embed」節として `![<alt>](asset:<key>)` を `[![<alt>]](asset:<key>)` に wrap するオプションがあったが、harbor 原則(§14)と 2026-04-24 audit で **削除**:
+- 字面どおりの `[![<alt>]](asset:<key>)` は markdown-it 上 literal `![]` label の anchor に落ちる(clickable image にならない)
+- 意図を汲んだ `[![<alt>](asset:<key>)](asset:<key>)` は標準 CommonMark の clickable-image 形だが、現行 PKC2 renderer の `SAFE_URL_RE` allowlist に `asset:` が無いため、外側 link が reject されて literal 漏れが起きる
+- どちらの解釈でも v1 で apply すると body を壊す。scanner v1 は future dialect を生成しない(§14)
+
+### 3.6 Candidate にならないが触れない(user 意図保護)
 
 - `[<non-empty-label>](entry:<lid>)` の label は **上書きしない**(user が明示的に書いた可能性)
 - unknown fragment(`#experimental` など)は保持
@@ -244,7 +240,7 @@ function scanEntryBody(entry, container):
 - `maskNonTargetRegions` は code block / inline code の範囲を空白等で上書きし、後段の link パーサで誤検出を防ぐ(実装 slice で具体化)
 - `findMarkdownLinks` は `[label](href)` と `![alt](href)` を拾う最小正規表現(既存 `extract-entry-refs.ts` の pattern を参考にする)
 - `parsePkcHref` は href の prefix を見て `parseEntryRef` / asset prefix / `parsePortablePkcReference` / `parseExternalPermalink` に dispatch
-- `classifyCandidate` は §3 の A-D 判定を行い、非該当は null を返す
+- `classifyCandidate` は §3 の A-C 判定を行い、非該当は null を返す
 
 ### 5.3 Archetype 別 scan scope
 
@@ -287,8 +283,7 @@ scanner 自体も features 層 pure function として実装(`src/features/link/
 export type LinkMigrationCandidateKind =
   | 'empty-label'                        // §3.2
   | 'legacy-log-fragment'                // §3.3
-  | 'same-container-portable-reference'  // §3.4
-  | 'legacy-asset-image-embed';          // §3.5(optional)
+  | 'same-container-portable-reference'; // §3.4
 
 export type LinkMigrationLocation =
   | { kind: 'body'; start: number; end: number }
@@ -481,8 +476,9 @@ Preview は **完全な dry-run**:
 | empty-label(A) | safe | ✅ | label を補完するだけ、target 不変、可視化のみ |
 | same-container-portable-reference(C) | safe | ✅ | target 意味は同一、href shorten のみ |
 | legacy-log-fragment(B) | **safe** only if row id matches | ✅ with match / 除外 without match | row id 一致時のみ semantics 保証、不一致は candidate 化しない |
-| legacy-asset-image-embed(D) | review | ❌(default OFF、option) | presentation 予約変更、現状表示は壊れていない |
-| non-empty label rewrite | N/A | — | candidate にしない(§3.7) |
+| canonical `![<alt>](asset:<key>)` / `![<alt>](entry:<lid>)` | N/A | 常に — | 現行 canonical なので touch しない(§3.5、regression で pin) |
+| future `[![<alt>](<target>)](<target>)` / `[![]](<target>)` / `@[card](…)` | N/A | 常に — | future dialect、renderer 対応前は migration しない(§14) |
+| non-empty label rewrite | N/A | — | candidate にしない(§3.6) |
 
 ### 9.2 "Apply all safe" の意味
 
@@ -516,9 +512,7 @@ Preview は **完全な dry-run**:
   - `[x](pkc://<other>/entry/e1)` → **candidate 化しない**(cross-container)
   - `[x](pkc://<self>/asset/a1)` → candidate
   - malformed `pkc://<self>/entry/` → **candidate 化しない**
-- **Candidate D**: optional legacy asset image embed
-  - `![pic](asset:a1)` + optional ON → candidate(confidence `review`)
-  - `![pic](asset:a1)` + optional OFF(default)→ **候補リストに含めない**
+- **Canonical(非候補、regression で pin)**: `![<alt>](asset:<key>)` / `![<alt>](entry:<lid>)` は既に現行 canonical なので v1 では一切 touch しない(§3.5)。standard CommonMark の clickable-image `[![alt](<target>)](<target>)` と literal `[![]](<target>)` も **v1 では before / after 両方で生成・検出しない**(§14 future dialect)
 
 ### 10.2 Non-interference tests
 
@@ -673,6 +667,38 @@ Preview は **完全な dry-run**:
 - attachment metadata migration
 - raw HTML 内 PKC link 処理
 - 自動バックグラウンド実行
+
+---
+
+## 14. Future dialect reservations(v1 scanner 対象外)
+
+2026-04-24 audit(Harbor Philosophy + Markdown standard compatibility)で確定。scanner v1 は以下の form を **一切生成しない**。将来 renderer / resolver 改修とセットで migration tool v2 が検討する。
+
+### 14.1 Clickable-image `[![<alt>](<target>)](<target>)`
+
+- **標準 CommonMark**: `<a href="target"><img src="target" alt="alt"></a>` にネスト展開される well-known form(README バッジ等で普及)
+- **現行 PKC2**: `SAFE_URL_RE` に `asset:` が無いため、外側 link の `asset:` が validateLink で reject され、`[` `]` `(asset:...)` が literal text として漏れる(2026-04-24 probe で実測)。`entry:` 版は anchor 自体は動くが `<a>` が `<div class="pkc-transclusion-placeholder">` を囲む構造になり HTML semantics が不正
+- **future dialect 予約**: renderer 側で (a) `asset:` を `SAFE_URL_RE` に追加、(b) resolver の link 形 pass を outer bracket にも効かせる、(c) click 先を download chip に demote する、の 3 点が揃ってから migration v2 で昇格
+- **v1 scanner 契約**: `[![<alt>](<target>)](<target>)` を **before にも after にも使わない**。scanner が出会っても候補化しない(regression test で pin)
+
+### 14.2 Bracket-wrapped empty label `[![]](<target>)`
+
+- markdown-it は `<a href="target">![]</a>`(label が literal text `![]` の anchor)として token 化。clickable image では **ない**
+- harbor 入港 / 出港 / 定泊 / graceful degrade のいずれの観点でも価値が無い
+- scanner v1 は **after として emit しない**(spec 旧版 Candidate D が字面で示していた形、2026-04-24 削除)
+
+### 14.3 Card presentation `@[card](<target>)` / `@[card:<variant>](<target>)`
+
+- spec `pkc-link-unification-v0.md` §6.3 が future presentation として予約
+- 現行 renderer hook 無し → `<p>@<a href="target">card</a></p>` になる
+- Phase 4 での renderer 実装とセットで migration 検討(migration v2 対象)
+- v1 scanner は **生成しない / 検出もしない**
+
+### 14.4 共通原則
+
+- v1 scanner の責務は **「既存の壊れかけた legacy 形を現行 canonical に寄せる」** のみ
+- 現行 renderer が dock できない future dialect を生成することは harbor 原則違反
+- future dialect を採用するときは、必ず renderer / resolver / paste-conversion / action-binder の整合を先に取る
 
 ---
 

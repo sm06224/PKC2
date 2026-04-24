@@ -238,11 +238,32 @@ describe('buildLinkMigrationPreview — same-container portable reference(Candid
 });
 
 // ─────────────────────────────────────────────────────────────────
-// Candidate D — legacy asset image embed(opt-in)
+// Asset image embed — canonical, never touched by v1 scanner
 // ─────────────────────────────────────────────────────────────────
+//
+// `![alt](asset:<key>)` is the **current canonical** image embed form
+// in PKC2: the asset resolver expands it to a `data:` URI before
+// markdown-it ever sees it. v1 migration never rewrites canonical
+// forms.
+//
+// The standard CommonMark clickable-image form `[![alt](url)](url)`
+// is **reserved** as a future PKC dialect, but the current renderer
+// cannot dock `[…](asset:<key>)` safely(the outer link target
+// `asset:` is not in the renderer's `SAFE_URL_RE` allowlist, so
+// markdown-it drops the anchor and the brackets leak as literal
+// text). A migration that emits that form today would visibly break
+// the body, so scanner v1 never generates it — see
+// `docs/spec/link-migration-tool-v1.md` §14.
+//
+// Once a future renderer PR lands clickable-image support, migration
+// v2 can revisit this as an opt-in promotion.
+//
+// These regression tests pin that contract. If any of them ever
+// start emitting a candidate, the scanner is silently breaking the
+// harbor invariant.
 
-describe('buildLinkMigrationPreview — legacy asset image embed(Candidate D, optional)', () => {
-  it('is NOT emitted by default(opt-in off)', () => {
+describe('buildLinkMigrationPreview — canonical image embed is never touched', () => {
+  it('never emits a candidate for `![alt](asset:<key>)`(canonical image embed)', () => {
     const c = container([
       text('src', '![pic](asset:ast-001)'),
       attachment('att', 'photo.png', 'ast-001'),
@@ -251,19 +272,48 @@ describe('buildLinkMigrationPreview — legacy asset image embed(Candidate D, op
     expect(candidates).toHaveLength(0);
   });
 
-  it('is emitted with review confidence when opt-in flag is ON', () => {
+  it('never emits a candidate for `![](asset:<key>)`(canonical image embed, empty alt)', () => {
     const c = container([
-      text('src', '![pic](asset:ast-001)'),
+      text('src', '![](asset:ast-001)'),
       attachment('att', 'photo.png', 'ast-001'),
     ]);
-    const { candidates } = buildLinkMigrationPreview(c, {
-      enableAssetEmbedMigration: true,
-    });
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]!.kind).toBe('legacy-asset-image-embed');
-    expect(candidates[0]!.confidence).toBe('review');
-    expect(candidates[0]!.before).toBe('![pic](asset:ast-001)');
-    expect(candidates[0]!.after).toBe('[![pic](asset:ast-001)](asset:ast-001)');
+    const { candidates } = buildLinkMigrationPreview(c);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('never emits a candidate for `[![alt](asset:<key>)](asset:<key>)`(future clickable-image)', () => {
+    // Future PKC dialect: currently unsupported by the renderer, so
+    // v1 must not try to produce it. The inner `![alt](asset:k)` is
+    // already canonical; the outer wrapper would be broken today.
+    const c = container([
+      text('src', '[![pic](asset:ast-001)](asset:ast-001)'),
+      attachment('att', 'photo.png', 'ast-001'),
+    ]);
+    const { candidates } = buildLinkMigrationPreview(c);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('never emits a candidate for `[![]](asset:<key>)`(literal `![]` label, not an embed)', () => {
+    // markdown-it tokenizes `[![]](asset:k)` as an anchor with
+    // literal `![]` text — it is not a clickable image. v1 scanner
+    // must not promote this ambiguous form into a migration target.
+    const c = container([
+      text('src', '[![]](asset:ast-001)'),
+      attachment('att', 'photo.png', 'ast-001'),
+    ]);
+    const { candidates } = buildLinkMigrationPreview(c);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('never emits a candidate for `[![]](entry:<lid>)` either', () => {
+    // Same literal-label trap as the asset variant — avoid migrating
+    // INTO this shape on the entry side too.
+    const c = container([
+      text('src', '[![]](entry:dst)'),
+      text('dst', '', 'Destination'),
+    ]);
+    const { candidates } = buildLinkMigrationPreview(c);
+    expect(candidates).toHaveLength(0);
   });
 });
 
