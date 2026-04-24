@@ -1,6 +1,6 @@
 # TEXTLOG 複数画像パフォーマンス v1 — Behavior Contract
 
-Status: DRAFT rev.1 2026-04-19
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中、TEXTLOG 段階的表示 / staged render が動作中)。本書は behavior contract / historical design record として保持。実装の現物は `tests/adapter/textlog-staged-render.test.ts` / `tests/adapter/textlog-staged-render-phase2.test.ts` と textlog presenter 系。
 Pipeline position: behavior contract
 Predecessor: `docs/spec/textlog-image-perf-v1-minimum-scope.md` rev.2.1
 Spike result note: `docs/development/fi-03-spike-native-lazy-result.md`

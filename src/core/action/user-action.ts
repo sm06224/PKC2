@@ -230,6 +230,28 @@ export type UserAction =
   | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
+  /**
+   * Phase 2 Slice 2 — open/close the "Normalize PKC links" preview
+   * dialog. Runtime-only UI toggle: the reducer flips
+   * `state.linkMigrationDialogOpen` and the renderer mounts/unmounts
+   * the overlay via `syncLinkMigrationDialogFromState`. Apply is
+   * **not** implemented in this slice; the dialog is preview-only.
+   */
+  | { type: 'OPEN_LINK_MIGRATION_DIALOG' }
+  | { type: 'CLOSE_LINK_MIGRATION_DIALOG' }
+  /**
+   * Phase 2 Slice 3 — apply every *safe* link migration candidate
+   * returned by the scanner against the current container. The
+   * reducer re-scans first (preview-time candidates are not trusted
+   * blindly), filters to `confidence === 'safe'`, and rewrites the
+   * affected entries with a shared `bulk_id` revision group so a
+   * future undo UI can group them. Blocked in readonly /
+   * importPreview / editing / light-source states.
+   *
+   * No payload: v1 is "Apply all safe" — per-candidate selection
+   * lands in a later slice.
+   */
+  | { type: 'APPLY_LINK_MIGRATION' }
   | { type: 'CLEAR_FILTERS' }
   // Rename (W1 Slice B followup): `SET_TAG_FILTER` / `tagLid` was a
   // legacy name from when categorical-relation-based "tags" were the

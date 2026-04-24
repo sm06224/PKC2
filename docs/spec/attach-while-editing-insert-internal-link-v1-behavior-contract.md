@@ -1,6 +1,6 @@
 # FI-05 編集中の添付経路を TEXTAREA 自動 internal link 貼付に揃える — v1 Behavior Contract
 
-Status: DRAFT 2026-04-18
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/adapter/ui/attachment-presenter.ts` / `src/adapter/ui/action-binder.ts` / `tests/adapter/action-binder-attach-while-editing.test.ts`。
 Pipeline position: behavior contract
 Predecessor: `docs/spec/attach-while-editing-insert-internal-link-v1-minimum-scope.md`
 

@@ -1,7 +1,7 @@
 # FI-02 編集安全性 v1 — Minimum Scope
 # TEXTLOG 貼付先ズレ / FOLDER Ctrl+S 不可
 
-Status: DRAFT 2026-04-17
+Status: 実装済み / 再現不可としてクローズ(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。1-A(TEXTLOG 貼付先ズレ)は `src/adapter/ui/action-binder.ts` の `handlePaste` に `data-pkc-log-id` 付き selector を追加する形で **CLOSED 2026-04-18 commit `af43ab2`**(audit `../development/textlog-paste-target-fix-audit.md`)、`tests/adapter/action-binder-edit-safety.test.ts` で pin。1-B(FOLDER Ctrl+S)は Chromium + happy-dom の両環境で **UNREPRODUCED**(`../development/folder-ctrl-s-browser-repro.md`、repro matrix 全ケース SAVED)、コード変更なしで close。本書は minimum-scope / historical design record として保持。
 Pipeline position: minimum scope（behavior contract の前提）
 
 ---

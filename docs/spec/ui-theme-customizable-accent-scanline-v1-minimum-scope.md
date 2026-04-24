@@ -1,6 +1,6 @@
 # FI-12 UI テーマ設定化（視認性改善） v1 — Minimum Scope
 
-Status: DRAFT 2026-04-18  
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。FI-12 v1 本体は 2026-04-18 commit `9078e90`(audit `../development/ui-theme-customizable-accent-scanline-v1-audit.md`)、FI-12 follow-up(Kanban selected / scanline segmented / accent picker)は commit `c68f1da`(audit `../development/fi12-followup-urgent-ux-audit.md`)で closing。実装の現物は `src/adapter/state/app-state.ts` の `showScanline` / `accentColor` / `TOGGLE_SCANLINE` / `SET_ACCENT_COLOR` / `tests/adapter/fi12-scanline-kanban.test.ts` / Shell menu の scanline / accent UI(`renderer.ts` の `renderShellMenu`)。本書は minimum-scope / historical design record として保持。
 Pipeline position: minimum scope  
 Predecessor: `docs/planning/file-issues/12_ui-theme-customizable-accent-scanline.md`
 

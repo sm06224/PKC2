@@ -1,6 +1,6 @@
 # System Settings as Hidden Entry v1 — Minimum Scope
 
-Status: DRAFT 2026-04-18 (rev.2 — expanded from scanline+accent to full settings)
+Status: 実装済み(v2.1.0 時点で landing、v2.1.1 でも稼働中)。本書は minimum-scope / historical design record として保持。rev.2 で full settings(scanline + accent + theme colors 等)に拡張された schema もそのまま稼働中。実装の現物は `src/core/model/system-settings-payload.ts` / `tests/core/system-settings-payload.test.ts` / `tests/core/system-entry-isolation.test.ts` / Shell menu の設定 UI(`src/adapter/ui/renderer.ts` の `renderShellMenu`)。
 Pipeline position: minimum scope
 Scope: docs-only (no implementation in this FI)
 Relates to:

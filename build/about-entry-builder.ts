@@ -154,6 +154,27 @@ const RELEASE_SUMMARY = {
     ],
     changelog: 'docs/release/CHANGELOG_v2.1.0.md',
   },
+  '2.1.1': {
+    highlights: [
+      'Link migration tool v1: Tools → Normalize PKC links preview + Apply all safe',
+      'Revision-backed normalization: every applied migration is recorded as a revision (bulk_id grouped, restore-capable)',
+      'Stale-candidate safety: source text changed between preview and apply is skipped instead of overwritten',
+      'Harbor-safe dialect gate: Candidate D (legacy asset image embed) removed from scanner v1; clickable-image reserved as future dialect',
+      'Manual sync: Normalize PKC links is documented in daily operations, troubleshooting, and glossary',
+    ],
+    knownLimitations: [
+      'Per-candidate checkbox selection is not implemented — v1 Apply is all-safe only',
+      'Clickable-image renderer support (`[![alt](url)](url)`) is not implemented — reserved as future dialect',
+      'Card / embed presentation (`@[card](...)`) is not implemented yet',
+      'Color tag is spec-only — implementation deferred to a future wave',
+      'Cross-container resolver / P2P is not implemented',
+      'OS protocol handler for `pkc://` is not implemented',
+      'External Permalink body residue rendering is not implemented — a `<base>#pkc?...` string left inside body text is rendered as a plain external anchor; only boot-time receive resolves it',
+      'External Permalink receive fragment scroll is not implemented — `&fragment=log/<logId>` on an External Permalink selects the entry but does not scroll to the log row',
+      'Full container footprint (body + relations + revisions) is not implemented — Storage Profile is asset-only',
+    ],
+    changelog: 'docs/release/CHANGELOG_v2.1.1.md',
+  },
 } as const;
 
 /**

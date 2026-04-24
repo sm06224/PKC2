@@ -70,6 +70,24 @@ export type DomainEvent =
    * are BOTH downstream of this event.
    */
   | { type: 'SETTINGS_CHANGED'; settings: SystemSettingsPayload }
+  /**
+   * LINK_MIGRATION_APPLIED — Phase 2 Slice 3. Emitted after an
+   * `APPLY_LINK_MIGRATION` run. Carries the outcome counts so
+   * subscribers (toast, analytics, tests) don't need to diff state.
+   *
+   *   - `applied`          — candidates actually rewritten
+   *   - `skipped`          — candidates dropped because the source
+   *                          text no longer matched the preview
+   *                          (body / textlog row was edited between
+   *                          preview and apply)
+   *   - `entriesAffected`  — distinct entries whose body changed
+   */
+  | {
+      type: 'LINK_MIGRATION_APPLIED';
+      applied: number;
+      skipped: number;
+      entriesAffected: number;
+    }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

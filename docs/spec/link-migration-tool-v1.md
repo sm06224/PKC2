@@ -48,8 +48,9 @@
 ### 2.2 含めない(v1 非対象)
 
 - **ordinary URL / Office URI scheme の rewrite**(絶対に触らない、§4)
-- **cross-container portable reference の internal 化**(container_id 不明、§3.5)
-- **non-empty user label の強制上書き**(ユーザー意図を優先、§3.5)
+- **cross-container portable reference の internal 化**(container_id 不明、§3.6)
+- **non-empty user label の強制上書き**(ユーザー意図を優先、§3.6)
+- **future dialect(clickable-image / card / `[![]](target)`)の生成**(§14)
 - **card / embed grammar の migration**(本 tool は **link 正規化 v1** が主軸、card / embed は future migration tool v2 で別契約)
 - **attachment metadata 系 migration**(body.name / mime 等、スコープ外)
 - **raw HTML 内の PKC link 解釈**(security surface が広すぎる、future option)
@@ -131,35 +132,30 @@ label 合成ルールは `link-paste-handler.ts` の `resolveLabel` と一致(#1
 
 **safety level**: **safe**(target は同一意味、表現だけ shorten)
 
-### 3.5 Candidate D — Legacy asset image embed promotion(optional)
-
-| Before | After |
-|---|---|
-| `![<alt>](asset:<key>)` | `[![<alt>]](asset:<key>)` |
-
-現行 markdown renderer は `![](asset:<key>)` を画像 embed として既に正しく解釈する(`resolveAssetReferences` 経由)。spec §5.7 future "embed presentation" への移行候補だが、**card / embed 本体が Phase 4 で未着地** なので v1 では **default OFF**(option 扱い)。
-
-**default ON/OFF 推奨**: **OFF**
-- 理由: 現状表示が壊れていない / embed presentation 記法は未確定 / migration 不要な改変はしない
-- 将来 card / embed が正本化された時点で v2 option / 強制を再検討
-
-**safety level**: **review**(optional、default 無効)
-
-### 3.6 Non-candidate — Already canonical
+### 3.5 Non-candidate — Already canonical
 
 以下は **candidate を生成しない**(既に正本):
 
 ```
 [<label>](entry:<lid>)                      # 非空 label
 [<label>](entry:<lid>#log/<logId>)          # canonical log fragment
-[<label>](asset:<key>)                      # 非空 label
+[<label>](asset:<key>)                      # 非空 label(非 image MIME は resolver が chip 化)
 [<label>](entry:<lid>#day/<yyyy-mm-dd>)
 [<label>](entry:<lid>#log/<logId>/<slug>)
-![<alt>](asset:<key>)                       # asset image embed 現行形
-@[card](entry:<lid>)                        # future presentation(v1 対象外)
+![<alt>](asset:<key>)                       # 現行 canonical image embed(data URI 展開)
+![<alt>](entry:<lid>)                       # 現行 canonical transclusion
+@[card](entry:<lid>)                        # future presentation(v1 対象外、§14)
+[![<alt>](<target>)](<target>)              # future clickable-image(v1 対象外、§14)
 ```
 
-### 3.7 Candidate にならないが触れない(user 意図保護)
+`![<alt>](asset:<key>)` は **asset resolver が `data:` URI に展開して `<img>` を emit している現行 canonical**。scanner v1 は **touch しない**。
+
+Spec の旧版(Phase 2 step 1 初稿)には「Candidate D — Legacy asset image embed」節として `![<alt>](asset:<key>)` を `[![<alt>]](asset:<key>)` に wrap するオプションがあったが、harbor 原則(§14)と 2026-04-24 audit で **削除**:
+- 字面どおりの `[![<alt>]](asset:<key>)` は markdown-it 上 literal `![]` label の anchor に落ちる(clickable image にならない)
+- 意図を汲んだ `[![<alt>](asset:<key>)](asset:<key>)` は標準 CommonMark の clickable-image 形だが、現行 PKC2 renderer の `SAFE_URL_RE` allowlist に `asset:` が無いため、外側 link が reject されて literal 漏れが起きる
+- どちらの解釈でも v1 で apply すると body を壊す。scanner v1 は future dialect を生成しない(§14)
+
+### 3.6 Candidate にならないが触れない(user 意図保護)
 
 - `[<non-empty-label>](entry:<lid>)` の label は **上書きしない**(user が明示的に書いた可能性)
 - unknown fragment(`#experimental` など)は保持
@@ -244,7 +240,7 @@ function scanEntryBody(entry, container):
 - `maskNonTargetRegions` は code block / inline code の範囲を空白等で上書きし、後段の link パーサで誤検出を防ぐ(実装 slice で具体化)
 - `findMarkdownLinks` は `[label](href)` と `![alt](href)` を拾う最小正規表現(既存 `extract-entry-refs.ts` の pattern を参考にする)
 - `parsePkcHref` は href の prefix を見て `parseEntryRef` / asset prefix / `parsePortablePkcReference` / `parseExternalPermalink` に dispatch
-- `classifyCandidate` は §3 の A-D 判定を行い、非該当は null を返す
+- `classifyCandidate` は §3 の A-C 判定を行い、非該当は null を返す
 
 ### 5.3 Archetype 別 scan scope
 
@@ -287,8 +283,7 @@ scanner 自体も features 層 pure function として実装(`src/features/link/
 export type LinkMigrationCandidateKind =
   | 'empty-label'                        // §3.2
   | 'legacy-log-fragment'                // §3.3
-  | 'same-container-portable-reference'  // §3.4
-  | 'legacy-asset-image-embed';          // §3.5(optional)
+  | 'same-container-portable-reference'; // §3.4
 
 export type LinkMigrationLocation =
   | { kind: 'body'; start: number; end: number }
@@ -481,8 +476,9 @@ Preview は **完全な dry-run**:
 | empty-label(A) | safe | ✅ | label を補完するだけ、target 不変、可視化のみ |
 | same-container-portable-reference(C) | safe | ✅ | target 意味は同一、href shorten のみ |
 | legacy-log-fragment(B) | **safe** only if row id matches | ✅ with match / 除外 without match | row id 一致時のみ semantics 保証、不一致は candidate 化しない |
-| legacy-asset-image-embed(D) | review | ❌(default OFF、option) | presentation 予約変更、現状表示は壊れていない |
-| non-empty label rewrite | N/A | — | candidate にしない(§3.7) |
+| canonical `![<alt>](asset:<key>)` / `![<alt>](entry:<lid>)` | N/A | 常に — | 現行 canonical なので touch しない(§3.5、regression で pin) |
+| future `[![<alt>](<target>)](<target>)` / `[![]](<target>)` / `@[card](…)` | N/A | 常に — | future dialect、renderer 対応前は migration しない(§14) |
+| non-empty label rewrite | N/A | — | candidate にしない(§3.6) |
 
 ### 9.2 "Apply all safe" の意味
 
@@ -516,9 +512,7 @@ Preview は **完全な dry-run**:
   - `[x](pkc://<other>/entry/e1)` → **candidate 化しない**(cross-container)
   - `[x](pkc://<self>/asset/a1)` → candidate
   - malformed `pkc://<self>/entry/` → **candidate 化しない**
-- **Candidate D**: optional legacy asset image embed
-  - `![pic](asset:a1)` + optional ON → candidate(confidence `review`)
-  - `![pic](asset:a1)` + optional OFF(default)→ **候補リストに含めない**
+- **Canonical(非候補、regression で pin)**: `![<alt>](asset:<key>)` / `![<alt>](entry:<lid>)` は既に現行 canonical なので v1 では一切 touch しない(§3.5)。standard CommonMark の clickable-image `[![alt](<target>)](<target>)` と literal `[![]](<target>)` も **v1 では before / after 両方で生成・検出しない**(§14 future dialect)
 
 ### 10.2 Non-interference tests
 
@@ -597,39 +591,84 @@ Preview は **完全な dry-run**:
 
 **想定 PR サイズ**: ~400 LOC(実装)+ ~600 LOC(tests)
 
-### Slice 2 — Preview UI dialog(adapter 層)
+### Slice 2 — Preview UI dialog(adapter 層)**(implemented 2026-04-24, PR #126 / commit `?`)**
 
-**Scope**:
-- `src/adapter/ui/link-migration-dialog.ts`(新規):modal dialog、text-replace-dialog と同等 UX
-- Shell menu / command palette への entry point 追加
-- AppState に `linkMigrationPreview?: LinkMigrationPreview` を additive 追加(optional field)
-- Slice 1 の scanner を dispatch から呼び出して preview を格納
-- Apply all safe / Apply selected / Cancel のボタン
-- §10.6 の phase / mode guard
-- integration tests(happy-dom 経由)
+**実装済みスコープ**:
+- `src/adapter/ui/link-migration-dialog.ts` 新規(state-synced pattern、`syncLinkMigrationDialogFromState(state, root)` を renderer から呼び出す)
+- Shell menu に `Tools` セクションを新設、`🔧 Normalize PKC links` ボタンを追加(`data-pkc-action="open-link-migration-dialog"`)
+- AppState に runtime-only flag `linkMigrationDialogOpen?: boolean` を additive 追加
+- `OPEN_LINK_MIGRATION_DIALOG` / `CLOSE_LINK_MIGRATION_DIALOG` UserAction を追加、reducer は flag をトグルするだけ(shell menu を同時に閉じる)
+- action-binder:
+  - `open-link-migration-dialog` で `container` 有り + `phase !== 'editing'` を確認して OPEN を dispatch
+  - `close-link-migration-dialog` で CLOSE を dispatch
+  - Escape ハンドラで topmost overlay 優先順に CLOSE を織り込み(TEXTLOG preview → TEXT→TEXTLOG modal → link migration dialog → textlog selection → asset picker の順)
+- dialog 内部:
+  - ヘッダ(summary `N candidates across M entries (K safe).`)
+  - body(候補を `<ol>` で entry ごとにまとめて列挙、各 row に `[SAFE/REVIEW]` バッジ + kind ラベル + entry title + archetype + textlog 時は `log/<logId>` + before / after `<code>` diff + reason)
+  - footer(`Apply (Slice 3)` 無効化ボタン + "Apply is not available in this slice" note + Close ボタン)
+- **未実装のままにしてある項目**(Slice 3 以降で着地):
+  - candidate 選択 checkbox(現状はリスト表示のみ)
+  - Apply ボタンの enable / dispatch / reducer / revision 記録
+  - Apply all safe / Apply selected のバリアント
+- main.ts が boot 時に `setLinkMigrationDialogDispatcher(dispatcher)` を呼び、dialog の backdrop click / defensive close paths から `CLOSE_LINK_MIGRATION_DIALOG` を dispatch できる形にしている
+- integration tests:`tests/adapter/link-migration-dialog.test.ts`(16 件、state-sync / Esc / backdrop / close-button / kind / before-after 非-HTML / order / Candidate D 無し / code block 非干渉 / empty state / readonly でも preview 可 / 直接 API)
 
-**Acceptance**:
-- user が Tools → Normalize PKC links を開ける
-- preview dialog が candidates を列挙
-- checkbox 選択 + apply ボタンで後続 slice の action を dispatch(実装は slice 3 で)
-- Cancel で state 無変更
+**Acceptance(満たされたもの)**:
+- ✅ user が Shell menu → Tools → Normalize PKC links を開ける
+- ✅ preview dialog が candidates を entry 順 / offset 順で列挙
+- ✅ Cancel(Close ボタン / Esc / backdrop)で state 無変更
+- ⚠️ checkbox 選択 + apply ボタン → **Slice 3 へ持ち越し**(本 slice は Apply 不在、無効化ボタンで明示)
 
-**想定 PR サイズ**: ~500 LOC + ~400 LOC(tests)
+**実測 PR サイズ**: dialog ~530 LOC + action-binder / renderer / main.ts / state / action 合計 ~80 LOC + tests ~380 LOC + docs。Bundle 665.92 KB → 678.21 KB(+12.29 KB、42.3% → 44.2% of 1536 KB budget)
 
-### Slice 3 — Apply reducer + revision 連携
+### Slice 3 — Apply reducer + revision 連携 **(implemented 2026-04-24)**
 
-**Scope**:
-- `APPLY_LINK_MIGRATION` action + reducer(§8.5)
-- apply 対象 candidate list を受け取り、entry 単位で body 書き換え + revision 記録
-- §8.6 の pre-apply re-scan guard
-- §10.5 の apply tests
+**実装済みスコープ**:
+- `src/features/link/migration-apply.ts`(新規、pure planner):
+  - `applyLinkMigrations(container, candidates, now, generateRevisionId, bulkId) → { container, applied, skipped, entriesAffected }`
+  - Entry 単位に group → textlog / plain で分岐 → 各 body / row 内で offset 降順に置換
+  - 各 candidate の `before` を **現在の body / row.text slice(start, end)** と照合、不一致は skip(stale guard)
+  - 変更が発生した entry のみ `snapshotEntry` → `updateEntry` の順で適用(既存 QUICK_UPDATE_ENTRY と同じパターン)
+  - **Textlog row は `parseTextlogBody` → row.text 書き換え → `serializeTextlogBody`**(row.id / createdAt / flags は preserve)
+- `APPLY_LINK_MIGRATION` UserAction を追加、reducer は readonly / importPreview / editing / lightSource / viewOnlySource / no-container を guard、**preview を blindly 信じず再 scan** して safe candidates のみ apply
+- `DomainEvent` に `LINK_MIGRATION_APPLIED { applied, skipped, entriesAffected }` を追加(subscriber 層の analytics / toast 用)
+- `AppState.linkMigrationLastApplyResult?: { applied, skipped, entriesAffected, at }` を runtime-only 追加。`OPEN_LINK_MIGRATION_DIALOG` / `CLOSE_LINK_MIGRATION_DIALOG` で reset
+- `src/adapter/ui/link-migration-dialog.ts` に以下を追加:
+  - `Apply all safe` ボタン(`data-pkc-action="apply-link-migration"`)
+  - 無効化理由の明示(`data-pkc-link-migration-apply-disabled-reason`:`readonly` / `import-preview` / `light-source` / `view-only-source` / `editing` / `no-candidates`)
+  - Apply 後の結果バナー(`data-pkc-link-migration-banner="applied"` + applied / skipped / entriesAffected 属性 + "Skipped N because source changed" 行)
+  - Apply 後は container reference が変わるので `rerenderBody` が走り、残余 candidates が 0 件なら empty state が自動表示される
+- action-binder に `apply-link-migration` handler を追加、readonly / importPreview / lightSource / viewOnlySource / editing / no-container を belt-and-braces guard
 
-**Acceptance**:
-- apply 後の container に新 revision が記録される
-- user が revision restore で元の body に戻せる
-- 編集中 / readonly は block される
+**Revision 記録**:
+- 各影響 entry に 1 件の `Revision` を記録、**全件共通の `bulk_id`** を持つので将来の bulk undo UI で group restore 可能
+- `snapshot` は pre-apply の Entry JSON 全体
+- `prev_rid` が既存 revision にチェーン(container-ops の `findLatestRevisionIdForLid` 経由で H-6 契約に沿う)
+- `content_hash` は `snapshotEntry` が FNV-1a-64 で自動付与
+- `title` / `lid` / `archetype` / `created_at` は不変、`body` + `updated_at` のみ変わる
 
-**想定 PR サイズ**: ~300 LOC + ~500 LOC(tests)
+**Stale candidate handling**:
+- apply 時に container から preview を **再 scan** し、`confidence === 'safe'` のみに絞る → preview 後の edit / dual-edit / quick update などで drift したものは自然に drop
+- planner 層でも `before` / location 一致チェックを行い、手元にある candidate 配列が過去の preview を持ち越していても一致しないものは skip
+- テストで `skipped` counter が正しく増え、隣接 candidate の apply は成功することを pin
+
+**Guard(destructive action policy)**:
+- readonly / importPreview / editing / lightSource / viewOnlySource / no-container → `blocked` が立つ(reducer + action-binder 両方)
+- `light-source` と `view-only-source` は "persistence 不能" シナリオなので、apply しても revision が IDB に届かず user が undo を期待できないため block
+- Preview は readonly でも開ける(scanner は pure read-only)が、apply だけは block
+
+**Apply 後 UX**:
+- dialog 内に banner 表示(`Applied N link migrations across M entries.` + skipped があれば `Skipped K candidates because the source text changed between preview and apply.`)
+- 残りの candidate list が再 scan により空になるため empty state("All PKC links in this container are already in canonical form.")が自動で表示される
+- Apply ボタンは `no-candidates` で自動 disable
+- 再 open(Close → 再 Open)では banner は reset されるのでユーザーが前回の適用結果と新しい session を混同しない
+
+**追加テスト**(合計 +37 件):
+- `tests/features/link/migration-apply.test.ts` 新規 16 件(A/B/C 各 kind + textlog row + multi-candidate offset-desc + stale + textlog 行 id 消失 + revision bulk_id / prev_rid / snapshot / 無改変 invariants)
+- `tests/adapter/link-migration-dialog.test.ts` 拡張 +6 件(Apply button enabled / disabled reasons / click dispatch + container rewrite / banner / OPEN reset / revision bulk_id)
+- 既存 16 件は書き換え不要、A/B/C の scanner と Candidate D regression / readonly / code-block 非干渉は全て通過
+
+**想定 PR サイズ vs 実績**: 想定 ~300 LOC + ~500 LOC(tests) vs 実績 **planner ~240 LOC + reducer/action/state/binder/dialog ~320 LOC + tests ~620 LOC + docs**。Bundle 678.21 KB → **684.16 KB**(+5.95 KB、44.5% of 1536 KB budget)、CSS 93.65 KB 変化なし。
 
 ### Slice 4 — Manual / troubleshooting update
 
@@ -676,6 +715,46 @@ Preview は **完全な dry-run**:
 
 ---
 
+## 14. Future dialect reservations(v1 scanner 対象外)
+
+2026-04-24 audit(Harbor Philosophy + Markdown standard compatibility)で確定。scanner v1 は以下の form を **一切生成しない**。将来 renderer / resolver 改修とセットで migration tool v2 が検討する。
+
+### 14.1 Clickable-image `[![<alt>](<target>)](<target>)`
+
+- **標準 CommonMark**: `<a href="target"><img src="target" alt="alt"></a>` にネスト展開される well-known form(README バッジ等で普及)
+- **現行 PKC2**: `SAFE_URL_RE` に `asset:` が無いため、外側 link の `asset:` が validateLink で reject され、`[` `]` `(asset:...)` が literal text として漏れる(2026-04-24 probe で実測)。`entry:` 版は anchor 自体は動くが `<a>` が `<div class="pkc-transclusion-placeholder">` を囲む構造になり HTML semantics が不正
+- **future dialect 予約**: renderer 側で (a) `asset:` を `SAFE_URL_RE` に追加、(b) resolver の link 形 pass を outer bracket にも効かせる、(c) click 先を download chip に demote する、の 3 点が揃ってから migration v2 で昇格
+- **v1 scanner 契約**: `[![<alt>](<target>)](<target>)` を **before にも after にも使わない**。scanner が出会っても候補化しない(regression test で pin)
+
+### 14.2 Bracket-wrapped empty label `[![]](<target>)`
+
+- markdown-it は `<a href="target">![]</a>`(label が literal text `![]` の anchor)として token 化。clickable image では **ない**
+- harbor 入港 / 出港 / 定泊 / graceful degrade のいずれの観点でも価値が無い
+- scanner v1 は **after として emit しない**(spec 旧版 Candidate D が字面で示していた形、2026-04-24 削除)
+
+### 14.3 Card presentation `@[card](<target>)` / `@[card:<variant>](<target>)`
+
+- spec `pkc-link-unification-v0.md` §6.3 が future presentation として予約
+- 現行 renderer hook 無し → `<p>@<a href="target">card</a></p>` になる
+- Phase 4 での renderer 実装とセットで migration 検討(migration v2 対象)
+- v1 scanner は **生成しない / 検出もしない**
+
+### 14.4 共通原則
+
+- v1 scanner の責務は **「既存の壊れかけた legacy 形を現行 canonical に寄せる」** のみ
+- 現行 renderer が dock できない future dialect を生成することは harbor 原則違反
+- future dialect を採用するときは、必ず renderer / resolver / paste-conversion / action-binder の整合を先に取る
+
+### 14.5 Renderer integration design(別 audit doc)
+
+Clickable-image を PKC 方言として受け入れる renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界の詳細は別 audit doc に集約:
+
+→ **`../development/clickable-image-renderer-audit.md`**(2026-04-24 docs-only audit)
+
+本節の 3 点整備(SAFE_URL_RE / resolver pass / action-binder 分岐)を具体化し、Option A(Phase 2 Slice 2 UI dialog 先行)と Option B(clickable-image renderer 先行)の trade-off を harbor 4 層で比較している。
+
+---
+
 ## 関連
 
 - Link audit(現在地): `../development/link-system-audit-2026-04-24.md`
@@ -688,4 +767,4 @@ Preview は **完全な dry-run**:
 
 ---
 
-**Status**: docs-only、Normalize PKC links tool v1 draft(2026-04-24)。Phase 2 step 1 として設計固定。実装は Slice 1(Pure scanner)から順次別 PR。Phase 1(新規 emit の正本化)が完了したので、Phase 2 で **既存 body の legacy 形を opt-in + preview + revision 連携で正本化** する土台を用意。これが固まることで Phase 3(Version / Changelog / About v2.1.0)の Known limitations に「Link migration tool は設計済み・未実装、Slice 1-4 で順次実装予定」と正確に書ける。card / embed(Phase 4)は migration v2 の題材で本 spec は扱わない。
+**Status**: 実装済み(v2.1.1 リリース時点で Phase 2 Slice 1-4 + Phase 3 release bump が完了、Normalize PKC links tool は Shell menu → Tools から利用可能)。本書は **v1 の behavior contract / historical design record** として保持する。実装履歴は `../development/INDEX.md` #156-#162 と `../release/CHANGELOG_v2.1.1.md`、ユーザー向け説明は `../manual/05_日常操作.md` §PKC リンクを正規化する を参照。未実装項目(Per-candidate checkbox / clickable-image / `@[card]` など)は §14 Future dialect reservations と `../release/CHANGELOG_v2.1.1.md` Known limitations に分離済み。

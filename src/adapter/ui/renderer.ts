@@ -35,6 +35,7 @@ import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
 import { syncTextlogSelectionFromState } from './textlog-selection';
 import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
+import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
@@ -301,6 +302,12 @@ export function render(state: AppState, root: HTMLElement): void {
   // purely from `state.textToTextlogModal`. The helper is
   // responsible for its own DOM idempotency.
   syncTextToTextlogModalFromState(state, root);
+
+  // Phase 2 Slice 2: reconcile the Normalize PKC links preview
+  // dialog. Same state-synced pattern — the helper owns its own DOM
+  // idempotency, mounts/unmounts from `state.linkMigrationDialogOpen`,
+  // and recomputes its preview when the container reference changes.
+  syncLinkMigrationDialogFromState(state, root);
 
   // UI singleton audit final pass (2026-04-13): auto-close the
   // TEXTLOG → TEXT preview modal whenever the authoritative
@@ -989,6 +996,34 @@ function renderShellMenu(
   }
   helpSection.appendChild(helpList);
   card.appendChild(helpSection);
+
+  // Tools section (Phase 2 Slice 2 onward). Surfaces long-running /
+  // optional maintenance operations that are not tied to a specific
+  // entry. Currently only the Normalize PKC links preview; future
+  // tools (bulk rename, orphan asset scan graduated from below,
+  // clickable-image migration v2, etc.) land here too.
+  const toolsSection = createElement('div', 'pkc-shell-menu-section');
+  toolsSection.setAttribute('data-pkc-region', 'shell-menu-tools');
+  const toolsLabel = createElement('span', 'pkc-shell-menu-label');
+  toolsLabel.textContent = 'Tools';
+  toolsSection.appendChild(toolsLabel);
+  const toolsButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const normalizeBtn = createElement(
+    'button',
+    'pkc-btn-small pkc-shell-menu-theme-btn',
+  ) as HTMLButtonElement;
+  normalizeBtn.setAttribute('data-pkc-action', 'open-link-migration-dialog');
+  normalizeBtn.setAttribute('title', 'Normalize PKC links (preview)');
+  // Disabled when no container is loaded (bootstrap / error phase):
+  // keeps the menu stable across states instead of hiding the button.
+  if (!state.container) {
+    normalizeBtn.disabled = true;
+    normalizeBtn.setAttribute('data-pkc-disabled-reason', 'no-container');
+  }
+  normalizeBtn.textContent = '🔧 Normalize PKC links';
+  toolsButtons.appendChild(normalizeBtn);
+  toolsSection.appendChild(toolsButtons);
+  card.appendChild(toolsSection);
 
   // Version (clickable → About)
   const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');

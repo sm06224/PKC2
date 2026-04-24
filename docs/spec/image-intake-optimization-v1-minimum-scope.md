@@ -1,6 +1,6 @@
 # 画像取り込み最適化 v1 — Minimum Scope
 
-Status: DRAFT 2026-04-19
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は minimum-scope / historical design record として保持。実装の現物は `src/features/image-optimize/` / `tests/features/image-optimize/` / ユーザー向け説明は `../manual/05_日常操作.md` §画像の自動最適化。
 Pipeline position: minimum scope
 Sibling: `docs/spec/textlog-image-perf-v1-minimum-scope.md`（FI-03、別 issue）
 

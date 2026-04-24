@@ -1,6 +1,6 @@
 # FI-08 アドレスバー URL+タイトル貼付の補強 v1 — Minimum Scope
 
-Status: DRAFT 2026-04-18  
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は minimum-scope / historical design record として保持。実装の現物は `tests/adapter/addressbar-paste-fi08.test.ts` と paste-handler 経路。  
 Pipeline position: minimum scope  
 Predecessor: `docs/planning/file-issues/08_editor-address-bar-link-paste-markdown.md`
 

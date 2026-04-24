@@ -1,6 +1,6 @@
 # Behavior Contract — Merge Conflict UI v1
 
-Status: DRAFT
+Status: 実装済み(Tier 2-3 で凍結、v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/features/import/conflict-detect.ts` / `src/features/import/merge-planner.ts` / `tests/features/import/conflict-detect.test.ts` / `tests/features/import/merge-planner.test.ts`、ユーザー向け説明は `../manual/07_保存と持ち出し.md` §Merge mode と conflict 解決 UI。
 Created: 2026-04-17
 Category: B. Import / Merge Contracts
 Parent: `docs/spec/merge-import-conflict-resolution.md`（canonical spec）

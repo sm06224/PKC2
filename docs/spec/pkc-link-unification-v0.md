@@ -277,6 +277,21 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 - 空 label link: `[](entry:...)` / `[](asset:...)`
 - body 内 `pkc://...`(Copy surface が External Permalink に一本化されたため)
 - `[card:<lid>]` 独自記法(spec §10.1 で不採用確定)
+- `[![<alt>]](<target>)`(字面どおり markdown-it は literal `![]` label の anchor として扱い clickable image にならない、§5.7.5 参照)
+
+#### 5.7.5 Future dialect reservations(現行は非 canonical、migration 対象外)
+
+標準 Markdown として自然な形でも、**現行 PKC2 renderer が safe に解釈できない** ものは canonical にしない / 新規 emit しない / migration tool v1 は生成しない。
+
+| form | 標準 Markdown 扱い | 現行 PKC2 扱い | 将来の検討 |
+|---|---|---|---|
+| `[![<alt>](<target>)](<target>)` | clickable image(`<a><img></a>` nest、README バッジで頻出) | `asset:` 外側 link は `SAFE_URL_RE` allowlist 未登録のため validateLink reject、`[` `]` `(asset:...)` が literal 漏れ。`entry:` 版は anchor 自体は動くが `<div class="pkc-transclusion-placeholder">` を `<a>` が囲み HTML semantics 不正 | renderer 側で (a) `asset:` を allowlist 追加、(b) resolver の link-form pass を outer bracket に効かせる、(c) click target を chip に demote、の 3 点実装後に migration tool v2 で正式採用検討 |
+| `[![]](<target>)` | anchor + literal text `![]`(clickable image ではない) | 上と同じく outer link reject で literal 漏れ | 採用しない(誤読を誘発するだけで harbor 4 層のどれでも価値が無い)|
+| `@[card](<target>)` / `@[card:<variant>](<target>)` | `@` literal + 普通の link | renderer hook 未実装(`<p>@<a>…</a></p>`)| Phase 4 card / embed 実装とセットで migration tool v2 |
+
+**Harbor 原則**(詳細は `./link-migration-tool-v1.md` §14): PKC 内で未解決の future dialect を migration tool が生成すると、apply 直後に body が visibly 壊れる。scanner v1 は before / after 双方でこれらの form を **生成も検出もしない**。
+
+**Renderer integration design**(別 audit doc):Clickable-image を PKC 方言として受け入れるときの renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界は `../development/clickable-image-renderer-audit.md`(2026-04-24 docs-only)にまとまっている。Option A(UI dialog 先行)と Option B(renderer 実装先行)の判断材料も同 doc に集約。
 
 ---
 
@@ -748,4 +763,4 @@ paste handler / link renderer は次の順で判定:
 
 ---
 
-**Status**: docs-only、PKC Link Unification v0 foundation draft(2026-04-24)。Tag wave クローズ直後の参照基盤正本化。target(`entry:` / `asset:` / `pkc://`)と presentation(link / embed / card)を厳密に分離、paste 変換は同 container のみ permalink → internal 降格、cross-container は permalink 維持。`@[card](...)` 記法を採用(target と presentation の分離、旧 reader fallback、extract scanner 単一化のため)。`schema_version` bump なし、既存 `entry:` / `asset:` grammar は不変。Slice 1-5 を next-step として整理、実装着手前に本 spec が判断基準。
+**Status**: 実装済み(v2.1.1 時点で Copy / Paste / Render / Receive の各層が稼働中、3 層用語 External Permalink / Portable PKC Reference / Internal Reference は spec・src・UI・manual で統一)。本書は **PKC Link Unification の canonical reference** として保持する。実装履歴は `../development/INDEX.md` #140-#162 / `../release/CHANGELOG_v2.1.0.md` §Link system + `../release/CHANGELOG_v2.1.1.md` を参照。`@[card](...)` と clickable-image `[![alt](url)](url)` は §5.7.5 Future dialect reservations として引き続き保留、`schema_version` は 1 のまま不変。

@@ -1,6 +1,6 @@
 # Dual-Edit Safety v1 — Behavior Contract
 
-Status: DRAFT
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/adapter/state/app-state.ts` の `dualEditConflict` 系 / `tests/core/dual-edit-safety.test.ts` / `tests/core/dual-edit-safety-state.test.ts` / `tests/adapter/dual-edit-conflict-ui.test.ts`。
 Created: 2026-04-17
 Category: FI-01（File-based Issue P0）
 Predecessor: `docs/spec/dual-edit-safety-v1-minimum-scope.md`（同日、minimum scope）
