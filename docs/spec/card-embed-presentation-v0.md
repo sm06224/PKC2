@@ -22,7 +22,7 @@
 - link presentation: **実装済み / canonical**(既存、本書は再確認のみ)
 - embed presentation(`![alt](asset:<key>)` image embed): **実装済み / canonical**(既存、本書は再確認のみ)
 - embed presentation(`![alt](entry:<lid>[#log/...])` transclusion): **実装済み / canonical**(既存、`adapter/ui/transclusion.ts` で稼働中)
-- **card presentation**: **spec accepted、parser helper のみ実装済み**(2026-04-24 Slice 1、`src/features/link/card-presentation.ts`)。renderer hook / widget UI は **未実装**(Slice 2 以降)
+- **card presentation**: **spec accepted、parser helper + renderer placeholder 実装済み**(2026-04-24 Slice 1 / Slice 2、`src/features/link/card-presentation.ts` + `src/features/markdown/markdown-render.ts` の `pkc-card` core rule)。`@[card](<target>)` は `<span class="pkc-card-placeholder" data-pkc-card-*>` に変換される。**widget UI / thumbnail / excerpt / click wiring は未実装**(Slice 3 以降)
 - **clickable-image**(`[![alt](url)](url)`): **future dialect reservation**(本書でも未実装方針、`clickable-image-renderer-audit.md` に詳細)
 
 参照(先行 docs):
@@ -630,8 +630,8 @@ embed mode と同じく、card にも循環制約を想定:
 |---|---|
 | **link presentation** | 実装済み / canonical(v2.1.1 稼働中、本書は再確認のみ) |
 | **embed presentation**(image / transclusion / log / day) | 実装済み / canonical(v2.1.1 稼働中、本書は再確認のみ) |
-| **card presentation** 記法(`@[card](...)`) | **spec accepted**(本書で固定)、**Slice 1 parser helper 実装済み**(2026-04-24、`src/features/link/card-presentation.ts` — pure `parseCardPresentation` / `formatCardPresentation` / `isCardPresentationLabel`、renderer hook / widget UI は未実装) |
-| card variant(`@[card:compact]` 等) | spec reservation(v0 では variant 無しのみ canonical)。Slice 1 parser は `compact` / `wide` / `timeline` の 3 variant を syntax レベルで受理(未知 variant は reject)、widget レンダリングは未実装 |
+| **card presentation** 記法(`@[card](...)`) | **spec accepted**(本書で固定)、**Slice 1 parser helper + Slice 2 renderer placeholder 実装済み**(2026-04-24、`src/features/link/card-presentation.ts` + `markdown-render.ts` の `pkc-card` core rule — `<span class="pkc-card-placeholder" data-pkc-card-target data-pkc-card-variant data-pkc-card-raw>` を emit、widget UI / thumbnail / excerpt / click wiring は未実装) |
+| card variant(`@[card:compact]` 等) | spec reservation(v0 では variant 無しのみ canonical)。Slice 1 parser は `compact` / `wide` / `timeline` の 3 variant を syntax レベルで受理、Slice 2 renderer は `data-pkc-card-variant` に値を伝達するのみ、variant 別 widget レンダリングは未実装 |
 | **clickable-image** `[![alt](url)](url)` | **future dialect reservation**(本書で再確認、`clickable-image-renderer-audit.md` §11.2 の Option B 保留継続) |
 | About `RELEASE_SUMMARY['2.1.1'].knownLimitations` 『Card / embed presentation is not implemented yet』 | **継続**(本書だけでは解除しない、Slice 1-2 実装着地後に再評価) |
 | CHANGELOG v2.1.1 §Known limitations 同項目 | **継続** |
