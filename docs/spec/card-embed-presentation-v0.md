@@ -636,6 +636,8 @@ embed mode と同じく、card にも循環制約を想定:
 | About `RELEASE_SUMMARY['2.1.1'].knownLimitations` 『Card / embed presentation is not implemented yet』 | **継続**(本書だけでは解除しない、Slice 1-2 実装着地後に再評価) |
 | CHANGELOG v2.1.1 §Known limitations 同項目 | **継続** |
 
+> **Cross-link (2026-04-24)**: asset target × card の扱いは `../development/card-asset-target-coordination-audit.md` で docs-first audit 済み。**決定: Option C(v0 future dialect demote、現状維持)**。本 §5.4 / §8 の `❌ 非対応` がそのまま契約として有効、asset-resolver / markdown-render / SAFE\_URL\_RE は Slice-2 状態(asset: 非許可)のまま据え置き。asset preview card UI は clickable-image / asset-preview wave と合わせて将来判断。
+
 **Color tag の本書への影響**:ゼロ。Color tag は entry-level の視覚マーカーで、body 内の presentation とは **独立軸**。card widget 内に Color tag を表示するかは Slice 2(card widget renderer)の UI 判断事項。
 
 **矛盾がないことの確認**:
