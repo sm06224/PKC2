@@ -3271,7 +3271,20 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     // `container.entries` is passed so text-like presenters can expand
     // `![](entry:...)` transclusions (P1 Slice 5-B). Non-text presenters
     // (attachment / folder / todo / form) ignore this 5th argument.
-    view.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey, container.entries));
+    // `container.meta.container_id` is threaded so the markdown renderer
+    // can distinguish same-container from cross-container `pkc://`
+    // permalinks (spec pkc-link-unification-v0 §4). Presenters that
+    // don't render markdown ignore the 6th argument.
+    view.appendChild(
+      presenter.renderBody(
+        entry,
+        container.assets,
+        mimeByKey,
+        nameByKey,
+        container.entries,
+        container.meta.container_id,
+      ),
+    );
   } else {
     view.appendChild(presenter.renderBody(entry));
   }
@@ -3320,6 +3333,21 @@ function renderMetaPane(
   // Entry info header
   const infoHeader = createElement('div', 'pkc-meta-header');
   infoHeader.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
+
+  // Copy permalink — small affordance in the header row so the
+  // paste-wiring loop (copy → paste → same-container demotion) has
+  // a visible entry point. The button is always shown; when the
+  // container lacks an id the handler surfaces an error toast and
+  // leaves the clipboard untouched.
+  // Spec: docs/spec/pkc-link-unification-v0.md §4 + §7.
+  const copyLinkBtn = createElement('button', 'pkc-btn-small pkc-meta-copy-permalink');
+  copyLinkBtn.setAttribute('data-pkc-action', 'copy-entry-permalink');
+  copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+  copyLinkBtn.setAttribute('title', 'このエントリの共有 URL(pkc://)をコピー');
+  copyLinkBtn.setAttribute('aria-label', 'Copy permalink for this entry');
+  copyLinkBtn.textContent = '🔗 Copy link';
+  infoHeader.appendChild(copyLinkBtn);
+
   meta.appendChild(infoHeader);
 
   // Created / Updated timestamps
@@ -5591,7 +5619,16 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
     if (container?.assets) {
       const mimeByKey = buildAssetMimeMap(container);
       const nameByKey = buildAssetNameMap(container);
-      content.appendChild(presenter.renderBody(entry, container.assets, mimeByKey, nameByKey, container.entries));
+      content.appendChild(
+        presenter.renderBody(
+          entry,
+          container.assets,
+          mimeByKey,
+          nameByKey,
+          container.entries,
+          container.meta.container_id,
+        ),
+      );
     } else {
       content.appendChild(presenter.renderBody(entry));
     }

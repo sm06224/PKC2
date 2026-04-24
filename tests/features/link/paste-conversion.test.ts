@@ -241,6 +241,154 @@ describe('convertPastedText — §7.6 idempotency', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────
+// Post-correction additions: External Permalink + non-interference.
+// Spec: docs/spec/pkc-link-unification-v0.md (post-correction §4 / §7).
+// ─────────────────────────────────────────────────────────────────
+
+const BASE_FILE = 'file:///home/u/pkc2.html';
+const BASE_HTTP = 'https://example.com/pkc2.html';
+
+describe('convertPastedText — External Permalink (post-correction §7.1)', () => {
+  it('demotes a same-container entry external permalink (file:// base)', () => {
+    const r = convertPastedText(
+      `${BASE_FILE}#pkc?container=${SELF}&entry=lid_a`,
+      SELF,
+    );
+    expect(r).toEqual<PasteConversionResult>({
+      type: 'internal',
+      target: 'entry:lid_a',
+      presentation: 'link',
+    });
+  });
+
+  it('demotes a same-container entry external permalink (https:// base)', () => {
+    const r = convertPastedText(
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a`,
+      SELF,
+    );
+    expect(r.type).toBe('internal');
+    expect(r.target).toBe('entry:lid_a');
+  });
+
+  it('preserves the fragment from external permalink query (`fragment=`)', () => {
+    const r = convertPastedText(
+      `${BASE_FILE}#pkc?container=${SELF}&entry=lid_a&fragment=log/xyz`,
+      SELF,
+    );
+    expect(r.target).toBe('entry:lid_a#log/xyz');
+  });
+
+  it('demotes a same-container asset external permalink', () => {
+    const r = convertPastedText(
+      `${BASE_HTTP}#pkc?container=${SELF}&asset=ast-001`,
+      SELF,
+    );
+    expect(r.target).toBe('asset:ast-001');
+  });
+});
+
+describe('convertPastedText — External Permalink cross-container (§7.2)', () => {
+  it('keeps a cross-container entry external permalink verbatim', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${OTHER}&entry=lid_a`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+
+  it('keeps a cross-container asset external permalink verbatim', () => {
+    const raw = `${BASE_FILE}#pkc?container=${OTHER}&asset=ast-001`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+
+  it('cross-container fragment is preserved in the raw string', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${OTHER}&entry=lid_a&fragment=log/xyz`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.target).toBe(raw);
+  });
+});
+
+describe('convertPastedText — malformed external permalink fallback', () => {
+  it('missing container falls through to external', () => {
+    const raw = `${BASE_HTTP}#pkc?entry=lid_a`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+
+  it('missing entry/asset falls through to external', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${SELF}`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+
+  it('unknown query (`#pkc?` prefix but garbage) falls through to external', () => {
+    const raw = `${BASE_HTTP}#pkc?garbage`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+
+  it('container_id mismatch is exact (case-sensitive) on external permalink', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${SELF.toUpperCase()}&entry=lid_a`;
+    const r = convertPastedText(raw, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(raw);
+  });
+});
+
+describe('convertPastedText — URI scheme non-interference (§12)', () => {
+  // PKC parser MUST NOT touch external URI schemes that the
+  // browser / OS handle natively. The presence of `#pkc?` is the
+  // single trigger for External Permalink interpretation; ordinary
+  // URLs without it pass through verbatim.
+  const externals = [
+    'https://example.com/path?q=1',
+    'https://example.com/page#section', // ordinary fragment
+    'http://example.com/',
+    'file:///home/u/notes.txt',
+    'mailto:user@example.com',
+    'tel:+1-555-0100',
+    'ms-word:ofe|u|https://example.com/file.docx',
+    'ms-excel:ofv|u|https://example.com/file.xlsx',
+    'ms-powerpoint:ofv|u|https://example.com/file.pptx',
+    'onenote:https://example.com/section.one',
+    'obsidian://open?vault=Notes&file=Today',
+    'vscode://file/home/u/code.ts',
+  ];
+
+  it.each(externals)('keeps %s as external pass-through', (url) => {
+    const r = convertPastedText(url, SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe(url);
+  });
+
+  it('treats https URL with non-PKC fragment as ordinary external', () => {
+    const r = convertPastedText('https://example.com/#some-other-fragment', SELF);
+    expect(r.type).toBe('external');
+    expect(r.target).toBe('https://example.com/#some-other-fragment');
+  });
+});
+
+describe('convertPastedText — cross-form idempotency (post-correction)', () => {
+  it('external permalink demotion is idempotent: convert(convert(x).target)', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a`;
+    const a = convertPastedText(raw, SELF);
+    const b = convertPastedText(a.target, SELF);
+    expect(b).toEqual(a);
+  });
+
+  it('cross-container external permalink stays cross-container on re-paste', () => {
+    const raw = `${BASE_HTTP}#pkc?container=${OTHER}&entry=lid_a`;
+    const a = convertPastedText(raw, SELF);
+    const b = convertPastedText(a.target, SELF);
+    expect(b).toEqual(a);
+  });
+});
+
 describe('convertPastedText — output shape invariants', () => {
   it('always sets presentation to "link" in this slice (embed/card comes later)', () => {
     const samples = [

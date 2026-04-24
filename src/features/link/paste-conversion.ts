@@ -1,50 +1,54 @@
 /**
- * Paste Conversion Engine — minimal slice.
+ * Paste Conversion Engine — entry point for the link system.
  *
  * Pure function that normalizes pasted raw text into a classified
- * link target. This is the *entry point* of the PKC link system —
- * clipboard, drag & drop, P2P-received text, and extension inputs
- * all flow through this transform before any renderer, parser, or
- * markdown layer sees the string. Establishing a single safe entry
- * point is the whole point of this slice: anything that adds new
- * intake surfaces (DnD, extensions, PostMessage) can plug into this
- * function instead of duplicating the container-id matching logic.
+ * link target. Single intake surface for clipboard / drag & drop /
+ * P2P-received text / extension inputs — every paste path goes
+ * through this transform before any renderer, parser, or markdown
+ * layer sees the string.
  *
- * Spec: `docs/spec/pkc-link-unification-v0.md` §7 (paste conversion
- * rules). The rules this module implements:
+ * Spec: docs/spec/pkc-link-unification-v0.md §7 (post-correction).
  *
- *   §7.1  permalink → internal ONLY if container_id matches self
- *   §7.2  permalink → permalink (external) on cross-container
- *   §7.3  internal reference (entry:/asset:) passes through as
- *         internal, no promotion to permalink
- *   §7.4  plain text / other URLs pass through as external
- *   §7.6  idempotent: feeding the output target back in yields the
- *         same classification (important because the same string
- *         may travel through multiple paste surfaces in one edit)
+ * Forms accepted on input:
+ *
+ *   1. External Permalink — `<base>#pkc?container=<cid>&entry=<lid>`
+ *      The clickable URL that external apps (Loop / Office / mail)
+ *      use to share PKC entries. Same-container ones demote to
+ *      `entry:` / `asset:` internal references; cross-container
+ *      ones stay verbatim so the original URL keeps working.
+ *   2. Portable PKC Reference — `pkc://<cid>/entry/<lid>[#<frag>]`
+ *      The machine identifier form. Same-container behaviour as
+ *      External Permalink; cross-container stays verbatim.
+ *   3. Internal Reference — `entry:<lid>` / `asset:<key>`
+ *      Pass-through; the writer already chose the internal form.
+ *   4. Anything else — plain text / http(s):// without `#pkc?` /
+ *      Office URI scheme / obsidian:// / mailto: — preserved as
+ *      external pass-through.
  *
  * Invariants:
  *   - pure: no side effects, no DOM, no state, no I/O
  *   - safe: malformed input falls through to external with the raw
  *     string preserved — never throws
  *   - conservative on cross-container: when in doubt, keep the raw
- *     permalink so we never silently demote one container's lid
+ *     reference so we never silently demote one container's lid
  *     into another's namespace
  *   - presentation is always `'link'` in this slice — embed (`![]`)
- *     and card (`@[card]`) are a later slice and do not belong in
- *     the paste engine
+ *     and card (`@[card]`) live in a later slice
  *
- * Grammar source: the `pkc://` parse/format/same-container rules
- * live in `./permalink.ts` (single source of truth). This module
- * is a thin classifier on top of that helper — it never re-parses
- * permalink shape itself.
+ * Grammar source: `./permalink.ts` owns both the Portable
+ * Reference (`pkc://`) and External Permalink (`<base>#pkc?...`)
+ * parsers. This module never re-parses URL shape itself.
  *
  * Features layer: imports neither adapter nor core.
  */
 
 import {
   PKC_SCHEME,
-  parsePermalink,
-  isSamePermalinkContainer,
+  parsePortablePkcReference,
+  parseExternalPermalink,
+  isSamePortableContainer,
+  type ParsedPortablePkcReference,
+  type ParsedExternalPermalink,
 } from './permalink';
 
 export interface PasteConversionResult {
@@ -55,6 +59,7 @@ export interface PasteConversionResult {
 
 const ENTRY_SCHEME = 'entry:';
 const ASSET_SCHEME = 'asset:';
+const PKC_FRAGMENT_MARKER = '#pkc?';
 
 /**
  * Convert pasted raw text into a classified link target.
@@ -62,7 +67,8 @@ const ASSET_SCHEME = 'asset:';
  * @param raw                  The clipboard / drop / message payload
  * @param currentContainerId   `container.container_id` of the active
  *                             PKC — the only id that can trigger a
- *                             permalink → internal demotion
+ *                             same-container demotion to `entry:` /
+ *                             `asset:` internal references
  */
 export function convertPastedText(
   raw: string,
@@ -70,31 +76,62 @@ export function convertPastedText(
 ): PasteConversionResult {
   if (typeof raw !== 'string') return external(String(raw));
 
-  // §7.3 Internal references pass through. We never promote them to
-  // permalinks — the writer already chose the internal form, and a
-  // permalink without the surrounding context can't be safely derived
-  // here (we would need the full container identity).
+  // §7.3 — internal references pass through unchanged. The writer
+  // already chose the internal form; promoting them silently would
+  // require a container identity we may not have.
   if (raw.startsWith(ENTRY_SCHEME) || raw.startsWith(ASSET_SCHEME)) {
     return internal(raw);
   }
 
-  // §7.1 / §7.2 Permalink handling — delegate the grammar to
-  // `parsePermalink`; malformed shape falls through to external.
+  // §7.1 / §7.2 — Portable PKC Reference (`pkc://...`).
   if (raw.startsWith(PKC_SCHEME)) {
-    const parsed = parsePermalink(raw);
-    if (parsed === null) return external(raw);
-    if (isSamePermalinkContainer(parsed, currentContainerId)) {
-      const target =
-        parsed.kind === 'entry'
-          ? `${ENTRY_SCHEME}${parsed.targetId}${parsed.fragment ?? ''}`
-          : `${ASSET_SCHEME}${parsed.targetId}`;
-      return internal(target);
-    }
-    return external(raw); // cross-container → keep permalink
+    const parsed = parsePortablePkcReference(raw);
+    if (parsed === null) return external(raw); // malformed → fallback
+    return demoteOrKeep(parsed, currentContainerId, raw);
   }
 
-  // §7.4 Plain text / http(s):// / anything else is external.
+  // §7.1 / §7.2 — External Permalink (`<base>#pkc?...`). Detected
+  // by the marker fragment so legacy http(s) / file URLs without
+  // it are NOT intercepted (spec §12 non-interference).
+  if (raw.includes(PKC_FRAGMENT_MARKER)) {
+    const parsed = parseExternalPermalink(raw);
+    if (parsed === null) return external(raw);
+    return demoteOrKeep(parsed, currentContainerId, raw);
+  }
+
+  // §7.4 — plain text / http(s):// without #pkc? / Office URI
+  // scheme / obsidian:// / mailto: — never our business.
   return external(raw);
+}
+
+/**
+ * Apply the same-container demotion rule to either parser shape.
+ * Cross-container content is returned as `external` with the
+ * original raw string preserved (so external permalinks remain
+ * clickable in external viewers and portable refs remain valid
+ * cross-PKC identifiers).
+ */
+function demoteOrKeep(
+  parsed: ParsedPortablePkcReference | ParsedExternalPermalink,
+  currentContainerId: string,
+  raw: string,
+): PasteConversionResult {
+  if (!isSamePortableContainer(parsed, currentContainerId)) return external(raw);
+
+  if (parsed.kind === 'asset') {
+    return internal(`${ASSET_SCHEME}${parsed.targetId}`);
+  }
+
+  // Both shapes carry a fragment, but Portable Reference's already
+  // includes the leading `#`, while External Permalink stores the
+  // value without it. Normalise to a single `#`-prefixed form.
+  const frag = normaliseFragment(parsed.fragment);
+  return internal(`${ENTRY_SCHEME}${parsed.targetId}${frag}`);
+}
+
+function normaliseFragment(value: string | undefined): string {
+  if (value === undefined || value === '') return '';
+  return value.startsWith('#') ? value : `#${value}`;
 }
 
 function internal(target: string): PasteConversionResult {

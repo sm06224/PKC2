@@ -48,6 +48,7 @@ import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
+import { formatExternalPermalink } from '../../features/link/permalink';
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -1223,6 +1224,76 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent || ent.archetype !== 'attachment') break;
         void copyPlainText(formatAssetReference(ent));
+        break;
+      }
+      case 'copy-entry-permalink': {
+        // Spec correction (docs/spec/pkc-link-unification-v0.md §4):
+        // copy emits an **External Permalink**, not the Portable
+        // PKC Reference (`pkc://...`). The external form is the
+        // only shape clickable from Loop / Office / mail / note
+        // apps because `pkc://` has no OS protocol handler.
+        //
+        // Format: `<window.location without #>#pkc?container=<cid>&entry=<lid>`
+        // The receiving paste-conversion side demotes same-container
+        // permalinks back to `entry:<lid>` internal references.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const baseUrl = currentDocumentBaseUrl();
+        if (!baseUrl) break;
+        const url = formatExternalPermalink({
+          baseUrl,
+          kind: 'entry',
+          containerId: cid,
+          targetId: lid,
+        });
+        if (!url) break; // formatter rejected the shape — nothing to copy
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Link をコピーしました' : 'Link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
+        break;
+      }
+      case 'copy-asset-permalink': {
+        // External Permalink for an attachment (spec §4).
+        // Skips silently when the attachment body lacks an asset_key
+        // (legacy inline base64 attachments have no stable key to share).
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(ent.body);
+        if (!att.asset_key) break;
+        const baseUrl = currentDocumentBaseUrl();
+        if (!baseUrl) break;
+        const url = formatExternalPermalink({
+          baseUrl,
+          kind: 'asset',
+          containerId: cid,
+          targetId: att.asset_key,
+        });
+        if (!url) break;
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Asset link をコピーしました' : 'Asset link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
         break;
       }
       case 'copy-log-line-ref': {
@@ -4773,6 +4844,24 @@ function escapeMarkdownLabel(label: string): string {
 function formatEntryReference(entry: Entry): string {
   const label = escapeMarkdownLabel(entry.title || '(untitled)');
   return `[${label}](entry:${entry.lid})`;
+}
+
+/**
+ * Resolve the host URL the External Permalink should point at.
+ *
+ * Returns `window.location.href` with any pre-existing `#fragment`
+ * stripped — this is the URL an external app (Loop / Office / mail)
+ * needs to follow to reopen the PKC. Returns the empty string when
+ * no DOM is available (Node test contexts) so callers can early-out
+ * without throwing.
+ *
+ * Spec: docs/spec/pkc-link-unification-v0.md §4.
+ */
+function currentDocumentBaseUrl(): string {
+  if (typeof window === 'undefined' || !window.location) return '';
+  const href = window.location.href ?? '';
+  const hashIdx = href.indexOf('#');
+  return hashIdx === -1 ? href : href.slice(0, hashIdx);
 }
 
 /**

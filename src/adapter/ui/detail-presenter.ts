@@ -38,7 +38,16 @@ export interface DetailPresenter {
     assets?: Record<string, string>,
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
-    entries?: Entry[]
+    entries?: Entry[],
+    /**
+     * `container.meta.container_id` of the currently-loaded PKC.
+     * Passed to the markdown renderer so cross-container `pkc://`
+     * permalinks can be tagged as external placeholders while
+     * same-container ones render as ordinary links. Optional; when
+     * omitted the renderer treats every recognised permalink as
+     * external (safe default).
+     */
+    currentContainerId?: string,
   ): HTMLElement;
   /** Render the entry body for edit mode. */
   renderEditorBody(entry: Entry): HTMLElement;
@@ -55,6 +64,7 @@ const textPresenter: DetailPresenter = {
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
     entries?: Entry[],
+    currentContainerId?: string,
   ): HTMLElement {
     if (!entry.body) {
       const body = document.createElement('pre');
@@ -74,7 +84,7 @@ const textPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source);
+      body.innerHTML = renderMarkdown(source, { currentContainerId });
       // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
       // markdown renderer. Guarded by `entries` being supplied so
       // tests / callers without container context still work.

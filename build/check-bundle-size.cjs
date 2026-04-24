@@ -72,6 +72,24 @@
  *   placeholder) 2-3 件分の自然増を吸収しつつ、重依存の混入を依然
  *   としてタイトに検知できる設定を維持する。
  *
+ * Re-alignment (Link terminology / grammar correction, 2026-04-24):
+ *   `pkc://...` を「permalink」と誤呼称していた初版 spec を是正し、
+ *   3 概念(Internal / Portable PKC Reference / External Permalink)
+ *   に分離。新形 External Permalink (`<base>#pkc?...`) の parser /
+ *   formatter 追加、paste conversion の両形受理化、URI scheme
+ *   non-interference の網羅(Office / obsidian / vscode / mailto)、
+ *   Copy link UI の出力形式変更、tests も大幅拡充された。
+ *
+ *   ユーザー指示で JS bundle budget を **1.5 MB(1536 KB)** まで
+ *   許容する方針に切り替え。Link / Color / future card / embed /
+ *   share UI の自然増、加えて訂正後の追加 helper / 約 65 件の追加
+ *   テストが将来 bundle に乗る可能性を吸収するための広めの枠。
+ *
+ *   無制限ではない: 1.5 MB は約 2.4 倍の現行サイズで、突発的な重
+ *   依存(markdown-it フル機能版 / 大型 polyfill 等)を依然として
+ *   検知可能なライン。CSS 側は 94 KB のタイト枠を維持し、表示資源は
+ *   従来どおりの監視粒度を保つ。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -86,8 +104,8 @@ const ROOT = resolve(__dirname, '..');
 
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
-  { file: 'dist/bundle.js', maxBytes: 648 * 1024 },  // 648 KB (W1 Link paste-wiring re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 94 * 1024 },  // 94 KB (W1 D-1 post-optimize re-alignment)
+  { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
+  { file: 'dist/bundle.css', maxBytes: 94 * 1024 },   // 94 KB (W1 D-1 post-optimize re-alignment)
 ];
 
 function formatKB(bytes) {

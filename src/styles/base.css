@@ -5986,3 +5986,33 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   font-size: 0.78rem;
 }
+
+/* ── Portable PKC Reference placeholder ──
+   spec: docs/spec/pkc-link-unification-v0.md §5.5 / §8.3.
+   Cross-container `pkc://<other>/...` (Portable PKC Reference)
+   surfaces as a compact inline badge so the reader can tell the
+   target is NOT resolvable inside this container. Target data
+   (`data-pkc-portable-*`) is kept on the anchor so a future
+   P2P / import resolver can pick it up without re-parsing.
+   This is NOT an "external permalink" — that term is reserved
+   for `<base>#pkc?...` which IS clickable in external apps. */
+.pkc-portable-reference-placeholder {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.05em 0.45em;
+  border: 1px solid var(--c-muted);
+  border-radius: 4px;
+  background: var(--c-hover);
+  color: var(--c-accent);
+  text-decoration: none;
+  font-size: 0.92em;
+}
+.pkc-portable-reference-placeholder::before {
+  content: "🌐";
+  font-size: 0.88em;
+  flex: none;
+}
+.pkc-portable-reference-placeholder:hover {
+  text-decoration: underline;
+}

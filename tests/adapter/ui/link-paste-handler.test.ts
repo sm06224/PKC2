@@ -189,6 +189,71 @@ describe('maybeHandleLinkPaste — no-op fallbacks', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────
+// Post-correction: External Permalink (<base>#pkc?...) acceptance
+// ─────────────────────────────────────────────────────────────────
+
+const BASE_FILE = 'file:///home/u/pkc2.html';
+const BASE_HTTP = 'https://example.com/pkc2.html';
+
+describe('maybeHandleLinkPaste — External Permalink (post-correction)', () => {
+  it('demotes a same-container external permalink to [](entry:<lid>)', () => {
+    setSelection('', 0);
+    const handled = maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a`,
+      SELF,
+    );
+    expect(handled).toBe(true);
+    expect(textarea.value).toBe('[](entry:lid_a)');
+  });
+
+  it('demotes a same-container external permalink (file:// base) for asset', () => {
+    setSelection('', 0);
+    const handled = maybeHandleLinkPaste(
+      textarea,
+      `${BASE_FILE}#pkc?container=${SELF}&asset=ast-001`,
+      SELF,
+    );
+    expect(handled).toBe(true);
+    expect(textarea.value).toBe('[](asset:ast-001)');
+  });
+
+  it('preserves the fragment on an external permalink demotion', () => {
+    setSelection('', 0);
+    const handled = maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a&fragment=log/xyz`,
+      SELF,
+    );
+    expect(handled).toBe(true);
+    expect(textarea.value).toBe('[](entry:lid_a#log/xyz)');
+  });
+
+  it('returns false on a cross-container external permalink', () => {
+    setSelection('keep me', 0, 7);
+    const handled = maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${OTHER}&entry=lid_a`,
+      SELF,
+    );
+    expect(handled).toBe(false);
+    expect(textarea.value).toBe('keep me');
+  });
+
+  it('returns false on an ordinary https URL without #pkc?', () => {
+    // Non-interference: the trigger is `#pkc?`, not `https://`.
+    setSelection('', 0);
+    const handled = maybeHandleLinkPaste(
+      textarea,
+      'https://example.com/page#section',
+      SELF,
+    );
+    expect(handled).toBe(false);
+    expect(textarea.value).toBe('');
+  });
+});
+
 describe('maybeHandleLinkPaste — text input support', () => {
   it('also works on a text-capable <input>', () => {
     const input = document.createElement('input');
