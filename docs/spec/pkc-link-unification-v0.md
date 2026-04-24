@@ -291,6 +291,8 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 
 **Harbor 原則**(詳細は `./link-migration-tool-v1.md` §14): PKC 内で未解決の future dialect を migration tool が生成すると、apply 直後に body が visibly 壊れる。scanner v1 は before / after 双方でこれらの form を **生成も検出もしない**。
 
+**Renderer integration design**(別 audit doc):Clickable-image を PKC 方言として受け入れるときの renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界は `../development/clickable-image-renderer-audit.md`(2026-04-24 docs-only)にまとまっている。Option A(UI dialog 先行)と Option B(renderer 実装先行)の判断材料も同 doc に集約。
+
 ---
 
 ## 6. Presentation modes

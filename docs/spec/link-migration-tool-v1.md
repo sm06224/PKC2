@@ -700,6 +700,14 @@ Preview は **完全な dry-run**:
 - 現行 renderer が dock できない future dialect を生成することは harbor 原則違反
 - future dialect を採用するときは、必ず renderer / resolver / paste-conversion / action-binder の整合を先に取る
 
+### 14.5 Renderer integration design(別 audit doc)
+
+Clickable-image を PKC 方言として受け入れる renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界の詳細は別 audit doc に集約:
+
+→ **`../development/clickable-image-renderer-audit.md`**(2026-04-24 docs-only audit)
+
+本節の 3 点整備(SAFE_URL_RE / resolver pass / action-binder 分岐)を具体化し、Option A(Phase 2 Slice 2 UI dialog 先行)と Option B(clickable-image renderer 先行)の trade-off を harbor 4 層で比較している。
+
 ---
 
 ## 関連
