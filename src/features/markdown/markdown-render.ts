@@ -75,15 +75,21 @@ const md = new MarkdownIt({
 // rule below then tags them for the right in-app behaviour (internal
 // navigation for `entry:`, cross-container placeholder for `pkc:`).
 //
-// `asset:` is the attachment reference scheme. In the full PKC pipeline
-// `asset:` references are preprocessed away by `asset-resolver.ts`
-// before the text reaches markdown-it, so this allowlist entry mostly
-// matters for direct `renderMarkdown(...)` calls (tests, card-
-// presentation placeholder — spec §5.4). When `asset:` does reach the
-// renderer it gets the default external-link treatment; in practice
-// only the card-presentation hook below consumes it, emitting a
-// placeholder span instead of the default `<a target="_blank">`.
-const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|pkc:|asset:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+// `asset:` is intentionally NOT on this allowlist. Asset references
+// are preprocessed away by `asset-resolver.ts` BEFORE the text reaches
+// markdown-it (`![alt](asset:key)` → inline `<img src="data:…">`,
+// `[label](asset:key)` → inline chip link to `#asset-<key>`). If an
+// `asset:` URL somehow leaked past that preprocessor — or if a caller
+// invokes `renderMarkdown()` directly without running the resolver —
+// the safe default is for markdown-it's `validateLink` to reject it
+// so the raw text survives as plain characters instead of being
+// turned into a live `<a href="asset:…">` that points nowhere. The
+// card-presentation hook (§5, `pkc-card` core rule below) therefore
+// only sees `@[card](asset:…)` when the caller has arranged for the
+// tokens to be produced some other way; asset-target cards in the
+// normal pipeline are handled at the asset-resolver coordination
+// layer in a future slice, not here.
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|pkc:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
 const SAFE_OFFICE_URI_RE =
   /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
