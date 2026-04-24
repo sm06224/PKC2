@@ -27,6 +27,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import { makeSlugCounter } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
+import { parsePermalink } from '../link/permalink';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
@@ -63,12 +64,13 @@ const md = new MarkdownIt({
 
 // `entry:` is PKC2's internal cross-entry link scheme (see
 // `docs/development/textlog-viewer-and-linkability-redesign.md` §6.5
-// and `src/features/entry-ref/entry-ref.ts`). It is added to the safe
-// allowlist so markdown-it emits the `<a>` at all; the link_open rule
-// below then tags it with `data-pkc-action="navigate-entry-ref"` so
-// `action-binder` can intercept the click and route through the
-// parser instead of letting the browser attempt a scheme navigation.
-const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+// and `src/features/entry-ref/entry-ref.ts`). `pkc:` is the external
+// shareable permalink scheme defined by
+// `docs/spec/pkc-link-unification-v0.md` §4. Both schemes are on the
+// safe allowlist so markdown-it emits the `<a>` at all; the link_open
+// rule below then tags them for the right in-app behaviour (internal
+// navigation for `entry:`, cross-container placeholder for `pkc:`).
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|pkc:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
 const SAFE_OFFICE_URI_RE =
   /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
@@ -122,6 +124,49 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   if (href.startsWith('entry:')) {
     token.attrSet('data-pkc-action', 'navigate-entry-ref');
     token.attrSet('data-pkc-entry-ref', href);
+  } else if (href.startsWith('pkc:')) {
+    // `pkc://` permalink — spec/pkc-link-unification-v0.md §4.
+    // Paste conversion normally demotes same-container permalinks
+    // to `entry:` internal refs, so any `pkc://` that lands in
+    // a rendered body is almost always cross-container. We tag
+    // it with placeholder data-attributes so CSS can render it
+    // as an external badge, and keep the raw href so a future
+    // resolver (P2P / import) can pick it up verbatim.
+    //
+    // Malformed `pkc://...` values fall back to the default
+    // external-link treatment below so the body isn't silently
+    // suppressed.
+    const parsed = parsePermalink(href);
+    const rawEnv = (env ?? {}) as { currentContainerId?: unknown };
+    const currentContainerId =
+      typeof rawEnv.currentContainerId === 'string' ? rawEnv.currentContainerId : '';
+    if (parsed && currentContainerId && parsed.containerId === currentContainerId) {
+      // Same-container permalink left behind in the body (rare —
+      // paste conversion should have already demoted it). Render
+      // as an ordinary anchor with the raw href; a follow-up
+      // slice may promote this to an `entry:` internal link.
+      token.attrSet('rel', 'noopener noreferrer');
+    } else if (parsed) {
+      // Cross-container (or currentContainerId is unknown — treat as
+      // cross for safety): emit the external-PKC placeholder.
+      const cls = token.attrGet('class');
+      token.attrSet('class', cls ? `${cls} pkc-permalink-external` : 'pkc-permalink-external');
+      token.attrSet('data-pkc-permalink-container', parsed.containerId);
+      token.attrSet('data-pkc-permalink-kind', parsed.kind);
+      token.attrSet('data-pkc-permalink-target', parsed.targetId);
+      if (parsed.fragment !== undefined) {
+        token.attrSet('data-pkc-permalink-fragment', parsed.fragment);
+      }
+      token.attrSet(
+        'title',
+        `External PKC ${parsed.kind} · container ${parsed.containerId} · target ${parsed.targetId}`,
+      );
+      token.attrSet('rel', 'noopener noreferrer');
+    } else {
+      // Malformed pkc:// — treat as ordinary external URL.
+      token.attrSet('target', '_blank');
+      token.attrSet('rel', 'noopener noreferrer');
+    }
   } else {
     token.attrSet('target', '_blank');
     token.attrSet('rel', 'noopener noreferrer');
@@ -263,14 +308,34 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
 });
 
 /**
+ * Optional rendering context threaded into markdown-it's `env`.
+ *
+ * `currentContainerId` lets the `link_open` rule distinguish
+ * same-container from cross-container `pkc://` permalinks so only
+ * external references turn into the `.pkc-permalink-external`
+ * placeholder badge. Omitting the field — or passing an empty
+ * string — makes every recognised permalink render as an external
+ * placeholder, which is the safe conservative default.
+ */
+export interface RenderMarkdownOptions {
+  readonly currentContainerId?: string;
+}
+
+/**
  * Render markdown text to an HTML string.
  *
  * HTML tags in source are escaped (not rendered) for XSS safety.
  * Returns safe HTML suitable for innerHTML assignment.
  */
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(
+  text: string,
+  opts: RenderMarkdownOptions = {},
+): string {
   if (!text) return '';
-  return md.render(text);
+  const env = {
+    currentContainerId: opts.currentContainerId ?? '',
+  };
+  return md.render(text, env);
 }
 
 /**
