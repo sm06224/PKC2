@@ -5228,6 +5228,15 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   }
   container.appendChild(metaTable);
 
+  // Release summary(v2.1.0+、additive):highlights + known
+  // limitations を About に表示して、配布 HTML だけでも「この
+  // バージョンで何が入っていて、何が未実装か」が分かるようにする。
+  // 詳細は CHANGELOG_v<ver>.md に誘導。about payload に release
+  // block が無い(旧 export / dev build で RELEASE_SUMMARY 未登録)
+  // 場合は section 自体を省略する。
+  const releaseBlock = renderAboutRelease(payload.release);
+  if (releaseBlock) container.appendChild(releaseBlock);
+
   container.appendChild(renderAboutCredits(
     { name: payload.author.name, role: payload.author.role, url: payload.author.url },
     payload.contributors,
@@ -5246,6 +5255,63 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   ));
 
   return container;
+}
+
+/**
+ * Render the Release summary block(v2.1.0+):highlights list +
+ * known-limitations list + changelog path pointer. Returns `null`
+ * when the payload has no `release` (older exports / dev builds
+ * between tagged versions) so the caller can skip the whole section.
+ */
+function renderAboutRelease(
+  release: { highlights: string[]; knownLimitations: string[]; changelog?: string } | undefined,
+): HTMLElement | null {
+  if (!release) return null;
+  if (release.highlights.length === 0 && release.knownLimitations.length === 0) {
+    return null;
+  }
+  const section = createElement('section', 'pkc-about-release');
+  section.setAttribute('data-pkc-region', 'about-release');
+
+  const heading = createElement('h2', 'pkc-about-section-heading');
+  heading.textContent = 'Release';
+  section.appendChild(heading);
+
+  if (release.highlights.length > 0) {
+    const subHeading = createElement('h3', 'pkc-about-release-subheading');
+    subHeading.textContent = 'Highlights';
+    section.appendChild(subHeading);
+    const ul = createElement('ul', 'pkc-about-release-list');
+    ul.setAttribute('data-pkc-region', 'about-release-highlights');
+    for (const item of release.highlights) {
+      const li = createElement('li', 'pkc-about-release-item');
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+  }
+
+  if (release.knownLimitations.length > 0) {
+    const subHeading = createElement('h3', 'pkc-about-release-subheading');
+    subHeading.textContent = 'Known limitations';
+    section.appendChild(subHeading);
+    const ul = createElement('ul', 'pkc-about-release-list');
+    ul.setAttribute('data-pkc-region', 'about-release-limitations');
+    for (const item of release.knownLimitations) {
+      const li = createElement('li', 'pkc-about-release-item');
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+  }
+
+  if (release.changelog) {
+    const changelogNote = createElement('p', 'pkc-about-release-changelog');
+    changelogNote.textContent = `Full changelog: ${release.changelog}`;
+    section.appendChild(changelogNote);
+  }
+
+  return section;
 }
 
 function renderAboutCredits(

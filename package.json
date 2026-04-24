@@ -1,6 +1,6 @@
 {
   "name": "pkc2",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "単一HTMLで動作する、ローカル完結型の知識コンテナ。メモ・タスク・構造化データ・添付ファイルを 1 つの HTML ファイルとして保存し、オフラインでも再水和（Rehydrate）で完全復元できます。",
   "type": "module",
