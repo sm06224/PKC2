@@ -17,6 +17,7 @@ const SELF = 'self-container-id';
 const OTHER = 'other-container-id';
 
 const T = '2026-04-24T00:00:00Z';
+const LOG_CREATED = '2026-04-20T09:15:30Z';
 
 /** Entries used for label synthesis (matches real caller shape). */
 const entries: Entry[] = [
@@ -35,6 +36,29 @@ const entries: Entry[] = [
     title: 'Title [with] brackets \\slash',
     body: 'b',
     archetype: 'text',
+    created_at: T,
+    updated_at: T,
+  },
+  // TEXTLOG entry with 3 log rows for label synthesis coverage:
+  //   - log-short   — plain one-liner (snippet path)
+  //   - log-long    — > 40 chars (truncation path)
+  //   - log-empty   — no text (timestamp-fallback path)
+  {
+    lid: 'tl1',
+    title: 'Work Log',
+    body: JSON.stringify({
+      entries: [
+        { id: 'log-short', text: 'first note', createdAt: LOG_CREATED, flags: [] },
+        {
+          id: 'log-long',
+          text: 'this is a longer note that will definitely exceed the forty character snippet cap so we can verify truncation',
+          createdAt: LOG_CREATED,
+          flags: [],
+        },
+        { id: 'log-empty', text: '', createdAt: LOG_CREATED, flags: [] },
+      ],
+    }),
+    archetype: 'textlog',
     created_at: T,
     updated_at: T,
   },
@@ -195,6 +219,144 @@ describe('maybeHandleLinkPaste — label synthesis edge cases', () => {
       // no entries passed
     );
     expect(textarea.value).toBe('[(untitled)](entry:lid_a)');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 1 step 3 — log-label synthesis for `entry:<lid>#log/<logId>`
+// paired targets. Covers the TEXTLOG log External Permalink copy
+// output (step 2) being pasted back into a PKC editor.
+// (BASE_HTTP is declared below in the existing External Permalink
+// block; use that declaration rather than redeclaring here.)
+// ─────────────────────────────────────────────────────────────────
+
+describe('maybeHandleLinkPaste — log-label synthesis (Phase 1 step 3)', () => {
+  it('short log text becomes `<entry title> › <snippet>`', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/log-short`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe(
+      '[Work Log › first note](entry:tl1#log/log-short)',
+    );
+  });
+
+  it('portable reference log fragment is handled the same way', () => {
+    // Coverage for the `pkc://` shape (users pasting a bare Portable
+    // Reference). Output must match the External Permalink form.
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/entry/tl1#log/log-short`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe(
+      '[Work Log › first note](entry:tl1#log/log-short)',
+    );
+  });
+
+  it('long log text is truncated at 40 chars with an ellipsis', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/log-long`,
+      SELF,
+      entries,
+    );
+    // First 40 chars of the long note + U+2026 ellipsis.
+    // Count: "this is a longer note that will definite" = 40 chars.
+    expect(textarea.value).toBe(
+      '[Work Log › this is a longer note that will definite…](entry:tl1#log/log-long)',
+    );
+  });
+
+  it('empty log text falls back to the ISO createdAt timestamp', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/log-empty`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe(
+      `[Work Log › ${LOG_CREATED}](entry:tl1#log/log-empty)`,
+    );
+  });
+
+  it('missing log row falls back to `<entry title> › Log`', () => {
+    // Entry exists, log id not present — target is preserved so a
+    // later restore of the row can resolve the link, but the label
+    // reads generically.
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/ghost`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe('[Work Log › Log](entry:tl1#log/ghost)');
+  });
+
+  it('non-textlog entry with `log/<id>` fragment uses plain entry title', () => {
+    // Safety: `fragment=log/...` on a TEXT entry (archetype mismatch)
+    // must not synthesise a fake log snippet. We fall back to the
+    // entry title so the label still names the target.
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a&fragment=log/whatever`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe(
+      '[Apple Pie](entry:lid_a#log/whatever)',
+    );
+  });
+
+  it('legacy bare logId fragment (no `log/` prefix) is NOT auto-normalised', () => {
+    // Documented behaviour: paste side does not canonicalise legacy
+    // fragments. If a caller somehow sends `fragment=<bare>`, the
+    // target keeps the legacy shape and the label uses the entry
+    // title only. Migration to `log/<bare>` is a separate slice.
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log-short`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe('[Work Log](entry:tl1#log-short)');
+  });
+
+  it('log range fragment (`log/a..b`) falls back to generic Log label', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/log-short..log-long`,
+      SELF,
+      entries,
+    );
+    // Range targets cannot single out one row — generic label.
+    expect(textarea.value).toBe(
+      '[Work Log › Log](entry:tl1#log/log-short..log-long)',
+    );
+  });
+
+  it('heading fragment (`log/<id>/<slug>`) falls back to generic Log label', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `${BASE_HTTP}#pkc?container=${SELF}&entry=tl1&fragment=log/log-short/heading-slug`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe(
+      '[Work Log › Log](entry:tl1#log/log-short/heading-slug)',
+    );
   });
 });
 
