@@ -11,9 +11,34 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { maybeHandleLinkPaste } from '@adapter/ui/link-paste-handler';
+import type { Entry } from '@core/model/record';
 
 const SELF = 'self-container-id';
 const OTHER = 'other-container-id';
+
+const T = '2026-04-24T00:00:00Z';
+
+/** Entries used for label synthesis (matches real caller shape). */
+const entries: Entry[] = [
+  { lid: 'lid_a', title: 'Apple Pie', body: 'b', archetype: 'text', created_at: T, updated_at: T },
+  { lid: 'lid_b', title: '', body: 'b', archetype: 'text', created_at: T, updated_at: T },
+  {
+    lid: 'att1',
+    title: 'photo entry',
+    body: JSON.stringify({ name: 'photo.png', mime: 'image/png', size: 10, asset_key: 'ast-001' }),
+    archetype: 'attachment',
+    created_at: T,
+    updated_at: T,
+  },
+  {
+    lid: 'tricky',
+    title: 'Title [with] brackets \\slash',
+    body: 'b',
+    archetype: 'text',
+    created_at: T,
+    updated_at: T,
+  },
+];
 
 let textarea: HTMLTextAreaElement;
 
@@ -41,27 +66,29 @@ beforeEach(() => {
   });
 });
 
-describe('maybeHandleLinkPaste — same-container conversion', () => {
-  it('inserts [](entry:<lid>) for a same-container entry permalink', () => {
+describe('maybeHandleLinkPaste — same-container conversion (with label synthesis)', () => {
+  it('inserts [Title](entry:<lid>) for a same-container entry permalink', () => {
     setSelection('', 0);
     const handled = maybeHandleLinkPaste(
       textarea,
       `pkc://${SELF}/entry/lid_a`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](entry:lid_a)');
+    expect(textarea.value).toBe('[Apple Pie](entry:lid_a)');
   });
 
-  it('inserts [](asset:<key>) for a same-container asset permalink', () => {
+  it('inserts [AttachmentName](asset:<key>) using the attachment body.name', () => {
     setSelection('', 0);
     const handled = maybeHandleLinkPaste(
       textarea,
       `pkc://${SELF}/asset/ast-001`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](asset:ast-001)');
+    expect(textarea.value).toBe('[photo.png](asset:ast-001)');
   });
 
   it('preserves an entry fragment in the inserted target', () => {
@@ -70,9 +97,10 @@ describe('maybeHandleLinkPaste — same-container conversion', () => {
       textarea,
       `pkc://${SELF}/entry/lid_a#log/xyz`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](entry:lid_a#log/xyz)');
+    expect(textarea.value).toBe('[Apple Pie](entry:lid_a#log/xyz)');
   });
 
   it('replaces selected text with the markdown link', () => {
@@ -81,9 +109,10 @@ describe('maybeHandleLinkPaste — same-container conversion', () => {
       textarea,
       `pkc://${SELF}/entry/lid_a`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('before [](entry:lid_a) after');
+    expect(textarea.value).toBe('before [Apple Pie](entry:lid_a) after');
   });
 
   it('inserts at the caret position (end after insertion)', () => {
@@ -92,20 +121,80 @@ describe('maybeHandleLinkPaste — same-container conversion', () => {
       textarea,
       `pkc://${SELF}/entry/lid_a`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('x[](entry:lid_a)y');
-    // After insertion the caret should sit at the end of the splice,
-    // which is the boundary between the link and the trailing 'y'.
-    expect(textarea.selectionStart).toBe('x[](entry:lid_a)'.length);
-    expect(textarea.selectionEnd).toBe('x[](entry:lid_a)'.length);
+    expect(textarea.value).toBe('x[Apple Pie](entry:lid_a)y');
+    const expected = 'x[Apple Pie](entry:lid_a)';
+    expect(textarea.selectionStart).toBe(expected.length);
+    expect(textarea.selectionEnd).toBe(expected.length);
   });
 
   it('dispatches an input event so dirty tracking sees the change', () => {
     const before = lastInputCount();
     setSelection('', 0);
-    maybeHandleLinkPaste(textarea, `pkc://${SELF}/entry/lid_a`, SELF);
+    maybeHandleLinkPaste(textarea, `pkc://${SELF}/entry/lid_a`, SELF, entries);
     expect(lastInputCount()).toBeGreaterThan(before);
+  });
+});
+
+describe('maybeHandleLinkPaste — label synthesis edge cases', () => {
+  it('empty entry title falls back to (untitled) so the anchor stays visible', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/entry/lid_b`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe('[(untitled)](entry:lid_b)');
+  });
+
+  it('missing entry in container falls back to (untitled)', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/entry/ghost-lid`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe('[(untitled)](entry:ghost-lid)');
+  });
+
+  it('missing attachment owner for an asset falls back to (untitled)', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/asset/orphan-key`,
+      SELF,
+      entries,
+    );
+    expect(textarea.value).toBe('[(untitled)](asset:orphan-key)');
+  });
+
+  it('escapes `]`, `[`, and `\\` in entry titles so the markdown link parses cleanly', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/entry/tricky`,
+      SELF,
+      entries,
+    );
+    // `Title [with] brackets \slash` → escaped label
+    expect(textarea.value).toBe(
+      '[Title \\[with\\] brackets \\\\slash](entry:tricky)',
+    );
+  });
+
+  it('without `entries` argument, falls back to (untitled) (call site without container context)', () => {
+    setSelection('', 0);
+    maybeHandleLinkPaste(
+      textarea,
+      `pkc://${SELF}/entry/lid_a`,
+      SELF,
+      // no entries passed
+    );
+    expect(textarea.value).toBe('[(untitled)](entry:lid_a)');
   });
 });
 
@@ -197,15 +286,16 @@ const BASE_FILE = 'file:///home/u/pkc2.html';
 const BASE_HTTP = 'https://example.com/pkc2.html';
 
 describe('maybeHandleLinkPaste — External Permalink (post-correction)', () => {
-  it('demotes a same-container external permalink to [](entry:<lid>)', () => {
+  it('demotes a same-container external permalink to [Title](entry:<lid>)', () => {
     setSelection('', 0);
     const handled = maybeHandleLinkPaste(
       textarea,
       `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](entry:lid_a)');
+    expect(textarea.value).toBe('[Apple Pie](entry:lid_a)');
   });
 
   it('demotes a same-container external permalink (file:// base) for asset', () => {
@@ -214,9 +304,10 @@ describe('maybeHandleLinkPaste — External Permalink (post-correction)', () => 
       textarea,
       `${BASE_FILE}#pkc?container=${SELF}&asset=ast-001`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](asset:ast-001)');
+    expect(textarea.value).toBe('[photo.png](asset:ast-001)');
   });
 
   it('preserves the fragment on an external permalink demotion', () => {
@@ -225,9 +316,10 @@ describe('maybeHandleLinkPaste — External Permalink (post-correction)', () => 
       textarea,
       `${BASE_HTTP}#pkc?container=${SELF}&entry=lid_a&fragment=log/xyz`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(textarea.value).toBe('[](entry:lid_a#log/xyz)');
+    expect(textarea.value).toBe('[Apple Pie](entry:lid_a#log/xyz)');
   });
 
   it('returns false on a cross-container external permalink', () => {
@@ -266,8 +358,9 @@ describe('maybeHandleLinkPaste — text input support', () => {
       input,
       `pkc://${SELF}/entry/lid_a`,
       SELF,
+      entries,
     );
     expect(handled).toBe(true);
-    expect(input.value).toBe('[](entry:lid_a)');
+    expect(input.value).toBe('[Apple Pie](entry:lid_a)');
   });
 });

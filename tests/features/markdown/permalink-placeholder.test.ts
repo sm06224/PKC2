@@ -62,9 +62,44 @@ describe('renderMarkdown — same-container permalink', () => {
     });
     expect(html).not.toContain('pkc-portable-reference-placeholder');
     expect(html).not.toContain('data-pkc-portable-container');
-    // The anchor still renders (href preserved) — a future slice may
-    // demote same-container permalinks to `entry:` internal refs.
+    // The anchor still renders (href preserved).
     expect(html).toContain(`href="pkc://${SELF}/entry/e1"`);
+  });
+
+  it('same-container entry permalink routes through navigate-entry-ref (like entry:<lid>)', () => {
+    // Post-§5.5 fallback: when paste conversion hasn't demoted the
+    // Portable Reference to `entry:` (hand-typed body, import from
+    // older PKC, etc.), the anchor should still click-navigate the
+    // same way as its `entry:` equivalent.
+    const html = renderMarkdown(`[link](pkc://${SELF}/entry/e1)`, {
+      currentContainerId: SELF,
+    });
+    expect(html).toContain('data-pkc-action="navigate-entry-ref"');
+    expect(html).toContain('data-pkc-entry-ref="entry:e1"');
+    // href stays untouched for downstream resolvers / copy actions.
+    expect(html).toContain(`href="pkc://${SELF}/entry/e1"`);
+  });
+
+  it('same-container entry permalink preserves the fragment in the navigate-entry-ref data attr', () => {
+    const html = renderMarkdown(
+      `[link](pkc://${SELF}/entry/e1#log/xyz)`,
+      { currentContainerId: SELF },
+    );
+    expect(html).toContain('data-pkc-action="navigate-entry-ref"');
+    expect(html).toContain('data-pkc-entry-ref="entry:e1#log/xyz"');
+  });
+
+  it('same-container ASSET permalink does NOT get navigate-entry-ref (entry-only fallback)', () => {
+    // Asset navigation belongs to a separate action handler; for
+    // now the anchor renders without the routing data attr so
+    // nothing tries to parse `asset:<key>` as an entry ref.
+    const html = renderMarkdown(`[file](pkc://${SELF}/asset/a1)`, {
+      currentContainerId: SELF,
+    });
+    expect(html).not.toContain('data-pkc-action="navigate-entry-ref"');
+    expect(html).not.toContain('data-pkc-entry-ref');
+    expect(html).not.toContain('pkc-portable-reference-placeholder');
+    expect(html).toContain(`href="pkc://${SELF}/asset/a1"`);
   });
 
   it('treats missing currentContainerId as "every permalink is external" (safe default)', () => {
@@ -74,6 +109,10 @@ describe('renderMarkdown — same-container permalink', () => {
     const html = renderMarkdown('[x](pkc://any/entry/e1)');
     expect(html).toContain('pkc-portable-reference-placeholder');
     expect(html).toContain('data-pkc-portable-container="any"');
+    // Safe default must NOT emit navigate-entry-ref either, since the
+    // target container_id is unknown — we don't want to navigate to
+    // whatever lid happens to collide in the local namespace.
+    expect(html).not.toContain('data-pkc-action="navigate-entry-ref"');
   });
 });
 
