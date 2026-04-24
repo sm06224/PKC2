@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-23（W1 Tag wave クローズ: Slice D / `tag:` parser / render-continuity / folder-prefs / Tag CSS + docs-only sync を反映）.
+Last updated: 2026-04-24（W1 Tag wave クローズ直後の隣接概念: Color tag data model minimum-scope spec を追加）.
 
 ## Status Legend
 
@@ -195,6 +195,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 134 | `src/features/search/filter.ts` (MODIFIED) | W1 Slice D: Tag filter 軸 AND-by-default 実装 | 2026-04-23 | `filterByTags(entries, filter)` 追加(AND-by-default、空 Set = 軸無効、missing/empty tags は非マッチ、case-sensitive `===`)。`applyFilters` を 4th param `tagFilter?` に拡張してバックコンパット維持。17 テスト追加 |
 | 135 | `src/features/search/query-parser.ts` (NEW) | `tag:` parser 最小 slice | 2026-04-23 | `parseSearchQuery(raw)` → `{ fullText: string, tags: ReadonlySet<string> }` 新設。lowercase `tag:` prefix のみ認識、値は case-sensitive 保持、bare `tag:` はドロップ、`TAG:` 等は FullText 扱い(§5.6)。`applyFilters` / `entryMatchesQuery` / `renderer.ts highlightMatchesIn` が内部で使用。`state.searchQuery` は raw のまま — reducer は strip しない。17 テスト(query-parser.test.ts) + filter.test.ts 12 テスト追加 |
 | 136 | `docs/spec/search-filter-semantics-v1.md` (UPDATED) | W1 Tag wave クローズ docs-only sync | 2026-04-23 | §1.1 as-of 追加、§3 Tag 行を ✅ 実装済みに更新、§3.1 Tag 詳細更新、§5.1 を 実装済み/予約 split に再構成、§5.7 を parser 実装済み記述に更新、§9 を着地済み/残作業 split に書き換え、Status 行を W1 wave クローズとして更新 |
+| 137 | `../spec/color-tag-data-model-v1-minimum-scope.md` (NEW) | Color tag data model minimum-scope spec（docs-only） | 2026-04-24 | W1 Tag wave クローズ直後の隣接概念整理。`entry.color_tag?: ColorTagId \| null` を additive 追加する最小 schema を固定: 1 entry に 1 color、固定 palette、ID のみ保存(色値は保存しない / theme 変更に追従)、ID は lowercase ASCII fixed、未知 ID は read で `null` にフォールバックしつつ round-trip で保持、schema_version bump なし。filter 軸は OR semantics、`color:` prefix は既に `search-filter-semantics-v1.md` §5.1 で予約、Saved Search `color_filter?: ColorTagId[] \| null` は additive。Tag / categorical relation と自動変換しない契約。palette 具体 ID は次 slice で fix、それまで Slice 2-4(Saved Search / UI / parser)は着手不可。実コード変更なし |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
