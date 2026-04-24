@@ -1,6 +1,6 @@
 # Development Docs — Issue Index
 
-Last updated: 2026-04-24（W1 Tag wave クローズ直後の隣接概念: Color tag data model minimum-scope spec を追加）.
+Last updated: 2026-04-24（PKC Link Unification v0 foundation spec を追加: Color UI の前に参照基盤を確定）.
 
 ## Status Legend
 
@@ -196,6 +196,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 135 | `src/features/search/query-parser.ts` (NEW) | `tag:` parser 最小 slice | 2026-04-23 | `parseSearchQuery(raw)` → `{ fullText: string, tags: ReadonlySet<string> }` 新設。lowercase `tag:` prefix のみ認識、値は case-sensitive 保持、bare `tag:` はドロップ、`TAG:` 等は FullText 扱い(§5.6)。`applyFilters` / `entryMatchesQuery` / `renderer.ts highlightMatchesIn` が内部で使用。`state.searchQuery` は raw のまま — reducer は strip しない。17 テスト(query-parser.test.ts) + filter.test.ts 12 テスト追加 |
 | 136 | `docs/spec/search-filter-semantics-v1.md` (UPDATED) | W1 Tag wave クローズ docs-only sync | 2026-04-23 | §1.1 as-of 追加、§3 Tag 行を ✅ 実装済みに更新、§3.1 Tag 詳細更新、§5.1 を 実装済み/予約 split に再構成、§5.7 を parser 実装済み記述に更新、§9 を着地済み/残作業 split に書き換え、Status 行を W1 wave クローズとして更新 |
 | 137 | `../spec/color-tag-data-model-v1-minimum-scope.md` (NEW) | Color tag data model minimum-scope spec（docs-only） | 2026-04-24 | W1 Tag wave クローズ直後の隣接概念整理。`entry.color_tag?: ColorTagId \| null` を additive 追加する最小 schema を固定: 1 entry に 1 color、固定 palette、ID のみ保存(色値は保存しない / theme 変更に追従)、ID は lowercase ASCII fixed、未知 ID は read で `null` にフォールバックしつつ round-trip で保持、schema_version bump なし。filter 軸は OR semantics、`color:` prefix は既に `search-filter-semantics-v1.md` §5.1 で予約、Saved Search `color_filter?: ColorTagId[] \| null` は additive。Tag / categorical relation と自動変換しない契約。palette 具体 ID は次 slice で fix、それまで Slice 2-4(Saved Search / UI / parser)は着手不可。実コード変更なし |
+| 138 | `../spec/pkc-link-unification-v0.md` (NEW) | PKC Link Unification v0 foundation spec（docs-only） | 2026-04-24 | Color UI の前に置く参照基盤正本化。target と presentation を厳密に分離: **target** は `entry:<lid>` / `asset:<key>` / **permalink** `pkc://<container_id>/entry/<lid>[#frag]`、**presentation** は link `[label](entry:...)` / embed `![alt](entry:...)` / card `@[card](entry:...)` の 3 形を記法で区別。paste 変換は permalink → internal への **降格は同一 container のみ**、cross-container は permalink 維持。`@[card]` 採用の根拠(§10.1): target/presentation 混同回避 / 既存 markdown fallback / extract scanner 単一化 / variant 拡張余地。missing target は body から消さず placeholder 描画、循環 embed は 1 段展開、export は subset scanner 経由で依存閉包。`schema_version` bump なし、既存 `entry:` / `asset:` grammar(`entry-ref.ts`)は不変。Slice 1-5(permalink parser → paste → cross-container render → card render → share UI)を next-step として整理、実コード変更なし |
 
 ## Post-Stabilization Wave — 2026-04-19〜21
 
