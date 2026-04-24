@@ -1,6 +1,6 @@
 # System Settings Hidden Entry v1 — Behavior Contract
 
-Status: DRAFT 2026-04-18
+Status: 実装済み(v2.1.0 時点で landing、v2.1.1 でも稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/core/model/system-settings-payload.ts` / `tests/core/system-settings-payload.test.ts` / `tests/core/system-entry-isolation.test.ts` / Shell menu の設定 UI。
 Pipeline position: behavior contract
 Predecessor: `docs/spec/system-settings-hidden-entry-v1-minimum-scope.md`
 Sibling pattern: `docs/spec/about-build-info-hidden-entry-v1-behavior-contract.md`

@@ -1,6 +1,6 @@
 # Link Index — v1 Minimum Scope (Feasibility Spec)
 
-Status: DRAFT
+Status: 実装済み(C-3 link-index v1、v2.1.0 以前に landing、v2.1.1 時点で稼働中、HANDOVER_FINAL §22.1 landed 宣言済み)。本書は minimum-scope / historical design record として保持。実装の現物は `src/features/link-index/link-index.ts` / `tests/features/link-index/link-index.test.ts`。
 Created: 2026-04-17
 Category: C. Data Model Extensions（ナビゲーション UX 寄り）
 Predecessor: `docs/development/data-model/link-index-entry.md`（CANDIDATE、2026-04-12）

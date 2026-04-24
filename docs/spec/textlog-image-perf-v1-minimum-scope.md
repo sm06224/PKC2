@@ -1,6 +1,6 @@
 # TEXTLOG 複数画像パフォーマンス v1 — Minimum Scope
 
-Status: DRAFT rev.2.1 2026-04-19
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中、TEXTLOG 段階的表示 / staged render が動作中)。本書は minimum-scope / historical design record として保持。実装の現物は `tests/adapter/textlog-staged-render.test.ts` / `tests/adapter/textlog-staged-render-phase2.test.ts` と textlog presenter 系、ユーザー向け説明は `../manual/05_日常操作.md` §TEXTLOG の画像の段階的表示(Staged Render)。
 Pipeline position: minimum scope
 Parent: `docs/planning/file-issues/03_perf-textlog-image-lazy-rendering.md`
 Spike result note: `docs/development/fi-03-spike-native-lazy-result.md`

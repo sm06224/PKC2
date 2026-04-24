@@ -1,6 +1,6 @@
 # Entry Ordering — v1 Behavior Contract
 
-Status: DRAFT（contract fixed, awaiting pure/state slice）
+Status: 実装済み(C-2 entry-ordering v1、v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/features/entry-order/entry-order.ts` / `tests/features/entry-order/entry-order.test.ts`。
 Created: 2026-04-17
 Category: C. Data Model Extensions（運用 UX 寄り）
 Predecessor: `docs/spec/entry-ordering-v1-minimum-scope.md`（feasibility、2026-04-17）

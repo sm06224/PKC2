@@ -763,4 +763,4 @@ paste handler / link renderer は次の順で判定:
 
 ---
 
-**Status**: docs-only、PKC Link Unification v0 foundation draft(2026-04-24)。Tag wave クローズ直後の参照基盤正本化。target(`entry:` / `asset:` / `pkc://`)と presentation(link / embed / card)を厳密に分離、paste 変換は同 container のみ permalink → internal 降格、cross-container は permalink 維持。`@[card](...)` 記法を採用(target と presentation の分離、旧 reader fallback、extract scanner 単一化のため)。`schema_version` bump なし、既存 `entry:` / `asset:` grammar は不変。Slice 1-5 を next-step として整理、実装着手前に本 spec が判断基準。
+**Status**: 実装済み(v2.1.1 時点で Copy / Paste / Render / Receive の各層が稼働中、3 層用語 External Permalink / Portable PKC Reference / Internal Reference は spec・src・UI・manual で統一)。本書は **PKC Link Unification の canonical reference** として保持する。実装履歴は `../development/INDEX.md` #140-#162 / `../release/CHANGELOG_v2.1.0.md` §Link system + `../release/CHANGELOG_v2.1.1.md` を参照。`@[card](...)` と clickable-image `[![alt](url)](url)` は §5.7.5 Future dialect reservations として引き続き保留、`schema_version` は 1 のまま不変。

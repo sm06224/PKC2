@@ -1,6 +1,6 @@
 # アドレスバー貼付 Fallback v1 — Behavior Contract
 
-Status: DRAFT 2026-04-19
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/features/markdown/markdown-render.ts` / `tests/features/markdown/markdown-render.test.ts` §FI-08.x T-FBC-1..11 / `tests/adapter/addressbar-paste-fi08.test.ts`。
 Pipeline position: behavior contract
 Parent: `docs/planning/file-issues/08_editor-address-bar-link-paste-markdown.md`
 Predecessor minimum scope: `docs/spec/addressbar-paste-fallback-v1-minimum-scope.md`

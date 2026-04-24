@@ -767,4 +767,4 @@ Clickable-image を PKC 方言として受け入れる renderer / asset-resolver
 
 ---
 
-**Status**: docs-only、Normalize PKC links tool v1 draft(2026-04-24)。Phase 2 step 1 として設計固定。実装は Slice 1(Pure scanner)から順次別 PR。Phase 1(新規 emit の正本化)が完了したので、Phase 2 で **既存 body の legacy 形を opt-in + preview + revision 連携で正本化** する土台を用意。これが固まることで Phase 3(Version / Changelog / About v2.1.0)の Known limitations に「Link migration tool は設計済み・未実装、Slice 1-4 で順次実装予定」と正確に書ける。card / embed(Phase 4)は migration v2 の題材で本 spec は扱わない。
+**Status**: 実装済み(v2.1.1 リリース時点で Phase 2 Slice 1-4 + Phase 3 release bump が完了、Normalize PKC links tool は Shell menu → Tools から利用可能)。本書は **v1 の behavior contract / historical design record** として保持する。実装履歴は `../development/INDEX.md` #156-#162 と `../release/CHANGELOG_v2.1.1.md`、ユーザー向け説明は `../manual/05_日常操作.md` §PKC リンクを正規化する を参照。未実装項目(Per-candidate checkbox / clickable-image / `@[card]` など)は §14 Future dialect reservations と `../release/CHANGELOG_v2.1.1.md` Known limitations に分離済み。

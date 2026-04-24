@@ -1,6 +1,6 @@
 # About / Build Info Hidden Entry v1 — Minimum Scope
 
-Status: DRAFT 2026-04-18
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は minimum-scope / historical design record として保持。実装の現物は `src/core/model/about-payload.ts` / `build/about-entry-builder.ts` / `tests/adapter/about-entry.test.ts` / `tests/runtime/release-meta.test.ts`。
 Pipeline position: minimum scope
 Scope: docs-only(runtime 実装は次段の behavior contract 以降)
 Relates to:

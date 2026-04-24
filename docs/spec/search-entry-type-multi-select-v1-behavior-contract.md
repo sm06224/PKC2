@@ -1,6 +1,6 @@
 # FI-09 検索エントリ種別フィルタの複数選択 + TODO/FILE 既定非表示 — v1 Behavior Contract
 
-Status: DRAFT 2026-04-18
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は behavior contract / historical design record として保持。実装の現物は `src/adapter/state/app-state.ts` の archetype filter 系 / `tests/adapter/action-binder-content.test.ts`。
 Pipeline position: behavior contract
 Predecessor: `docs/spec/search-entry-type-multi-select-v1-minimum-scope.md`
 

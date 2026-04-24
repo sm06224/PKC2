@@ -1,6 +1,6 @@
 # Revision Branch Restore v1 — Minimum Scope
 
-Status: MINIMUM SCOPE（feasibility / scope 確定文書）
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は minimum-scope / historical design record として保持。実装の現物は `src/adapter/state/app-state.ts` の `BRANCH_RESTORE_REVISION` 系 / `tests/core/branch-restore.test.ts` / `tests/adapter/revision-branch-restore-ui.test.ts`、ユーザー向け説明は `../manual/09_トラブルシューティングと用語集.md` 用語集 §Provenance Relation。
 Created: 2026-04-17
 Category: C. Data Model Extensions
 Predecessor: `docs/development/data-model/revision-branch-restore.md`（CANDIDATE 設計メモ）

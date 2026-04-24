@@ -1,6 +1,6 @@
 # FI-04 添付基盤 — v1 Minimum Scope
 
-Status: DRAFT 2026-04-18  
+Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中)。本書は minimum-scope / historical design record として保持。実装の現物は `src/adapter/ui/attachment-presenter.ts` / asset 系 features / adapter platform + 関連 tests。  
 Pipeline position: minimum scope  
 Parent issue: `docs/planning/file-issues/04_attachment-foundation-multi-add-dedupe-persistent-dnd.md`
 
