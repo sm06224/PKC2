@@ -33,8 +33,19 @@
  *     and card (`@[card]`) are a later slice and do not belong in
  *     the paste engine
  *
+ * Grammar source: the `pkc://` parse/format/same-container rules
+ * live in `./permalink.ts` (single source of truth). This module
+ * is a thin classifier on top of that helper — it never re-parses
+ * permalink shape itself.
+ *
  * Features layer: imports neither adapter nor core.
  */
+
+import {
+  PKC_SCHEME,
+  parsePermalink,
+  isSamePermalinkContainer,
+} from './permalink';
 
 export interface PasteConversionResult {
   readonly type: 'internal' | 'external';
@@ -42,14 +53,8 @@ export interface PasteConversionResult {
   readonly presentation: 'link';
 }
 
-const PKC_SCHEME = 'pkc://';
 const ENTRY_SCHEME = 'entry:';
 const ASSET_SCHEME = 'asset:';
-
-// Token shape shared with the existing `entry-ref.ts` parser so the
-// permalink grammar stays consistent with the internal reference
-// grammar. See spec §4.5 and §5.1.
-const TOKEN_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Convert pasted raw text into a classified link target.
@@ -73,15 +78,16 @@ export function convertPastedText(
     return internal(raw);
   }
 
-  // §7.1 / §7.2 Permalink handling.
+  // §7.1 / §7.2 Permalink handling — delegate the grammar to
+  // `parsePermalink`; malformed shape falls through to external.
   if (raw.startsWith(PKC_SCHEME)) {
-    const parsed = parsePkcPermalink(raw);
-    if (parsed === null) return external(raw); // malformed → fallback
-    if (parsed.containerId === currentContainerId) {
+    const parsed = parsePermalink(raw);
+    if (parsed === null) return external(raw);
+    if (isSamePermalinkContainer(parsed, currentContainerId)) {
       const target =
         parsed.kind === 'entry'
-          ? `${ENTRY_SCHEME}${parsed.id}${parsed.fragment ?? ''}`
-          : `${ASSET_SCHEME}${parsed.id}`;
+          ? `${ENTRY_SCHEME}${parsed.targetId}${parsed.fragment ?? ''}`
+          : `${ASSET_SCHEME}${parsed.targetId}`;
       return internal(target);
     }
     return external(raw); // cross-container → keep permalink
@@ -97,52 +103,4 @@ function internal(target: string): PasteConversionResult {
 
 function external(target: string): PasteConversionResult {
   return { type: 'external', target, presentation: 'link' };
-}
-
-interface ParsedPermalink {
-  readonly containerId: string;
-  readonly kind: 'entry' | 'asset';
-  readonly id: string;
-  /** Includes the leading `#` so it round-trips verbatim. */
-  readonly fragment: string | null;
-}
-
-/**
- * Parse a `pkc://<container_id>/<entry|asset>/<id>[#fragment]` URL.
- *
- * Returns `null` on any shape mismatch — caller treats that as
- * "malformed" and falls back to external pass-through. This helper
- * deliberately does NOT validate the internal shape of a fragment;
- * fragment values are preserved verbatim for round-trip fidelity
- * (see spec §4.5 / §5.1). Validation belongs in the permalink
- * parser slice that follows.
- */
-function parsePkcPermalink(raw: string): ParsedPermalink | null {
-  const rest = raw.slice(PKC_SCHEME.length);
-  const hashIdx = rest.indexOf('#');
-  const pathPart = hashIdx === -1 ? rest : rest.slice(0, hashIdx);
-  const fragment = hashIdx === -1 ? null : rest.slice(hashIdx);
-
-  const parts = pathPart.split('/');
-  if (parts.length !== 3) return null;
-  const [containerId, kind, id] = parts;
-  if (containerId === undefined || !TOKEN_RE.test(containerId)) return null;
-  if (kind !== 'entry' && kind !== 'asset') return null;
-  if (id === undefined || !TOKEN_RE.test(id)) return null;
-
-  // Fragments only carry meaning for entry references (spec §5.2:
-  // assets are single blobs without sub-locations). A fragment on
-  // an asset permalink is shape-wrong, so malformed.
-  if (kind === 'asset' && fragment !== null) return null;
-
-  // A bare `#` with no content is meaningless; prefer the fragmentless
-  // form so idempotency holds.
-  const normalizedFragment = fragment === '#' ? null : fragment;
-
-  return {
-    containerId,
-    kind,
-    id,
-    fragment: normalizedFragment,
-  };
 }
