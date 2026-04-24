@@ -63,6 +63,8 @@ import {
   applySavedSearchFields,
 } from '../../features/search/saved-searches';
 import { SAVED_SEARCH_CAP } from '../../core/model/saved-search';
+import { buildLinkMigrationPreview } from '../../features/link/migration-scanner';
+import { applyLinkMigrations } from '../../features/link/migration-apply';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -226,13 +228,22 @@ export interface AppState {
    * "Normalize PKC links" preview dialog open/close state
    * (Phase 2 Slice 2). Runtime-only, not persisted. When `true` the
    * renderer mounts the preview overlay via
-   * `syncLinkMigrationDialogFromState`. Apply is **not** implemented
-   * in this slice — the dialog is preview-only. Slice 3 will promote
-   * the selection set into reducer state and wire the apply path.
-   * Optional on the TS surface so legacy test fixtures that spell out
-   * AppState by hand remain valid without updates.
+   * `syncLinkMigrationDialogFromState`.
    */
   linkMigrationDialogOpen?: boolean;
+  /**
+   * Result of the most recent APPLY_LINK_MIGRATION dispatch
+   * (Phase 2 Slice 3). Runtime-only, not persisted. Reset to
+   * `undefined` on OPEN_LINK_MIGRATION_DIALOG so the dialog opens
+   * without a stale banner. Read by the preview dialog to render
+   * "Applied N candidates across M entries" + skipped count.
+   */
+  linkMigrationLastApplyResult?: {
+    readonly applied: number;
+    readonly skipped: number;
+    readonly entriesAffected: number;
+    readonly at: string;
+  };
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
@@ -1885,17 +1896,126 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // entry point and the dialog sync step; the reducer stays
       // permissive so direct tests can open the dialog without
       // spelling out the whole shell state.
-      if (state.linkMigrationDialogOpen === true && state.menuOpen !== true) {
+      //
+      // Slice 3: always clear the last-apply-result on open so the
+      // dialog re-opens without a stale "Applied 3 …" banner. The
+      // banner is semantically owned by a single open→apply→close
+      // lifecycle; persisting it across re-opens would confuse users
+      // who can't tell whether they just applied or reopened the
+      // dialog.
+      if (
+        state.linkMigrationDialogOpen === true &&
+        state.menuOpen !== true &&
+        state.linkMigrationLastApplyResult === undefined
+      ) {
         return { state, events: [] };
       }
       return {
-        state: { ...state, linkMigrationDialogOpen: true, menuOpen: false },
+        state: {
+          ...state,
+          linkMigrationDialogOpen: true,
+          menuOpen: false,
+          linkMigrationLastApplyResult: undefined,
+        },
         events: [],
       };
     }
     case 'CLOSE_LINK_MIGRATION_DIALOG': {
-      if (state.linkMigrationDialogOpen !== true) return { state, events: [] };
-      return { state: { ...state, linkMigrationDialogOpen: false }, events: [] };
+      if (
+        state.linkMigrationDialogOpen !== true &&
+        state.linkMigrationLastApplyResult === undefined
+      ) {
+        return { state, events: [] };
+      }
+      return {
+        state: {
+          ...state,
+          linkMigrationDialogOpen: false,
+          linkMigrationLastApplyResult: undefined,
+        },
+        events: [],
+      };
+    }
+    case 'APPLY_LINK_MIGRATION': {
+      // Phase 2 Slice 3 — re-scan + apply all safe candidates.
+      //
+      // Guards mirror the destructive-action policy (see §10.6 of
+      // `docs/spec/link-migration-tool-v1.md`): readonly sessions,
+      // in-flight import previews, and active edit mode all block
+      // apply. light-source (view-only artifacts) cannot persist,
+      // so apply is blocked there too to avoid silently-dropped
+      // revisions.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (state.phase === 'editing') return blocked(state, action);
+      if (state.importPreview) return blocked(state, action);
+      if (state.lightSource || state.viewOnlySource) return blocked(state, action);
+
+      const ts = now();
+      // Re-scan against the current container — preview-time
+      // candidates are never trusted blindly. Drift between preview
+      // and apply (user edit, dual-edit reconciliation, quick
+      // update) naturally drops out here.
+      const preview = buildLinkMigrationPreview(state.container);
+      const safe = preview.candidates.filter((c) => c.confidence === 'safe');
+
+      if (safe.length === 0) {
+        // Nothing to apply — record an empty result so the dialog
+        // can surface the "no candidates" banner without another
+        // state round-trip.
+        const next: AppState = {
+          ...state,
+          linkMigrationLastApplyResult: {
+            applied: 0,
+            skipped: 0,
+            entriesAffected: 0,
+            at: ts,
+          },
+        };
+        return {
+          state: next,
+          events: [
+            {
+              type: 'LINK_MIGRATION_APPLIED',
+              applied: 0,
+              skipped: 0,
+              entriesAffected: 0,
+            },
+          ],
+        };
+      }
+
+      const bulkId = generateLid();
+      const result = applyLinkMigrations(
+        state.container,
+        safe,
+        ts,
+        generateLid,
+        bulkId,
+      );
+
+      const next: AppState = {
+        ...state,
+        container: result.container,
+        linkMigrationLastApplyResult: {
+          applied: result.applied,
+          skipped: result.skipped,
+          entriesAffected: result.entriesAffected,
+          at: ts,
+        },
+      };
+
+      return {
+        state: next,
+        events: [
+          {
+            type: 'LINK_MIGRATION_APPLIED',
+            applied: result.applied,
+            skipped: result.skipped,
+            entriesAffected: result.entriesAffected,
+          },
+        ],
+      };
     }
     case 'SET_CATEGORICAL_PEER_FILTER': {
       const next: AppState = { ...state, categoricalPeerFilter: action.peerLid };

@@ -1766,6 +1766,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_LINK_MIGRATION_DIALOG' });
         break;
       }
+      case 'apply-link-migration': {
+        // Phase 2 Slice 3 — Apply all safe. The reducer re-scans
+        // and filters to `confidence === 'safe'` so preview drift
+        // (user edited between preview and apply) is handled
+        // automatically. Guards that block destructive state
+        // changes are belt-and-braces duplicated in the reducer.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        if (st.readonly) break;
+        if (st.importPreview) break;
+        if (st.lightSource || st.viewOnlySource) break;
+        if (st.phase === 'editing') break;
+        dispatcher.dispatch({ type: 'APPLY_LINK_MIGRATION' });
+        break;
+      }
       case 'select-about': {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         if (dispatcher.getState().viewMode !== 'detail') {

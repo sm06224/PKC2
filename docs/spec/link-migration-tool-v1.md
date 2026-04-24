@@ -621,20 +621,54 @@ Preview は **完全な dry-run**:
 
 **実測 PR サイズ**: dialog ~530 LOC + action-binder / renderer / main.ts / state / action 合計 ~80 LOC + tests ~380 LOC + docs。Bundle 665.92 KB → 678.21 KB(+12.29 KB、42.3% → 44.2% of 1536 KB budget)
 
-### Slice 3 — Apply reducer + revision 連携
+### Slice 3 — Apply reducer + revision 連携 **(implemented 2026-04-24)**
 
-**Scope**:
-- `APPLY_LINK_MIGRATION` action + reducer(§8.5)
-- apply 対象 candidate list を受け取り、entry 単位で body 書き換え + revision 記録
-- §8.6 の pre-apply re-scan guard
-- §10.5 の apply tests
+**実装済みスコープ**:
+- `src/features/link/migration-apply.ts`(新規、pure planner):
+  - `applyLinkMigrations(container, candidates, now, generateRevisionId, bulkId) → { container, applied, skipped, entriesAffected }`
+  - Entry 単位に group → textlog / plain で分岐 → 各 body / row 内で offset 降順に置換
+  - 各 candidate の `before` を **現在の body / row.text slice(start, end)** と照合、不一致は skip(stale guard)
+  - 変更が発生した entry のみ `snapshotEntry` → `updateEntry` の順で適用(既存 QUICK_UPDATE_ENTRY と同じパターン)
+  - **Textlog row は `parseTextlogBody` → row.text 書き換え → `serializeTextlogBody`**(row.id / createdAt / flags は preserve)
+- `APPLY_LINK_MIGRATION` UserAction を追加、reducer は readonly / importPreview / editing / lightSource / viewOnlySource / no-container を guard、**preview を blindly 信じず再 scan** して safe candidates のみ apply
+- `DomainEvent` に `LINK_MIGRATION_APPLIED { applied, skipped, entriesAffected }` を追加(subscriber 層の analytics / toast 用)
+- `AppState.linkMigrationLastApplyResult?: { applied, skipped, entriesAffected, at }` を runtime-only 追加。`OPEN_LINK_MIGRATION_DIALOG` / `CLOSE_LINK_MIGRATION_DIALOG` で reset
+- `src/adapter/ui/link-migration-dialog.ts` に以下を追加:
+  - `Apply all safe` ボタン(`data-pkc-action="apply-link-migration"`)
+  - 無効化理由の明示(`data-pkc-link-migration-apply-disabled-reason`:`readonly` / `import-preview` / `light-source` / `view-only-source` / `editing` / `no-candidates`)
+  - Apply 後の結果バナー(`data-pkc-link-migration-banner="applied"` + applied / skipped / entriesAffected 属性 + "Skipped N because source changed" 行)
+  - Apply 後は container reference が変わるので `rerenderBody` が走り、残余 candidates が 0 件なら empty state が自動表示される
+- action-binder に `apply-link-migration` handler を追加、readonly / importPreview / lightSource / viewOnlySource / editing / no-container を belt-and-braces guard
 
-**Acceptance**:
-- apply 後の container に新 revision が記録される
-- user が revision restore で元の body に戻せる
-- 編集中 / readonly は block される
+**Revision 記録**:
+- 各影響 entry に 1 件の `Revision` を記録、**全件共通の `bulk_id`** を持つので将来の bulk undo UI で group restore 可能
+- `snapshot` は pre-apply の Entry JSON 全体
+- `prev_rid` が既存 revision にチェーン(container-ops の `findLatestRevisionIdForLid` 経由で H-6 契約に沿う)
+- `content_hash` は `snapshotEntry` が FNV-1a-64 で自動付与
+- `title` / `lid` / `archetype` / `created_at` は不変、`body` + `updated_at` のみ変わる
 
-**想定 PR サイズ**: ~300 LOC + ~500 LOC(tests)
+**Stale candidate handling**:
+- apply 時に container から preview を **再 scan** し、`confidence === 'safe'` のみに絞る → preview 後の edit / dual-edit / quick update などで drift したものは自然に drop
+- planner 層でも `before` / location 一致チェックを行い、手元にある candidate 配列が過去の preview を持ち越していても一致しないものは skip
+- テストで `skipped` counter が正しく増え、隣接 candidate の apply は成功することを pin
+
+**Guard(destructive action policy)**:
+- readonly / importPreview / editing / lightSource / viewOnlySource / no-container → `blocked` が立つ(reducer + action-binder 両方)
+- `light-source` と `view-only-source` は "persistence 不能" シナリオなので、apply しても revision が IDB に届かず user が undo を期待できないため block
+- Preview は readonly でも開ける(scanner は pure read-only)が、apply だけは block
+
+**Apply 後 UX**:
+- dialog 内に banner 表示(`Applied N link migrations across M entries.` + skipped があれば `Skipped K candidates because the source text changed between preview and apply.`)
+- 残りの candidate list が再 scan により空になるため empty state("All PKC links in this container are already in canonical form.")が自動で表示される
+- Apply ボタンは `no-candidates` で自動 disable
+- 再 open(Close → 再 Open)では banner は reset されるのでユーザーが前回の適用結果と新しい session を混同しない
+
+**追加テスト**(合計 +37 件):
+- `tests/features/link/migration-apply.test.ts` 新規 16 件(A/B/C 各 kind + textlog row + multi-candidate offset-desc + stale + textlog 行 id 消失 + revision bulk_id / prev_rid / snapshot / 無改変 invariants)
+- `tests/adapter/link-migration-dialog.test.ts` 拡張 +6 件(Apply button enabled / disabled reasons / click dispatch + container rewrite / banner / OPEN reset / revision bulk_id)
+- 既存 16 件は書き換え不要、A/B/C の scanner と Candidate D regression / readonly / code-block 非干渉は全て通過
+
+**想定 PR サイズ vs 実績**: 想定 ~300 LOC + ~500 LOC(tests) vs 実績 **planner ~240 LOC + reducer/action/state/binder/dialog ~320 LOC + tests ~620 LOC + docs**。Bundle 678.21 KB → **684.16 KB**(+5.95 KB、44.5% of 1536 KB budget)、CSS 93.65 KB 変化なし。
 
 ### Slice 4 — Manual / troubleshooting update
 

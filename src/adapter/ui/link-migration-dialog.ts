@@ -53,6 +53,7 @@ import {
 
 const DATA_REGION = 'link-migration-dialog';
 const ACTION_CLOSE = 'close-link-migration-dialog';
+const ACTION_APPLY = 'apply-link-migration';
 
 const OVERLAY_CLASS = 'pkc-link-migration-overlay';
 const CARD_CLASS = 'pkc-link-migration-card';
@@ -163,16 +164,20 @@ export function syncLinkMigrationDialogFromState(
   }
 
   if (activeOverlay === null) {
-    mount(state.container, root);
+    mount(state, root);
     return;
   }
 
   // Dialog already mounted. Rebuild when the container reference has
   // changed so edits that happened while the dialog was open surface
-  // on the next render. Reference equality is sufficient because the
-  // reducer uses immutable updates throughout.
+  // on the next render. The apply-result banner / apply-button
+  // enabled state also refresh on every sync so a just-landed
+  // `LINK_MIGRATION_APPLIED` event is reflected immediately.
   if (activeContainer !== state.container) {
-    rerenderBody(state.container);
+    rerenderBody(state);
+  } else {
+    refreshFooter(state);
+    refreshBanner(state);
   }
 }
 
@@ -181,18 +186,36 @@ export function syncLinkMigrationDialogFromState(
  * sites that already have a container in hand and don't want to
  * go through the reducer. Production code should prefer the
  * `OPEN_LINK_MIGRATION_DIALOG` action path.
+ *
+ * Accepts either a bare `Container` (legacy / test ergonomics) or a
+ * full `AppState` so callers can exercise the Apply button / banner
+ * paths without reaching for the reducer.
  */
 export function openLinkMigrationDialog(
-  container: Container,
+  containerOrState: Container | AppState,
   root: HTMLElement,
 ): void {
   if (activeOverlay !== null) unmount();
-  mount(container, root);
+  const stateLike: AppState = isAppState(containerOrState)
+    ? containerOrState
+    : ({
+        container: containerOrState,
+        readonly: false,
+        lightSource: false,
+      } as unknown as AppState);
+  mount(stateLike, root);
+}
+
+function isAppState(v: Container | AppState): v is AppState {
+  // AppState always carries a `phase` string; Container never does.
+  return typeof (v as { phase?: unknown }).phase === 'string';
 }
 
 // ── Mount / unmount ──────────────────────────────────────────
 
-function mount(container: Container, root: HTMLElement): void {
+function mount(state: AppState, root: HTMLElement): void {
+  const container = state.container;
+  if (!container) return;
   const preview = buildLinkMigrationPreview(container);
 
   const overlay = document.createElement('div');
@@ -208,8 +231,9 @@ function mount(container: Container, root: HTMLElement): void {
   overlay.appendChild(card);
 
   card.appendChild(buildHeader(preview));
+  card.appendChild(buildBanner(state.linkMigrationLastApplyResult));
   card.appendChild(buildBody(container, preview));
-  card.appendChild(buildFooter());
+  card.appendChild(buildFooter(state, preview));
 
   // Capture return focus BEFORE appending — appending may move focus.
   returnFocusTo =
@@ -258,23 +282,60 @@ function unmount(): void {
   returnFocusTo = null;
 }
 
-// ── Body re-render (container reference changed) ─────────────
+// ── Re-renders triggered by sync ────────────────────────────
 
-function rerenderBody(container: Container): void {
+/**
+ * Rebuild the header / banner / body / footer when the container
+ * reference has changed. Called after APPLY_LINK_MIGRATION lands and
+ * the reducer swaps the container for a new snapshot.
+ */
+function rerenderBody(state: AppState): void {
+  if (!activeOverlay || !state.container) return;
+  const card = activeOverlay.querySelector(`[data-pkc-region="${DATA_REGION}-card"]`);
+  if (!card) return;
+  const preview = buildLinkMigrationPreview(state.container);
+  const oldHeader = card.querySelector(`[data-pkc-region="${DATA_REGION}-header"]`);
+  const oldBanner = card.querySelector(`[data-pkc-region="${DATA_REGION}-banner"]`);
+  const oldBody = card.querySelector(`[data-pkc-region="${DATA_REGION}-body"]`);
+  const oldFooter = card.querySelector(`[data-pkc-region="${DATA_REGION}-footer"]`);
+  const newHeader = buildHeader(preview);
+  const newBanner = buildBanner(state.linkMigrationLastApplyResult);
+  const newBody = buildBody(state.container, preview);
+  const newFooter = buildFooter(state, preview);
+  if (oldHeader && oldBanner && oldBody && oldFooter) {
+    card.replaceChild(newHeader, oldHeader);
+    card.replaceChild(newBanner, oldBanner);
+    card.replaceChild(newBody, oldBody);
+    card.replaceChild(newFooter, oldFooter);
+  }
+  activeContainer = state.container;
+}
+
+/** Rebuild only the banner — called on every sync tick so a freshly
+ *  arrived apply result surfaces without waiting for the next
+ *  container swap. */
+function refreshBanner(state: AppState): void {
   if (!activeOverlay) return;
   const card = activeOverlay.querySelector(`[data-pkc-region="${DATA_REGION}-card"]`);
   if (!card) return;
-  const preview = buildLinkMigrationPreview(container);
-  // Replace header + body; keep footer intact.
-  const oldHeader = card.querySelector(`[data-pkc-region="${DATA_REGION}-header"]`);
-  const oldBody = card.querySelector(`[data-pkc-region="${DATA_REGION}-body"]`);
-  const newHeader = buildHeader(preview);
-  const newBody = buildBody(container, preview);
-  if (oldHeader && oldBody) {
-    card.replaceChild(newHeader, oldHeader);
-    card.replaceChild(newBody, oldBody);
-  }
-  activeContainer = container;
+  const oldBanner = card.querySelector(`[data-pkc-region="${DATA_REGION}-banner"]`);
+  if (!oldBanner) return;
+  const newBanner = buildBanner(state.linkMigrationLastApplyResult);
+  card.replaceChild(newBanner, oldBanner);
+}
+
+/** Rebuild only the footer — keeps the Apply button's enabled state
+ *  in sync with readonly / importPreview / candidate-count changes
+ *  without wiping the rest of the dialog. */
+function refreshFooter(state: AppState): void {
+  if (!activeOverlay || !state.container) return;
+  const card = activeOverlay.querySelector(`[data-pkc-region="${DATA_REGION}-card"]`);
+  if (!card) return;
+  const preview = buildLinkMigrationPreview(state.container);
+  const oldFooter = card.querySelector(`[data-pkc-region="${DATA_REGION}-footer"]`);
+  if (!oldFooter) return;
+  const newFooter = buildFooter(state, preview);
+  card.replaceChild(newFooter, oldFooter);
 }
 
 // ── DOM building blocks ──────────────────────────────────────
@@ -445,30 +506,90 @@ function buildCandidateRow(
   return row;
 }
 
-function buildFooter(): HTMLElement {
+/**
+ * Result banner. Rendered even when no apply has happened yet —
+ * empty-state (no banner body) is emitted so `rerenderBody` and
+ * `refreshBanner` can `replaceChild` without conditional DOM.
+ */
+function buildBanner(
+  result: AppState['linkMigrationLastApplyResult'],
+): HTMLElement {
+  const banner = document.createElement('div');
+  banner.className = 'pkc-link-migration-banner';
+  banner.setAttribute('data-pkc-region', `${DATA_REGION}-banner`);
+
+  if (!result) {
+    // Invisible placeholder so subsequent swaps have a target.
+    banner.setAttribute('data-pkc-link-migration-banner', 'none');
+    return banner;
+  }
+
+  banner.setAttribute('data-pkc-link-migration-banner', 'applied');
+  banner.setAttribute('data-pkc-link-migration-applied', String(result.applied));
+  banner.setAttribute('data-pkc-link-migration-skipped', String(result.skipped));
+  banner.setAttribute(
+    'data-pkc-link-migration-entries-affected',
+    String(result.entriesAffected),
+  );
+
+  const summary = document.createElement('p');
+  summary.className = 'pkc-link-migration-banner-summary';
+  if (result.applied === 0 && result.skipped === 0) {
+    summary.textContent = 'No link migrations were applied.';
+  } else {
+    const entriesText = `across ${result.entriesAffected} entr${
+      result.entriesAffected === 1 ? 'y' : 'ies'
+    }`;
+    summary.textContent = `Applied ${result.applied} link migration${
+      result.applied === 1 ? '' : 's'
+    } ${entriesText}.`;
+  }
+  banner.appendChild(summary);
+
+  if (result.skipped > 0) {
+    const skipped = document.createElement('p');
+    skipped.className = 'pkc-link-migration-banner-skipped';
+    skipped.setAttribute('data-pkc-link-migration-banner-skipped', 'true');
+    skipped.textContent = `Skipped ${result.skipped} candidate${
+      result.skipped === 1 ? '' : 's'
+    } because the source text changed between preview and apply.`;
+    banner.appendChild(skipped);
+  }
+
+  return banner;
+}
+
+function buildFooter(
+  state: AppState,
+  preview: { summary: { safeCandidates: number; totalCandidates: number } },
+): HTMLElement {
   const footer = document.createElement('div');
   footer.className = 'pkc-link-migration-footer';
   footer.setAttribute('data-pkc-region', `${DATA_REGION}-footer`);
 
-  // Apply button — intentionally disabled in Slice 2.
+  const disabledReason = resolveApplyDisabledReason(state, preview);
   const apply = document.createElement('button');
   apply.type = 'button';
   apply.className = 'pkc-btn pkc-btn-primary';
-  apply.disabled = true;
-  apply.setAttribute('data-pkc-link-migration-apply', 'disabled');
-  apply.setAttribute(
-    'title',
-    'Apply は次 slice(Slice 3)で実装されます / Apply lands in Slice 3',
-  );
-  apply.textContent = 'Apply (Slice 3)';
+  apply.textContent = 'Apply all safe';
+  if (disabledReason === null) {
+    apply.setAttribute('data-pkc-action', ACTION_APPLY);
+    apply.setAttribute('data-pkc-link-migration-apply', 'enabled');
+  } else {
+    apply.disabled = true;
+    apply.setAttribute('data-pkc-link-migration-apply', 'disabled');
+    apply.setAttribute('data-pkc-link-migration-apply-disabled-reason', disabledReason);
+    apply.setAttribute('title', describeDisabledReason(disabledReason));
+  }
   footer.appendChild(apply);
 
-  const note = document.createElement('p');
-  note.className = 'pkc-link-migration-apply-note';
-  note.setAttribute('data-pkc-link-migration-apply-note', 'true');
-  note.textContent =
-    'Apply is not available in this slice. Review the candidates above and close when done.';
-  footer.appendChild(note);
+  if (disabledReason !== null) {
+    const note = document.createElement('p');
+    note.className = 'pkc-link-migration-apply-note';
+    note.setAttribute('data-pkc-link-migration-apply-note', 'true');
+    note.textContent = describeDisabledReason(disabledReason);
+    footer.appendChild(note);
+  }
 
   const close = document.createElement('button');
   close.type = 'button';
@@ -478,6 +599,44 @@ function buildFooter(): HTMLElement {
   footer.appendChild(close);
 
   return footer;
+}
+
+type ApplyDisabledReason =
+  | 'readonly'
+  | 'import-preview'
+  | 'light-source'
+  | 'view-only-source'
+  | 'editing'
+  | 'no-candidates';
+
+function resolveApplyDisabledReason(
+  state: AppState,
+  preview: { summary: { safeCandidates: number; totalCandidates: number } },
+): ApplyDisabledReason | null {
+  if (state.readonly) return 'readonly';
+  if (state.importPreview) return 'import-preview';
+  if (state.lightSource) return 'light-source';
+  if (state.viewOnlySource) return 'view-only-source';
+  if (state.phase === 'editing') return 'editing';
+  if (preview.summary.safeCandidates === 0) return 'no-candidates';
+  return null;
+}
+
+function describeDisabledReason(reason: ApplyDisabledReason): string {
+  switch (reason) {
+    case 'readonly':
+      return 'Apply is unavailable in readonly mode.';
+    case 'import-preview':
+      return 'Apply is unavailable while an import preview is active.';
+    case 'light-source':
+      return 'Apply is unavailable in a light-source (no persistence) session.';
+    case 'view-only-source':
+      return 'Apply is unavailable in a view-only source session.';
+    case 'editing':
+      return 'Apply is unavailable while editing an entry.';
+    case 'no-candidates':
+      return 'No safe candidates to apply.';
+  }
 }
 
 // ── Backdrop close wiring ────────────────────────────────────

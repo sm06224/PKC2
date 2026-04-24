@@ -402,12 +402,29 @@ describe('link-migration-dialog — empty state', () => {
 });
 
 // ───────────────────────────────────────────────────────────
-// Apply UX contract (Slice 2 — disabled)
+// Apply UX contract (Slice 3 — enabled for safe candidates)
 // ───────────────────────────────────────────────────────────
 
-describe('link-migration-dialog — apply (Slice 2 disabled)', () => {
-  it('Apply button is disabled and labeled for Slice 3', () => {
+describe('link-migration-dialog — apply button (Slice 3)', () => {
+  it('is enabled and labeled "Apply all safe" when candidates exist', () => {
     const { dispatcher } = mountWithContainer(abcContainer());
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+
+    const applyBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-link-migration-apply="enabled"]',
+    );
+    expect(applyBtn).not.toBeNull();
+    expect(applyBtn!.disabled).toBe(false);
+    expect(applyBtn!.textContent).toContain('Apply all safe');
+    expect(applyBtn!.getAttribute('data-pkc-action')).toBe('apply-link-migration');
+  });
+
+  it('is disabled with reason "no-candidates" when the scanner finds nothing', () => {
+    const c = container([
+      text('src', '[Jump](entry:dst)'),
+      text('dst', '', 'Destination'),
+    ]);
+    const { dispatcher } = mountWithContainer(c);
     dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
 
     const applyBtn = root.querySelector<HTMLButtonElement>(
@@ -415,24 +432,16 @@ describe('link-migration-dialog — apply (Slice 2 disabled)', () => {
     );
     expect(applyBtn).not.toBeNull();
     expect(applyBtn!.disabled).toBe(true);
-    expect(applyBtn!.textContent).toContain('Slice 3');
-
-    const note = root.querySelector<HTMLElement>(
-      '[data-pkc-link-migration-apply-note="true"]',
+    expect(applyBtn!.getAttribute('data-pkc-link-migration-apply-disabled-reason')).toBe(
+      'no-candidates',
     );
-    expect(note).not.toBeNull();
-    expect(note!.textContent).toContain('not available');
   });
 
-  it('remains disabled in readonly mode and the overlay still opens (preview is read-only)', () => {
+  it('is disabled in readonly mode with reason "readonly"', () => {
     const c = abcContainer();
     const dispatcher = createDispatcher();
     setLinkMigrationDialogDispatcher(dispatcher);
     dispatcher.onState((state) => render(state, root));
-    // Boot with readonly=true via SYS_INIT_COMPLETE (the canonical
-    // path used by light exports / embedded viewers). SET_READONLY is
-    // not a public action, so this mirrors how real readonly sessions
-    // are produced.
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: c, readonly: true });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
@@ -445,6 +454,99 @@ describe('link-migration-dialog — apply (Slice 2 disabled)', () => {
     );
     expect(applyBtn).not.toBeNull();
     expect(applyBtn!.disabled).toBe(true);
+    expect(applyBtn!.getAttribute('data-pkc-link-migration-apply-disabled-reason')).toBe(
+      'readonly',
+    );
+  });
+
+  it('clicking the Apply button dispatches APPLY_LINK_MIGRATION and rewrites the container', () => {
+    const { dispatcher } = mountWithContainer(abcContainer());
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+
+    const applyBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-action="apply-link-migration"]',
+    );
+    expect(applyBtn).not.toBeNull();
+    applyBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const after = dispatcher.getState();
+    const src = after.container!.entries.find((e) => e.lid === 'src')!;
+    // Every A/B/C candidate in abcContainer was safe, so the body
+    // should now read in fully-canonical form.
+    expect(src.body).toBe(
+      '[Destination](entry:dst) [ref](entry:dst) [memo](entry:tl#log/log-1)',
+    );
+  });
+
+  it('after apply the banner surfaces the counts and the empty state replaces the list', () => {
+    const { dispatcher } = mountWithContainer(abcContainer());
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+
+    dispatcher.dispatch({ type: 'APPLY_LINK_MIGRATION' });
+
+    const banner = root.querySelector<HTMLElement>(
+      '[data-pkc-link-migration-banner="applied"]',
+    );
+    expect(banner).not.toBeNull();
+    expect(banner!.getAttribute('data-pkc-link-migration-applied')).toBe('3');
+    expect(banner!.getAttribute('data-pkc-link-migration-skipped')).toBe('0');
+    expect(banner!.getAttribute('data-pkc-link-migration-entries-affected')).toBe('1');
+    expect(banner!.textContent).toContain('Applied 3 link migrations');
+
+    // Candidate list is gone — re-scan should produce zero results.
+    const empty = root.querySelector('[data-pkc-link-migration-empty="true"]');
+    expect(empty).not.toBeNull();
+    const rows = root.querySelectorAll('[data-pkc-link-migration-kind]');
+    expect(rows.length).toBe(0);
+
+    // Apply button is now disabled (no candidates).
+    const applyBtn = root.querySelector<HTMLButtonElement>(
+      '[data-pkc-link-migration-apply]',
+    );
+    expect(applyBtn!.disabled).toBe(true);
+    expect(applyBtn!.getAttribute('data-pkc-link-migration-apply-disabled-reason')).toBe(
+      'no-candidates',
+    );
+  });
+
+  it('OPEN clears any lingering apply banner from a previous session', () => {
+    const { dispatcher } = mountWithContainer(abcContainer());
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+    dispatcher.dispatch({ type: 'APPLY_LINK_MIGRATION' });
+
+    // Close + reopen — the banner must not survive.
+    dispatcher.dispatch({ type: 'CLOSE_LINK_MIGRATION_DIALOG' });
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+
+    const banner = root.querySelector<HTMLElement>(
+      '[data-pkc-link-migration-banner="applied"]',
+    );
+    expect(banner).toBeNull();
+  });
+
+  it('records one bulk-grouped revision per affected entry, preserving title/lid/archetype', () => {
+    const { dispatcher } = mountWithContainer(abcContainer());
+    const beforeSrc = dispatcher.getState().container!.entries.find((e) => e.lid === 'src')!;
+
+    dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+    dispatcher.dispatch({ type: 'APPLY_LINK_MIGRATION' });
+
+    const after = dispatcher.getState().container!;
+    const afterSrc = after.entries.find((e) => e.lid === 'src')!;
+
+    // title/lid/archetype untouched; body rewritten.
+    expect(afterSrc.lid).toBe(beforeSrc.lid);
+    expect(afterSrc.title).toBe(beforeSrc.title);
+    expect(afterSrc.archetype).toBe(beforeSrc.archetype);
+    expect(afterSrc.body).not.toBe(beforeSrc.body);
+
+    // Exactly one revision for `src`, carrying the pre-apply snapshot
+    // and a bulk_id shared with any other entry revision from the
+    // same apply run.
+    const srcRevs = after.revisions.filter((r) => r.entry_lid === 'src');
+    expect(srcRevs.length).toBe(1);
+    expect(srcRevs[0]!.bulk_id).toBeDefined();
+    expect(srcRevs[0]!.snapshot).toContain(beforeSrc.body);
   });
 });
 
