@@ -4065,8 +4065,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // `container` is nullable until SYS_INIT_COMPLETE lands; opt out
     // of conversion in that pre-boot window so we never demote a
     // permalink before the host knows its own container_id.
-    const containerId = dispatcher.getState().container?.meta.container_id ?? '';
-    const handled = maybeHandleLinkPaste(target, raw, containerId);
+    // `entries` feeds the label synthesizer so the inserted
+    // `[title](entry:lid)` has a visible, clickable link text
+    // instead of the CommonMark-invisible `[](entry:lid)`.
+    const state = dispatcher.getState();
+    const containerId = state.container?.meta.container_id ?? '';
+    const entries = state.container?.entries;
+    const handled = maybeHandleLinkPaste(target, raw, containerId, entries);
     if (handled) e.preventDefault();
     return handled;
   }

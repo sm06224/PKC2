@@ -35,10 +35,23 @@ const baseContainer: Container = {
       created_at: T,
       updated_at: T,
     },
+    {
+      lid: 'att1',
+      title: 'photo entry',
+      body: JSON.stringify({
+        name: 'photo.png',
+        mime: 'image/png',
+        size: 10,
+        asset_key: 'ast-001',
+      }),
+      archetype: 'attachment',
+      created_at: T,
+      updated_at: T,
+    },
   ],
   relations: [],
   revisions: [],
-  assets: {},
+  assets: { 'ast-001': 'AAAA' },
 };
 
 let root: HTMLElement;
@@ -102,7 +115,7 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     const evt = firePaste(textarea, { plain: `pkc://${SELF}/entry/e1` });
 
     expect(evt.defaultPrevented).toBe(true);
-    expect(textarea.value).toBe('[](entry:e1)');
+    expect(textarea.value).toBe('[A text entry](entry:e1)');
   });
 
   it('converts a same-container entry permalink with a fragment', () => {
@@ -113,7 +126,7 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     });
 
     expect(evt.defaultPrevented).toBe(true);
-    expect(textarea.value).toBe('[](entry:e1#log/abc)');
+    expect(textarea.value).toBe('[A text entry](entry:e1#log/abc)');
   });
 
   it('converts a same-container asset permalink', () => {
@@ -124,7 +137,7 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     });
 
     expect(evt.defaultPrevented).toBe(true);
-    expect(textarea.value).toBe('[](asset:ast-001)');
+    expect(textarea.value).toBe('[photo.png](asset:ast-001)');
   });
 
   it('does NOT preventDefault on a cross-container permalink', () => {
@@ -187,7 +200,7 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     });
 
     expect(evt.defaultPrevented).toBe(true);
-    expect(textarea.value).toBe('[](entry:e1)');
+    expect(textarea.value).toBe('[A text entry](entry:e1)');
     // No HTML-link splice should have leaked through.
     expect(textarea.value).not.toContain('Example');
   });
@@ -200,7 +213,7 @@ describe('action-binder · PKC permalink → internal markdown link', () => {
     const evt = firePaste(textarea, { plain: url });
 
     expect(evt.defaultPrevented).toBe(true);
-    expect(textarea.value).toBe('[](entry:e1)');
+    expect(textarea.value).toBe('[A text entry](entry:e1)');
   });
 
   it('does NOT preventDefault on a cross-container External Permalink', () => {
