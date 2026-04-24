@@ -140,12 +140,12 @@ write 側:
 
 ### 4.3 palette 数の方針(本 spec 最小 scope)
 
-- **v1 palette は 10 色以下**(本 spec では具体 ID リストは固定しない。次 slice `Color vocabulary / palette ID fixed list` で確定)
+- **v1 palette は 10 色以下**
 - 10 色以下とする根拠:
   - **UI の swatch 一行で並ぶ範囲**(`ui-vocabulary-tag-color-relation.md` §3.2:「10 色程度の円形 swatch + なし」)
   - **ユーザが意味を覚えられる上限**(色数が増えるほど「どれが何色か」の認知コストが跳ね上がる)
   - **a11y: 色覚配慮で区別可能な hue の数の実用上限**
-- palette の具体 ID は本 spec では未確定 — "例えば `red` / `amber` / `green` / `blue` / `violet` / `pink` / `cyan` / `gray` 等" に留め、fixed list は次 slice で
+- **具体 ID list は別書 `./color-palette-v1.md` で固定**(2026-04-24、v1 = 8 ID: `red` / `orange` / `yellow` / `green` / `blue` / `purple` / `pink` / `gray`)。本書は palette 数の方針と fixed 化の制約を定めるのみで、値そのものは palette spec を参照する。`brown` / `cyan` 等の除外理由 / vocabulary table / a11y 要件は palette spec §3.3 / §5 を見ること
 
 ### 4.4 将来 palette を増やす場合の互換方針
 
@@ -314,12 +314,13 @@ hasActiveFilter =
 
 本 spec が固まったら、以下の順で最小 slice を切ることを推奨する。
 
-### Slice 1 — Color vocabulary / palette ID fixed list(docs)
+### Slice 1 — Color vocabulary / palette ID fixed list(docs)**【CLOSED 2026-04-24】**
 
-- `docs/development/ui-vocabulary-tag-color-relation.md` を更新 or 新規 `docs/spec/color-palette-v1.md` で palette ID 10 個以下を fix
-- ID(lowercase ASCII)+ 既定色値(light / dark 想定)+ 日本語ラベル有無(§3.2 UI vocabulary の方針に従う)
-- 色覚配慮(色盲 simulation で区別可能な hue 選定)の短いメモ
-- **docs-only**。ID が固定されるまで次 slice は動かせない
+- **landing**: `./color-palette-v1.md`(新規、docs-only)
+- v1 palette = 8 ID fixed(`red` / `orange` / `yellow` / `green` / `blue` / `purple` / `pink` / `gray`)
+- ID + 英語 / 日本語 label + 意味過積載ガイダンス + a11y 方針(CVD 配慮の hue 選定)+ UI 実装時の追加要件 + additive 拡張ルール
+- 具体 HEX / CSS token は palette spec でも保留(theme / 実装 slice で確定)
+- **Slice 2-4 はこれで解凍される**(値空間が決まったため、schema / parser / UI が具体型を持てる)
 
 ### Slice 2 — Saved Search additive schema(`color_filter`)
 
