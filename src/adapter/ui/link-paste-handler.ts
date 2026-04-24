@@ -102,34 +102,21 @@ function insertIntoEditable(target: PasteableEditor, text: string): void {
   ) {
     // execCommand requires the element to own focus; otherwise the
     // command silently no-ops and we'd lose the inserted text.
-    try {
-      target.focus();
-    } catch {
-      // happy-dom can throw on focus when the element is detached;
-      // the manual fallback below still works in that case.
-    }
-    let ok = false;
-    try {
-      ok = document.execCommand('insertText', false, text);
-    } catch {
-      ok = false;
-    }
-    if (ok) return;
+    target.focus();
+    if (document.execCommand('insertText', false, text)) return;
   }
 
   const start = target.selectionStart ?? target.value.length;
   const end = target.selectionEnd ?? start;
-  const before = target.value.slice(0, start);
-  const after = target.value.slice(end);
-  target.value = before + text + after;
+  target.value = target.value.slice(0, start) + text + target.value.slice(end);
   const pos = start + text.length;
-  if (typeof target.setSelectionRange === 'function') {
-    try {
-      target.setSelectionRange(pos, pos);
-    } catch {
-      // Some <input type=...> values don't support setSelectionRange;
-      // we still dispatch input below so dirty tracking sees the change.
-    }
+  // setSelectionRange can throw on a few <input type=…> variants
+  // (number / email). Keep this single guard so a future intake
+  // surface that hands us such an input doesn't break the paste.
+  try {
+    target.setSelectionRange(pos, pos);
+  } catch {
+    /* unsupported input type — caret stays where the browser put it */
   }
   target.dispatchEvent(new Event('input', { bubbles: true }));
 }
