@@ -28,6 +28,10 @@ import { makeSlugCounter } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
 import { parsePortablePkcReference } from '../link/permalink';
+import {
+  isCardPresentationLabel,
+  parseCardPresentation,
+} from '../link/card-presentation';
 
 const md = new MarkdownIt({
   html: false,          // Disable HTML tags in source (XSS safety)
@@ -70,7 +74,16 @@ const md = new MarkdownIt({
 // safe allowlist so markdown-it emits the `<a>` at all; the link_open
 // rule below then tags them for the right in-app behaviour (internal
 // navigation for `entry:`, cross-container placeholder for `pkc:`).
-const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|pkc:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+//
+// `asset:` is the attachment reference scheme. In the full PKC pipeline
+// `asset:` references are preprocessed away by `asset-resolver.ts`
+// before the text reaches markdown-it, so this allowlist entry mostly
+// matters for direct `renderMarkdown(...)` calls (tests, card-
+// presentation placeholder — spec §5.4). When `asset:` does reach the
+// renderer it gets the default external-link treatment; in practice
+// only the card-presentation hook below consumes it, emitting a
+// placeholder span instead of the default `<a target="_blank">`.
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|ftp:|entry:|pkc:|asset:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
 const SAFE_DATA_IMG_RE = /^data:image\/(gif|png|jpeg|webp|svg\+xml);/i;
 const SAFE_OFFICE_URI_RE =
   /^(?:ms-(?:word|excel|powerpoint|visio|access|project|publisher|officeapp|spd|infopath)|onenote):/i;
@@ -297,6 +310,99 @@ md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
   }
   return self.renderToken(tokens, idx, options);
 };
+
+// ── Card presentation placeholder (Slice 2, docs/spec/card-embed-presentation-v0.md §5) ──
+//
+// Detect the `@[card](<target>)` (and `@[card:<variant>](<target>)`)
+// notation and emit a minify-safe placeholder span that a future
+// card widget renderer can pick up. Slice 2 **does not** render a
+// widget — it only makes sure the notation survives the markdown
+// pipeline with its target / variant / raw string preserved.
+//
+// At the markdown-it token level, `@[card](entry:e1)` tokenizes as
+// four inline children:
+//
+//   text       "@" (may be prefixed with other text, e.g. "see @")
+//   link_open  href=entry:e1
+//   text       "card" (or "card:compact" etc.)
+//   link_close
+//
+// We walk each paragraph's inline children, look for this 4-token
+// shape with a recognised card label, validate the reconstructed
+// `@[<label>](<href>)` through the Slice-1 parser (no grammar is
+// re-implemented here), and on a successful match:
+//
+//   - strip the trailing `@` from the preceding text token
+//   - splice the 3 link tokens out and insert one `html_inline`
+//     placeholder in their place
+//
+// Any rejected case (unknown variant, invalid target, plain link
+// without a `@` prefix, clickable-image, image-embed, etc.) is
+// skipped — markdown-it continues with its default rendering so
+// the body keeps displaying as `@` + plain link, which is exactly
+// the fallback documented in `card-embed-presentation-v0.md` §6.1.
+
+md.core.ruler.after('inline', 'pkc-card', function (state) {
+  const tokens = state.tokens;
+  for (const token of tokens) {
+    if (token.type !== 'inline') continue;
+    const children = token.children;
+    if (!children) continue;
+
+    // Walk forward; splicing shrinks the array, so we compare to
+    // the live `children.length` each iteration.
+    for (let i = 0; i + 3 < children.length; i++) {
+      const t0 = children[i]!;
+      const t1 = children[i + 1]!;
+      const t2 = children[i + 2]!;
+      const t3 = children[i + 3]!;
+
+      if (t0.type !== 'text') continue;
+      if (t1.type !== 'link_open') continue;
+      if (t2.type !== 'text') continue;
+      if (t3.type !== 'link_close') continue;
+      if (!t0.content.endsWith('@')) continue;
+
+      const label = t2.content;
+      if (!isCardPresentationLabel(label)) continue;
+
+      const href = t1.attrGet('href');
+      if (href === null) continue;
+
+      const parsed = parseCardPresentation(`@[${label}](${href})`);
+      if (!parsed) continue;
+
+      // Strip trailing `@` from the preceding text.
+      t0.content = t0.content.slice(0, -1);
+
+      // Build the placeholder HTML. All values come from the
+      // Slice-1 parser which restricts targets to entry: / asset:
+      // / pkc:// with TOKEN_RE / SLUG_RE / DATE_RE tokens, so no
+      // HTML metacharacters can appear — but we escape defensively
+      // anyway so a future grammar relaxation cannot silently
+      // degrade safety.
+      const targetEsc = escapeHtmlAttr(parsed.target);
+      const variantEsc = escapeHtmlAttr(parsed.variant);
+      const rawEsc = escapeHtmlAttr(parsed.raw);
+      const visibleLabel =
+        parsed.variant === 'default' ? '@card' : `@card:${parsed.variant}`;
+      const visibleLabelEsc = escapeHtmlAttr(visibleLabel);
+
+      const placeholder = new state.Token('html_inline', '', 0);
+      placeholder.content =
+        `<span class="pkc-card-placeholder"` +
+        ` data-pkc-card-target="${targetEsc}"` +
+        ` data-pkc-card-variant="${variantEsc}"` +
+        ` data-pkc-card-raw="${rawEsc}">${visibleLabelEsc}</span>`;
+
+      // Replace [link_open, text, link_close] with the placeholder.
+      children.splice(i + 1, 3, placeholder);
+      // Loop continues; the next iteration will evaluate the token
+      // following the placeholder — which cannot itself start a
+      // card match because card requires a preceding `@` text.
+    }
+  }
+});
 
 // ── Task list support (GFM-style) ─────────────────────
 //
