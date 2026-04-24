@@ -2057,6 +2057,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      case 'navigate-asset-ref': {
+        // Phase 1 step 4 (audit G3) — body 内に残った
+        // `[label](pkc://<self>/asset/<key>)` を、その asset を
+        // 持っている attachment entry への navigation に寄せる。
+        // markdown-render の same-container Portable Reference
+        // fallback(§5.5)が data 属性を付与して、ここに届く。
+        //
+        // 挙動:
+        //   owner found     → SELECT_ENTRY + revealInSidebar: true
+        //   owner not found → info toast、state は変更しない
+        //   malformed body  → skip(owner 扱いしない)
+        //
+        // preventDefault は dispatch/toast のどちらを走らせても
+        // 必須(`pkc://` は OS で解決不能なので native navigation
+        // を止める)。
+        e.preventDefault();
+        const assetKey = target.getAttribute('data-pkc-asset-key');
+        if (!assetKey) break;
+        const ownerLid = findAttachmentOwnerLid(dispatcher, assetKey);
+        if (ownerLid === null) {
+          showToast({
+            kind: 'info',
+            message: `アセット (${assetKey}) の所有エントリが見つかりませんでした。`,
+            autoDismissMs: 4000,
+          });
+          break;
+        }
+        dispatcher.dispatch({
+          type: 'SELECT_ENTRY',
+          lid: ownerLid,
+          revealInSidebar: true,
+        });
+        break;
+      }
     }
   }
 
@@ -4884,6 +4918,43 @@ function escapeMarkdownLabel(label: string): string {
 function formatEntryReference(entry: Entry): string {
   const label = escapeMarkdownLabel(entry.title || '(untitled)');
   return `[${label}](entry:${entry.lid})`;
+}
+
+/**
+ * Find the lid of the attachment entry that owns the given asset
+ * key. Mirrors the asset-lookup logic used by the External Permalink
+ * boot receiver (`resolveTargetLid` in `external-permalink-receive.ts`)
+ * without introducing a shared module dependency — the helpers are
+ * each small, and the one in `external-permalink-receive` is scoped
+ * to `ParsedExternalPermalink` input rather than a bare asset key.
+ *
+ * Rules:
+ *   - Only considers `archetype === 'attachment'` entries
+ *   - Malformed attachment body (non-JSON / non-string asset_key) is
+ *     silently skipped — never throws
+ *   - Returns the first matching entry in container order when
+ *     multiple attachments reference the same asset_key
+ *   - Returns `null` when no match exists (caller surfaces a toast)
+ */
+function findAttachmentOwnerLid(
+  dispatcher: Dispatcher,
+  assetKey: string,
+): string | null {
+  const state = dispatcher.getState();
+  const entries = state.container?.entries;
+  if (!entries) return null;
+  for (const entry of entries) {
+    if (entry.archetype !== 'attachment') continue;
+    if (typeof entry.body !== 'string' || entry.body === '') continue;
+    let parsed: { asset_key?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(entry.body) as { asset_key?: unknown };
+    } catch {
+      continue;
+    }
+    if (parsed && parsed.asset_key === assetKey) return entry.lid;
+  }
+  return null;
 }
 
 /**
