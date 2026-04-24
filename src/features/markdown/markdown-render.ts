@@ -147,10 +147,34 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
     const currentContainerId =
       typeof rawEnv.currentContainerId === 'string' ? rawEnv.currentContainerId : '';
     if (parsed && currentContainerId && parsed.containerId === currentContainerId) {
-      // Same-container Portable Reference left behind in the body
-      // (rare — paste conversion should have already demoted it).
-      // Render as an ordinary anchor with the raw href; a follow-up
-      // slice may promote this to an `entry:` internal link.
+      // Same-container Portable Reference fallback rendering
+      // (spec/pkc-link-unification-v0.md §5.5). Paste conversion
+      // normally demotes `pkc://<self>/...` to `entry:<lid>`
+      // before the body ever reaches the renderer, but a writer
+      // can also type the portable form by hand, or an older
+      // import can leave it in place. When that happens we make
+      // the anchor behave exactly like the equivalent `entry:`
+      // internal reference so the click path stays consistent:
+      //
+      //   pkc://<self>/entry/<lid>           → entry:<lid>
+      //   pkc://<self>/entry/<lid>#log/xyz   → entry:<lid>#log/xyz
+      //
+      // `data-pkc-action="navigate-entry-ref"` routes through the
+      // existing `action-binder.ts` handler (the same one that
+      // services `entry:` anchors), which parses `data-pkc-entry-ref`
+      // with `parseEntryRef` — no new action type required.
+      //
+      // Asset portable references (`pkc://<self>/asset/<key>`) do
+      // NOT take this shortcut because the `navigate-entry-ref`
+      // handler only knows entry grammars. Asset fallback
+      // navigation (hop to the owning attachment entry, the way
+      // the boot receiver does) would need a new action and
+      // belongs in a follow-up slice.
+      if (parsed.kind === 'entry') {
+        const frag = parsed.fragment ?? '';
+        token.attrSet('data-pkc-action', 'navigate-entry-ref');
+        token.attrSet('data-pkc-entry-ref', `entry:${parsed.targetId}${frag}`);
+      }
       token.attrSet('rel', 'noopener noreferrer');
     } else if (parsed) {
       // Cross-container (or currentContainerId is unknown — treat
