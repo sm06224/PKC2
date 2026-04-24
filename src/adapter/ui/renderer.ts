@@ -5431,8 +5431,8 @@ export function renderContextMenu(
     },
     {
       action: 'copy-log-line-ref',
-      label: '📝 Log ref',
-      tip: 'このログ行への Markdown リンクをコピー',
+      label: '🔗 Copy link',
+      tip: 'このログ行の共有 URL をコピー（外部に貼ると該当ログに戻れます）',
       lid,
       logId: opts.logId,
       show: !!(opts.archetype === 'textlog' && opts.logId),

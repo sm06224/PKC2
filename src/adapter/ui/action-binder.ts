@@ -1297,14 +1297,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'copy-log-line-ref': {
+        // Phase 1 step 2 (G1 + G2) — TEXTLOG log の通常ユーザー向け
+        // コピーを External Permalink に揃える。従来 emit していた
+        // `[title › ts](entry:<lid>#<logId>)` 形は legacy 扱いで、
+        // Internal Markdown Dialect(spec §5.7 / audit §9)の正本形
+        // `log/<logId>` を External Permalink の fragment として載
+        // せる。action 名 `copy-log-line-ref` は既存 DOM binding が
+        // 各所にあるため維持(diff 最小化、audit §3.3 / spec note)。
+        //
+        // 出力: `<base>#pkc?container=<cid>&entry=<lid>&fragment=log/<logId>`
+        //
+        // Paste conversion 側(#145 受信 / #147 label 合成)は既に
+        // External Permalink + fragment を解釈できるので、この URL
+        // を別 PKC editor に貼ると
+        // `[Log Label](entry:<lid>#log/<logId>)` に変換される(Phase
+        // 1 step 3 で label 合成の log-label support を拡張予定)。
         if (!lid) break;
         const logId = target.getAttribute('data-pkc-log-id');
         if (!logId) break;
         const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent || ent.archetype !== 'textlog') break;
-        const ref = formatLogLineReference(ent, logId);
-        if (ref) void copyPlainText(ref);
+        const baseUrl = currentDocumentBaseUrl();
+        if (!baseUrl) break;
+        const url = formatExternalPermalink({
+          baseUrl,
+          kind: 'entry',
+          containerId: cid,
+          targetId: lid,
+          fragment: `log/${logId}`,
+        });
+        if (!url) break;
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Log link をコピーしました' : 'Log link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
         break;
       }
       case 'edit-log': {
@@ -4898,41 +4933,6 @@ function formatAssetReference(entry: Entry): string {
   const previewType = classifyPreviewType(att.mime);
   const prefix = previewType === 'image' ? '!' : '';
   return `${prefix}[${label}](asset:${att.asset_key})`;
-}
-
-/**
- * Build a textlog line reference string.
- *
- * Format: `[title › yyyy/MM/dd ddd HH:mm](entry:lid#log-id)`
- *
- * The fragment identifier targets a specific log row inside the
- * parent TEXTLOG entry. Callers that know how to resolve the
- * fragment (e.g. a future "scroll to log" handler) can split on
- * `#` and match against `data-pkc-log-id`. Consumers that do not
- * understand the fragment still get a readable, unambiguous
- * reference to the parent entry.
- *
- * Returns an empty string if the logId is unknown in the parent
- * body (e.g. the row was deleted between the context menu opening
- * and the copy action firing).
- */
-function formatLogLineReference(entry: Entry, logId: string): string {
-  try {
-    const log = parseTextlogBody(entry.body);
-    const row = log.entries.find((r) => r.id === logId);
-    if (!row) return '';
-    // Label uses the raw ISO timestamp so millisecond fidelity survives
-    // the copy action — the UI-side seconds formatter is intentionally
-    // not used here. See
-    // `docs/development/textlog-readability-hardening.md` §6 (UI vs
-    // export responsibility split).
-    const label = escapeMarkdownLabel(
-      `${entry.title || '(untitled)'} › ${row.createdAt}`,
-    );
-    return `[${label}](entry:${entry.lid}#${logId})`;
-  } catch {
-    return '';
-  }
 }
 
 /**

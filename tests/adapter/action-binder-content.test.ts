@@ -773,7 +773,10 @@ describe('Issue D / B — Reference-string context menu items', () => {
     }
   });
 
-  it('clicking "copy log line reference" writes `[title › ts](entry:lid#log-id)` to the clipboard', async () => {
+  it('clicking "copy log link" writes an External Permalink with fragment=log/<logId> to the clipboard', async () => {
+    // Phase 1 step 2 (G1 + G2): TEXTLOG log の通常ユーザー copy は
+    // External Permalink 形式(canonical fragment `log/<logId>`)。
+    // 旧来の `[title › ts](entry:lid#log-id)` Internal form は legacy 扱い。
     const { capture, restore } = await clipboardCaptureMock();
     try {
       mountTextlogContainer([
@@ -790,10 +793,120 @@ describe('Issue D / B — Reference-string context menu items', () => {
       );
       expect(item).not.toBeNull();
       item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // Two microtask flushes: copyPlainText + the .then() chain.
+      await Promise.resolve();
       await Promise.resolve();
       expect(capture.value).not.toBeNull();
-      expect(capture.value!).toContain('](entry:tl1#log-1)');
-      expect(capture.value!.startsWith('[Work Log')).toBe(true);
+      const baseUrl = window.location.href.split('#')[0]!;
+      expect(capture.value!).toBe(
+        `${baseUrl}#pkc?container=test-id&entry=tl1&fragment=log%2Flog-1`,
+      );
+      // Explicitly no longer the legacy Internal form / no pkc:// form.
+      expect(capture.value!).not.toContain('entry:tl1');
+      expect(capture.value!).not.toContain('pkc://');
+    } finally {
+      restore();
+    }
+  });
+
+  it('log External Permalink fragment is the canonical `log/<logId>` form, not legacy `<logId>`', async () => {
+    // G2 — we used to emit `entry:<lid>#<logId>` (legacy). The new
+    // canonical fragment is `log/<logId>`, URL-encoded so the `/`
+    // survives inside the `fragment=` query parameter.
+    const { capture, restore } = await clipboardCaptureMock();
+    try {
+      mountTextlogContainer([
+        { id: 'log-1744', text: 'x', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      const row = root.querySelector<HTMLElement>(
+        '.pkc-textlog-log[data-pkc-log-id="log-1744"]',
+      );
+      row!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+      const item = root.querySelector<HTMLElement>(
+        '[data-pkc-region="context-menu"] [data-pkc-action="copy-log-line-ref"]',
+      );
+      item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(capture.value!).toContain('fragment=log%2Flog-1744');
+      // Legacy path-segment form must NOT appear.
+      expect(capture.value!).not.toContain('fragment=log-1744');
+      expect(capture.value!).not.toMatch(/[&?]log-1744\b/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('inline row `🔗` button emits the same External Permalink as the context-menu item', async () => {
+    // Both the inline log-row button and the context-menu item dispatch
+    // the same `copy-log-line-ref` action. We pin that they share the
+    // External Permalink output format so a future refactor doesn't
+    // silently split the two paths.
+    const { capture, restore } = await clipboardCaptureMock();
+    try {
+      mountTextlogContainer([
+        { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+      ]);
+      const inlineBtn = root.querySelector<HTMLElement>(
+        '.pkc-textlog-log[data-pkc-log-id="log-1"] [data-pkc-action="copy-log-line-ref"]',
+      );
+      expect(inlineBtn).not.toBeNull();
+      inlineBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      const baseUrl = window.location.href.split('#')[0]!;
+      expect(capture.value!).toBe(
+        `${baseUrl}#pkc?container=test-id&entry=tl1&fragment=log%2Flog-1`,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('log copy safely fails when container_id is missing (no clipboard touch)', async () => {
+    // Bootstrap safety: never emit a permalink with an empty container
+    // id. The handler must short-circuit with a toast and leave the
+    // clipboard untouched.
+    const { capture, restore } = await clipboardCaptureMock();
+    try {
+      const dispatcher = createDispatcher();
+      dispatcher.onState((state) => render(state, root));
+      const container: Container = {
+        ...mockContainer,
+        meta: { ...mockContainer.meta, container_id: '' },
+        entries: [
+          {
+            lid: 'tl1',
+            title: 'Work Log',
+            body: serializeTextlogBody({
+              entries: [{ id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z', flags: [] }],
+            }),
+            archetype: 'textlog',
+            created_at: '2026-04-09T00:00:00Z',
+            updated_at: '2026-04-09T00:00:00Z',
+          },
+        ],
+      };
+      dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+      render(dispatcher.getState(), root);
+      cleanup = bindActions(root, dispatcher);
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'tl1' });
+
+      const row = root.querySelector<HTMLElement>(
+        '.pkc-textlog-log[data-pkc-log-id="log-1"]',
+      );
+      row!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+      const item = root.querySelector<HTMLElement>(
+        '[data-pkc-region="context-menu"] [data-pkc-action="copy-log-line-ref"]',
+      );
+      item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(capture.value).toBeNull();
     } finally {
       restore();
     }
