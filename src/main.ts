@@ -66,6 +66,7 @@ import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
 import { textlogPresenter } from './adapter/ui/textlog-presenter';
 import { applyExternalPermalinkOnBoot } from './adapter/ui/external-permalink-receive';
+import { setLinkMigrationDialogDispatcher } from './adapter/ui/link-migration-dialog';
 import type { Dispatcher } from './adapter/state/dispatcher';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
@@ -99,6 +100,13 @@ async function boot(): Promise<void> {
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();
+
+  // Phase 2 Slice 2 — the Normalize PKC links preview dialog needs
+  // to dispatch CLOSE_LINK_MIGRATION_DIALOG from its backdrop click
+  // handler (and from the defensive "no container" guard inside the
+  // state-sync step). Register the dispatcher once at boot so the
+  // module does not have to plumb it through every render call.
+  setLinkMigrationDialogDispatcher(dispatcher);
 
   // 2. Renderer: state → DOM (with scroll/focus restoration + flash feedback)
   let prevSelectedLid: string | null = null;

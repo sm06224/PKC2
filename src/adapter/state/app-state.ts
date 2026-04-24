@@ -222,6 +222,17 @@ export interface AppState {
   viewOnlySource?: boolean;
   /** Shell menu open/close state. Runtime-only, not persisted. */
   menuOpen?: boolean;
+  /**
+   * "Normalize PKC links" preview dialog open/close state
+   * (Phase 2 Slice 2). Runtime-only, not persisted. When `true` the
+   * renderer mounts the preview overlay via
+   * `syncLinkMigrationDialogFromState`. Apply is **not** implemented
+   * in this slice — the dialog is preview-only. Slice 3 will promote
+   * the selection set into reducer state and wire the apply path.
+   * Optional on the TS surface so legacy test fixtures that spell out
+   * AppState by hand remain valid without updates.
+   */
+  linkMigrationDialogOpen?: boolean;
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
   /** Current center pane view mode. Runtime-only. */
@@ -1865,6 +1876,26 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CLOSE_MENU': {
       if (!state.menuOpen) return { state, events: [] };
       return { state: { ...state, menuOpen: false }, events: [] };
+    }
+    case 'OPEN_LINK_MIGRATION_DIALOG': {
+      // Phase 2 Slice 2 — purely presentational flip. Closing the
+      // shell menu at the same time keeps the overlay stack tidy when
+      // the user triggered this from inside the menu. Guards (no
+      // container / editing phase) are enforced in the action-binder
+      // entry point and the dialog sync step; the reducer stays
+      // permissive so direct tests can open the dialog without
+      // spelling out the whole shell state.
+      if (state.linkMigrationDialogOpen === true && state.menuOpen !== true) {
+        return { state, events: [] };
+      }
+      return {
+        state: { ...state, linkMigrationDialogOpen: true, menuOpen: false },
+        events: [],
+      };
+    }
+    case 'CLOSE_LINK_MIGRATION_DIALOG': {
+      if (state.linkMigrationDialogOpen !== true) return { state, events: [] };
+      return { state: { ...state, linkMigrationDialogOpen: false }, events: [] };
     }
     case 'SET_CATEGORICAL_PEER_FILTER': {
       const next: AppState = { ...state, categoricalPeerFilter: action.peerLid };

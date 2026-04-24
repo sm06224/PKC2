@@ -591,24 +591,35 @@ Preview は **完全な dry-run**:
 
 **想定 PR サイズ**: ~400 LOC(実装)+ ~600 LOC(tests)
 
-### Slice 2 — Preview UI dialog(adapter 層)
+### Slice 2 — Preview UI dialog(adapter 層)**(implemented 2026-04-24, PR #126 / commit `?`)**
 
-**Scope**:
-- `src/adapter/ui/link-migration-dialog.ts`(新規):modal dialog、text-replace-dialog と同等 UX
-- Shell menu / command palette への entry point 追加
-- AppState に `linkMigrationPreview?: LinkMigrationPreview` を additive 追加(optional field)
-- Slice 1 の scanner を dispatch から呼び出して preview を格納
-- Apply all safe / Apply selected / Cancel のボタン
-- §10.6 の phase / mode guard
-- integration tests(happy-dom 経由)
+**実装済みスコープ**:
+- `src/adapter/ui/link-migration-dialog.ts` 新規(state-synced pattern、`syncLinkMigrationDialogFromState(state, root)` を renderer から呼び出す)
+- Shell menu に `Tools` セクションを新設、`🔧 Normalize PKC links` ボタンを追加(`data-pkc-action="open-link-migration-dialog"`)
+- AppState に runtime-only flag `linkMigrationDialogOpen?: boolean` を additive 追加
+- `OPEN_LINK_MIGRATION_DIALOG` / `CLOSE_LINK_MIGRATION_DIALOG` UserAction を追加、reducer は flag をトグルするだけ(shell menu を同時に閉じる)
+- action-binder:
+  - `open-link-migration-dialog` で `container` 有り + `phase !== 'editing'` を確認して OPEN を dispatch
+  - `close-link-migration-dialog` で CLOSE を dispatch
+  - Escape ハンドラで topmost overlay 優先順に CLOSE を織り込み(TEXTLOG preview → TEXT→TEXTLOG modal → link migration dialog → textlog selection → asset picker の順)
+- dialog 内部:
+  - ヘッダ(summary `N candidates across M entries (K safe).`)
+  - body(候補を `<ol>` で entry ごとにまとめて列挙、各 row に `[SAFE/REVIEW]` バッジ + kind ラベル + entry title + archetype + textlog 時は `log/<logId>` + before / after `<code>` diff + reason)
+  - footer(`Apply (Slice 3)` 無効化ボタン + "Apply is not available in this slice" note + Close ボタン)
+- **未実装のままにしてある項目**(Slice 3 以降で着地):
+  - candidate 選択 checkbox(現状はリスト表示のみ)
+  - Apply ボタンの enable / dispatch / reducer / revision 記録
+  - Apply all safe / Apply selected のバリアント
+- main.ts が boot 時に `setLinkMigrationDialogDispatcher(dispatcher)` を呼び、dialog の backdrop click / defensive close paths から `CLOSE_LINK_MIGRATION_DIALOG` を dispatch できる形にしている
+- integration tests:`tests/adapter/link-migration-dialog.test.ts`(16 件、state-sync / Esc / backdrop / close-button / kind / before-after 非-HTML / order / Candidate D 無し / code block 非干渉 / empty state / readonly でも preview 可 / 直接 API)
 
-**Acceptance**:
-- user が Tools → Normalize PKC links を開ける
-- preview dialog が candidates を列挙
-- checkbox 選択 + apply ボタンで後続 slice の action を dispatch(実装は slice 3 で)
-- Cancel で state 無変更
+**Acceptance(満たされたもの)**:
+- ✅ user が Shell menu → Tools → Normalize PKC links を開ける
+- ✅ preview dialog が candidates を entry 順 / offset 順で列挙
+- ✅ Cancel(Close ボタン / Esc / backdrop)で state 無変更
+- ⚠️ checkbox 選択 + apply ボタン → **Slice 3 へ持ち越し**(本 slice は Apply 不在、無効化ボタンで明示)
 
-**想定 PR サイズ**: ~500 LOC + ~400 LOC(tests)
+**実測 PR サイズ**: dialog ~530 LOC + action-binder / renderer / main.ts / state / action 合計 ~80 LOC + tests ~380 LOC + docs。Bundle 665.92 KB → 678.21 KB(+12.29 KB、42.3% → 44.2% of 1536 KB budget)
 
 ### Slice 3 — Apply reducer + revision 連携
 

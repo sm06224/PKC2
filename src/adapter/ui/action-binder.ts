@@ -71,6 +71,7 @@ import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
 } from './text-to-textlog-modal';
+import { isLinkMigrationDialogOpen } from './link-migration-dialog';
 import type { TextToTextlogSplitMode } from '../../features/text/text-to-textlog';
 import {
   buildStorageProfile,
@@ -1743,6 +1744,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
+      case 'open-link-migration-dialog': {
+        // Phase 2 Slice 2 — Normalize PKC links preview entry point.
+        // Guards match the audit:
+        //   - no container → ignore (the shell menu button is already
+        //     disabled in this state, but the action-binder must never
+        //     trust the DOM layer for authoritative checks)
+        //   - editing phase → ignore (apply would otherwise race with
+        //     the in-flight editor state; preview-only is fine but we
+        //     keep the surface consistent with the next slice)
+        // readonly / lightSource / viewOnlySource do NOT gate preview:
+        // scanning is pure and read-only, users in readonly mode can
+        // still inspect what would migrate.
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        if (st.phase === 'editing') break;
+        dispatcher.dispatch({ type: 'OPEN_LINK_MIGRATION_DIALOG' });
+        break;
+      }
+      case 'close-link-migration-dialog': {
+        dispatcher.dispatch({ type: 'CLOSE_LINK_MIGRATION_DIALOG' });
+        break;
+      }
       case 'select-about': {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         if (dispatcher.getState().viewMode !== 'detail') {
@@ -2452,6 +2475,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Slice 5: same priority treatment for the TEXT → TEXTLOG modal.
       if (isTextToTextlogModalOpen()) {
         dispatcher.dispatch({ type: 'CLOSE_TEXT_TO_TEXTLOG_MODAL' });
+        return;
+      }
+      // Phase 2 Slice 2: Normalize PKC links preview dialog Esc close.
+      // Sits in the same "topmost overlay closes first" ordering as
+      // the other preview modals so keyboard-first users get
+      // predictable dismiss semantics.
+      if (isLinkMigrationDialogOpen()) {
+        dispatcher.dispatch({ type: 'CLOSE_LINK_MIGRATION_DIALOG' });
         return;
       }
       // Slice 4: leaving selection mode is a single-key action per

@@ -230,6 +230,15 @@ export type UserAction =
   | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
+  /**
+   * Phase 2 Slice 2 — open/close the "Normalize PKC links" preview
+   * dialog. Runtime-only UI toggle: the reducer flips
+   * `state.linkMigrationDialogOpen` and the renderer mounts/unmounts
+   * the overlay via `syncLinkMigrationDialogFromState`. Apply is
+   * **not** implemented in this slice; the dialog is preview-only.
+   */
+  | { type: 'OPEN_LINK_MIGRATION_DIALOG' }
+  | { type: 'CLOSE_LINK_MIGRATION_DIALOG' }
   | { type: 'CLEAR_FILTERS' }
   // Rename (W1 Slice B followup): `SET_TAG_FILTER` / `tagLid` was a
   // legacy name from when categorical-relation-based "tags" were the
