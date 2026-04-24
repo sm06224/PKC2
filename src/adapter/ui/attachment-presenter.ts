@@ -282,6 +282,21 @@ export const attachmentPresenter: DetailPresenter = {
       downloadBtn.textContent = 'Download';
       actionRow.appendChild(downloadBtn);
 
+      // Copy permalink — cross-container shareable pkc:// URL for
+      // this asset. Only offered when an asset_key exists: legacy
+      // inline-data attachments have no stable key to share.
+      // Spec: docs/spec/pkc-link-unification-v0.md §4 + §5.2.
+      if (att.asset_key) {
+        const copyLinkBtn = document.createElement('button');
+        copyLinkBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-copy-link';
+        copyLinkBtn.setAttribute('data-pkc-action', 'copy-asset-permalink');
+        copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+        copyLinkBtn.setAttribute('title', 'この添付の共有 URL(pkc://)をコピー');
+        copyLinkBtn.setAttribute('aria-label', 'Copy permalink for this asset');
+        copyLinkBtn.textContent = '🔗 Copy link';
+        actionRow.appendChild(copyLinkBtn);
+      }
+
       if (previewType === 'html') {
         const openHtmlBtn = document.createElement('button');
         openHtmlBtn.className = 'pkc-btn pkc-attachment-open-html-btn';

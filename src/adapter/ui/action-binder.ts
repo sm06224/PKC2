@@ -48,6 +48,7 @@ import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
+import { formatPermalink } from '../../features/link/permalink';
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -1223,6 +1224,59 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent || ent.archetype !== 'attachment') break;
         void copyPlainText(formatAssetReference(ent));
+        break;
+      }
+      case 'copy-entry-permalink': {
+        // Slice: docs/spec/pkc-link-unification-v0.md §4 canonical
+        // permalink. Complements `copy-entry-ref` (internal form)
+        // with a cross-container shareable URL that the paste
+        // wiring on the receiving side demotes back to internal
+        // when the container_id matches.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const url = formatPermalink({ kind: 'entry', containerId: cid, targetId: lid });
+        if (!url) break; // formatter rejected the shape — nothing to copy
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Link をコピーしました' : 'Link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
+        break;
+      }
+      case 'copy-asset-permalink': {
+        // Same as above for an attachment: copies the cross-container
+        // `pkc://<cid>/asset/<key>` form. Skips silently if the
+        // attachment body lacks an asset_key (e.g. legacy inline
+        // base64 attachments) because there is no stable key to share.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const cid = st.container?.meta.container_id ?? '';
+        if (!cid) {
+          showToast({ kind: 'error', message: 'コンテナ ID が未設定のため、Link をコピーできません。', autoDismissMs: 3000 });
+          break;
+        }
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(ent.body);
+        if (!att.asset_key) break;
+        const url = formatPermalink({ kind: 'asset', containerId: cid, targetId: att.asset_key });
+        if (!url) break;
+        void copyPlainText(url).then((ok) => {
+          showToast({
+            kind: ok ? 'info' : 'error',
+            message: ok ? 'Asset link をコピーしました' : 'Asset link のコピーに失敗しました',
+            autoDismissMs: 2400,
+          });
+        });
         break;
       }
       case 'copy-log-line-ref': {
