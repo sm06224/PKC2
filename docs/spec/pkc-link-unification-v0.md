@@ -299,6 +299,8 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 
 Target(§5)に対して「どう見せるか」を決める **3 つの記法**。target 文字列は共通、**presentation は記法で区別**する。
 
+> **Note**: 本節は link / embed / card の記法概要を残すが、**詳細な決定版** は `./card-embed-presentation-v0.md` に集約されている(2026-04-24)。記法候補 7 案の harbor 4 層比較、target × presentation 許容表、paste / export / fallback / cross-container placeholder / 実装 slice 提案はそちらを参照。本節はあくまで target / presentation 分離原則の入口。
+
 ### 6.1 Link mode(既存 markdown link)
 
 ```markdown
