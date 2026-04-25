@@ -12,6 +12,7 @@ import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
 import {
   isSelectionModeActive,
@@ -82,6 +83,7 @@ export const textlogPresenter: DetailPresenter = {
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
     entries?: Entry[],
+    currentContainerId?: string,
   ): HTMLElement {
     const container = document.createElement('div');
     container.className = 'pkc-textlog-view';
@@ -165,14 +167,14 @@ export const textlogPresenter: DetailPresenter = {
       for (const log of section.logs) {
         if (hydratedCount < INITIAL_RENDER_ARTICLE_COUNT) {
           const articleEl = renderLogArticle(
-            entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting,
+            entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting, currentContainerId,
           );
           articleEl.setAttribute('data-pkc-hydrated', 'true');
           sectionEl.appendChild(articleEl);
           hydratedCount++;
         } else {
           ctxMap.set(log.id, {
-            lid: entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting,
+            lid: entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting, currentContainerId,
           });
           sectionEl.appendChild(renderLogArticlePlaceholder(entry.lid, log, fmtTs, selecting));
         }
@@ -347,6 +349,7 @@ function renderLogArticle(
   nameByKey?: Record<string, string>,
   entries?: Entry[],
   selecting = false,
+  currentContainerId?: string,
 ): HTMLElement {
   const article = document.createElement('article');
   article.className = 'pkc-textlog-log';
@@ -441,7 +444,7 @@ function renderLogArticle(
     source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
   }
   if (hasMarkdownSyntax(source)) {
-    textEl.innerHTML = renderMarkdown(source);
+    textEl.innerHTML = renderMarkdown(source, { currentContainerId });
     textEl.classList.add('pkc-md-rendered');
     // Slice 5-B: expand `![](entry:...)` transclusion placeholders.
     // Guarded by `entries` so the presenter is safe to call without
@@ -454,6 +457,13 @@ function renderLogArticle(
         mimeByKey,
         nameByKey,
         hostLid: lid,
+      });
+      // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
+      // emits inside log text so cards in textlog logs get the same
+      // chrome treatment as cards in TEXT bodies.
+      hydrateCardPlaceholders(textEl, {
+        entries,
+        currentContainerId: currentContainerId ?? '',
       });
     }
   } else {
