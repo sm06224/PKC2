@@ -118,6 +118,31 @@ export function filterByTags(
 }
 
 /**
+ * Color tag axis — Slice 4. Each entry carries at most one
+ * `color_tag`, so the filter is OR-within-axis: an entry matches
+ * when its `color_tag` is one of the requested IDs. Entries with
+ * no `color_tag` never match while the axis is active.
+ *
+ * Element type is plain `string` so unknown palette IDs from a
+ * future palette extension survive a round-trip through the filter
+ * (data-model spec §6.4 / §7.2). The match is exact equality, so
+ * an unknown ID simply yields zero results until the palette
+ * catches up.
+ *
+ * Pure / features-layer.
+ */
+export function filterByColors(
+  entries: Entry[],
+  filter: ReadonlySet<string>,
+): Entry[] {
+  if (filter.size === 0) return entries;
+  return entries.filter((entry) => {
+    const c = entry.color_tag;
+    return typeof c === 'string' && c !== '' && filter.has(c);
+  });
+}
+
+/**
  * Apply combined filters: text AND archetype AND tag (all axes).
  *
  * W1 Slice D extended `applyFilters` with an optional `tagFilter`
@@ -141,12 +166,14 @@ export function applyFilters(
   query: string,
   filter: ReadonlySet<ArchetypeId>,
   tagFilter?: ReadonlySet<string>,
+  colorFilter?: ReadonlySet<string>,
 ): Entry[] {
   const parsed = parseSearchQuery(query);
 
-  // FullText axis runs on the query with `tag:` tokens stripped.
-  // An all-tag query (e.g. `"tag:urgent"`) becomes an empty text
-  // match, which `filterEntries` already treats as "no narrowing".
+  // FullText axis runs on the query with `tag:` / `color:` tokens
+  // stripped. An all-prefix query (e.g. `"tag:urgent color:red"`)
+  // becomes an empty text match, which `filterEntries` already
+  // treats as "no narrowing".
   const byText = filterEntries(entries, parsed.fullText);
   const byType = filterByArchetypes(byText, filter);
 
@@ -155,10 +182,28 @@ export function applyFilters(
   // multiple `tag:` tokens AND within the Tag axis, and §4.2 says
   // Tag axis itself is AND-by-default, so unioning the two
   // sources gives "every value must appear on the entry".
-  const uiSize = tagFilter?.size ?? 0;
-  if (uiSize === 0 && parsed.tags.size === 0) return byType;
-  const combined = new Set<string>();
-  if (tagFilter) for (const t of tagFilter) combined.add(t);
-  for (const t of parsed.tags) combined.add(t);
-  return filterByTags(byType, combined);
+  const tagUiSize = tagFilter?.size ?? 0;
+  let byTag: Entry[];
+  if (tagUiSize === 0 && parsed.tags.size === 0) {
+    byTag = byType;
+  } else {
+    const combinedTags = new Set<string>();
+    if (tagFilter) for (const t of tagFilter) combinedTags.add(t);
+    for (const t of parsed.tags) combinedTags.add(t);
+    byTag = filterByTags(byType, combinedTags);
+  }
+
+  // Color tag Slice 4 — Color axis (OR-within-axis). UI-driven
+  // `colorFilter` and parser-extracted `parsed.colors` combine via
+  // union: the user can compose `color:red color:blue` in the
+  // search bar and the active-filter chip indicator at the same
+  // time, and an entry passes if ANY of those palette IDs match
+  // its single `color_tag`. AND-across-axes with FullText / Tag /
+  // Archetype is preserved by chaining filter results.
+  const colorUiSize = colorFilter?.size ?? 0;
+  if (colorUiSize === 0 && parsed.colors.size === 0) return byTag;
+  const combinedColors = new Set<string>();
+  if (colorFilter) for (const c of colorFilter) combinedColors.add(c);
+  for (const c of parsed.colors) combinedColors.add(c);
+  return filterByColors(byTag, combinedColors);
 }

@@ -277,6 +277,25 @@ export type UserAction =
   | { type: 'TOGGLE_TAG_FILTER'; tag: string }
   | { type: 'CLEAR_TAG_FILTER' }
   /**
+   * Color tag Slice 4 — Color filter axis actions.
+   *
+   * TOGGLE_COLOR_TAG_FILTER adds or removes a single palette ID
+   * from the active Color filter Set. CLEAR_COLOR_TAG_FILTER
+   * resets the Set to empty. No bulk SET action is exposed; the
+   * UI manages chips one at a time (Tag-axis pattern).
+   *
+   * Color filter semantics: OR-within-axis (1 entry has at most 1
+   * color, AND would be vacuous), AND across the other axes per
+   * `docs/spec/search-filter-semantics-v1.md` §4.1. Empty Set =
+   * axis off.
+   *
+   * Unknown palette IDs are stored verbatim — data-model spec §6.4
+   * / §7.2 require round-trip preservation through the filter and
+   * the Saved Search schema.
+   */
+  | { type: 'TOGGLE_COLOR_TAG_FILTER'; color: string }
+  | { type: 'CLEAR_COLOR_TAG_FILTER' }
+  /**
    * W1 Slice F — attach / detach a single Tag on an entry.
    *
    * ADD_ENTRY_TAG: validates + normalizes `raw` through
