@@ -117,7 +117,15 @@ describe('TOC light-mode readability', () => {
     // for normal text.  Pinned to a brighter PIP-Boy green (~8.2:1)
     // so day/log/label rows are legible while still being visibly
     // "quieter" than --c-fg (#c8d8b0).
-    const rootBlock = baseCss.match(/:root\s*\{[\s\S]*?\n\}/);
+    //
+    // CSS-budget maintenance (2026-04-25): the dark-theme defaults
+    // are now declared via a comma-merged selector
+    // `:root, #pkc-root[data-pkc-theme="dark"] { … }`, so the regex
+    // must accept any selector list that starts with `:root` and
+    // ends at the next `{` before reaching for the body. We still
+    // pin the canonical `#9ab37e` against any `:root`-rooted block
+    // that holds `--c-toc-secondary`.
+    const rootBlock = baseCss.match(/:root[^{]*\{[\s\S]*?\n\}/);
     expect(rootBlock).not.toBeNull();
     expect(rootBlock![0]).toMatch(/--c-toc-secondary:\s*#9ab37e/);
   });
