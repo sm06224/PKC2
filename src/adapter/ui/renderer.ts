@@ -1,6 +1,8 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
-import { ABOUT_LID } from '../../core/model/record';
+import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
+import { isColorTagId } from '../../features/color/color-palette';
+import { renderColorPickerTrigger } from './color-picker';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -2432,6 +2434,19 @@ function renderEntryItem(
     li.setAttribute('data-pkc-multi-selected', 'true');
   }
 
+  // Color tag Slice 3 — left-edge color bar. The raw value goes onto
+  // a data attribute regardless of whether it is a known palette ID,
+  // so a future palette extension does not lose round-trip data even
+  // before its CSS lands. Only known IDs get the visible band class
+  // plus the `pkc-color-<id>` hue binding (shared with the picker
+  // trigger dot and swatches so a new palette ID is one CSS rule).
+  if (typeof entry.color_tag === 'string' && entry.color_tag !== '') {
+    li.setAttribute('data-pkc-color-tag', entry.color_tag);
+    if (isColorTagId(entry.color_tag)) {
+      li.classList.add('pkc-entry-color-bar', `pkc-color-${entry.color_tag}`);
+    }
+  }
+
   const title = createElement('span', 'pkc-entry-title');
   title.textContent = `${archetypeIcon(entry.archetype)} ${entry.title || '(untitled)'}`;
   li.appendChild(title);
@@ -3231,6 +3246,19 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   archLabel.setAttribute('data-pkc-archetype', entry.archetype);
   archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   titleRow.appendChild(archLabel);
+
+  // Color tag Slice 3 — picker trigger. Hidden for system entries
+  // (about / settings) and for reserved lids; the reducer would
+  // block those anyway, so skipping the button keeps the surface
+  // tidy. `_canEdit` is the underlying readonly / editing gate
+  // shared with the action bar; respect it here too.
+  if (
+    _canEdit &&
+    !isSystemArchetype(entry.archetype) &&
+    !isReservedLid(entry.lid)
+  ) {
+    titleRow.appendChild(renderColorPickerTrigger(entry.color_tag));
+  }
 
   // Task completion badge in title row
   const viewTaskProgress = countTaskProgress(entry);

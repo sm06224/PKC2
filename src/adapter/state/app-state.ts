@@ -12,6 +12,7 @@ import {
   addEntry,
   updateEntry,
   updateEntryTags,
+  updateEntryColorTag,
   removeEntry,
   nextSelectedAfterRemove,
   addRelation,
@@ -2060,6 +2061,57 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return {
         state: next,
         events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
+    // Color tag Slice 3 — set / clear `entry.color_tag`. Mirrors the
+    // ADD_ENTRY_TAG / REMOVE_ENTRY_TAG pattern (metadata mutation, no
+    // revision snapshot) plus the lightSource / viewOnlySource gate
+    // requested by the Slice 3 design memo.
+    case 'SET_ENTRY_COLOR': {
+      if (state.readonly) return blocked(state, action);
+      if (state.lightSource || state.viewOnlySource) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const lid = action.lid ?? state.selectedLid;
+      if (lid === null) return blocked(state, action);
+      if (isReservedLid(lid)) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return blocked(state, action);
+      // Loose-string store: the picker UI only emits known palette IDs,
+      // but spec data-model §6.4 / §7.2 require unknown IDs to round-trip.
+      // Empty / whitespace-only requests collapse to "no color" so a
+      // round-trip cannot accidentally introduce an invisible state.
+      const next_color =
+        typeof action.color === 'string' && action.color.trim() !== ''
+          ? action.color
+          : null;
+      const ts = new Date().toISOString();
+      const container = updateEntryColorTag(state.container, lid, next_color, ts);
+      const nextState: AppState = { ...state, container };
+      return {
+        state: nextState,
+        events: [{ type: 'ENTRY_UPDATED', lid }],
+      };
+    }
+    case 'CLEAR_ENTRY_COLOR': {
+      if (state.readonly) return blocked(state, action);
+      if (state.lightSource || state.viewOnlySource) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const lid = action.lid ?? state.selectedLid;
+      if (lid === null) return blocked(state, action);
+      if (isReservedLid(lid)) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === lid);
+      if (!entry) return blocked(state, action);
+      // No-op fast path: clearing an already-clear field does not emit
+      // an ENTRY_UPDATED event so listeners don't re-render uselessly.
+      if (entry.color_tag === undefined || entry.color_tag === null) {
+        return { state, events: [] };
+      }
+      const ts = new Date().toISOString();
+      const container = updateEntryColorTag(state.container, lid, null, ts);
+      const nextState: AppState = { ...state, container };
+      return {
+        state: nextState,
+        events: [{ type: 'ENTRY_UPDATED', lid }],
       };
     }
     case 'REMOVE_ENTRY_TAG': {

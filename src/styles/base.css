@@ -957,6 +957,117 @@
   border-bottom: 1px solid var(--c-border);
   font-size: 0.8rem;
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  position: relative;
+}
+
+/* Color tag Slice 3 — left-edge color band on entry rows.
+ * Eight v1 palette IDs each get their own hue. Only known IDs land
+ * in `.pkc-entry-color-bar`; unknown IDs only carry the
+ * `data-pkc-color-tag` attribute (round-trip preservation). */
+:root {
+  --pkc-color-tag-red: #ef4444;
+  --pkc-color-tag-orange: #f97316;
+  --pkc-color-tag-yellow: #eab308;
+  --pkc-color-tag-green: #22c55e;
+  --pkc-color-tag-blue: #3b82f6;
+  --pkc-color-tag-purple: #a855f7;
+  --pkc-color-tag-pink: #ec4899;
+  --pkc-color-tag-gray: #6b7280;
+}
+
+.pkc-entry-color-bar {
+  border-left: 3px solid var(--pkc-color-tag-current, transparent);
+  padding-left: calc(0.4rem - 3px);
+}
+
+/* Per-palette hue binding — one short class per palette ID, attached
+ * by the renderer to whichever element should expose the hue
+ * (sidebar band / picker trigger dot / picker swatch). Keeping the
+ * binding in classes (vs. attribute selectors) is the
+ * smallest-bytes form once minified. */
+.pkc-color-red    { --pkc-color-tag-current: var(--pkc-color-tag-red); }
+.pkc-color-orange { --pkc-color-tag-current: var(--pkc-color-tag-orange); }
+.pkc-color-yellow { --pkc-color-tag-current: var(--pkc-color-tag-yellow); }
+.pkc-color-green  { --pkc-color-tag-current: var(--pkc-color-tag-green); }
+.pkc-color-blue   { --pkc-color-tag-current: var(--pkc-color-tag-blue); }
+.pkc-color-purple { --pkc-color-tag-current: var(--pkc-color-tag-purple); }
+.pkc-color-pink   { --pkc-color-tag-current: var(--pkc-color-tag-pink); }
+.pkc-color-gray   { --pkc-color-tag-current: var(--pkc-color-tag-gray); }
+
+/* Color tag picker — trigger button + popover */
+.pkc-color-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  background: var(--c-bg-2, transparent);
+  cursor: pointer;
+  margin-left: 0.4rem;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.pkc-color-picker-trigger:hover { background: var(--c-hover); }
+.pkc-color-picker-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.pkc-color-picker-trigger-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--pkc-color-tag-current, transparent);
+  border: 1px solid var(--c-border);
+}
+.pkc-color-picker-trigger-dot-empty {
+  border-style: dashed;
+  background: transparent;
+}
+
+.pkc-color-picker-popover {
+  position: absolute;
+  z-index: 100;
+  margin-top: 0.25rem;
+  padding: 0.4rem;
+  background: var(--c-bg, #fff);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.pkc-color-picker-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+.pkc-color-picker-swatch {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--pkc-color-tag-current, transparent);
+}
+.pkc-color-picker-swatch[data-pkc-active="true"] {
+  border-color: var(--c-accent, #1f2937);
+  box-shadow: 0 0 0 2px var(--c-bg, #fff);
+}
+.pkc-color-picker-clear {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 2px solid var(--c-border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: transparent;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--c-fg);
+}
+.pkc-color-picker-clear[data-pkc-active="true"] {
+  border-color: var(--c-accent, #1f2937);
 }
 
 .pkc-entry-item:hover {

@@ -74,4 +74,20 @@ export interface Entry {
    * Canonical spec: `docs/spec/tag-data-model-v1-minimum-scope.md`.
    */
   tags?: string[];
+  /**
+   * Color tag — Slice 3 visual marker (additive, optional).
+   *
+   * Element type is `string` rather than `ColorTagId` so an unknown
+   * palette ID (e.g. a future palette extension) round-trips through
+   * a write / read cycle unchanged. Data model spec §3.3 / §4.5 / §7.2
+   * require unknown IDs to be preserved, not silently dropped.
+   *
+   * Missing / `null` / `undefined` are equivalent ("no color"). Write
+   * paths drop the field entirely when the in-memory color is cleared,
+   * so on-disk JSON for un-coloured entries stays identical to its
+   * pre-Slice-3 shape.
+   *
+   * Canonical spec: `docs/spec/color-tag-data-model-v1-minimum-scope.md` §3.
+   */
+  color_tag?: string | null;
 }

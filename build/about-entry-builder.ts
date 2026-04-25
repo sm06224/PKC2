@@ -166,7 +166,7 @@ const RELEASE_SUMMARY = {
       'Per-candidate checkbox selection is not implemented — v1 Apply is all-safe only',
       'Clickable-image renderer support (`[![alt](url)](url)`) is not implemented — reserved as future dialect',
       'Card / embed presentation (`@[card](...)`) is not implemented yet',
-      'Color tag is spec-only — implementation deferred to a future wave',
+      'Color tag query parser (`color:<id>`) and filter integration are not implemented — picker / sidebar marker / Saved Search schema / Entry schema landed in Slice 1-3 (2026-04-25)',
       'Cross-container resolver / P2P is not implemented',
       'OS protocol handler for `pkc://` is not implemented',
       'External Permalink body residue rendering is not implemented — a `<base>#pkc?...` string left inside body text is rendered as a plain external anchor; only boot-time receive resolves it',
