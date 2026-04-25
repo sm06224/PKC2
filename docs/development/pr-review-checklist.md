@@ -71,7 +71,7 @@ PR の性質に応じて以下を grep 確認:
 CSS / JS が増減する PR では:
 
 - `node build/check-bundle-size.cjs` の出力を **PR body に明記**
-- `bundle.css` が **96 KB** の budget、`bundle.js` が **1536 KB** の budget を超えていないことを確認
+- `bundle.css` が **98 KB** の budget、`bundle.js` が **1536 KB** の budget を超えていないことを確認(budget は `build/check-bundle-size.cjs` で随時 bump、過去履歴は同 file のヘッダコメントに記録)
 - headroom が **1 KB を切ったら**、次 PR(機能追加系)着手前に **dedicated bump PR** を検討する旨を follow-up に書く
 - budget 引き上げは **専用 maintenance PR でしか行わない**(機能追加 PR と同居させない、PR #138 が前例)
 
@@ -128,7 +128,7 @@ PR を作る **前に** やっておくと audit 段階で issue が出にくい
 
 - `CLAUDE.md`: §PR Workflow / Review checklist(本 doc への cross-link)
 - `docs/development/INDEX.md`: 過去 PR の audit 履歴
-- `build/check-bundle-size.cjs`: budget 定義(現状 bundle.css 96 KB / bundle.js 1536 KB)
+- `build/check-bundle-size.cjs`: budget 定義(現状 bundle.css 98 KB / bundle.js 1536 KB、PR #188 で 96 → 98 KB に bump、2026-04-25)
 - `docs/development/css-ui-debt-audit-2026-04-25.md`: CSS budget 棚卸し例
 - `docs/development/card-widget-ui-v0-audit.md`: Slice 段階分け audit 例
 

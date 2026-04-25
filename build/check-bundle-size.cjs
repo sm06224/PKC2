@@ -119,6 +119,29 @@
  *   混在させない方針、初版コメント §"Bump here (with a code review)
  *   when justified" に従う)。
  *
+ * Re-alignment (Card Slice 5.0 close + CSS budget headroom maintenance,
+ * 2026-04-25):
+ *   dist/bundle.css ≈ 94.46 KB — Card Slice 5.0(minimal chrome、PR
+ *   #186 で着地)で `.pkc-card-widget` chrome ブロック(border /
+ *   background / typography / state modifier)が +1.00 KB 積まれ、
+ *   96 KB budget の headroom が 2.94 → 1.54 KB に縮小。次の UI slice
+ *   (Card Slice 5.1 excerpt / 5.2 thumbnail / Slice 6 advanced
+ *   variants、いずれも CSS が増える系統)で再び超過する蓋然性が高い。
+ *
+ *   Slice 5.1 excerpt は archetype 別の preview 表示で +0.5〜1 KB
+ *   見込み、Slice 5.2 thumbnail / Slice 6 variants はそれぞれ +1〜2 KB
+ *   見込みのため、headroom 1.54 KB のままだと 5.1 で確実に詰まる。
+ *
+ *   そこで budget は **98 KB** に引き上げる — 現サイズ 94.46 KB に
+ *   ~3.6% の headroom(~3.54 KB)を上乗せした最小枠。Slice 5.1
+ *   excerpt 1 件 + 軽微な調整を吸収しつつ、5.2 / 6 着手前に再評価
+ *   できるタイト設定を維持する。
+ *
+ *   この引き上げは **dedicated maintenance PR**(本 PR、PR #138 +
+ *   PR #177 と同 pattern)で実施。機能 PR(Slice 5.1 excerpt)と
+ *   混在させないことで「予算引き上げの理由」が PR review で明確
+ *   になる。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -134,7 +157,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 96 * 1024 },   // 96 KB (Color wave close + CSS dedupe re-alignment, 2026-04-25)
+  { file: 'dist/bundle.css', maxBytes: 98 * 1024 },   // 98 KB (Card Slice 5.0 close + headroom maintenance, 2026-04-25)
 ];
 
 function formatKB(bytes) {
