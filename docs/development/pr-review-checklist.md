@@ -90,6 +90,7 @@ PR を作る **前に** やっておくと audit 段階で issue が出にくい
 - `git status` / `git diff --stat` で変更範囲を頭で想像できるか
 - src / tests / dist のみ?docs もあるか?バランスは妥当か?
 - `npm run typecheck` / `lint` / `test` / `build:bundle` / `check-bundle-size` / `build:release` を **必ず**(docs-only PR は test まで省略可、ただし grep 確認は必須)
+- **`npm run test:smoke` を必ず**(src / tests / dist / build / 既存の adapter 層 / features 層 を触る PR は **必須**、docs-only PR は省略可)。CI 待ち時間の圧縮 + 視覚レイアウトの実ブラウザ確認(happy-dom では拾えない)を兼ねる。Playwright spec は `tests/smoke/`(`app-launch.spec.ts` + `manual-launch.spec.ts`)、ローカル実行 ~6 秒。失敗したら push しない / PR 開かない、root cause 修正してから再走らせる
 - `npm run build:manual` は About / planning/18 / manual 07-09 を触ったときのみ
 - INDEX エントリ + Last updated は最後に書く(bundle size 等の確定値が出てから)
 
