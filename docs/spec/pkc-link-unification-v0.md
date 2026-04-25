@@ -279,21 +279,55 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 - `[card:<lid>]` 独自記法(spec §10.1 で不採用確定)
 - `[![<alt>]](<target>)`(字面どおり markdown-it は literal `![]` label の anchor として扱い clickable image にならない、§5.7.5 参照)
 
-#### 5.7.5 Future dialect reservations(現行は非 canonical、migration 対象外)
+#### 5.7.5 Clickable-image / future dialect 整理
 
-標準 Markdown として自然な形でも、**現行 PKC2 renderer が safe に解釈できない** ものは canonical にしない / 新規 emit しない / migration tool v1 は生成しない。
+**正本 reference**: `../development/clickable-image-v2-decision-audit.md`(2026-04-25、PR #141 で着地)。本節は同 audit の決定(Option B+ ハイブリッド)を spec 側に正本化した整理。8-case empirical probe の根拠と Harbor 4 層評価は同 audit を参照。
 
-| form | 標準 Markdown 扱い | 現行 PKC2 扱い | 将来の検討 |
-|---|---|---|---|
-| `[![<alt>](<target>)](<target>)` | clickable image(`<a><img></a>` nest、README バッジで頻出) | `asset:` 外側 link は `SAFE_URL_RE` allowlist 未登録のため validateLink reject、`[` `]` `(asset:...)` が literal 漏れ。`entry:` 版は anchor 自体は動くが `<div class="pkc-transclusion-placeholder">` を `<a>` が囲み HTML semantics 不正 | renderer 側で (a) `asset:` を allowlist 追加、(b) resolver の link-form pass を outer bracket に効かせる、(c) click target を chip に demote、の 3 点実装後に migration tool v2 で正式採用検討 |
-| `[![]](<target>)` | anchor + literal text `![]`(clickable image ではない) | 上と同じく outer link reject で literal 漏れ | 採用しない(誤読を誘発するだけで harbor 4 層のどれでも価値が無い)|
-| `@[card](<target>)` / `@[card:<variant>](<target>)` | `@` literal + 普通の link | renderer hook 未実装(`<p>@<a>…</a></p>`)| Phase 4 card / embed 実装とセットで migration tool v2 |
+標準 Markdown の clickable-image(`[![alt](image)](link)`)を PKC2 が dock させるときの 4 区分を以下に固定する。**`SAFE_URL_RE` に `asset:` を追加しないこと**(PR #131 → #132 / `card-asset-target-coordination-audit.md` の決定維持)を前提に、`asset-resolver` が single source of truth として asset ref を rewrite する現状をそのまま正本とする。
 
-**Harbor 原則**(詳細は `./link-migration-tool-v1.md` §14): PKC 内で未解決の future dialect を migration tool が生成すると、apply 直後に body が visibly 壊れる。scanner v1 は before / after 双方でこれらの form を **生成も検出もしない**。
+##### canonical(現 main で完全動作、新規 emit OK、migration v2 で promotion 候補)
 
-**Renderer integration design**(別 audit doc):Clickable-image を PKC 方言として受け入れるときの renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界は `../development/clickable-image-renderer-audit.md`(2026-04-24 docs-only)にまとまっている。Option A(UI dialog 先行)と Option B(renderer 実装先行)の判断材料も同 doc に集約。
+| form | 動作 |
+|---|---|
+| `[![<alt>](asset:<key>)](entry:<lid>)` | inner→data URI、outer→`<a navigate-entry-ref><img data:></a>`(asset thumbnail to internal entry) |
+| `[![<alt>](https://...image)](https://...target)` | 標準 README badge `<a target="_blank"><img></a>` |
+| `[![<alt>](asset:<key>)](https://...target)` | asset thumbnail to external page |
+| `[![<alt>](https://...image)](entry:<lid>)` | external thumbnail to internal entry |
+| `[![<alt>](asset:<key>)](pkc://<other>/entry/<lid>)` | asset thumbnail with cross-container portable-reference-placeholder badge |
 
-**Decision audit 続編(2026-04-25)**: Card wave 着地と PR #131 → #132 の教訓を踏まえた **再判定** は `../development/clickable-image-v2-decision-audit.md`。empirical 8-case probe で **5/8 form は現 main で既に動作** していることを確認、`asset:` outer link(`[![alt](asset:k)](asset:k)`)のみ broken と特定。採用方針は **Option B+(現 main で動いている form を spec で canonical 化、broken 1 form は future v2 wave で envelope 設計してから実装)**。本 §5.7.5 reservation は本 PR では構造を変えず、後続 spec 整合 PR で「canonical / partial / future v2 / invalid」の 4 区分に書換予定。
+これら 5 form は 現 renderer + asset-resolver で完結。`migration v2` の opt-in promotion candidate(`![<alt>](asset:k)` → clickable-image 等)は本表を destination として扱う。
+
+##### partial / caution(動くが新規 emit 推奨せず、reader / writer に注意点あり)
+
+| form | 注意点 |
+|---|---|
+| `[![<alt>](entry:<lid1>)](entry:<lid2>)` | 動作するが **block-in-inline** semantic NG(transclusion `<div>` を `<a>` が囲む)。新規 emit せず reader tolerance に依存 |
+| `[![<alt>](asset:<key>)](pkc://<self>/entry/<lid>)` | 動作するが same-container でも portable-reference-placeholder badge になる(現 renderer が same/cross 区別せず badge 化)。**`[![<alt>](asset:<key>)](entry:<lid>)` form を推奨** |
+
+##### future v2(現 main では broken / 未対応、実装には別 wave envelope が必要)
+
+| form | 現状 | 必要条件(同時 land) |
+|---|---|---|
+| `[![<alt>](asset:<key>)](asset:<key>)` | inner→data URI、outer `(asset:k)` が validateLink reject → `<p>[<img>](asset:k)</p>` の literal 漏れ | (a) `SAFE_URL_RE` に `asset:` 追加 / (b) `asset-resolver` に nested-form 対応 pass を追加 / (c) `action-binder` に asset: click handler 追加。**3 点が同時 land** しないと PR #131 regression を再発する |
+
+`migration scanner v1` は本 form を **生成も検出もしない**(`link-migration-tool-v1.md` §14.1 既存契約)。`migration v2` 起動の前提は、上記 3 点 envelope が `clickable-image-v2-implementation-spec.md`(未作成、後続 wave)で固定されること。
+
+##### invalid / do-not-emit(harbor 4 層のどこでも価値ゼロ)
+
+| form | 理由 |
+|---|---|
+| `[![]](<target>)` | nested image にならない(内側 `[]` 空 + 外側 `]` 直後に `(` が無いため CommonMark grammar が image として展開しない)。anchor + literal `![]` label として token 化、harbor 4 層すべて ❌ |
+| `[![<alt>]](<target>)` | 上と同様、`]]` 後に `(` が無いと image rule が起動しない疑似 form。誤読のみ生み、value 無し |
+
+**migration scanner v1 / v2 のどちらでも before/after に出さない**(`link-migration-tool-v1.md` §14.2 既存契約)。
+
+##### `@[card]` reservation(本表とは独立)
+
+`@[card](<target>)` / `@[card:<variant>](<target>)` は本 spec では引き続き `card-embed-presentation-v0.md` 側の reservation。Card Slice 1-4(#170 / #171 / #178)で parser + renderer placeholder + click wiring が landing 済み、widget 本体(thumbnail / excerpt)は Slice 5+ 想定。clickable-image とは別軸の presentation で、本 §5.7.5 の 4 区分とは交差しない。
+
+**Harbor 原則**(詳細は `./link-migration-tool-v1.md` §14): PKC 内で未解決の future dialect を migration tool が生成すると、apply 直後に body が visibly 壊れる。scanner v1 は before / after 双方で **future v2** および **invalid** の form を **生成も検出もしない**。
+
+**先行 audit**: 11-form syntax matrix と Harbor 航路図の元設計は `../development/clickable-image-renderer-audit.md`(2026-04-24、#158)を参照。本 §5.7.5 はその後継 audit(`../development/clickable-image-v2-decision-audit.md`、#180、PR #141)の決定を canonical 化した整理。
 
 ---
 
@@ -767,4 +801,4 @@ paste handler / link renderer は次の順で判定:
 
 ---
 
-**Status**: 実装済み(v2.1.1 時点で Copy / Paste / Render / Receive の各層が稼働中、3 層用語 External Permalink / Portable PKC Reference / Internal Reference は spec・src・UI・manual で統一)。本書は **PKC Link Unification の canonical reference** として保持する。実装履歴は `../development/INDEX.md` #140-#162 / `../release/CHANGELOG_v2.1.0.md` §Link system + `../release/CHANGELOG_v2.1.1.md` を参照。`@[card](...)` と clickable-image `[![alt](url)](url)` は §5.7.5 Future dialect reservations として引き続き保留、`schema_version` は 1 のまま不変。
+**Status**: 実装済み(v2.1.1 時点で Copy / Paste / Render / Receive の各層が稼働中、3 層用語 External Permalink / Portable PKC Reference / Internal Reference は spec・src・UI・manual で統一)。本書は **PKC Link Unification の canonical reference** として保持する。実装履歴は `../development/INDEX.md` #140-#162 / `../release/CHANGELOG_v2.1.0.md` §Link system + `../release/CHANGELOG_v2.1.1.md` を参照。`@[card](...)` は Card Slice 1-4 で parser + renderer placeholder + click wiring まで実装済み(widget 本体は Slice 5+ 想定、`card-embed-presentation-v0.md` 参照)、clickable-image `[![alt](url)](url)` は §5.7.5 で **canonical 5 form / partial 2 form / future v2 1 form / invalid 1 form** に整理済み(2026-04-25 spec alignment、`../development/clickable-image-v2-decision-audit.md` を canonical reference として参照)、`schema_version` は 1 のまま不変。
