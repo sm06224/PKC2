@@ -572,6 +572,11 @@ Import 時の必須ガード(実装 slice で詳細):
 
 **リスク**: UI label 変更は軽度、既存 test / spec は label 文字列に依存していないので影響小。
 
+> **Status (2026-04-25, partial landing)**: 本 Slice α の **vocabulary cleanup 部分** は PR で着地済み。
+> - UI: `ZIP` ボタン → **`Backup ZIP`**(label + tooltip)、`Import` の tooltip に Replace / Merge 選択可の旨を補足、`📦 Selected` / `📦 Export`(per-entry) / `📥 Textlog` / `📥 Text` / `📥 Entry` / `📥 Batch` / folder export の tooltip を「単体バンドル」「一括バンドル」用語で統一。
+> - Manual: `docs/manual/07_保存と持ち出し.md` の Export 形式表 / 組み合わせ目安 / Import 操作 / バックアップの推奨で **Backup ZIP** + **単体バンドル** + **一括バンドル** に呼称統一、`Interchange ZIP / File Tree ZIP` は未実装である旨を明記。`docs/manual/09_トラブルシューティングと用語集.md` に **Backup ZIP** / **Single-entry bundle** / **Batch bundle** / **Interchange ZIP** の用語集 entry を追加、既存 `ZIP Package` entry は Backup ZIP への cross-reference に書き換え。`docs/planning/18_運用ガイド_export_import_rehydrate.md` の "Import は全置換 / マージ機能はありません" stale 記述を Replace + Merge の現状に修正、`ZIP Package` 表記を Backup ZIP に置換。
+> - **未着地**: Import default = Merge への変更(Slice β)、Backup ZIP の独立 spec 化(Slice γ)、File Tree Interchange spec / 実装(Slice δ-ζ)、Export モーダル統合(Slice η)、Import preview unification(Slice θ)。本 partial landing は **vocabulary cleanup のみ**、機能挙動・action attribute・data-pkc-* selector・schema・version は不変。
+
 ### 10.2 Slice β — Default import = merge(§7)
 
 **粒度**: preview dialog の default radio 変更 + Replace 切替時の警告追加。

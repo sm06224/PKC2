@@ -90,7 +90,7 @@ PKC2 には3系統の Export があります。
 添付ファイルが多い場合、ファイルサイズが大きくなります。
 Export 前に、UI に推定サイズが表示されます。
 
-### ZIP PKC2 Package
+### Backup ZIP（旧 ZIP PKC2 Package）
 
 - **含まれるもの**: manifest.json + container.json + assets/（生バイナリ）
 - **サイズ目安**: 添付ファイルのサイズとほぼ同等（base64 膨張なし）
@@ -100,7 +100,12 @@ Export 前に、UI に推定サイズが表示されます。
 ZIP 標準ツール（OS のファイルマネージャ等）で個別にアクセスできます。
 Import 時には新しい Container ID が発行されます（元の Workspace とは独立）。
 
-**ZIP を選ぶべき場面**:
+> 用語整理: 旧 doc では **「ZIP Package」** と呼ばれていた形式です。
+> 2026-04-25 のマニュアル整理で、UI / manual / 用語集すべてで
+> **Backup ZIP** に呼称を統一しました。実体・拡張子（`.pkc2.zip`）・
+> 互換性は不変です。
+
+**Backup ZIP を選ぶべき場面**:
 - 添付ファイルが大きい（1 MB 以上）
 - バックアップ目的
 - マシン間移行
@@ -131,19 +136,25 @@ PKC2 は以下の2種類の Import に対応しています。
 | `.html` ファイル | DOMParser で解析 → pkc-data を抽出 → Container として読み込み |
 | `.zip` ファイル | ZIP 解凍 → container.json + assets/ → Container として読み込み |
 
-### 重要: Import は全置換
+### Import の挙動: Replace と Merge
 
-Import は**現在の Workspace データを完全に置き換えます**。
-マージ（merge）機能はありません。
-Import 前に、確認画面が表示されます（CONFIRM / CANCEL）。
+Import preview のラジオで **Replace**（既定: 現在の Workspace を完全に置換）か
+**Merge**（既存データを保持して追加取り込み、同名 entry の衝突は conflict 解決
+UI で個別に判断）を選べます。Merge は schema version が一致するときのみ有効です。
+
+> **2026-04-25 整合化メモ**: 本節の旧版は「マージ（merge）機能はありません」と
+> 書いていましたが、実装は v2.1.0 以降で Merge mode を提供しています。詳細は
+> [`07_保存と持ち出し.md` Merge mode と conflict 解決 UI](../manual/07_保存と持ち出し.md)
+> を参照してください。
 
 ### Import の操作手順
 
 1. 「Import」ボタンを押す
-2. ファイル選択ダイアログで .html または .zip を選ぶ
-3. プレビュー画面で内容を確認
-4. 「Confirm Import」で確定、または「Cancel」で中止
-5. 確定すると、Workspace が新しいデータに置き換わる
+2. ファイル選択ダイアログで .html または `.pkc2.zip`（Backup ZIP）を選ぶ
+3. プレビュー画面で **Replace / Merge** を選び、内容を確認
+4. **Confirm Import**（Replace）または **Confirm merge**（Merge）で確定、
+   または **Cancel** で中止
+5. 確定すると、選んだモードに応じて Workspace が置換または追加取り込みされる
 
 ---
 
@@ -253,10 +264,10 @@ Rehydrate は「Readonly HTML artifact を Workspace に昇格させる」操作
 HTML ソースを編集すれば bypass できます。
 「うっかり編集してしまうのを防ぐ」程度のガードです。
 
-### Q: ZIP と HTML Full の違いは？
+### Q: Backup ZIP と HTML Full の違いは？
 
-| | HTML Full | ZIP Package |
-|---|-----------|-------------|
+| | HTML Full | Backup ZIP |
+|---|-----------|------------|
 | ブラウザで直接開ける | Yes | No（Import が必要） |
 | 添付ファイルの格納 | gzip+base64（膨張あり） | 生バイナリ（膨張なし） |
 | 個別ファイルアクセス | 不可 | ZIP ツールで可能 |
@@ -265,8 +276,10 @@ HTML ソースを編集すれば bypass できます。
 
 ### Q: Import すると前のデータはどうなる？
 
-完全に置き換えられます。マージはできません。
-重要なデータがある場合は、先に Export でバックアップしてから Import してください。
+プレビュー上部のラジオで **Replace**（既定 / 全置換）か **Merge**（追加取り込み）を
+選びます。Replace を選ぶと既存データは置き換えられるので、重要なデータがある場合は
+先に Export でバックアップを取ることをおすすめします。Merge を選べば既存データは
+保持され、同名衝突は conflict 解決 UI で 1 件ずつ判断します。
 
 ### Q: Rehydrate するとどうなる？
 
