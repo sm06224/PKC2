@@ -2171,6 +2171,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         // fall back to an empty Set so `createSavedSearch` always gets
         // a non-null `ReadonlySet<string>`.
         tagFilter: state.tagFilter ?? new Set<string>(),
+        // Color tag Slice 2 (2026-04-25) — Color axis round-trip. The
+        // runtime `colorTagFilter` AppState field is reserved for
+        // Slice 3; until then, the SavedSearch always serialises an
+        // empty Color filter (axis off). The field is required on
+        // `SavedSearchSourceFields` so a future Slice 3 wiring can
+        // simply replace this empty Set with `state.colorTagFilter`.
+        colorFilter: new Set<string>(),
         sortKey: state.sortKey,
         sortDirection: state.sortDirection,
         showArchived: state.showArchived,

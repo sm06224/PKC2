@@ -69,6 +69,28 @@ export interface SavedSearch {
    * readers MUST treat missing and `[]` as equivalent.
    */
   tag_filter_v2?: string[];
+  /**
+   * Color tag filter (Slice 2, additive — `docs/spec/color-palette-v1.md`
+   * §8.3 / `docs/spec/color-tag-data-model-v1-minimum-scope.md` §6.5).
+   *
+   * Stored as a deduplicated array of color IDs in canonical palette
+   * order. Element type is `string` rather than `ColorTagId` so that
+   * unknown IDs from a future palette extension survive a read-write
+   * round trip — data model §6.4 / §7.2 require unknown IDs to be
+   * preserved, not silently dropped, even when the runtime filter
+   * cannot resolve them.
+   *
+   * Missing or empty array = Color axis off (data model §3.3 / §6.4).
+   * Writers MAY omit the field when the filter is empty; readers MUST
+   * treat missing, `null`, and `[]` as equivalent. Order is **not**
+   * semantically meaningful — the canonical palette-order
+   * normalisation just makes diffs and round-trips stable.
+   *
+   * Slice 2 covers schema / write / read only. Picker UI, runtime
+   * filtering, and the `color:<id>` query parser are still in later
+   * slices; the field is dormant in the current runtime.
+   */
+  color_filter?: string[] | null;
   sort_key: SavedSearchSortKey;
   sort_direction: SavedSearchSortDirection;
   show_archived: boolean;

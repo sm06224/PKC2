@@ -18,6 +18,10 @@ function mkFields(overrides: Partial<SavedSearchSourceFields> = {}): SavedSearch
     // Slice E: Tag axis is required on the in-memory source fields.
     // Empty Set = axis off, serialized as an absent JSON key.
     tagFilter: new Set<string>(),
+    // Color Slice 2: Color axis is required on the in-memory source
+    // fields. Empty Set = axis off, serialized as an absent JSON
+    // key (writer omits `color_filter` entirely).
+    colorFilter: new Set<string>(),
     sortKey: 'created_at',
     sortDirection: 'desc',
     showArchived: false,
@@ -235,5 +239,188 @@ describe('applySavedSearchFields', () => {
     const restored = applySavedSearchFields(legacy);
     expect(restored.categoricalPeerFilter).toBe('legacy-peer-lid');
     expect(restored.tagFilter.size).toBe(0);
+  });
+});
+
+// ── Color tag Slice 2 — `color_filter` schema round-trip ─────────
+//
+// Spec: docs/spec/color-palette-v1.md §8.3,
+//       docs/spec/color-tag-data-model-v1-minimum-scope.md §6.4 / §6.5.
+//
+// The Color filter stays additive in v1: pre-Slice-2 saved searches
+// have no `color_filter` field, the schema must accept `null` /
+// `[]` / `undefined` interchangeably as "axis off", and the writer
+// canonicalises the array (deduplicate + palette order, unknown IDs
+// preserved at the tail) so diffs and round-trips are stable.
+
+describe('createSavedSearch — color_filter (Color Slice 2)', () => {
+  const ts = '2026-04-25T00:00:00Z';
+
+  it('omits color_filter when the in-memory filter is empty', () => {
+    const saved = createSavedSearch('id-c1', 'x', ts, mkFields());
+    expect(saved).not.toHaveProperty('color_filter');
+  });
+
+  it('emits known palette IDs in palette-canonical order', () => {
+    const saved = createSavedSearch('id-c2', 'x', ts, mkFields({
+      colorFilter: new Set(['gray', 'pink', 'red', 'green', 'blue']),
+    }));
+    expect(saved.color_filter).toEqual([
+      'red',
+      'green',
+      'blue',
+      'pink',
+      'gray',
+    ]);
+  });
+
+  it('deduplicates identical palette IDs', () => {
+    const saved = createSavedSearch('id-c3', 'x', ts, mkFields({
+      colorFilter: new Set(['red', 'red', 'blue']),
+    }));
+    expect(saved.color_filter).toEqual(['red', 'blue']);
+  });
+
+  it('preserves unknown palette IDs at the tail in input order', () => {
+    // Data model §6.4 / §7.2 — unknown IDs must round-trip through
+    // a writer rather than being silently dropped, so a future
+    // palette extension can add `teal` without losing data.
+    const saved = createSavedSearch('id-c4', 'x', ts, mkFields({
+      colorFilter: new Set(['teal', 'red', 'magenta', 'blue']),
+    }));
+    expect(saved.color_filter).toEqual(['red', 'blue', 'teal', 'magenta']);
+  });
+
+  it('emits a single-element array when only one ID is set', () => {
+    const saved = createSavedSearch('id-c5', 'x', ts, mkFields({
+      colorFilter: new Set(['purple']),
+    }));
+    expect(saved.color_filter).toEqual(['purple']);
+  });
+
+  it('does not affect unrelated saved-search fields', () => {
+    const before = createSavedSearch('id-c6', 'x', ts, mkFields());
+    const withColor = createSavedSearch('id-c6', 'x', ts, mkFields({
+      colorFilter: new Set(['red']),
+    }));
+    expect(withColor.id).toBe(before.id);
+    expect(withColor.name).toBe(before.name);
+    expect(withColor.search_query).toBe(before.search_query);
+    expect(withColor.archetype_filter).toEqual(before.archetype_filter);
+    expect(withColor.categorical_peer_filter).toBe(before.categorical_peer_filter);
+    expect(withColor.tag_filter_v2).toBe(before.tag_filter_v2);
+    expect(withColor.sort_key).toBe(before.sort_key);
+    expect(withColor.sort_direction).toBe(before.sort_direction);
+    expect(withColor.show_archived).toBe(before.show_archived);
+  });
+});
+
+describe('applySavedSearchFields — color_filter (Color Slice 2)', () => {
+  const ts = '2026-04-25T00:00:00Z';
+  const baseSaved = {
+    id: 'id-r',
+    name: 'restore-test',
+    created_at: ts,
+    updated_at: ts,
+    search_query: '',
+    archetype_filter: [] as ArchetypeId[],
+    categorical_peer_filter: null,
+    sort_key: 'created_at' as const,
+    sort_direction: 'desc' as const,
+    show_archived: false,
+  };
+
+  it('treats a missing color_filter as the Color axis being off', () => {
+    const restored = applySavedSearchFields(baseSaved);
+    expect(restored.colorFilter.size).toBe(0);
+  });
+
+  it('treats explicit null as the Color axis being off', () => {
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      color_filter: null,
+    });
+    expect(restored.colorFilter.size).toBe(0);
+  });
+
+  it('treats an empty array as the Color axis being off', () => {
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      color_filter: [],
+    });
+    expect(restored.colorFilter.size).toBe(0);
+  });
+
+  it('restores known palette IDs into the in-memory Set', () => {
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      color_filter: ['red', 'blue', 'gray'],
+    });
+    expect(Array.from(restored.colorFilter).sort()).toEqual([
+      'blue',
+      'gray',
+      'red',
+    ]);
+  });
+
+  it('preserves unknown palette IDs (round-trip through Slice 2)', () => {
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      color_filter: ['red', 'teal'],
+    });
+    expect(restored.colorFilter.has('red')).toBe(true);
+    expect(restored.colorFilter.has('teal')).toBe(true);
+  });
+
+  it('drops non-string array elements without throwing', () => {
+    // Lenient read: a writer mistake (number / object slipped into
+    // the persisted array) must not poison the boot path.
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      color_filter: [
+        'red',
+        // @ts-expect-error — exercising lenient read of bad data
+        42,
+        // @ts-expect-error — same
+        { id: 'red' },
+        'blue',
+      ],
+    });
+    expect(Array.from(restored.colorFilter).sort()).toEqual(['blue', 'red']);
+  });
+
+  it('treats a non-array color_filter as the Color axis being off', () => {
+    const restored = applySavedSearchFields({
+      ...baseSaved,
+      // @ts-expect-error — exercising lenient read of bad shape
+      color_filter: 'red',
+    });
+    expect(restored.colorFilter.size).toBe(0);
+  });
+});
+
+describe('createSavedSearch / applySavedSearchFields — color_filter round trip', () => {
+  const ts2 = '2026-04-25T00:00:00Z';
+
+  it('round-trips a known-only filter unchanged through canonical sort', () => {
+    const saved = createSavedSearch('id-rt1', 'x', ts2, mkFields({
+      colorFilter: new Set(['blue', 'red', 'pink']),
+    }));
+    const restored = applySavedSearchFields(saved);
+    expect(Array.from(restored.colorFilter).sort()).toEqual([
+      'blue',
+      'pink',
+      'red',
+    ]);
+  });
+
+  it('round-trips a filter containing unknown palette IDs', () => {
+    const saved = createSavedSearch('id-rt2', 'x', ts2, mkFields({
+      colorFilter: new Set(['red', 'teal']),
+    }));
+    const restored = applySavedSearchFields(saved);
+    expect(restored.colorFilter.has('red')).toBe(true);
+    expect(restored.colorFilter.has('teal')).toBe(true);
+    expect(restored.colorFilter.size).toBe(2);
   });
 });

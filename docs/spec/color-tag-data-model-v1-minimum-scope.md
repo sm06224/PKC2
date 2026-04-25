@@ -322,12 +322,16 @@ hasActiveFilter =
 - 具体 HEX / CSS token は palette spec でも保留(theme / 実装 slice で確定)
 - **Slice 2-4 はこれで解凍される**(値空間が決まったため、schema / parser / UI が具体型を持てる)
 
-### Slice 2 — Saved Search additive schema(`color_filter`)
+### Slice 2 — Saved Search additive schema(`color_filter`)**【CLOSED 2026-04-25】**
 
-- `SavedSearch.color_filter?: ColorTagId[] | null` を schema に追加
-- `createSavedSearch` / `applySavedSearchFields` を Color 軸対応に拡張(Tag 軸追加時のパターンをコピー)
+- **landing**: `src/features/color/color-palette.ts`(`COLOR_TAG_IDS` / `ColorTagId` / `isColorTagId` / `colorTagPaletteOrder`)+ `src/core/model/saved-search.ts`(`color_filter?: string[] | null` 追加)+ `src/features/search/saved-searches.ts`(`colorFilter` source field、canonicalisation、lenient read)
+- **schema**: `SavedSearch.color_filter?: string[] | null`(`string[]` 型で round-trip preservation、unknown palette ID も保持)
+- **canonical write 順**:dedup → known IDs を palette order でソート → unknown IDs を入力順で末尾に append、空 Set は field 自体を omit(Tag 軸 `tag_filter_v2` と同パターン)
+- **lenient read**:`null` / `undefined` / `[]` / 非配列 / 非文字列要素はすべて Color 軸 OFF にフォールバック、known + unknown palette ID は `Set<string>` として in-memory に保持
+- **AppState はまだ `colorTagFilter` を持たない**(Slice 3 で導入)— Slice 2 では `SavedSearchSourceFields.colorFilter: ReadonlySet<string>` を必須化し、reducer では当面 `new Set<string>()` を渡すブリッジで対応
+- **tests**: `tests/features/color/color-palette.test.ts`(13 件)+ `tests/features/search/saved-searches.test.ts`(+15 件、計 30)
+- **未対応**:UI / picker / parser / actual filtering / `state.colorTagFilter` reducer 配線 / `entry.color_tag` schema は **本 slice 対象外**
 - 旧 reader 互換は additive なので自動確保
-- 実装 + テストで閉じる最小 slice
 
 ### Slice 3 — Minimal Color badge UI prototype
 
