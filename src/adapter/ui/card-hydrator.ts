@@ -33,6 +33,7 @@ import {
   buildCardWidget,
   type CardWidgetData,
 } from '@features/card/widget-presenter';
+import { buildCardExcerpt } from '@features/card/excerpt-builder';
 
 const ARCHETYPE_BADGE: Record<ArchetypeId, { icon: string; label: string }> = {
   text: { icon: '📝', label: 'Text' },
@@ -96,9 +97,24 @@ function applyWidgetChrome(el: HTMLElement, data: CardWidgetData): void {
       const title = data.title && data.title.length > 0 ? data.title : UNTITLED;
       el.appendChild(makeBadge(meta.icon, meta.label));
       el.appendChild(makeTitle(title));
+      // Slice 5.1: append a plain-text excerpt when available. The
+      // builder is XSS-safe by construction (never invokes the
+      // markdown / asset-resolver pipeline) and we set the value via
+      // textContent below — never innerHTML — so the chain that
+      // turns markdown into live anchors cannot be triggered through
+      // this slot.
+      const excerpt =
+        data.entry && data.parsed
+          ? buildCardExcerpt(data.entry, data.parsed)
+          : null;
+      if (excerpt !== null) {
+        el.appendChild(makeExcerpt(excerpt));
+      }
       el.setAttribute(
         'aria-label',
-        `Card · ${meta.label} · ${title}`,
+        excerpt !== null
+          ? `Card · ${meta.label} · ${title} · ${excerpt}`
+          : `Card · ${meta.label} · ${title}`,
       );
       break;
     }
@@ -145,6 +161,15 @@ function makeBadge(icon: string, label: string): HTMLElement {
 function makeTitle(text: string): HTMLElement {
   const span = document.createElement('span');
   span.className = 'pkc-card-widget-title';
+  span.textContent = text;
+  return span;
+}
+
+function makeExcerpt(text: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'pkc-card-widget-excerpt';
+  // textContent is critical here — see Slice 5.1 contract in
+  // `excerpt-builder.ts`. Never substitute innerHTML.
   span.textContent = text;
   return span;
 }
