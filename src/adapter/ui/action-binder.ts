@@ -82,6 +82,7 @@ import {
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
+import { parsePortablePkcReference } from '../../features/link/permalink';
 import { dateKey } from '../../features/calendar/calendar-data';
 import {
   formatDate,
@@ -2078,148 +2079,43 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // `data-pkc-entry-ref="<raw>"` with the exact href string so we
         // parse the same grammar that `formatEntryRef` emits.
         //
-        // Routing by ParsedEntryRef.kind:
-        //   entry   → SELECT_ENTRY (no scroll)
-        //   log     → SELECT_ENTRY + scroll to `#log-<logId>`
-        //   range   → SELECT_ENTRY + scroll to the first log of the
-        //             normalized range + apply `data-pkc-range-active="true"`
-        //             to every `.pkc-textlog-log` between the from/to
-        //             endpoints in storage order (Slice 5-C). Reverse
-        //             ranges (`log/b..a`) land on the same set.
-        //   day     → SELECT_ENTRY + scroll to `#day-<dateKey>`
-        //   heading → SELECT_ENTRY + scroll to `#<slug>` scoped to the
-        //             owning `[data-pkc-log-id=<logId>]` article (mirrors
-        //             toc-jump mode 2 so cross-log slug collisions resolve
-        //             the same way)
-        //   legacy  → SELECT_ENTRY + scroll to `#log-<logId>` (treat the
-        //             bare fragment as a log id, matches what
-        //             `copy-log-line-ref` writes today)
-        //   invalid → no navigation. Mark the anchor with
-        //             `data-pkc-ref-broken="true"` so a click leaves a
-        //             visible breadcrumb even without extra CSS.
-        //
-        // Unknown lid: also no navigation; stamped broken. We look up
-        // the lid in `dispatcher.getState().container.entries`.
-        //
-        // Unknown fragment target (e.g., stale log id): the entry IS
-        // selected, and we try the scroll optimistically. If the
-        // querySelector returns null the viewer simply stays at its
-        // current scroll position — the top of the just-rendered entry.
-        // No broken-ref stamp for this path: the link itself is
-        // syntactically valid and the entry did open.
+        // Slice-4 (Card click wiring): the routing core was extracted to
+        // `runEntryRefNavigation` so the new `navigate-card-ref` case
+        // can reuse the exact same entry/log/day/heading/range/legacy
+        // dispatch + rAF scroll behaviour without duplicating ~150
+        // lines of switch logic. Behaviour is byte-identical pre/post
+        // extraction; see `runEntryRefNavigation` for the full
+        // ParsedEntryRef.kind routing table and broken-ref stamping
+        // semantics.
         e.preventDefault();
         const rawRef = target.getAttribute('data-pkc-entry-ref')
           ?? target.getAttribute('href')
           ?? '';
-        const parsed = parseEntryRef(rawRef);
-        if (parsed.kind === 'invalid') {
-          target.setAttribute('data-pkc-ref-broken', 'true');
-          break;
-        }
+        runEntryRefNavigation(rawRef, target, root, dispatcher);
+        break;
+      }
+      case 'navigate-card-ref': {
+        // Slice-4: `@[card](entry:...)` placeholder click. The
+        // placeholder element carries `data-pkc-card-target` with the
+        // raw target string from the markdown source. We resolve it to
+        // an `entry:` ref (entry: → as-is, pkc://<self>/entry/... →
+        // demoted) and route through the shared navigation core. Cross-
+        // container, asset, and malformed targets are silent no-ops —
+        // they're either rejected at parser level (Slice-3.5) or land
+        // here as defence-in-depth.
+        //
+        // Card placeholders pass `stampBroken: false` because the v0
+        // contract treats broken refs as a render-time concern (the
+        // placeholder may already have a `data-pkc-card-broken` marker
+        // from the renderer); a click must not retroactively flip the
+        // visible state.
+        e.preventDefault();
+        const rawTarget = target.getAttribute('data-pkc-card-target') ?? '';
         const st = dispatcher.getState();
-        const entryExists = !!st.container?.entries.some((en) => en.lid === parsed.lid);
-        if (!entryExists) {
-          target.setAttribute('data-pkc-ref-broken', 'true');
-          break;
-        }
-        // Clear any stale broken marker in case the entry was
-        // (re)created since the last click on this anchor.
-        target.removeAttribute('data-pkc-ref-broken');
-        if (st.selectedLid !== parsed.lid) {
-          // PR-ε₁: body `entry:<lid>` link → external jump, target
-          // may live under a collapsed folder. Opt into reveal so
-          // the sidebar tree surfaces the destination.
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid, revealInSidebar: true });
-        }
-        // The dispatch triggered a synchronous re-render, but some
-        // layouts (virtualized lists, deferred TEXTLOG builds) settle
-        // on the next frame. A single rAF is enough in practice — the
-        // renderer is synchronous and this is belt-and-braces.
-        const scroll = (selector: string, scope: ParentNode = root): void => {
-          const el = scope.querySelector(selector);
-          if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-            (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        };
-        const raf =
-          typeof requestAnimationFrame === 'function'
-            ? requestAnimationFrame
-            : (cb: FrameRequestCallback) => {
-                cb(0 as unknown as number);
-                return 0;
-              };
-        raf(() => {
-          switch (parsed.kind) {
-            case 'entry':
-              clearRangeHighlight(root);
-              // No scroll target — SELECT_ENTRY already scrolled the
-              // center pane to the top of the entry body.
-              break;
-            case 'day':
-              clearRangeHighlight(root);
-              scroll(`#${CSS.escape(`day-${parsed.dateKey}`)}`);
-              break;
-            case 'log':
-              clearRangeHighlight(root);
-              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
-              break;
-            case 'range': {
-              // Slice 5-C: clear any prior highlight (needed for the
-              // same-entry re-click case — `SELECT_ENTRY` re-render
-              // already wipes DOM for cross-entry jumps) then mark the
-              // inclusive slice between the two endpoints in storage
-              // order.  Embedded logs (transclusion) use a separate
-              // `data-pkc-range-embed` attribute and are filtered out
-              // so a live-viewer range click never bleeds into an
-              // embed above it.
-              clearRangeHighlight(root);
-              const liveLogs = Array.from(
-                root.querySelectorAll<HTMLElement>(
-                  '.pkc-textlog-log[data-pkc-log-id]:not([data-pkc-embedded])',
-                ),
-              ).filter((el) => el.getAttribute('data-pkc-lid') === parsed.lid);
-              const fromIdx = liveLogs.findIndex(
-                (el) => el.getAttribute('data-pkc-log-id') === parsed.fromId,
-              );
-              const toIdx = liveLogs.findIndex(
-                (el) => el.getAttribute('data-pkc-log-id') === parsed.toId,
-              );
-              if (fromIdx === -1 && toIdx === -1) {
-                // Neither endpoint landed in the DOM (stale ref).
-                // Still scroll optimistically to the fromId hash so the
-                // viewer at least settles near where the user expected.
-                scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
-                break;
-              }
-              const validIdx = [fromIdx, toIdx].filter((i) => i !== -1);
-              const lo = Math.min(...validIdx);
-              const hi = Math.max(...validIdx);
-              for (let i = lo; i <= hi; i++) {
-                liveLogs[i]!.setAttribute('data-pkc-range-active', 'true');
-              }
-              // Scroll to the earliest log of the highlighted range —
-              // reverse-ordered refs (`log/b..a`) land in the same
-              // place as the canonical form.
-              if (typeof liveLogs[lo]!.scrollIntoView === 'function') {
-                liveLogs[lo]!.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-              break;
-            }
-            case 'legacy':
-              clearRangeHighlight(root);
-              scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
-              break;
-            case 'heading': {
-              clearRangeHighlight(root);
-              const logEl = root.querySelector(
-                `[data-pkc-log-id="${CSS.escape(parsed.logId)}"]`,
-              );
-              const headingScope: ParentNode = logEl ?? root;
-              scroll(`#${CSS.escape(parsed.slug)}`, headingScope);
-              break;
-            }
-          }
-        });
+        const currentContainerId = st.container?.meta.container_id ?? '';
+        const entryRef = resolveCardClickToEntryRef(rawTarget, currentContainerId);
+        if (entryRef === null) break;
+        runEntryRefNavigation(entryRef, target, root, dispatcher, { stampBroken: false });
         break;
       }
       case 'navigate-asset-ref': {
@@ -2419,6 +2315,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           dispatcher.dispatch({ type: 'ADD_ENTRY_TAG', lid: tagLid, raw });
           tagTarget.value = '';
         }
+        return;
+      }
+    }
+
+    // Card placeholder keyboard activation (Slice-4). The placeholder
+    // is rendered with `role="link" tabindex="0"`, so Enter / Space
+    // when focused must mirror a click. We dispatch a synthetic click
+    // on the focused element so the same `data-pkc-action="navigate-
+    // card-ref"` delegation runs (single source of truth for the
+    // routing). preventDefault on Space stops the page-scroll default
+    // when the placeholder lives inside a scrollable viewer.
+    //
+    // The `instanceof Element` guard is needed because document-level
+    // keydown events can carry non-Element targets (Document itself,
+    // Window) when nothing is focused — those have no `getAttribute`.
+    {
+      const kbTarget = e.target;
+      if (
+        kbTarget instanceof Element
+        && kbTarget.getAttribute('data-pkc-action') === 'navigate-card-ref'
+        && (e.key === 'Enter' || e.key === ' ')
+        && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
+        && !e.isComposing
+      ) {
+        e.preventDefault();
+        (kbTarget as HTMLElement).click();
         return;
       }
     }
@@ -4991,6 +4913,186 @@ function clearRangeHighlight(root: HTMLElement): void {
     '.pkc-textlog-log[data-pkc-range-active]:not([data-pkc-embedded])',
   );
   marked.forEach((el) => el.removeAttribute('data-pkc-range-active'));
+}
+
+/**
+ * Shared navigation core for in-app `entry:` refs (Slice 5-A
+ * `navigate-entry-ref`) and Card placeholders (Slice-4
+ * `navigate-card-ref`). Given a raw `entry:` ref string and the DOM
+ * element that triggered the navigation, the helper:
+ *
+ *   - parses the grammar via `parseEntryRef`
+ *   - stamps `data-pkc-ref-broken="true"` on the element when the
+ *     ref is unparseable or the lid does not exist (callers that
+ *     want to suppress this — e.g. card placeholders — can decide
+ *     before they call us by passing `{ stampBroken: false }`)
+ *   - dispatches `SELECT_ENTRY` (with `revealInSidebar`) when the
+ *     entry is not already selected
+ *   - schedules an rAF-deferred scroll for log / day / heading /
+ *     range / legacy fragments
+ *
+ * Slice-4 extracted this from the inline `navigate-entry-ref` case
+ * so the new card-click handler can reuse the exact same routing
+ * (entry / log / day / heading / range / legacy + range highlight)
+ * without duplicating ~150 lines of switch logic. Behaviour for the
+ * old `entry:` link path is byte-identical pre/post extraction.
+ */
+function runEntryRefNavigation(
+  rawRef: string,
+  target: HTMLElement,
+  root: HTMLElement,
+  dispatcher: Dispatcher,
+  options: { stampBroken?: boolean } = {},
+): void {
+  const stampBroken = options.stampBroken ?? true;
+  const parsed = parseEntryRef(rawRef);
+  if (parsed.kind === 'invalid') {
+    if (stampBroken) target.setAttribute('data-pkc-ref-broken', 'true');
+    return;
+  }
+  const st = dispatcher.getState();
+  const entryExists = !!st.container?.entries.some((en) => en.lid === parsed.lid);
+  if (!entryExists) {
+    if (stampBroken) target.setAttribute('data-pkc-ref-broken', 'true');
+    return;
+  }
+  // Clear any stale broken marker in case the entry was
+  // (re)created since the last click on this anchor.
+  target.removeAttribute('data-pkc-ref-broken');
+  if (st.selectedLid !== parsed.lid) {
+    // PR-ε₁: body `entry:<lid>` link → external jump, target
+    // may live under a collapsed folder. Opt into reveal so
+    // the sidebar tree surfaces the destination.
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: parsed.lid, revealInSidebar: true });
+  }
+  // The dispatch triggered a synchronous re-render, but some
+  // layouts (virtualized lists, deferred TEXTLOG builds) settle
+  // on the next frame. A single rAF is enough in practice — the
+  // renderer is synchronous and this is belt-and-braces.
+  const scroll = (selector: string, scope: ParentNode = root): void => {
+    const el = scope.querySelector(selector);
+    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+      (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+  const raf =
+    typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback) => {
+          cb(0 as unknown as number);
+          return 0;
+        };
+  raf(() => {
+    switch (parsed.kind) {
+      case 'entry':
+        clearRangeHighlight(root);
+        // No scroll target — SELECT_ENTRY already scrolled the
+        // center pane to the top of the entry body.
+        break;
+      case 'day':
+        clearRangeHighlight(root);
+        scroll(`#${CSS.escape(`day-${parsed.dateKey}`)}`);
+        break;
+      case 'log':
+        clearRangeHighlight(root);
+        scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+        break;
+      case 'range': {
+        // Slice 5-C: clear any prior highlight (needed for the
+        // same-entry re-click case — `SELECT_ENTRY` re-render
+        // already wipes DOM for cross-entry jumps) then mark the
+        // inclusive slice between the two endpoints in storage
+        // order.  Embedded logs (transclusion) use a separate
+        // `data-pkc-range-embed` attribute and are filtered out
+        // so a live-viewer range click never bleeds into an
+        // embed above it.
+        clearRangeHighlight(root);
+        const liveLogs = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            '.pkc-textlog-log[data-pkc-log-id]:not([data-pkc-embedded])',
+          ),
+        ).filter((el) => el.getAttribute('data-pkc-lid') === parsed.lid);
+        const fromIdx = liveLogs.findIndex(
+          (el) => el.getAttribute('data-pkc-log-id') === parsed.fromId,
+        );
+        const toIdx = liveLogs.findIndex(
+          (el) => el.getAttribute('data-pkc-log-id') === parsed.toId,
+        );
+        if (fromIdx === -1 && toIdx === -1) {
+          // Neither endpoint landed in the DOM (stale ref).
+          // Still scroll optimistically to the fromId hash so the
+          // viewer at least settles near where the user expected.
+          scroll(`#${CSS.escape(`log-${parsed.fromId}`)}`);
+          break;
+        }
+        const validIdx = [fromIdx, toIdx].filter((i) => i !== -1);
+        const lo = Math.min(...validIdx);
+        const hi = Math.max(...validIdx);
+        for (let i = lo; i <= hi; i++) {
+          liveLogs[i]!.setAttribute('data-pkc-range-active', 'true');
+        }
+        // Scroll to the earliest log of the highlighted range —
+        // reverse-ordered refs (`log/b..a`) land in the same
+        // place as the canonical form.
+        if (typeof liveLogs[lo]!.scrollIntoView === 'function') {
+          liveLogs[lo]!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        break;
+      }
+      case 'legacy':
+        clearRangeHighlight(root);
+        scroll(`#${CSS.escape(`log-${parsed.logId}`)}`);
+        break;
+      case 'heading': {
+        clearRangeHighlight(root);
+        const logEl = root.querySelector(
+          `[data-pkc-log-id="${CSS.escape(parsed.logId)}"]`,
+        );
+        const headingScope: ParentNode = logEl ?? root;
+        scroll(`#${CSS.escape(parsed.slug)}`, headingScope);
+        break;
+      }
+    }
+  });
+}
+
+/**
+ * Card-click target resolver (Slice-4). The card placeholder carries
+ * the raw target string in `data-pkc-card-target`; this helper
+ * decides whether that target is something the click handler should
+ * navigate to, and if so produces the equivalent `entry:` ref so the
+ * handler can route through {@link runEntryRefNavigation}.
+ *
+ * Returns `null` for any target the v0 contract does not support as
+ * a click target:
+ *   - `pkc://<other>/entry/<lid>` (cross-container; same as the
+ *     existing portable-reference badge, click is a no-op until
+ *     a future cross-container resolver lands)
+ *   - `pkc://<cid>/asset/<key>` and `asset:<key>` (Slice-3 audit
+ *     Option C — asset-target cards are v0 future dialect; the
+ *     parser already rejects them, but defence-in-depth here in
+ *     case a hand-crafted DOM reaches this branch)
+ *   - malformed pkc:// (parser returns null)
+ *   - any other scheme
+ */
+function resolveCardClickToEntryRef(
+  rawTarget: string,
+  currentContainerId: string,
+): string | null {
+  if (rawTarget === '') return null;
+  if (rawTarget.startsWith('entry:')) {
+    return rawTarget;
+  }
+  if (rawTarget.startsWith('pkc://')) {
+    const parsed = parsePortablePkcReference(rawTarget);
+    if (!parsed) return null;
+    if (parsed.kind !== 'entry') return null;
+    if (currentContainerId === '') return null;
+    if (parsed.containerId !== currentContainerId) return null;
+    const frag = parsed.fragment ?? '';
+    return `entry:${parsed.targetId}${frag}`;
+  }
+  return null;
 }
 
 function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatcher: Dispatcher): void {

@@ -279,6 +279,49 @@ describe('card renderer hook — asset target (Slice-2 boundary)', () => {
   });
 });
 
+describe('card renderer hook — Slice 4 click wiring attributes', () => {
+  // Slice-4 adds three additive attributes to the placeholder so
+  // action-binder can route clicks AND keyboard activation through
+  // the same code path the existing `entry:` link uses:
+  //   - `data-pkc-action="navigate-card-ref"` (delegation key)
+  //   - `role="link"` (a11y surface)
+  //   - `tabindex="0"` (keyboard reachable)
+  // Pre-Slice-4 selectors (`pkc-card-placeholder`, `data-pkc-card-*`)
+  // must remain byte-identical so Slice-2/3 tests still pass.
+
+  it('emits data-pkc-action="navigate-card-ref" on the placeholder', () => {
+    const html = renderMarkdown('@[card](entry:e1)');
+    expect(html).toContain('data-pkc-action="navigate-card-ref"');
+  });
+
+  it('emits role="link" and tabindex="0" so the placeholder is keyboard-focusable', () => {
+    const html = renderMarkdown('@[card](entry:e1)');
+    expect(html).toContain('role="link"');
+    expect(html).toContain('tabindex="0"');
+  });
+
+  it('keeps the original data-pkc-card-* attributes intact (no Slice-2/3 regression)', () => {
+    const html = renderMarkdown('@[card:compact](entry:e1#log/abc)');
+    expect(html).toContain('data-pkc-card-target="entry:e1#log/abc"');
+    expect(html).toContain('data-pkc-card-variant="compact"');
+    expect(html).toContain(
+      'data-pkc-card-raw="@[card:compact](entry:e1#log/abc)"',
+    );
+  });
+
+  it('emits the click-wiring attributes for cross-container Portable Reference targets too', () => {
+    // The renderer cannot tell same- vs cross-container at compile
+    // time (it has no container-id context), so both forms must
+    // carry `navigate-card-ref` — the resolver in action-binder
+    // decides whether the click actually navigates.
+    const html = renderMarkdown('@[card:wide](pkc://other/entry/e1)');
+    expect(html).toContain('data-pkc-action="navigate-card-ref"');
+    expect(html).toContain('data-pkc-card-target="pkc://other/entry/e1"');
+    expect(html).toContain('role="link"');
+    expect(html).toContain('tabindex="0"');
+  });
+});
+
 describe('card renderer hook — unchanged rendering for non-card inputs', () => {
   it('renders bold text identically to before', () => {
     expect(renderMarkdown('**bold**')).toContain('<strong>bold</strong>');
