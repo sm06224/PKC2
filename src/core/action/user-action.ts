@@ -361,6 +361,35 @@ export type UserAction =
    */
   | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string }
   /**
+   * SET_ENTRY_COLOR — set / replace an entry's Color tag (Slice 3).
+   *
+   * Contract:
+   * - `lid` optional: defaults to `state.selectedLid`. Missing / unknown
+   *   target → silent no-op.
+   * - `color` is stored verbatim as `entry.color_tag`. The reducer does
+   *   NOT validate against the palette — see
+   *   `docs/spec/color-tag-data-model-v1-minimum-scope.md` §6.4 for the
+   *   round-trip-preservation rationale. Unknown IDs survive a write /
+   *   read cycle so a future palette extension does not erase data.
+   * - Blocked when `state.readonly` / `state.lightSource` /
+   *   `state.viewOnlySource` (existing destructive-action gate) or when
+   *   the target lid is reserved (about / settings) or the entry is a
+   *   system archetype.
+   * - Does NOT create a revision snapshot — Color tag is metadata, not
+   *   body content (mirrors the existing tag-attach reducer).
+   * - Does NOT change phase, selection, or editing state.
+   * - Emits `ENTRY_UPDATED`.
+   */
+  | { type: 'SET_ENTRY_COLOR'; lid?: string; color: string }
+  /**
+   * CLEAR_ENTRY_COLOR — remove an entry's Color tag (Slice 3).
+   *
+   * Same gates as SET_ENTRY_COLOR. Drops the `color_tag` field from the
+   * stored entry so on-disk JSON for an un-coloured entry is identical
+   * to its pre-Slice-3 shape.
+   */
+  | { type: 'CLEAR_ENTRY_COLOR'; lid?: string }
+  /**
    * REHYDRATE — convert readonly artifact to editable workspace.
    *
    * Contract:

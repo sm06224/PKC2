@@ -333,15 +333,20 @@ hasActiveFilter =
 - **未対応**:UI / picker / parser / actual filtering / `state.colorTagFilter` reducer 配線 / `entry.color_tag` schema は **本 slice 対象外**
 - 旧 reader 互換は additive なので自動確保
 
-### Slice 3 — Minimal Color badge UI prototype
+### Slice 3 — Color picker UI / Entry schema / sidebar marker **【CLOSED 2026-04-25】**
 
-- `state.colorTagFilter: Set<ColorTagId> | null` の AppState 拡張
-- `SET_COLOR_TAG_FILTER` / `CLEAR_COLOR_TAG_FILTER` action 追加
-- meta pane に Color picker(10 swatch + ×)配置
-- sidebar 行に色バー(左端 2–4 px の細い色 band)の描画
-- filter bar に Color section 追加(OR chip)
-- `hasActiveFilter` / `CLEAR_FILTERS` の軸追加
-- Tag chip UI と同等の最小プロトタイプで閉じる
+- **landing**: `src/core/model/record.ts`(`Entry.color_tag?: string \| null` 追加)+ `src/core/operations/container-ops.ts`(`updateEntryColorTag` ヘルパー)+ `src/core/action/user-action.ts`(`SET_ENTRY_COLOR` / `CLEAR_ENTRY_COLOR`)+ `src/adapter/state/app-state.ts`(reducer cases)+ `src/adapter/ui/color-picker.ts`(`renderColorPickerTrigger` / `renderColorPickerPopover`)+ `src/adapter/ui/renderer.ts`(detail title row trigger + sidebar entry row 色バー)+ `src/adapter/ui/action-binder.ts`(open / apply / clear / close lifecycle)+ `src/styles/base.css`(8 hue tokens + swatch + popover)
+- **AppState filter axis(`state.colorTagFilter`)/ filter bar Color section / `applyFilters` 合流 / `TOGGLE_COLOR_TAG_FILTER` / `CLEAR_COLOR_TAG_FILTER`** は **本 slice 対象外**(Slice 4 と一緒に着地、Saved Search `color_filter` schema は既に Slice 2 で実装済み)
+- 詳細な設計判断: `../development/color-tag-ui-appstate-audit.md`
+- `Entry.color_tag` 型は spec §4.2 と整合させて **`string | null`**(`ColorTagId` 型ではなく `string`)を採用 — round-trip preservation のため(Slice 2 の Saved Search `color_filter` と同方針)
+- 未対応: `color:<id>` query parser、actual filter 適用、Saved Search UI の color filter section、theme HEX overrides、CVD pairwise 検証
+
+### Slice 4 — `color:` parser draft(docs + 実装)
+
+- `docs/spec/search-syntax-parser-v1.md`(未着手)に Color prefix を追加 or Tag parser と同じ module で拡張
+- `parseSearchQuery` が `color:<id>` トークンも extract → `parsed.colors: ReadonlySet<ColorTagId>`
+- `applyFilters` が parser 結果と `state.colorTagFilter` を union / AND 合成(Tag wave と同じパターン)
+- AppState に `colorTagFilter: ReadonlySet<ColorTagId>` を導入、`SAVE_SEARCH` reducer の Slice 2 ブリッジを実 state 参照に置換
 
 ### Slice 4 — `color:` parser draft(docs + 実装)
 

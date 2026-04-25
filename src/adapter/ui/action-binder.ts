@@ -18,6 +18,7 @@ import {
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
+import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import {
   prepareOptimizedIntake,
@@ -164,6 +165,76 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Wire the slash-menu /asset command through to the asset picker.
   // Kept as a callback so slash-menu does not have to know about the
   // dispatcher or container access.
+  // Color tag Slice 3 — picker popover state, scoped to this
+  // `bindActions` invocation so the cleanup callback below can tear
+  // it down cleanly.
+  let colorPickerLid: string | null = null;
+  let colorPickerEl: HTMLElement | null = null;
+  let colorPickerTrigger: HTMLElement | null = null;
+
+  function closeColorPicker(): void {
+    if (colorPickerEl) {
+      colorPickerEl.remove();
+      colorPickerEl = null;
+    }
+    if (colorPickerTrigger) {
+      colorPickerTrigger.setAttribute('aria-expanded', 'false');
+      colorPickerTrigger = null;
+    }
+    colorPickerLid = null;
+    document.removeEventListener('click', handleColorPickerOutsideClick, true);
+    document.removeEventListener('keydown', handleColorPickerKeydown, true);
+  }
+
+  function handleColorPickerOutsideClick(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof Node)) return;
+    if (colorPickerEl && colorPickerEl.contains(t)) return;
+    if (colorPickerTrigger && colorPickerTrigger.contains(t)) return;
+    closeColorPicker();
+  }
+
+  function handleColorPickerKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeColorPicker();
+    }
+  }
+
+  function toggleColorPicker(trigger: HTMLElement): void {
+    // Re-clicking the same trigger closes the popover.
+    if (colorPickerTrigger === trigger && colorPickerEl !== null) {
+      closeColorPicker();
+      return;
+    }
+    closeColorPicker();
+    // Resolve the lid from the surrounding row / view. The trigger
+    // lives inside the detail view, which carries `data-pkc-lid` on
+    // its `[data-pkc-mode="view"]` ancestor.
+    const host = trigger.closest('[data-pkc-lid]') as HTMLElement | null;
+    const lid =
+      host?.getAttribute('data-pkc-lid') ??
+      dispatcher.getState().selectedLid ??
+      null;
+    if (!lid) return;
+    const state = dispatcher.getState();
+    const entry = state.container?.entries.find((x) => x.lid === lid);
+    const current = entry?.color_tag ?? null;
+    const popover = renderColorPickerPopover(current);
+    // Position next to the trigger in DOM order so the popover flows
+    // beneath it; CSS handles the visual offset.
+    trigger.parentElement?.insertBefore(popover, trigger.nextSibling);
+    colorPickerEl = popover;
+    colorPickerTrigger = trigger;
+    colorPickerLid = lid;
+    trigger.setAttribute('aria-expanded', 'true');
+    // Bind document-level close handlers in capture phase so clicks
+    // on other UI elements close the picker before the click is
+    // dispatched again.
+    document.addEventListener('click', handleColorPickerOutsideClick, true);
+    document.addEventListener('keydown', handleColorPickerKeydown, true);
+  }
+
   registerAssetPickerCallback((ctx) => {
     const state = dispatcher.getState();
     const candidates = collectImageAssets(state.container);
@@ -299,6 +370,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const lid = target.getAttribute('data-pkc-lid') ?? undefined;
 
     switch (action) {
+      // Color tag Slice 3 — picker popover lifecycle. The trigger
+      // sits inside the detail title row; clicks elsewhere or Escape
+      // close the popover. State (open trigger, document-level
+      // click / keydown listeners) is local to this module via the
+      // helpers below — kept out of AppState because it is purely a
+      // transient UI affordance.
+      case 'open-color-picker': {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleColorPicker(target as HTMLElement);
+        break;
+      }
+      case 'apply-color-tag': {
+        e.preventDefault();
+        e.stopPropagation();
+        const color = target.getAttribute('data-pkc-color');
+        if (!color) break;
+        const lid =
+          colorPickerLid ?? dispatcher.getState().selectedLid ?? undefined;
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SET_ENTRY_COLOR', lid, color });
+        closeColorPicker();
+        break;
+      }
+      case 'clear-color-tag': {
+        e.preventDefault();
+        e.stopPropagation();
+        const lid =
+          colorPickerLid ?? dispatcher.getState().selectedLid ?? undefined;
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'CLEAR_ENTRY_COLOR', lid });
+        closeColorPicker();
+        break;
+      }
+      case 'close-color-picker': {
+        e.preventDefault();
+        e.stopPropagation();
+        closeColorPicker();
+        break;
+      }
       case 'select-entry': {
         if (!lid) break;
         const me = e as MouseEvent;
@@ -4795,6 +4906,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   // Return cleanup function
   return () => {
+    closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);

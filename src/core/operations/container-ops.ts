@@ -116,6 +116,45 @@ export function updateEntryTags(
   };
 }
 
+/**
+ * Update only `entry.color_tag` (Color tag Slice 3, additive).
+ *
+ * - `nextColor === null` / `undefined` → drop the field entirely so the
+ *   serialised JSON matches a never-coloured entry.
+ * - `nextColor` non-empty string → store verbatim. The caller is
+ *   responsible for picker-side validation; unknown palette IDs are
+ *   intentionally preserved here so a future palette extension can
+ *   round-trip through an older reader.
+ *
+ * Pure. No revision snapshot — Color tag is metadata, not body content
+ * (mirrors `updateEntryTags`).
+ */
+export function updateEntryColorTag(
+  container: Container,
+  lid: string,
+  nextColor: string | null | undefined,
+  now: string,
+): Container {
+  const idx = container.entries.findIndex((e) => e.lid === lid);
+  if (idx === -1) return container;
+
+  const old = container.entries[idx]!;
+  const { color_tag: _drop, ...rest } = old;
+  const trimmed = typeof nextColor === 'string' ? nextColor : null;
+  const updated: Entry =
+    trimmed !== null && trimmed !== ''
+      ? { ...rest, color_tag: trimmed, updated_at: now }
+      : { ...rest, updated_at: now };
+  const entries = [...container.entries];
+  entries[idx] = updated;
+
+  return {
+    ...container,
+    entries,
+    meta: { ...container.meta, updated_at: now },
+  };
+}
+
 export function removeEntry(container: Container, lid: string): Container {
   const entries = container.entries.filter((e) => e.lid !== lid);
   if (entries.length === container.entries.length) return container;
