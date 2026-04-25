@@ -293,6 +293,8 @@ Body 内の PKC 専用 markdown 記法を **1 表で正本化** する。新規 
 
 **Renderer integration design**(別 audit doc):Clickable-image を PKC 方言として受け入れるときの renderer / asset-resolver / action-binder 変更範囲、および migration v1 / v2 境界は `../development/clickable-image-renderer-audit.md`(2026-04-24 docs-only)にまとまっている。Option A(UI dialog 先行)と Option B(renderer 実装先行)の判断材料も同 doc に集約。
 
+**Decision audit 続編(2026-04-25)**: Card wave 着地と PR #131 → #132 の教訓を踏まえた **再判定** は `../development/clickable-image-v2-decision-audit.md`。empirical 8-case probe で **5/8 form は現 main で既に動作** していることを確認、`asset:` outer link(`[![alt](asset:k)](asset:k)`)のみ broken と特定。採用方針は **Option B+(現 main で動いている form を spec で canonical 化、broken 1 form は future v2 wave で envelope 設計してから実装)**。本 §5.7.5 reservation は本 PR では構造を変えず、後続 spec 整合 PR で「canonical / partial / future v2 / invalid」の 4 区分に書換予定。
+
 ---
 
 ## 6. Presentation modes
