@@ -341,19 +341,17 @@ hasActiveFilter =
 - `Entry.color_tag` 型は spec §4.2 と整合させて **`string | null`**(`ColorTagId` 型ではなく `string`)を採用 — round-trip preservation のため(Slice 2 の Saved Search `color_filter` と同方針)
 - 未対応: `color:<id>` query parser、actual filter 適用、Saved Search UI の color filter section、theme HEX overrides、CVD pairwise 検証
 
-### Slice 4 — `color:` parser draft(docs + 実装)
+### Slice 4 — `color:` parser + filter axis + Saved Search bridge **【CLOSED 2026-04-25】**
 
-- `docs/spec/search-syntax-parser-v1.md`(未着手)に Color prefix を追加 or Tag parser と同じ module で拡張
-- `parseSearchQuery` が `color:<id>` トークンも extract → `parsed.colors: ReadonlySet<ColorTagId>`
-- `applyFilters` が parser 結果と `state.colorTagFilter` を union / AND 合成(Tag wave と同じパターン)
-- AppState に `colorTagFilter: ReadonlySet<ColorTagId>` を導入、`SAVE_SEARCH` reducer の Slice 2 ブリッジを実 state 参照に置換
-
-### Slice 4 — `color:` parser draft(docs + 実装)
-
-- `docs/spec/search-syntax-parser-v1.md`(未着手)に Color prefix を追加 or Tag parser と同じ module で拡張
-- `parseSearchQuery` が `color:<id>` トークンも extract → `parsed.colors: ReadonlySet<ColorTagId>`
-- `applyFilters` が parser 結果と `state.colorTagFilter` を union / AND 合成(Tag wave と同じパターン)
-- 大文字小文字は prefix name lowercase、値 lowercase fixed(§4.2)
+- **landing**: `src/features/search/query-parser.ts`(`color:<id>` token extraction、`ParsedSearchQuery.colors: ReadonlySet<string>`)+ `src/features/search/filter.ts`(`filterByColors` + `applyFilters` の Color 軸合流)+ `src/adapter/state/app-state.ts`(`state.colorTagFilter` + `TOGGLE_COLOR_TAG_FILTER` + `CLEAR_COLOR_TAG_FILTER` + `CLEAR_FILTERS` 連動 + SAVE_SEARCH bridge を `state.colorTagFilter` に置換 + APPLY_SAVED_SEARCH 復元)+ `src/adapter/ui/renderer.ts`(active-filter chip indicator、既存 `pkc-entry-tag-filter-*` クラスを再利用 = CSS 追加ゼロ)+ `src/adapter/ui/action-binder.ts`(`toggle-color-tag-filter` / `clear-color-tag-filter`)
+- **詳細設計メモ**: `../development/color-tag-filter-slice4-design.md`
+- **要件**:
+  - parser:`color:<id>` を抽出、prefix は lowercase-only(§5.6)、値はそのまま preserve(palette ID は元々 lowercase canonical なので大文字値は typo として fullText に落ちる)
+  - filter:OR-within-axis(1 entry 1 color、AND は無意味)、AND-across-axes は FullText / Tag / Archetype と同じ
+  - 値型は loose `string`(unknown palette ID round-trip preservation、§6.4 / §7.2)
+  - Saved Search:Slice 2 schema は既に `string[] | null`。Slice 4 で SAVE_SEARCH の `colorFilter: new Set<string>()` ブリッジを `state.colorTagFilter ?? new Set<string>()` に置換、APPLY_SAVED_SEARCH で `fields.colorFilter → state.colorTagFilter`(empty Set fallback で pre-Slice-2 saved search 互換)
+- **CSS 追加ゼロ**:active-filter chip は既存の Tag chip クラス(`pkc-entry-tag-filter-*`)を再利用。bundle.css 93.87 KB / 94 KB を維持
+- **未対応(Slice 5+)**:per-palette theme HEX override / formal CVD pairwise 検証 / advanced color filter UI(swatch chip rendering)/ keyboard chord
 
 **推奨順**: Slice 1 → 2 → 3 → 4。**palette ID が fixed になるまで Slice 2/3/4 は着手不可**(ID なしで schema / UI / parser を組むと後から書き直しが発生する)。
 

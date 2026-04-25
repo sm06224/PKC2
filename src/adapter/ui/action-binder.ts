@@ -946,6 +946,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLEAR_TAG_FILTER' });
         break;
       }
+      case 'toggle-color-tag-filter': {
+        // Color tag Slice 4 — chip × button. Idempotent toggle:
+        // dispatching TOGGLE on a value already in the Set removes
+        // it (data-pkc-color carries the palette ID).
+        const cv = target.getAttribute('data-pkc-color');
+        if (cv !== null) {
+          dispatcher.dispatch({ type: 'TOGGLE_COLOR_TAG_FILTER', color: cv });
+        }
+        break;
+      }
+      case 'clear-color-tag-filter': {
+        // Color tag Slice 4 — "Clear all" button on the Color
+        // filter chip indicator (≥ 2 active colors).
+        dispatcher.dispatch({ type: 'CLEAR_COLOR_TAG_FILTER' });
+        break;
+      }
       case 'delete-relation': {
         // v1 relation delete UI. Native confirm mirrors existing delete
         // flows (entry trash, purge). Reducer also blocks on readonly

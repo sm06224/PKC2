@@ -1951,6 +1951,51 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   // W1 Slice F-2 \u2014 free-form Tag filter indicator.
+  // Color tag Slice 4 \u2014 Color filter chip indicator. Slice 4 ships
+  // ZERO new CSS to stay under the 94 KB bundle.css budget; it
+  // therefore reuses the existing `pkc-entry-tag-filter-*` classes
+  // verbatim (chip shape, label, remove button, "Clear all" button
+  // are visually identical). The label text differentiates the two
+  // axes; `data-pkc-region` is distinct so test selectors stay
+  // unambiguous.
+  if ((state.colorTagFilter?.size ?? 0) > 0) {
+    const activeColors = Array.from(state.colorTagFilter!);
+    const indicator = createElement('div', 'pkc-entry-tag-filter');
+    indicator.setAttribute('data-pkc-region', 'entry-color-filter');
+
+    const label = createElement('span', 'pkc-entry-tag-filter-label');
+    label.textContent = '\u30ab\u30e9\u30fc:';
+    indicator.appendChild(label);
+
+    for (const colorValue of activeColors) {
+      const chip = createElement('span', 'pkc-entry-tag-filter-chip');
+      chip.setAttribute('data-pkc-color-value', colorValue);
+
+      const chipLabel = createElement('span', 'pkc-entry-tag-filter-chip-label');
+      chipLabel.textContent = colorValue;
+      chip.appendChild(chipLabel);
+
+      const removeBtn = createElement('button', 'pkc-entry-tag-filter-remove');
+      removeBtn.setAttribute('data-pkc-action', 'toggle-color-tag-filter');
+      removeBtn.setAttribute('data-pkc-color', colorValue);
+      removeBtn.setAttribute('title', `Remove filter: ${colorValue}`);
+      removeBtn.textContent = '\u00d7';
+      chip.appendChild(removeBtn);
+
+      indicator.appendChild(chip);
+    }
+
+    if (activeColors.length >= 2) {
+      const clearAllBtn = createElement('button', 'pkc-btn-small pkc-entry-tag-filter-clear-all');
+      clearAllBtn.setAttribute('data-pkc-action', 'clear-color-tag-filter');
+      clearAllBtn.setAttribute('title', 'Clear all Color filters');
+      clearAllBtn.textContent = 'Clear all';
+      indicator.appendChild(clearAllBtn);
+    }
+
+    sidebar.appendChild(indicator);
+  }
+
   // Shown only when `state.tagFilter` has at least one value. Each
   // active value renders as a small chip; clicking its \u00d7 dispatches
   // TOGGLE_TAG_FILTER (idempotent remove since the value is already
@@ -2006,7 +2051,13 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
   // with AND-by-default semantics (see
   // `docs/spec/search-filter-semantics-v1.md` §4.2).
-  let filtered = applyFilters(allEntries, state.searchQuery, state.archetypeFilter, state.tagFilter);
+  let filtered = applyFilters(
+    allEntries,
+    state.searchQuery,
+    state.archetypeFilter,
+    state.tagFilter,
+    state.colorTagFilter,
+  );
   if (state.categoricalPeerFilter && state.container) {
     filtered = filterByTag(filtered, state.container.relations, state.categoricalPeerFilter);
   }
@@ -2024,7 +2075,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     : sortEntries(filtered, state.sortKey, state.sortDirection);
 
   // Result count (shown when any filter is active)
-  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null)) {
+  if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null)) {
     const count = createElement('div', 'pkc-result-count');
     count.setAttribute('data-pkc-region', 'result-count');
     count.textContent = `${entries.length} / ${allEntries.length} entries`;
@@ -2054,7 +2105,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based

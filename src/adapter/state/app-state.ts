@@ -187,6 +187,20 @@ export interface AppState {
    */
   tagFilter?: ReadonlySet<string>;
   /**
+   * Color tag filter (Slice 4, OR-within-axis, 1-entry-1-color).
+   *
+   * Stores palette IDs as loose strings rather than a `ColorTagId`
+   * literal union so unknown IDs from future palette extensions
+   * round-trip through Saved Search and the filter UI — data-model
+   * spec §6.4 / §7.2.
+   *
+   * Missing / `undefined` / empty Set all mean the Color axis is
+   * off. The reducer initialises this to an empty Set so every
+   * read path can dereference `.size` safely; optional on the TS
+   * surface lets legacy test fixtures remain valid.
+   */
+  colorTagFilter?: ReadonlySet<string>;
+  /**
    * Categorical relation peer filter. Stores the lid of a "tag entry"
    * (categorical relation `to` endpoint) to filter by. Runtime-only.
    * `null` = no filter active.
@@ -441,6 +455,7 @@ export function createInitialState(): AppState {
     archetypeFilter: new Set<ArchetypeId>(),
     archetypeFilterExpanded: false,
     tagFilter: new Set<string>(),
+    colorTagFilter: new Set<string>(),
     showScanline: false,
     accentColor: undefined,
     // FI-Settings v1: left undefined until main.ts dispatches
@@ -702,8 +717,15 @@ function reduceMoveEntry(
     state.searchQuery !== '' ||
     state.archetypeFilter.size > 0 ||
     (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0 ||
     state.categoricalPeerFilter !== null;
-  let filtered = applyFilters(entries, state.searchQuery, state.archetypeFilter, state.tagFilter);
+  let filtered = applyFilters(
+    entries,
+    state.searchQuery,
+    state.archetypeFilter,
+    state.tagFilter,
+    state.colorTagFilter,
+  );
   if (state.categoricalPeerFilter) {
     filtered = filterByTag(filtered, container.relations, state.categoricalPeerFilter);
   }
@@ -2041,6 +2063,26 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if ((state.tagFilter?.size ?? 0) === 0) return { state, events: [] };
       return { state: { ...state, tagFilter: new Set<string>() }, events: [] };
     }
+    // Color tag Slice 4 — Color filter axis toggle / clear. Mirrors
+    // the Tag axis exactly (OR-within-axis semantics, idempotent
+    // toggle). Loose-string storage preserves unknown palette IDs
+    // per data-model spec §6.4.
+    case 'TOGGLE_COLOR_TAG_FILTER': {
+      const next = new Set(state.colorTagFilter ?? []);
+      if (next.has(action.color)) {
+        next.delete(action.color);
+      } else {
+        next.add(action.color);
+      }
+      return { state: { ...state, colorTagFilter: next }, events: [] };
+    }
+    case 'CLEAR_COLOR_TAG_FILTER': {
+      if ((state.colorTagFilter?.size ?? 0) === 0) return { state, events: [] };
+      return {
+        state: { ...state, colorTagFilter: new Set<string>() },
+        events: [],
+      };
+    }
     case 'ADD_ENTRY_TAG': {
       // W1 Slice F — validate the user input through the single
       // Slice B R1-R8 normalizer, then append to `entry.tags`.
@@ -2136,13 +2178,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CLEAR_FILTERS': {
       // archetypeFilterExpanded is intentionally NOT reset (I-FI09-7).
       // Slice D (2026-04-23): clearing filters also resets the Tag
-      // axis so "Clear filters" remains the single escape hatch for
-      // every active filter axis.
+      // axis. Color Slice 4 (2026-04-25): Color axis joins the same
+      // "single escape hatch" contract.
       const next: AppState = {
         ...state,
         searchQuery: '',
         archetypeFilter: new Set<ArchetypeId>(),
         tagFilter: new Set<string>(),
+        colorTagFilter: new Set<string>(),
         categoricalPeerFilter: null,
       };
       return { state: next, events: [] };
@@ -2223,13 +2266,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         // fall back to an empty Set so `createSavedSearch` always gets
         // a non-null `ReadonlySet<string>`.
         tagFilter: state.tagFilter ?? new Set<string>(),
-        // Color tag Slice 2 (2026-04-25) — Color axis round-trip. The
-        // runtime `colorTagFilter` AppState field is reserved for
-        // Slice 3; until then, the SavedSearch always serialises an
-        // empty Color filter (axis off). The field is required on
-        // `SavedSearchSourceFields` so a future Slice 3 wiring can
-        // simply replace this empty Set with `state.colorTagFilter`.
-        colorFilter: new Set<string>(),
+        // Color tag Slice 4 (2026-04-25) — Color axis round-trip
+        // wired through to the real AppState filter. The Slice 2
+        // bridge (`new Set<string>()` placeholder) is now replaced
+        // with the actual `state.colorTagFilter` so SAVE_SEARCH
+        // captures whatever Color filter the user has on at save
+        // time, including unknown palette IDs (data-model §6.4 /
+        // §7.2 round-trip preservation).
+        colorFilter: state.colorTagFilter ?? new Set<string>(),
         sortKey: state.sortKey,
         sortDirection: state.sortDirection,
         showArchived: state.showArchived,
@@ -2278,6 +2322,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         // stored record resolves to an empty Set here, so loading a
         // pre-Slice-E saved search leaves the Tag axis off.
         tagFilter: fields.tagFilter,
+        // Color tag Slice 4: Color axis round-trip. Missing
+        // `color_filter` in the stored record resolves to an empty
+        // Set, so loading a pre-Slice-2 saved search leaves the
+        // Color axis off. Unknown palette IDs are preserved
+        // verbatim (data-model spec §6.4).
+        colorTagFilter: fields.colorFilter,
         sortKey: fields.sortKey,
         sortDirection: fields.sortDirection,
         showArchived: fields.showArchived,
