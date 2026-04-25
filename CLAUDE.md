@@ -104,3 +104,21 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 ## Specification Documents
 
 - `docs/development/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
+
+## PR Workflow / Review Checklist
+
+PKC2 は 2026-04-25 以降 **User + Claude の 2 名体制**(ChatGPT 統括役は外れ、Gemini 等が将来加わる可能性あり)で運用されている。Claude が implementer + auditor を兼任するため、**PR 作成時に必ず 8 項目の自己監査を行う**。
+
+監査項目(必ず 8 つ全部、PR 作成直後に実行):
+1. **Scope drift** — 合意した方針 / 禁止事項から外れていないか、`git diff --stat` で確認
+2. **CI 3 checks の conclusion** — typecheck+test+build × 2 + Playwright smoke すべて `success`
+3. **Review comments / unresolved threads** — `totalCount === 0`
+4. **mergeable_state** — `clean`、`mergeable: true`
+5. **PR body Test plan checklist** — manual 確認項目を source-based confirmation で埋める or 注記付きで残す
+6. **互換性 / contract grep** — schema / version / `data-pkc-*` / 既存 selector / Known limitations 文言の意図しない変更なし
+7. **Bundle / budget** — bundle.css 96 KB / bundle.js 1536 KB を超えない、headroom が 1 KB を切ったら次 PR 前に bump 検討
+8. **Merge 判断の報告** — 全 OK で「ユーザー側で merge 判断してよい状態です」、merge 自体は User が GitHub UI で実行
+
+詳細は `docs/development/pr-review-checklist.md` を参照(失敗パターン / セルフチェック / Gemini onboard 手順も同 doc)。
+
+**Merge 自体は Claude が実行しない**。`mcp__github__merge_pull_request` は使用せず、CI green + audit 通過を確認後に User の判断に委ねる。
