@@ -65,15 +65,6 @@ describe('parseCardPresentation — accepted shapes', () => {
     expect(r?.target).toBe('entry:e1#legacy-id');
   });
 
-  it('parses asset target', () => {
-    const r = parseCardPresentation('@[card](asset:a1)');
-    expect(r).toEqual<ParsedCardPresentation>({
-      variant: 'default',
-      target: 'asset:a1',
-      raw: '@[card](asset:a1)',
-    });
-  });
-
   it('parses Portable PKC Reference target (self-container shape)', () => {
     const r = parseCardPresentation('@[card](pkc://cid/entry/e1)');
     expect(r?.target).toBe('pkc://cid/entry/e1');
@@ -101,6 +92,29 @@ describe('parseCardPresentation — rejected shapes', () => {
   it('rejects plain markdown link without @ prefix', () => {
     expect(parseCardPresentation('[card](entry:e1)')).toBeNull();
     expect(parseCardPresentation('[card:compact](entry:e1)')).toBeNull();
+  });
+
+  // Slice-3.5: asset-target cards are a v0 future dialect (spec §5.4
+  // ❌ 非対応, audit Option C). The parser rejects them so that a
+  // migration scanner / editor insertion UI cannot build a notation
+  // the renderer does not support.
+  it('rejects `asset:` target (v0 future dialect)', () => {
+    expect(parseCardPresentation('@[card](asset:a1)')).toBeNull();
+    expect(parseCardPresentation('@[card:compact](asset:a1)')).toBeNull();
+    expect(parseCardPresentation('@[card:wide](asset:a1)')).toBeNull();
+    expect(parseCardPresentation('@[card:timeline](asset:a1)')).toBeNull();
+  });
+
+  it('rejects `pkc://<cid>/asset/<key>` target (v0 future dialect)', () => {
+    expect(
+      parseCardPresentation('@[card](pkc://cid/asset/a1)'),
+    ).toBeNull();
+    expect(
+      parseCardPresentation('@[card:compact](pkc://cid/asset/a1)'),
+    ).toBeNull();
+    expect(
+      parseCardPresentation('@[card:wide](pkc://other-cid/asset/a1)'),
+    ).toBeNull();
   });
 
   it('rejects unknown variant', () => {
@@ -210,13 +224,32 @@ describe('formatCardPresentation', () => {
     ).toBe('@[card:timeline](entry:e1)');
   });
 
-  it('formats asset and pkc:// targets', () => {
-    expect(formatCardPresentation({ target: 'asset:a1' })).toBe(
-      '@[card](asset:a1)',
-    );
+  it('formats Portable PKC Reference entry target', () => {
     expect(
       formatCardPresentation({ target: 'pkc://cid/entry/e1' }),
     ).toBe('@[card](pkc://cid/entry/e1)');
+    expect(
+      formatCardPresentation({
+        target: 'pkc://cid/entry/e1',
+        variant: 'compact',
+      }),
+    ).toBe('@[card:compact](pkc://cid/entry/e1)');
+  });
+
+  it('returns null for asset-flavoured targets (v0 future dialect)', () => {
+    // Slice-3.5: asset preview cards are not canonical in v0. The
+    // formatter must not round-trip an asset target into a notation
+    // the renderer would silently drop.
+    expect(formatCardPresentation({ target: 'asset:a1' })).toBeNull();
+    expect(
+      formatCardPresentation({ target: 'pkc://cid/asset/a1' }),
+    ).toBeNull();
+    expect(
+      formatCardPresentation({
+        target: 'pkc://cid/asset/a1',
+        variant: 'wide',
+      }),
+    ).toBeNull();
   });
 
   it('returns null for an invalid target', () => {
@@ -254,7 +287,6 @@ describe('parse → format round trip', () => {
     '@[card](entry:e1#log/log-1)',
     '@[card](entry:e1#day/2026-04-24)',
     '@[card](entry:e1#log/xyz/heading-slug)',
-    '@[card](asset:a1)',
     '@[card](pkc://cid/entry/e1)',
     '@[card:compact](pkc://cid/entry/e1#log/xyz)',
   ];
