@@ -4,7 +4,7 @@
 
 **docs-only audit、実装ゼロ**。Color wave Slice 1-4(#170 等で end-to-end 化済 = palette / Saved Search / Entry schema / picker / sidebar marker / parser / filter / round-trip)の **残課題**(theme HEX 値の per-container override / CVD-simulation tooling)を、いきなり実装に進む前に洗う。Known limitations(`build/about-entry-builder.ts:169` / `CHANGELOG_v2.1.1.md` §144)で「将来 slice で再評価」と告知済みの 2 項目に決着を付ける。
 
-- **Status**: 推奨 **Option B + E**(CSS token 整理 + dev-only CVD guard 軽量導入)。本 PR は **docs-only**、実装は別 wave。
+- **Status**: 推奨 **Option B + E**(CSS token 整理 + dev-only CVD guard 軽量導入)。本 audit は **docs-only**(2026-04-25)で着地、**Slice 5.0 implementation も同日着地**(`base.css` の `--pkc-color-tag-*` を dark / light 分岐 + 4 hue darken + 新 contrast test で 16 pin、Known limitations 短縮、About / CHANGELOG 同期)。**実測訂正**: probe で `formatContrastRatio` の 1-decimal rounding により pink を「3.0:1 ギリギリ通過」と記録していたが、実値は **2.97:1** で 3:1 floor を僅かに下回る。Slice 5.0 では pink も light theme override 対象に含めて **4 hue**(orange / yellow / green / pink)を darken。
 - **触らない**: schema / version / About / CHANGELOG / per-container theme override / Color picker UI 改修 / `color:<id>` parser / filter / Card / clickable-image / ImportExport / palette ID 変更。
 
 参照(読む順):

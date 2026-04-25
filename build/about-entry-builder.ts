@@ -166,7 +166,7 @@ const RELEASE_SUMMARY = {
       'Per-candidate checkbox selection is not implemented — v1 Apply is all-safe only',
       'Clickable-image renderer support (`[![alt](url)](url)`) is not implemented — reserved as future dialect',
       'Card / embed presentation (`@[card](...)`) is not implemented yet',
-      'Color tag theme HEX values are fixed and there is no per-container theme override or CVD-simulation tooling yet — Slice 1-4 (2026-04-25) shipped the palette, picker, sidebar marker, Entry schema, `color:<id>` query parser, filter axis, and Saved Search round-trip',
+      'Color tag per-container theme override and full CVD-simulation tooling (protanopia / deuteranopia / tritanopia matrices) are still future work — Slice 1-4 (2026-04-25) shipped the palette, picker, sidebar marker, Entry schema, `color:<id>` query parser, filter axis, and Saved Search round-trip; Slice 5.0 (2026-04-25) split `--pkc-color-tag-*` tokens for dark / light themes so the 3px sidebar bar now meets the WCAG 1.4.11 non-text 3:1 contrast floor on both themes, with a new `tests/features/color/color-tag-contrast.test.ts` regression guard. `prefers-contrast: high` / `forced-colors` are deferred to Slice 5.1+',
       'Cross-container resolver / P2P is not implemented',
       'OS protocol handler for `pkc://` is not implemented',
       'External Permalink body residue rendering is not implemented — a `<base>#pkc?...` string left inside body text is rendered as a plain external anchor; only boot-time receive resolves it',

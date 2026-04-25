@@ -141,7 +141,7 @@ Slice 4 で以下を `docs/manual/` に反映済み:
 - **Per-candidate checkbox selection 未実装** — v1 Apply は "all safe" のみ。個別に選択できる UI は follow-up(Slice 3.5 or v2.2)
 - **Clickable-image renderer support 未実装** — `[![alt](url)](url)` は future dialect reservation。`SAFE_URL_RE` / asset-resolver の拡張とセットで migration v2 として扱う
 - **Card / embed presentation 未実装** — `@[card](entry:<lid>)` / transclusion 強化は spec 予約のみ
-- **Color tag は theme / a11y 検証ツール未対応** — palette fixed list(Slice 1)、Saved Search additive `color_filter` schema(Slice 2)、Entry schema + picker UI + sidebar 色バー(Slice 3)、`color:<id>` query parser + filter axis + Saved Search round-trip(Slice 4)が 2026-04-25 までに着地。**残るのは theme HEX の per-container override と CVD(色覚多様性)pairwise simulation tooling のみ**(将来 slice で再評価)
+- **Color tag は theme / a11y で残課題あり** — palette fixed list(Slice 1)、Saved Search additive `color_filter` schema(Slice 2)、Entry schema + picker UI + sidebar 色バー(Slice 3)、`color:<id>` query parser + filter axis + Saved Search round-trip(Slice 4)、`--pkc-color-tag-*` の dark / light theme 分岐 + WCAG 1.4.11 non-text 3:1 contrast floor 達成 + `tests/features/color/color-tag-contrast.test.ts` regression guard(Slice 5.0)がいずれも 2026-04-25 に着地。**残るのは per-container theme override と完全 CVD(色覚多様性)simulation tooling、`prefers-contrast: high` / `forced-colors` 対応のみ**(将来 slice で再評価)
 - **Cross-container resolver / P2P 未実装** — `pkc://<other>/...` や cross-container External Permalink を別 container 自動ロードする機構はない(手動で該当 container の PKC を開き直す必要あり)
 - **OS protocol handler 未実装** — `pkc://` を OS に登録してクリックだけで PKC を起動する機構は外部ツール連携になるため v2.1 には含まない
 - **External Permalink body residue rendering 未実装** — body 内に直接 `<base>#pkc?...` を手入力 / import した場合の内部 navigate fallback は v1 対象外(外部クリックの受信側は既存 External Permalink receive で対応済み)
