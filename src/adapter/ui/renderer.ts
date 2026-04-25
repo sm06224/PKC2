@@ -2438,11 +2438,12 @@ function renderEntryItem(
   // a data attribute regardless of whether it is a known palette ID,
   // so a future palette extension does not lose round-trip data even
   // before its CSS lands. Only known IDs get the visible band class
-  // (CSS hue values live in `pkc-entry-color-<id>`).
+  // plus the `pkc-color-<id>` hue binding (shared with the picker
+  // trigger dot and swatches so a new palette ID is one CSS rule).
   if (typeof entry.color_tag === 'string' && entry.color_tag !== '') {
     li.setAttribute('data-pkc-color-tag', entry.color_tag);
     if (isColorTagId(entry.color_tag)) {
-      li.classList.add('pkc-entry-color-bar', `pkc-entry-color-${entry.color_tag}`);
+      li.classList.add('pkc-entry-color-bar', `pkc-color-${entry.color_tag}`);
     }
   }
 

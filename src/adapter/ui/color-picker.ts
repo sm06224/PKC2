@@ -87,13 +87,15 @@ export function renderColorPickerTrigger(
     btn.disabled = true;
   }
 
-  // Visual content: a small dot. Known IDs use the palette CSS class
-  // so themes can override the hue; unknown / missing render with a
-  // neutral fallback class.
+  // Visual content: a small dot. Known IDs get the shared
+  // `pkc-color-<id>` hue class so the same CSS rule themes the
+  // sidebar band, the trigger dot, and every picker swatch.
+  // Unknown / missing render with a neutral fallback class.
   const dot = document.createElement('span');
   dot.className = 'pkc-color-picker-trigger-dot';
   if (isKnown) {
     dot.setAttribute('data-pkc-color', currentColor!);
+    dot.classList.add(`pkc-color-${currentColor!}`);
   } else {
     dot.classList.add('pkc-color-picker-trigger-dot-empty');
   }
@@ -143,10 +145,9 @@ export function renderColorPickerPopover(
   for (const id of COLOR_TAG_IDS) {
     const swatch = document.createElement('button');
     swatch.type = 'button';
-    swatch.className = 'pkc-color-picker-swatch';
+    swatch.className = `pkc-color-picker-swatch pkc-color-${id}`;
     swatch.setAttribute('data-pkc-action', 'apply-color-tag');
     swatch.setAttribute('data-pkc-color', id);
-    swatch.setAttribute('data-pkc-color-swatch', id);
     swatch.setAttribute('title', COLOR_LABELS[id] ?? id);
     swatch.setAttribute('aria-label', COLOR_LABELS[id] ?? id);
     if (knownActive === id) {
