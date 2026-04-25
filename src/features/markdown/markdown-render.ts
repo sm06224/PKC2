@@ -395,11 +395,23 @@ md.core.ruler.after('inline', 'pkc-card', function (state) {
       const visibleLabelEsc = escapeHtmlAttr(visibleLabel);
 
       const placeholder = new state.Token('html_inline', '', 0);
+      // Slice 4 (2026-04-25) — the placeholder gains
+      // `data-pkc-action="navigate-card-ref"` plus `tabindex="0"` and
+      // `role="link"` so action-binder can route clicks AND keyboard
+      // (Enter / Space) through the same code path the existing
+      // `entry:` link uses. The new attributes are additive — every
+      // pre-Slice-4 selector (`.pkc-card-placeholder`,
+      // `data-pkc-card-target`, `data-pkc-card-variant`,
+      // `data-pkc-card-raw`) is preserved verbatim, so the Slice-2
+      // and Slice-3 tests continue to pass and a future widget
+      // renderer can still pick the placeholder up.
       placeholder.content =
         `<span class="pkc-card-placeholder"` +
+        ` data-pkc-action="navigate-card-ref"` +
         ` data-pkc-card-target="${targetEsc}"` +
         ` data-pkc-card-variant="${variantEsc}"` +
-        ` data-pkc-card-raw="${rawEsc}">${visibleLabelEsc}</span>`;
+        ` data-pkc-card-raw="${rawEsc}"` +
+        ` role="link" tabindex="0">${visibleLabelEsc}</span>`;
 
       // Replace [link_open, text, link_close] with the placeholder.
       children.splice(i + 1, 3, placeholder);

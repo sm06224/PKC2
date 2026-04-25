@@ -6109,3 +6109,15 @@ mark.pkc-search-mark {
 .pkc-portable-reference-placeholder:hover {
   text-decoration: underline;
 }
+
+/* ── Card placeholder focus outline ──
+   spec: docs/spec/card-embed-presentation-v0.md §13 (Slice 4).
+   The card placeholder is `role="link" tabindex="0"`, so it must
+   carry a visible focus indicator for keyboard users. This is the
+   ONLY style added in Slice 4 — visual styling for the placeholder
+   itself (thumbnail / excerpt / colored badge) is intentionally
+   deferred to a later slice so the click-only wiring stays small. */
+.pkc-card-placeholder:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
