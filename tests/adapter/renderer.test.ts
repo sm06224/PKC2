@@ -7543,11 +7543,18 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       expect(btn!.textContent).toBe('Light');
     });
 
-    it('renders ZIP export button in ready state', () => {
+    it('renders Backup ZIP export button in ready state', () => {
+      // 2026-04-25 vocabulary cleanup (Slice α): the user-visible
+      // label is "Backup ZIP" so users can tell apart the
+      // backup-oriented `.pkc2.zip` from the archetype-filtered batch
+      // bundles (TEXTLOGs / TEXTs / Mixed) and from the single-entry
+      // bundles (📦 Selected). The action attribute stays
+      // `export-zip` for back-compat with existing event wiring.
+      // See docs/development/import-export-surface-audit.md §6.1 / §8.1.
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="export-zip"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('ZIP');
+      expect(btn!.textContent).toBe('Backup ZIP');
     });
 
     it('renders Import button in ready state', () => {

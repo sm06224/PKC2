@@ -1494,16 +1494,21 @@ function renderExportImportInline(state: AppState): HTMLElement {
   //   [Share — standalone HTML, openable without PKC2]
   //     Export │ Light │ 📤 Selected as HTML
   //   ──
-  //   [Archive — ZIP, re-importable into PKC2]
-  //     ZIP │ TEXTLOGs? │ TEXTs? │ Mixed? │ 📦 Selected (TEXT/TEXTLOG)
+  //   [Archive — Backup ZIP + archetype-filtered batch bundles + single-entry bundle]
+  //     Backup ZIP │ TEXTLOGs? │ TEXTs? │ Mixed? │ 📦 Selected (TEXT/TEXTLOG)
   //   ──
   //   [Import]
   //     Import │ 📥 Textlog │ 📥 Text │ 📥 Entry │ 📥 Batch
   //
   // Rationale: the two "Selected" buttons live in different groups
-  // and carry different icons — 📤 (share HTML) vs 📦 (ZIP package)
-  // — so they read as distinct workflows rather than variants of
-  // the same action. See docs/development/selected-entry-html-clone-export.md.
+  // and carry different icons — 📤 (share HTML) vs 📦 (single-entry
+  // bundle ZIP) — so they read as distinct workflows rather than
+  // variants of the same action. See
+  // docs/development/selected-entry-html-clone-export.md +
+  // docs/development/import-export-surface-audit.md (vocabulary
+  // map: Backup ZIP = .pkc2.zip, single-entry bundle = .text.zip /
+  // .textlog.zip, batch bundle = .texts.zip / .textlogs.zip /
+  // .mixed.zip / .folder-export.zip).
 
   const selectedEntry = state.selectedLid
     ? state.container?.entries.find((e) => e.lid === state.selectedLid)
@@ -1566,14 +1571,21 @@ function renderExportImportInline(state: AppState): HTMLElement {
 
   // --- Group 2: Archive (ZIP, re-importable into PKC2) ---
 
-  // ZIP Export — full container ZIP for re-import
+  // ZIP Export — full container ZIP, framed as "Backup ZIP" so users
+  // can tell apart the **backup-oriented** `.pkc2.zip` from the
+  // archetype-filtered batch bundles that follow (TEXTLOGs / TEXTs /
+  // Mixed) and from the **single-entry bundles** (📦 Selected). See
+  // `docs/development/import-export-surface-audit.md` §6.1 / §8.1 —
+  // `.pkc2.zip` is the canonical Backup ZIP today; the renaming is
+  // label-only (no behavioural change). The action / data attribute
+  // stays `export-zip` so existing tests / event wiring are intact.
   const zipBtn = createElement('button', 'pkc-btn pkc-btn-create');
   zipBtn.setAttribute('data-pkc-action', 'export-zip');
   zipBtn.setAttribute(
     'title',
-    '.pkc2.zip パッケージとしてエクスポート（別 PKC2 への再インポート・データ交換用）',
+    'Backup ZIP（.pkc2.zip）として書き出す — バックアップ・マシン移行・別 PKC2 への再インポート用',
   );
-  zipBtn.textContent = 'ZIP';
+  zipBtn.textContent = 'Backup ZIP';
   content.appendChild(zipBtn);
 
   // Container-wide TEXTLOG export — only shown when the container
@@ -1635,14 +1647,14 @@ function renderExportImportInline(state: AppState): HTMLElement {
     const kind = selectedEntry.archetype === 'text' ? 'TEXT' : 'TEXTLOG';
     selectedBtn.setAttribute(
       'title',
-      `選択中の ${kind} エントリを単独 ZIP パッケージとしてエクスポート（別 PKC2 への再インポート用）`,
+      `選択中の ${kind} エントリを単体バンドル（.${kind.toLowerCase()}.zip）として書き出す（別 PKC2 への再インポート用）`,
     );
     selectedBtn.textContent = `📦 Selected (${kind})`;
   } else {
     (selectedBtn as HTMLButtonElement).disabled = true;
     selectedBtn.setAttribute(
       'title',
-      '選択中のエントリを単独 ZIP で個別出力（TEXT / TEXTLOG 選択時のみ有効・再インポート用）',
+      '選択中のエントリを単体バンドル（.text.zip / .textlog.zip）で個別出力（TEXT / TEXTLOG 選択時のみ有効・再インポート用）',
     );
     selectedBtn.textContent = '📦 Selected';
   }
@@ -1653,24 +1665,36 @@ function renderExportImportInline(state: AppState): HTMLElement {
   sep.textContent = '|';
   content.appendChild(sep);
 
-  // Import
+  // Import — HTML or Backup ZIP. The preview dialog lets the user
+  // pick Replace (full overwrite) or Merge (additive). Tooltip used
+  // to say only "上書き" which mis-implied that Replace is the only
+  // mode. Audit §5.4 / §7.
   const importBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBtn.setAttribute('data-pkc-action', 'begin-import');
-  importBtn.setAttribute('title', 'HTML または ZIP からインポート（上書き）');
+  importBtn.setAttribute(
+    'title',
+    'HTML または Backup ZIP を取り込む（プレビューで Replace / Merge を選択）',
+  );
   importBtn.textContent = 'Import';
   content.appendChild(importBtn);
 
-  // Import textlog bundle
+  // Import single-entry bundle (.textlog.zip)
   const importTextlogBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importTextlogBtn.setAttribute('data-pkc-action', 'import-textlog-bundle');
-  importTextlogBtn.setAttribute('title', '.textlog.zip を新規エントリとしてインポート');
+  importTextlogBtn.setAttribute(
+    'title',
+    '単体バンドル（.textlog.zip）を 1 件の TEXTLOG エントリとして取り込む（追加）',
+  );
   importTextlogBtn.textContent = '📥 Textlog';
   content.appendChild(importTextlogBtn);
 
-  // Import text bundle
+  // Import single-entry bundle (.text.zip)
   const importTextBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importTextBtn.setAttribute('data-pkc-action', 'import-text-bundle');
-  importTextBtn.setAttribute('title', '.text.zip を新規エントリとしてインポート');
+  importTextBtn.setAttribute(
+    'title',
+    '単体バンドル（.text.zip）を 1 件の TEXT エントリとして取り込む（追加）',
+  );
   importTextBtn.textContent = '📥 Text';
   content.appendChild(importTextBtn);
 
@@ -1683,7 +1707,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importEntryBtn.setAttribute('data-pkc-action', 'import-entry-package');
   importEntryBtn.setAttribute(
     'title',
-    '.text.zip または .textlog.zip を自動判別して新規エントリとしてインポート',
+    '単体バンドル（.text.zip / .textlog.zip）を自動判別して取り込む（追加）',
   );
   importEntryBtn.textContent = '📥 Entry';
   content.appendChild(importEntryBtn);
@@ -1691,7 +1715,10 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // Import batch bundle (container-wide / folder-scoped)
   const importBatchBtn = createElement('button', 'pkc-btn pkc-btn-create');
   importBatchBtn.setAttribute('data-pkc-action', 'import-batch-bundle');
-  importBatchBtn.setAttribute('title', 'batch bundle (.textlogs.zip / .texts.zip / .mixed.zip / .folder-export.zip) をまとめてインポート');
+  importBatchBtn.setAttribute(
+    'title',
+    '一括バンドル（.textlogs.zip / .texts.zip / .mixed.zip / .folder-export.zip）をまとめて取り込む（追加）',
+  );
   importBatchBtn.textContent = '📥 Batch';
   content.appendChild(importBatchBtn);
 
@@ -3165,7 +3192,10 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
         const exportBtn = createElement('button', 'pkc-btn');
         exportBtn.setAttribute('data-pkc-action', 'export-folder');
         exportBtn.setAttribute('data-pkc-lid', entry.lid);
-        exportBtn.setAttribute('title', 'フォルダ配下の TEXT / TEXTLOG をまとめて ZIP エクスポート');
+        exportBtn.setAttribute(
+          'title',
+          'フォルダ配下の TEXT / TEXTLOG を一括バンドル（.folder-export.zip）として書き出す（別 PKC2 への再インポート用）',
+        );
         exportBtn.textContent = '📦 Export';
         bar.appendChild(exportBtn);
       }
@@ -3231,7 +3261,7 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
         const exportBtn = createElement('button', 'pkc-btn pkc-action-export-textlog');
         exportBtn.setAttribute('data-pkc-action', 'export-textlog-csv-zip');
         exportBtn.setAttribute('data-pkc-lid', entry.lid);
-        exportBtn.setAttribute('title', 'CSV + アセット ZIP バンドルをダウンロード');
+        exportBtn.setAttribute('title', '単体バンドル（.textlog.zip = CSV + アセット）として書き出す');
         exportBtn.textContent = '📦 Export';
         moreContent.appendChild(exportBtn);
       }
@@ -3265,7 +3295,7 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
         const exportBtn = createElement('button', 'pkc-btn pkc-action-export-text');
         exportBtn.setAttribute('data-pkc-action', 'export-text-zip');
         exportBtn.setAttribute('data-pkc-lid', entry.lid);
-        exportBtn.setAttribute('title', 'Markdown + アセット ZIP バンドルをダウンロード');
+        exportBtn.setAttribute('title', '単体バンドル（.text.zip = Markdown + アセット）として書き出す');
         exportBtn.textContent = '📦 Export';
         moreContent.appendChild(exportBtn);
       }
