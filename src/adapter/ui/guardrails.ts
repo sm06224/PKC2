@@ -49,7 +49,7 @@ export function fileSizeWarningMessage(bytes: number): string | null {
     return `⚠ File is ${sizeStr}. Large files significantly increase export size and may slow down operations. Consider using external storage.`;
   }
   if (level === 'soft') {
-    return `File is ${sizeStr}. Files over 1 MB increase export size. ZIP Package export is recommended for large attachments.`;
+    return `File is ${sizeStr}. Files over 1 MB increase export size. Backup ZIP export is recommended for large attachments.`;
   }
   return null;
 }
@@ -155,7 +155,7 @@ export function fullExportEstimation(container: Container): string | null {
 export function zipRecommendation(container: Container): string | null {
   const total = totalAssetBytes(container);
   if (total < SIZE_WARN_SOFT) return null;
-  return `Container has ${formatSizeForWarning(total)} of attachments. ZIP Package export preserves files as raw binary and is recommended for large data.`;
+  return `Container has ${formatSizeForWarning(total)} of attachments. Backup ZIP export preserves files as raw binary and is recommended for large data.`;
 }
 
 // --- Helpers ---
