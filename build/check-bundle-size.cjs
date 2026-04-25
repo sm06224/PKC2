@@ -90,6 +90,35 @@
  *   検知可能なライン。CSS 側は 94 KB のタイト枠を維持し、表示資源は
  *   従来どおりの監視粒度を保つ。
  *
+ * Re-alignment (Color wave close + CSS budget headroom maintenance,
+ * 2026-04-25):
+ *   dist/bundle.css ≈ 93.06 KB — Color Slice 1-4 の着地で picker /
+ *   sidebar marker / palette HEX tokens が積まれ、Slice 3 着地時点で
+ *   一度 budget を超過(93.65 KB → 95.55 KB)、`fix(color):
+ *   consolidate per-palette CSS to fit the 94 KB bundle.css budget`
+ *   で 8 色 × 3 selector の重複を `.pkc-color-<id>` 共有 class へ
+ *   集約して 93.87 KB(99.9%、headroom 0.13 KB)に押し戻したが、
+ *   次の UI slice(Card click wiring / Import-Export UI / clickable-
+ *   image renderer など)で再び超過する蓋然性が高い状態。
+ *
+ *   先行で 2 段階の追加削減を実施:
+ *   (1) 主テーマ変数 `:root` と `#pkc-root[data-pkc-theme="dark"]`
+ *       が同内容のため、comma-merge で 1 つの rule に統合
+ *       (Light は @media と非 @media を跨げないため統合不能、
+ *       仕様上の不可避コスト)。
+ *   (2) syntax-highlight token 用の同等の 4-way duplication にも
+ *       同じ trick を適用、合計で約 0.81 KB 削減し 93.06 KB に。
+ *
+ *   そこで budget は **96 KB** に引き上げる — 現サイズ 93.06 KB に
+ *   ~3.2% の headroom(~2.94 KB)を上乗せした最小枠。Card / Import-
+ *   Export / clickable-image など 1-2 件の UI slice が新規 chip /
+ *   button styling を追加しても余裕が残り、それでもなお重 dep の
+ *   混入を検知可能なタイト枠を維持する。
+ *
+ *   この引き上げは **dedicated maintenance PR** で実施(機能 PR と
+ *   混在させない方針、初版コメント §"Bump here (with a code review)
+ *   when justified" に従う)。
+ *
  * Intentionally CommonJS (`.cjs`) so it runs under `node` in CI
  * without needing tsx / a loader flag. Kept out of src/ because
  * it's tooling, not application code.
@@ -105,7 +134,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 94 * 1024 },   // 94 KB (W1 D-1 post-optimize re-alignment)
+  { file: 'dist/bundle.css', maxBytes: 96 * 1024 },   // 96 KB (Color wave close + CSS dedupe re-alignment, 2026-04-25)
 ];
 
 function formatKB(bytes) {

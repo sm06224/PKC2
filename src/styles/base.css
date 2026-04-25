@@ -1,7 +1,17 @@
 /* PKC2 base styles — Fallout/PIP-Boy inspired dark theme with punk warmth */
 
-/* ── Dark theme (default): Fallout terminal / PIP-Boy ── */
-:root {
+/* ── Dark theme (default): Fallout terminal / PIP-Boy ──
+ *
+ * The `#pkc-root[data-pkc-theme="dark"]` selector shares this rule
+ * via comma-merge so the explicit-dark override does not duplicate
+ * the variable list (CSS budget maintenance, 2026-04-25). The
+ * specificity difference between `:root` and the attribute selector
+ * still works as intended: when no `data-pkc-theme` is set, `:root`
+ * wins; when `data-pkc-theme="light"` is set, the light block below
+ * outranks both, since `:root` does not apply to that case any
+ * more strongly than the attribute selector does. */
+:root,
+#pkc-root[data-pkc-theme="dark"] {
   --c-bg: #0d0f0a;
   --c-fg: #c8d8b0;
   --c-accent: #33ff66;
@@ -58,7 +68,14 @@
   --c-kanban-drag-over-bg: color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 
-/* ── Light theme override (warm parchment) ── */
+/* ── Light theme override (warm parchment) ──
+ *
+ * The light variables are declared in two places (system preference
+ * via `@media (prefers-color-scheme: light)` and explicit override
+ * via `#pkc-root[data-pkc-theme="light"]`). They cannot be merged
+ * into one rule because CSS does not allow combining selectors
+ * across a media-query boundary; the duplication is unavoidable
+ * without a JS-side theme bootstrap. */
 @media (prefers-color-scheme: light) {
   :root {
     --c-bg: #f0ebe0;
@@ -104,7 +121,6 @@
   }
 }
 
-/* ── Manual theme override via data-pkc-theme attribute ── */
 #pkc-root[data-pkc-theme="light"] {
   --c-bg: #f0ebe0;
   --c-fg: #1a1a14;
@@ -131,32 +147,6 @@
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
   --glow: none;
   color-scheme: light;
-}
-
-#pkc-root[data-pkc-theme="dark"] {
-  --c-bg: #0d0f0a;
-  --c-fg: #c8d8b0;
-  --c-accent: #33ff66;
-  --c-accent-dim: #1a7a33;
-  --c-accent-fg: #050a03;
-  --c-border: #1e2a16;
-  --c-hover: #162010;
-  --c-danger: #ff4444;
-  --c-muted: #5a6e4a;
-  --c-surface: #111510;
-  --c-success: #33ff66;
-  --c-warn: #ffaa22;
-  --c-warn-fg: #1a0e00;
-  --c-info: #3b82f6;
-  --c-info-fg: #ffffff;
-  --c-body-text: #c8d8b0;
-  /* See the `:root` block for the rationale — #5a6e4a (aliased via
-     `--c-muted`) fails WCAG AA on the dark terminal bg. */
-  --c-toc-secondary: #9ab37e;
-  --c-range-active-bg: rgba(51, 255, 102, 0.08);
-  --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
-  --glow: 0 0 6px rgba(51,255,102,0.15);
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1710,8 +1700,15 @@ mark.pkc-search-mark {
    light (parchment) themes remain consistent with the rest of the
    UI. No single color is hard-coded — every token references the
    existing palette or a token-specific alias defined on `:root`.
-   See docs/development/markdown-code-block-highlighting.md. */
-:root {
+   See docs/development/markdown-code-block-highlighting.md.
+
+   Same comma-merge optimisation as the main theme block: the
+   `:root` (default) and `[data-pkc-theme="dark"]` (explicit
+   override) selectors share one rule. The `@media light` block and
+   the `[data-pkc-theme="light"]` block stay separate because CSS
+   cannot combine selectors across the media-query boundary. */
+:root,
+#pkc-root[data-pkc-theme="dark"] {
   --c-tok-comment: var(--c-text-dim);
   --c-tok-string: #d49a3b;
   --c-tok-keyword: var(--c-accent);
@@ -1757,21 +1754,6 @@ mark.pkc-search-mark {
   --c-tok-ins: #1e7a36;
   --c-tok-del: #a01a1a;
   --c-tok-hunk: #1f3c91;
-}
-#pkc-root[data-pkc-theme="dark"] {
-  --c-tok-comment: var(--c-text-dim);
-  --c-tok-string: #d49a3b;
-  --c-tok-keyword: var(--c-accent);
-  --c-tok-number: #c8a6ff;
-  --c-tok-builtin: #6ec1ff;
-  --c-tok-variable: #ff9a4a;
-  --c-tok-type: #4ad9b0;
-  --c-tok-attr: #e0c068;
-  --c-tok-tag: var(--c-accent);
-  --c-tok-meta: var(--c-text-dim);
-  --c-tok-ins: #6fbf73;
-  --c-tok-del: #e06060;
-  --c-tok-hunk: var(--c-info);
 }
 .pkc-md-rendered pre code .pkc-tok-comment { color: var(--c-tok-comment); font-style: italic; }
 .pkc-md-rendered pre code .pkc-tok-string { color: var(--c-tok-string); }
