@@ -13,6 +13,7 @@ import {
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 import { getFormatLocale } from './format-context';
 
 // Re-export from features layer so existing adapter-internal consumers keep working.
@@ -26,6 +27,7 @@ export const todoPresenter: DetailPresenter = {
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
     entries?: Entry[],
+    currentContainerId?: string,
   ): HTMLElement {
     const todo = parseTodoBody(entry.body);
     const container = document.createElement('div');
@@ -66,7 +68,7 @@ export const todoPresenter: DetailPresenter = {
 
     if (todo.description) {
       right.appendChild(
-        renderTodoDescription(todo.description, entry, assets, mimeByKey, nameByKey, entries),
+        renderTodoDescription(todo.description, entry, assets, mimeByKey, nameByKey, entries, currentContainerId),
       );
     }
 
@@ -169,6 +171,7 @@ function renderTodoDescription(
   mimeByKey?: Record<string, string>,
   nameByKey?: Record<string, string>,
   entries?: Entry[],
+  currentContainerId?: string,
 ): HTMLElement {
   let source = description;
   if (assets && mimeByKey && hasAssetReferences(source)) {
@@ -177,7 +180,7 @@ function renderTodoDescription(
   if (hasMarkdownSyntax(source)) {
     const desc = document.createElement('div');
     desc.className = 'pkc-todo-description pkc-md-rendered';
-    desc.innerHTML = renderMarkdown(source);
+    desc.innerHTML = renderMarkdown(source, { currentContainerId });
     if (entries) {
       expandTransclusions(desc, {
         entries,
@@ -185,6 +188,10 @@ function renderTodoDescription(
         mimeByKey,
         nameByKey,
         hostLid: entry.lid,
+      });
+      hydrateCardPlaceholders(desc, {
+        entries,
+        currentContainerId: currentContainerId ?? '',
       });
     }
     return desc;

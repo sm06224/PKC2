@@ -16,6 +16,14 @@ export interface HydratorContext {
   nameByKey: Record<string, string> | undefined;
   entries: Entry[] | undefined;
   selecting: boolean;
+  /**
+   * Current host container id — propagated to the markdown renderer
+   * and to the Slice 5.0 card hydrator so cross-container detection
+   * works for cards that lazy-hydrate from a textlog placeholder.
+   * Optional for back-compat with callers that have not been wired
+   * yet; treated as `''` (every recognised pkc:// becomes external).
+   */
+  currentContainerId?: string;
 }
 
 type ArticleRenderer = (
@@ -26,6 +34,7 @@ type ArticleRenderer = (
   nameByKey?: Record<string, string>,
   entries?: Entry[],
   selecting?: boolean,
+  currentContainerId?: string,
 ) => HTMLElement;
 
 export function renderLogArticlePlaceholder(
@@ -108,7 +117,7 @@ function hydrateArticle(
   try {
     const real = renderFn(
       ctx.lid, ctx.log, ctx.assets, ctx.mimeByKey,
-      ctx.nameByKey, ctx.entries, ctx.selecting,
+      ctx.nameByKey, ctx.entries, ctx.selecting, ctx.currentContainerId,
     );
     real.setAttribute('data-pkc-hydrated', 'true');
     placeholder.replaceWith(real);

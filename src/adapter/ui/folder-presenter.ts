@@ -6,6 +6,7 @@ import {
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 
 /**
  * Folder presenter: minimal body rendering for folder entries.
@@ -28,6 +29,7 @@ export const folderPresenter: DetailPresenter = {
     mimeByKey?: Record<string, string>,
     nameByKey?: Record<string, string>,
     entries?: Entry[],
+    currentContainerId?: string,
   ): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'pkc-folder-view';
@@ -50,7 +52,7 @@ export const folderPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const desc = document.createElement('div');
       desc.className = 'pkc-view-body pkc-md-rendered';
-      desc.innerHTML = renderMarkdown(source);
+      desc.innerHTML = renderMarkdown(source, { currentContainerId });
       if (entries) {
         expandTransclusions(desc, {
           entries,
@@ -58,6 +60,10 @@ export const folderPresenter: DetailPresenter = {
           mimeByKey,
           nameByKey,
           hostLid: entry.lid,
+        });
+        hydrateCardPlaceholders(desc, {
+          entries,
+          currentContainerId: currentContainerId ?? '',
         });
       }
       wrapper.appendChild(desc);

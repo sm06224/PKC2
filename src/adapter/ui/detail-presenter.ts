@@ -2,6 +2,7 @@ import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 
 /**
  * DetailPresenter: archetype-specific rendering for the detail view.
@@ -95,6 +96,13 @@ const textPresenter: DetailPresenter = {
           mimeByKey,
           nameByKey,
           hostLid: entry.lid,
+        });
+        // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
+        // emits from the renderer. Runs after transclusion so a card-link
+        // inside a transcluded body is still picked up.
+        hydrateCardPlaceholders(body, {
+          entries,
+          currentContainerId: currentContainerId ?? '',
         });
       }
       return body;

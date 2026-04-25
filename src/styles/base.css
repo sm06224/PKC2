@@ -6149,3 +6149,58 @@ mark.pkc-search-mark {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
+
+/* ── Card widget chrome (Slice 5.0, 2026-04-25) ──
+   spec: docs/spec/card-embed-presentation-v0.md §5
+         docs/development/card-widget-ui-v0-audit.md
+   The Slice 4 placeholder is hydrated by `card-hydrator.ts` into a
+   minimal chrome (archetype badge + entry title) that varies by
+   `data-pkc-card-status`. The element keeps its `role="link"` /
+   `tabindex="0"` so click + keyboard wiring is byte-identical for
+   ok / cross-container; missing / malformed gain `aria-disabled`
+   and `tabindex="-1"` (set by the hydrator) so the existing click
+   handler safely no-ops on them. */
+.pkc-card-widget {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  padding: 0.1em 0.5em;
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--c-accent) 6%, transparent);
+  color: var(--c-fg);
+  text-decoration: none;
+  font-size: 0.95em;
+  line-height: 1.4;
+  vertical-align: baseline;
+}
+.pkc-card-widget:hover {
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+}
+.pkc-card-widget-badge {
+  flex: none;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--c-accent);
+}
+.pkc-card-widget-title {
+  flex: 1 1 auto;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28em;
+}
+.pkc-card-widget[data-pkc-card-status="missing"],
+.pkc-card-widget[data-pkc-card-status="cross-container"],
+.pkc-card-widget[data-pkc-card-status="malformed"] {
+  border-style: dashed;
+  border-color: var(--c-muted);
+  background: var(--c-hover);
+  color: var(--c-muted);
+  cursor: not-allowed;
+}
+.pkc-card-widget[data-pkc-card-status="missing"] .pkc-card-widget-badge,
+.pkc-card-widget[data-pkc-card-status="malformed"] .pkc-card-widget-badge {
+  color: var(--c-muted);
+}
