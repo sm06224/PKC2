@@ -953,7 +953,19 @@
 /* Color tag Slice 3 — left-edge color band on entry rows.
  * Eight v1 palette IDs each get their own hue. Only known IDs land
  * in `.pkc-entry-color-bar`; unknown IDs only carry the
- * `data-pkc-color-tag` attribute (round-trip preservation). */
+ * `data-pkc-color-tag` attribute (round-trip preservation).
+ *
+ * Slice 5.0 (2026-04-25): the v1 dark-theme defaults below stay on
+ * `:root`. Light theme darkens orange / yellow / green / pink so the
+ * 3px sidebar bar clears the WCAG 1.4.11 non-text contrast 3:1 floor
+ * against the parchment-tinted #f0ebe0 light background — the four
+ * untouched hues (red 3.2:1, blue 3.1:1, purple 3.3:1, gray 4.1:1)
+ * already pass on light; orange (2.4), yellow (1.6), green (1.9),
+ * and pink (2.97) fall below 3:1 with the dark-theme HEX values.
+ * The split mirrors the `--c-*` theme pattern (@media + explicit
+ * `[data-pkc-theme="light"]`) so manual theme switching keeps the
+ * a11y promise. Per-hue light values are pinned by
+ * tests/features/color/color-tag-contrast.test.ts. */
 :root {
   --pkc-color-tag-red: #ef4444;
   --pkc-color-tag-orange: #f97316;
@@ -963,6 +975,22 @@
   --pkc-color-tag-purple: #a855f7;
   --pkc-color-tag-pink: #ec4899;
   --pkc-color-tag-gray: #6b7280;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --pkc-color-tag-orange: #c2410c;
+    --pkc-color-tag-yellow: #a16207;
+    --pkc-color-tag-green: #15803d;
+    --pkc-color-tag-pink: #db2777;
+  }
+}
+
+#pkc-root[data-pkc-theme="light"] {
+  --pkc-color-tag-orange: #c2410c;
+  --pkc-color-tag-yellow: #a16207;
+  --pkc-color-tag-green: #15803d;
+  --pkc-color-tag-pink: #db2777;
 }
 
 .pkc-entry-color-bar {
