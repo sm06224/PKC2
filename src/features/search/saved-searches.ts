@@ -5,6 +5,7 @@ import {
   type SavedSearchSortKey,
 } from '../../core/model/saved-search';
 import type { ArchetypeId } from '../../core/model/record';
+import { colorTagPaletteOrder } from '../color/color-palette';
 
 /**
  * Pure builder for a {@link SavedSearch} record.
@@ -44,6 +45,19 @@ export interface SavedSearchSourceFields {
    * insertion order.
    */
   tagFilter: ReadonlySet<string>;
+  /**
+   * Color tag filter values (Color tag Slice 2). Loose `string`
+   * element type so an unknown palette ID surviving a round trip
+   * does not get silently stripped by the in-memory representation
+   * — see {@link SavedSearch.color_filter} for the data-model
+   * rationale. Empty Set = Color axis off; the writer omits the
+   * persisted field entirely in that case (matching `tagFilter`).
+   *
+   * Slice 2 stops at schema / write / read. AppState does not yet
+   * carry a `colorTagFilter` — Slice 3 wires that through and the
+   * reducer can then bind to / from this Set directly.
+   */
+  colorFilter: ReadonlySet<string>;
   sortKey: SavedSearchSortKey;
   sortDirection: SavedSearchSortDirection;
   showArchived: boolean;
@@ -85,7 +99,34 @@ export function createSavedSearch(
     // Slice B §5.1's deterministic-order invariant.
     record.tag_filter_v2 = Array.from(fields.tagFilter);
   }
+  // Color tag Slice 2 — emit `color_filter` only when the axis is
+  // active. The persisted array is canonicalised: deduplicated, then
+  // sorted with known palette IDs first (in spec palette order) and
+  // unknown IDs appended in input-iteration order. Sorting is purely
+  // for diff / round-trip stability — array order has no semantic
+  // meaning (data model §6.5, OR axis).
+  if (fields.colorFilter.size > 0) {
+    record.color_filter = canonicaliseColorFilter(fields.colorFilter);
+  }
   return record;
+}
+
+function canonicaliseColorFilter(input: ReadonlySet<string>): string[] {
+  const seen = new Set<string>();
+  const known: string[] = [];
+  const unknown: string[] = [];
+  for (const value of input) {
+    if (typeof value !== 'string') continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (colorTagPaletteOrder(value) >= 0) {
+      known.push(value);
+    } else {
+      unknown.push(value);
+    }
+  }
+  known.sort((a, b) => colorTagPaletteOrder(a) - colorTagPaletteOrder(b));
+  return [...known, ...unknown];
 }
 
 /**
@@ -116,8 +157,23 @@ export function applySavedSearchFields(saved: SavedSearch): SavedSearchSourceFie
     archetypeFilter: new Set(saved.archetype_filter),
     categoricalPeerFilter,
     tagFilter: new Set(saved.tag_filter_v2 ?? []),
+    // Color tag Slice 2 — restore `color_filter` into a Set<string>.
+    // `null` / `undefined` / `[]` all yield an empty Set (Color axis
+    // off). Non-array shapes (a number, an object, …) are treated as
+    // missing rather than throwing — saved-search reads stay lenient
+    // to keep older / future writers from breaking the boot path.
+    // Element-type filtering happens here (string-only) so callers
+    // never see numeric / object junk in the resulting Set; unknown
+    // **palette** IDs are still preserved because they are valid
+    // strings (data model §6.4 / §7.2).
+    colorFilter: new Set(extractColorFilterArray(saved.color_filter)),
     sortKey: saved.sort_key,
     sortDirection: saved.sort_direction,
     showArchived: saved.show_archived,
   };
+}
+
+function extractColorFilterArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string');
 }
