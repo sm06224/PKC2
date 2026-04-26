@@ -2,7 +2,7 @@
  * TEXTLOG CSV + assets ZIP bundle exporter.
  *
  * Builds a portable bundle for a *single* TEXTLOG entry — see
- * `docs/development/textlog-csv-zip-export.md` for the binding format
+ * `docs/development/completed/textlog-csv-zip-export.md` for the binding format
  * spec. The short version:
  *
  *   <slug>-<yyyymmdd>.textlog.zip
@@ -63,7 +63,7 @@ export interface TextlogBundleManifest {
    * `true` when the bundle was produced in "compact mode" — broken
    * asset references were stripped from `text_markdown` and
    * consequently disappeared from the `asset_keys` column. See
-   * `docs/development/textlog-csv-zip-export.md` §13.
+   * `docs/development/completed/textlog-csv-zip-export.md` §13.
    *
    * `missing_asset_keys` is still populated under compact mode as an
    * audit trail ("these references existed and were stripped"). The

@@ -223,7 +223,7 @@ user の学習コストが最小化される。
 - preview は純粋関数で生成 (`features/textlog-to-text.ts`,
   `features/text-to-textlog.ts`)。reducer / dispatcher に触らない
 
-preview modal のサイズ / style は既存 `docs/development/markdown-phase2.md`
+preview modal のサイズ / style は既存 `docs/development/completed/markdown-phase2.md`
 等で確立したものを再利用。新規 modal pattern は作らない。
 
 ## 6. tests

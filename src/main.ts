@@ -793,7 +793,7 @@ function mountTextlogImportHandler(root: HTMLElement, dispatcher: Dispatcher): v
 /**
  * Mount text bundle import handler — sister of
  * `mountTextlogImportHandler`, for `.text.zip` single-body markdown
- * bundles. Format spec in `docs/development/text-markdown-zip-export.md`.
+ * bundles. Format spec in `docs/development/completed/text-markdown-zip-export.md`.
  *
  * Additive: the imported text + its attachments are **added** to the
  * current container, never replacing it. The dispatch order is the

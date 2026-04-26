@@ -103,7 +103,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 
 ## Specification Documents
 
-- `docs/development/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
+- `docs/development/completed/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
 
 ## PR Workflow / Review Checklist
 

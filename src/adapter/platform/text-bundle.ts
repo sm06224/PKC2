@@ -1,7 +1,7 @@
 /**
  * TEXT markdown + assets ZIP bundle — sister format to
  * `textlog-bundle.ts`. Format spec is pinned in
- * `docs/development/text-markdown-zip-export.md`. The short version:
+ * `docs/development/completed/text-markdown-zip-export.md`. The short version:
  *
  *   <slug>-<yyyymmdd>.text.zip
  *   ├── manifest.json   — metadata, asset index, missing-key report

@@ -378,12 +378,12 @@ revisions は引き続き drop。relation は両端 in-subset で生存 (既存�
   pipeline (slice 5-B) の既存 spec
 - `docs/development/selected-entry-html-clone-export.md` — subset closure /
   reachability の既存 spec (セクション 6.2 で scan 範囲を拡張)
-- `docs/development/markdown-phase2.md` — markdown link hardening
+- `docs/development/completed/markdown-phase2.md` — markdown link hardening
 - `docs/development/markdown-interactive-task-lists.md` — GFM task list
   (TODO description markdown 化時の task list 互換性)
-- `docs/development/asset-reference-resolution.md` — asset embed 解決
+- `docs/development/completed/asset-reference-resolution.md` — asset embed 解決
   (description 内の `asset:<key>` が既存 pipeline で解決されること)
-- `docs/development/todo-view-consistency.md` — TODO 表示一貫性
+- `docs/development/completed/todo-view-consistency.md` — TODO 表示一貫性
   (description 描画経路変更時の影響確認)
 
 ## 11. マージ順序

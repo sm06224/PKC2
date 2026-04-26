@@ -11,7 +11,7 @@
  *   - `docs/spec/body-formats.md` §3.3 (storage order is the source of truth)
  *   - `docs/spec/body-formats.md` §3.6 (CSV export columns)
  *   - `docs/spec/body-formats.md` §13.4 (sister bundle semantics)
- *   - `docs/development/textlog-csv-zip-export.md` §14.4 (always re-key assets)
+ *   - `docs/development/completed/textlog-csv-zip-export.md` §14.4 (always re-key assets)
  *
  * Equivalence rule for this route:
  *   - textlog.title:   equals source entry.title (non-empty) — else 'Imported textlog' fallback

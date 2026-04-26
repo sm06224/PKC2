@@ -293,7 +293,7 @@ user types "(asset:" in textarea
 
 ### Foundation vs live wiring の判定
 
-`docs/development/asset-picker-foundation.md` は仕様書で、本ファイルはその実装。仕様の全要素が実 UI に wiring 済み:
+`docs/development/completed/asset-picker-foundation.md` は仕様書で、本ファイルはその実装。仕様の全要素が実 UI に wiring 済み:
 
 - slash command 経路、autocomplete 経路、dismiss 経路、keyboard priority、 DOM attribute (`data-pkc-region="asset-picker"`, `data-pkc-asset-key`)、CSS (`pkc-asset-picker-*`)、テスト 12 case。
 

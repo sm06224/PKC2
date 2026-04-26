@@ -258,7 +258,7 @@ importer / exporter のいずれを触る場合も、これらを侵食しない
   `important` と `flags` を両方出力、新 reader は `flags` 列を正本にし、
   無ければ `important` から推論（legacy fallback）。modern × modern の
   round-trip は lossless、pre-H-4 reader との互換は `important` 列で維持。
-  spec §3.6.1 更新済み、詳細は `docs/development/textlog-csv-zip-export.md`
+  spec §3.6.1 更新済み、詳細は `docs/development/completed/textlog-csv-zip-export.md`
   §3 / §14.6 と `USER_REQUEST_LEDGER.md` §1 S-20
 
 ### 5.8 Revision への branch / prev_rid の追加

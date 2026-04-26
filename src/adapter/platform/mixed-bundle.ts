@@ -2,7 +2,7 @@
  * Mixed container-wide export — bundles all TEXT and TEXTLOG entries
  * in a container into a single `.mixed.zip`.
  *
- * Format spec: `docs/development/mixed-container-export.md`.
+ * Format spec: `docs/development/completed/mixed-container-export.md`.
  *
  * Re-uses the same nested ZIP pattern as folder-export: the outer
  * ZIP contains individual `.text.zip` / `.textlog.zip` bundles

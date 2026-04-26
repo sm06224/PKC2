@@ -29,7 +29,7 @@ reducer changes, no data-model changes.
 Rationale for the text/textlog-only scope:
 
 - Both have a well-defined, documented bundle format already in the
-  codebase (`docs/development/text-markdown-zip-export.md`,
+  codebase (`docs/development/completed/text-markdown-zip-export.md`,
   `docs/development/textlog-bundle.md`).
 - Both have complete, tested importers (see `tests/adapter/
   text-bundle.test.ts` — 51 tests; `tests/adapter/textlog-bundle.test.ts`).

@@ -41,48 +41,48 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 | # | File | Topic | Notes |
 |---|------|-------|-------|
-| 1 | `action-surface-consolidation.md` | Sidebar/header action refactor | |
-| 2 | `asset-autocomplete-foundation.md` | `/asset` autocomplete | |
-| 3 | `asset-picker-foundation.md` | Asset picker modal | |
-| 4 | `asset-reference-resolution.md` | `asset:key` → data URL resolution | |
-| 5 | `attachment-preview-strategy.md` | Attachment preview phases 1-3 | |
-| 6 | `batch-import-result-feedback.md` | Import result notification | |
-| 7 | `batch-import-target-folder-selection.md` | Import target folder selection | |
-| 8 | `batch-import-transaction-hardening.md` | Atomic batch import via SYS_APPLY_BATCH_IMPORT | |
-| 9 | `container-wide-batch-import.md` | Multi-entry batch import pipeline | Supersession notes added |
-| 10 | `critical-input-attachment-recovery.md` | Input loss prevention | |
-| 11 | `dnd-cleanup-robustness.md` | DnD state cleanup safety nets | Test coverage section added |
-| 12 | `edit-preview-asset-resolution.md` | Edit preview + asset resolution (omnibus) | 9 sub-issues; TOC added |
-| 13 | `entry-level-deep-preview.md` | Entry deep preview | |
-| 14 | `entry-window-archetype-display.md` | Archetype display in entry window | |
-| 15 | `entry-window-preview-phase4.md` | Entry window preview phase 4 | |
-| 16 | `folder-scoped-export.md` | Folder-scoped export | |
-| 17 | `folder-scoped-import.md` | Folder-scoped import | Supersession notes added |
-| 18 | `folder-structure-restore.md` | Folder hierarchy restoration on import | |
-| 19 | `import-preview-ui.md` | Import preview UI | |
-| 20 | `input-assistance-foundation.md` | Input assistance (calc, auto-list) | |
-| 21 | `light-mode-badge-ui.md` | Light mode badge styling | |
-| 22 | `markdown-phase2.md` | Markdown rendering phase 2 | |
-| 23 | `mixed-container-export.md` | Mixed archetype export | |
-| 24 | `multi-select-design.md` | Multi-select design spec | Design doc; impl completed (#46) |
-| 25 | `non-image-asset-handling.md` | Non-image asset chip foundation | |
-| 26 | `pane-resize-selector-migration.md` | Pane resize selector migration | |
-| 27 | `release-builder-commit-stamp.md` | Commit hash in release build | |
-| 28 | `selective-import.md` | Selective import (checkbox UI) | |
-| 29 | `split-editor-preview-asset-resolution.md` | Split editor asset resolution | |
-| 30 | `text-container-wide-export.md` | TEXT container-wide export | |
-| 31 | `text-markdown-zip-export.md` | TEXT markdown ZIP export | |
-| 32 | `text-textlog-editing-ux-consolidation.md` | TEXT/TEXTLOG editing UX consolidation | |
-| 33 | `textlog-container-wide-export.md` | TEXTLOG container-wide export | |
-| 34 | `textlog-csv-zip-export.md` | TEXTLOG CSV/ZIP export | |
-| 35 | `textlog-double-click-edit-review.md` | TEXTLOG double-click edit | |
-| 36 | `textlog-foundation.md` | TEXTLOG archetype foundation | |
-| 37 | `textlog-polish.md` | TEXTLOG UX polish | Hint text fix applied |
-| 38 | `textlog-text-attachment-ux-polish.md` | TEXT/TEXTLOG attachment UX polish | |
-| 39 | `todo-cross-view-move-strategy.md` | Todo cross-view DnD strategy | |
-| 40 | `todo-layering-fix.md` | Todo layer violation fix | |
-| 41 | `todo-view-consistency.md` | Todo view consistency (detail/calendar/kanban) | |
-| 42 | `ux-regression-recovery.md` | UX regression recovery | |
+| 1 | `completed/action-surface-consolidation.md` | Sidebar/header action refactor | |
+| 2 | `completed/asset-autocomplete-foundation.md` | `/asset` autocomplete | |
+| 3 | `completed/asset-picker-foundation.md` | Asset picker modal | |
+| 4 | `completed/asset-reference-resolution.md` | `asset:key` → data URL resolution | |
+| 5 | `completed/attachment-preview-strategy.md` | Attachment preview phases 1-3 | |
+| 6 | `completed/batch-import-result-feedback.md` | Import result notification | |
+| 7 | `completed/batch-import-target-folder-selection.md` | Import target folder selection | |
+| 8 | `completed/batch-import-transaction-hardening.md` | Atomic batch import via SYS_APPLY_BATCH_IMPORT | |
+| 9 | `completed/container-wide-batch-import.md` | Multi-entry batch import pipeline | Supersession notes added |
+| 10 | `completed/critical-input-attachment-recovery.md` | Input loss prevention | |
+| 11 | `completed/dnd-cleanup-robustness.md` | DnD state cleanup safety nets | Test coverage section added |
+| 12 | `completed/edit-preview-asset-resolution.md` | Edit preview + asset resolution (omnibus) | 9 sub-issues; TOC added |
+| 13 | `completed/entry-level-deep-preview.md` | Entry deep preview | |
+| 14 | `completed/entry-window-archetype-display.md` | Archetype display in entry window | |
+| 15 | `completed/entry-window-preview-phase4.md` | Entry window preview phase 4 | |
+| 16 | `completed/folder-scoped-export.md` | Folder-scoped export | |
+| 17 | `completed/folder-scoped-import.md` | Folder-scoped import | Supersession notes added |
+| 18 | `completed/folder-structure-restore.md` | Folder hierarchy restoration on import | |
+| 19 | `completed/import-preview-ui.md` | Import preview UI | |
+| 20 | `completed/input-assistance-foundation.md` | Input assistance (calc, auto-list) | |
+| 21 | `completed/light-mode-badge-ui.md` | Light mode badge styling | |
+| 22 | `completed/markdown-phase2.md` | Markdown rendering phase 2 | |
+| 23 | `completed/mixed-container-export.md` | Mixed archetype export | |
+| 24 | `completed/multi-select-design.md` | Multi-select design spec | Design doc; impl completed (#46) |
+| 25 | `completed/non-image-asset-handling.md` | Non-image asset chip foundation | |
+| 26 | `completed/pane-resize-selector-migration.md` | Pane resize selector migration | |
+| 27 | `completed/release-builder-commit-stamp.md` | Commit hash in release build | |
+| 28 | `completed/selective-import.md` | Selective import (checkbox UI) | |
+| 29 | `completed/split-editor-preview-asset-resolution.md` | Split editor asset resolution | |
+| 30 | `completed/text-container-wide-export.md` | TEXT container-wide export | |
+| 31 | `completed/text-markdown-zip-export.md` | TEXT markdown ZIP export | |
+| 32 | `completed/text-textlog-editing-ux-consolidation.md` | TEXT/TEXTLOG editing UX consolidation | |
+| 33 | `completed/textlog-container-wide-export.md` | TEXTLOG container-wide export | |
+| 34 | `completed/textlog-csv-zip-export.md` | TEXTLOG CSV/ZIP export | |
+| 35 | `completed/textlog-double-click-edit-review.md` | TEXTLOG double-click edit | |
+| 36 | `completed/textlog-foundation.md` | TEXTLOG archetype foundation | |
+| 37 | `completed/textlog-polish.md` | TEXTLOG UX polish | Hint text fix applied |
+| 38 | `completed/textlog-text-attachment-ux-polish.md` | TEXT/TEXTLOG attachment UX polish | |
+| 39 | `completed/todo-cross-view-move-strategy.md` | Todo cross-view DnD strategy | |
+| 40 | `completed/todo-layering-fix.md` | Todo layer violation fix | |
+| 41 | `completed/todo-view-consistency.md` | Todo view consistency (detail/calendar/kanban) | |
+| 42 | `completed/ux-regression-recovery.md` | UX regression recovery | |
 
 ## COMPLETED
 
@@ -120,7 +120,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 72 | `markdown-extensions/markdown-quote-input-assist.md` | B-3 Slice α — `> X` 行で Enter → `\n> ` 自動継続（USER_REQUEST_LEDGER S-17、PARTIALLY COMPLETED） | 2026-04-14 | `features/markdown/quote-assist.ts` に pure helper `computeQuoteAssistOnEnter(value, caretPos)`、`action-binder.ts` の handleKeydown 内 Enter 分岐で wire（inline-calc 直後 / Ctrl+Enter 直前）。`isSlashEligible` で markdown 対象 textarea に限定、`execCommand('insertText')` で undo stack 保護 + fallback 経路。fall-through: mid-line Enter / 空 `> ` 行 / 非引用行 / Shift・Ctrl・Alt / IME composition / non-collapsed selection。テスト 12（pure）+ 9（handler integration）。残り Slice β（empty `> ` で exit）/ γ（選択範囲 prefix toggle shortcut）/ entry-window 同期は CONDITIONAL のまま。 |
 | 73 | `search-ux-partial-reach.md` | A-4 FULL — 検索 UX 実用完成（USER_REQUEST_LEDGER S-18） | 2026-04-14 | supervisor 判断で Slice 刻みをやめ 1 テーマで完成。`features/search/sub-location-search.ts`（TEXT 見出し単位 / TEXTLOG log 単位 / 他 archetype 無視、fenced skip、dedup、maxPerEntry cap）+ 新 user action `NAVIGATE_TO_LOCATION { lid, subId, ticket }` + `AppState.pendingNav` + `adapter/ui/location-nav.ts` の `createLocationNavTracker`（ticket gate + scroll + `.pkc-location-highlight` 1.6s flash）+ main.ts onState 末尾で `tracker.consume`。renderer sidebar flat-mode で `.pkc-entry-subloc` 行 emit、action-binder に `navigate-to-location` case + 単調増加 ticket カウンタ。S-15 `<mark>` と合成、B-2 / A-2 / S-17 と非衝突。テスト +46（pure 21 / nav helper 15 / e2e 10）。 |
 | 74 | `pane-state-persistence.md` | H-7 — pane collapse/expand を localStorage で永続化（USER_REQUEST_LEDGER S-19、自主運転モード第1号） | 2026-04-14 | `adapter/platform/pane-prefs.ts`（storage key `pkc2.panePrefs`、in-memory cache、invalid JSON / no-storage fallback）+ `adapter/ui/pane-apply.ts`（DOM apply 共有ヘルパ）+ renderer が shell 組み立て時に `loadPanePrefs()` を読んで `data-pkc-collapsed` を即セット（flash なし）+ `togglePane` が `setPaneCollapsed` + `applyOnePaneCollapsedToDOM` 経由でクリック・shortcut・tray どの経路でも保存。reducer / AppState / user-action への touch 0、HANDOVER §6.2 を「解消済み」に更新。テスト +27（storage 12 / apply 6 / e2e 9、既存 pane-toggle-shortcut test は beforeEach に cache+localStorage clear を追加）。 |
-| 75 | `textlog-csv-zip-export.md` | H-4 — textlog CSV `flags` 列追加で forward-compat round-trip（USER_REQUEST_LEDGER S-20、自主運転モード第2号） | 2026-04-14 | `features/textlog/textlog-csv.ts` に `flags` 列を末尾追加 + `KNOWN_TEXTLOG_FLAGS` allow-list + `parseFlagsField` helper。serializer は `important` と `flags` を両方出力（backward-compat）、parser は header に `flags` 列がある場合それを正本にし、無ければ `important` に fallback。unknown token は silent drop（forward-compat）、dedup + 大小文字・空白許容。`TextlogFlag` 拡張時も modern × modern round-trip は lossless に。data model / reducer / UI への touch 0。spec `body-formats.md §3.6.1` を「lossy → modern × modern lossless、legacy 互換維持」に更新。dev doc column contract の row 8 追加。テスト +12（serializer 3 / precedence 4 / backward compat 2 / tolerant parse 3）。HANDOVER §5.7 を「解消済み」に更新。 |
+| 75 | `completed/textlog-csv-zip-export.md` | H-4 — textlog CSV `flags` 列追加で forward-compat round-trip（USER_REQUEST_LEDGER S-20、自主運転モード第2号） | 2026-04-14 | `features/textlog/textlog-csv.ts` に `flags` 列を末尾追加 + `KNOWN_TEXTLOG_FLAGS` allow-list + `parseFlagsField` helper。serializer は `important` と `flags` を両方出力（backward-compat）、parser は header に `flags` 列がある場合それを正本にし、無ければ `important` に fallback。unknown token は silent drop（forward-compat）、dedup + 大小文字・空白許容。`TextlogFlag` 拡張時も modern × modern round-trip は lossless に。data model / reducer / UI への touch 0。spec `body-formats.md §3.6.1` を「lossy → modern × modern lossless、legacy 互換維持」に更新。dev doc column contract の row 8 追加。テスト +12（serializer 3 / precedence 4 / backward compat 2 / tolerant parse 3）。HANDOVER §5.7 を「解消済み」に更新。 |
 | 76 | `../spec/schema-migration-policy.md` | H-3 — schema_version migration path 設計正本化（USER_REQUEST_LEDGER S-21、自主運転モード第3号、docs-only） | 2026-04-15 | `data-model.md §15.3` の「未設計」を解消。新規 canonical spec を `docs/spec/` に追加。判断基準（additive vs breaking flow）、lazy / eager 適用（JSON 内部は lazy / IDB store 境界は eager）、11 の migration hook 経路（IDB load / `onupgradeneeded` / HTML Full / Light import / ZIP import / bundle import / merge-planner / exporter / transport profile / fixture helper）、canonical entry point `src/core/migrations/migrate-container.ts`（将来配置）、test 戦略 4 系列（unit / chain / round-trip / reject）、v2 到達時の実装順序 9 step を固定。production code touch 0、`SCHEMA_VERSION` 依然 `1`。`data-model.md §15.3 / §17` / `body-formats.md §14.2` / `merge-import-conflict-resolution.md §8.6` / `HANDOVER_FINAL.md §7.3 / §17` に cross-link 追加。テスト追加なし。 |
 | 77 | `data-model/revision-branch-restore.md` | H-6 — Revision.prev_rid / content_hash の optional 追加（USER_REQUEST_LEDGER S-22、自主運転モード第4号、記録面のみ） | 2026-04-15 | `Revision` に 2 additive optional field を追加（`prev_rid?` = 同 entry_lid の直前 revision id / `content_hash?` = snapshot の FNV-1a-64 16-char lowercase hex digest）。`src/core/operations/hash.ts` を新規追加し pure BigInt 実装（UTF-8 正規化、astral-plane surrogate pair 対応）、`snapshotEntry` が両 field を populate（旧 rev は absent 維持、lazy 補填なし）。`parseRevisionSnapshot` / `restoreEntry` / `restoreDeletedEntry` は両 field を**読まない**（non-intrusive）ため restore 契約は完全維持。reducer / UI / user-action / schema_version touch 0。spec `data-model.md §6.1 / §6.2 / §6.2.1 / §15.2 / §15.5` 更新、`schema-migration-policy.md §6` lazy 既存例追加、`HANDOVER_FINAL.md §5.8` に 2026-04-15 追記。テスト +22（hash 7 / content_hash 4 / prev_rid 5 / backward compat 3 / round-trip 1 / restore integration 2）、既存 3781 tests 全 pass。C-1 revision-branch-restore 実装時の記録面の下地。 |
 | 78 | `../spec/text-textlog-provenance.md` | H-8 — TEXT ↔ TEXTLOG 変換の非可逆境界と来歴設計（USER_REQUEST_LEDGER S-23、自主運転モード第5号、docs-only） | 2026-04-16 | `HANDOVER_FINAL.md §6.3` の「非可逆部分の未解消課題」を canonical spec として固定。TEXT→TEXTLOG / TEXTLOG→TEXT 非可逆境界を表形式で全項目網羅、許容損失の理由付け、`RelationKind = 'provenance'`（additive）の設計根拠・後方互換性、`Relation.metadata?: Record<string,string>`（additive）追加仕様、provenance ペイロード定義（`conversion_kind / split_mode / source_content_hash / converted_at / segment_count / selected_log_count`）、実装スライス A–D（A=本ドキュメント / B=RelationKind 追加 / C=metadata? 追加 / D=変換関数拡張）の順序と依存、テスト戦略スニペット、スキーマ互換性（全変更が v1 範囲内・SCHEMA_VERSION 更新不要）を記述。`data-model.md §5` RelationKind / Relation schema 更新（`provenance` 行追加 / `metadata?` フィールド行追加）、`textlog-text-conversion.md` 末尾に cross-link、`HANDOVER_FINAL.md §6.3` に解消マーカー追記。production code touch 0。テスト追加なし（Slice B–D 実装時に追加予定）。 |

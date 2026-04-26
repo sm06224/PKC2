@@ -178,7 +178,7 @@ new MarkdownIt({ ... })
 
 - export されているが src 呼出し 0 件
 - tests 1 箇所 (`tests/features/markdown/markdown-render.test.ts:435`)
-- `docs/development/ux-regression-recovery.md:128`: **"Phase 3 は `getMarkdownInstance().use(plugin)` で追加可能"** という拡張 API として明示
+- `docs/development/completed/ux-regression-recovery.md:128`: **"Phase 3 は `getMarkdownInstance().use(plugin)` で追加可能"** という拡張 API として明示
 
 → **C: spec-declared extension point**。削除は docs 更新を伴う。現在呼ばれていないことを理由に削るのは round 3 で保留にした `extractRefsFromEntry` / `collectLinkRefs` と同じ状況。
 

@@ -2,7 +2,7 @@
  * TEXT archetype — markdown body asset helpers.
  *
  * Pure features-layer helpers used by the `.text.zip` sister bundle
- * export / import (see `docs/development/text-markdown-zip-export.md`).
+ * export / import (see `docs/development/completed/text-markdown-zip-export.md`).
  * No browser APIs, no IO — everything here is just string → string.
  *
  * The TEXTLOG equivalent lives in `features/textlog/textlog-csv.ts`

@@ -29,7 +29,7 @@
  *     entry-window postMessage protocol via `pushPreviewContextUpdate`.
  *     New cross-window flows should add their own dedicated wiring.
  *
- * See `docs/development/edit-preview-asset-resolution.md`, section
+ * See `docs/development/completed/edit-preview-asset-resolution.md`, section
  * "Live refresh wiring", for the full rationale and the four-point
  * responsibility split.
  */

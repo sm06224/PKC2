@@ -7,7 +7,7 @@
  * The plan describes all entries, folders, and relations to create.
  * The reducer applies the plan atomically in one pass.
  *
- * Spec: `docs/development/batch-import-transaction-hardening.md`.
+ * Spec: `docs/development/completed/batch-import-transaction-hardening.md`.
  *
  * Layering: features/ — pure types + functions only. Input types are
  * defined here independently of adapter types (caller maps at boundary).

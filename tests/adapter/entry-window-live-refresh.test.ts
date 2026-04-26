@@ -343,7 +343,7 @@ describe('wireEntryWindowLiveRefresh', () => {
     // `removeEntry` still does not touch `container.assets`, so the
     // raw asset bytes remain — the test also documents that orphan
     // asset cleanup is still out-of-scope (see
-    // docs/development/edit-preview-asset-resolution.md §Live refresh
+    // docs/development/completed/edit-preview-asset-resolution.md §Live refresh
     // wiring).
     const dispatcher = createDispatcher();
     const textLid = `text-del-${testCounter}`;

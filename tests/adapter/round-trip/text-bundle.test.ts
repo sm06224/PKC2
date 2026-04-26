@@ -12,8 +12,8 @@
  *   - `docs/spec/data-model.md` §13 (Sister Bundle contract)
  *   - `docs/spec/body-formats.md` §13.4 (text-bundle overview)
  *   - `docs/spec/body-formats.md` §9 (asset reference notation)
- *   - `docs/development/text-markdown-zip-export.md` §7.3 (always re-key assets)
- *   - `docs/development/text-markdown-zip-export.md` §7.6 (missing refs kept verbatim)
+ *   - `docs/development/completed/text-markdown-zip-export.md` §7.3 (always re-key assets)
+ *   - `docs/development/completed/text-markdown-zip-export.md` §7.6 (missing refs kept verbatim)
  *
  * Equivalence rule for this route:
  *   - text.title:     equals source entry.title (non-empty) — otherwise 'Imported text'
