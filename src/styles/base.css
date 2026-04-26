@@ -530,9 +530,15 @@
 }
 
 .pkc-eip-content > .pkc-btn,
-.pkc-eip-content > button {
+.pkc-eip-content > button,
+.pkc-action-bar-more-content > .pkc-btn,
+.pkc-action-bar-more-content > button,
+.pkc-action-bar-more-content > label {
   /* Buttons fill the menu width so the column reads as a list of
-   * options rather than a row of pills stacked vertically. */
+   * options rather than a row of pills stacked vertically. The
+   * More… menu also carries a `<label>` (the "compact" checkbox
+   * wrapper), which gets the same left-aligned full-width
+   * treatment so the column reads consistently. */
   text-align: left;
   width: 100%;
 }
