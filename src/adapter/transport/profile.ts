@@ -6,7 +6,7 @@
  * - What app this is
  * - What version and schema it speaks
  * - Whether it's embedded
- * - What message types it supports
+ * - What message types it accepts (advertised types only)
  *
  * This is NOT capability negotiation. It is a passive, read-only
  * profile response. The sender decides what to do with it.
@@ -16,9 +16,19 @@
  * - No heavy runtime state is included (no entries, no pending offers)
  * - The profile helper is pure: takes inputs, returns a value
  * - Bridge calls this to build the pong payload
+ *
+ * `capabilities` source (PR-B' / Decision D1, 2026-04-26):
+ * Reads `MESSAGE_CAPABILITIES` from `./capability.ts` (derived from
+ * `MESSAGE_RULES` keys). This guarantees the advertised list always
+ * matches the message types that will actually route to a handler.
+ * The list follows spec `pkc-message-api-v1.md` §5.2.1 vocabulary
+ * (message-type names, colon-separated). Build-side feature flags
+ * are intentionally NOT included (see `BUILD_FEATURES` in
+ * `src/runtime/release-meta.ts`).
  */
 
-import { APP_ID, SCHEMA_VERSION, CAPABILITIES } from '../../runtime/release-meta';
+import { APP_ID, SCHEMA_VERSION } from '../../runtime/release-meta';
+import { MESSAGE_CAPABILITIES } from './capability';
 
 // ── Profile shape ────────────────────────
 
@@ -58,6 +68,6 @@ export function buildPongProfile(input: ProfileInput): PongProfile {
     version: input.version,
     schema_version: SCHEMA_VERSION,
     embedded: input.embedded,
-    capabilities: CAPABILITIES,
+    capabilities: MESSAGE_CAPABILITIES,
   };
 }

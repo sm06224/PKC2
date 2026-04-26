@@ -10,8 +10,14 @@
  * - Acceptance rules are static and declarative (no runtime registration).
  * - The guard runs BEFORE the handler registry — rejected messages never
  *   reach a handler, keeping handler logic free of mode checks.
- * - Capability strings in CAPABILITIES (release-meta.ts) are the external
- *   contract; this module is the internal enforcement.
+ * - `MESSAGE_CAPABILITIES` (this module) is the **transport advertise
+ *   list**: the message-type names PKC2 surfaces via `PongProfile`
+ *   per spec `pkc-message-api-v1.md` §5.2.1. Derived from
+ *   `MESSAGE_RULES` so that "registered handler" and "advertised type"
+ *   stay in lockstep by construction.
+ * - Build-side feature flags (`BUILD_FEATURES` in
+ *   `src/runtime/release-meta.ts`) are a **separate** list with
+ *   different vocabulary and audience (devtools / embed harness).
  *
  * This module does NOT:
  * - Check AppPhase (the reducer handles phase gating)
@@ -83,3 +89,26 @@ export function getSupportedMessageTypes(): MessageType[] {
 export function getAcceptanceMode(type: MessageType): AcceptanceMode | null {
   return MESSAGE_RULES[type]?.mode ?? null;
 }
+
+/**
+ * Transport-advertised message types. Derived from `MESSAGE_RULES`
+ * keys (sorted for deterministic ordering) so the list always
+ * matches what the bridge actually routes to a handler.
+ *
+ * This is the canonical source for `PongProfile.capabilities` per
+ * spec `pkc-message-api-v1.md` §5.2.1:
+ *
+ *   - Vocabulary: message-type names (colon-separated, e.g.
+ *     `'record:offer'`, `'export:request'`).
+ *   - Subset of `KNOWN_TYPES` (envelope.ts).
+ *   - Excludes protocol primitives (`ping` / `pong`) — they are
+ *     always available and not advertised.
+ *   - Excludes types without a registered handler (so a sender
+ *     never sees an advertise for a type that would silently drop).
+ *
+ * Build-side feature flags live in a different list, see
+ * `BUILD_FEATURES` in `src/runtime/release-meta.ts`.
+ */
+export const MESSAGE_CAPABILITIES: readonly MessageType[] = (
+  Object.keys(MESSAGE_RULES) as MessageType[]
+).sort();

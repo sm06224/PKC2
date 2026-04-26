@@ -301,7 +301,10 @@ describe('Renderer', () => {
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
   });
 
-  it('sets data-pkc-capabilities with current capabilities', () => {
+  it('sets data-pkc-capabilities with build-side feature flags', () => {
+    // PR-B' / Decision D4 (2026-04-26): data-pkc-capabilities surfaces
+    // BUILD_FEATURES (build-side flags), NOT message-type advertisements.
+    // Sender-visible message types are advertised via PongProfile.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
@@ -311,7 +314,8 @@ describe('Renderer', () => {
     expect(caps).toBeTruthy();
     expect(caps).toContain('core');
     expect(caps).toContain('export');
-    expect(caps).toContain('record-offer');
+    // No message-type names (no colon) — they live in PongProfile only.
+    expect(caps).not.toContain(':');
   });
 
   it('does not show pending offers bar when empty', () => {
