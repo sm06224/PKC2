@@ -614,25 +614,32 @@ function renderHeader(state: AppState): HTMLElement {
     header.appendChild(badge);
   }
 
-  // Pane toggle buttons (always shown)
+  // Pane toggle buttons (always shown). Wrapped in a right-anchored
+  // group so they stay pinned to the header's right edge in every phase
+  // — without the wrapper, phases that produce few preceding elements
+  // (e.g. `editing`) leave the toggles clustered on the left.
+  const toggles = createElement('div', 'pkc-header-toggles');
+
   const sidebarToggle = createElement('button', 'pkc-tray-toggle');
   sidebarToggle.setAttribute('data-pkc-action', 'toggle-sidebar');
   sidebarToggle.setAttribute('title', 'Toggle sidebar');
   sidebarToggle.textContent = '◧';
-  header.appendChild(sidebarToggle);
+  toggles.appendChild(sidebarToggle);
 
   const metaToggle = createElement('button', 'pkc-tray-toggle');
   metaToggle.setAttribute('data-pkc-action', 'toggle-meta');
   metaToggle.setAttribute('title', 'Toggle meta pane');
   metaToggle.textContent = '◨';
-  header.appendChild(metaToggle);
+  toggles.appendChild(metaToggle);
 
   // Shell menu button
   const menuBtn = createElement('button', 'pkc-tray-toggle pkc-shell-menu-btn');
   menuBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
   menuBtn.setAttribute('title', 'Menu (?)');
   menuBtn.textContent = '⚙';
-  header.appendChild(menuBtn);
+  toggles.appendChild(menuBtn);
+
+  header.appendChild(toggles);
 
   return header;
 }

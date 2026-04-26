@@ -957,7 +957,7 @@
  *
  * Slice 5.0 (2026-04-25): the v1 dark-theme defaults below stay on
  * `:root`. Light theme darkens orange / yellow / green / pink so the
- * 3px sidebar bar clears the WCAG 1.4.11 non-text contrast 3:1 floor
+ * 6px sidebar bar clears the WCAG 1.4.11 non-text contrast 3:1 floor
  * against the parchment-tinted #f0ebe0 light background — the four
  * untouched hues (red 3.2:1, blue 3.1:1, purple 3.3:1, gray 4.1:1)
  * already pass on light; orange (2.4), yellow (1.6), green (1.9),
@@ -994,8 +994,8 @@
 }
 
 .pkc-entry-color-bar {
-  border-left: 3px solid var(--pkc-color-tag-current, transparent);
-  padding-left: calc(0.4rem - 3px);
+  border-left: 6px solid var(--pkc-color-tag-current, transparent);
+  padding-left: calc(0.4rem - 6px);
 }
 
 /* Per-palette hue binding — one short class per palette ID, attached
@@ -3774,6 +3774,15 @@ mark.pkc-search-mark {
   background: var(--c-accent);
   box-shadow: var(--glow);
   width: 5px;
+}
+
+/* ── Header Toggles Group (right-anchored) ── */
+.pkc-header-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ── Pane Tray Toggle Buttons ── */

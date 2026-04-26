@@ -222,9 +222,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container?.entries.find((x) => x.lid === lid);
     const current = entry?.color_tag ?? null;
     const popover = renderColorPickerPopover(current);
-    // Position next to the trigger in DOM order so the popover flows
-    // beneath it; CSS handles the visual offset.
+    // Insert the popover next to the trigger in DOM order so focus
+    // and tab order remain natural, then pin its visual position with
+    // viewport-anchored coordinates. Without explicit `top/left`, the
+    // popover would be laid out at its parent's static position —
+    // which in a wrapped flex header lands far to the left of the
+    // trigger button. Using `position: fixed` decouples the popover
+    // from any positioned ancestor (e.g. transformed cards) and keeps
+    // it aligned under the trigger regardless of the surrounding
+    // layout.
     trigger.parentElement?.insertBefore(popover, trigger.nextSibling);
+    const rect = trigger.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${rect.bottom}px`;
+    popover.style.left = `${rect.left}px`;
+    popover.style.margin = '0';
     colorPickerEl = popover;
     colorPickerTrigger = trigger;
     colorPickerLid = lid;
