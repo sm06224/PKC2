@@ -365,6 +365,88 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     });
   }
 
+  /**
+   * Press-drag-release UX for `<details>`-style anchored menus
+   * (Data… in the header, More… in the entry action bar). The
+   * 2026-04-26 user request asked for the "macOS native menu" idiom
+   * — open on mousedown, follow the pointer, commit-or-cancel on
+   * mouseup. The shell menu is intentionally NOT covered here
+   * (per the 2026-04-26 follow-up: "実質メニューはホバーウィンドウ
+   * 単体で開くのでこれは対象外") — only popovers anchored to
+   * their trigger qualify.
+   *
+   * The summary element opts in via `data-pkc-pdr-menu` so the
+   * matching is explicit; both Data… and More… set this attribute
+   * in the renderer. Keyboard activation (Enter / Space) still
+   * goes through the native `<details>` toggle path.
+   *
+   * Flow:
+   *   1. mousedown on a marked `<summary>` → preventDefault to
+   *      suppress the native toggle, open the parent `<details>`
+   *      manually, install a one-shot capture-phase mouseup
+   *      listener.
+   *   2. mouseup on a `<button>` with `data-pkc-action` → invoke
+   *      `button.click()` so existing handlers dispatch the
+   *      action, then close the menu and swallow the natural
+   *      follow-up click.
+   *   3. mouseup on `<input>` / `<textarea>` / `<select>` (e.g.
+   *      the More… "compact" checkbox) → leave the menu open and
+   *      let the native click pass through.
+   *   4. mouseup elsewhere (summary itself, label, padding) →
+   *      close the menu and swallow.
+   */
+  let pdrMenuOpenDetails: HTMLDetailsElement | null = null;
+
+  function handleDetailsMenuMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const summary = t.closest('summary[data-pkc-pdr-menu]') as HTMLElement | null;
+    if (!summary) return;
+    const details = summary.parentElement as HTMLDetailsElement | null;
+    if (!details || details.tagName !== 'DETAILS') return;
+    e.preventDefault();
+    details.open = true;
+    pdrMenuOpenDetails = details;
+    document.addEventListener('mouseup', handleDetailsMenuMouseUp, {
+      capture: true,
+      once: true,
+    });
+  }
+
+  function handleDetailsMenuMouseUp(e: MouseEvent): void {
+    const details = pdrMenuOpenDetails;
+    pdrMenuOpenDetails = null;
+    if (!details) return;
+    const t = e.target;
+    // Native form controls inside the menu (e.g. the More…
+    // "compact" checkbox) should keep the menu open and let the
+    // native click open the platform UX. The user closes the menu
+    // manually (click outside, Escape) once they're done.
+    if (
+      t instanceof Element &&
+      t.closest('input, textarea, select') !== null &&
+      details.contains(t)
+    ) {
+      return;
+    }
+    const button =
+      t instanceof Element && details.contains(t)
+        ? (t.closest('button[data-pkc-action]') as HTMLElement | null)
+        : null;
+    if (button !== null) {
+      // Fire the menu item via the existing click delegation chain.
+      // `HTMLElement.click()` dispatches a synthetic click that
+      // bubbles through `handleClick` on root, where each `case`
+      // runs as if the user had clicked the item directly. We do
+      // this BEFORE registering `swallowOnce` so the synthetic
+      // dispatch is not suppressed.
+      button.click();
+    }
+    details.open = false;
+    registerOneShotClickSwallow();
+  }
+
   registerAssetPickerCallback((ctx) => {
     const state = dispatcher.getState();
     const candidates = collectImageAssets(state.container);
@@ -5022,6 +5104,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // out of scope because it is a hover-window-style menu that opens
   // standalone (per follow-up clarification).
   root.addEventListener('mousedown', handleColorPickerMouseDown);
+  // Press-drag-release for anchored `<details>` menus (Data… and
+  // More… — see `handleDetailsMenuMouseDown`).
+  root.addEventListener('mousedown', handleDetailsMenuMouseDown);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -5081,6 +5166,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
+    root.removeEventListener('mousedown', handleDetailsMenuMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);

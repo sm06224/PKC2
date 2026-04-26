@@ -1500,6 +1500,12 @@ function renderExportImportInline(state: AppState): HTMLElement {
   const summary = document.createElement('summary');
   summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
   summary.setAttribute('title', 'エクスポート・インポート操作');
+  // 2026-04-26 user audit: opt this details into the press-drag-
+  // release UX (`handleDetailsMenuMouseDown`) so the panel follows
+  // the macOS native menu idiom. mousedown opens the panel, drag
+  // onto an action button, release fires the action and closes
+  // the panel. Native click-toggle still works for keyboard.
+  summary.setAttribute('data-pkc-pdr-menu', '');
   summary.textContent = 'Data…';
   details.appendChild(summary);
 
@@ -3233,6 +3239,10 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       const moreSummary = document.createElement('summary');
       moreSummary.className = 'pkc-btn pkc-action-bar-more-summary';
       moreSummary.setAttribute('title', 'コピー・表示・エクスポート');
+      // 2026-04-26 user audit: macOS native menu idiom (see Data… in
+      // `renderExportImportInline`). The `data-pkc-pdr-menu` marker
+      // hooks into `handleDetailsMenuMouseDown` in action-binder.
+      moreSummary.setAttribute('data-pkc-pdr-menu', '');
       moreSummary.textContent = 'More…';
       more.appendChild(moreSummary);
 
