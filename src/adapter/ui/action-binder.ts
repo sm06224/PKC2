@@ -1077,6 +1077,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'DELETE_SAVED_SEARCH', id });
         break;
       }
+      case 'rename-saved-search': {
+        // 2026-04-26 sidebar audit follow-up — give the
+        // quick-saved (auto-named) row a custom label after the
+        // fact. `window.prompt` is a minimal v1 entry UX matching
+        // the legacy save-search flow we removed; cancel / empty
+        // / unchanged inputs all become silent no-ops in the
+        // reducer.
+        const id = target.getAttribute('data-pkc-saved-id');
+        if (!id) break;
+        // Same `stopPropagation` reasoning as `delete-saved-search`:
+        // the row itself carries `apply-saved-search`, and we don't
+        // want clicking the rename button to accidentally apply the
+        // search at the same time.
+        e.stopPropagation();
+        const current =
+          dispatcher
+            .getState()
+            .container?.meta.saved_searches?.find((s) => s.id === id)?.name ?? '';
+        const raw = window.prompt('保存検索の新しい名前:', current);
+        if (raw === null) break;
+        const name = raw.trim();
+        if (name === '') break;
+        if (name === current) break;
+        dispatcher.dispatch({ type: 'RENAME_SAVED_SEARCH', id, name });
+        break;
+      }
       case 'create-relation': {
         const form = target.closest<HTMLElement>('[data-pkc-region="relation-create"]');
         if (!form) break;

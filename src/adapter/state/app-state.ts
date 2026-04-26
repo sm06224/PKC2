@@ -63,7 +63,7 @@ import {
   createSavedSearch,
   applySavedSearchFields,
 } from '../../features/search/saved-searches';
-import { SAVED_SEARCH_CAP } from '../../core/model/saved-search';
+import { SAVED_SEARCH_CAP, SAVED_SEARCH_NAME_MAX } from '../../core/model/saved-search';
 import { buildLinkMigrationPreview } from '../../features/link/migration-scanner';
 import { applyLinkMigrations } from '../../features/link/migration-apply';
 
@@ -2348,6 +2348,40 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           meta: {
             ...state.container.meta,
             saved_searches: remaining,
+            updated_at: ts,
+          },
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'RENAME_SAVED_SEARCH': {
+      // Spec: docs/development/saved-searches-v1.md §5.1 (2026-04-26
+      // sidebar audit follow-up — single ★ quick-save plus rename
+      // affordance in the saved-searches pane).
+      if (!state.container) return blocked(state, action);
+      if (state.readonly) return blocked(state, action);
+      const existing = state.container.meta.saved_searches ?? [];
+      const idx = existing.findIndex((s) => s.id === action.id);
+      if (idx === -1) return { state, events: [] };
+      const trimmed = action.name.trim();
+      if (trimmed === '') return { state, events: [] };
+      const truncated = trimmed.slice(0, SAVED_SEARCH_NAME_MAX);
+      if (existing[idx]!.name === truncated) {
+        // No-op when the name is already what the user just typed —
+        // avoids a spurious `updated_at` bump.
+        return { state, events: [] };
+      }
+      const renamed = existing.map((s, i) =>
+        i === idx ? { ...s, name: truncated } : s,
+      );
+      const ts = new Date().toISOString();
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          meta: {
+            ...state.container.meta,
+            saved_searches: renamed,
             updated_at: ts,
           },
         },

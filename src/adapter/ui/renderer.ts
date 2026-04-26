@@ -1831,6 +1831,18 @@ function renderSavedSearchesPane(
     }
 
     if (!state.readonly) {
+      // 2026-04-26 sidebar audit follow-up: ★ button quick-saves
+      // with an auto timestamp name ("Saved <datetime>"). The
+      // rename affordance lets users replace that with a custom
+      // label after the fact. Sits BEFORE the delete × so the
+      // destructive action stays at the row's right edge.
+      const renameBtn = createElement('button', 'pkc-saved-search-rename');
+      renameBtn.setAttribute('data-pkc-action', 'rename-saved-search');
+      renameBtn.setAttribute('data-pkc-saved-id', s.id);
+      renameBtn.setAttribute('title', 'この保存検索の名前を変更');
+      renameBtn.textContent = '✏';
+      li.appendChild(renameBtn);
+
       const delBtn = createElement('button', 'pkc-saved-search-delete');
       delBtn.setAttribute('data-pkc-action', 'delete-saved-search');
       delBtn.setAttribute('data-pkc-saved-id', s.id);
