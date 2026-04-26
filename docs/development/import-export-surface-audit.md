@@ -361,13 +361,13 @@ Slice 単位で変えるべき点はなし。
 
 ### 7.4 Target folder
 
-- **現状**: Batch import 時は target folder 選択可(`docs/development/batch-import-target-folder-selection.md`)
+- **現状**: Batch import 時は target folder 選択可(`docs/development/completed/batch-import-target-folder-selection.md`)
 - **提案**: 通常の Import でも Merge mode のときに **target folder の指定オプション** を追加(未指定なら root、または imported 側の structural relation をそのまま復元)
 - これで「プロジェクト単位で取り込みたい」ケースが明示的に表現できる
 
 ### 7.5 Structural relation restore
 
-- **現状**: `docs/development/container-wide-batch-import.md` + `docs/development/folder-scoped-import.md` で folder 復元は既にある
+- **現状**: `docs/development/completed/container-wide-batch-import.md` + `docs/development/completed/folder-scoped-import.md` で folder 復元は既にある
 - **提案**: import preview に "structural relation を復元する / flat に展開する" の明示 toggle を追加
 - default は **復元する**(source の folder tree を維持)
 
@@ -394,7 +394,7 @@ Slice 単位で変えるべき点はなし。
 - **使い方の主題**: マシン移行 / 完全バックアップ / Git 管理 / 別 PKC 環境への復元
 - **human 編集は想定外**: 人が ZIP を開いて `.json` を書き換えることは API 契約外(壊れたらその時はやむなし)
 - **Import**: Replace / Merge どちらも OK、conflict UI もそのまま使える
-- **現状**: `docs/spec/zip-export-contract.md` + `docs/development/batch-import-transaction-hardening.md` で実装済みに近いが、"Backup ZIP" という呼び名は正本化されていない
+- **現状**: `docs/spec/zip-export-contract.md` + `docs/development/completed/batch-import-transaction-hardening.md` で実装済みに近いが、"Backup ZIP" という呼び名は正本化されていない
 
 ### 8.2 Interchange ZIP の定義
 

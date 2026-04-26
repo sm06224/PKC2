@@ -6,7 +6,7 @@
  * all Blob / download logic lives in `adapter/platform/textlog-bundle.ts`.
  *
  * Format contract is frozen in
- * `docs/development/textlog-csv-zip-export.md`. The short version:
+ * `docs/development/completed/textlog-csv-zip-export.md`. The short version:
  *
  *   log_id, timestamp_iso, timestamp_display, important,
  *   text_markdown, text_plain, asset_keys, flags
@@ -80,7 +80,7 @@ export function serializeTextlogAsCsv(body: TextlogBody): string {
 /**
  * Produce a new `TextlogBody` with broken asset references stripped
  * from every entry's `text` field — "compact mode" from the export
- * spec (§13 of `docs/development/textlog-csv-zip-export.md`).
+ * spec (§13 of `docs/development/completed/textlog-csv-zip-export.md`).
  *
  * A reference is **broken** when its asset key is NOT in the
  * `presentKeys` set. Broken references are rewritten as follows:
@@ -188,7 +188,7 @@ export function stripMarkdownForCsvPlain(text: string): string {
  *
  * This is the inverse of `serializeTextlogAsCsv` and is used by the
  * textlog bundle re-importer (Issue H, see
- * `docs/development/textlog-csv-zip-export.md` §14). The parser is
+ * `docs/development/completed/textlog-csv-zip-export.md` §14). The parser is
  * pure — no browser APIs — so it lives next to the serializer.
  *
  * Behaviour pinned by tests:

@@ -1547,7 +1547,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         //     ├── body.md
         //     └── assets/<asset-key><ext>
         // Format spec is pinned in
-        // docs/development/text-markdown-zip-export.md.
+        // docs/development/completed/text-markdown-zip-export.md.
         //
         // Same compact checkbox + missing-asset confirm() pattern as
         // the textlog export — reuses the UI shape so users don't have
@@ -3329,7 +3329,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   // ── DnD handlers ──
   // Three isolated DnD systems: sidebar (relations), kanban (status), calendar (date).
-  // See docs/development/todo-cross-view-move-strategy.md for design rationale.
+  // See docs/development/completed/todo-cross-view-move-strategy.md for design rationale.
 
   // ── DnD: sidebar tree ──
 
@@ -3656,7 +3656,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ── DnD: cleanup helper ──
   // Clears all drag state, timers, and visual attributes across all DnD systems.
   // Called as a safety net from fallback handlers when normal cleanup may not fire.
-  // See docs/development/dnd-cleanup-robustness.md for rationale.
+  // See docs/development/completed/dnd-cleanup-robustness.md for rationale.
 
   function clearAllDragState(): void {
     draggedLid = null;

@@ -28,8 +28,8 @@ PKC2 の「参照基盤」を 1 本の spec に正本化する **docs-first foun
 参照(先行 docs):
 
 - `docs/development/textlog-viewer-and-linkability-redesign.md` §4.5, §6.5 — `entry:<lid>` 既存 grammar
-- `docs/development/asset-reference-resolution.md` — `asset:<key>` 既存 resolution
-- `docs/development/asset-autocomplete-foundation.md` — `asset:` 入力補完
+- `docs/development/completed/asset-reference-resolution.md` — `asset:<key>` 既存 resolution
+- `docs/development/completed/asset-autocomplete-foundation.md` — `asset:` 入力補完
 - `docs/spec/attach-while-editing-insert-internal-link-v1-*.md` — 内部 link 挿入 UX
 - `docs/spec/link-index-v1-*.md` — link index entry(Category C-3)
 - `docs/spec/search-filter-semantics-v1.md` — 検索軸との関係(link は検索軸ではない)
@@ -757,7 +757,7 @@ PKC 専用 link parser / renderer は **PKC semantics 以外の URI を横取り
 ### 12.1 PKC が解釈する scheme(only these)
 
 - `entry:` — internal entry reference(`src/features/entry-ref/entry-ref.ts`)
-- `asset:` — internal asset reference(`docs/development/asset-reference-resolution.md`)
+- `asset:` — internal asset reference(`docs/development/completed/asset-reference-resolution.md`)
 - `pkc://` — Portable PKC Reference(§5.5)
 - `<base>#pkc?...` — External Permalink(§4)、ただし PKC 解釈は `#pkc?` で始まる fragment のみ
 

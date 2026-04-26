@@ -118,7 +118,7 @@ inventory round 5。round 1-4 でカバーしていない残り adapter/features
 
 | 項目 | 分類 | 根拠 |
 |------|------|------|
-| `groupTodosByStatus()` に showArchived パラメータが**ない** | **D** | `docs/development/todo-view-consistency.md §4` "Kanban: Always excluded" の **意図的設計**。仕様 invariant。|
+| `groupTodosByStatus()` に showArchived パラメータが**ない** | **D** | `docs/development/completed/todo-view-consistency.md §4` "Kanban: Always excluded" の **意図的設計**。仕様 invariant。|
 | `groupTodosByDate(showArchived)` 分岐 | **D** | calendar 側は `showArchived` flag を尊重。renderer から渡されている。|
 
 ### A 級判定: **なし**。全 9 export live、view 別 logic は仕様で justified。

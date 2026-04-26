@@ -1344,7 +1344,7 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
    the child was dirty (body-edit or title-input differs from the
    saved originals). The actual DOM replacement is deferred until the
    user cancels or saves — see the "Dirty state policy for view
-   rerender" Issue and docs/development/edit-preview-asset-resolution.md.
+   rerender" Issue and docs/development/completed/edit-preview-asset-resolution.md.
    Hidden by default via the inline style attribute on the element. */
 .pkc-pending-view-notice {
   background: var(--c-surface); color: var(--c-muted);

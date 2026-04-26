@@ -6,7 +6,7 @@
  * extracts each nested `.text.zip` / `.textlog.zip` via the
  * existing single-entry importers.
  *
- * Format spec: `docs/development/container-wide-batch-import.md`.
+ * Format spec: `docs/development/completed/container-wide-batch-import.md`.
  *
  * Key properties:
  * - **Always-additive**: never replaces/merges existing entries

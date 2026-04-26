@@ -39,8 +39,8 @@ PKC2 v0.1.0 までの import は **full replace** 契約に限定されている
 ## 2. 現行 import の前提
 
 本章は spec からの再確認であり、merge import 設計の制約条件になる。
-引用元は `docs/spec/data-model.md` / `docs/development/container-wide-batch-import.md`
-/ `docs/development/folder-scoped-import.md` / `docs/planning/HANDOVER_FINAL.md`。
+引用元は `docs/spec/data-model.md` / `docs/development/completed/container-wide-batch-import.md`
+/ `docs/development/completed/folder-scoped-import.md` / `docs/planning/HANDOVER_FINAL.md`。
 
 ### 2.1 Full-replace import（CONFIRM_IMPORT）
 
@@ -854,9 +854,9 @@ refactor または minor addition で吸収できる。
 ## 12. 参考
 
 - `docs/spec/data-model.md` §11.7.4 / §14.1 / §15.5
-- `docs/development/container-wide-batch-import.md`
-- `docs/development/folder-scoped-import.md`
-- `docs/development/import-preview-ui.md`
+- `docs/development/completed/container-wide-batch-import.md`
+- `docs/development/completed/folder-scoped-import.md`
+- `docs/development/completed/import-preview-ui.md`
 - `docs/development/orphan-asset-auto-gc.md`（Tier 2-1）
 - `docs/development/bulk-restore-ui.md`（Tier 2-2）
 - `docs/planning/HANDOVER_FINAL.md` §5.1

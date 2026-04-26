@@ -2,7 +2,7 @@
  * Folder-scoped export — bundles all TEXT and TEXTLOG entries under
  * a folder (recursively) into a single `.folder-export.zip`.
  *
- * Format spec: `docs/development/folder-scoped-export.md`.
+ * Format spec: `docs/development/completed/folder-scoped-export.md`.
  *
  * Re-uses the same nested ZIP pattern as the container-wide TEXT /
  * TEXTLOG exports: the outer ZIP contains individual `.text.zip` /

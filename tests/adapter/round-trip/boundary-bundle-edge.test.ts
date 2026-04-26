@@ -3,7 +3,7 @@
  * Boundary cases A5 + A6: single-entry bundle edge cases.
  *
  * A5 — text-bundle title fallback
- *   Spec: `docs/development/text-markdown-zip-export.md` §7.5
+ *   Spec: `docs/development/completed/text-markdown-zip-export.md` §7.5
  *         "Resolve the title. When source_title is empty/whitespace
  *          after trim(), fall back to 'Imported text'."
  *   Also documented in `docs/spec/body-formats.md` §13.4 (sister bundle)

@@ -100,7 +100,7 @@
 | `SANDBOX_DESCRIPTIONS` | const record | ○ | `renderer.ts` | ○ | - |
 | `estimateSize` | function | ○ | 0 | ○ | - |
 | `resolveDisplaySize` | function | ○ (2 call sites) | 0 | ○ | - |
-| `generateAssetKey` | function | ○ (1 call site) | 0 | ○ | `docs/spec/data-model.md`, `docs/development/asset-reference-resolution.md` |
+| `generateAssetKey` | function | ○ (1 call site) | 0 | ○ | `docs/spec/data-model.md`, `docs/development/completed/asset-reference-resolution.md` |
 | `isLegacyFormat` | function | ○ (1 call site) | 0 | ○ | - |
 | `isPreviewableImage` | function | ○ | `asset-picker.ts` | ○ | `attachment-preview-strategy.md` |
 | `isSvg` | function | ○ | `renderer.ts` | ○ | `attachment-preview-strategy.md` |
@@ -120,7 +120,7 @@
 - `classifyPreviewType` は `isPreviewableMedia` を **呼んでいない**。代わりに `/^video\//i` / `/^audio\//i` という緩い prefix match を直接 inline 実装。
 - src 内の call site は 0 件。
 - `tests/adapter/attachment-presenter.test.ts` に 5 つの直接テスト。
-- `docs/development/attachment-preview-strategy.md:48` に判定ヘルパー列挙として 1 行登場。
+- `docs/development/completed/attachment-preview-strategy.md:48` に判定ヘルパー列挙として 1 行登場。
 - **残置理由の推定**: 厳密 allowlist 版として導入された後、preview 分類が `classifyPreviewType` 側へ集約された際に wiring が `isPreviewableMedia` を跨ぐことなく inline 化された結果、孤立 export として残った可能性。
 - **注意**: 振る舞いが `classifyPreviewType` の inline 分類と **非互換**（mp4/webm/ogg, mp3/mpeg/ogg/wav/webm のみ許容 vs 全 `video/*` / `audio/*`）。削除時は docs と tests の更新が必須。inline 分類が「緩すぎる」可能性もあるため、security review 観点で別 issue として扱う方が安全。
 
@@ -160,7 +160,7 @@
 ### docs/spec/manual 影響
 
 - `isPreviewableMedia` 削除時:
-  - `docs/development/attachment-preview-strategy.md:48` を更新。
+  - `docs/development/completed/attachment-preview-strategy.md:48` を更新。
   - `tests/adapter/attachment-presenter.test.ts` の該当 describe ブロック削除。
   - `classifyPreviewType` の厳密化方針の明文化 (別 PR 推奨)。
 - `SandboxAttribute` の `export` 削除時:

@@ -304,8 +304,8 @@ Option C は standalone file:// ユーザ向けの将来 v1+ 候補として def
 - `docs/spec/provenance-relation-profile.md` — relation kind = 'provenance' の意味論
 - `docs/spec/merge-import-conflict-resolution.md` — batch import の conflict 解決
 - `docs/development/merge-import-implementation.md` — overlay semantics
-- `docs/development/import-preview-ui.md` — batch preview の UI 契約
-- `docs/development/batch-import-transaction-hardening.md` — import の atomicity 保証
+- `docs/development/completed/import-preview-ui.md` — batch preview の UI 契約
+- `docs/development/completed/batch-import-transaction-hardening.md` — import の atomicity 保証
 
 ### 8.2 本 draft で参照する想定の次 spec
 
