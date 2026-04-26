@@ -1,5 +1,7 @@
 # Transport Record Accept / Reject — Consistency Review
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)で **superseded** された。canonical reference は v1 spec §7.3 / §7.4 を参照。本 doc は archeology(consistency review の記録)として保持する。
+
 **Status**: review complete — 2026-04-19.
 **Scope**: transport `record:accept` / `record:reject` の実装 / 仕様 / capability / handler の整合性確認。削除ではなく差分の明文化が目的。
 

@@ -1,5 +1,7 @@
 # Transport `record:reject` — Sender-Only Decision
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)で **active** な決定として §7.4 / §11.4 から参照される(Option A: sender-only by design の根拠)。本 doc は引き続き正本として保持する。
+
 **Status**: active — 2026-04-19 decision.
 **Scope**: capability declaration / handler asymmetry resolution.
 **Follow-up of**: `docs/development/transport-record-accept-reject-consistency-review.md` (PR #45).

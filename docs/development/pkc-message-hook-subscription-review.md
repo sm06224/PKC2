@@ -1,5 +1,7 @@
 # PKC-Message Hook Subscription Protocol — PKC2 側レビュー（docs-only）
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)で **superseded** された(設計レビューの記録は acceptance + decision に集約済み)。canonical reference は v1 spec を参照。本 doc は archeology として保持する。
+
 > **📌 canonical pointer（2026-04-21 時点）**
 >
 > - **canonical entry point**: `pkc-message-hook-subscription-decision.md`

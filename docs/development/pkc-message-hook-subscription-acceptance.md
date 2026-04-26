@@ -1,5 +1,7 @@
 # PKC-Message Hook Subscription Protocol — Acceptance Contract (docs-only)
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)では **未実装、v2+** として §11.1 から参照される。本 doc は hook subscription を将来 v2+ で実装するときの acceptance contract の正本として **active** な状態を保持する。
+
 > **📌 canonical pointer（2026-04-21 時点）**
 >
 > - **canonical entry point**: `pkc-message-hook-subscription-decision.md`
