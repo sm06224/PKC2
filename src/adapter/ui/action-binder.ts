@@ -311,13 +311,39 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeColorPicker();
     // Swallow the click that would fire after this mouseup so the
     // legacy click-path handlers do not act on the same gesture.
-    document.addEventListener('click', swallowOnce, { capture: true, once: true });
+    registerOneShotClickSwallow();
   }
 
   function swallowOnce(e: Event): void {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
+  }
+
+  /**
+   * Register `swallowOnce` as a one-shot capture-phase click listener
+   * with a 100 ms safety-net auto-cleanup. The natural click event
+   * after mousedown+mouseup on different elements fires on the
+   * common ancestor (per the W3C UI Events spec); we suppress it so
+   * the legacy click handlers do not double-fire on a press-drag-
+   * release gesture.
+   *
+   * Safety net: drivers that simulate raw mouse input (Playwright's
+   * `page.mouse.down`/`up`, some accessibility tools) do not
+   * synthesize the follow-up `click`, so the `once: true` listener
+   * would otherwise stay pending and swallow the next *legitimate*
+   * click. The timeout removes the listener if it has not fired by
+   * then; `removeEventListener` is a no-op if `once: true` already
+   * removed it after a real click.
+   */
+  function registerOneShotClickSwallow(): void {
+    document.addEventListener('click', swallowOnce, {
+      capture: true,
+      once: true,
+    });
+    setTimeout(() => {
+      document.removeEventListener('click', swallowOnce, true);
+    }, 100);
   }
 
   function handleColorPickerMouseDown(e: MouseEvent): void {
@@ -337,6 +363,93 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       capture: true,
       once: true,
     });
+  }
+
+  /**
+   * Press-drag-release UX for the shell menu (⚙). 2026-04-26 user
+   * request: extend the macOS-native menu idiom to other expanding
+   * controls so the "drawer" never lingers after use.
+   *
+   * Flow:
+   *   1. mousedown on ⚙             → dispatch TOGGLE_MENU (open).
+   *   2. drag while held             → pointer moves over menu items.
+   *   3. mouseup on `<input>` /
+   *      `<textarea>` / `<select>`   → leave the menu open, let the
+   *      native click open the platform color picker / file picker /
+   *      dropdown (the shell menu carries `<input type="color">`
+   *      etc., so swallowing the click would break those).
+   *   4. mouseup on a `<button>`
+   *      with `data-pkc-action`      → invoke `button.click()` so
+   *      the existing click handler dispatches the action
+   *      (set-theme, set-scanline, export-*, import-*, …), then
+   *      CLOSE_MENU and swallow the natural follow-up click.
+   *      Synthetic invocation is needed because the natural click
+   *      fires on the closest common ancestor of mousedown- and
+   *      mouseup-targets, which is rarely the menu item itself.
+   *   5. mouseup elsewhere           → CLOSE_MENU + swallow click
+   *      (overlay, label, padding, heading).
+   *
+   * Keyboard fallback: Enter/Space on ⚙ fires `click` without a
+   * preceding mousedown, so the existing `case 'toggle-shell-menu'`
+   * click branch still toggles open. Tab to a button inside the menu
+   * and Enter still applies through the legacy click path. The menu
+   * does NOT auto-close for keyboard activations — that mode keeps
+   * the modal open until the user clicks the close button or the
+   * overlay, which is the right behaviour for screen-reader users
+   * who need time to read each section.
+   */
+  function handleShellMenuMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const triggerEl = t.closest(
+      '[data-pkc-action="toggle-shell-menu"]',
+    ) as HTMLElement | null;
+    if (!triggerEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dispatcher.getState().menuOpen) {
+      dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    }
+    document.addEventListener('mouseup', handleShellMenuMouseUp, {
+      capture: true,
+      once: true,
+    });
+  }
+
+  function closeShellMenuIfOpen(): void {
+    if (dispatcher.getState().menuOpen) {
+      dispatcher.dispatch({ type: 'CLOSE_MENU' });
+    }
+  }
+
+  function handleShellMenuMouseUp(e: MouseEvent): void {
+    const t = e.target;
+    if (
+      t instanceof Element &&
+      t.closest('input, textarea, select') !== null
+    ) {
+      // Native form control — let the click pass through so the
+      // platform UX (color picker, file dialog, dropdown) opens.
+      // Menu stays open in the background; the user closes it
+      // manually after they're done with the native control.
+      return;
+    }
+    const button =
+      t instanceof Element
+        ? (t.closest('button[data-pkc-action]') as HTMLElement | null)
+        : null;
+    if (button !== null) {
+      // Fire the menu item's action via the existing click handler
+      // chain. `HTMLElement.click()` dispatches a synthetic click
+      // that bubbles through the delegated handler on root, where
+      // each `case` runs as if the user had clicked the item
+      // directly. We do this BEFORE registering `swallowOnce` so the
+      // synthetic dispatch is not suppressed.
+      button.click();
+    }
+    closeShellMenuIfOpen();
+    registerOneShotClickSwallow();
   }
 
   registerAssetPickerCallback((ctx) => {
@@ -4891,10 +5004,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('input', handleTextEditPreviewInput);
 
   root.addEventListener('click', handleClick);
-  // Press-drag-release for expanding-menu buttons. Currently scoped
-  // to the color picker (2026-04-26 user request). Listener is on
-  // root so it survives full re-renders.
+  // Press-drag-release for expanding-menu buttons (2026-04-26 user
+  // request). Listeners are on root so they survive full re-renders.
+  // Each menu has its own handler because the close behaviour
+  // differs (popover removal vs. CLOSE_MENU dispatch, click-swallow
+  // vs. click-passthrough for native inputs).
   root.addEventListener('mousedown', handleColorPickerMouseDown);
+  root.addEventListener('mousedown', handleShellMenuMouseDown);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -4954,6 +5070,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
+    root.removeEventListener('mousedown', handleShellMenuMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);
