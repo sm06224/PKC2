@@ -1,0 +1,9 @@
+# PKC2 CODEOWNERS
+#
+# 1 名運営のため、現状はすべてのファイルを @sm06224 が所有しています。
+# 将来 contributor が増えた場合、領域ごとに分割します(例: docs/spec/ や
+# src/adapter/transport/ を別 owner に振る)。
+#
+# 参考: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+* @sm06224
