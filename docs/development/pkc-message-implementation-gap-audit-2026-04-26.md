@@ -371,16 +371,157 @@ audit doc 着地(本 PR)→ 別PRJ モックアップ受領 → §7 追補の有
 **実装ゼロ**: docs-only
 **順序**: 別PRJ から HTML 受領後、最優先で着手
 
-## 7. Mockup-driven gap(TBD)
+## 7. Mockup-driven gap(別PRJ HTML 受領後の追補、2026-04-26)
 
-別PRJ「PKCにAIを住まわせる会」のモックアップ HTML を受領したら、以下を追補:
+別PRJ「PKCにAIを住まわせる会」から **PKC-Message Companion v0** mockup HTML を受領 → §6 PR-E の予告通り、本 §7 を expand。**重要**: mockup は spec §5.2 / §5.3 の例示と整合しており、PKC2 実装側が drift していることが判明。本セクションでは PKC2 側の API ルール / 標準実装に関する **決定** を含む(spec / 実装の更新は次 PR で)。
 
-- 実際に使われている message type と payload shape
-- sender origin(allowlist 設定の具体値が見える)
-- 想定 flow の細かい挙動(ping payload 内容 / record:offer の selection_text 利用有無 / export:request の filename customize 有無)
-- spec / 実装からは見えていなかった integration friction
+### 7.1 Mockup の構成
 
-→ user が `/home/user/PKC2/tmp/ai-collab-mockup.html` 等に置いてくれた段階で本 §7 を埋め、別 audit 改訂 PR で着地。
+PKC-Message Companion v0(単一 HTML、~30 KB):
+
+- **2 mode 切替**: `?mode=harness` で top-level(parent / PKC2 host のモック)、`?mode=sender` で iframe(child / sender、本来 PKC2 が host する企画形)
+- **harness は self-iframe**: 同じ HTML を `?mode=sender` で iframe 化、parent ↔ iframe の postMessage を mock
+- **5 message type compose form**: `ping` / `record:offer` / `export:request` / `navigate` / `custom`
+- **Bad envelope 6 preset**: `RejectCode` enum の 6 値(NOT_OBJECT / WRONG_PROTOCOL / WRONG_VERSION / MISSING_TYPE / INVALID_TYPE / MISSING_TIMESTAMP)を 1 button ずつ
+- **Capability advertise UI**: harness 側で `record:offer` / `export:request` / `navigate` / `custom` を checkbox で advertise on/off(spec §5.2 通り、message-type 名 with colon)
+- **Accept policy 3 値**: `manual`(spec §6.2 default)/ `auto-accept`(debug)/ `auto-dismiss`(debug、§6.2 違反を体感)
+- **Forward-compat probe**: `record:offer` form に "extra payload fields" textarea(unknown field 黙殺の §9.4 を probe)
+- **Sender postMessage**: `window.parent.postMessage(env, '*')`(targetOrigin = `'*'`、receiver 側 PKC2 の allowedOrigins が gating)
+- **Non-envelope control channel**: `{ kind: 'sender-ready' }` で harness が iframe boot を観測(`isPkcMessage` filter で envelope path に到達せず安全)
+
+### 7.2 確認済み(本 audit §3-§5 と一致)
+
+| Finding | 確認結果 |
+|---|---|
+| **§3 Flow 1 ping/pong** | mockup の sender が ping → bridge 自動 pong → `pong.payload.<capabilities>` を見て type 判定する想定。spec §5.1 / §7.1 通り。 |
+| **§3 Flow 2 record:offer** | sender → host で title/body 必須、size cap 認知(byte counter 262144 で red 化)、`extra` field 経由で §9.4 forward-compat を probe。spec §7.2 通り。 |
+| **§3 Flow 3 export:request** | mockup harness は `embedded` checkbox を持ち、`canHandleMessage` の embedded-only gate を mock 実装で再現。spec §7.5.3 通り。 |
+| **§4 P0-1**(allowedOrigins hardcode)| mockup sender 側は `'*'` で送信、PKC2 host 側 allowedOrigins が gating。production で「PKC2 が iframe を host」なら same-origin で works、それ以外なら audit 通り blocker。**確認、変更なし**。 |
+| **§4 P0-2**(body size cap)| mockup は byte counter で 262144 を red 化、**limit を spec 通り尊重**。AI 協働会 implementer も認知済み。**追加対応不要**。 |
+| **§4 P1-2**(record:reject `window.parent` hardcode)| mockup は `record:reject` を `window.parent` から受信前提。production で companion iframe ↔ PKC2 parent なら works、cross-window context で fail する audit 結論は変わらず。**Must-2 で対応**。 |
+| **§4 P2-x**(deferred 確認)| spec §11 deferred 項目について mockup から追加要望なし。すべて spec 通り deferred 継続で OK。 |
+
+### 7.3 NEW finding(mockup-driven、本 audit に追加)
+
+#### NEW P0-3: CAPABILITIES vocabulary drift(integration UX ブロッカー)
+
+**事象**:
+
+| 出所 | vocabulary |
+|---|---|
+| **PKC2 実装** `release-meta.ts:104-110` | `['core', 'idb', 'export', 'record-offer']`(kebab-case、内部 feature flag + 1 message type 混在) |
+| **spec §5.2 example** | `'record:offer' / 'export:request' 等`(colon 区切り、message-type 名) |
+| **mockup default advertise** | `record:offer` / `export:request` / `navigate` / `custom`(colon 区切り、message-type 名) |
+
+**問題**: mockup(spec 通り)は pong の `capabilities` array で `'record:offer'` を探す → PKC2 は `'record-offer'`(ハイフン)を返す → mockup が「PKC2 は record:offer 非対応」と誤判定。実際の `MESSAGE_RULES` gate は `'record:offer'` で受理するため envelope 自体は通るが、**defensive な sender なら "advertised されていない type は送らない" 設計を採るため UX 上 broken に見える**。
+
+**スコープ**: PKC2 側の実装が spec から drift。mockup ではない。
+
+**判定**: **NEW P0-3、Must-3 として priority list 入り**(本 audit §5 を §7.5 で改訂)。
+
+#### NEW finding F: navigate / custom の handler 未登録
+
+**事象**:
+- mockup は capability checkbox UI に `navigate` / `custom` を持つ(off by default)
+- PKC2 は `KNOWN_TYPES`(`envelope.ts:44-54`)に両方含むが、**handler は未登録**
+- spec §7.6 / §7.7 で「handler 任意登録」と明示、unhandled type は `message-handler.ts:81-82` で console.warn(handler-level rejection)
+
+**判定**: **PKC2 側の advertise vocabulary 改訂時、handler 未登録の type は advertise しない** ルールを §7.4 Decision 2 で固定。これにより mockup が advertise 列を見て type 送信を判定する運用が壊れない。
+
+#### NEW finding G: All 6 RejectCode preset 全部カバー
+
+**事象**:
+- mockup の "bad envelopes" tab に 6 個 button(NOT_OBJECT / WRONG_PROTOCOL / WRONG_VERSION / MISSING_TYPE / INVALID_TYPE / MISSING_TIMESTAMP)
+- PKC2 の `validateEnvelope`(`envelope.ts:62-109`)の検査順序と完全一致
+
+**判定**: 互換性 OK。**追加対応不要**。
+
+#### NEW finding H: forward-compat probe 通過
+
+**事象**:
+- mockup `record:offer` form に "extra payload fields" textarea(任意 JSON を payload に追加)
+- PKC2 の `record-offer-handler.ts:122-143` は known field のみ extract → unknown field は黙殺
+
+**判定**: spec §9.4 Unknown Field Handling 通り。**追加対応不要**。
+
+#### NEW finding I: Non-envelope control channel(`{ kind: 'sender-ready' }`)
+
+**事象**:
+- mockup harness と sender iframe が `{ kind: 'sender-ready' }` 等の non-envelope オブジェクトで boot 通知
+- PKC2 の `isPkcMessage` filter で envelope path には到達せず安全に drop
+
+**判定**: spec compliance 良好(non-PKC message を silent ignore)。**追加対応不要**。
+
+### 7.4 Decisions(PKC2 project lead としての決定、別 Claude に伝える内容)
+
+> **これは spec を進化させる、または PKC2 実装を spec に揃えるための決定です**。別PRJ 側 mockup は spec §5.2 / §5.3 の通りに書かれており「mockup が正、PKC2 実装が drift」が判明。以下は次の docs / src PR でそのまま実行されます。
+
+#### Decision 1: PongProfile.capabilities vocabulary は **message-type 名(colon 区切り)に限定**
+
+- **正**: `pong.payload.capabilities: string[]` の各 element は `KNOWN_TYPES`(spec §4.1)に含まれる文字列のみ
+- **誤(現行 PKC2)**: `'core'` / `'idb'` のような内部 feature flag を混ぜる
+- **理由**: sender が「自分が送れる type」を判定する array であり、内部実装フラグは sender に無関係
+- **mockup との整合**: ✅ mockup は spec 通り、PKC2 を mockup に合わせる(= spec に合わせる)
+
+#### Decision 2: 「Advertise する type は handler が登録されている type に限定」
+
+- **正**: `MESSAGE_RULES`(`capability.ts:49-52`)に登録 + handler 実装あり、または bridge 層完結(ping/pong)
+- **誤**: KNOWN_TYPES 全列挙(handler 未登録の `navigate` / `custom` まで広告)
+- **特別ケース**: `ping` / `pong` は protocol primitive、advertise しない(常時利用可能、sender は ping から始める)
+- **PKC2 v1 結果**: `capabilities = ['record:offer', 'export:request']`(2 item)
+
+#### Decision 3: spec §5.2 / §7.1 に **vocabulary rule を明文化**(別 PR で実装)
+
+- 現 §5.2 は example のみ(`'record:offer' / 'export:request' 等`)、normative rule 不在
+- **新 normative**: 「`PongProfile.capabilities` は message-type 名(colon 区切り、`KNOWN_TYPES` 部分集合)、handler 登録 + 利用可能な type のみを列挙する。`ping` / `pong` は protocol primitive のため列挙しない」
+
+#### Decision 4: build / about 用の internal feature flag は **別 constant に分離**
+
+- 現 `CAPABILITIES`(`release-meta.ts:105-110`)は build メタデータと PongProfile の 2 用途で oversharing
+- **新方針**: PongProfile.capabilities は **`MESSAGE_RULES` から派生**(または専用 `MESSAGE_CAPABILITIES` array)、build メタデータは `BUILD_FEATURES` 等の別 constant
+- **互換性**: about page / pkc-meta json は内部 metadata 用途なので external API ではない、改名 OK
+
+### 7.5 改訂後 priority list(§5 を更新)
+
+#### 必須(Must)— 別PRJ mockup integration の unblock
+
+| 旧 ID | NEW ID | 内容 | 行数目安 |
+|---|---|---|---|
+| Must-1 | Must-1 | Origin allowlist runtime flexibility(P0-1)| ~40-60 行 |
+| Must-2 | Must-2 | record:reject sourceWindow threading(P1-2)| ~30-50 行 |
+| **新規** | **Must-3** | **CAPABILITIES vocabulary alignment**(NEW P0-3)| ~30-50 行 |
+
+**Must-3 の実装スケッチ**:
+- `release-meta.ts`: `CAPABILITIES` を `MESSAGE_CAPABILITIES = ['record:offer', 'export:request']` に置換、build 用は別 constant に
+- `profile.ts:55-63`: `buildPongProfile` の `capabilities` source を切り替え
+- builder / about: 旧 `CAPABILITIES` 参照を新 constant 名に追従
+- tests: pong payload の `capabilities` array が新 vocabulary を返すことを pin
+
+### 7.6 改訂後 PR 順序(§6 を更新)
+
+```
+PR-E1: [docs] 本 audit §7 expand(本 PR)+ spec §5.2/§7.1 vocabulary rule 明文化
+PR-A:  [docs] record-offer-capture-profile §10 body header injection 位置明文化(Should-1)
+PR-B:  [src + tests] Must-1 — allowedOrigins runtime flexibility
+PR-B': [src + tests] Must-3 — CAPABILITIES vocabulary alignment(NEW)
+PR-C:  [src + tests] Must-2 — record:reject sourceWindow threading
+PR-D:  [docs] Integration guide(NEW docs/integration/...)
+```
+
+PR-E1 が **本 PR**、merge 後に PR-A / PR-B / PR-B' / PR-C を順次着地、最後に PR-D で integrator 向け文書を仕上げる。
+
+### 7.7 別 Claude(別PRJ AI 協働会)への message
+
+> 本 audit + spec §5.2 / §7.1 改訂(本 PR)の通り、**mockup は spec §5.2 通りで正しい**。PKC2 側の実装が drift しており、Must-3(PR-B')で実装を mockup の vocabulary(`'record:offer'`、`'export:request'`)に揃える。
+>
+> mockup 側で **追加対応必要なし**。次の動き:
+>
+> 1. PKC2 側 PR-A〜PR-D 着地まで mockup を **そのまま保持**
+> 2. PR-B(allowedOrigins)着地後、production deployment で companion iframe を PKC2 origin で host する設定例を docs/integration で提供予定
+> 3. PR-B'(CAPABILITIES alignment)着地後、`pong.capabilities` が mockup の advertise UI 期待値と整合する
+> 4. PR-C(sourceWindow threading)着地後、cross-window context での `record:reject` 受信が安定
+>
+> mockup の HTML 中に markdown auto-link 化 artifact(`[ev.target](http://ev.target)` 等)があったため、execute するときは clean copy が必要(audit reference 用には保持)。
 
 ## 8. References
 

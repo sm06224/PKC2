@@ -157,13 +157,46 @@ interface PongProfile {
   version: string;         // semver, e.g. '2.1.1'
   schema_version: number;  // container schema version, e.g. 1
   embedded: boolean;       // standalone HTML か embedded iframe か
-  capabilities: string[];  // 'record:offer' / 'export:request' 等
+  capabilities: string[];  // §5.2.1 vocabulary に従う
 }
 ```
 
-実装 ref: `src/adapter/transport/profile.ts:29-40`。`capabilities` の string vocabulary は `src/runtime/release-meta.ts` の `CAPABILITIES` で管理。
+実装 ref: `src/adapter/transport/profile.ts:29-40`。
 
 **v1 commitment**: pong profile の field は **additive only**(v1 内で field を削除しない)。新規 field は optional として追加(§9.4)。
+
+#### 5.2.1 `capabilities` vocabulary(normative、2026-04-26 改訂)
+
+`PongProfile.capabilities` array の各 element は、以下のすべての条件を満たす **message-type 名** に限定する:
+
+1. **`KNOWN_TYPES`(§4.1)の部分集合**であること(`'record:offer'`、`'export:request'` 等の colon 区切り文字列)
+2. **handler が登録されている、または bridge 層で完結している**(handler 未登録の type を advertise しない、§7.6 / §7.7 参照)
+3. **protocol primitive ではない**(`ping` / `pong` は常時利用可能のため列挙しない、sender は ping から始める前提)
+
+これに従う **PKC2 v1 の canonical capabilities** は:
+
+```
+['record:offer', 'export:request']
+```
+
+**禁止事項**(advertise してはいけない):
+
+- 内部 feature flag(`'core'` / `'idb'` 等の、message type 名でないもの)
+- handler 未登録の type(advertise すると sender が「送れる」と誤判定する)
+- `'ping'` / `'pong'`(protocol primitive、§7.1)
+- `'record:accept'`(v1 では type 予約のみ、§7.3 / §11.3)
+
+**実装スケッチ**(`src/adapter/transport/profile.ts` / `src/runtime/release-meta.ts`):
+
+```ts
+// 推奨: MESSAGE_RULES から派生(handler 登録 = 列挙、と直結)
+const MESSAGE_CAPABILITIES = Object.keys(MESSAGE_RULES) as readonly string[];
+// または明示 array(MESSAGE_RULES と同期する責務を実装側が負う)
+```
+
+**build メタデータとの分離**: `pkc-meta` JSON / about page で使う internal feature flag(例: `'core'` / `'idb'` / `'export'`)は `BUILD_FEATURES` 等の **別 constant** に分離する。`PongProfile.capabilities` と oversharing しない。
+
+**rationale**: sender(別 PRJ Extension 等)は `pong.capabilities` を見て「自分が送れる type」を判定する。内部 feature flag を混ぜると `Array.includes('record:offer')` が false になり、defensive な sender が「送れない」と誤判定して broken な UX を生む。本 spec は v1 で sender 側の advertise を defer(§5.4)しているため、host → sender 方向の vocabulary は normative に固定する必要がある。
 
 ### 5.3 MESSAGE_RULES と AcceptanceMode
 
@@ -243,6 +276,7 @@ v1 では permission scope は **粗粒度**(message type 単位):
 - **payload(`ping`)**: 任意(空 object 推奨)
 - **payload(`pong`)**: `PongProfile`(§5.2)
 - **応答**: `ping` には `pong` が常に返る(envelope validation pass の場合のみ)
+- **advertise**: `ping` / `pong` は **`capabilities` array に列挙しない**(protocol primitive、§5.2.1 で normative 化)。sender は常に ping から始める前提で OK。
 
 ```json
 // ping
