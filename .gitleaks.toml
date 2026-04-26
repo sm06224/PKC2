@@ -1,0 +1,11 @@
+# .gitleaks.toml
+[extend]
+useDefault = true
+
+[allowlist]
+description = "PKC2 false positives - localStorage keys are not secrets"
+paths = [
+  '''docs/development/pane-state-persistence\.md''',
+  '''docs/development/import-export-surface-audit\.md''',
+  '''src/adapter/platform/pane-prefs\.ts''',
+]
