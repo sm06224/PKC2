@@ -112,7 +112,8 @@ data attrs: `data-pkc-action="quick-save-search"`.
 **2026-04-26 sidebar audit 後の変更**: 旧 v1 設計では prompt-base の ★ button と auto-name の ★+ button が **2 つ並んでいた**が、user audit「検索窓横の星マークも２つあるのが意味不明」を受けて
 **1 button(★ → quick-save)** に統合した。
 prompt-base の `data-pkc-action="save-search"` action handler は action-binder 側に残置（外部呼び出し対応）、しかし UI route は無し。
-名前を後から変えたい user 向けに saved-searches pane に rename UX を別 PR で追加する。
+
+**2026-04-26 follow-up: saved-search rename UX 追加**: 自動命名された row を後から rename するため、saved-searches pane の各 row に ✏ button(`data-pkc-action="rename-saved-search"`)を追加。click → `window.prompt` に現在名を seed → 入力後 `RENAME_SAVED_SEARCH` action を dispatch。reducer は trim / `SAVED_SEARCH_NAME_MAX` (80 文字) truncate / 同名 no-op / 空名 no-op / readonly block を guard する。delete × button と同じく `e.stopPropagation()` で row の `apply-saved-search` 発火を防ぐ。
 
 ### 5.2 Saved searches pane
 
@@ -211,7 +212,7 @@ events は v1 では発行しない（既存の `SET_SEARCH_QUERY` 等の UI 系
 
 ## 9. Non-scope（v1 で扱わない）
 
-- rename（delete + save で代替）
+- ~~rename（delete + save で代替）~~ → 2026-04-26 follow-up で追加。`RENAME_SAVED_SEARCH` action + ✏ button + reducer guard 一式は §5.1 を参照
 - pin / reorder
 - 自動 history / 最近の検索
 - saved search の diff / export

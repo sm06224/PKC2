@@ -3,7 +3,11 @@ import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { reduce, createInitialState } from '@adapter/state/app-state';
 import type { AppState } from '@adapter/state/app-state';
-import { SAVED_SEARCH_CAP, type SavedSearch } from '@core/model/saved-search';
+import {
+  SAVED_SEARCH_CAP,
+  SAVED_SEARCH_NAME_MAX,
+  type SavedSearch,
+} from '@core/model/saved-search';
 
 /**
  * Spec: docs/development/saved-searches-v1.md §5–§7.
@@ -285,6 +289,100 @@ describe('DELETE_SAVED_SEARCH', () => {
       readonly: true,
     });
     const { state: next } = reduce(state, { type: 'DELETE_SAVED_SEARCH', id: 'a' });
+    expect(next).toBe(state);
+  });
+});
+
+describe('RENAME_SAVED_SEARCH', () => {
+  it('updates the row name and bumps meta.updated_at', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const b = mkSaved('b', { name: 'B' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a, b]) });
+    const prev = state.container!.meta.updated_at;
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: 'New',
+    });
+    const saved = next.container!.meta.saved_searches!;
+    expect(saved).toHaveLength(2);
+    expect(saved.find((s) => s.id === 'a')!.name).toBe('New');
+    expect(saved.find((s) => s.id === 'b')!.name).toBe('B');
+    expect(next.container!.meta.updated_at).not.toBe(prev);
+  });
+
+  it('trims surrounding whitespace before storing', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a]) });
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: '  Padded  ',
+    });
+    expect(next.container!.meta.saved_searches![0]!.name).toBe('Padded');
+  });
+
+  it('truncates names longer than SAVED_SEARCH_NAME_MAX', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a]) });
+    const long = 'x'.repeat(SAVED_SEARCH_NAME_MAX + 25);
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: long,
+    });
+    const renamed = next.container!.meta.saved_searches![0]!.name;
+    expect(renamed).toHaveLength(SAVED_SEARCH_NAME_MAX);
+    expect(renamed).toBe('x'.repeat(SAVED_SEARCH_NAME_MAX));
+  });
+
+  it('silently no-ops on unknown id', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a]) });
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'ghost',
+      name: 'Whatever',
+    });
+    expect(next).toBe(state);
+  });
+
+  it('silently no-ops on empty / whitespace-only name', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a]) });
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: '   ',
+    });
+    expect(next).toBe(state);
+  });
+
+  it('silently no-ops when the new name equals the existing one', () => {
+    const a = mkSaved('a', { name: 'Same' });
+    const state = readyState({ container: mkContainer([mkEntry('x')], [a]) });
+    const prev = state.container!.meta.updated_at;
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: 'Same',
+    });
+    // Identity-preserving: no `updated_at` bump, no array reshuffle.
+    expect(next.container!.meta.saved_searches![0]!.name).toBe('Same');
+    expect(next.container!.meta.updated_at).toBe(prev);
+  });
+
+  it('blocks when state.readonly', () => {
+    const a = mkSaved('a', { name: 'Old' });
+    const state = readyState({
+      container: mkContainer([mkEntry('x')], [a]),
+      readonly: true,
+    });
+    const { state: next } = reduce(state, {
+      type: 'RENAME_SAVED_SEARCH',
+      id: 'a',
+      name: 'New',
+    });
     expect(next).toBe(state);
   });
 });

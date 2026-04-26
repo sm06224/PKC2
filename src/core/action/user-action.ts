@@ -350,6 +350,21 @@ export type UserAction =
    */
   | { type: 'DELETE_SAVED_SEARCH'; id: string }
   /**
+   * RENAME_SAVED_SEARCH — change the display name of an existing
+   * saved search (2026-04-26 follow-up to the sidebar audit that
+   * collapsed the legacy name-first ★ button into a single
+   * auto-named quick-save). Users who later want a custom label
+   * rename the row from the saved-searches pane.
+   *
+   * - Blocked when no container is loaded, readonly, or import preview.
+   * - Silently no-ops when the id is not present, or when the new
+   *   name is empty/whitespace, or when the new name equals the
+   *   current name (no spurious `updated_at` bump).
+   * - Trims and truncates to `SAVED_SEARCH_NAME_MAX` (80 chars).
+   * - Bumps `container.meta.updated_at` on actual rename.
+   */
+  | { type: 'RENAME_SAVED_SEARCH'; id: string; name: string }
+  /**
    * MOVE_ENTRY_UP / MOVE_ENTRY_DOWN — user-defined entry ordering
    * (C-2 v1, 2026-04-17). Contract:
    * `docs/spec/entry-ordering-v1-behavior-contract.md`.
