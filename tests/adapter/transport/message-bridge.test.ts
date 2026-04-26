@@ -328,6 +328,130 @@ describe('mountMessageBridge', () => {
 
     expect(onMessage).toHaveBeenCalledTimes(1);
   });
+
+  // ── PR-B 2026-04-26: allowedOrigins provider function form ──
+  // Lets the host rotate the allowlist at runtime (settings UI / env
+  // refresh / dynamic Extension registration) without remounting.
+
+  it('accepts a provider function for allowedOrigins', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => ['http://provider.example'],
+      onMessage,
+    });
+
+    const msg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(msg, 'http://provider.example'));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects non-listed origin when provider returns explicit list', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => ['http://allowed.example'],
+      onMessage,
+      onReject,
+    });
+
+    window.dispatchEvent(createMessageEvent(validPing(), 'http://other.example'));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-resolves provider on each message (dynamic config)', () => {
+    const onMessage = vi.fn();
+    let allowed: string[] = ['http://first.example'];
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => allowed,
+      onMessage,
+    });
+    const customMsg = { ...validPing(), type: 'custom' };
+
+    // First call: 'http://first.example' is allowed.
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://first.example'));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+
+    // Rotate the list. The bridge must pick this up without remount.
+    allowed = ['http://second.example'];
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://first.example'));
+    expect(onMessage).toHaveBeenCalledTimes(1); // still 1 — no longer allowed
+
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://second.example'));
+    expect(onMessage).toHaveBeenCalledTimes(2); // 2 — now allowed
+  });
+
+  it('treats provider exception as empty allowlist (accept-all fail-safe + onReject signal)', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => { throw new Error('config unavailable'); },
+      onMessage,
+      onReject,
+    });
+
+    // Empty allowlist == accept-all (except 'null'), so a normal
+    // origin still gets through. The provider error is surfaced via
+    // onReject for audit.
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://anywhere.example'));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(onReject).toHaveBeenCalled();
+    // Find the provider-error reject (the validation-pass message
+    // triggered the provider error twice — once on each guard call —
+    // before being routed to onMessage).
+    const errorCall = onReject.mock.calls.find((c) =>
+      typeof c[1] === 'string' && c[1].includes('config unavailable'),
+    );
+    expect(errorCall).toBeDefined();
+  });
+
+  it('treats null/undefined provider return as empty allowlist', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      // @ts-expect-error: deliberate null return for fail-safe verification.
+      allowedOrigins: () => null,
+      onMessage,
+    });
+
+    // Empty allowlist == accept-all (except 'null').
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://anywhere.example'));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors null-origin opt-in when provider includes "null"', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => ['null'],
+      onMessage,
+    });
+
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg, 'null'));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects "null" origin when provider returns array without "null"', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({
+      containerId: CONTAINER_ID,
+      allowedOrigins: () => ['http://only.example'],
+      onMessage,
+      onReject,
+    });
+
+    window.dispatchEvent(createMessageEvent(validPing(), 'null'));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('MessageSender', () => {
