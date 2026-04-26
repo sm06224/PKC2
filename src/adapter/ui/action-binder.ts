@@ -2393,6 +2393,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (handleSlashMenuKeydown(e)) return;
     }
 
+    // Tab key inside a `<textarea>` inserts a literal `\t` instead
+    // of moving focus (2026-04-26 user request: enable tab-character
+    // input). CSS `tab-size: 4` keeps the visual width matched to
+    // the four-space indentation convention so the two are
+    // interchangeable in practice. Only fires for plain Tab —
+    // Shift+Tab / Ctrl+Tab keep their browser-native semantics so
+    // accessible tab-out-of-textarea still works.
+    if (
+      e.key === 'Tab'
+      && !e.shiftKey
+      && !e.ctrlKey
+      && !e.metaKey
+      && !e.altKey
+      && !e.isComposing
+      && e.target instanceof HTMLTextAreaElement
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      e.preventDefault();
+      // Splice `\t` in. `setRangeText` keeps undo history intact
+      // where browsers support it; the explicit assignment fallback
+      // covers the rare cases where it's not implemented.
+      if (typeof ta.setRangeText === 'function') {
+        ta.setRangeText('\t', start, end, 'end');
+      } else {
+        ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + 1;
+      }
+      // Notify subscribers (preview pane, dirty-state, etc.) that
+      // the textarea content changed — `setRangeText` does not fire
+      // an `input` event on its own.
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+
     // Slice 1 / 2: Kanban / Calendar Todo-add popover input takes
     // priority for Enter / Escape so the user can commit / cancel
     // without global shortcuts (Ctrl+S, shortcut-help etc.) intercepting.
@@ -2636,6 +2672,69 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       e.preventDefault();
       togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      return;
+    }
+
+    // Focus mode (2026-04-26 user request): Alt+Space hides BOTH
+    // panes at once for distraction-free editing. The user reports
+    // this is a frequent flow ("両方のペインを隠す操作を頻繁に使う"),
+    // and `Ctrl+\` / `Ctrl+Shift+\` are awkward when used together.
+    // Suppressed while a text input is focused so Alt+Space stays
+    // available to OS-level IME / window-menu hotkeys when the user
+    // is mid-typing.
+    if (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      // If either pane is currently open, fold both. Otherwise, expand
+      // both. Mirrors how OS focus-modes work (one keystroke flips the
+      // whole layout state regardless of intermediate mixed states).
+      const sidebarEl = root.querySelector<HTMLElement>(
+        '[data-pkc-region="sidebar"]',
+      );
+      const metaEl = root.querySelector<HTMLElement>(
+        '[data-pkc-region="meta"]',
+      );
+      const sidebarCollapsed =
+        sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
+      const metaCollapsed =
+        metaEl?.getAttribute('data-pkc-collapsed') === 'true';
+      const eitherOpen = !sidebarCollapsed || !metaCollapsed;
+      if (eitherOpen) {
+        if (!sidebarCollapsed) togglePane(root, 'sidebar');
+        if (!metaCollapsed) togglePane(root, 'meta');
+      } else {
+        if (sidebarCollapsed) togglePane(root, 'sidebar');
+        if (metaCollapsed) togglePane(root, 'meta');
+      }
+      return;
+    }
+
+    // Ctrl/⌘+E: enter edit mode for the currently selected entry
+    // (2026-04-26 user request). Mirrors the dblclick / action-bar
+    // edit button. Suppressed while a text input has focus so the
+    // shortcut never fires mid-typing inside the editor itself.
+    if (mod && (e.key === 'e' || e.key === 'E') && !e.shiftKey && !e.altKey) {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      if (state.phase !== 'ready') return;
+      if (state.readonly) return;
+      const editLid = state.selectedLid;
+      if (!editLid) return;
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: editLid });
       return;
     }
 

@@ -18,7 +18,7 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
-import { mountEventLog } from './adapter/ui/event-log';
+import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
   showIdbWarningBanner,
@@ -260,8 +260,12 @@ async function boot(): Promise<void> {
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
 
-  // 4. Event log (dev aid)
-  mountEventLog(document.body, dispatcher);
+  // 4. Event log (dev aid). Was a fixed-position UI tray in the
+  // bottom-right corner; demoted to `console.log` per 2026-04-26
+  // user request because end users have no use for the tray and it
+  // occupied screen real estate. Devs can still inspect events
+  // through the browser console.
+  wireEventLogToConsole(dispatcher);
 
   // 5. Initial render (shows "initializing")
   render(dispatcher.getState(), root);
