@@ -6273,3 +6273,196 @@ mark.pkc-search-mark {
 .pkc-card-widget[data-pkc-card-status="malformed"] .pkc-card-widget-badge {
   color: var(--c-muted);
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Responsive layout — 2026-04-26 user request
+ *   "スマホとタブレット向けのレイアウトを作ろう"
+ *   "3pane構成を捨てて新たにデザインでしょうね"
+ *   "フルHDモニターでデスクトップモードで使っている人がウィンドウ
+ *    サイズを小さくした時にスマホやタブレットレイアウトになると
+ *    意図しないかもしれない 使用感を損なわないように注意して"
+ *
+ * Mobile / tablet drop the desktop 3-pane shell entirely and adopt a
+ * **master-detail** pattern keyed off the existing
+ * `data-pkc-has-selection` attribute set on `#pkc-root`.
+ *
+ * The viewport gate is **`pointer: coarse` AND a width threshold**.
+ * `pointer: coarse` evaluates to true on touch-first devices — phones,
+ * tablets, kiosks — and false on a desktop pointing device (mouse,
+ * trackpad). That means a Full HD desktop user shrinking their
+ * window to 600 px keeps the desktop 3-pane layout, because their
+ * primary pointer is still fine. Only an actual touch device (where
+ * the layout is genuinely needed) flips to master-detail.
+ *
+ * Tier matrix:
+ *   Phone   pointer:coarse + ≤ 640 px  → single-pane stack.
+ *                  no selection → list (sidebar) full width
+ *                  selection    → detail (center) full width
+ *   Tablet  pointer:coarse + 641-1024  → 2-pane master-detail
+ *                  (list + detail; meta pane is a drawer)
+ *   Desktop everything else            → unchanged 3-pane.
+ *
+ * Notes:
+ * - Selection drives the navigation; `Escape` / the back-arrow
+ *   action returns the user to the list. No new state types.
+ * - Pane prefs persist independently per device so the user's
+ *   meta-drawer choice survives reloads.
+ * - Touch targets follow WCAG 2.5.5 Level AA (≥ 36 px).
+ * ───────────────────────────────────────────────────────────────── */
+
+@media (pointer: coarse) and (max-width: 1024px) {
+  /* Tablet & phone: bump touch targets so the existing controls work
+   * with a fingertip. */
+  .pkc-btn,
+  .pkc-btn-small,
+  .pkc-btn-create,
+  .pkc-tray-toggle,
+  .pkc-shell-menu-btn,
+  .pkc-eip-summary,
+  .pkc-action-bar-more-summary {
+    min-height: 36px;
+  }
+  .pkc-header-toggles .pkc-tray-toggle {
+    min-width: 36px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  /* Meta pane on phone & tablet is a slide-over drawer pinned to the
+   * right edge instead of an inline column. The legacy
+   * `data-pkc-collapsed="true"` rule sets `width: 0`, which on the
+   * desktop 3-pane shell collapses gracefully, but on the
+   * master-detail shell we need the drawer to be hidden via
+   * `display: none` so it stops occupying flow when the user has
+   * not asked for it. */
+  .pkc-meta-pane {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(85vw, 320px);
+    z-index: 60;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    border-left: 1px solid var(--c-border);
+  }
+  .pkc-meta-pane[data-pkc-collapsed="true"] {
+    display: none;
+  }
+  /* The right-side resize handle for the meta pane is meaningless
+   * once the pane becomes a fixed-width drawer. */
+  [data-pkc-region="resize-meta"] {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 1024px) and (min-width: 641px) {
+  /* Tablet — master-detail side by side. */
+  .pkc-main {
+    position: relative;
+  }
+  .pkc-sidebar {
+    width: 240px;
+  }
+}
+
+/* The mobile back-arrow button is only meaningful on the phone
+ * master-detail layout — hide it everywhere else by default; the
+ * phone @media block below re-enables it when a selection exists. */
+.pkc-mobile-back-btn {
+  display: none;
+}
+
+@media (pointer: coarse) and (max-width: 640px) {
+  /* Phone — master-detail stack. Sidebar and center pane swap full
+   * width based on `data-pkc-has-selection`. */
+  .pkc-main {
+    position: relative;
+  }
+
+  /* Show the back-arrow only when there is a selection (= we are
+   * in detail mode and the user needs a way back to the list). */
+  #pkc-root[data-pkc-has-selection="true"] .pkc-mobile-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0 0.6rem;
+    margin-right: 0.2rem;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-fg);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Sidebar takes the entire viewport width when no entry is
+   * selected; otherwise it is hidden and the detail occupies the
+   * full width. */
+  .pkc-sidebar {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+  }
+  .pkc-sidebar[data-pkc-collapsed="true"] {
+    /* User explicitly closed the sidebar — show a thin tray-bar so
+     * they can re-open it. The default `display: none` from the
+     * legacy collapse rule fights master-detail, so explicitly
+     * keep the existing 0-width treatment instead. */
+    display: flex;
+    width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden;
+  }
+
+  /* Detail mode: hide the master column, show only the center pane
+   * (and the meta pane, if open). */
+  #pkc-root[data-pkc-has-selection="true"] .pkc-sidebar {
+    display: none;
+  }
+  #pkc-root[data-pkc-has-selection="false"] .pkc-center {
+    display: none;
+  }
+
+  /* Tray bars between panes are pointless when only one column is
+   * visible at a time. */
+  .pkc-tray-bar,
+  .pkc-resize-handle {
+    display: none;
+  }
+
+  /* Header tightening so the top toolbar fits without forcing a
+   * horizontal scroll on a 375-wide viewport. */
+  .pkc-header {
+    padding: 0.2rem 0.35rem;
+    gap: 0.2rem;
+  }
+  .pkc-header-title {
+    font-size: 0.8rem;
+  }
+  .pkc-btn-create {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.45rem;
+  }
+
+  /* Anchored popovers (Data…, More…, color picker) capped to
+   * viewport so they never spill on narrow widths. */
+  .pkc-eip-content,
+  .pkc-action-bar-more-content {
+    max-width: calc(100vw - 1rem);
+    right: 0.5rem;
+    left: auto;
+  }
+  .pkc-color-picker-popover {
+    max-width: calc(100vw - 1rem);
+  }
+
+  .pkc-shell-menu-card {
+    width: calc(100vw - 1.5rem);
+    max-width: 360px;
+    max-height: calc(100vh - 1.5rem);
+    overflow-y: auto;
+  }
+}
+

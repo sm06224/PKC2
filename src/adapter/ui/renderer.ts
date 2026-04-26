@@ -269,6 +269,16 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', BUILD_FEATURES.join(','));
+  // 2026-04-26 mobile redesign: drives the phone master-detail
+  // routing — when an entry is selected the responsive CSS hides
+  // the sidebar list and shows the center detail full-width;
+  // when nothing is selected it does the inverse. Same flag is
+  // also useful as a generic "is something selected" hook for
+  // any future mobile-first surface.
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
   applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {
@@ -509,6 +519,21 @@ function renderShell(state: AppState): HTMLElement {
 
 function renderHeader(state: AppState): HTMLElement {
   const header = createElement('header', 'pkc-header');
+
+  // 2026-04-26 mobile master-detail: a back arrow button that
+  // deselects the current entry, used by the touch-coarse phone
+  // layout to return from the detail view to the list. Always
+  // emitted when there is a selection; CSS hides it on desktop /
+  // tablet (the back-arrow is `display: none` outside the phone
+  // master-detail @media block in `base.css`).
+  if (state.selectedLid) {
+    const backBtn = createElement('button', 'pkc-mobile-back-btn');
+    backBtn.setAttribute('data-pkc-action', 'mobile-back-to-list');
+    backBtn.setAttribute('title', '一覧に戻る');
+    backBtn.setAttribute('aria-label', '一覧に戻る');
+    backBtn.textContent = '←';
+    header.appendChild(backBtn);
+  }
 
   const title = createElement('span', 'pkc-header-title');
   title.textContent = state.container?.meta?.title ?? 'PKC2';
