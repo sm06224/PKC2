@@ -103,17 +103,22 @@ export interface SavedSearch {
 ### 5.1 Save button
 
 search row（`pkc-search-row`）内、search input の右側、clear-filters button の **直前**に追加する。
-data attrs: `data-pkc-action="save-search"`.
+data attrs: `data-pkc-action="quick-save-search"`.
 
 - 常時表示。default state（何も filter していない）でも保存可能（UX simplicity を優先）
-- click → `window.prompt('Save current search as:')` でラベルを受け取る
-- 空 / キャンセルなら何もしない
-- 非空なら `SAVE_SEARCH` を dispatch
+- click → タイムスタンプ自動命名（`Saved <datetime>` 形式）で `SAVE_SEARCH` を dispatch（prompt なし）
+- name の編集 / 改名は今後の Saved-searches rename UX (§5.x) で扱う
+
+**2026-04-26 sidebar audit 後の変更**: 旧 v1 設計では prompt-base の ★ button と auto-name の ★+ button が **2 つ並んでいた**が、user audit「検索窓横の星マークも２つあるのが意味不明」を受けて
+**1 button(★ → quick-save)** に統合した。
+prompt-base の `data-pkc-action="save-search"` action handler は action-binder 側に残置（外部呼び出し対応）、しかし UI route は無し。
+名前を後から変えたい user 向けに saved-searches pane に rename UX を別 PR で追加する。
 
 ### 5.2 Saved searches pane
 
-`<details data-pkc-region="saved-searches" open>` を sidebar 内に追加。
+`<details data-pkc-region="saved-searches">` を sidebar 内に追加。
 placement: **sort-controls の直後 / recent-entries pane の直前**（検索条件と並べる位置）。
+2026-04-26 sidebar audit: default `open` は **closed**（旧設計は `open=true` だったが、初期 sidebar が viewport 内に収まらない原因の一つだったため畳んだ。user は summary click で展開する）。
 
 - `<summary>Saved (n)</summary>`
 - `<ul>` 内に `<li class="pkc-saved-search-item">` で 1 件ずつ描画
@@ -199,9 +204,10 @@ events は v1 では発行しない（既存の `SET_SEARCH_QUERY` 等の UI 系
    - saved-searches pane: 0 件で非表示、1+ 件で描画、name と delete button を持つ
    - import preview 中は非表示
 4. **E2E action-binder** (`tests/adapter/saved-searches.test.ts`)
-   - save-search click → window.prompt モック → SAVE_SEARCH dispatch
+   - quick-save-search click → SAVE_SEARCH dispatch（自動命名、prompt なし）
    - apply-saved-search click → APPLY_SAVED_SEARCH dispatch
    - delete-saved-search click → DELETE_SAVED_SEARCH dispatch + apply click がトリガされない（stopPropagation）
+   - 2026-04-26 sidebar audit: 旧 prompt-base ★ flow の test 3 件は UI route 削除に合わせて削除済み
 
 ## 9. Non-scope（v1 で扱わない）
 

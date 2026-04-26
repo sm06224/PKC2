@@ -207,18 +207,33 @@ describe('renderArchetypeFilter UI', () => {
     expect(textBtn).not.toBeNull();
   });
 
-  it('secondary group is initially hidden (data-pkc-visible=false)', () => {
+  // 2026-04-26 cleanup (sidebar audit): the secondary group + ▼
+  // expand toggle were removed once the dead-route archetypes
+  // (form / generic / opaque) were dropped — only `todo` and
+  // `attachment` would have populated it, both of which are
+  // creatable from the header and now live in the always-visible
+  // primary group. The previous "secondary group hidden by default"
+  // / "secondary group becomes visible when expanded" / "expand
+  // toggle button is rendered" tests pinned the old design, so
+  // they have been deleted alongside the rendering code they
+  // referenced. The reducer-side `archetypeFilterExpanded` field
+  // is left as harmless backward-compat state.
+
+  it('todo and attachment now live in the primary group', () => {
     render(readyState(), root);
-    const secondary = root.querySelector('[data-pkc-filter-group="secondary"]');
-    expect(secondary).not.toBeNull();
-    expect(secondary!.getAttribute('data-pkc-visible')).toBe('false');
+    const primary = root.querySelector('[data-pkc-filter-group="primary"]');
+    expect(primary).not.toBeNull();
+    expect(primary!.querySelector('[data-pkc-archetype="todo"]')).not.toBeNull();
+    expect(primary!.querySelector('[data-pkc-archetype="attachment"]')).not.toBeNull();
   });
 
-  it('secondary group becomes visible when archetypeFilterExpanded=true', () => {
-    const state = { ...readyState(), archetypeFilterExpanded: true };
-    render(state, root);
-    const secondary = root.querySelector('[data-pkc-filter-group="secondary"]');
-    expect(secondary!.getAttribute('data-pkc-visible')).toBe('true');
+  it('dead-route archetypes (form / generic / opaque) no longer render in the filter rail', () => {
+    render(readyState(), root);
+    const bar = root.querySelector('[data-pkc-region="archetype-filter"]');
+    expect(bar).not.toBeNull();
+    expect(bar!.querySelector('[data-pkc-archetype="form"]')).toBeNull();
+    expect(bar!.querySelector('[data-pkc-archetype="generic"]')).toBeNull();
+    expect(bar!.querySelector('[data-pkc-archetype="opaque"]')).toBeNull();
   });
 
   it('selected archetype button has data-pkc-active=true, All does not', () => {
@@ -228,12 +243,6 @@ describe('renderArchetypeFilter UI', () => {
     expect(textBtn!.getAttribute('data-pkc-active')).toBe('true');
     const allBtn = root.querySelector('[data-pkc-action="set-archetype-filter"][data-pkc-archetype=""]');
     expect(allBtn!.hasAttribute('data-pkc-active')).toBe(false);
-  });
-
-  it('expand toggle button is rendered', () => {
-    render(readyState(), root);
-    const toggle = root.querySelector('[data-pkc-action="toggle-archetype-filter-expanded"]');
-    expect(toggle).not.toBeNull();
   });
 
   it('multi-select: two archetypes both show data-pkc-active=true', () => {

@@ -96,51 +96,14 @@ function setup(initialContainer: Container = mkContainer()) {
 }
 
 describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
-  it('Save button → prompt → SAVE_SEARCH dispatch', () => {
-    const dispatcher = setup();
-    // Put something in the search state so the save has content.
-    dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'hello' });
-    render(dispatcher.getState(), root);
-
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('My Query');
-    try {
-      const btn = root.querySelector<HTMLElement>('[data-pkc-action="save-search"]')!;
-      btn.click();
-    } finally {
-      promptSpy.mockRestore();
-    }
-
-    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
-    expect(saved).toHaveLength(1);
-    expect(saved[0]!.name).toBe('My Query');
-    expect(saved[0]!.search_query).toBe('hello');
-  });
-
-  it('Save button → prompt cancel (null) → no dispatch', () => {
-    const dispatcher = setup();
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
-    try {
-      const btn = root.querySelector<HTMLElement>('[data-pkc-action="save-search"]')!;
-      btn.click();
-    } finally {
-      promptSpy.mockRestore();
-    }
-    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
-    expect(saved).toHaveLength(0);
-  });
-
-  it('Save button → empty whitespace name → no dispatch', () => {
-    const dispatcher = setup();
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('   ');
-    try {
-      const btn = root.querySelector<HTMLElement>('[data-pkc-action="save-search"]')!;
-      btn.click();
-    } finally {
-      promptSpy.mockRestore();
-    }
-    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
-    expect(saved).toHaveLength(0);
-  });
+  // 2026-04-26 sidebar audit: the prompt-based ★ "Save current
+  // search" button was removed from the search row because two
+  // adjacent star icons (★ and ★+) confused users. Only the
+  // quick-save flow remains in the UI; the previous tests for the
+  // prompt path were tied to a UI button that no longer exists.
+  // The `save-search` action handler in action-binder is left in
+  // place for now in case any external code dispatches it, but
+  // there is no UI route for end users.
 
   it('apply click restores the 6 AppState fields', () => {
     const saved = mkSaved('s-apply', 'Apply Me', {
@@ -223,20 +186,6 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
     expect(promptSpy).not.toHaveBeenCalled();
     const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
     expect(saved).toHaveLength(1);
-  });
-
-  it('Slice F-4: existing ★ (save-search) flow is unchanged — name comes from prompt', () => {
-    const dispatcher = setup();
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Named');
-    try {
-      root.querySelector<HTMLElement>('[data-pkc-action="save-search"]')!.click();
-    } finally {
-      promptSpy.mockRestore();
-    }
-    // The explicit prompt-based name survives — quick-save's default
-    // name format ("Saved <datetime>") is NOT applied to the ★ path.
-    const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
-    expect(saved.map((s) => s.name)).toEqual(['Named']);
   });
 
   it('delete × button removes the saved search and does NOT fire apply', () => {
