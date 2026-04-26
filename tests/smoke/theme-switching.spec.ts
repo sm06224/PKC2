@@ -82,36 +82,24 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   expect(await readToken(page, '--pkc-color-tag-orange')).toBe(TOKEN_DARK_ORANGE);
   expect(await readToken(page, '--pkc-color-tag-red')).toBe(TOKEN_RED_BOTH);
 
-  // (2) Switch to explicit light via press-drag-release on the shell
-  // menu (⚙ → drag to "Light" → release). The menu now uses
-  // macOS-style menu UX (mousedown opens, drag → mouseup commits,
-  // release elsewhere cancels — see action-binder
-  // `handleShellMenuMouseDown`), so a plain `.click()` would open
-  // and immediately close the menu without selecting a theme.
-  // `[data-pkc-theme="light"]` overrides 4 hues; `red` stays the
-  // same (its base hex already meets 3:1).
-  const shellMenuTrigger = page.locator('[data-pkc-action="toggle-shell-menu"]').first();
-  const triggerBox = await shellMenuTrigger.boundingBox();
-  if (!triggerBox) throw new Error('Shell menu trigger has no bounding box');
-  await page.mouse.move(
-    triggerBox.x + triggerBox.width / 2,
-    triggerBox.y + triggerBox.height / 2,
-  );
-  await page.mouse.down();
+  // Open shell menu so theme buttons mount in DOM. The shell menu is
+  // a hover-window-style menu (opens standalone, not anchored to its
+  // trigger button), so per the 2026-04-26 user clarification the
+  // press-drag-release UX is intentionally NOT applied here — a
+  // plain `.click()` toggles the menu open just like before.
+  await page.locator('[data-pkc-action="toggle-shell-menu"]').first().click();
   const lightBtn = page.locator('button[data-pkc-action="set-theme"][data-pkc-theme-mode="light"]');
-  await expect(lightBtn).toBeVisible({ timeout: 5_000 });
-  const lightBox = await lightBtn.boundingBox();
-  if (!lightBox) throw new Error('Light theme button has no bounding box');
-  await page.mouse.move(
-    lightBox.x + lightBox.width / 2,
-    lightBox.y + lightBox.height / 2,
-  );
-  await page.mouse.up();
+  await expect(lightBtn).toBeVisible();
+
+  // (2) Switch to explicit light. `[data-pkc-theme="light"]` overrides
+  // 4 hues; `red` stays the same (its base hex already meets 3:1).
+  await lightBtn.click();
   await expect(shell).toHaveAttribute('data-pkc-theme', 'light', { timeout: 5_000 });
   expect(await readToken(page, '--pkc-color-tag-orange')).toBe(TOKEN_LIGHT_ORANGE);
   expect(await readToken(page, '--pkc-color-tag-red')).toBe(TOKEN_RED_BOTH);
-  // The press-drag-release gesture already closes the menu; nothing
-  // else needs to be dismissed before the next interaction.
+
+  // Close shell menu (Escape) so it does not overlap subsequent clicks.
+  await page.keyboard.press('Escape');
 
   // (3) Sidebar binding — create an entry, apply orange color, and
   // confirm the sidebar entry's color band uses the live (light) token.
