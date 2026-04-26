@@ -20,6 +20,19 @@
  * - `body.length` over `BODY_SIZE_CAP_BYTES` (262144) is rejected
  *   (spec §9.3).
  *
+ * Reply-window threading (PR-C, 2026-04-26):
+ * - When a `record:offer` arrives, we stash `ctx.sourceWindow` in
+ *   `replyWindowRegistry`, keyed by the freshly-minted `offer_id`.
+ * - When the offer is later dismissed, `main.ts` looks up the registry
+ *   to send `record:reject` back to the *exact* sender window. Without
+ *   this, the previous code sent to `window.parent` — which in the
+ *   standard "PKC2 hosts the companion iframe" deployment is PKC2's
+ *   own parent (top-level), not the iframe child that originated the
+ *   offer (`docs/spec/pkc-message-api-v1.md` §3.2 source-window rule).
+ * - The registry holds a non-serializable `Window` object. It lives in
+ *   transport memory only — never flows through the reducer / domain
+ *   events / IDB / container JSON.
+ *
  * Scope boundary (see
  * `docs/development/transport-record-accept-reject-consistency-review.md`):
  * - The informational `record:accept` outbound message defined in the
@@ -173,6 +186,51 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     captured_at: payload.captured_at ?? null,
   };
 
+  // Stash the sender's window so a later `record:reject` (on dismiss)
+  // can travel back to the exact origin. See module doc.
+  setReplyWindowForOffer(offer.offer_id, ctx.sourceWindow);
+
   ctx.dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
   return true;
 };
+
+// ── Reply-window registry ────────────────────────
+
+/**
+ * Transport-memory map from `offer_id` → sender `Window`.
+ *
+ * Populated when a `record:offer` arrives (`recordOfferHandler` above).
+ * Read by `main.ts` when dispatching the outbound `record:reject` so the
+ * envelope reaches the *iframe that sent the offer*, not whoever happens
+ * to be `window.parent` of the host. Cleared on either accept or
+ * dismiss to bound memory growth.
+ *
+ * Why a side-table (not a `PendingOffer` field): a `Window` reference is
+ * not serializable. Keeping it out of `PendingOffer` keeps every
+ * downstream consumer (reducer, IDB persist, container JSON, domain
+ * events) free of host-side handles.
+ */
+const replyWindowRegistry = new Map<string, Window>();
+
+/** Register the sender window for a freshly-created offer. */
+export function setReplyWindowForOffer(offerId: string, win: Window): void {
+  replyWindowRegistry.set(offerId, win);
+}
+
+/** Look up the sender window for an offer, or `null` if unknown. */
+export function getReplyWindowForOffer(offerId: string): Window | null {
+  return replyWindowRegistry.get(offerId) ?? null;
+}
+
+/** Drop the registry entry for an offer (call on accept or dismiss). */
+export function clearReplyWindowForOffer(offerId: string): void {
+  replyWindowRegistry.delete(offerId);
+}
+
+/**
+ * Drop every entry in the registry. Test-only helper so suites can
+ * isolate themselves from earlier tests' offers.
+ */
+export function clearAllReplyWindows(): void {
+  replyWindowRegistry.clear();
+}

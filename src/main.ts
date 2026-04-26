@@ -54,7 +54,11 @@ import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/b
 import { mountMessageBridge } from './adapter/transport/message-bridge';
 import { createHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
-import { recordOfferHandler } from './adapter/transport/record-offer-handler';
+import {
+  recordOfferHandler,
+  getReplyWindowForOffer,
+  clearReplyWindowForOffer,
+} from './adapter/transport/record-offer-handler';
 import { canHandleMessage } from './adapter/transport/capability';
 import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
@@ -433,15 +437,32 @@ async function boot(): Promise<void> {
     }
   });
 
-  // 9b. Send record:reject when an offer is dismissed (if bridge is up)
+  // 9b. Route `record:reject` (on dismiss) and reply-window cleanup (on
+  // accept). The sender window for each offer is stashed by
+  // `recordOfferHandler` in the transport-memory registry; here we look
+  // it up by `offer_id` so the reject envelope travels to the exact
+  // iframe / window that sent the offer (spec §3.2 source-window rule).
+  // Falling back to `window.parent` keeps the previous behavior for
+  // historical offers received before PR-C (registry empty case) and
+  // for any non-iframe debug harness, but in standard
+  // "PKC2 hosts companion iframe" deployments the lookup is the path
+  // that actually reaches the sender.
   dispatcher.onEvent((event) => {
     if (event.type === 'OFFER_DISMISSED' && event.reply_to_id && bridgeHandle) {
+      const target = getReplyWindowForOffer(event.offer_id) ?? window.parent;
       bridgeHandle.sender.send(
-        window.parent,
+        target,
         'record:reject',
         { offer_id: event.offer_id, reason: 'dismissed' },
         event.reply_to_id,
       );
+      clearReplyWindowForOffer(event.offer_id);
+    }
+    if (event.type === 'OFFER_ACCEPTED') {
+      // No outbound message on accept (spec §7.3 — `record:accept` is
+      // a reserved type, not wired in v1), but we still need to drop
+      // the registry entry so the Map does not grow unbounded.
+      clearReplyWindowForOffer(event.offer_id);
     }
   });
 
