@@ -9,7 +9,7 @@ import { resolveAboutPayload } from '../../core/model/about-payload';
 import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
-import { CAPABILITIES, VERSION } from '../../runtime/release-meta';
+import { BUILD_FEATURES, VERSION } from '../../runtime/release-meta';
 import {
   getRevisionCount,
   getLatestRevision,
@@ -256,7 +256,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
-  root.setAttribute('data-pkc-capabilities', CAPABILITIES.join(','));
+  root.setAttribute('data-pkc-capabilities', BUILD_FEATURES.join(','));
   applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {

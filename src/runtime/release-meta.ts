@@ -7,10 +7,19 @@
  * Responsibility split:
  * - Builder generates all fields at build time (Stage 2)
  * - Runtime reads and optionally verifies at boot
- * - Source-side constants: APP_ID, SCHEMA_VERSION, CAPABILITIES
+ * - Source-side constants: APP_ID, SCHEMA_VERSION, BUILD_FEATURES
  *
  * This type lives in runtime/ (not core/) because it describes
  * the release artifact, which is a runtime/builder concern.
+ *
+ * Capability split (PR-B' / Decision D4, 2026-04-26):
+ * - `BUILD_FEATURES` (this file) = build-side feature flags embedded
+ *   in pkc-meta JSON, surfaced as `data-pkc-capabilities` DOM attr.
+ *   Examples: 'core' / 'idb' / 'export'. NOT message-type names.
+ * - `MESSAGE_CAPABILITIES` (`src/adapter/transport/capability.ts`) =
+ *   transport-advertised message types in PongProfile, surfaced via
+ *   pong responses to senders. Examples: 'record:offer' /
+ *   'export:request'. Per spec `pkc-message-api-v1.md` §5.2.1.
  */
 
 /** Release kind: dev / stage / product. */
@@ -66,8 +75,15 @@ export interface ReleaseMeta {
   code_integrity: string;
 
   /**
-   * Capability list. Extensible.
-   * Used by PKC-Message / embed / sandbox to negotiate features.
+   * Build-side feature flag list. Extensible.
+   * Surfaced as `data-pkc-capabilities` DOM attribute for general
+   * artifact introspection (devtools, embed harnesses).
+   *
+   * NOT a message-type advertisement. Sender-visible message types
+   * are advertised via `PongProfile.capabilities` (`MESSAGE_CAPABILITIES`
+   * in `src/adapter/transport/capability.ts`), which follows
+   * `docs/spec/pkc-message-api-v1.md` §5.2.1 vocabulary.
+   *
    * Example: ['core', 'idb', 'export', 'clone']
    */
   capabilities: string[];
@@ -99,12 +115,36 @@ export const VERSION = '2.1.1' as const;
 export const SCHEMA_VERSION = 1;
 
 /**
- * Current capabilities. Extended as features are implemented.
- * Builder reads this to embed in pkc-meta.
+ * Build-side feature flags. Extended as features are implemented.
+ * Builder reads this to embed in pkc-meta JSON, and the renderer
+ * surfaces it as the `data-pkc-capabilities` DOM attribute.
+ *
+ * IMPORTANT (PR-B' / Decision D4, 2026-04-26): This is **not**
+ * a message-type advertisement. Sender-visible message types are
+ * advertised via `MESSAGE_CAPABILITIES` (in
+ * `src/adapter/transport/capability.ts`) and surfaced through
+ * `PongProfile.capabilities` per spec `pkc-message-api-v1.md`
+ * §5.2.1. The two lists serve different audiences (artifact
+ * introspection vs. message-type negotiation) and follow
+ * different vocabularies (kebab-case feature names vs. colon-
+ * separated message-type names).
+ *
+ * `'record-offer'` was previously listed here for transport
+ * advertisement; that responsibility moved to MESSAGE_CAPABILITIES.
  */
-export const CAPABILITIES: readonly string[] = [
+export const BUILD_FEATURES: readonly string[] = [
   'core',
   'idb',
   'export',
-  'record-offer',
 ] as const;
+
+/**
+ * Backward-compatibility alias. Pre-PR-B' (2026-04-26) call sites
+ * imported `CAPABILITIES`. Kept as a re-export so out-of-tree
+ * tooling does not break, but prefer `BUILD_FEATURES` in new code.
+ *
+ * @deprecated Use `BUILD_FEATURES` for build-side flags or
+ * `MESSAGE_CAPABILITIES` (from `@adapter/transport/capability`)
+ * for sender-visible message types.
+ */
+export const CAPABILITIES = BUILD_FEATURES;
