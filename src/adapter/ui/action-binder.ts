@@ -202,6 +202,121 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // ── iPhone push/pop shell drawer (2026-04-26) ──
+  // The hamburger ☰ in the mobile header opens a sheet of create
+  // / Data / Settings actions so the desktop header chrome does
+  // not have to be crammed onto the phone. Drawer state is purely
+  // DOM-side (mirrors the color picker pattern) — opening /
+  // closing is just adding / removing the element so it survives
+  // the next renderer pass and does not cost an AppState field.
+  function closeMobileDrawer(): void {
+    const drawer = root.querySelector('[data-pkc-region="mobile-drawer"]');
+    if (drawer) drawer.remove();
+    const backdrop = root.querySelector('[data-pkc-region="mobile-drawer-backdrop"]');
+    if (backdrop) backdrop.remove();
+  }
+
+  function openMobileDrawer(): void {
+    closeMobileDrawer();
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready') return;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'pkc-mobile-drawer-backdrop';
+    backdrop.setAttribute('data-pkc-region', 'mobile-drawer-backdrop');
+    backdrop.setAttribute('data-pkc-action', 'mobile-close-drawer');
+
+    const drawer = document.createElement('aside');
+    drawer.className = 'pkc-mobile-drawer';
+    drawer.setAttribute('data-pkc-region', 'mobile-drawer');
+
+    if (!state.readonly) {
+      // ── Create section ──
+      const createSection = document.createElement('div');
+      createSection.className = 'pkc-mobile-drawer-section';
+      const createLabel = document.createElement('div');
+      createLabel.className = 'pkc-mobile-drawer-section-label';
+      createLabel.textContent = 'Create';
+      createSection.appendChild(createLabel);
+
+      const archetypes: { arch: string; label: string }[] = [
+        { arch: 'text', label: '📝 Text' },
+        { arch: 'textlog', label: '📋 Log' },
+        { arch: 'todo', label: '☑ Todo' },
+        { arch: 'attachment', label: '📎 File' },
+        { arch: 'folder', label: '📁 Folder' },
+      ];
+      for (const { arch, label } of archetypes) {
+        const btn = document.createElement('button');
+        btn.className = 'pkc-mobile-drawer-item';
+        btn.setAttribute('data-pkc-action', 'create-entry');
+        btn.setAttribute('data-pkc-archetype', arch);
+        btn.textContent = label;
+        if (arch === 'attachment' && state.lightSource) {
+          (btn as HTMLButtonElement).disabled = true;
+        }
+        createSection.appendChild(btn);
+      }
+      drawer.appendChild(createSection);
+    }
+
+    // ── Data section ── (Export / Import shortcuts)
+    const dataSection = document.createElement('div');
+    dataSection.className = 'pkc-mobile-drawer-section';
+    const dataLabel = document.createElement('div');
+    dataLabel.className = 'pkc-mobile-drawer-section-label';
+    dataLabel.textContent = 'Data';
+    dataSection.appendChild(dataLabel);
+
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'pkc-mobile-drawer-item';
+    exportBtn.setAttribute('data-pkc-action', 'begin-export');
+    exportBtn.setAttribute('data-pkc-export-mode', 'full');
+    exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
+    exportBtn.textContent = '📤 Export (HTML)';
+    dataSection.appendChild(exportBtn);
+
+    if (!state.readonly) {
+      const importBtn = document.createElement('button');
+      importBtn.className = 'pkc-mobile-drawer-item';
+      importBtn.setAttribute('data-pkc-action', 'begin-import');
+      importBtn.textContent = '📥 Import…';
+      dataSection.appendChild(importBtn);
+    }
+    drawer.appendChild(dataSection);
+
+    // ── Settings (delegates to the existing shell menu modal) ──
+    const settingsSection = document.createElement('div');
+    settingsSection.className = 'pkc-mobile-drawer-section';
+    const settingsLabel = document.createElement('div');
+    settingsLabel.className = 'pkc-mobile-drawer-section-label';
+    settingsLabel.textContent = 'App';
+    settingsSection.appendChild(settingsLabel);
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'pkc-mobile-drawer-item';
+    settingsBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
+    settingsBtn.textContent = '⚙ Settings';
+    settingsSection.appendChild(settingsBtn);
+
+    const helpBtn = document.createElement('button');
+    helpBtn.className = 'pkc-mobile-drawer-item';
+    helpBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
+    helpBtn.textContent = '❓ Help';
+    settingsSection.appendChild(helpBtn);
+    drawer.appendChild(settingsSection);
+
+    // Close button at the foot of the drawer.
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'pkc-mobile-drawer-close';
+    closeBtn.setAttribute('data-pkc-action', 'mobile-close-drawer');
+    closeBtn.textContent = 'Close';
+    drawer.appendChild(closeBtn);
+
+    root.appendChild(backdrop);
+    root.appendChild(drawer);
+  }
+
   function openColorPickerAt(trigger: HTMLElement): void {
     closeColorPicker();
     // Resolve the lid from the surrounding row / view. The trigger
@@ -2107,6 +2222,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'close-shell-menu': {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
+        break;
+      }
+      // ── iPhone push/pop shell (2026-04-26) ──────────────────
+      case 'mobile-back': {
+        // Mirrors the Escape-key path from `handleKeydown` so
+        // touch users have an explicit pop affordance. If the
+        // user is mid-edit, cancel the edit first; otherwise
+        // deselect the entry which bubbles us back to the list.
+        const st = dispatcher.getState();
+        if (st.phase === 'editing') {
+          dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.selectedLid) {
+          dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+        }
+        break;
+      }
+      case 'mobile-open-drawer': {
+        e.preventDefault();
+        e.stopPropagation();
+        openMobileDrawer();
+        break;
+      }
+      case 'mobile-close-drawer': {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMobileDrawer();
         break;
       }
       case 'open-link-migration-dialog': {

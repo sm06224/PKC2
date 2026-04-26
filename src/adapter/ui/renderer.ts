@@ -252,6 +252,27 @@ const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = 
  * - Access core directly
  */
 
+/**
+ * Map AppState to the iPhone-shell page identifier. The matrix
+ * mirrors the visual hierarchy a touch user steps through:
+ *
+ *   `phase === 'editing'`    → 'edit'
+ *   `selectedLid !== null`   → 'detail'
+ *   otherwise                → 'list'
+ *
+ * The helper lives next to `render` so the same routing rule is
+ * available wherever the renderer needs to branch (mobile header
+ * shape, mobile back-arrow visibility). Desktop ignores the
+ * attribute entirely; the `pointer:coarse` @media block in
+ * `base.css` is what activates the page-switching CSS.
+ */
+type MobilePage = 'list' | 'detail' | 'edit';
+function resolveMobilePage(state: AppState): MobilePage {
+  if (state.phase === 'editing') return 'edit';
+  if (state.selectedLid) return 'detail';
+  return 'list';
+}
+
 export function render(state: AppState, root: HTMLElement): void {
   const localeSettings = state.settings?.locale;
   setFormatContext(localeSettings?.language, localeSettings?.timezone);
@@ -269,6 +290,15 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', BUILD_FEATURES.join(','));
+  // 2026-04-26 iPhone push/pop redesign: a single attribute drives
+  // the mobile shell's page routing — `list` (no selection) →
+  // `detail` (selection, view) → `edit` (selection, editing). On
+  // desktop the attribute is set but ignored (no responsive CSS
+  // queries activate). On the iPhone tier (`pointer:coarse +
+  // ≤640px`) the @media block in `base.css` keys all of its
+  // hide / show rules off this attribute so each page renders as
+  // a full-screen native-feeling view.
+  root.setAttribute('data-pkc-mobile-page', resolveMobilePage(state));
   applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {
@@ -390,7 +420,13 @@ function renderError(error: string | null): HTMLElement {
 function renderShell(state: AppState): HTMLElement {
   const shell = createElement('div', 'pkc-shell');
 
-  // Header
+  // Desktop header — appended FIRST so the legacy chrome stays
+  // first in DOM order. Existing tests + the smoke suite call
+  // `querySelector('[data-pkc-action="commit-edit"]…').first()`
+  // expecting the desktop action-bar button; if the mobile header
+  // (which carries an identically-named action) preceded it in
+  // DOM, `.first()` would resolve to a `display: none` mobile
+  // button and the click would silently time out.
   shell.appendChild(renderHeader(state));
 
   // Import confirmation panel
@@ -504,7 +540,125 @@ function renderShell(state: AppState): HTMLElement {
   main.appendChild(rightTray);
 
   shell.appendChild(main);
+
+  // Mobile header (iPhone push/pop redesign 2026-04-26). Appended
+  // LAST in DOM order so existing `.first()` queries on
+  // ambiguous action attributes (commit-edit, cancel-edit, …)
+  // resolve to the desktop chrome above; CSS `order: -1` on the
+  // `pointer:coarse + ≤640px` tier reorders it to the visual top
+  // so iPhone users still see the bar at the top of the
+  // viewport.
+  shell.appendChild(renderMobileHeader(state));
   return shell;
+}
+
+/**
+ * iPhone shell header — replaces the desktop `.pkc-header` on the
+ * `pointer:coarse + ≤640px` tier. Always emitted by `renderShell`
+ * so the markup is hot-reload-stable; CSS gates the visibility.
+ *
+ * The bar is intentionally minimal — Apple's HIG calls for
+ * "content is hero", so chrome is whittled down to the verbs the
+ * user needs *on this exact page*:
+ *
+ *   list   → [PKC2 ◯ phase] ── ⋯ ── [✏ Compose] [☰ Menu]
+ *   detail → [‹ List]      [Title]                  [⋯ Actions]
+ *   edit   → [Cancel]      [編集中]                  [💾 Done]
+ *
+ * Routing is derived from `resolveMobilePage(state)` so the same
+ * rule that drives the shell's `data-pkc-mobile-page` attribute
+ * also picks the header variant — no chance of drift.
+ */
+function renderMobileHeader(state: AppState): HTMLElement {
+  const bar = createElement('header', 'pkc-mobile-header');
+  const page = resolveMobilePage(state);
+  bar.setAttribute('data-pkc-region', 'mobile-header');
+  bar.setAttribute('data-pkc-mobile-page', page);
+
+  if (page === 'edit') {
+    const cancelBtn = createElement('button', 'pkc-mobile-header-btn');
+    cancelBtn.setAttribute('data-pkc-action', 'cancel-edit');
+    cancelBtn.setAttribute('title', '編集を破棄 (Esc)');
+    cancelBtn.textContent = 'Cancel';
+    bar.appendChild(cancelBtn);
+
+    const titleEl = createElement('span', 'pkc-mobile-header-title');
+    titleEl.textContent = '編集中';
+    bar.appendChild(titleEl);
+
+    const editingLid = state.editingLid ?? state.selectedLid;
+    if (editingLid) {
+      const saveBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-primary');
+      saveBtn.setAttribute('data-pkc-action', 'commit-edit');
+      saveBtn.setAttribute('data-pkc-lid', editingLid);
+      saveBtn.setAttribute('title', '変更を保存 (Ctrl+S)');
+      saveBtn.textContent = '💾 Done';
+      bar.appendChild(saveBtn);
+    }
+    return bar;
+  }
+
+  if (page === 'detail') {
+    const backBtn = createElement('button', 'pkc-mobile-header-btn');
+    backBtn.setAttribute('data-pkc-action', 'mobile-back');
+    backBtn.setAttribute('aria-label', '一覧に戻る');
+    backBtn.setAttribute('title', '一覧に戻る');
+    backBtn.textContent = '‹ List';
+    bar.appendChild(backBtn);
+
+    const selectedTitle =
+      state.container?.entries.find((e) => e.lid === state.selectedLid)?.title ?? '';
+    const titleEl = createElement('span', 'pkc-mobile-header-title');
+    titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
+    bar.appendChild(titleEl);
+
+    // The right-hand "more" affordance is intentionally minimal in
+    // v1 — desktop's full action bar already renders inside the
+    // entry detail body, so a redundant hamburger here would just
+    // crowd the bar. v2 will add per-entry context-menu actions
+    // here once they have iPhone-friendly affordances.
+    const spacer = createElement('span', 'pkc-mobile-header-spacer');
+    bar.appendChild(spacer);
+    return bar;
+  }
+
+  // page === 'list'
+  const titleEl = createElement('span', 'pkc-mobile-header-title');
+  titleEl.textContent = state.container?.meta?.title ?? 'PKC2';
+  bar.appendChild(titleEl);
+
+  const phase = createElement('span', 'pkc-phase-badge pkc-mobile-header-phase');
+  phase.setAttribute('data-pkc-phase-value', state.phase);
+  phase.textContent = state.phase;
+  bar.appendChild(phase);
+
+  const spacer = createElement('span', 'pkc-mobile-header-spacer');
+  bar.appendChild(spacer);
+
+  // Compose button — phone equivalent of the desktop Text-button.
+  // Defaults to creating a Text entry; the hamburger drawer below
+  // exposes the other archetypes for users who want them.
+  if (!state.readonly) {
+    const composeBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-primary');
+    composeBtn.setAttribute('data-pkc-action', 'create-entry');
+    composeBtn.setAttribute('data-pkc-archetype', 'text');
+    composeBtn.setAttribute('aria-label', '新規 Text を作成');
+    composeBtn.setAttribute('title', 'Create a new text entry');
+    composeBtn.textContent = '✏';
+    bar.appendChild(composeBtn);
+  }
+
+  // Hamburger drawer — opens a sheet containing the create
+  // archetype list, Data… export/import bundle, and a shortcut
+  // back to the desktop shell menu (Theme / Scanline / Settings).
+  const menuBtn = createElement('button', 'pkc-mobile-header-btn');
+  menuBtn.setAttribute('data-pkc-action', 'mobile-open-drawer');
+  menuBtn.setAttribute('aria-label', 'メニューを開く');
+  menuBtn.setAttribute('title', 'Menu');
+  menuBtn.textContent = '☰';
+  bar.appendChild(menuBtn);
+
+  return bar;
 }
 
 function renderHeader(state: AppState): HTMLElement {

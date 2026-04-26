@@ -6273,3 +6273,265 @@ mark.pkc-search-mark {
 .pkc-card-widget[data-pkc-card-status="malformed"] .pkc-card-widget-badge {
   color: var(--c-muted);
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * iPhone push/pop shell — 2026-04-26 user request
+ *   "ジョブズの哲学的におすすめは？"
+ *   → iPhone は push/pop、iPad は Split View、Mac は 3-pane の3つ
+ *     をそれぞれ native idiom で設計する。
+ *
+ * The earlier "responsive 3-pane" attempt (PR #172) failed because
+ * it just shrank the desktop chrome. This block instead replaces
+ * the shell entirely on the touch tier — content is hero, chrome
+ * is whittled down to per-page essentials, and the user navigates
+ * via push (`SELECT_ENTRY`) / pop (`mobile-back`).
+ *
+ * Activation gate: `pointer: coarse and (max-width: 640px)`. The
+ * `pointer: coarse` half is the explicit guardrail — a Full HD
+ * desktop user resizing their window narrow keeps the desktop
+ * shell because their primary pointer is still fine.
+ *
+ * Page routing: `#pkc-root[data-pkc-mobile-page]` is set by the
+ * renderer to `list | detail | edit` based on selectedLid /
+ * phase. CSS hides everything irrelevant to the current page so
+ * each one occupies the full viewport.
+ *
+ *   list   → sidebar full-width (the master).
+ *   detail → center pane full-width (the entry view).
+ *   edit   → same as detail; the inline editor is part of the
+ *            center pane already.
+ *
+ * Drawer: the hamburger ☰ in the mobile header opens a sheet of
+ * create / Data… / Settings actions so the desktop header chrome
+ * does not have to be crammed onto the phone.
+ * ───────────────────────────────────────────────────────────────── */
+
+/* The mobile header is always emitted by the renderer so the markup
+ * stays stable; outside the iPhone tier we keep it hidden so the
+ * legacy desktop `<header>` keeps its chrome intact. */
+.pkc-mobile-header {
+  display: none;
+}
+
+@media (pointer: coarse) and (max-width: 640px) {
+  .pkc-header {
+    /* The desktop header carries 5 create buttons + Data… +
+     * pane-toggle icons — none of which fit a 375 px-wide phone
+     * shell. Hide it; the mobile header above takes over. */
+    display: none;
+  }
+
+  .pkc-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-surface);
+    flex-shrink: 0;
+    min-height: 44px; /* WCAG 2.5.5 AAA touch target */
+    position: relative;
+    z-index: 30;
+    /* The renderer appends the mobile header LAST in DOM order so
+     * `.first()` queries on ambiguous action attributes resolve
+     * to the desktop chrome. `order: -1` reorders it visually to
+     * the top of the column-flex shell so the iPhone user still
+     * sees the bar at the top of the viewport. */
+    order: -1;
+  }
+
+  .pkc-mobile-header-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--c-fg);
+  }
+
+  .pkc-mobile-header-spacer {
+    flex: 1;
+  }
+
+  .pkc-mobile-header-phase {
+    flex: 0 0 auto;
+  }
+
+  .pkc-mobile-header-btn {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 36px;
+    padding: 0.35rem 0.7rem;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--c-fg);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .pkc-mobile-header-btn:hover,
+  .pkc-mobile-header-btn:active {
+    background: var(--c-hover);
+    border-color: var(--c-border);
+  }
+
+  .pkc-mobile-header-primary {
+    background: var(--c-accent);
+    color: var(--c-accent-fg);
+    font-weight: 600;
+  }
+
+  .pkc-mobile-header-primary:hover,
+  .pkc-mobile-header-primary:active {
+    background: var(--c-accent);
+    color: var(--c-accent-fg);
+    opacity: 0.85;
+  }
+
+  .pkc-main {
+    position: relative;
+  }
+
+  /* In list mode: sidebar IS the page, full-width. */
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+  }
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-center,
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-meta-pane {
+    display: none;
+  }
+
+  /* In detail / edit mode: center pane IS the page, full-width. */
+  #pkc-root[data-pkc-mobile-page="detail"] .pkc-sidebar,
+  #pkc-root[data-pkc-mobile-page="detail"] .pkc-meta-pane,
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-sidebar,
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-meta-pane {
+    display: none;
+  }
+  #pkc-root[data-pkc-mobile-page="detail"] .pkc-center,
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-center {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* In edit mode, the mobile header already exposes Cancel + Done,
+   * so the desktop action bar at the bottom of the editor would
+   * just duplicate them. Hide it on phone — the mobile header is
+   * the canonical edit chrome. */
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-action-bar {
+    display: none;
+  }
+
+  .pkc-tray-bar,
+  .pkc-resize-handle {
+    display: none;
+  }
+
+  .pkc-btn,
+  .pkc-btn-small,
+  .pkc-tray-toggle,
+  .pkc-shell-menu-btn,
+  .pkc-eip-summary,
+  .pkc-action-bar-more-summary {
+    min-height: 36px;
+  }
+
+  .pkc-shell-menu-card {
+    width: calc(100vw - 1.5rem);
+    max-width: 360px;
+    max-height: calc(100vh - 1.5rem);
+    overflow-y: auto;
+  }
+
+  .pkc-eip-content,
+  .pkc-action-bar-more-content,
+  .pkc-color-picker-popover {
+    max-width: calc(100vw - 1rem);
+  }
+
+  /* ── Mobile hamburger drawer ── */
+  .pkc-mobile-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 80;
+  }
+  .pkc-mobile-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(85vw, 320px);
+    background: var(--c-bg);
+    border-right: 1px solid var(--c-border);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    z-index: 81;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .pkc-mobile-drawer-section {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--c-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .pkc-mobile-drawer-section-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--c-muted);
+    margin-bottom: 0.25rem;
+  }
+  .pkc-mobile-drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    background: transparent;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-fg);
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .pkc-mobile-drawer-item:hover,
+  .pkc-mobile-drawer-item:active {
+    background: var(--c-hover);
+  }
+  .pkc-mobile-drawer-close {
+    margin-top: auto;
+    padding: 0.6rem;
+    background: var(--c-surface);
+    border: none;
+    border-top: 1px solid var(--c-border);
+    color: var(--c-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    min-height: 44px;
+  }
+}
+
+/* The drawer is always rendered hidden by default; the .pkc-mobile-
+ * drawer-backdrop / .pkc-mobile-drawer rules above only apply
+ * when the renderer also adds the matching class. Outside the
+ * mobile media query the drawer never gets emitted in the first
+ * place, but adding `display: none` here as a defense-in-depth
+ * means a stray drawer element on desktop would not paint. */
+@media not all and (pointer: coarse), not all and (max-width: 640px) {
+  .pkc-mobile-drawer,
+  .pkc-mobile-drawer-backdrop {
+    display: none;
+  }
+}
