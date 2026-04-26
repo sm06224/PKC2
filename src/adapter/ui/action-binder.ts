@@ -202,12 +202,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
-  function toggleColorPicker(trigger: HTMLElement): void {
-    // Re-clicking the same trigger closes the popover.
-    if (colorPickerTrigger === trigger && colorPickerEl !== null) {
-      closeColorPicker();
-      return;
-    }
+  function openColorPickerAt(trigger: HTMLElement): void {
     closeColorPicker();
     // Resolve the lid from the surrounding row / view. The trigger
     // lives inside the detail view, which carries `data-pkc-lid` on
@@ -222,9 +217,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container?.entries.find((x) => x.lid === lid);
     const current = entry?.color_tag ?? null;
     const popover = renderColorPickerPopover(current);
-    // Position next to the trigger in DOM order so the popover flows
-    // beneath it; CSS handles the visual offset.
+    // Insert the popover next to the trigger in DOM order so focus
+    // and tab order remain natural, then pin its visual position with
+    // viewport-anchored coordinates. Without explicit `top/left`, the
+    // popover would be laid out at its parent's static position —
+    // which in a wrapped flex header lands far to the left of the
+    // trigger button. Using `position: fixed` decouples the popover
+    // from any positioned ancestor (e.g. transformed cards) and keeps
+    // it aligned under the trigger regardless of the surrounding
+    // layout.
     trigger.parentElement?.insertBefore(popover, trigger.nextSibling);
+    const rect = trigger.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${rect.bottom}px`;
+    popover.style.margin = '0';
+    // Choose horizontal anchor so the popover stays inside the
+    // viewport. The trigger sits at the right edge of the entry's
+    // title row, so a left-anchored popover (`left: rect.left`)
+    // overflows the center pane's right edge. Anchoring the popover's
+    // right edge to the trigger's right edge keeps it tucked under
+    // the trigger; if that anchor would push the popover off the left
+    // edge (very narrow viewport), fall back to left-anchoring.
+    const popoverWidth = popover.offsetWidth;
+    const rightAnchored = rect.right - popoverWidth;
+    if (rightAnchored >= 8) {
+      popover.style.left = `${rightAnchored}px`;
+    } else {
+      popover.style.left = `${Math.max(rect.left, 8)}px`;
+    }
     colorPickerEl = popover;
     colorPickerTrigger = trigger;
     colorPickerLid = lid;
@@ -234,6 +254,115 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // dispatched again.
     document.addEventListener('click', handleColorPickerOutsideClick, true);
     document.addEventListener('keydown', handleColorPickerKeydown, true);
+  }
+
+  function toggleColorPicker(trigger: HTMLElement): void {
+    // Keyboard fallback: Enter / Space on the trigger toggles the
+    // popover (open ↔ close). The press-drag-release path on mouse
+    // drives mousedown/mouseup directly and bypasses this branch.
+    if (colorPickerTrigger === trigger && colorPickerEl !== null) {
+      closeColorPicker();
+      return;
+    }
+    openColorPickerAt(trigger);
+  }
+
+  /**
+   * Press-drag-release UX (2026-04-26 user request): expanding-menu
+   * buttons must open on **mousedown**, follow the pointer while the
+   * button is held, and **commit-or-cancel on mouseup** so the
+   * "drawer" never lingers after use. macOS-native menu idiom.
+   *
+   * Flow:
+   *   1. mousedown on trigger    → open popover, install one-shot
+   *      capture-phase mouseup listener on document.
+   *   2. mouseup on swatch       → dispatch SET_ENTRY_COLOR + close.
+   *   3. mouseup on clear button → dispatch CLEAR_ENTRY_COLOR + close.
+   *   4. mouseup elsewhere       → close, no action.
+   *   5. The follow-up `click` event is swallowed (capture-phase,
+   *      `stopImmediatePropagation`) so the legacy click handlers for
+   *      `apply-color-tag` / `clear-color-tag` / `open-color-picker`
+   *      do not double-fire.
+   *
+   * Keyboard fallback: Enter/Space on the trigger fires `click`
+   * without a preceding mousedown, so the existing click handler at
+   * `case 'open-color-picker'` still toggles open. Tab to a swatch
+   * and Enter applies through the legacy click path. Tests that drive
+   * the picker via Playwright `.click()` see the open-then-close
+   * collapse and must use the press-drag-release sequence
+   * (`page.mouse.down` → move → `page.mouse.up`) instead.
+   */
+  function handleColorPickerMouseUp(e: MouseEvent): void {
+    const t = e.target;
+    let actionEl: HTMLElement | null = null;
+    if (t instanceof Element) {
+      actionEl = t.closest('[data-pkc-action]') as HTMLElement | null;
+    }
+    const action = actionEl?.getAttribute('data-pkc-action') ?? null;
+    const lid = colorPickerLid;
+    if (action === 'apply-color-tag') {
+      const color = actionEl?.getAttribute('data-pkc-color');
+      if (color && lid) {
+        dispatcher.dispatch({ type: 'SET_ENTRY_COLOR', lid, color });
+      }
+    } else if (action === 'clear-color-tag') {
+      if (lid) dispatcher.dispatch({ type: 'CLEAR_ENTRY_COLOR', lid });
+    }
+    closeColorPicker();
+    // Swallow the click that would fire after this mouseup so the
+    // legacy click-path handlers do not act on the same gesture.
+    registerOneShotClickSwallow();
+  }
+
+  function swallowOnce(e: Event): void {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+
+  /**
+   * Register `swallowOnce` as a one-shot capture-phase click listener
+   * with a 100 ms safety-net auto-cleanup. The natural click event
+   * after mousedown+mouseup on different elements fires on the
+   * common ancestor (per the W3C UI Events spec); we suppress it so
+   * the legacy click handlers do not double-fire on a press-drag-
+   * release gesture.
+   *
+   * Safety net: drivers that simulate raw mouse input (Playwright's
+   * `page.mouse.down`/`up`, some accessibility tools) do not
+   * synthesize the follow-up `click`, so the `once: true` listener
+   * would otherwise stay pending and swallow the next *legitimate*
+   * click. The timeout removes the listener if it has not fired by
+   * then; `removeEventListener` is a no-op if `once: true` already
+   * removed it after a real click.
+   */
+  function registerOneShotClickSwallow(): void {
+    document.addEventListener('click', swallowOnce, {
+      capture: true,
+      once: true,
+    });
+    setTimeout(() => {
+      document.removeEventListener('click', swallowOnce, true);
+    }, 100);
+  }
+
+  function handleColorPickerMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const triggerEl = t.closest(
+      '[data-pkc-action="open-color-picker"]',
+    ) as HTMLElement | null;
+    if (!triggerEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (colorPickerTrigger !== triggerEl || colorPickerEl === null) {
+      openColorPickerAt(triggerEl);
+    }
+    document.addEventListener('mouseup', handleColorPickerMouseUp, {
+      capture: true,
+      once: true,
+    });
   }
 
   registerAssetPickerCallback((ctx) => {
@@ -2264,6 +2393,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (handleSlashMenuKeydown(e)) return;
     }
 
+    // Tab key inside a `<textarea>` inserts a literal `\t` instead
+    // of moving focus (2026-04-26 user request: enable tab-character
+    // input). CSS `tab-size: 4` keeps the visual width matched to
+    // the four-space indentation convention so the two are
+    // interchangeable in practice. Only fires for plain Tab —
+    // Shift+Tab / Ctrl+Tab keep their browser-native semantics so
+    // accessible tab-out-of-textarea still works.
+    if (
+      e.key === 'Tab'
+      && !e.shiftKey
+      && !e.ctrlKey
+      && !e.metaKey
+      && !e.altKey
+      && !e.isComposing
+      && e.target instanceof HTMLTextAreaElement
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      e.preventDefault();
+      // Splice `\t` in. `setRangeText` keeps undo history intact
+      // where browsers support it; the explicit assignment fallback
+      // covers the rare cases where it's not implemented.
+      if (typeof ta.setRangeText === 'function') {
+        ta.setRangeText('\t', start, end, 'end');
+      } else {
+        ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + 1;
+      }
+      // Notify subscribers (preview pane, dirty-state, etc.) that
+      // the textarea content changed — `setRangeText` does not fire
+      // an `input` event on its own.
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+
     // Slice 1 / 2: Kanban / Calendar Todo-add popover input takes
     // priority for Enter / Escape so the user can commit / cancel
     // without global shortcuts (Ctrl+S, shortcut-help etc.) intercepting.
@@ -2507,6 +2672,69 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       e.preventDefault();
       togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      return;
+    }
+
+    // Focus mode (2026-04-26 user request): Alt+Space hides BOTH
+    // panes at once for distraction-free editing. The user reports
+    // this is a frequent flow ("両方のペインを隠す操作を頻繁に使う"),
+    // and `Ctrl+\` / `Ctrl+Shift+\` are awkward when used together.
+    // Suppressed while a text input is focused so Alt+Space stays
+    // available to OS-level IME / window-menu hotkeys when the user
+    // is mid-typing.
+    if (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      // If either pane is currently open, fold both. Otherwise, expand
+      // both. Mirrors how OS focus-modes work (one keystroke flips the
+      // whole layout state regardless of intermediate mixed states).
+      const sidebarEl = root.querySelector<HTMLElement>(
+        '[data-pkc-region="sidebar"]',
+      );
+      const metaEl = root.querySelector<HTMLElement>(
+        '[data-pkc-region="meta"]',
+      );
+      const sidebarCollapsed =
+        sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
+      const metaCollapsed =
+        metaEl?.getAttribute('data-pkc-collapsed') === 'true';
+      const eitherOpen = !sidebarCollapsed || !metaCollapsed;
+      if (eitherOpen) {
+        if (!sidebarCollapsed) togglePane(root, 'sidebar');
+        if (!metaCollapsed) togglePane(root, 'meta');
+      } else {
+        if (sidebarCollapsed) togglePane(root, 'sidebar');
+        if (metaCollapsed) togglePane(root, 'meta');
+      }
+      return;
+    }
+
+    // Ctrl/⌘+E: enter edit mode for the currently selected entry
+    // (2026-04-26 user request). Mirrors the dblclick / action-bar
+    // edit button. Suppressed while a text input has focus so the
+    // shortcut never fires mid-typing inside the editor itself.
+    if (mod && (e.key === 'e' || e.key === 'E') && !e.shiftKey && !e.altKey) {
+      const target = e.target as Element | null;
+      if (
+        target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLInputElement && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio')
+        || (target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      if (state.phase !== 'ready') return;
+      if (state.readonly) return;
+      const editLid = state.selectedLid;
+      if (!editLid) return;
+      e.preventDefault();
+      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: editLid });
       return;
     }
 
@@ -4788,6 +5016,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('input', handleTextEditPreviewInput);
 
   root.addEventListener('click', handleClick);
+  // Press-drag-release UX for the color picker palette (2026-04-26
+  // user request). Limited to popover-style "palette" controls
+  // anchored to a trigger button; the shell menu is intentionally
+  // out of scope because it is a hover-window-style menu that opens
+  // standalone (per follow-up clarification).
+  root.addEventListener('mousedown', handleColorPickerMouseDown);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -4846,6 +5080,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   return () => {
     closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
+    root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);

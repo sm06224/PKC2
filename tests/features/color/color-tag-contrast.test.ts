@@ -6,7 +6,7 @@
  *
  * Pins the WCAG 1.4.11 **non-text contrast 3:1 floor** for every
  * v1 palette hue against the canonical theme backgrounds. The
- * sidebar `.pkc-entry-color-bar` (3px border-left, base.css:968)
+ * sidebar `.pkc-entry-color-bar` (6px border-left, base.css:996)
  * is the visible surface; treating it as a non-text UI component
  * means each hue must reach 3:1 against the active background.
  *

@@ -957,7 +957,7 @@
  *
  * Slice 5.0 (2026-04-25): the v1 dark-theme defaults below stay on
  * `:root`. Light theme darkens orange / yellow / green / pink so the
- * 3px sidebar bar clears the WCAG 1.4.11 non-text contrast 3:1 floor
+ * 6px sidebar bar clears the WCAG 1.4.11 non-text contrast 3:1 floor
  * against the parchment-tinted #f0ebe0 light background — the four
  * untouched hues (red 3.2:1, blue 3.1:1, purple 3.3:1, gray 4.1:1)
  * already pass on light; orange (2.4), yellow (1.6), green (1.9),
@@ -994,8 +994,8 @@
 }
 
 .pkc-entry-color-bar {
-  border-left: 3px solid var(--pkc-color-tag-current, transparent);
-  padding-left: calc(0.4rem - 3px);
+  border-left: 6px solid var(--pkc-color-tag-current, transparent);
+  padding-left: calc(0.4rem - 6px);
 }
 
 /* Per-palette hue binding — one short class per palette ID, attached
@@ -1903,6 +1903,12 @@ mark.pkc-search-mark {
   min-height: 120px;
   background: var(--c-bg);
   color: var(--c-body-text);
+  /* 2026-04-26 user request: render `\t` characters as 4 columns so
+   * tab-indented and 4-space-indented content read identically. The
+   * Tab key inserts `\t` (action-binder textarea handler), and this
+   * rule keeps the visual width matched to the 4-space convention. */
+  tab-size: 4;
+  -moz-tab-size: 4;
 }
 
 .pkc-editor-body:focus {
@@ -3406,42 +3412,6 @@ mark.pkc-search-mark {
   font-weight: 600;
 }
 
-/* ── Event Log ── */
-.pkc-event-log {
-  position: fixed;
-  bottom: 0;
-  right: 0;
-  width: 320px;
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius) 0 0 0;
-  font-size: 0.7rem;
-  z-index: 100;
-  box-shadow: var(--shadow-sm);
-}
-
-.pkc-event-log summary {
-  padding: 0.2rem 0.4rem;
-  cursor: pointer;
-  font-weight: 600;
-  background: var(--c-border);
-  font-size: 0.7rem;
-}
-
-.pkc-event-list {
-  padding: 0.2rem 0.4rem;
-  list-style: none;
-}
-
-.pkc-event-item {
-  padding: 0.1rem 0;
-  font-family: var(--font-mono);
-  color: var(--c-muted);
-  border-bottom: 1px solid var(--c-border);
-}
-
 /* ── DnD visual feedback ── */
 [data-pkc-dragging="true"] {
   opacity: 0.35;
@@ -3774,6 +3744,15 @@ mark.pkc-search-mark {
   background: var(--c-accent);
   box-shadow: var(--glow);
   width: 5px;
+}
+
+/* ── Header Toggles Group (right-anchored) ── */
+.pkc-header-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ── Pane Tray Toggle Buttons ── */
@@ -5368,6 +5347,8 @@ mark.pkc-search-mark {
   font-size: 0.85rem;
   resize: vertical;
   min-height: 6rem;
+  tab-size: 4;
+  -moz-tab-size: 4;
 }
 
 .pkc-textlog-append-btn {

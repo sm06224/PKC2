@@ -2,54 +2,28 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { DomainEvent } from '../../core/action/domain-event';
 
 /**
- * EventLog: minimal DomainEvent display for development.
+ * Event log: developer-aid stream of `DomainEvent`s.
  *
- * Subscribes to dispatcher.onEvent and shows the last N events
- * in a collapsible panel. This is a development aid, not a
- * production feature.
+ * Earlier revisions mounted a fixed-position `<details>` tray in
+ * the bottom-right corner of the viewport. End users have no use
+ * for the panel and it occupied real estate, so the 2026-04-26
+ * pass demoted the surface to `console.log` (`console.debug`).
+ * Devs still get full event visibility through the browser console
+ * with no UI cost.
  */
 
-const MAX_EVENTS = 20;
-
-export function mountEventLog(container: HTMLElement, dispatcher: Dispatcher): () => void {
-  const events: DomainEvent[] = [];
-
-  const panel = document.createElement('details');
-  panel.className = 'pkc-event-log';
-  panel.setAttribute('data-pkc-region', 'event-log');
-
-  const summary = document.createElement('summary');
-  summary.textContent = 'Events (0)';
-  panel.appendChild(summary);
-
-  const list = document.createElement('ol');
-  list.className = 'pkc-event-list';
-  panel.appendChild(list);
-
-  container.appendChild(panel);
-
-  const unsub = dispatcher.onEvent((event) => {
-    events.push(event);
-    if (events.length > MAX_EVENTS) events.shift();
-
-    summary.textContent = `Events (${events.length})`;
-    renderEvents(list, events);
+/**
+ * Subscribe the dispatcher to the browser console. Returns the
+ * unsubscribe function so the bootstrap caller can tear the
+ * subscription down on hot-reload / teardown.
+ */
+export function wireEventLogToConsole(dispatcher: Dispatcher): () => void {
+  return dispatcher.onEvent((event) => {
+    // `debug` keeps the noise out of the default console filter
+    // while still surfacing under the Verbose level.
+    // eslint-disable-next-line no-console
+    console.debug('[PKC2 event]', formatEvent(event), event);
   });
-
-  return () => {
-    unsub();
-    panel.remove();
-  };
-}
-
-function renderEvents(list: HTMLOListElement, events: DomainEvent[]): void {
-  list.innerHTML = '';
-  for (const event of events) {
-    const li = document.createElement('li');
-    li.className = 'pkc-event-item';
-    li.textContent = formatEvent(event);
-    list.appendChild(li);
-  }
 }
 
 function formatEvent(event: DomainEvent): string {
