@@ -202,12 +202,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
-  function toggleColorPicker(trigger: HTMLElement): void {
-    // Re-clicking the same trigger closes the popover.
-    if (colorPickerTrigger === trigger && colorPickerEl !== null) {
-      closeColorPicker();
-      return;
-    }
+  function openColorPickerAt(trigger: HTMLElement): void {
     closeColorPicker();
     // Resolve the lid from the surrounding row / view. The trigger
     // lives inside the detail view, which carries `data-pkc-lid` on
@@ -259,6 +254,89 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // dispatched again.
     document.addEventListener('click', handleColorPickerOutsideClick, true);
     document.addEventListener('keydown', handleColorPickerKeydown, true);
+  }
+
+  function toggleColorPicker(trigger: HTMLElement): void {
+    // Keyboard fallback: Enter / Space on the trigger toggles the
+    // popover (open ↔ close). The press-drag-release path on mouse
+    // drives mousedown/mouseup directly and bypasses this branch.
+    if (colorPickerTrigger === trigger && colorPickerEl !== null) {
+      closeColorPicker();
+      return;
+    }
+    openColorPickerAt(trigger);
+  }
+
+  /**
+   * Press-drag-release UX (2026-04-26 user request): expanding-menu
+   * buttons must open on **mousedown**, follow the pointer while the
+   * button is held, and **commit-or-cancel on mouseup** so the
+   * "drawer" never lingers after use. macOS-native menu idiom.
+   *
+   * Flow:
+   *   1. mousedown on trigger    → open popover, install one-shot
+   *      capture-phase mouseup listener on document.
+   *   2. mouseup on swatch       → dispatch SET_ENTRY_COLOR + close.
+   *   3. mouseup on clear button → dispatch CLEAR_ENTRY_COLOR + close.
+   *   4. mouseup elsewhere       → close, no action.
+   *   5. The follow-up `click` event is swallowed (capture-phase,
+   *      `stopImmediatePropagation`) so the legacy click handlers for
+   *      `apply-color-tag` / `clear-color-tag` / `open-color-picker`
+   *      do not double-fire.
+   *
+   * Keyboard fallback: Enter/Space on the trigger fires `click`
+   * without a preceding mousedown, so the existing click handler at
+   * `case 'open-color-picker'` still toggles open. Tab to a swatch
+   * and Enter applies through the legacy click path. Tests that drive
+   * the picker via Playwright `.click()` see the open-then-close
+   * collapse and must use the press-drag-release sequence
+   * (`page.mouse.down` → move → `page.mouse.up`) instead.
+   */
+  function handleColorPickerMouseUp(e: MouseEvent): void {
+    const t = e.target;
+    let actionEl: HTMLElement | null = null;
+    if (t instanceof Element) {
+      actionEl = t.closest('[data-pkc-action]') as HTMLElement | null;
+    }
+    const action = actionEl?.getAttribute('data-pkc-action') ?? null;
+    const lid = colorPickerLid;
+    if (action === 'apply-color-tag') {
+      const color = actionEl?.getAttribute('data-pkc-color');
+      if (color && lid) {
+        dispatcher.dispatch({ type: 'SET_ENTRY_COLOR', lid, color });
+      }
+    } else if (action === 'clear-color-tag') {
+      if (lid) dispatcher.dispatch({ type: 'CLEAR_ENTRY_COLOR', lid });
+    }
+    closeColorPicker();
+    // Swallow the click that would fire after this mouseup so the
+    // legacy click-path handlers do not act on the same gesture.
+    document.addEventListener('click', swallowOnce, { capture: true, once: true });
+  }
+
+  function swallowOnce(e: Event): void {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+
+  function handleColorPickerMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const triggerEl = t.closest(
+      '[data-pkc-action="open-color-picker"]',
+    ) as HTMLElement | null;
+    if (!triggerEl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (colorPickerTrigger !== triggerEl || colorPickerEl === null) {
+      openColorPickerAt(triggerEl);
+    }
+    document.addEventListener('mouseup', handleColorPickerMouseUp, {
+      capture: true,
+      once: true,
+    });
   }
 
   registerAssetPickerCallback((ctx) => {
@@ -4813,6 +4891,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('input', handleTextEditPreviewInput);
 
   root.addEventListener('click', handleClick);
+  // Press-drag-release for expanding-menu buttons. Currently scoped
+  // to the color picker (2026-04-26 user request). Listener is on
+  // root so it survives full re-renders.
+  root.addEventListener('mousedown', handleColorPickerMouseDown);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -4871,6 +4953,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   return () => {
     closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
+    root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);

@@ -108,17 +108,34 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   await saveBtn.click();
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
 
-  // Open color picker (trigger lives in detail title row), pick orange.
-  // Scope the trigger lookup to the detail view so we cannot pick up
-  // a stale element from a previous render.
+  // Open color picker (trigger lives in detail title row), pick orange
+  // via press-drag-release. The picker now uses macOS-style menu UX
+  // (mousedown opens, drag → mouseup commits, release elsewhere
+  // cancels — see action-binder `handleColorPickerMouseDown`), so a
+  // plain `.click()` would open and immediately close the popover
+  // without selecting a swatch. Drive the gesture explicitly via the
+  // mouse API: press on the trigger, wait for the popover to render,
+  // move onto the orange swatch, release.
   const pickerTrigger = page.locator('[data-pkc-action="open-color-picker"]').first();
   await expect(pickerTrigger).toBeVisible();
-  await pickerTrigger.click();
+  const triggerBox = await pickerTrigger.boundingBox();
+  if (!triggerBox) throw new Error('Color picker trigger has no bounding box');
+  await page.mouse.move(
+    triggerBox.x + triggerBox.width / 2,
+    triggerBox.y + triggerBox.height / 2,
+  );
+  await page.mouse.down();
   const orangeSwatch = page.locator(
     'button[data-pkc-action="apply-color-tag"][data-pkc-color="orange"]',
   ).first();
   await expect(orangeSwatch).toBeVisible({ timeout: 5_000 });
-  await orangeSwatch.click();
+  const orangeBox = await orangeSwatch.boundingBox();
+  if (!orangeBox) throw new Error('Orange swatch has no bounding box');
+  await page.mouse.move(
+    orangeBox.x + orangeBox.width / 2,
+    orangeBox.y + orangeBox.height / 2,
+  );
+  await page.mouse.up();
 
   // Sidebar reflects the chosen color via class + attribute. Scope to
   // `li.pkc-entry-item` so we do not match the Recent-items panel
