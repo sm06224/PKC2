@@ -534,13 +534,37 @@
 .pkc-action-bar-more-content > .pkc-btn,
 .pkc-action-bar-more-content > button,
 .pkc-action-bar-more-content > label {
-  /* Buttons fill the menu width so the column reads as a list of
-   * options rather than a row of pills stacked vertically. The
-   * More… menu also carries a `<label>` (the "compact" checkbox
-   * wrapper), which gets the same left-aligned full-width
-   * treatment so the column reads consistently. */
+  /* Inside the column-stacked Data… / More… menus the row content
+   * needs to hug the left edge of the menu, not center under the
+   * widest sibling.
+   *
+   * UA stylesheets render `<button>` content with an anonymous
+   * inner alignment-container that defaults to centered — even
+   * `text-align: left` does not move the inline content to the
+   * left edge in WebKit/Blink. Forcing `display: flex` +
+   * `justify-content: flex-start` replaces that anonymous box with
+   * a real flex container we control, so the icon glyph sits at
+   * the button's content-box left edge (verified via the
+   * `_probe-more-menu` Playwright probe — first-glyph offset
+   * drops from ~27 px under the old `text-align: left` to the
+   * 8 px button left padding under this rule). */
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.25rem;
   text-align: left;
   width: 100%;
+}
+
+/* The compact-mode checkbox wrapper inside More… renders a real
+ * `<input type="checkbox">` plus a text node. Without an explicit
+ * row layout the textnode floats next to the checkbox awkwardly
+ * once the label gains `width: 100%`. Mirror the row layout used
+ * by the sibling buttons so the `[ ] compact` row reads
+ * uniformly. */
+.pkc-action-bar-more-content > label.pkc-action-export-compact-label {
+  padding: 0.2rem 0.5rem;
 }
 
 .pkc-eip-sep {
