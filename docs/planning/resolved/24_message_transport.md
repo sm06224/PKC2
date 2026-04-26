@@ -1,5 +1,7 @@
 # Issue #10: PKC-Message Transport — message contract の最小骨格
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)で **superseded** された(initial design doc としての archeology)。canonical reference は v1 spec を参照。本 doc は履歴として保持する。
+
 ## 目的
 
 PKC-Message の最小 transport を実装し、

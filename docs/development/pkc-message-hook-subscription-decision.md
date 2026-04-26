@@ -1,5 +1,7 @@
 # PKC-Message Hook Subscription — Go / No-Go Decision Doc (docs-only)
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)では **deferred** として §11.1 から参照される。本 doc は hook subscription の go/no-go 判断の正本(=Defer 決定)として **active** な状態を保持する。
+
 **Status**: decision doc — 2026-04-20. **本 PR は実装を含まない**。
 **Purpose**: review / acceptance / PoC 設計の三段構えが揃った状態で、「**PKC2 は hook subscription を実装すべきか？**」を判断する材料を 1 箇所に集約する。判断は本書内で下す（実装 Go / No-Go / Defer）。
 

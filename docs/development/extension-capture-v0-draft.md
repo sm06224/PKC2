@@ -1,5 +1,8 @@
 # Extension Capture v0 — Design Draft (docs-only)
 
+> **Status (2026-04-26)**: 本 doc は `docs/spec/pkc-message-api-v1.md` + `docs/spec/record-offer-capture-profile.md` で **superseded** された。canonical reference は v1 spec を参照。
+> 本 doc は draft 段階の設計検討記録として保持する(履歴削除しない)。
+
 **Status**: design draft — 2026-04-21. **No implementation in this PR**.
 **Purpose**: 外部サーフェス（ブラウザ拡張 / bookmarklet / 共有シート等）から PKC2 へ「1-click で 1 件のコンテンツを送る」最小フローを、transport / platform の大規模設計に踏み込まずに固定する。
 

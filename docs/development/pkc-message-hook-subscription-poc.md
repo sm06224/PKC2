@@ -1,5 +1,7 @@
 # PKC-Message Hook Subscription — PoC Design (docs-only)
 
+> **Status (2026-04-26)**: 本 doc は v1 spec(`docs/spec/pkc-message-api-v1.md`)では **deferred / frozen** として §11.1 から参照される(decision で Defer 判定済みのため凍結)。go 判定が降りたら本 doc を implementation guide として活用する。
+
 > **📌 canonical pointer（2026-04-21 時点）**
 >
 > - **canonical entry point**: `pkc-message-hook-subscription-decision.md`
