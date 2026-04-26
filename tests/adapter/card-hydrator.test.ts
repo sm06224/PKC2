@@ -46,9 +46,9 @@ function makePlaceholder(target: string, variant = 'default'): HTMLElement {
 }
 
 const TODAY = '2026-04-25T00:00:00Z';
-function entry(lid: string, title: string, archetype: Entry['archetype'] = 'text'): Entry {
+function entry(lid: string, title: string, archetype: Entry['archetype'] = 'text', body = ''): Entry {
   return {
-    lid, title, body: '', archetype,
+    lid, title, body, archetype,
     created_at: TODAY, updated_at: TODAY,
   };
 }
@@ -292,5 +292,140 @@ describe('hydrateCardPlaceholders — no-op cases', () => {
     expect(phs[0]!.getAttribute('data-pkc-card-status')).toBe('ok');
     expect(phs[1]!.getAttribute('data-pkc-card-status')).toBe('missing');
     expect(phs[2]!.getAttribute('data-pkc-card-status')).toBe('cross-container');
+  });
+});
+
+describe('hydrateCardPlaceholders — Slice 5.1 excerpt', () => {
+  it('renders an excerpt under the title for TEXT entries with body', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'Hello', 'text', 'this is the body content')],
+      currentContainerId: 'cid-1',
+    });
+    const excerpt = ph.querySelector('.pkc-card-widget-excerpt');
+    expect(excerpt).not.toBeNull();
+    expect(excerpt!.textContent).toBe('this is the body content');
+  });
+
+  it('omits the excerpt slot entirely when the body is empty', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'Hello', 'text', '')],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')).toBeNull();
+  });
+
+  it('omits the excerpt slot for archetypes without prose preview (attachment)', () => {
+    const ph = makePlaceholder('entry:a1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('a1', 'photo.png', 'attachment', '{"key":"k","name":"photo.png","mime":"image/png"}')],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')).toBeNull();
+    // Title still renders untouched.
+    expect(ph.querySelector('.pkc-card-widget-title')?.textContent).toBe('photo.png');
+  });
+
+  it('uses the named log for textlog #log/<id> targets', () => {
+    const ph = makePlaceholder('entry:t1#log/b');
+    const body = JSON.stringify({
+      entries: [
+        { id: 'a', text: 'first', createdAt: '2026-04-25T09:00:00Z', flags: [] },
+        { id: 'b', text: 'second', createdAt: '2026-04-25T10:00:00Z', flags: [] },
+      ],
+    });
+    hydrateCardPlaceholders(root, {
+      entries: [entry('t1', 'My log', 'textlog', body)],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')?.textContent).toBe('second');
+  });
+
+  it('uses the most recent log for textlog entry: target', () => {
+    const ph = makePlaceholder('entry:t1');
+    const body = JSON.stringify({
+      entries: [
+        { id: 'a', text: 'first', createdAt: '2026-04-25T09:00:00Z', flags: [] },
+        { id: 'b', text: 'latest', createdAt: '2026-04-25T11:00:00Z', flags: [] },
+      ],
+    });
+    hydrateCardPlaceholders(root, {
+      entries: [entry('t1', 'My log', 'textlog', body)],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')?.textContent).toBe('latest');
+  });
+
+  it('flattens markdown in the excerpt (headings, links)', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [
+        entry(
+          'e1',
+          'T',
+          'text',
+          '# Heading\n\nsee [the doc](entry:e2) for more',
+        ),
+      ],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')?.textContent).toBe(
+      'Heading see the doc for more',
+    );
+  });
+
+  it('extends aria-label to include the excerpt for screen readers', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'Title', 'text', 'sample body')],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.getAttribute('aria-label')).toContain('sample body');
+    expect(ph.getAttribute('aria-label')).toContain('Title');
+  });
+
+  it('does not alter aria-label suffix when no excerpt is available', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'Title', 'text', '')],
+      currentContainerId: 'cid-1',
+    });
+    // Slice 5.0-shape aria-label (without trailing excerpt) is preserved.
+    expect(ph.getAttribute('aria-label')).toBe('Card · Text · Title');
+  });
+
+  it('uses textContent (not innerHTML) so script content cannot escape', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [
+        entry('e1', 'T', 'text', 'before <script>alert(1)</script> after'),
+      ],
+      currentContainerId: 'cid-1',
+    });
+    const excerpt = ph.querySelector('.pkc-card-widget-excerpt')!;
+    // The excerpt element exists but contains zero `<script>` children
+    // (the builder strips the tag + content; even if the text were
+    // preserved it would land inside textContent which the browser
+    // never re-parses as HTML).
+    expect(excerpt.querySelector('script')).toBeNull();
+    expect(excerpt.textContent).not.toContain('<script>');
+    expect(excerpt.textContent).toBe('before after');
+  });
+
+  it('replaces the excerpt on re-hydration when the body changes', () => {
+    const ph = makePlaceholder('entry:e1');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'T', 'text', 'first body')],
+      currentContainerId: 'cid-1',
+    });
+    expect(ph.querySelector('.pkc-card-widget-excerpt')?.textContent).toBe('first body');
+    hydrateCardPlaceholders(root, {
+      entries: [entry('e1', 'T', 'text', 'second body')],
+      currentContainerId: 'cid-1',
+    });
+    const slots = ph.querySelectorAll('.pkc-card-widget-excerpt');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]!.textContent).toBe('second body');
   });
 });

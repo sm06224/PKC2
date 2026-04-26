@@ -1,10 +1,13 @@
 /**
- * Card widget presenter — Slice 5.0 minimal chrome (2026-04-25).
+ * Card widget presenter — Slice 5.0 minimal chrome (2026-04-25),
+ * extended in Slice 5.1 to surface the resolved Entry +
+ * ParsedEntryRef so the hydrator can feed `excerpt-builder.ts`
+ * without re-parsing the target string.
  *
  * Pure helper. Resolves a `data-pkc-card-target` string into the
  * minimum payload the hydrator needs to render the widget chrome:
  *
- *   { status, lid?, title?, archetype?, containerId?, fragment? }
+ *   { status, lid?, title?, archetype?, entry?, parsed?, ... }
  *
  * `status` partitions the four visible states the hydrator must
  * distinguish:
@@ -18,14 +21,14 @@
  *       docs/development/card-widget-ui-v0-audit.md §3 / §4
  *
  * Out of scope (deferred to later slices):
- *   - excerpt / thumbnail (Slice 5.1 / 5.2)
+ *   - thumbnail (Slice 5.2)
  *   - variant-specific layout (Slice 6)
  *   - asset-target cards (parser rejects them at Slice 3.5;
  *     defence-in-depth here returns `'malformed'` if a hand-crafted
  *     DOM somehow reaches the hydrator)
  */
 import type { Entry, ArchetypeId } from '@core/model/record';
-import { parseEntryRef } from '@features/entry-ref/entry-ref';
+import { parseEntryRef, type ParsedEntryRef } from '@features/entry-ref/entry-ref';
 import { parsePortablePkcReference } from '@features/link/permalink';
 
 export type CardWidgetStatus =
@@ -42,6 +45,23 @@ export interface CardWidgetData {
   title?: string;
   /** Resolved entry archetype. Only set when `status === 'ok'`. */
   archetype?: ArchetypeId;
+  /**
+   * Full Entry record for the resolved target. Only set when
+   * `status === 'ok'`. Slice 5.1 added this so the excerpt builder
+   * can read `entry.body` without the hydrator having to look the
+   * lid up a second time. Prefer {@link title} / {@link archetype}
+   * for chrome that only needs the leaf fields — keeping the
+   * narrower fields lets future call-sites stay shallow.
+   */
+  entry?: Entry;
+  /**
+   * The parsed entry-ref describing which slice of the resolved
+   * Entry the card is pointing at (`entry` / `log` / `day` /
+   * `range` / `legacy` / `heading`). Only set when
+   * `status === 'ok'`. Used by Slice 5.1 to choose the right log
+   * for textlog excerpts.
+   */
+  parsed?: ParsedEntryRef;
   /** Foreign container id for `cross-container`. */
   foreignContainerId?: string;
   /** Foreign target lid for `cross-container` (display only). */
@@ -111,5 +131,7 @@ function resolveEntryRef(
     lid: target.lid,
     title: target.title?.trim() ?? '',
     archetype: target.archetype,
+    entry: target,
+    parsed,
   };
 }

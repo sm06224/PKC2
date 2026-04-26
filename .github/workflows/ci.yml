@@ -13,10 +13,22 @@
 # .eslintrc.cjs を正本化してゼロ化した。経緯は
 # docs/development/lint-baseline-realignment.md を参照。
 #
-# 対象ブランチ: main / claude/** / PR to main。
+# 対象ブランチ: main / PR to main。
 # 対象 OS: ubuntu-latest 単一 (配布物が単一 HTML のため OS 差分不要)。
 # Node: 20.x (package.json devDependencies の @types/node@25 を
 # サポートする LTS)。
+#
+# Trigger scope (2026-04-25 update): 旧版は `claude/**` への push でも
+# CI を走らせていたが、PR を開くと `push: claude/**` と
+# `pull_request: → main` の双方が走り **同じ workflow が 2 回実行** され
+# 計算資源を倍消費していた(GitHub Actions 上限を圧迫)。dev branch への
+# push だけで PR を開かない WIP commit に CI を走らせる需要は実運用上
+# 低い(PR を開いた時点で必ず CI が走る + ローカルで `npm run typecheck`
+# / `lint` / `test` / `test:smoke` を pre-PR で実行するルールが
+# `docs/development/pr-review-checklist.md` §3 に確立済み)ため、push
+# トリガーは `main` のみに絞る。dev branch の検査は PR open / sync で
+# `pull_request: → main` トリガーが 1 回走り、merge 後の main で push
+# トリガーが 1 回走る、計 2 回まで圧縮される。
 
 name: CI
 
@@ -24,7 +36,6 @@ on:
   push:
     branches:
       - main
-      - 'claude/**'
   pull_request:
     branches:
       - main

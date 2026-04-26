@@ -6184,12 +6184,32 @@ mark.pkc-search-mark {
   color: var(--c-accent);
 }
 .pkc-card-widget-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 28em;
+}
+/* Slice 5.1: plain-text excerpt slot. Sits to the right of the
+   title, sized to fill remaining inline space, and ellipsises on
+   overflow. The builder hard-caps the source text at 160 chars so
+   this rule's job is purely visual containment. */
+.pkc-card-widget-excerpt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-muted);
+  font-size: 0.9em;
+  font-weight: 400;
+}
+.pkc-card-widget[data-pkc-card-status="ok"] .pkc-card-widget-excerpt::before {
+  /* Visual separator between title and excerpt. Pseudo-element so
+     screen readers (which read aria-label) skip it. */
+  content: " · ";
+  color: var(--c-muted);
 }
 .pkc-card-widget[data-pkc-card-status="missing"],
 .pkc-card-widget[data-pkc-card-status="cross-container"],
