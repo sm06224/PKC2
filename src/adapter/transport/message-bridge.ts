@@ -36,16 +36,34 @@ export interface BridgeOptions {
   containerId: string;
 
   /**
-   * Allowed origins. If empty or `['*']`, accept all origins except
-   * the special `"null"` origin (opaque origins from file:// or
-   * sandboxed iframes), which must always be opted in explicitly via
-   * `allowedOrigins: [..., 'null']`. Otherwise, only accept messages
-   * from listed origins.
+   * Allowed origins. Accepts either a static array or a provider
+   * function that returns the array on each message (PR-B 2026-04-26).
    *
-   * Production bootstrap should pass an explicit list per
-   * `docs/spec/record-offer-capture-profile.md` §9.1 / §9.2.
+   * Static array form (default, backward-compatible):
+   *   - Empty or `['*']` accepts all origins except the special
+   *     `"null"` origin (opaque origins from `file://` or sandboxed
+   *     iframes), which must always be opted in explicitly via
+   *     `allowedOrigins: [..., 'null']`.
+   *   - Otherwise, only accept messages from listed origins.
+   *
+   * Provider form (`() => string[]`):
+   *   - Resolved on **each inbound message**, so the host can rotate
+   *     the allowlist at runtime (e.g. user-edited settings, env var
+   *     refresh, dynamic registration of trusted Extension origins)
+   *     without re-mounting the bridge.
+   *   - The result follows the same semantics as the static array.
+   *   - If the provider throws, the bridge logs a warning via
+   *     `onReject` and treats the result as empty (= accept-all
+   *     fail-safe; the deployment author is responsible for choosing
+   *     a fail-closed policy by configuring an explicit list at mount
+   *     time).
+   *   - Returning `null` / `undefined` is normalised to `[]`.
+   *
+   * Production bootstrap should pass an explicit list (or provider
+   * returning one) per `docs/spec/record-offer-capture-profile.md`
+   * §9.1 / §9.2.
    */
-  allowedOrigins?: string[];
+  allowedOrigins?: string[] | (() => string[]);
 
   /**
    * Callback for validated, non-ping messages.
@@ -107,11 +125,39 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     pongProfile,
   } = options;
 
-  const acceptAllOrigins = allowedOrigins.length === 0 || allowedOrigins.includes('*');
+  /**
+   * Resolve `allowedOrigins` to a concrete `string[]`. With the static
+   * array form this is a no-op; with the provider form we invoke it
+   * per-message so dynamic config (settings UI, env reload, trusted-
+   * Extension registry) flows through without remounting the bridge.
+   *
+   * Fail-safe behavior: if the provider throws, surface the error to
+   * `onReject` (audit trail) and return `[]`. The deployment chooses
+   * the policy — an empty allowlist defaults to "accept all except
+   * `null`" (`acceptAllOrigins` branch below); deployments that want
+   * fail-closed should configure an explicit list at mount time.
+   */
+  function resolveAllowedOrigins(): string[] {
+    if (typeof allowedOrigins === 'function') {
+      try {
+        const result = allowedOrigins();
+        return Array.isArray(result) ? result : [];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        onReject?.(null, `allowedOrigins provider threw: ${msg}`);
+        return [];
+      }
+    }
+    return allowedOrigins;
+  }
 
   function handleMessage(event: MessageEvent): void {
     // 1. Quick filter: skip non-PKC messages silently
     if (!isPkcMessage(event.data)) return;
+
+    const currentAllowed = resolveAllowedOrigins();
+    const acceptAllOrigins =
+      currentAllowed.length === 0 || currentAllowed.includes('*');
 
     // 2a. Origin `"null"` (file:// sender, sandboxed iframe, opaque
     //     origin) is rejected unless explicitly opt-in via
@@ -120,13 +166,13 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     //     must not ride on the accept-all path — requiring an explicit
     //     list membership keeps the file:// / sandboxed-iframe opt-in
     //     auditable at the mount site.
-    if (event.origin === 'null' && !allowedOrigins.includes('null')) {
+    if (event.origin === 'null' && !currentAllowed.includes('null')) {
       onReject?.(event.data, `Origin rejected: null (explicit opt-in required)`);
       return;
     }
 
     // 2b. Origin allowlist check
-    if (!acceptAllOrigins && !allowedOrigins.includes(event.origin)) {
+    if (!acceptAllOrigins && !currentAllowed.includes(event.origin)) {
       onReject?.(event.data, `Origin rejected: ${event.origin}`);
       return;
     }
