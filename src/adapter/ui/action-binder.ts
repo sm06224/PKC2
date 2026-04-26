@@ -235,8 +235,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const rect = trigger.getBoundingClientRect();
     popover.style.position = 'fixed';
     popover.style.top = `${rect.bottom}px`;
-    popover.style.left = `${rect.left}px`;
     popover.style.margin = '0';
+    // Choose horizontal anchor so the popover stays inside the
+    // viewport. The trigger sits at the right edge of the entry's
+    // title row, so a left-anchored popover (`left: rect.left`)
+    // overflows the center pane's right edge. Anchoring the popover's
+    // right edge to the trigger's right edge keeps it tucked under
+    // the trigger; if that anchor would push the popover off the left
+    // edge (very narrow viewport), fall back to left-anchoring.
+    const popoverWidth = popover.offsetWidth;
+    const rightAnchored = rect.right - popoverWidth;
+    if (rightAnchored >= 8) {
+      popover.style.left = `${rightAnchored}px`;
+    } else {
+      popover.style.left = `${Math.max(rect.left, 8)}px`;
+    }
     colorPickerEl = popover;
     colorPickerTrigger = trigger;
     colorPickerLid = lid;
