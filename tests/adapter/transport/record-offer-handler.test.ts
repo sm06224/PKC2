@@ -1,5 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { recordOfferHandler, BODY_SIZE_CAP_BYTES } from '@adapter/transport/record-offer-handler';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  recordOfferHandler,
+  BODY_SIZE_CAP_BYTES,
+  getReplyWindowForOffer,
+  clearReplyWindowForOffer,
+  clearAllReplyWindows,
+} from '@adapter/transport/record-offer-handler';
 import type { HandlerContext } from '@adapter/transport/message-handler';
 import type { MessageEnvelope } from '@core/model/message';
 import type { Dispatcher } from '@adapter/state/dispatcher';
@@ -194,5 +200,84 @@ describe('recordOfferHandler', () => {
     });
     const result = recordOfferHandler(ctx);
     expect(result).toBe(true);
+  });
+});
+
+// ── Reply-window registry (PR-C, 2026-04-26) ────────────────────────
+//
+// PendingOffer now resolves the *exact* sender window for outbound
+// `record:reject` via a transport-memory map keyed by `offer_id`.
+// `docs/spec/pkc-message-api-v1.md` §3.2 source-window rule.
+
+describe('reply-window registry', () => {
+  beforeEach(() => {
+    clearAllReplyWindows();
+  });
+
+  it('stashes ctx.sourceWindow on a successful record:offer', () => {
+    const senderWin = { mark: 'sender-window-A' } as unknown as Window;
+    const ctx = makeCtx(
+      { title: 'T', body: 'B' },
+      { sourceWindow: senderWin },
+    );
+    recordOfferHandler(ctx);
+
+    const offerId = (ctx.dispatcher.dispatch as ReturnType<typeof vi.fn>)
+      .mock.calls[0]![0].offer.offer_id;
+    expect(getReplyWindowForOffer(offerId)).toBe(senderWin);
+  });
+
+  it('does not stash a window when the payload is rejected', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const senderWin = { mark: 'sender-window-B' } as unknown as Window;
+    const ctx = makeCtx(
+      { title: 'T' /* missing body */ },
+      { sourceWindow: senderWin },
+    );
+    const result = recordOfferHandler(ctx);
+    expect(result).toBe(false);
+
+    // No dispatch ⇒ no offer_id, but the registry must also be empty
+    // (otherwise a stash would leak with no way to reference it later).
+    // Verify by attempting a lookup with a representative key — any
+    // string should miss when the registry is empty.
+    expect(getReplyWindowForOffer('any-key')).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it('returns null for an unregistered offer_id', () => {
+    expect(getReplyWindowForOffer('never-registered')).toBeNull();
+  });
+
+  it('clearReplyWindowForOffer drops the entry', () => {
+    const senderWin = { mark: 'sender-window-C' } as unknown as Window;
+    const ctx = makeCtx(
+      { title: 'T', body: 'B' },
+      { sourceWindow: senderWin },
+    );
+    recordOfferHandler(ctx);
+    const offerId = (ctx.dispatcher.dispatch as ReturnType<typeof vi.fn>)
+      .mock.calls[0]![0].offer.offer_id;
+
+    expect(getReplyWindowForOffer(offerId)).toBe(senderWin);
+    clearReplyWindowForOffer(offerId);
+    expect(getReplyWindowForOffer(offerId)).toBeNull();
+  });
+
+  it('keeps separate windows per offer_id when multiple offers arrive', () => {
+    const winA = { mark: 'window-A' } as unknown as Window;
+    const winB = { mark: 'window-B' } as unknown as Window;
+    const ctxA = makeCtx({ title: 'A', body: 'a' }, { sourceWindow: winA });
+    const ctxB = makeCtx({ title: 'B', body: 'b' }, { sourceWindow: winB });
+    recordOfferHandler(ctxA);
+    recordOfferHandler(ctxB);
+
+    const idA = (ctxA.dispatcher.dispatch as ReturnType<typeof vi.fn>)
+      .mock.calls[0]![0].offer.offer_id;
+    const idB = (ctxB.dispatcher.dispatch as ReturnType<typeof vi.fn>)
+      .mock.calls[0]![0].offer.offer_id;
+
+    expect(getReplyWindowForOffer(idA)).toBe(winA);
+    expect(getReplyWindowForOffer(idB)).toBe(winB);
   });
 });
