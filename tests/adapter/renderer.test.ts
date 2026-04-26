@@ -3356,8 +3356,10 @@ describe('Renderer', () => {
     expect(textBtn!.textContent).toBe('Text');
     const todoBtn = bar!.querySelector('[data-pkc-archetype="todo"]');
     expect(todoBtn!.textContent).toBe('Todo');
-    const formBtn = bar!.querySelector('[data-pkc-archetype="form"]');
-    expect(formBtn!.textContent).toBe('Form');
+    // 2026-04-26 sidebar audit: dead-route archetypes (form / generic
+    // / opaque) were dropped from the filter rail. Confirm a
+    // representative button is gone instead of asserting its label.
+    expect(bar!.querySelector('[data-pkc-archetype="form"]')).toBeNull();
   });
 
   it('header has Attachment create button', () => {
@@ -9558,7 +9560,22 @@ describe('Recent Entries Pane v1', () => {
     expect(pane).not.toBeNull();
     expect(pane!.closest('[data-pkc-region="sidebar"]')).not.toBeNull();
     expect(pane!.tagName.toLowerCase()).toBe('details');
-    expect((pane as HTMLDetailsElement).open).toBe(true);
+    // 2026-04-26 sidebar audit: pane defaults to closed so the
+    // initial sidebar layout fits the viewport without scrolling.
+    // Once the user expands it, `state.recentPaneCollapsed` records
+    // the explicit choice and is honored on subsequent renders.
+    expect((pane as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it('respects an explicit recentPaneCollapsed=false (user has expanded the pane)', () => {
+    const container = makeContainer([
+      mkEntry('a', 'text', '2026-04-20T00:00:00Z'),
+    ]);
+    render(makeState({ container, recentPaneCollapsed: false }), root);
+
+    const pane = root.querySelector('[data-pkc-region="recent-entries"]') as HTMLDetailsElement | null;
+    expect(pane).not.toBeNull();
+    expect(pane!.open).toBe(true);
   });
 
   it('omits the pane when container has no user entries', () => {
@@ -9779,18 +9796,25 @@ describe('Saved Searches Pane v1', () => {
     };
   }
 
-  it('renders the Save button in the search row when entries exist and not readonly', () => {
+  // 2026-04-26 sidebar audit: ★ + ★+ adjacent buttons collapsed
+  // into one ★ button bound to `quick-save-search` (auto-named).
+  // The legacy prompt-based `save-search` button is gone from UI.
+  it('renders a single quick-save (★) button in the search row when entries exist and not readonly', () => {
     const container = makeContainer([mkEntry('a')]);
     render(makeState({ container }), root);
-    const btn = root.querySelector('[data-pkc-action="save-search"]');
+    const btn = root.querySelector('[data-pkc-action="quick-save-search"]');
     expect(btn).not.toBeNull();
     expect(btn!.closest('.pkc-search-row')).not.toBeNull();
+    expect(btn!.textContent).toBe('★');
+    // The legacy prompt-based save-search button must NOT be in the
+    // search row anymore.
+    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
   });
 
-  it('hides the Save button in readonly mode', () => {
+  it('hides the quick-save button in readonly mode', () => {
     const container = makeContainer([mkEntry('a')]);
     render(makeState({ container, readonly: true }), root);
-    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
   });
 
   it('hides the Save button while an import preview is active', () => {
@@ -9810,7 +9834,7 @@ describe('Saved Searches Pane v1', () => {
       }),
       root,
     );
-    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
+    expect(root.querySelector('[data-pkc-action="quick-save-search"]')).toBeNull();
   });
 
   it('does not render the pane when saved_searches is empty / undefined', () => {
@@ -9992,14 +10016,15 @@ describe('Saved Searches Pane v1', () => {
 
   // ── W1 Slice F-4: Quick-save shortcut renders alongside the ★ ──
 
-  it('Slice F-4: renders the quick-save button next to ★ when not readonly / not preview', () => {
+  it('Slice F-4: quick-save (★) is the only star button next to the search row', () => {
     const container = makeContainer([mkEntry('a')]);
     render(makeState({ container }), root);
     const quickBtn = root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]');
     expect(quickBtn).not.toBeNull();
     expect(quickBtn!.closest('.pkc-search-row')).not.toBeNull();
-    // ★ remains — the name-first flow is not replaced.
-    expect(root.querySelector('[data-pkc-action="save-search"]')).not.toBeNull();
+    // 2026-04-26 sidebar audit: the legacy prompt-based star button
+    // is gone — only the quick-save ★ remains in the search row.
+    expect(root.querySelector('[data-pkc-action="save-search"]')).toBeNull();
   });
 
   it('Slice F-4: hides the quick-save button in readonly mode', () => {

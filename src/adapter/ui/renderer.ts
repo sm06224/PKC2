@@ -64,10 +64,22 @@ import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/co
 import { setFormatContext, getFormatLocale } from './format-context';
 
 /** Primary tier: always visible in the archetype filter bar (FI-09). */
-const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = ['text', 'textlog', 'folder'];
-/** Secondary tier: hidden by default, shown when archetypeFilterExpanded (FI-09). */
-const ARCHETYPE_FILTER_SECONDARY: readonly ArchetypeId[] = ['todo', 'attachment', 'form', 'generic', 'opaque'];
-
+/**
+ * Archetype filter rail (sidebar). Lists every archetype with a UI
+ * creation path so the filter never advertises a route the user
+ * cannot reach. `form` / `generic` / `opaque` were removed on
+ * 2026-04-26 per user audit ("導線死んでるんだから今は不要なはず")
+ * — they have no create-entry button in the header. Imported
+ * containers may still hold those archetypes; entries display
+ * normally, the filter just doesn't surface them as a separate axis.
+ */
+const ARCHETYPE_FILTER_PRIMARY: readonly ArchetypeId[] = [
+  'text',
+  'textlog',
+  'folder',
+  'todo',
+  'attachment',
+];
 /** Human-readable labels for archetypes. Used in badges, filters, and headers. */
 const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   text: 'Text',
@@ -1753,10 +1765,15 @@ function renderSavedSearchesPane(
   const saved = state.container.meta.saved_searches ?? [];
   if (saved.length === 0) return null;
 
+  // 2026-04-26 user audit: sidebar required scrolling by default —
+  // the Saved Searches pane was the biggest ~200-300px contributor
+  // because it was always opened. Default to closed; users expand
+  // when they want to apply a snapshot. State is intentionally
+  // ephemeral (matches `<details>` semantics) so a click on the
+  // summary is the only interaction needed to peek inside.
   const pane = document.createElement('details');
   pane.className = 'pkc-saved-searches-pane';
   pane.setAttribute('data-pkc-region', 'saved-searches');
-  pane.open = true;
 
   const summary = document.createElement('summary');
   summary.className = 'pkc-saved-searches-summary';
@@ -1898,33 +1915,26 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       searchRow.appendChild(clearBtn);
     }
 
-    // Saved Searches v1: Save button (spec §5.1). Hidden for readonly
-    // / import-preview artifacts since SAVE_SEARCH mutates the
-    // container and is blocked in those modes.
+    // Saved Searches v1: a single ★ button next to the search input
+    // (2026-04-26 user audit: "検索窓横の星マークも２つあるのが意味
+    // 不明"). Click → quick-save with an auto timestamp-based name
+    // so the round trip "set filters → save → restore later" stays
+    // one click. The legacy name-first prompt button was dropped to
+    // remove the visual ambiguity of two adjacent star icons; users
+    // who want a custom name can rename the saved search later
+    // (spec follow-up §5.x — saved-searches rename UX).
     if (!state.readonly && !state.importPreview) {
-      const saveBtn = createElement('button', 'pkc-btn-small');
-      saveBtn.setAttribute('data-pkc-action', 'save-search');
-      saveBtn.setAttribute('title', 'Save current search');
+      const saveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
+      saveBtn.setAttribute('data-pkc-action', 'quick-save-search');
+      saveBtn.setAttribute('title', '現在の検索条件を保存（自動命名）');
       saveBtn.textContent = '★';
       searchRow.appendChild(saveBtn);
-
-      // W1 Slice F-4 — quick-save shortcut. One click captures the
-      // full current filter state (search / archetype / categorical
-      // peer / Tag / sort / archived) under a timestamp-based
-      // default name, so the round-trip "set → save → see →
-      // restore" no longer requires typing a name. The ★ button
-      // above is retained for the name-first flow.
-      const quickSaveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
-      quickSaveBtn.setAttribute('data-pkc-action', 'quick-save-search');
-      quickSaveBtn.setAttribute('title', '現在の絞り込みを保存');
-      quickSaveBtn.textContent = '★+';
-      searchRow.appendChild(quickSaveBtn);
     }
 
     sidebar.appendChild(searchRow);
 
     // Archetype filter bar
-    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter, state.archetypeFilterExpanded ?? false));
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
 
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
@@ -1940,7 +1950,11 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   // Recent Entries Pane v1 — derived-only list of the most recently
   // updated user entries. See docs/development/recent-entries-pane-v1.md.
   {
-    const recentPane = renderRecentEntriesPane(allEntries, state.selectedLid, state.recentPaneCollapsed ?? false);
+    // 2026-04-26 user audit: default Recent pane to collapsed so a
+    // fresh sidebar fits the viewport without scrolling. Once the
+    // user expands it, `state.recentPaneCollapsed` records the
+    // explicit choice and is honored verbatim afterwards.
+    const recentPane = renderRecentEntriesPane(allEntries, state.selectedLid, state.recentPaneCollapsed ?? true);
     if (recentPane) sidebar.appendChild(recentPane);
   }
 
@@ -5037,7 +5051,7 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
   return bar;
 }
 
-function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>, expanded: boolean): HTMLElement {
+function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>): HTMLElement {
   const bar = createElement('div', 'pkc-archetype-filter');
   bar.setAttribute('data-pkc-region', 'archetype-filter');
 
@@ -5051,9 +5065,15 @@ function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>, expanded: bool
   }
   bar.appendChild(allBtn);
 
-  // Primary group — always visible
-  const primaryGroup = createElement('div', 'pkc-filter-group');
-  primaryGroup.setAttribute('data-pkc-filter-group', 'primary');
+  // 2026-04-26 cleanup: a single flat group of archetype filter
+  // chips. The previous design wrapped a 5-item secondary group
+  // (todo / attachment / form / generic / opaque) behind a `▼`
+  // expand toggle; once `form` / `generic` / `opaque` were dropped
+  // (no UI create path), the toggle no longer pulled its weight,
+  // so todo and attachment were merged into the always-visible
+  // group. CSS `flex-wrap` handles narrow viewports.
+  const group = createElement('div', 'pkc-filter-group');
+  group.setAttribute('data-pkc-filter-group', 'primary');
   for (const archetype of ARCHETYPE_FILTER_PRIMARY) {
     const btn = createElement('button', 'pkc-filter-btn');
     btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
@@ -5062,32 +5082,9 @@ function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>, expanded: bool
     if (current.has(archetype)) {
       btn.setAttribute('data-pkc-active', 'true');
     }
-    primaryGroup.appendChild(btn);
+    group.appendChild(btn);
   }
-  bar.appendChild(primaryGroup);
-
-  // Expand toggle
-  const expandBtn = createElement('button', 'pkc-filter-expand');
-  expandBtn.setAttribute('data-pkc-action', 'toggle-archetype-filter-expanded');
-  expandBtn.setAttribute('data-pkc-expanded', expanded ? 'true' : 'false');
-  expandBtn.textContent = expanded ? '▲' : '▼';
-  bar.appendChild(expandBtn);
-
-  // Secondary group — shown when expanded
-  const secondaryGroup = createElement('div', 'pkc-filter-group');
-  secondaryGroup.setAttribute('data-pkc-filter-group', 'secondary');
-  secondaryGroup.setAttribute('data-pkc-visible', expanded ? 'true' : 'false');
-  for (const archetype of ARCHETYPE_FILTER_SECONDARY) {
-    const btn = createElement('button', 'pkc-filter-btn');
-    btn.setAttribute('data-pkc-action', 'toggle-archetype-filter');
-    btn.setAttribute('data-pkc-archetype', archetype);
-    btn.textContent = archetypeLabel(archetype);
-    if (current.has(archetype)) {
-      btn.setAttribute('data-pkc-active', 'true');
-    }
-    secondaryGroup.appendChild(btn);
-  }
-  bar.appendChild(secondaryGroup);
+  bar.appendChild(group);
 
   return bar;
 }
