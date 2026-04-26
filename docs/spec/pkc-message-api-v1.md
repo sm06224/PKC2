@@ -347,7 +347,7 @@ interface PendingOffer {
 
 #### 7.2.4 Body Header Injection
 
-`source_url` / `captured_at` が指定されている場合、host は body 先頭に **provenance blockquote** を注入する(`capture-profile.md §10.3`):
+`source_url` / `captured_at` が指定されている場合、host は body 先頭に **provenance blockquote** を注入する(詳細仕様は cross-spec `record-offer-capture-profile.md` §10.4):
 
 ```markdown
 > source: https://example.com/article
@@ -357,6 +357,15 @@ interface PendingOffer {
 ```
 
 これは **v1 における provenance の唯一の表現** である。formal Relation / container.meta.external_sources は v1 では未定義(§11.5)。
+
+**実装 location**(`pkc-message-api-v1.md` §7.2.4 + `record-offer-capture-profile.md` §10.7、PR-A 2026-04-26 で明文化):
+
+- 注入は **reducer 層**(`src/adapter/state/app-state.ts` の `ACCEPT_OFFER` case)で発生
+- 純関数 helper: `injectCaptureHeader(body, sourceUrl, capturedAt) → string`(`src/adapter/state/app-state.ts:570` 付近)、`source_url` / `captured_at` の少なくとも一方が non-null のとき blockquote を prepend
+- renderer / action-binder は touched なし(spec §6.2 の user consent 経路 = `ACCEPT_OFFER` dispatch にのみ依存)
+- 新 action は導入せず、既存 `ACCEPT_OFFER` 経路で完結
+
+これにより integrator(extension / sender 実装者)は「どの DOM 経路 / どのステージで provenance が body に書き込まれるか」を spec 一読で把握可能。reducer 層に閉じているため、receiver 実装は body 加工後の最終形を観測できる。
 
 #### 7.2.5 Accept / Reject の流れ
 
