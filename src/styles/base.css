@@ -478,11 +478,21 @@
 }
 
 /* ── Export / Import inline buttons (collapsed behind <details>) ── */
+/* Data… (export / import) wrapper. Sits flush against the create-
+ * actions group (Text / Log / Todo / File / Folder) and carries a
+ * vertical border on its left edge as a visual separator. The
+ * earlier `margin-left: auto` would push the button to the
+ * far-right of the header — visually disjoint from the related
+ * create flow — and the 2026-04-26 user audit asked for it to be
+ * positioned "Folder ボタンの右横に境界線を挟んで配置" instead.
+ */
 .pkc-eip-inline {
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  margin-left: auto;
+  border-left: 1px solid var(--c-border);
+  padding-left: 0.45rem;
+  margin-left: 0.3rem;
 }
 
 .pkc-eip-details {
