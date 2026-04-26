@@ -2306,7 +2306,20 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     const empty = createElement('div', 'pkc-empty pkc-guidance');
     empty.setAttribute('data-pkc-region', 'empty-guidance');
     if (state.phase === 'ready' && !state.readonly) {
-      empty.innerHTML = 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
+      // 2026-04-26 mobile redesign — branch the guidance text on
+      // viewport because the iPhone shell has neither the desktop
+      // header's "+ buttons" nor a visible "center pane". Pointing
+      // at the ✏ Compose button + ☰ Menu drawer matches the
+      // mobile chrome the user actually sees, so the message
+      // becomes actionable instead of misleading. Desktop / tablet
+      // (matchMedia returns false) keep the legacy hint.
+      const isPhone =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches;
+      empty.innerHTML = isPhone
+        ? 'No entries yet.<br>右上の <strong>✏ Compose</strong> をタップして最初のエントリを作成、<br>または <strong>☰ Menu</strong> から他のアーキタイプを選択。'
+        : 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
     } else {
       empty.textContent = 'No entries in this container.';
     }
