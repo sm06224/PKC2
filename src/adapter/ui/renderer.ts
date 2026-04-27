@@ -33,6 +33,7 @@ import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
+import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -2224,6 +2225,31 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     sidebar.appendChild(toggle);
   }
 
+  // Unreferenced-attachment cleanup toggle. Surfaces once the
+  // container has at least one attachment entry so the affordance
+  // is silent on text-only containers. The toggle is destructive-
+  // workflow-only — flipping it restricts the list to "unused
+  // uploads" so the user can multi-select + bulk-delete.
+  if (allEntries.some((e) => e.archetype === 'attachment')) {
+    const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
+    unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.unreferencedAttachmentsOnly ?? false;
+    check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
+    unrefToggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show only unused attachments';
+    unrefToggle.appendChild(labelText);
+    if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
+      const count = collectUnreferencedAttachmentLids(state.container).size;
+      const badge = createElement('span', 'pkc-unref-count');
+      badge.textContent = ` (${count})`;
+      unrefToggle.appendChild(badge);
+    }
+    sidebar.appendChild(unrefToggle);
+  }
+
   // Bucket-hide toggle: surfaces only when a filter is active and at
   // least one bucket-routed entry exists, so the control disappears
   // when it would have no effect. Default state is `hide` per user
@@ -2422,6 +2448,16 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       return !bucketNames.has(parent.title);
     });
   }
+
+  // Unreferenced-attachments cleanup filter. Active only when the
+  // user explicitly flipped the toggle — this is a destructive-
+  // workflow lens, not a default view. Restricts the list to
+  // attachment entries that nothing else points at, so the user
+  // can multi-select + bulk-delete in one pass.
+  if ((state.unreferencedAttachmentsOnly ?? false) && state.container) {
+    const unreferenced = collectUnreferencedAttachmentLids(state.container);
+    filtered = filtered.filter((e) => unreferenced.has(e.lid));
+  }
   // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
   // using `container.meta.entry_order` (contract §2.2). Non-manual
   // modes fall through to the existing stable temporal/title sort.
@@ -2473,7 +2509,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based

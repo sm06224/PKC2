@@ -82,6 +82,7 @@
 
 import type { Container } from '../../core/model/container';
 import { extractAssetReferences } from '../markdown/asset-resolver';
+import { extractEntryReferences } from '../entry-ref/extract-entry-refs';
 import { parseTextlogBody } from '../textlog/textlog-body';
 
 /**
@@ -205,4 +206,68 @@ export function removeOrphanAssets(container: Container): Container {
     if (!orphans.has(key)) pruned[key] = value;
   }
   return { ...container, assets: pruned };
+}
+
+/**
+ * Return the set of attachment-entry LIDs that are referenced by no
+ * other entry — neither via `entry:<lid>` markdown links nor via
+ * their underlying `asset:<key>` bytes. These are the "unused
+ * upload" candidates the user can sweep with bulk delete.
+ *
+ * User direction 2026-04-27:
+ *   「どこにもリンクしていない、埋め込まれていない、リンク貼付も
+ *    されていないアセットをフィルタする機能をつけて」
+ *
+ * Scope:
+ *   - Only `archetype === 'attachment'` entries are returned.
+ *   - An attachment with no `asset_key` (legacy inline body) is
+ *     treated like one with an unmatched key — only the `entry:`
+ *     scan can save it.
+ *   - The attachment's OWN body contributes no reference to itself
+ *     (`collectReferencedAssetKeys` adds the attachment's own
+ *     `asset_key`, which is fine for the orphan-asset GC but here
+ *     we explicitly want "referenced by SOMEONE ELSE").
+ *
+ * Pure read-only scan. Returns a fresh `Set<string>`.
+ */
+export function collectUnreferencedAttachmentLids(container: Container): Set<string> {
+  const refLids = new Set<string>();
+  const refAssetKeys = new Set<string>();
+  for (const entry of container.entries) {
+    if (entry.archetype === 'text') {
+      for (const lid of extractEntryReferences(entry.body)) refLids.add(lid);
+      for (const k of extractAssetReferences(entry.body)) refAssetKeys.add(k);
+      continue;
+    }
+    if (entry.archetype === 'textlog') {
+      const parsed = parseTextlogBody(entry.body);
+      for (const log of parsed.entries) {
+        if (typeof log.text === 'string' && log.text.length > 0) {
+          for (const lid of extractEntryReferences(log.text)) refLids.add(lid);
+          for (const k of extractAssetReferences(log.text)) refAssetKeys.add(k);
+        }
+      }
+      continue;
+    }
+    // attachment / todo / form / folder / generic / opaque don't
+    // contribute references in a way that should keep an attachment
+    // entry alive. (An attachment's own `asset_key` is a self-
+    // reference and intentionally ignored here.)
+  }
+
+  const result = new Set<string>();
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'attachment') continue;
+    if (refLids.has(entry.lid)) continue;
+    let assetKey = '';
+    try {
+      const parsed = JSON.parse(entry.body) as { asset_key?: unknown };
+      if (typeof parsed.asset_key === 'string') assetKey = parsed.asset_key;
+    } catch {
+      /* malformed — no asset_key contributed */
+    }
+    if (assetKey && refAssetKeys.has(assetKey)) continue;
+    result.add(entry.lid);
+  }
+  return result;
 }

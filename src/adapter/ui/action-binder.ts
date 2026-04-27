@@ -2749,6 +2749,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
         break;
       }
+      case 'toggle-unreferenced-attachments': {
+        dispatcher.dispatch({ type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' });
+        break;
+      }
       case 'toggle-focus-mode': {
         toggleFocusMode(root);
         break;
