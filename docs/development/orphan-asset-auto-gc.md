@@ -27,15 +27,16 @@ Tier 2-1 (2026-04-14) はその policy 判断のうち、**唯一確実に
 
 ## 2. ポリシー: どこで auto-GC するか
 
-### 2.1 採用する経路（3 箇所）
+### 2.1 採用する経路（4 箇所）
 
-すべて「コンテナが丸ごと置き換わる」系:
+すべて「コンテナ全置換 + soft-delete の確定」系:
 
 | Reducer | 位置 | 発火タイミング |
 |--------|-----|--------------|
 | `reduceReady` | `SYS_IMPORT_COMPLETE` | import 完了（preview なしの直接パス） |
 | `reduceReady` | `CONFIRM_IMPORT` | import preview → 確定 |
 | `reduceError` | `SYS_IMPORT_COMPLETE` | error 状態から import で復帰 |
+| `reduceReady` | `PURGE_TRASH` | ユーザーがゴミ箱を空にした瞬間 (PR #174 で追加、§2.2 参照) |
 
 これらの path で行うこと:
 
@@ -66,7 +67,6 @@ if (purged !== imported) {
 | `COMMIT_EDIT` | 編集で `![](asset:K)` を削除しても、**同じ編集の revision に古い body が残る**。`RESTORE_ENTRY` から蘇らせた瞬間に asset が無い状態になる。 |
 | `QUICK_UPDATE_ENTRY` | 同上。インライン更新版。 |
 | `RESTORE_ENTRY` | そもそも asset ref を増やす方向。orphan を作らない。 |
-| `PURGE_TRASH` | goal は Trash 消去であって asset 掃除ではない。`PURGE_ORPHAN_ASSETS` を別途叩く運用で一貫させる。 |
 | `SYS_APPLY_BATCH_IMPORT` | 追加取り込み（container 全置換ではない）。既存の asset を削除できない保守的設計を維持。 |
 | 背景タイマー / debounce | 不透明。行動予測困難。 |
 

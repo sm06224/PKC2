@@ -168,6 +168,61 @@ replacing the legacy ASSETS-folder creation logic that used to treat
   for both lazy-create and root paths, and existing-at-root ASSETS
   being ignored.
 
+## File-attachment intake (PR #174 補追, 2026-04-27)
+
+`processFileAttachmentWithDedupe` (DnD on sidebar / center drop
+zones + 上部 `📎 File` archetype-create button) も同じ
+`parentFolder` + `ensureSubfolder` route を使うように refactor
+された。以前は次の sequence で実装されていた:
+
+```
+CREATE_ENTRY (parent なし)
+  → COMMIT_EDIT
+    → CREATE_RELATION(contextFolder, newEntry, structural)  ← 後出し
+```
+
+しかし `CREATE_ENTRY` は phase を `editing` に遷移させるため、
+後続の `CREATE_RELATION` が race し、ASSETS バケットフォルダ
+レイヤが作られず、entry が contextFolder の直下に flat に積まれて
+いた。User audit「左ペインのDnDエリアへのファイル添付がASSETSに
+整理されない」で発覚。
+
+修正後:
+
+```ts
+// processFileAttachmentWithDedupe
+const preState = dispatcher.getState();
+const autoPlacementFolder =
+  !contextFolder && preState.container
+    ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
+    : null;
+const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
+const subfolderName = getSubfolderNameForArchetype('attachment');
+const ensureSubfolder =
+  parentFolder && subfolderName ? subfolderName : undefined;
+dispatcher.dispatch({
+  type: 'CREATE_ENTRY',
+  archetype: 'attachment',
+  title: file.name,
+  parentFolder,
+  ensureSubfolder,
+});
+```
+
+これで:
+- DnD sidebar drop zone (no contextFolder) → 選択中 entry の
+  ancestor を walk して auto-placement
+- DnD center drop zone (contextFolder ある) → 明示の context が勝つ
+- 上部 `📎 File` button (multi-file picker) → 同じ route
+
+3 surface 全てが atomic に ASSETS バケットを生成する。重複ファイル
+添付時も同じ ASSETS が **再利用** される (`findSubfolder` で title
+exact match)。
+
+Tests: `tests/adapter/fi04-multi-add-dedupe-persistent-dnd.test.ts`
++4 (sidebar DnD with selection / no selection / center-pane explicit
+context / dedup retains ASSETS)。
+
 ## Not done here
 
 - Back-fill of existing root-level todos / attachments into resolved
