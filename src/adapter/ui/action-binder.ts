@@ -5297,6 +5297,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
+    // 2026-04-26 user audit: "エントリをダブルタップすると戻って
+    // これない". Touch devices (iPhone / iPad / Apple-Pencil
+    // tablets) often run PKC2 as a standalone PWA, where
+    // `window.open()` either fails outright or spawns a popup
+    // window with no OS-chrome to dismiss it. The desktop
+    // detached-window UX assumes the user can find their way
+    // back via the browser tab strip, which is gone in
+    // standalone mode. Fall back to plain selection so the
+    // master-detail navigation kicks in instead.
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches
+    ) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      return;
+    }
+
     // Select the entry first
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 

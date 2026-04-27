@@ -6628,6 +6628,30 @@ mark.pkc-search-mark {
     width: 100%;
     min-height: calc(100vh - 120px);
   }
+}
+
+/* 2026-04-26 user audit: "iPadだとテキストエリアを自分で拡大
+ * できないから、最初から広く、縦にスクロールするように開きたい".
+ * iPad lands on the desktop 3-pane shell (width > 640), so the
+ * iPhone phone-tier rule above doesn't apply. Treat ALL touch
+ * devices at any width: bump the editor textarea's `min-height`
+ * so iPad users get a tall scroll-friendly editor without having
+ * to drag the corner-resize handle (which native iOS touch input
+ * does not expose). The desktop fine-pointer experience is
+ * unchanged. */
+@media (pointer: coarse) {
+  .pkc-editor-body {
+    min-height: 60vh;
+  }
+  .pkc-textlog-append-input {
+    min-height: 9rem;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 640px) {
+  /* keep iPhone master-detail rules grouped together so the cascade
+   * stays readable. Below intentionally re-opens a tier matching
+   * the iPhone block above for any cross-tier follow-up rules. */
 
   .pkc-tray-bar,
   .pkc-resize-handle {

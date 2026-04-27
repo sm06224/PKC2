@@ -285,6 +285,21 @@ export function render(state: AppState, root: HTMLElement): void {
   // src/adapter/ui/text-to-textlog-modal.ts for the split.
   syncTextlogSelectionFromState(state);
 
+  // 2026-04-26 user audit: "左ペインの挙動がおかしい / 初期位置
+  // 戻しが働いて、選択したいエントリが選択できない". Every
+  // dispatch wipes `root.innerHTML`, which resets the sidebar
+  // scroll back to the top — long sidebars then snap-jump as the
+  // user is mid-scroll. Capture both the sidebar and center-pane
+  // scrollTop before the rebuild so the post-render rAF handler
+  // below can restore them. The center-pane preservation already
+  // exists via `preserveCenterPaneScroll` for inline mutations,
+  // but full-shell re-renders (CONTAINER_LOADED, theme changes,
+  // any click-elsewhere) skipped that helper.
+  const prevSidebarScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevCenterScroll =
+    root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
+
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
@@ -331,6 +346,23 @@ export function render(state: AppState, root: HTMLElement): void {
   // dispatches `CLOSE_SHORTCUT_HELP`.
   if (state.shortcutHelpOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
     root.appendChild(renderShortcutHelp());
+  }
+
+  // Restore the sidebar / center scroll positions captured before
+  // the rebuild, so a re-render triggered by an unrelated dispatch
+  // (theme change, autosave bump, idb-flush event) does not yank
+  // the user away from the row they were looking at. Run before
+  // `scrollSelectedSidebarNodeIntoView` so the ensure-visible
+  // helper still wins when the SELECTION moved (`scrollIntoView`
+  // with `block: 'nearest'` is a no-op when the row is already
+  // in view).
+  if (prevSidebarScroll !== null) {
+    const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+    if (sidebar) sidebar.scrollTop = prevSidebarScroll;
+  }
+  if (prevCenterScroll !== null) {
+    const center = root.querySelector<HTMLElement>('.pkc-center-content');
+    if (center) center.scrollTop = prevCenterScroll;
   }
 
   // Post-render: if the current selection changed since the last
