@@ -34,6 +34,7 @@ import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
+import { start as profileStart } from '../../runtime/profile';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -276,6 +277,11 @@ function resolveMobilePage(state: AppState): MobilePage {
 }
 
 export function render(state: AppState, root: HTMLElement): void {
+  // PR #176 profile wave: outermost wrapper for the full-shell
+  // rebuild. `render:phase=<phase>` is the canonical "renderer
+  // wall-clock" measure used by the bench runner. No-op when
+  // profiling is disabled.
+  const endProfile = profileStart(`render:phase=${state.phase}`);
   const localeSettings = state.settings?.locale;
   setFormatContext(localeSettings?.language, localeSettings?.timezone);
 
@@ -408,6 +414,7 @@ export function render(state: AppState, root: HTMLElement): void {
   // on every path that clears it. Must sit after the shell rebuild
   // so the overlay layers on top.
   syncDualEditConflictOverlay(state, root);
+  endProfile();
 }
 
 /**
@@ -2142,6 +2149,15 @@ function renderRecentEntriesPane(
 }
 
 function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
+  const endProfile = profileStart('render:sidebar');
+  try {
+    return renderSidebarImpl(state, sharedLinkIndex);
+  } finally {
+    endProfile();
+  }
+}
+
+function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
@@ -2452,6 +2468,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
   // with AND-by-default semantics (see
   // `docs/spec/search-filter-semantics-v1.md` §4.2).
+  const endApplyFilters = profileStart('filter:applyFilters');
   let filtered = applyFilters(
     allEntries,
     state.searchQuery,
@@ -2459,6 +2476,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     state.tagFilter,
     state.colorTagFilter,
   );
+  endApplyFilters();
   if (state.categoricalPeerFilter && state.container) {
     filtered = filterByTag(filtered, state.container.relations, state.categoricalPeerFilter);
   }
@@ -2621,7 +2639,9 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     }
   } else {
     // Tree mode: build from structural relations
+    const endBuildTree = profileStart('tree:buildTree');
     const tree = buildTree(entries, state.container.relations);
+    endBuildTree();
     // C-2 v1 manual mode: buildTree orders children by relation
     // iteration order, not by `entries` position. Reorder each node's
     // children so folder-child ordering reflects `entry_order`.
@@ -3152,6 +3172,15 @@ function renderSubLocationItem(hit: SubLocationHit): HTMLElement {
 }
 
 function renderCenter(state: AppState): HTMLElement {
+  const endProfile = profileStart('render:center');
+  try {
+    return renderCenterImpl(state);
+  } finally {
+    endProfile();
+  }
+}
+
+function renderCenterImpl(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
 
@@ -3949,6 +3978,21 @@ function renderMetaPane(
    * mark itself as "already filtered". Optional to avoid touching
    * every caller that pre-dates the Tag filter axis.
    */
+  activeTagFilter: ReadonlySet<string> | undefined = undefined,
+): HTMLElement {
+  const endProfile = profileStart('render:meta');
+  try {
+    return renderMetaPaneImpl(entry, canEdit, container, sharedLinkIndex, activeTagFilter);
+  } finally {
+    endProfile();
+  }
+}
+
+function renderMetaPaneImpl(
+  entry: Entry,
+  canEdit: boolean,
+  container: Container | null,
+  sharedLinkIndex: LinkIndex | null = null,
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
 ): HTMLElement {
   const meta = createElement('aside', 'pkc-meta-pane');

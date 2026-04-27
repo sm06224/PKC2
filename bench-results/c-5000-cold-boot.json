@@ -1,0 +1,95 @@
+{
+  "scale": "c-5000",
+  "entries": 5000,
+  "scenario": "cold-boot",
+  "measures": [
+    {
+      "name": "render:phase=initializing",
+      "startTime": 49.299999999813735,
+      "duration": 0.3000000002793968
+    },
+    {
+      "name": "boot:readPkcData",
+      "startTime": 50.200000000186265,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "boot:loadFromStore",
+      "startTime": 50.299999999813735,
+      "duration": 5.100000000093132
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
+      "startTime": 55.5,
+      "duration": 0
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 55.5,
+      "duration": 2.7000000001862645
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+      "startTime": 55.5,
+      "duration": 2.7999999998137355
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE",
+      "startTime": 55.5,
+      "duration": 3
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 57.200000000186265,
+      "duration": 0.19999999972060323
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 57.39999999990687,
+      "duration": 0
+    },
+    {
+      "name": "render:center",
+      "startTime": 57.5,
+      "duration": 0.5
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:reduce",
+      "startTime": 58.5,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:notify-state",
+      "startTime": 58.5,
+      "duration": 42.5
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS",
+      "startTime": 58.5,
+      "duration": 42.60000000009313
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 95.70000000018626,
+      "duration": 5.2999999998137355
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 96.89999999990687,
+      "duration": 0
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 96.89999999990687,
+      "duration": 0
+    },
+    {
+      "name": "render:center",
+      "startTime": 96.89999999990687,
+      "duration": 0.3000000002793968
+    }
+  ],
+  "bootElapsedMs": 52.10000000009313,
+  "heapUsedMb": 26.32,
+  "capturedAt": "2026-04-27T21:27:25.636Z"
+}
