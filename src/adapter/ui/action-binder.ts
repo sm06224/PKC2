@@ -260,7 +260,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       drawer.appendChild(createSection);
     }
 
-    // ── Data section ── (Export / Import shortcuts)
+    // ── Data section ── (Export / Import surfaces)
     const dataSection = document.createElement('div');
     dataSection.className = 'pkc-mobile-drawer-section';
     const dataLabel = document.createElement('div');
@@ -268,20 +268,65 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dataLabel.textContent = 'Data';
     dataSection.appendChild(dataLabel);
 
-    const exportBtn = document.createElement('button');
-    exportBtn.className = 'pkc-mobile-drawer-item';
-    exportBtn.setAttribute('data-pkc-action', 'begin-export');
-    exportBtn.setAttribute('data-pkc-export-mode', 'full');
-    exportBtn.setAttribute('data-pkc-export-mutability', 'editable');
-    exportBtn.textContent = '📤 Export (HTML)';
-    dataSection.appendChild(exportBtn);
+    // Helper that builds a drawer-item button for any data-pkc-action
+    // dispatch — the desktop Data… menu has too many flavours
+    // (HTML / ZIP backup / archetype-filtered bundles / single-entry
+    // packages / archetype-specific imports) to enumerate inline.
+    function addDataItem(
+      label: string,
+      action: string,
+      attrs: Record<string, string> = {},
+    ): void {
+      const btn = document.createElement('button');
+      btn.className = 'pkc-mobile-drawer-item';
+      btn.setAttribute('data-pkc-action', action);
+      for (const [k, v] of Object.entries(attrs)) {
+        btn.setAttribute(k, v);
+      }
+      btn.textContent = label;
+      dataSection.appendChild(btn);
+    }
 
+    // Share — standalone HTML, openable without PKC2.
+    addDataItem('📤 Export (HTML, Full)', 'begin-export', {
+      'data-pkc-export-mode': 'full',
+      'data-pkc-export-mutability': 'editable',
+    });
+    addDataItem('📤 Export (HTML, Light)', 'begin-export', {
+      'data-pkc-export-mode': 'light',
+      'data-pkc-export-mutability': 'editable',
+    });
+    if (state.selectedLid) {
+      addDataItem('📤 Selected as HTML', 'export-selected-entry-html');
+    }
+
+    // Archive — Backup ZIP + archetype-filtered batch bundles + the
+    // single-entry bundle. Each line keeps the same archetype-aware
+    // visibility logic the desktop Data… menu uses.
+    addDataItem('📦 Backup ZIP', 'export-zip');
+    const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+    const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+    if (hasTextlogs) {
+      addDataItem('📦 TEXTLOGs (.textlogs.zip)', 'export-textlogs-container');
+    }
+    if (hasTexts) {
+      addDataItem('📦 TEXTs (.texts.zip)', 'export-texts-container');
+    }
+    if (hasTextlogs || hasTexts) {
+      addDataItem('📦 Mixed (.mixed.zip)', 'export-mixed-container');
+    }
+    if (state.selectedLid) {
+      addDataItem('📦 Selected (single-entry bundle)', 'export-selected-entry');
+    }
+
+    // Import — generic + archetype-specific shortcuts (TEXTLOG bundle
+    // / TEXT bundle / single-entry package / batch bundle).
     if (!state.readonly) {
-      const importBtn = document.createElement('button');
-      importBtn.className = 'pkc-mobile-drawer-item';
-      importBtn.setAttribute('data-pkc-action', 'begin-import');
-      importBtn.textContent = '📥 Import…';
-      dataSection.appendChild(importBtn);
+      addDataItem('📥 Import…', 'begin-import');
+      addDataItem('📥 Textlog bundle', 'import-textlog-bundle');
+      addDataItem('📥 Text bundle', 'import-text-bundle');
+      addDataItem('📥 Entry package', 'import-entry-package');
+      addDataItem('📥 Batch bundle', 'import-batch-bundle');
     }
     drawer.appendChild(dataSection);
 
