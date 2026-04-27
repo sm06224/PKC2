@@ -252,6 +252,27 @@ const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = 
  * - Access core directly
  */
 
+/**
+ * Map AppState to the iPhone-shell page identifier. The matrix
+ * mirrors the visual hierarchy a touch user steps through:
+ *
+ *   `phase === 'editing'`    → 'edit'
+ *   `selectedLid !== null`   → 'detail'
+ *   otherwise                → 'list'
+ *
+ * The helper lives next to `render` so the same routing rule is
+ * available wherever the renderer needs to branch (mobile header
+ * shape, mobile back-arrow visibility). Desktop ignores the
+ * attribute entirely; the `pointer:coarse` @media block in
+ * `base.css` is what activates the page-switching CSS.
+ */
+type MobilePage = 'list' | 'detail' | 'edit';
+function resolveMobilePage(state: AppState): MobilePage {
+  if (state.phase === 'editing') return 'edit';
+  if (state.selectedLid) return 'detail';
+  return 'list';
+}
+
 export function render(state: AppState, root: HTMLElement): void {
   const localeSettings = state.settings?.locale;
   setFormatContext(localeSettings?.language, localeSettings?.timezone);
@@ -264,17 +285,40 @@ export function render(state: AppState, root: HTMLElement): void {
   // src/adapter/ui/text-to-textlog-modal.ts for the split.
   syncTextlogSelectionFromState(state);
 
+  // 2026-04-26 user audit: "左ペインの挙動がおかしい / 初期位置
+  // 戻しが働いて、選択したいエントリが選択できない". Every
+  // dispatch wipes `root.innerHTML`, which resets the sidebar
+  // scroll back to the top — long sidebars then snap-jump as the
+  // user is mid-scroll. Capture both the sidebar and center-pane
+  // scrollTop before the rebuild so the post-render rAF handler
+  // below can restore them. The center-pane preservation already
+  // exists via `preserveCenterPaneScroll` for inline mutations,
+  // but full-shell re-renders (CONTAINER_LOADED, theme changes,
+  // any click-elsewhere) skipped that helper.
+  const prevSidebarScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevCenterScroll =
+    root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
+
   root.innerHTML = '';
   root.setAttribute('data-pkc-phase', state.phase);
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', BUILD_FEATURES.join(','));
-  // 2026-04-26 mobile redesign: drives the phone master-detail
-  // routing — when an entry is selected the responsive CSS hides
-  // the sidebar list and shows the center detail full-width;
-  // when nothing is selected it does the inverse. Same flag is
-  // also useful as a generic "is something selected" hook for
-  // any future mobile-first surface.
+  // iPhone push/pop shell page routing — `list` (no selection) →
+  // `detail` (selection, view) → `edit` (selection, editing). On
+  // desktop the attribute is set but ignored (no responsive CSS
+  // queries activate). On the iPhone tier (`pointer:coarse +
+  // ≤640px`) the @media block in `base.css` keys all of its
+  // hide / show rules off this attribute so each page renders as
+  // a full-screen native-feeling view.
+  root.setAttribute('data-pkc-mobile-page', resolveMobilePage(state));
+  // Coarser binary "is something selected" flag retained from
+  // PR #172 — drives the tablet / iPad master-detail responsive
+  // CSS block (`data-pkc-has-selection="true|false"`). The two
+  // attributes serve different viewports and are intentionally
+  // kept side-by-side; the iPhone block keys off mobile-page,
+  // the tablet block keys off has-selection.
   root.setAttribute(
     'data-pkc-has-selection',
     state.selectedLid ? 'true' : 'false',
@@ -311,6 +355,23 @@ export function render(state: AppState, root: HTMLElement): void {
   // dispatches `CLOSE_SHORTCUT_HELP`.
   if (state.shortcutHelpOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
     root.appendChild(renderShortcutHelp());
+  }
+
+  // Restore the sidebar / center scroll positions captured before
+  // the rebuild, so a re-render triggered by an unrelated dispatch
+  // (theme change, autosave bump, idb-flush event) does not yank
+  // the user away from the row they were looking at. Run before
+  // `scrollSelectedSidebarNodeIntoView` so the ensure-visible
+  // helper still wins when the SELECTION moved (`scrollIntoView`
+  // with `block: 'nearest'` is a no-op when the row is already
+  // in view).
+  if (prevSidebarScroll !== null) {
+    const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+    if (sidebar) sidebar.scrollTop = prevSidebarScroll;
+  }
+  if (prevCenterScroll !== null) {
+    const center = root.querySelector<HTMLElement>('.pkc-center-content');
+    if (center) center.scrollTop = prevCenterScroll;
   }
 
   // Post-render: if the current selection changed since the last
@@ -400,7 +461,13 @@ function renderError(error: string | null): HTMLElement {
 function renderShell(state: AppState): HTMLElement {
   const shell = createElement('div', 'pkc-shell');
 
-  // Header
+  // Desktop header — appended FIRST so the legacy chrome stays
+  // first in DOM order. Existing tests + the smoke suite call
+  // `querySelector('[data-pkc-action="commit-edit"]…').first()`
+  // expecting the desktop action-bar button; if the mobile header
+  // (which carries an identically-named action) preceded it in
+  // DOM, `.first()` would resolve to a `display: none` mobile
+  // button and the click would silently time out.
   shell.appendChild(renderHeader(state));
 
   // Import confirmation panel
@@ -514,7 +581,133 @@ function renderShell(state: AppState): HTMLElement {
   main.appendChild(rightTray);
 
   shell.appendChild(main);
+
+  // Mobile header (iPhone push/pop redesign 2026-04-26). Appended
+  // LAST in DOM order so existing `.first()` queries on
+  // ambiguous action attributes (commit-edit, cancel-edit, …)
+  // resolve to the desktop chrome above; CSS `order: -1` on the
+  // `pointer:coarse + ≤640px` tier reorders it to the visual top
+  // so iPhone users still see the bar at the top of the
+  // viewport.
+  shell.appendChild(renderMobileHeader(state));
   return shell;
+}
+
+/**
+ * iPhone shell header — replaces the desktop `.pkc-header` on the
+ * `pointer:coarse + ≤640px` tier. Always emitted by `renderShell`
+ * so the markup is hot-reload-stable; CSS gates the visibility.
+ *
+ * The bar is intentionally minimal — Apple's HIG calls for
+ * "content is hero", so chrome is whittled down to the verbs the
+ * user needs *on this exact page*:
+ *
+ *   list   → [PKC2 ◯ phase] ── ⋯ ── [✏ Compose] [☰ Menu]
+ *   detail → [‹ List]      [Title]                  [⋯ Actions]
+ *   edit   → [Cancel]      [編集中]                  [💾 Done]
+ *
+ * Routing is derived from `resolveMobilePage(state)` so the same
+ * rule that drives the shell's `data-pkc-mobile-page` attribute
+ * also picks the header variant — no chance of drift.
+ */
+function renderMobileHeader(state: AppState): HTMLElement {
+  const bar = createElement('header', 'pkc-mobile-header');
+  const page = resolveMobilePage(state);
+  bar.setAttribute('data-pkc-region', 'mobile-header');
+  bar.setAttribute('data-pkc-mobile-page', page);
+
+  if (page === 'edit') {
+    const cancelBtn = createElement('button', 'pkc-mobile-header-btn');
+    cancelBtn.setAttribute('data-pkc-action', 'cancel-edit');
+    cancelBtn.setAttribute('title', '編集を破棄 (Esc)');
+    cancelBtn.textContent = 'Cancel';
+    bar.appendChild(cancelBtn);
+
+    const titleEl = createElement('span', 'pkc-mobile-header-title');
+    titleEl.textContent = '編集中';
+    bar.appendChild(titleEl);
+
+    const editingLid = state.editingLid ?? state.selectedLid;
+    if (editingLid) {
+      const saveBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-primary');
+      saveBtn.setAttribute('data-pkc-action', 'commit-edit');
+      saveBtn.setAttribute('data-pkc-lid', editingLid);
+      saveBtn.setAttribute('title', '変更を保存 (Ctrl+S)');
+      saveBtn.textContent = '💾 Done';
+      bar.appendChild(saveBtn);
+    }
+    return bar;
+  }
+
+  if (page === 'detail') {
+    const backBtn = createElement('button', 'pkc-mobile-header-btn');
+    backBtn.setAttribute('data-pkc-action', 'mobile-back');
+    backBtn.setAttribute('aria-label', '一覧に戻る');
+    backBtn.setAttribute('title', '一覧に戻る');
+    backBtn.textContent = '‹ List';
+    bar.appendChild(backBtn);
+
+    const selectedTitle =
+      state.container?.entries.find((e) => e.lid === state.selectedLid)?.title ?? '';
+    const titleEl = createElement('span', 'pkc-mobile-header-title');
+    titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
+    bar.appendChild(titleEl);
+
+    const spacer = createElement('span', 'pkc-mobile-header-spacer');
+    bar.appendChild(spacer);
+
+    // 2026-04-26 user feedback ("メタ情報にアクセスできない"):
+    // On the iPhone shell the meta pane is normally hidden in
+    // detail mode (the full-screen entry view). Expose it via an
+    // explicit ⓘ "Info" button that toggles a slide-over drawer
+    // from the right edge so users can reach Tags / Relations /
+    // History / Folder etc. without rotating to landscape.
+    const metaBtn = createElement('button', 'pkc-mobile-header-btn');
+    metaBtn.setAttribute('data-pkc-action', 'toggle-meta');
+    metaBtn.setAttribute('aria-label', 'メタ情報');
+    metaBtn.setAttribute('title', 'タグ / 関連 / 履歴などのメタ情報');
+    metaBtn.textContent = 'ⓘ';
+    bar.appendChild(metaBtn);
+    return bar;
+  }
+
+  // page === 'list'
+  const titleEl = createElement('span', 'pkc-mobile-header-title');
+  titleEl.textContent = state.container?.meta?.title ?? 'PKC2';
+  bar.appendChild(titleEl);
+
+  const phase = createElement('span', 'pkc-phase-badge pkc-mobile-header-phase');
+  phase.setAttribute('data-pkc-phase-value', state.phase);
+  phase.textContent = state.phase;
+  bar.appendChild(phase);
+
+  const spacer = createElement('span', 'pkc-mobile-header-spacer');
+  bar.appendChild(spacer);
+
+  // Compose button — phone equivalent of the desktop Text-button.
+  // Defaults to creating a Text entry; the hamburger drawer below
+  // exposes the other archetypes for users who want them.
+  if (!state.readonly) {
+    const composeBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-primary');
+    composeBtn.setAttribute('data-pkc-action', 'create-entry');
+    composeBtn.setAttribute('data-pkc-archetype', 'text');
+    composeBtn.setAttribute('aria-label', '新規 Text を作成');
+    composeBtn.setAttribute('title', 'Create a new text entry');
+    composeBtn.textContent = '✏';
+    bar.appendChild(composeBtn);
+  }
+
+  // Hamburger drawer — opens a sheet containing the create
+  // archetype list, Data… export/import bundle, and a shortcut
+  // back to the desktop shell menu (Theme / Scanline / Settings).
+  const menuBtn = createElement('button', 'pkc-mobile-header-btn');
+  menuBtn.setAttribute('data-pkc-action', 'mobile-open-drawer');
+  menuBtn.setAttribute('aria-label', 'メニューを開く');
+  menuBtn.setAttribute('title', 'Menu');
+  menuBtn.textContent = '☰';
+  bar.appendChild(menuBtn);
+
+  return bar;
 }
 
 function renderHeader(state: AppState): HTMLElement {
@@ -1213,6 +1406,7 @@ function renderShortcutHelp(): HTMLElement {
   const shortcuts: { key: string; desc: string; group?: string }[] = [
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
+    { key: 'Ctrl+E / ⌘+E', desc: 'Edit selected entry' },
     { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
     { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
@@ -1220,6 +1414,10 @@ function renderShortcutHelp(): HTMLElement {
     { key: '', desc: '', group: 'Panes' },
     { key: 'Ctrl+\\ / ⌘+\\', desc: 'Toggle sidebar (left pane)' },
     { key: 'Ctrl+Shift+\\', desc: 'Toggle meta pane (right pane)' },
+    { key: 'Ctrl+Alt+\\', desc: 'Focus mode — hide both panes (Windows / cross-platform)' },
+    { key: 'Alt+Space', desc: 'Focus mode — hide both panes (Mac / Linux only; blocked by Windows OS menu)' },
+    { key: '', desc: '', group: 'Editing' },
+    { key: 'Tab (in textarea)', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
     { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
     { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
@@ -2177,7 +2375,20 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     const empty = createElement('div', 'pkc-empty pkc-guidance');
     empty.setAttribute('data-pkc-region', 'empty-guidance');
     if (state.phase === 'ready' && !state.readonly) {
-      empty.innerHTML = 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
+      // 2026-04-26 mobile redesign — branch the guidance text on
+      // viewport because the iPhone shell has neither the desktop
+      // header's "+ buttons" nor a visible "center pane". Pointing
+      // at the ✏ Compose button + ☰ Menu drawer matches the
+      // mobile chrome the user actually sees, so the message
+      // becomes actionable instead of misleading. Desktop / tablet
+      // (matchMedia returns false) keep the legacy hint.
+      const isPhone =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches;
+      empty.innerHTML = isPhone
+        ? 'No entries yet.<br>右上の <strong>✏ Compose</strong> をタップして最初のエントリを作成、<br>または <strong>☰ Menu</strong> から他のアーキタイプを選択。'
+        : 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
     } else {
       empty.textContent = 'No entries in this container.';
     }
@@ -2360,7 +2571,20 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
 
   // Restore candidates (deleted entries with revisions) — collapsible, closed by default
   if (state.container && state.phase === 'ready') {
-    const candidates = getRestoreCandidates(state.container);
+    const rawCandidates = getRestoreCandidates(state.container);
+    // 2026-04-26 user audit: the restore-candidates pane was
+    // surfacing deleted `__settings__` / `__about__` revisions
+    // ("システム設定が見えています"). System entries are
+    // app-managed — users never deleted them on purpose and
+    // restoring them only re-creates the silent infrastructure
+    // record. Filter them out so the trash only shows actual
+    // user content the user can recognise.
+    const candidates = rawCandidates.filter((rev) => {
+      if (isReservedLid(rev.entry_lid)) return false;
+      const parsed = parseRevisionSnapshot(rev);
+      if (parsed && isSystemArchetype(parsed.archetype)) return false;
+      return true;
+    });
     if (candidates.length > 0) {
       const details = document.createElement('details');
       details.className = 'pkc-restore-candidates';
@@ -3285,6 +3509,19 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
 
       const moreContent = createElement('div', 'pkc-action-bar-more-content');
 
+      // 2026-04-26 user audit: "右ペイン上の Copy Link ボタンが
+      // 右ペインをハイドしていると選択しにくい". The permalink
+      // copy lives in the meta pane info header, which is
+      // unreachable when the user has the meta pane collapsed.
+      // Surface a duplicate inside the More… menu so the
+      // affordance is one tap away regardless of pane state.
+      const copyLinkInMore = createElement('button', 'pkc-btn pkc-action-copy-permalink');
+      copyLinkInMore.setAttribute('data-pkc-action', 'copy-entry-permalink');
+      copyLinkInMore.setAttribute('data-pkc-lid', entry.lid);
+      copyLinkInMore.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+      copyLinkInMore.textContent = '🔗 Copy link';
+      moreContent.appendChild(copyLinkInMore);
+
       // Slice 4-B: Copy MD / Copy Rich emit markdown-source round-trip
       // payloads and therefore only make sense for TEXT. TEXTLOG's
       // flatten path (`serializeTextlogAsMarkdown`) has been removed —
@@ -3709,7 +3946,10 @@ function renderMetaPane(
       for (const e of available) {
         const opt = document.createElement('option');
         opt.value = e.lid;
-        opt.textContent = e.title || `(${e.lid})`;
+        // Truncate so the dropdown panel stays inside the meta
+        // pane on long titles (see relation-target select).
+        opt.textContent = truncate(e.title || `(${e.lid})`, 32);
+        opt.title = e.title || `(${e.lid})`;
         select.appendChild(opt);
       }
       addForm.appendChild(select);
@@ -3758,7 +3998,10 @@ function renderMetaPane(
     for (const f of folders) {
       const opt = document.createElement('option');
       opt.value = f.lid;
-      opt.textContent = f.title || `(${f.lid})`;
+      // Truncate to keep the dropdown panel inside the meta pane
+      // (see relation-target select for the same rationale).
+      opt.textContent = truncate(f.title || `(${f.lid})`, 32);
+      opt.title = f.title || `(${f.lid})`;
       if (currentParent && currentParent.lid === f.lid) opt.selected = true;
       select.appendChild(opt);
     }
@@ -4458,7 +4701,13 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
 
   const row = createElement('div', 'pkc-relation-create-row');
 
-  // Target entry select
+  // Target entry select.
+  // 2026-04-26 user audit: "プルダウンがエントリが多くなると表示
+  // しきれなくなってる". Native `<select>` opens its dropdown panel
+  // sized to the longest option, which can spill past the meta
+  // pane on long titles. Truncate option labels (the underlying
+  // `value` keeps the full lid) so the panel sits inside the
+  // pane while the option still reads as the entry it points to.
   const targetSelect = document.createElement('select');
   targetSelect.setAttribute('data-pkc-field', 'relation-target');
   targetSelect.className = 'pkc-relation-select';
@@ -4470,7 +4719,8 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
     if (e.lid === fromLid) continue;
     const opt = document.createElement('option');
     opt.value = e.lid;
-    opt.textContent = e.title || `(${e.lid})`;
+    opt.textContent = truncate(e.title || `(${e.lid})`, 32);
+    opt.title = e.title || `(${e.lid})`;
     targetSelect.appendChild(opt);
   }
   row.appendChild(targetSelect);

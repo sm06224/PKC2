@@ -355,12 +355,38 @@ export const attachmentPresenter: DetailPresenter = {
       container.appendChild(current);
     }
 
-    // File input
+    // File input. 2026-04-26 user audit: "Apple Pencilだと反応
+    // しないボタンが有る。具体的にはファイルを選択ボタン". The
+    // browser's default `<input type="file">` rendering is a
+    // platform-specific button ("ファイルを選択" / "Choose
+    // File"). On iOS Safari + Apple Pencil that native button
+    // does not always register Pencil taps. Wrap the input in a
+    // visually-hidden form pattern: a real `<button>` carries
+    // the label and forwards taps to a hidden `<input>` via
+    // `input.click()`. Buttons respond to every `pointerType`
+    // (mouse / touch / pen), so Pencil works again.
+    const filePicker = document.createElement('label');
+    filePicker.className = 'pkc-attachment-file-picker';
+
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.setAttribute('data-pkc-field', 'attachment-file');
     fileInput.className = 'pkc-attachment-file-input';
-    container.appendChild(fileInput);
+    filePicker.appendChild(fileInput);
+
+    const fileBtn = document.createElement('button');
+    fileBtn.type = 'button';
+    fileBtn.className = 'pkc-btn pkc-attachment-file-button';
+    fileBtn.textContent = '📎 ファイルを選択';
+    fileBtn.setAttribute('aria-label', 'ファイルを選択');
+    fileBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileInput.click();
+    });
+    filePicker.appendChild(fileBtn);
+
+    container.appendChild(filePicker);
 
     // Hidden fields for metadata
     const nameField = document.createElement('input');

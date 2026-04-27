@@ -55,7 +55,7 @@
  *   - No relation / meta sizing.
  */
 import type { Container } from '../../core/model/container';
-import type { Entry, ArchetypeId } from '../../core/model/record';
+import { isUserEntry, type Entry, type ArchetypeId } from '../../core/model/record';
 import { extractAssetReferences } from '../markdown/asset-resolver';
 import { parseTextlogBody } from '../textlog/textlog-body';
 import { collectDescendantLids } from '../relation/tree';
@@ -185,9 +185,16 @@ export function buildStorageProfile(container: Container): StorageProfile {
     assetBytes.set(key, estimateBase64Size(value));
   }
 
+  // 2026-04-26 user audit: the storage profile dialog is a
+  // user-facing surface and must not surface PKC2-managed
+  // entries (`__about__`, `__settings__`, future `system-*`
+  // archetypes). Filter once up-front so every downstream pass
+  // (ownership, rollups, hot-row sort) only sees user content.
+  const userEntries = container.entries.filter(isUserEntry);
+
   // Pass 1: attribute attachments (primary ownership).
   const owner = new Map<string, string>(); // assetKey -> lid
-  for (const e of container.entries) {
+  for (const e of userEntries) {
     if (e.archetype !== 'attachment') continue;
     const key = readAttachmentAssetKey(e.body);
     if (key !== null && assetBytes.has(key) && !owner.has(key)) {
@@ -197,7 +204,7 @@ export function buildStorageProfile(container: Container): StorageProfile {
   // Pass 2: text / textlog markdown references claim any still-
   // unowned asset keys. Guard on assetBytes.has so missing refs
   // never become phantom owners.
-  for (const e of container.entries) {
+  for (const e of userEntries) {
     if (e.archetype === 'text') {
       for (const k of extractAssetReferences(e.body)) {
         if (!owner.has(k) && assetBytes.has(k)) owner.set(k, e.lid);
@@ -215,7 +222,7 @@ export function buildStorageProfile(container: Container): StorageProfile {
 
   // Build one row per entry (keep empties; drop at sort stage).
   const rowsByLid = new Map<string, EntryStorageRow>();
-  for (const e of container.entries) {
+  for (const e of userEntries) {
     const bodyBytes = estimateUtf8Size(typeof e.body === 'string' ? e.body : '');
     rowsByLid.set(e.lid, {
       lid: e.lid,
@@ -243,7 +250,7 @@ export function buildStorageProfile(container: Container): StorageProfile {
   }
 
   // Informational: reference tallies for text / textlog entries.
-  for (const e of container.entries) {
+  for (const e of userEntries) {
     if (e.archetype !== 'text' && e.archetype !== 'textlog') continue;
     const row = rowsByLid.get(e.lid);
     if (!row) continue;

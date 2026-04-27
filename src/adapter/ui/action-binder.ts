@@ -173,6 +173,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let colorPickerEl: HTMLElement | null = null;
   let colorPickerTrigger: HTMLElement | null = null;
 
+  // 2026-04-26 user report:
+  //   "シェルメニューの色設定 / スポイトツールが表示されるけど、
+  //    なぞって色合いを確認しようとし離すと閉じる"
+  //
+  // Native `<input type="color">` opens an OS / browser eyedropper.
+  // When the user releases the eyedropper drag, the synthetic click
+  // bubbles back into the page; if the release coordinates land on
+  // the shell-menu backdrop (the dim overlay around the card), the
+  // legacy `pkc-shell-menu-overlay` click → CLOSE_MENU branch
+  // dismisses the whole menu mid-color-pick.
+  //
+  // Track whether the click's matching mousedown actually started
+  // on the overlay; only treat the click as a "tap-outside-to-
+  // close" gesture when both halves agree. The flag is captured at
+  // the document mousedown phase so it survives capture-phase
+  // listeners on the way down.
+  let shellMenuOverlayMouseDown = false;
+  function handleShellMenuOverlayMouseDown(e: MouseEvent): void {
+    const t = e.target as HTMLElement | null;
+    shellMenuOverlayMouseDown =
+      t?.classList?.contains('pkc-shell-menu-overlay') === true;
+  }
+
   function closeColorPicker(): void {
     if (colorPickerEl) {
       colorPickerEl.remove();
@@ -200,6 +223,166 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       e.preventDefault();
       closeColorPicker();
     }
+  }
+
+  // ── iPhone push/pop shell drawer (2026-04-26) ──
+  // The hamburger ☰ in the mobile header opens a sheet of create
+  // / Data / Settings actions so the desktop header chrome does
+  // not have to be crammed onto the phone. Drawer state is purely
+  // DOM-side (mirrors the color picker pattern) — opening /
+  // closing is just adding / removing the element so it survives
+  // the next renderer pass and does not cost an AppState field.
+  function closeMobileDrawer(): void {
+    const drawer = root.querySelector('[data-pkc-region="mobile-drawer"]');
+    if (drawer) drawer.remove();
+    const backdrop = root.querySelector('[data-pkc-region="mobile-drawer-backdrop"]');
+    if (backdrop) backdrop.remove();
+  }
+
+  function openMobileDrawer(): void {
+    closeMobileDrawer();
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready') return;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'pkc-mobile-drawer-backdrop';
+    backdrop.setAttribute('data-pkc-region', 'mobile-drawer-backdrop');
+    backdrop.setAttribute('data-pkc-action', 'mobile-close-drawer');
+
+    const drawer = document.createElement('aside');
+    drawer.className = 'pkc-mobile-drawer';
+    drawer.setAttribute('data-pkc-region', 'mobile-drawer');
+
+    if (!state.readonly) {
+      // ── Create section ──
+      const createSection = document.createElement('div');
+      createSection.className = 'pkc-mobile-drawer-section';
+      const createLabel = document.createElement('div');
+      createLabel.className = 'pkc-mobile-drawer-section-label';
+      createLabel.textContent = 'Create';
+      createSection.appendChild(createLabel);
+
+      const archetypes: { arch: string; label: string }[] = [
+        { arch: 'text', label: '📝 Text' },
+        { arch: 'textlog', label: '📋 Log' },
+        { arch: 'todo', label: '☑ Todo' },
+        { arch: 'attachment', label: '📎 File' },
+        { arch: 'folder', label: '📁 Folder' },
+      ];
+      for (const { arch, label } of archetypes) {
+        const btn = document.createElement('button');
+        btn.className = 'pkc-mobile-drawer-item';
+        btn.setAttribute('data-pkc-action', 'create-entry');
+        btn.setAttribute('data-pkc-archetype', arch);
+        btn.textContent = label;
+        if (arch === 'attachment' && state.lightSource) {
+          (btn as HTMLButtonElement).disabled = true;
+        }
+        createSection.appendChild(btn);
+      }
+      drawer.appendChild(createSection);
+    }
+
+    // ── Data section ── (Export / Import surfaces)
+    const dataSection = document.createElement('div');
+    dataSection.className = 'pkc-mobile-drawer-section';
+    const dataLabel = document.createElement('div');
+    dataLabel.className = 'pkc-mobile-drawer-section-label';
+    dataLabel.textContent = 'Data';
+    dataSection.appendChild(dataLabel);
+
+    // Helper that builds a drawer-item button for any data-pkc-action
+    // dispatch — the desktop Data… menu has too many flavours
+    // (HTML / ZIP backup / archetype-filtered bundles / single-entry
+    // packages / archetype-specific imports) to enumerate inline.
+    function addDataItem(
+      label: string,
+      action: string,
+      attrs: Record<string, string> = {},
+    ): void {
+      const btn = document.createElement('button');
+      btn.className = 'pkc-mobile-drawer-item';
+      btn.setAttribute('data-pkc-action', action);
+      for (const [k, v] of Object.entries(attrs)) {
+        btn.setAttribute(k, v);
+      }
+      btn.textContent = label;
+      dataSection.appendChild(btn);
+    }
+
+    // Share — standalone HTML, openable without PKC2.
+    addDataItem('📤 Export (HTML, Full)', 'begin-export', {
+      'data-pkc-export-mode': 'full',
+      'data-pkc-export-mutability': 'editable',
+    });
+    addDataItem('📤 Export (HTML, Light)', 'begin-export', {
+      'data-pkc-export-mode': 'light',
+      'data-pkc-export-mutability': 'editable',
+    });
+    if (state.selectedLid) {
+      addDataItem('📤 Selected as HTML', 'export-selected-entry-html');
+    }
+
+    // Archive — Backup ZIP + archetype-filtered batch bundles + the
+    // single-entry bundle. Each line keeps the same archetype-aware
+    // visibility logic the desktop Data… menu uses.
+    addDataItem('📦 Backup ZIP', 'export-zip');
+    const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
+    const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
+    if (hasTextlogs) {
+      addDataItem('📦 TEXTLOGs (.textlogs.zip)', 'export-textlogs-container');
+    }
+    if (hasTexts) {
+      addDataItem('📦 TEXTs (.texts.zip)', 'export-texts-container');
+    }
+    if (hasTextlogs || hasTexts) {
+      addDataItem('📦 Mixed (.mixed.zip)', 'export-mixed-container');
+    }
+    if (state.selectedLid) {
+      addDataItem('📦 Selected (single-entry bundle)', 'export-selected-entry');
+    }
+
+    // Import — generic + archetype-specific shortcuts (TEXTLOG bundle
+    // / TEXT bundle / single-entry package / batch bundle).
+    if (!state.readonly) {
+      addDataItem('📥 Import…', 'begin-import');
+      addDataItem('📥 Textlog bundle', 'import-textlog-bundle');
+      addDataItem('📥 Text bundle', 'import-text-bundle');
+      addDataItem('📥 Entry package', 'import-entry-package');
+      addDataItem('📥 Batch bundle', 'import-batch-bundle');
+    }
+    drawer.appendChild(dataSection);
+
+    // ── Settings (delegates to the existing shell menu modal) ──
+    const settingsSection = document.createElement('div');
+    settingsSection.className = 'pkc-mobile-drawer-section';
+    const settingsLabel = document.createElement('div');
+    settingsLabel.className = 'pkc-mobile-drawer-section-label';
+    settingsLabel.textContent = 'App';
+    settingsSection.appendChild(settingsLabel);
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'pkc-mobile-drawer-item';
+    settingsBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
+    settingsBtn.textContent = '⚙ Settings';
+    settingsSection.appendChild(settingsBtn);
+
+    const helpBtn = document.createElement('button');
+    helpBtn.className = 'pkc-mobile-drawer-item';
+    helpBtn.setAttribute('data-pkc-action', 'show-shortcut-help');
+    helpBtn.textContent = '❓ Help';
+    settingsSection.appendChild(helpBtn);
+    drawer.appendChild(settingsSection);
+
+    // Close button at the foot of the drawer.
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'pkc-mobile-drawer-close';
+    closeBtn.setAttribute('data-pkc-action', 'mobile-close-drawer');
+    closeBtn.textContent = 'Close';
+    drawer.appendChild(closeBtn);
+
+    root.appendChild(backdrop);
+    root.appendChild(drawer);
   }
 
   function openColorPickerAt(trigger: HTMLElement): void {
@@ -292,7 +475,43 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * collapse and must use the press-drag-release sequence
    * (`page.mouse.down` → move → `page.mouse.up`) instead.
    */
+  // Threshold (in CSS px) below which a mouse / touch gesture is
+  // treated as a "tap, no drag" and the press-drag-release flow
+  // falls back to plain click-toggle. 6 px matches the OS-level
+  // drag detection on Chromium / Safari and is wide enough to
+  // tolerate finger jitter without misreading a true drag.
+  const PDR_TAP_THRESHOLD_PX = 6;
+  let pdrColorPickerOrigin: { x: number; y: number } | null = null;
+  let pdrColorPickerMoved = false;
+  let pdrColorPickerWasOpenBeforeGesture = false;
+
+  function trackColorPickerMove(ev: MouseEvent): void {
+    if (!pdrColorPickerOrigin) return;
+    const dx = ev.clientX - pdrColorPickerOrigin.x;
+    const dy = ev.clientY - pdrColorPickerOrigin.y;
+    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+      pdrColorPickerMoved = true;
+    }
+  }
+
+  /**
+   * `handleColorPickerMouseUp` flow on touch (Safari iOS / iPhone
+   * Chrome) was reported by the user as "パレットが開けない" — a
+   * quick tap fired mousedown → mouseup on the trigger before the
+   * user could drag onto a swatch, and the release-on-trigger
+   * branch closed the popover immediately. The `pdrColorPickerMoved`
+   * flag distinguishes a genuine press-drag from a quick tap; if
+   * the pointer never travelled past the tap threshold, we keep
+   * the popover open and let the user pick via a second tap on a
+   * swatch (which then takes the apply-color-tag click path).
+   */
   function handleColorPickerMouseUp(e: MouseEvent): void {
+    document.removeEventListener('mousemove', trackColorPickerMove, true);
+    const moved = pdrColorPickerMoved;
+    const wasOpenBeforeGesture = pdrColorPickerWasOpenBeforeGesture;
+    pdrColorPickerOrigin = null;
+    pdrColorPickerMoved = false;
+    pdrColorPickerWasOpenBeforeGesture = false;
     const t = e.target;
     let actionEl: HTMLElement | null = null;
     if (t instanceof Element) {
@@ -300,6 +519,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     const action = actionEl?.getAttribute('data-pkc-action') ?? null;
     const lid = colorPickerLid;
+
+    // Tap (no drag) on the trigger itself: toggle. If the popover
+    // was already open when this gesture started, the tap closes
+    // it; if the popover only just opened on the matching
+    // mousedown, keep it open so the user can pick via a second
+    // tap on a swatch. Either way, swallow the natural click so
+    // the legacy click handler does not double-fire.
+    if (!moved && (action === 'open-color-picker' || actionEl === colorPickerTrigger)) {
+      if (wasOpenBeforeGesture) {
+        closeColorPicker();
+      }
+      registerOneShotClickSwallow();
+      return;
+    }
+
     if (action === 'apply-color-tag') {
       const color = actionEl?.getAttribute('data-pkc-color');
       if (color && lid) {
@@ -356,13 +590,114 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!triggerEl) return;
     e.preventDefault();
     e.stopPropagation();
-    if (colorPickerTrigger !== triggerEl || colorPickerEl === null) {
+    // Snapshot whether the popover was already open BEFORE this
+    // gesture (= same trigger + popover element exists). The
+    // mouseup handler uses this to decide whether a tap-no-drag
+    // should close the popover (toggle) or keep it open (just
+    // opened it via this mousedown).
+    pdrColorPickerWasOpenBeforeGesture =
+      colorPickerTrigger === triggerEl && colorPickerEl !== null;
+    if (!pdrColorPickerWasOpenBeforeGesture) {
       openColorPickerAt(triggerEl);
     }
+    pdrColorPickerOrigin = { x: e.clientX, y: e.clientY };
+    pdrColorPickerMoved = false;
+    document.addEventListener('mousemove', trackColorPickerMove, true);
     document.addEventListener('mouseup', handleColorPickerMouseUp, {
       capture: true,
       once: true,
     });
+  }
+
+  // ── Swipe-to-delete on touch (2026-04-26 user request) ─────────
+  // > スマホとタブレットではエントリのスワイプ削除を有効化して
+  //
+  // Mail-style left-swipe on a sidebar entry row reveals an inline
+  // Delete confirmation; the user releases either past the
+  // commit-threshold (immediate delete) or before it (snap back).
+  // Pure JS — no new state, no AppState attribute, no extra DOM
+  // node ahead of time. The translateX is applied directly to the
+  // touched `<li>` and torn down on release / next render.
+  const SWIPE_COMMIT_PX = 80;
+  const SWIPE_REVEAL_PX = 120; // max translateX magnitude
+  let swipeState:
+    | { lid: string; startX: number; startY: number; row: HTMLElement; locked: 'horizontal' | 'vertical' | null }
+    | null = null;
+
+  function handleEntrySwipeStart(e: TouchEvent): void {
+    if (e.touches.length !== 1) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const row = target.closest(
+      '[data-pkc-action="select-entry"][data-pkc-lid].pkc-entry-item',
+    ) as HTMLElement | null;
+    if (!row) return;
+    const lid = row.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    swipeState = {
+      lid,
+      startX: e.touches[0]!.clientX,
+      startY: e.touches[0]!.clientY,
+      row,
+      locked: null,
+    };
+  }
+
+  function handleEntrySwipeMove(e: TouchEvent): void {
+    if (!swipeState || e.touches.length !== 1) return;
+    const dx = e.touches[0]!.clientX - swipeState.startX;
+    const dy = e.touches[0]!.clientY - swipeState.startY;
+    if (swipeState.locked === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      swipeState.locked = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal';
+      if (swipeState.locked === 'vertical') {
+        // Vertical scroll wins — drop our gesture so the sidebar
+        // can scroll freely.
+        swipeState = null;
+        return;
+      }
+    }
+    if (swipeState.locked === 'horizontal' && dx < 0) {
+      e.preventDefault();
+      const offset = Math.max(dx, -SWIPE_REVEAL_PX);
+      swipeState.row.style.transform = `translateX(${offset}px)`;
+      swipeState.row.style.transition = 'none';
+      swipeState.row.setAttribute(
+        'data-pkc-swiping',
+        offset <= -SWIPE_COMMIT_PX ? 'commit' : 'preview',
+      );
+    }
+  }
+
+  function handleEntrySwipeEnd(e: TouchEvent): void {
+    if (!swipeState) return;
+    const captured = swipeState;
+    swipeState = null;
+    captured.row.style.transition = '';
+    captured.row.style.transform = '';
+    captured.row.removeAttribute('data-pkc-swiping');
+    const dxRaw = e.changedTouches[0]?.clientX;
+    if (typeof dxRaw !== 'number') return;
+    const dx = dxRaw - captured.startX;
+    if (captured.locked !== 'horizontal') return;
+    if (dx > -SWIPE_COMMIT_PX) return;
+    // Crossed the commit threshold — fire DELETE_ENTRY directly.
+    // No confirm dialog (touch users hate dialogs interrupting a
+    // gesture) — the soft-delete reducer keeps the entry's
+    // revisions, so the row remains restorable from the
+    // 🗑️ Deleted pane until the user empties the trash. Matches
+    // the Apple Mail "full swipe = immediate delete with undo
+    // available" model.
+    dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: captured.lid });
+  }
+
+  function handleEntrySwipeCancel(): void {
+    if (!swipeState) return;
+    const captured = swipeState;
+    swipeState = null;
+    captured.row.style.transition = '';
+    captured.row.style.transform = '';
+    captured.row.removeAttribute('data-pkc-swiping');
   }
 
   /**
@@ -396,6 +731,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    *      close the menu and swallow.
    */
   let pdrMenuOpenDetails: HTMLDetailsElement | null = null;
+  let pdrMenuWasOpenBeforeGesture = false;
+  let pdrMenuOrigin: { x: number; y: number } | null = null;
+  let pdrMenuMoved = false;
+
+  function trackDetailsMenuMove(ev: MouseEvent): void {
+    if (!pdrMenuOrigin) return;
+    const dx = ev.clientX - pdrMenuOrigin.x;
+    const dy = ev.clientY - pdrMenuOrigin.y;
+    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+      pdrMenuMoved = true;
+    }
+  }
 
   function handleDetailsMenuMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
@@ -406,8 +753,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const details = summary.parentElement as HTMLDetailsElement | null;
     if (!details || details.tagName !== 'DETAILS') return;
     e.preventDefault();
+    // Snapshot whether the menu was already open BEFORE this
+    // gesture. The mouseup handler uses this to decide whether a
+    // tap-no-drag should close the menu (toggle, when it was
+    // already open) or keep it open (we just opened it via this
+    // mousedown). Without this branch a click on an open Data… /
+    // More… stayed open, with no way to close — the user
+    // reported it as "パレットが閉じない".
+    pdrMenuWasOpenBeforeGesture = details.open === true;
     details.open = true;
     pdrMenuOpenDetails = details;
+    pdrMenuOrigin = { x: e.clientX, y: e.clientY };
+    pdrMenuMoved = false;
+    document.addEventListener('mousemove', trackDetailsMenuMove, true);
     document.addEventListener('mouseup', handleDetailsMenuMouseUp, {
       capture: true,
       once: true,
@@ -415,10 +773,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleDetailsMenuMouseUp(e: MouseEvent): void {
+    document.removeEventListener('mousemove', trackDetailsMenuMove, true);
+    const moved = pdrMenuMoved;
+    const wasOpenBeforeGesture = pdrMenuWasOpenBeforeGesture;
+    pdrMenuOrigin = null;
+    pdrMenuMoved = false;
+    pdrMenuWasOpenBeforeGesture = false;
     const details = pdrMenuOpenDetails;
     pdrMenuOpenDetails = null;
     if (!details) return;
     const t = e.target;
+    // Tap (no drag) on the summary itself: toggle. If the menu
+    // was already open when this gesture started, the tap closes
+    // it; if it just opened on the matching mousedown, keep it
+    // open so the user can pick via a second tap. Either way
+    // swallow the natural click so the `<details>` native toggle
+    // does not flip the state back.
+    if (!moved) {
+      const summary = t instanceof Element ? t.closest('summary[data-pkc-pdr-menu]') : null;
+      if (summary && details.contains(summary)) {
+        if (wasOpenBeforeGesture) {
+          details.open = false;
+        }
+        registerOneShotClickSwallow();
+        return;
+      }
+    }
     // Native form controls inside the menu (e.g. the More…
     // "compact" checkbox) should keep the menu open and let the
     // native click open the platform UX. The user closes the menu
@@ -491,12 +871,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleClick(e: Event): void {
-    // Shell menu backdrop click: close menu if user clicked outside the card.
+    // Shell menu backdrop click: close menu if user clicked outside
+    // the card. Both halves of the gesture must agree — a click
+    // whose mousedown was NOT on the overlay (e.g., the trailing
+    // synthetic click from the OS-level color-input eyedropper
+    // releasing over the dim backdrop) leaves the menu alone.
     const rawTarget = e.target as HTMLElement | null;
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
-      dispatcher.dispatch({ type: 'CLOSE_MENU' });
+      const startedOnOverlay = shellMenuOverlayMouseDown;
+      shellMenuOverlayMouseDown = false;
+      if (startedOnOverlay) {
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
+      }
       return;
     }
+    shellMenuOverlayMouseDown = false;
 
     // Slice 4: `Alt+Click` on a TEXTLOG log row body is the modifier
     // gesture that replaces the old dblclick-to-edit. Native dblclick
@@ -630,7 +1019,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
-          dispatcher.dispatch({ type: 'SELECT_RANGE', lid });
+          // Snapshot the sidebar's visible LIDs in DOM order so the
+          // reducer can pick the range in tree-traversal order
+          // instead of storage order. Without this the user reports
+          // "歯抜け" — Shift+click across folder boundaries skips
+          // entries that are not contiguous in `container.entries`.
+          const sidebar = root.querySelector<HTMLElement>(
+            '[data-pkc-region="sidebar"]',
+          );
+          const visibleOrder = sidebar
+            ? Array.from(
+                sidebar.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+              )
+                .map((el) => el.getAttribute('data-pkc-lid'))
+                .filter((v): v is string => typeof v === 'string')
+            : undefined;
+          dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
           if (dispatcher.getState().viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
@@ -782,6 +1186,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // the current editing state).
         if (arch === 'attachment' && dispatcher.getState().phase === 'editing') {
           triggerEditingFileAttach();
+          break;
+        }
+        // 2026-04-26 user audit: outside of editing mode, "📎 File"
+        // (iPad / touch entry point that has no DnD) should pick
+        // multiple files at once and create one attachment entry
+        // per file — matching the desktop DnD multi-file flow.
+        // The previous behaviour silently created an empty
+        // attachment record and forced the user to bind a file
+        // afterwards via the editor's single-file picker.
+        if (arch === 'attachment') {
+          const ctxFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
+          triggerCreateFileAttach(ctxFolder);
           break;
         }
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
@@ -2124,6 +2540,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
         break;
       }
+      // ── iPhone push/pop shell (2026-04-26) ──────────────────
+      case 'mobile-back': {
+        // Mirrors the Escape-key path from `handleKeydown` so
+        // touch users have an explicit pop affordance. If the
+        // user is mid-edit, cancel the edit first; otherwise
+        // deselect the entry which bubbles us back to the list.
+        const st = dispatcher.getState();
+        if (st.phase === 'editing') {
+          dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.selectedLid) {
+          dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+        }
+        break;
+      }
+      case 'mobile-open-drawer': {
+        e.preventDefault();
+        e.stopPropagation();
+        openMobileDrawer();
+        break;
+      }
+      case 'mobile-close-drawer': {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMobileDrawer();
+        break;
+      }
       case 'open-link-migration-dialog': {
         // Phase 2 Slice 2 — Normalize PKC links preview entry point.
         // Guards match the audit:
@@ -2798,14 +3240,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Focus mode (2026-04-26 user request): Alt+Space hides BOTH
-    // panes at once for distraction-free editing. The user reports
-    // this is a frequent flow ("両方のペインを隠す操作を頻繁に使う"),
-    // and `Ctrl+\` / `Ctrl+Shift+\` are awkward when used together.
-    // Suppressed while a text input is focused so Alt+Space stays
-    // available to OS-level IME / window-menu hotkeys when the user
-    // is mid-typing.
-    if (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    // Focus mode (2026-04-26 user request): Alt+Space (Mac/Linux)
+    // and Ctrl+Alt+\ (everywhere) hide BOTH panes at once for
+    // distraction-free editing. Alt+Space is intercepted by
+    // Windows / Edge as the OS-level window-menu hotkey before the
+    // page sees it ("Windowsとedgeの組み合わせでalt+spaceのショト
+    // カが使えなかった"), so the Ctrl+Alt+\ binding is the
+    // canonical cross-platform path. Suppressed while a text input
+    // is focused so neither chord clobbers IME / typing.
+    const isFocusModeChord =
+      (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) ||
+      ((e.ctrlKey || e.metaKey) && e.altKey && e.key === '\\' && !e.shiftKey);
+    if (isFocusModeChord) {
       const target = e.target as Element | null;
       if (
         target instanceof HTMLTextAreaElement
@@ -4503,6 +4949,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   let editingFileInput: HTMLInputElement | null = null;
 
+  // 2026-04-26 user audit: "iPadだとDnDできないから、必然的にFileから
+  // 添付になるけど、複数添付できない". Mirror the DnD multi-file
+  // path through the "📎 File" archetype-create button so iPad /
+  // touch users can pick N files at once and get N attachment
+  // entries created — same behaviour as dragging N files onto
+  // the sidebar drop zone.
+  let creatingFileInput: HTMLInputElement | null = null;
+
+  function triggerCreateFileAttach(contextFolder: string | undefined): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+    if (!creatingFileInput) {
+      creatingFileInput = document.createElement('input');
+      creatingFileInput.type = 'file';
+      creatingFileInput.multiple = true;
+      creatingFileInput.style.display = 'none';
+      creatingFileInput.setAttribute('data-pkc-role', 'creating-file-input');
+      document.body.appendChild(creatingFileInput);
+    }
+    const input = creatingFileInput;
+    const handleChange = (): void => {
+      input.removeEventListener('change', handleChange);
+      const fileList = input.files;
+      if (!fileList?.length) {
+        input.value = '';
+        return;
+      }
+      const files = Array.from(fileList);
+      input.value = '';
+      function processNext(idx: number): void {
+        if (idx >= files.length) return;
+        processFileAttachmentWithDedupe(
+          files[idx]!,
+          contextFolder,
+          dispatcher,
+          () => processNext(idx + 1),
+        );
+      }
+      processNext(0);
+    };
+    input.addEventListener('change', handleChange);
+    input.click();
+  }
+
   function triggerEditingFileAttach(): void {
     const state = dispatcher.getState();
     if (state.phase !== 'editing' || state.readonly) return;
@@ -4837,6 +5327,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
+    // 2026-04-26 user audit: "エントリをダブルタップすると戻って
+    // これない". Touch devices (iPhone / iPad / Apple-Pencil
+    // tablets) often run PKC2 as a standalone PWA, where
+    // `window.open()` either fails outright or spawns a popup
+    // window with no OS-chrome to dismiss it. The desktop
+    // detached-window UX assumes the user can find their way
+    // back via the browser tab strip, which is gone in
+    // standalone mode. Fall back to plain selection so the
+    // master-detail navigation kicks in instead.
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches
+    ) {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      return;
+    }
+
     // Select the entry first
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
 
@@ -5148,6 +5656,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Press-drag-release for anchored `<details>` menus (Data… and
   // More… — see `handleDetailsMenuMouseDown`).
   root.addEventListener('mousedown', handleDetailsMenuMouseDown);
+
+  // Mail-style swipe-to-delete on entry list rows (touch only).
+  // touchmove uses `passive: false` so we can call preventDefault
+  // when the gesture locks horizontal — without that the browser
+  // would scroll the sidebar instead of letting us slide the row.
+  root.addEventListener('touchstart', handleEntrySwipeStart, { passive: true });
+  root.addEventListener('touchmove', handleEntrySwipeMove, { passive: false });
+  root.addEventListener('touchend', handleEntrySwipeEnd);
+  root.addEventListener('touchcancel', handleEntrySwipeCancel);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -5181,6 +5698,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragend', handleCalendarDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   root.addEventListener('mousedown', handleStaleDragCleanup);
+  // Capture-phase shell-menu-overlay tracker — see the
+  // `shellMenuOverlayMouseDown` flag declaration for the
+  // eyedropper-trailing-click rationale.
+  document.addEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
@@ -5208,6 +5729,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('mousedown', handleDetailsMenuMouseDown);
+    root.removeEventListener('touchstart', handleEntrySwipeStart);
+    root.removeEventListener('touchmove', handleEntrySwipeMove);
+    root.removeEventListener('touchend', handleEntrySwipeEnd);
+    root.removeEventListener('touchcancel', handleEntrySwipeCancel);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);
@@ -5235,6 +5760,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('drop', handleEditorFileDrop);
     if (editingFileInput) { editingFileInput.remove(); editingFileInput = null; }
+    if (creatingFileInput) { creatingFileInput.remove(); creatingFileInput = null; }
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
@@ -5243,6 +5769,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
     root.removeEventListener('input', handleTextEditPreviewInput);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);

@@ -460,7 +460,24 @@ export type UserAction =
    */
   | { type: 'PURGE_ORPHAN_ASSETS' }
   | { type: 'TOGGLE_MULTI_SELECT'; lid: string }
-  | { type: 'SELECT_RANGE'; lid: string }
+  /**
+   * SELECT_RANGE — Shift+click range select.
+   *
+   * `lid` is the new selection anchor. The reducer picks the
+   * range of LIDs between the previous `selectedLid` and `lid`.
+   *
+   * `visibleOrder` is an optional pre-computed list of currently
+   * visible LIDs (in DOM order) supplied by action-binder when
+   * the trigger is the sidebar tree. The reducer uses it to
+   * pick the visual-order range so Shift+click across folder
+   * hierarchies no longer skips entries that fall outside the
+   * storage-order slice ("歯抜け" report, 2026-04-26 audit).
+   * When omitted, the reducer falls back to the legacy
+   * `container.entries` storage-order range — this keeps
+   * non-tree callers (calendar / kanban multi-select) working
+   * without forcing them to compute a visual-order list.
+   */
+  | { type: 'SELECT_RANGE'; lid: string; visibleOrder?: readonly string[] }
   | { type: 'CLEAR_MULTI_SELECT' }
   | { type: 'BULK_DELETE' }
   | { type: 'BULK_MOVE_TO_FOLDER'; folderLid: string }

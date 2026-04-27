@@ -43,13 +43,19 @@ let cached: PanePrefs | null = null;
  *
  * Idempotent; safe to call before every render.
  *
- * When no stored prefs exist (first-time user) the default depends
- * on the viewport: on a phone the sidebar / meta panes are drawer
- * overlays (see `base.css` phone @media block), so we default them
- * to collapsed — otherwise the sidebar would cover the center pane
- * the moment the app boots. Tablet and desktop keep the legacy
- * "both open" default. Once the user toggles either pane the
- * stored preference takes over and the viewport check is bypassed.
+ * On the iPhone shell (`pointer: coarse and (max-width: 640px)`)
+ * the meta pane is rendered as a slide-over drawer; we default it
+ * to collapsed on first paint so the user sees the entry detail
+ * full-screen and opens the drawer explicitly via the ⓘ button
+ * in the mobile header. The desktop / tablet default (both panes
+ * open) is preserved everywhere else — including iPad, which
+ * keeps the 3-pane chrome until its own dedicated PR lands.
+ *
+ * (Conflict resolution 2026-04-27: PR #172 had a wider 1024 px
+ * gate that pre-collapsed the meta pane on iPad portrait too;
+ * PR #173 narrowed it to 640 px because the iPhone push/pop
+ * shell is the only viewport that uses the slide-over drawer
+ * model. Took the iPhone-only gate.)
  */
 export function loadPanePrefs(): PanePrefs {
   if (cached) return cached;
@@ -58,20 +64,15 @@ export function loadPanePrefs(): PanePrefs {
 }
 
 function defaultPrefsForViewport(): PanePrefs {
-  // Mobile / tablet master-detail layout (base.css responsive block):
-  // the sidebar IS the master view, so default it open; the meta
-  // pane is a slide-over drawer the user opts into via the ◨
-  // toggle, so default it closed.
-  //
-  // Gate matches the CSS — `pointer: coarse` plus the same
-  // ≤ 1024 px width — so a desktop Full HD user resizing their
-  // window narrow keeps the desktop default ({ sidebar: false,
-  // meta: false }) instead of being silently flipped into the
-  // touch defaults.
+  // Phone tier (`pointer: coarse and (max-width: 640px)`): meta
+  // drawer closed so the entry detail is the hero on first paint.
+  // Sidebar default stays open because the master-detail CSS
+  // hides it via `data-pkc-mobile-page` when an entry is selected.
+  // iPad and desktop keep the legacy "both panes open" default.
   if (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse) and (max-width: 1024px)').matches
+    window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches
   ) {
     return { sidebar: false, meta: true };
   }
