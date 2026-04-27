@@ -880,7 +880,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
       const startedOnOverlay = shellMenuOverlayMouseDown;
       shellMenuOverlayMouseDown = false;
-      if (startedOnOverlay) {
+      // 2026-04-26 user audit (second pass): the previous mousedown
+      // pairing on its own was not enough on touch devices —
+      // iOS Safari synthesizes a mousedown on the overlay during
+      // native color-picker dismissal, so the flag still arrived
+      // truthy at click time and the menu vanished mid-pick.
+      // Disable the overlay-click-to-close affordance entirely on
+      // `pointer: coarse` devices; touch users dismiss the menu
+      // via the explicit X button or Escape (soft-keyboard return).
+      // Mouse / trackpad users keep tap-outside-to-close.
+      const isTouch =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse)').matches;
+      if (!isTouch && startedOnOverlay) {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
       }
       return;
@@ -5327,23 +5340,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
-    // 2026-04-26 user audit: "エントリをダブルタップすると戻って
-    // これない". Touch devices (iPhone / iPad / Apple-Pencil
-    // tablets) often run PKC2 as a standalone PWA, where
-    // `window.open()` either fails outright or spawns a popup
-    // window with no OS-chrome to dismiss it. The desktop
-    // detached-window UX assumes the user can find their way
-    // back via the browser tab strip, which is gone in
-    // standalone mode. Fall back to plain selection so the
-    // master-detail navigation kicks in instead.
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(pointer: coarse)').matches
-    ) {
-      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-      return;
-    }
+    // 2026-04-26 user direction: keep the desktop detached-window
+    // double-tap UX even on touch devices — iPad in 3-pane mode
+    // benefits from "double-tap → pin a reference window next to
+    // the main shell". The earlier touch fallback that downgraded
+    // dbl-tap to a plain SELECT_ENTRY is reverted; the
+    // entry-window itself gains a ✕ Close button so PWA users in
+    // standalone mode can dismiss the popup without OS chrome
+    // (see `entry-window.ts`).
 
     // Select the entry first
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
