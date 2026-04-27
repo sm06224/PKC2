@@ -35,6 +35,7 @@ import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, col
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { start as profileStart } from '../../runtime/profile';
+import { computeRenderScope } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -276,7 +277,30 @@ function resolveMobilePage(state: AppState): MobilePage {
   return 'list';
 }
 
-export function render(state: AppState, root: HTMLElement): void {
+export function render(state: AppState, root: HTMLElement, prev: AppState | null = null): void {
+  // PR #177: scope-driven short-circuit. When the delta from `prev`
+  // → `state` is irrelevant to rendering (`'none'`) or only shifts
+  // root attributes (`'settings-only'`), skip the full-shell rebuild
+  // path entirely. The bench (PR #176) showed `RESTORE_SETTINGS` at
+  // cold boot was ~70 % of the 263 ms wall clock at 1000 entries —
+  // almost entirely the listener-flush full-shell repaint, which
+  // produces no user-visible change when settings are hydrating
+  // null → defaults.
+  //
+  // `prev === null` (the first mount, where main.ts hasn't recorded
+  // a prior render baseline yet) falls through to the full path so
+  // there is no behaviour change for the boot SYS_INIT_COMPLETE flow.
+  const scope = computeRenderScope(state, prev);
+  if (scope === 'none') {
+    profileStart('render:scope=none')();
+    return;
+  }
+  if (scope === 'settings-only') {
+    const endProfile = profileStart('render:scope=settings-only');
+    applySystemSettings(root, state.settings, state);
+    endProfile();
+    return;
+  }
   // PR #176 profile wave: outermost wrapper for the full-shell
   // rebuild. `render:phase=<phase>` is the canonical "renderer
   // wall-clock" measure used by the bench runner. No-op when
