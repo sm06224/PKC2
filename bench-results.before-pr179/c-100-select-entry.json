@@ -1,0 +1,55 @@
+{
+  "scale": "c-100",
+  "entries": 100,
+  "scenario": "select-entry",
+  "measures": [
+    {
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 180.5,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY:notify-state",
+      "startTime": 180.5,
+      "duration": 44
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 180.5,
+      "duration": 47.299999999813735
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 180.90000000037253,
+      "duration": 43.59999999962747
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 182.90000000037253,
+      "duration": 2.5
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 183.40000000037253,
+      "duration": 0
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 183.59999999962747,
+      "duration": 0.30000000074505806
+    },
+    {
+      "name": "render:center",
+      "startTime": 185.40000000037253,
+      "duration": 1.7999999998137355
+    },
+    {
+      "name": "render:meta",
+      "startTime": 187.20000000018626,
+      "duration": 4.2000000001862645
+    }
+  ],
+  "bootElapsedMs": -1,
+  "heapUsedMb": 9.54,
+  "capturedAt": "2026-04-27T22:18:02.723Z"
+}

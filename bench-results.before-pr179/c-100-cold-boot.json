@@ -1,0 +1,85 @@
+{
+  "scale": "c-100",
+  "entries": 100,
+  "scenario": "cold-boot",
+  "measures": [
+    {
+      "name": "render:phase=initializing",
+      "startTime": 37.299999999813735,
+      "duration": 0.2999999998137355
+    },
+    {
+      "name": "boot:readPkcData",
+      "startTime": 38.200000000186265,
+      "duration": 0
+    },
+    {
+      "name": "boot:loadFromStore",
+      "startTime": 38.299999999813735,
+      "duration": 13.5
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
+      "startTime": 51.90000000037253,
+      "duration": 0
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 51.90000000037253,
+      "duration": 7.3999999994412065
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+      "startTime": 51.90000000037253,
+      "duration": 7.599999999627471
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE",
+      "startTime": 51.90000000037253,
+      "duration": 7.7999999998137355
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 54.5,
+      "duration": 4.400000000372529
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 55.200000000186265,
+      "duration": 0
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 55.59999999962747,
+      "duration": 0.6000000005587935
+    },
+    {
+      "name": "render:center",
+      "startTime": 58.90000000037253,
+      "duration": 0.19999999925494194
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:reduce",
+      "startTime": 59.700000000186265,
+      "duration": 0
+    },
+    {
+      "name": "render:scope=settings-only",
+      "startTime": 59.700000000186265,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:notify-state",
+      "startTime": 59.700000000186265,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS",
+      "startTime": 59.700000000186265,
+      "duration": 0
+    }
+  ],
+  "bootElapsedMs": 22.799999999813735,
+  "heapUsedMb": 9.54,
+  "capturedAt": "2026-04-27T22:18:00.605Z"
+}

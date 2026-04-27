@@ -1,0 +1,130 @@
+{
+  "scale": "c-1000",
+  "entries": 1000,
+  "scenario": "search-keystroke",
+  "measures": [
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:reduce",
+      "startTime": 316.59999999962747,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 316.59999999962747,
+      "duration": 194.20000000018626
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 316.59999999962747,
+      "duration": 194.40000000037253
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 316.79999999981374,
+      "duration": 193.09999999962747
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 319.09999999962747,
+      "duration": 61.799999999813735
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 331.69999999925494,
+      "duration": 2.2000000001862645
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 571.2999999998137,
+      "duration": 214.09999999962747
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:reduce",
+      "startTime": 571.3999999994412,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 571.3999999994412,
+      "duration": 214
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 571.6999999992549,
+      "duration": 212.6000000005588
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 573.6999999992549,
+      "duration": 47.200000000186265
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 580.2999999998137,
+      "duration": 0.7999999998137355
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:reduce",
+      "startTime": 836,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 836,
+      "duration": 118.8999999994412
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 836,
+      "duration": 118.8999999994412
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 836.2999999998137,
+      "duration": 118
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 838.2999999998137,
+      "duration": 40.39999999944121
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 845.7999999998137,
+      "duration": 0.599999999627471
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:reduce",
+      "startTime": 991.6999999992549,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 991.6999999992549,
+      "duration": 159.70000000018626
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 991.6999999992549,
+      "duration": 159.80000000074506
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 992,
+      "duration": 158.69999999925494
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 994,
+      "duration": 41.39999999944121
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 1000.7999999998137,
+      "duration": 0.599999999627471
+    }
+  ],
+  "bootElapsedMs": -1,
+  "heapUsedMb": 14.5,
+  "capturedAt": "2026-04-27T22:18:08.207Z"
+}
