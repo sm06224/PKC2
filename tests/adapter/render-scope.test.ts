@@ -81,15 +81,63 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
-  it('returns "full" when searchQuery changes (sidebar-affecting field)', () => {
+  it('returns "sidebar-only" when only searchQuery changes (PR #178)', () => {
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({ ...s, searchQuery: 'meeting' }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "sidebar-only" when only archetypeFilter Set reference changes', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, archetypeFilter: new Set(['text']) }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "sidebar-only" when only sortKey changes', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, sortKey: 'updated_at' }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "sidebar-only" when only collapsedFolders array reference changes', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, collapsedFolders: ['fld'] }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "sidebar-only" when only treeHideBuckets toggle flips', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, treeHideBuckets: false }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "sidebar-only" when both searchQuery and archetypeFilter change in the same dispatch', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({
+      ...s,
+      searchQuery: 'meeting',
+      archetypeFilter: new Set(['text']),
+    }));
+    expect(computeRenderScope(next, prev)).toBe('sidebar-only');
+  });
+
+  it('returns "full" when sidebar-only field combines with selectedLid (a non-sidebar field)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({
+      ...s,
+      searchQuery: 'meeting',
+      selectedLid: 'e1',
+    }));
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
-  it('returns "full" when archetypeFilter Set reference changes', () => {
+  it('returns "full" when sidebar-only AND settings change in the same dispatch', () => {
     const prev = createInitialState();
-    const next = withChange(prev, (s) => ({ ...s, archetypeFilter: new Set(['text']) }));
+    const next = withChange(prev, (s) => ({
+      ...s,
+      searchQuery: 'meeting',
+      settings: SETTINGS_DEFAULTS,
+    }));
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
@@ -99,27 +147,6 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
-  it('returns "full" when treeHideBuckets toggle flips', () => {
-    const prev = createInitialState();
-    const next = withChange(prev, (s) => ({ ...s, treeHideBuckets: false }));
-    expect(computeRenderScope(next, prev)).toBe('full');
-  });
-
-  it('returns "full" when collapsedFolders array reference changes', () => {
-    const prev = createInitialState();
-    const next = withChange(prev, (s) => ({ ...s, collapsedFolders: ['fld'] }));
-    expect(computeRenderScope(next, prev)).toBe('full');
-  });
-
-  it('returns "full" when both settings and a sidebar field change in one diff', () => {
-    const prev = createInitialState();
-    const next = withChange(prev, (s) => ({
-      ...s,
-      settings: SETTINGS_DEFAULTS,
-      searchQuery: 'meeting',
-    }));
-    expect(computeRenderScope(next, prev)).toBe('full');
-  });
 
   it('returns "none" when only render-irrelevant fields differ (textlogSelection structural sameness)', () => {
     const prev = createInitialState();

@@ -160,6 +160,23 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'sidebar-only') {
+      // PR #178: replace just the sidebar subtree. Continuity
+      // capture + restore is still needed because the search input
+      // (focus + caret) lives inside the sidebar and gets replaced.
+      // populateAttachmentPreviews walks ALL `[data-pkc-asset-key]`
+      // images including the sidebar entry rows, so it runs here.
+      // populateInlineAssetPreviews scans center-pane markdown
+      // bodies which are NOT replaced — skip it. cleanupBlobUrls
+      // touches center-pane preview Blobs and is also center-only.
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
 
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records
