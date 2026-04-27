@@ -261,6 +261,45 @@ export interface AppState {
   };
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
+  /**
+   * Hide entries that live inside auto-bucket folders (ASSETS / TODOS)
+   * from search-result lists. Default `true` per user direction
+   * 2026-04-26: 「ASSETSとTODOSは検索オプションでデフォでハイドして」.
+   * Only applies when a search / archetype / tag / color filter is
+   * active — tree mode is unaffected. Runtime-only, not persisted.
+   * Optional so that existing inline test fixtures don't have to be
+   * touched; missing / undefined resolves to `true` (hide).
+   */
+  searchHideBuckets?: boolean;
+  /**
+   * When `true`, the sidebar list is restricted to attachment entries
+   * that are NOT referenced via `entry:<lid>` or `asset:<key>` from
+   * any other entry's body. Surfaces the "unused upload" cleanup
+   * workflow asked for on 2026-04-27:
+   *   「どこにもリンクしていない、埋め込まれていない、リンク貼付も
+   *    されていないアセットをフィルタする機能」
+   * Runtime-only, not persisted, optional with default `false`.
+   */
+  unreferencedAttachmentsOnly?: boolean;
+  /**
+   * When `true`, the entries list (both tree and flat modes) hides
+   * ASSETS / TODOS bucket folders AND every entry inside them.
+   * Default `true` per user direction 2026-04-27:
+   *   「ASSETSとTODOSをデフォで隠すのは… フォルダすらもハイドする
+   *    感じです」
+   * Optional with default-true semantics so older inline test
+   * fixtures continue to type-check.
+   */
+  treeHideBuckets?: boolean;
+  /**
+   * Sidebar "advanced filters" disclosure-section open state.
+   * Default `false` (collapsed) so the show-archived / show-unused-
+   * attachments / show-buckets toggles don't clutter the sidebar
+   * for the typical browsing flow. Once expanded, persists across
+   * dispatches via the reducer until the user collapses it again.
+   * Runtime-only, not persisted to storage.
+   */
+  advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
   viewMode: 'detail' | 'calendar' | 'kanban';
   /** Calendar navigation: year. Runtime-only. */
@@ -474,6 +513,10 @@ export function createInitialState(): AppState {
     lightSource: false,
     viewOnlySource: false,
     showArchived: false,
+    searchHideBuckets: true,
+    unreferencedAttachmentsOnly: false,
+    treeHideBuckets: true,
+    advancedFiltersOpen: false,
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth() + 1,
@@ -2275,6 +2318,34 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, showArchived: !state.showArchived };
       return { state: next, events: [] };
     }
+    case 'TOGGLE_SEARCH_HIDE_BUCKETS': {
+      const next: AppState = {
+        ...state,
+        searchHideBuckets: !(state.searchHideBuckets ?? true),
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER': {
+      const next: AppState = {
+        ...state,
+        unreferencedAttachmentsOnly: !(state.unreferencedAttachmentsOnly ?? false),
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_TREE_HIDE_BUCKETS': {
+      const next: AppState = {
+        ...state,
+        treeHideBuckets: !(state.treeHideBuckets ?? true),
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_ADVANCED_FILTERS': {
+      const next: AppState = {
+        ...state,
+        advancedFiltersOpen: !(state.advancedFiltersOpen ?? false),
+      };
+      return { state: next, events: [] };
+    }
     case 'SAVE_SEARCH': {
       // Spec: docs/development/saved-searches-v1.md §5–§6.
       if (!state.container) return blocked(state, action);
@@ -2455,8 +2526,23 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (!state.container) return blocked(state, action);
       const result = purgeTrash(state.container);
       if (result.purgedCount === 0) return blocked(state, action);
-      const next: AppState = { ...state, container: result.container };
-      return { state: next, events: [{ type: 'TRASH_PURGED', count: result.purgedCount }] };
+      // 2026-04-27 user audit:「ゴミ箱を空にすると孤児が大量に生まれる」
+      // — emptying trash also drops the last route through which a
+      // soft-deleted attachment entry could be restored (its
+      // revision snapshot is gone), so the asset bytes that were
+      // being kept for that restore are now truly unrecoverable.
+      // Sweep them in the same reduction so the trash UI doesn't
+      // leave the user with a balloon of dead asset bytes that
+      // require a separate "Purge orphan assets" trip.
+      const swept = removeOrphanAssets(result.container);
+      const orphanCount =
+        Object.keys(result.container.assets).length - Object.keys(swept.assets).length;
+      const events: DomainEvent[] = [{ type: 'TRASH_PURGED', count: result.purgedCount }];
+      if (orphanCount > 0) {
+        events.push({ type: 'ORPHAN_ASSETS_PURGED', count: orphanCount });
+      }
+      const next: AppState = { ...state, container: swept };
+      return { state: next, events };
     }
     case 'PURGE_ORPHAN_ASSETS': {
       // Manual orphan asset cleanup. This is the user-facing cleanup

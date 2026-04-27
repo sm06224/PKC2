@@ -77,12 +77,13 @@ function bootstrap(selectLid: string | null = 'e1') {
   return { dispatcher };
 }
 
-function keydown(opts: { key: string; ctrl?: boolean; meta?: boolean; shift?: boolean; target?: EventTarget }): KeyboardEvent {
+function keydown(opts: { key: string; ctrl?: boolean; meta?: boolean; shift?: boolean; alt?: boolean; target?: EventTarget }): KeyboardEvent {
   const e = new KeyboardEvent('keydown', {
     key: opts.key,
     ctrlKey: !!opts.ctrl,
     metaKey: !!opts.meta,
     shiftKey: !!opts.shift,
+    altKey: !!opts.alt,
     bubbles: true,
     cancelable: true,
   });
@@ -217,5 +218,43 @@ describe('Slice 6: pane re-toggle shortcut', () => {
     expect(help?.textContent).toContain('Toggle sidebar');
     expect(help?.textContent).toContain('Toggle meta pane');
     expect(help?.textContent).toContain('Ctrl+\\');
+  });
+});
+
+describe('focus-mode chord (Ctrl+Alt+\\) collapses BOTH panes', () => {
+  // Regression: 2026-04-27 user audit
+  //   "Ctrl+Alt+\が機能しない 左ペインしか畳まれない".
+  // The single-pane Slice 6 handler used to fire on `mod && key==='\\'`
+  // without checking altKey, so Ctrl+Alt+\ was consumed there and
+  // the focus-mode branch never ran. Both panes must collapse.
+  it('with both panes open, Ctrl+Alt+\\ collapses sidebar AND meta together', () => {
+    bootstrap();
+    const sb = sidebar();
+    const mp = metaPane();
+    expect(sb!.getAttribute('data-pkc-collapsed')).toBeNull();
+    expect(mp!.getAttribute('data-pkc-collapsed')).toBeNull();
+
+    keydown({ key: '\\', ctrl: true, alt: true });
+
+    expect(sb!.getAttribute('data-pkc-collapsed')).toBe('true');
+    expect(mp!.getAttribute('data-pkc-collapsed')).toBe('true');
+  });
+
+  it('second Ctrl+Alt+\\ press re-expands both panes', () => {
+    bootstrap();
+    keydown({ key: '\\', ctrl: true, alt: true });
+    expect(sidebar()!.getAttribute('data-pkc-collapsed')).toBe('true');
+    expect(metaPane()!.getAttribute('data-pkc-collapsed')).toBe('true');
+
+    keydown({ key: '\\', ctrl: true, alt: true });
+    expect(sidebar()!.getAttribute('data-pkc-collapsed')).toBeNull();
+    expect(metaPane()!.getAttribute('data-pkc-collapsed')).toBeNull();
+  });
+
+  it('Cmd+Alt+\\ (macOS) also drives the focus-mode chord', () => {
+    bootstrap();
+    keydown({ key: '\\', meta: true, alt: true });
+    expect(sidebar()!.getAttribute('data-pkc-collapsed')).toBe('true');
+    expect(metaPane()!.getAttribute('data-pkc-collapsed')).toBe('true');
   });
 });

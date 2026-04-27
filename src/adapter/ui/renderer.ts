@@ -32,6 +32,8 @@ import { buildConnectednessSets, type ConnectednessSets } from '../../features/c
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
+import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
+import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -861,6 +863,15 @@ function renderHeader(state: AppState): HTMLElement {
   metaToggle.setAttribute('title', 'Toggle meta pane');
   metaToggle.textContent = '◨';
   toggles.appendChild(metaToggle);
+
+  // Focus mode: hide / restore both side panes at once. Mirrors the
+  // Ctrl+Alt+\ keyboard chord so touch / mouse users can reach the
+  // same affordance without a keyboard.
+  const focusToggle = createElement('button', 'pkc-tray-toggle');
+  focusToggle.setAttribute('data-pkc-action', 'toggle-focus-mode');
+  focusToggle.setAttribute('title', 'Focus mode — hide both panes (Ctrl+Alt+\\)');
+  focusToggle.textContent = '▣';
+  toggles.appendChild(focusToggle);
 
   // Shell menu button
   const menuBtn = createElement('button', 'pkc-tray-toggle pkc-shell-menu-btn');
@@ -2199,19 +2210,120 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     if (recentPane) sidebar.appendChild(recentPane);
   }
 
-  // Show archived toggle (only when there are archived todos)
-  if (allEntries.some((e) => e.archetype === 'todo' && parseTodoBody(e.body).archived)) {
-    const toggle = createElement('label', 'pkc-show-archived-toggle');
-    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.checked = state.showArchived;
-    check.setAttribute('data-pkc-action', 'toggle-show-archived');
-    toggle.appendChild(check);
-    const labelText = createElement('span', '');
-    labelText.textContent = 'Show archived';
-    toggle.appendChild(labelText);
-    sidebar.appendChild(toggle);
+  // 2026-04-27 user direction:「Show Only unused attachmentsもそうだ
+  // けど、トグル自体を折りたたんで隠したうえで」 — collapse all of
+  // the list-shape toggles into one `<details>` disclosure section
+  // so the typical browse view stays clean. The section persists
+  // its open/closed state via `state.advancedFiltersOpen` so it
+  // survives the next dispatch's full-shell rebuild.
+  const hasArchivedTodo = allEntries.some(
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
+  );
+  const hasAttachment = allEntries.some((e) => e.archetype === 'attachment');
+  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+  const hasBucketFolder = !!state.container
+    && state.container.entries.some(
+      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
+    );
+  const filterIsActiveForToggle =
+    state.searchQuery !== '' ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0 ||
+    state.categoricalPeerFilter !== null;
+  const hasBucketedEntryInResults =
+    filterIsActiveForToggle
+    && !!state.container
+    && (() => {
+      const containerRef = state.container!;
+      return allEntries.some((e) => {
+        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
+        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
+      });
+    })();
+  const hasAnyToggle =
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults;
+  if (hasAnyToggle) {
+    const details = document.createElement('details');
+    details.className = 'pkc-advanced-filters';
+    details.setAttribute('data-pkc-region', 'advanced-filters');
+    if (state.advancedFiltersOpen ?? false) {
+      details.setAttribute('open', '');
+    }
+    const summary = document.createElement('summary');
+    summary.className = 'pkc-advanced-filters-summary';
+    summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
+    summary.textContent = '⚙ Filters';
+    details.appendChild(summary);
+
+    if (hasArchivedTodo) {
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = state.showArchived;
+      check.setAttribute('data-pkc-action', 'toggle-show-archived');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show archived';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasBucketFolder) {
+      // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !(state.treeHideBuckets ?? true);
+      check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show ASSETS / TODOS folders';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasBucketedEntryInResults) {
+      // Inverted UX: checked = "show ASSETS / TODOS contents in
+      // search results". Distinct from the tree-folder toggle —
+      // user may want folder visibility OFF but search-result
+      // visibility ON, or vice versa.
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !(state.searchHideBuckets ?? true);
+      check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show ASSETS / TODOS in search results';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasAttachment) {
+      const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
+      unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = state.unreferencedAttachmentsOnly ?? false;
+      check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
+      unrefToggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show only unused attachments';
+      unrefToggle.appendChild(labelText);
+      if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
+        const count = collectUnreferencedAttachmentLids(state.container).size;
+        const badge = createElement('span', 'pkc-unref-count');
+        badge.textContent = ` (${count})`;
+        unrefToggle.appendChild(badge);
+      }
+      details.appendChild(unrefToggle);
+    }
+
+    sidebar.appendChild(details);
   }
 
   // Active tag filter indicator (categorical relation peer).
@@ -2356,6 +2468,66 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       return !parseTodoBody(e.body).archived;
     });
   }
+  // Hide entries inside auto-bucket folders (ASSETS / TODOS) from
+  // search-result lists by default. Only kicks in when a filter is
+  // active — tree mode and unfiltered list both keep showing them.
+  // Spec: user direction 2026-04-26
+  // 「ASSETSとTODOSは検索オプションでデフォでハイドして」.
+  const filterIsActive =
+    state.searchQuery !== '' ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0 ||
+    state.categoricalPeerFilter !== null;
+  if (filterIsActive && (state.searchHideBuckets ?? true) && state.container) {
+    const bucketNames = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+    const container = state.container;
+    filtered = filtered.filter((e) => {
+      const parent = getStructuralParent(container.relations, container.entries, e.lid);
+      if (!parent || parent.archetype !== 'folder') return true;
+      return !bucketNames.has(parent.title);
+    });
+  }
+
+  // Tree-hide-buckets: by default the entries list (both tree and
+  // flat modes) hides ASSETS / TODOS bucket folders AND every
+  // entry inside them. Auto-placement keeps the buckets full of
+  // attachments and todos that the user normally doesn't need to
+  // see — the folders themselves are clutter for browsing flow.
+  // Spec: user direction 2026-04-27
+  // 「フォルダすらもハイドする感じです」.
+  // Bypassed by the unreferenced-attachments lens (which is
+  // intentionally about surfacing bucket-routed candidates).
+  if (
+    (state.treeHideBuckets ?? true)
+    && !(state.unreferencedAttachmentsOnly ?? false)
+    && state.container
+  ) {
+    const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+    const container = state.container;
+    const hiddenLids = new Set<string>();
+    for (const e of container.entries) {
+      if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
+        hiddenLids.add(e.lid);
+        for (const d of collectDescendantLids(container.relations, e.lid)) {
+          hiddenLids.add(d);
+        }
+      }
+    }
+    if (hiddenLids.size > 0) {
+      filtered = filtered.filter((e) => !hiddenLids.has(e.lid));
+    }
+  }
+
+  // Unreferenced-attachments cleanup filter. Active only when the
+  // user explicitly flipped the toggle — this is a destructive-
+  // workflow lens, not a default view. Restricts the list to
+  // attachment entries that nothing else points at, so the user
+  // can multi-select + bulk-delete in one pass.
+  if ((state.unreferencedAttachmentsOnly ?? false) && state.container) {
+    const unreferenced = collectUnreferencedAttachmentLids(state.container);
+    filtered = filtered.filter((e) => unreferenced.has(e.lid));
+  }
   // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
   // using `container.meta.entry_order` (contract §2.2). Non-manual
   // modes fall through to the existing stable temporal/title sort.
@@ -2407,7 +2579,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
   }
 
   const list = createElement('ul', 'pkc-entry-list');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null;
+  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
   // v1 backlink count badge: build `Map<targetLid, count>` once per
   // sidebar render so per-row badge lookup stays O(1). Relations-based
@@ -3509,19 +3681,6 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
 
       const moreContent = createElement('div', 'pkc-action-bar-more-content');
 
-      // 2026-04-26 user audit: "右ペイン上の Copy Link ボタンが
-      // 右ペインをハイドしていると選択しにくい". The permalink
-      // copy lives in the meta pane info header, which is
-      // unreachable when the user has the meta pane collapsed.
-      // Surface a duplicate inside the More… menu so the
-      // affordance is one tap away regardless of pane state.
-      const copyLinkInMore = createElement('button', 'pkc-btn pkc-action-copy-permalink');
-      copyLinkInMore.setAttribute('data-pkc-action', 'copy-entry-permalink');
-      copyLinkInMore.setAttribute('data-pkc-lid', entry.lid);
-      copyLinkInMore.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
-      copyLinkInMore.textContent = '🔗 Copy link';
-      moreContent.appendChild(copyLinkInMore);
-
       // Slice 4-B: Copy MD / Copy Rich emit markdown-source round-trip
       // payloads and therefore only make sense for TEXT. TEXTLOG's
       // flatten path (`serializeTextlogAsMarkdown`) has been removed —
@@ -3628,10 +3787,26 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   title.textContent = entry.title || '(untitled)';
   titleRow.appendChild(title);
 
-  const archLabel = createElement('span', 'pkc-archetype-label');
-  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
-  archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
-  titleRow.appendChild(archLabel);
+  // 2026-04-27 user direction: the archetype badge that used to sit
+  // here was redundant — the action bar's bar-info already shows
+  // the archetype on the bottom-right of the same pane. Surface a
+  // Copy Link button instead so the affordance survives the meta
+  // pane being collapsed AND the More… menu not being rendered
+  // (some archetypes / phases skip the More… group entirely). The
+  // meta-pane Copy Link stays put as the canonical detailed
+  // location; the title-row button is the always-visible mirror.
+  if (
+    !isSystemArchetype(entry.archetype) &&
+    !isReservedLid(entry.lid)
+  ) {
+    const copyLinkBtn = createElement('button', 'pkc-btn-small pkc-action-copy-permalink');
+    copyLinkBtn.setAttribute('data-pkc-action', 'copy-entry-permalink');
+    copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+    copyLinkBtn.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+    copyLinkBtn.setAttribute('aria-label', 'Copy permalink for this entry');
+    copyLinkBtn.textContent = '🔗 Copy link';
+    titleRow.appendChild(copyLinkBtn);
+  }
 
   // Color tag Slice 3 — picker trigger. Hidden for system entries
   // (about / settings) and for reserved lids; the reducer would

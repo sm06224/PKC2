@@ -880,7 +880,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
       const startedOnOverlay = shellMenuOverlayMouseDown;
       shellMenuOverlayMouseDown = false;
-      if (startedOnOverlay) {
+      // 2026-04-26 user audit (second pass): the previous mousedown
+      // pairing on its own was not enough on touch devices —
+      // iOS Safari synthesizes a mousedown on the overlay during
+      // native color-picker dismissal, so the flag still arrived
+      // truthy at click time and the menu vanished mid-pick.
+      // Disable the overlay-click-to-close affordance entirely on
+      // `pointer: coarse` devices; touch users dismiss the menu
+      // via the explicit X button or Escape (soft-keyboard return).
+      // Mouse / trackpad users keep tap-outside-to-close.
+      const isTouch =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse)').matches;
+      if (!isTouch && startedOnOverlay) {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
       }
       return;
@@ -1014,6 +1027,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'select-entry': {
         if (!lid) break;
         const me = e as MouseEvent;
+        // 2026-04-27 user audit: "左ペインがスクロールオンするほどの
+        // エントリが大量にある状態で、エントリを選択すると、エントリ
+        // がスクロール表示域の下端になるように勝手にずれる". The
+        // post-render `scrollSelectedSidebarNodeIntoView` helper runs
+        // unconditionally on selection change; when the clicked row
+        // is partially clipped at the bottom of the sidebar viewport,
+        // `scrollIntoView({block:'nearest'})` pulls the row up to
+        // align its bottom with the visible edge — shifting the
+        // cursor onto a DIFFERENT entry above, so the user's intended
+        // double-click lands on the wrong row.
+        // The clicked row is by definition already visible (the user
+        // just hit it), so when SELECT_ENTRY originates from a click
+        // INSIDE the sidebar we pre-write the renderer's `last-
+        // scrolled` memo to the new lid; the helper short-circuits
+        // and leaves the scroll alone. External jumps (breadcrumb,
+        // recent pane, calendar / kanban tap, search-result row,
+        // entry-ref link) keep the auto-scroll because they may
+        // target an entry that's collapsed-out / scrolled-out.
+        const sidebarRegion = root.querySelector<HTMLElement>(
+          '[data-pkc-region="sidebar"]',
+        );
+        const fromSidebarClick = !!sidebarRegion?.contains(target);
+        const suppressAutoScroll = (clickLid: string): void => {
+          if (fromSidebarClick) {
+            root.dataset.pkcLastScrolledLid = clickLid;
+          }
+        };
         if (me.detail >= 2) {
           handleDblClickAction(target, lid);
         } else if (me.ctrlKey || me.metaKey) {
@@ -1024,21 +1064,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           // instead of storage order. Without this the user reports
           // "歯抜け" — Shift+click across folder boundaries skips
           // entries that are not contiguous in `container.entries`.
-          const sidebar = root.querySelector<HTMLElement>(
-            '[data-pkc-region="sidebar"]',
-          );
-          const visibleOrder = sidebar
+          const visibleOrder = sidebarRegion
             ? Array.from(
-                sidebar.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+                sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
               )
                 .map((el) => el.getAttribute('data-pkc-lid'))
                 .filter((v): v is string => typeof v === 'string')
             : undefined;
+          suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
           if (dispatcher.getState().viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
+          suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
@@ -2706,6 +2745,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
       }
+      case 'toggle-search-hide-buckets': {
+        dispatcher.dispatch({ type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+        break;
+      }
+      case 'toggle-unreferenced-attachments': {
+        dispatcher.dispatch({ type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' });
+        break;
+      }
+      case 'toggle-tree-hide-buckets': {
+        dispatcher.dispatch({ type: 'TOGGLE_TREE_HIDE_BUCKETS' });
+        break;
+      }
+      case 'toggle-advanced-filters': {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_ADVANCED_FILTERS' });
+        break;
+      }
+      case 'toggle-focus-mode': {
+        toggleFocusMode(root);
+        break;
+      }
       case 'set-view-mode': {
         const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
@@ -3226,7 +3286,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // keyboard and tray-icon paths stay in sync. Suppressed while any
     // text input has focus so `\` keeps its literal meaning during
     // typing — pane shortcuts never clobber editing.
-    if (mod && e.key === '\\') {
+    //
+    // Exclude `altKey` here so `Ctrl+Alt+\` (the focus-mode chord)
+    // can fall through to its own handler below — otherwise the
+    // single-pane toggle short-circuits and only the sidebar folds.
+    if (mod && !e.altKey && e.key === '\\') {
       const target = e.target as Element | null;
       if (
         target instanceof HTMLTextAreaElement
@@ -3261,27 +3325,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      // If either pane is currently open, fold both. Otherwise, expand
-      // both. Mirrors how OS focus-modes work (one keystroke flips the
-      // whole layout state regardless of intermediate mixed states).
-      const sidebarEl = root.querySelector<HTMLElement>(
-        '[data-pkc-region="sidebar"]',
-      );
-      const metaEl = root.querySelector<HTMLElement>(
-        '[data-pkc-region="meta"]',
-      );
-      const sidebarCollapsed =
-        sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
-      const metaCollapsed =
-        metaEl?.getAttribute('data-pkc-collapsed') === 'true';
-      const eitherOpen = !sidebarCollapsed || !metaCollapsed;
-      if (eitherOpen) {
-        if (!sidebarCollapsed) togglePane(root, 'sidebar');
-        if (!metaCollapsed) togglePane(root, 'meta');
-      } else {
-        if (sidebarCollapsed) togglePane(root, 'sidebar');
-        if (metaCollapsed) togglePane(root, 'meta');
-      }
+      toggleFocusMode(root);
       return;
     }
 
@@ -5327,23 +5371,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
-    // 2026-04-26 user audit: "エントリをダブルタップすると戻って
-    // これない". Touch devices (iPhone / iPad / Apple-Pencil
-    // tablets) often run PKC2 as a standalone PWA, where
-    // `window.open()` either fails outright or spawns a popup
-    // window with no OS-chrome to dismiss it. The desktop
-    // detached-window UX assumes the user can find their way
-    // back via the browser tab strip, which is gone in
-    // standalone mode. Fall back to plain selection so the
-    // master-detail navigation kicks in instead.
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(pointer: coarse)').matches
-    ) {
-      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-      return;
-    }
+    // 2026-04-26 user direction: keep the desktop detached-window
+    // double-tap UX even on touch devices — iPad in 3-pane mode
+    // benefits from "double-tap → pin a reference window next to
+    // the main shell". The earlier touch fallback that downgraded
+    // dbl-tap to a plain SELECT_ENTRY is reverted; the
+    // entry-window itself gains a ✕ Close button so PWA users in
+    // standalone mode can dismiss the popup without OS chrome
+    // (see `entry-window.ts`).
 
     // Select the entry first
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
@@ -6818,7 +6853,28 @@ function processFileAttachmentWithDedupe(
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
 
-    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+    // Atomic placement: pass parentFolder + ensureSubfolder to
+    // CREATE_ENTRY so the reducer creates the ASSETS bucket folder
+    // and the structural relation in the same step. Falls back to
+    // auto-placement (selectedLid → first folder ancestor) when no
+    // explicit contextFolder is provided — that's what makes left-
+    // pane drop-zone DnD route into ASSETS instead of root.
+    const preState = dispatcher.getState();
+    const autoPlacementFolder =
+      !contextFolder && preState.container
+        ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
+        : null;
+    const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
+    const subfolderName = getSubfolderNameForArchetype('attachment');
+    const ensureSubfolder =
+      parentFolder && subfolderName ? subfolderName : undefined;
+    dispatcher.dispatch({
+      type: 'CREATE_ENTRY',
+      archetype: 'attachment',
+      title: file.name,
+      parentFolder,
+      ensureSubfolder,
+    });
     const state = dispatcher.getState();
     if (state.editingLid) {
       dispatcher.dispatch({
@@ -6828,17 +6884,6 @@ function processFileAttachmentWithDedupe(
         body: bodyMeta,
         assets: buildAttachmentAssets(assetKey, payload),
       });
-      if (contextFolder) {
-        const newState = dispatcher.getState();
-        if (newState.selectedLid) {
-          dispatcher.dispatch({
-            type: 'CREATE_RELATION',
-            from: contextFolder,
-            to: newState.selectedLid,
-            kind: 'structural',
-          });
-        }
-      }
     }
     onComplete();
   };
@@ -6969,6 +7014,26 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   // by setPaneCollapsed is authoritative for the next render.
   setPaneCollapsed(pane, nextCollapsed);
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
+}
+
+// Focus-mode toggle: shared by the Ctrl+Alt+\ keyboard chord and
+// the header `▣` button. If either pane is open, fold both;
+// otherwise expand both. The "either-open → fold-both" rule
+// mirrors OS focus modes — one trigger flips the whole layout
+// regardless of mixed intermediate states.
+function toggleFocusMode(root: HTMLElement): void {
+  const sidebarEl = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+  const metaEl = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
+  const sidebarCollapsed = sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
+  const metaCollapsed = metaEl?.getAttribute('data-pkc-collapsed') === 'true';
+  const eitherOpen = !sidebarCollapsed || !metaCollapsed;
+  if (eitherOpen) {
+    if (!sidebarCollapsed) togglePane(root, 'sidebar');
+    if (!metaCollapsed) togglePane(root, 'meta');
+  } else {
+    if (sidebarCollapsed) togglePane(root, 'sidebar');
+    if (metaCollapsed) togglePane(root, 'meta');
+  }
 }
 
 

@@ -1583,6 +1583,32 @@ describe('show archived', () => {
   });
 });
 
+describe('search-result bucket hide', () => {
+  it('createInitialState has searchHideBuckets true (hide by default)', () => {
+    const state = createInitialState();
+    expect(state.searchHideBuckets).toBe(true);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS flips true → false', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(false);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS flips back to true', () => {
+    const base = { ...readyState(), searchHideBuckets: false };
+    const { state } = reduce(base, { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(true);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS treats undefined as `true` and flips to false', () => {
+    // Inline state literals in older fixtures may omit the field —
+    // the optional shape resolves to default-true at use sites.
+    const base = { ...readyState(), searchHideBuckets: undefined };
+    const { state } = reduce(base, { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(false);
+  });
+});
+
 // ── Sort ────────────────────────
 
 describe('sort', () => {
@@ -2460,6 +2486,59 @@ describe('sort', () => {
     const s = readyState();
     const { state } = reduce(s, { type: 'PURGE_TRASH' });
     expect(state).toBe(s); // no change
+  });
+
+  it('PURGE_TRASH also drops asset bytes that were retained for trash-restore', () => {
+    // 2026-04-27 user audit:「ゴミ箱を空にすると孤児が大量に生まれる」
+    // — bytes attached to a soft-deleted attachment hang around in
+    // `container.assets` so the entry can be restored from its
+    // revision snapshot. Once the trash is emptied, that route is
+    // gone and the bytes become permanently unrecoverable, so the
+    // same reduction also sweeps them.
+    const orphanBody = JSON.stringify({
+      name: 'doomed.png', mime: 'image/png', size: 4, asset_key: 'ast-doomed',
+    });
+    const withTrashedAttachment: Container = {
+      ...mockContainer,
+      entries: [mockContainer.entries[0]!], // only e1 (text) remains
+      revisions: [
+        // snapshot from when we soft-deleted an attachment entry
+        {
+          id: 'rev-att',
+          entry_lid: 'att-gone',
+          snapshot: JSON.stringify({ archetype: 'attachment', title: 'doomed.png', body: orphanBody }),
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      assets: { 'ast-doomed': 'data:base64...' },
+    };
+    const s: AppState = { ...readyState(), container: withTrashedAttachment };
+    const { state, events } = reduce(s, { type: 'PURGE_TRASH' });
+
+    expect(state.container!.revisions).toHaveLength(0);
+    expect(Object.keys(state.container!.assets)).toEqual([]);
+
+    const purgeEvt = events.find((e) => e.type === 'TRASH_PURGED');
+    const orphanEvt = events.find((e) => e.type === 'ORPHAN_ASSETS_PURGED');
+    expect(purgeEvt).toBeDefined();
+    expect(orphanEvt).toBeDefined();
+    expect((orphanEvt as { type: string; count: number }).count).toBe(1);
+  });
+
+  it('PURGE_TRASH does not emit ORPHAN_ASSETS_PURGED when no asset bytes are dropped', () => {
+    // Trashed entry has no asset_key → revision purge alone is
+    // enough, no ORPHAN_ASSETS_PURGED event piggy-backed.
+    const withTextTrash: Container = {
+      ...mockContainer,
+      entries: [mockContainer.entries[0]!],
+      revisions: [
+        { id: 'rev-1', entry_lid: 'e2', snapshot: '{}', created_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    const s: AppState = { ...readyState(), container: withTextTrash };
+    const { events } = reduce(s, { type: 'PURGE_TRASH' });
+    expect(events.find((e) => e.type === 'TRASH_PURGED')).toBeDefined();
+    expect(events.find((e) => e.type === 'ORPHAN_ASSETS_PURGED')).toBeUndefined();
   });
 
   // ── Purge Orphan Assets ───────────────────

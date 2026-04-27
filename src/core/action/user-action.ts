@@ -435,6 +435,10 @@ export type UserAction =
    */
   | { type: 'REHYDRATE' }
   | { type: 'TOGGLE_SHOW_ARCHIVED' }
+  | { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' }
+  | { type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' }
+  | { type: 'TOGGLE_TREE_HIDE_BUCKETS' }
+  | { type: 'TOGGLE_ADVANCED_FILTERS' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }

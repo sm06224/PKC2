@@ -256,6 +256,160 @@ describe('FI-04 persistent DnD zone (renderer)', () => {
   });
 });
 
+describe('FI-04 auto-placement (ASSETS subfolder)', () => {
+  function buildContainerWithFolderAndEntry(): Container {
+    return {
+      meta: { container_id: 'c1', title: 'Test', created_at: T, updated_at: T, schema_version: 1 },
+      entries: [
+        { lid: 'fld', title: 'Folder', archetype: 'folder', body: '', created_at: T, updated_at: T },
+        { lid: 'note', title: 'Note', archetype: 'text', body: 'hi', created_at: T, updated_at: T },
+      ],
+      relations: [
+        { id: 'r1', from: 'fld', to: 'note', kind: 'structural', created_at: T, updated_at: T },
+      ],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  function setupWithFolder(): ReturnType<typeof createDispatcher> {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((state) => render(state, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: buildContainerWithFolderAndEntry() });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  function structuralParentOf(container: Container, lid: string): string | null {
+    for (const r of container.relations) {
+      if (r.kind === 'structural' && r.to === lid) return r.from;
+    }
+    return null;
+  }
+
+  it('sidebar drop with selection inside a folder → file lands in <folder>/ASSETS', async () => {
+    const dispatcher = setupWithFolder();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'note' });
+    render(dispatcher.getState(), root);
+
+    const zone = root.querySelector<HTMLElement>('[data-pkc-region="sidebar-file-drop-zone"]');
+    expect(zone).not.toBeNull();
+
+    const file = new File(['payload'], 'image.png', { type: 'image/png' });
+    simulateDrop(zone!, [file]);
+
+    await vi.waitFor(() => {
+      const att = dispatcher.getState().container!.entries.find((e) => e.archetype === 'attachment');
+      expect(att).toBeTruthy();
+    }, { timeout: 3000 });
+
+    const container = dispatcher.getState().container!;
+    const att = container.entries.find((e) => e.archetype === 'attachment')!;
+    const parentLid = structuralParentOf(container, att.lid);
+    expect(parentLid).not.toBeNull();
+    const parent = container.entries.find((e) => e.lid === parentLid);
+    expect(parent?.archetype).toBe('folder');
+    expect(parent?.title).toBe('ASSETS');
+    // ASSETS itself is parented under the original folder
+    expect(structuralParentOf(container, parentLid!)).toBe('fld');
+  });
+
+  it('sidebar drop with no selection → file lands at root (no auto-placement, no ASSETS)', async () => {
+    const dispatcher = setupReady();
+    const zone = root.querySelector<HTMLElement>('[data-pkc-region="sidebar-file-drop-zone"]');
+    expect(zone).not.toBeNull();
+
+    const file = new File(['payload'], 'orphan.txt', { type: 'text/plain' });
+    simulateDrop(zone!, [file]);
+
+    await vi.waitFor(() => {
+      const att = dispatcher.getState().container!.entries.find((e) => e.archetype === 'attachment');
+      expect(att).toBeTruthy();
+    }, { timeout: 3000 });
+
+    const container = dispatcher.getState().container!;
+    const att = container.entries.find((e) => e.archetype === 'attachment')!;
+    expect(structuralParentOf(container, att.lid)).toBeNull();
+    // No ASSETS folder created at root level.
+    expect(container.entries.find((e) => e.archetype === 'folder' && e.title === 'ASSETS')).toBeUndefined();
+  });
+
+  it('center-pane drop with explicit context-folder → file lands in <ctx>/ASSETS', async () => {
+    const dispatcher = setupWithFolder();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'fld' });
+    render(dispatcher.getState(), root);
+
+    // The center-pane large drop zone resolves contextFolder via the
+    // selected folder.
+    const zone = root.querySelector<HTMLElement>('[data-pkc-region="file-drop-zone"]');
+    expect(zone).not.toBeNull();
+    expect(zone!.getAttribute('data-pkc-context-folder')).toBe('fld');
+
+    const file = new File(['payload'], 'doc.pdf', { type: 'application/pdf' });
+    simulateDrop(zone!, [file]);
+
+    await vi.waitFor(() => {
+      const att = dispatcher.getState().container!.entries.find((e) => e.archetype === 'attachment');
+      expect(att).toBeTruthy();
+    }, { timeout: 3000 });
+
+    const container = dispatcher.getState().container!;
+    const att = container.entries.find((e) => e.archetype === 'attachment')!;
+    const parentLid = structuralParentOf(container, att.lid)!;
+    const parent = container.entries.find((e) => e.lid === parentLid)!;
+    expect(parent.archetype).toBe('folder');
+    expect(parent.title).toBe('ASSETS');
+    expect(structuralParentOf(container, parentLid)).toBe('fld');
+  });
+
+  it('duplicate file content still gets routed into ASSETS (dedupe is informational only)', async () => {
+    const dispatcher = setupWithFolder();
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'note' });
+    render(dispatcher.getState(), root);
+
+    const fileA = new File(['identical-bytes'], 'first.txt', { type: 'text/plain' });
+    simulateDrop(
+      root.querySelector<HTMLElement>('[data-pkc-region="sidebar-file-drop-zone"]')!,
+      [fileA],
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        dispatcher.getState().container!.entries.filter((e) => e.archetype === 'attachment').length,
+      ).toBe(1);
+    }, { timeout: 3000 });
+
+    render(dispatcher.getState(), root);
+    const fileB = new File(['identical-bytes'], 'second.txt', { type: 'text/plain' });
+    simulateDrop(
+      root.querySelector<HTMLElement>('[data-pkc-region="sidebar-file-drop-zone"]')!,
+      [fileB],
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        dispatcher.getState().container!.entries.filter((e) => e.archetype === 'attachment').length,
+      ).toBe(2);
+    }, { timeout: 3000 });
+
+    const container = dispatcher.getState().container!;
+    const attachments = container.entries.filter((e) => e.archetype === 'attachment');
+    // Both files end up under the same `fld/ASSETS` folder (ASSETS reused
+    // on the second drop, not duplicated).
+    const parents = attachments.map((a) => structuralParentOf(container, a.lid));
+    expect(new Set(parents).size).toBe(1);
+    const assetsLid = parents[0]!;
+    const assets = container.entries.find((e) => e.lid === assetsLid)!;
+    expect(assets.title).toBe('ASSETS');
+    // Exactly one ASSETS folder under `fld`.
+    const assetsFolders = container.entries.filter(
+      (e) => e.archetype === 'folder' && e.title === 'ASSETS',
+    );
+    expect(assetsFolders.length).toBe(1);
+  });
+});
+
 describe('FI-05 regression (FI-04 must not break editing DnD)', () => {
   it('I-6: editing-phase DnD still inserts link into body textarea', async () => {
     const dispatcher = setupReady();

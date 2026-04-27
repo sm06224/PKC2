@@ -2,6 +2,7 @@
 
 Branch: `claude/feat-iphone-push-pop` → `main`
 Started: 2026-04-26 (post PR #172 merge)
+Last updated: 2026-04-27
 Status: open
 
 This document tracks the cumulative changes that landed under PR #173,
@@ -74,6 +75,35 @@ slices the visual span instead of the legacy `container.entries`
 storage order. Calendar / kanban multi-select fall through the legacy
 storage-order branch unchanged.
 
+## 5.5 2026-04-27 follow-up wave
+
+| commit | summary |
+|---|---|
+| `77a8a2b` | hard-disable shell-menu eyedropper close on `pointer:coarse` + keep iPad double-tap entry-window alive with a ✕ Close button |
+| `a8a28e3` | atomic ASSETS routing (sidebar + center-pane DnD + header `📎 File` all pass `parentFolder`+`ensureSubfolder` to CREATE_ENTRY) + `searchHideBuckets` default-true filter for ASSETS / TODOS contents in flat search lists, with a "Show ASSETS / TODOS contents" toggle that surfaces only when a filter is active |
+| `97ddcaf` | restore Ctrl+Alt+\\ focus-mode (Slice 6 single-pane shortcut was swallowing the chord without checking `altKey`) + new `▣` header button that drives the same `toggleFocusMode` helper for touch / mouse users + replace center-pane archetype badge with a Copy link button (the badge was redundant with the bottom-right `bar-info`); meta-pane Copy link stays, More… mirror is dropped |
+
+Notes on the post-hoc CREATE_RELATION removal: the previous DnD path
+created the attachment first and then linked it via a separate
+CREATE_RELATION dispatch. Because CREATE_ENTRY transitions into
+`editing` phase, that follow-up was always racing the COMMIT_EDIT
+and only ever produced a flat parent → child edge — never the
+ASSETS subfolder layer. Threading `parentFolder` + `ensureSubfolder`
+into CREATE_ENTRY moves the bucketing into the same atomic
+reduction as the regular create-entry path.
+
+The `searchHideBuckets` flag is **optional** in the AppState shape
+so existing inline test fixtures don't need updating; missing /
+undefined resolves to `true` (hide) at every read site. Saved
+searches do NOT round-trip the flag — it stays runtime-only by
+design (the user can flip the toggle per session).
+
+The Ctrl+Alt+\\ regression was a precedence bug, not a focus-mode
+bug: the single-pane handler's guard was `mod && key === '\\'`
+without `!e.altKey`, so the chord matched there first and the
+later focus-mode branch was unreachable. Adding `!e.altKey` to the
+Slice 6 guard is the minimal fix.
+
 ## 6. Open follow-ups (not yet shipped)
 
 The user reported these during the PR; they need either reproduction
@@ -94,23 +124,40 @@ can pick them up:
   accidental taps; user reverted that ("textlogのaddができない")
   so the in-view textarea is back. A tap-to-reveal affordance is
   the next iteration once we have signal on misfire frequency.
+- **Multi-file verification** — touch / iPad path through the header
+  `📎 File` button uses `<input type="file" multiple>`, both DnD
+  drop zones (`file-drop-zone` / `sidebar-file-drop-zone`) loop
+  every file in the FileList, and the new auto-placement tests
+  exercise the multi-file path under DnD. A real-device pass is
+  still pending so the next session can confirm visual ordering.
 
 ## 7. Bundle budget & test counts
 
 | boundary | size | budget | utilisation |
 |---|---|---|---|
-| `dist/bundle.js` | 700.27 KB → 701.18 KB | 1536 KB | 45.6 % |
-| `dist/bundle.css` | 98.18 KB → 100.92 KB | 112 KB (was 98) | 90.1 % |
+| `dist/bundle.js` | 700.27 KB → 720.08 KB | 1536 KB | 46.9 % |
+| `dist/bundle.css` | 98.18 KB → 103.34 KB | 112 KB (was 98) | 92.3 % |
 
-5812 / 5812 unit + 11 / 11 smoke pass at HEAD.
+5828 / 5828 unit + 11 / 11 smoke pass at HEAD (`97ddcaf`).
 
 ## 8. Backwards-compatibility
 
 - `data-pkc-action` vocabulary is **additive** — every new action
   (`mobile-back`, `mobile-open-drawer`, `mobile-close-drawer`,
-  `viewer-close`, `rename-saved-search`, …) is purely new.
+  `viewer-close`, `rename-saved-search`, `toggle-search-hide-buckets`,
+  `toggle-focus-mode`, …) is purely new.
 - `data-pkc-mobile-page` attribute is **additive** — desktop ignores it.
 - `SELECT_RANGE` action gains an optional `visibleOrder?` field; the
   legacy storage-order branch stays as the default.
 - `panePrefs` storage shape is unchanged; only the `defaultPrefsForViewport()`
   helper returns `{ sidebar: false, meta: true }` on the iPhone tier.
+- `AppState.searchHideBuckets` is `boolean | undefined` (optional)
+  with default-true semantics at read sites — pre-existing inline
+  state literals continue to type-check.
+- `UserAction` gains `TOGGLE_SEARCH_HIDE_BUCKETS` (purely additive).
+- Saved searches are **not** extended with the new flag — keeps
+  the on-disk schema unchanged.
+- `processFileAttachmentWithDedupe` no longer dispatches a post-hoc
+  `CREATE_RELATION` — placement now flows through `CREATE_ENTRY`'s
+  existing `parentFolder` + `ensureSubfolder` fields. No data shape
+  change; existing containers continue to load unchanged.

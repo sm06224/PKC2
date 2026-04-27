@@ -1648,6 +1648,7 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
     <button class="pkc-btn" id="btn-cancel" style="display:none" onclick="cancelEdit()">Cancel</button>
     <span class="pkc-action-bar-status" id="bar-status"></span>
     <span class="pkc-action-bar-info" id="bar-info">${entry.archetype}</span>
+    <button class="pkc-btn" id="btn-window-close" onclick="closeEntryWindow()" style="margin-left:auto" title="Close window">✕ Close</button>
   </div>
 
   <div class="pkc-status-msg" id="status"></div>
@@ -2261,6 +2262,16 @@ function flushPendingViewBody() {
   pendingViewBody = null;
   hidePendingViewNotice();
   updateTaskBadge();
+}
+
+// Close affordance for PWA / standalone-mode where OS-level
+// window chrome is missing. window.close works for popups opened
+// by the same-origin parent; history.back is the fallback path.
+function closeEntryWindow() {
+  try { window.close(); } catch (e) { /* fall through */ }
+  if (!window.closed && window.history.length > 1) {
+    window.history.back();
+  }
 }
 
 function enterEdit() {

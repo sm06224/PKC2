@@ -3,6 +3,7 @@ import {
   collectReferencedAssetKeys,
   collectOrphanAssetKeys,
   removeOrphanAssets,
+  collectUnreferencedAttachmentLids,
 } from '@features/asset/asset-scan';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
@@ -434,5 +435,110 @@ describe('removeOrphanAssets', () => {
     expect(orphans instanceof Set).toBe(true);
     expect(pruned.assets['ast-1']).toBe('AAAA');
     expect(pruned.assets['ast-orphan']).toBeUndefined();
+  });
+});
+
+describe('collectUnreferencedAttachmentLids', () => {
+  it('returns empty set when container has no attachments', () => {
+    const container = makeContainer({
+      entries: [makeEntry({ lid: 't1', archetype: 'text', body: 'hi' })],
+    });
+    expect(collectUnreferencedAttachmentLids(container).size).toBe(0);
+  });
+
+  it('flags an attachment that no other entry references', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-orphan', archetype: 'attachment', body: attachmentBody('ast-1') }),
+        makeEntry({ lid: 't1', archetype: 'text', body: 'lorem ipsum' }),
+      ],
+    });
+    expect(Array.from(collectUnreferencedAttachmentLids(container))).toEqual(['att-orphan']);
+  });
+
+  it('does NOT flag an attachment whose lid is referenced via entry: from a text body', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-used', archetype: 'attachment', body: attachmentBody('ast-1') }),
+        makeEntry({ lid: 't1', archetype: 'text', body: 'see [photo](entry:att-used) for details' }),
+      ],
+    });
+    expect(collectUnreferencedAttachmentLids(container).size).toBe(0);
+  });
+
+  it('does NOT flag an attachment whose asset_key is embedded via asset: from a text body', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-pasted', archetype: 'attachment', body: attachmentBody('ast-paste') }),
+        makeEntry({ lid: 't1', archetype: 'text', body: '![](asset:ast-paste)' }),
+      ],
+    });
+    expect(collectUnreferencedAttachmentLids(container).size).toBe(0);
+  });
+
+  it('does NOT flag an attachment whose asset_key is embedded inside a textlog log entry', () => {
+    const textlogBody = JSON.stringify({
+      entries: [{ id: 'log1', text: 'inline ![](asset:ast-textlog)', created_at: T }],
+    });
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-tl', archetype: 'attachment', body: attachmentBody('ast-textlog') }),
+        makeEntry({ lid: 'tl1', archetype: 'textlog', body: textlogBody }),
+      ],
+    });
+    expect(collectUnreferencedAttachmentLids(container).size).toBe(0);
+  });
+
+  it('flags only attachment archetype — text/textlog/folder/todo are not candidates', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 't1', archetype: 'text', body: 'hello' }),
+        makeEntry({ lid: 'fld', archetype: 'folder', body: '' }),
+        makeEntry({ lid: 'att', archetype: 'attachment', body: attachmentBody('ast-1') }),
+      ],
+    });
+    expect(Array.from(collectUnreferencedAttachmentLids(container))).toEqual(['att']);
+  });
+
+  it('an attachment\'s OWN body does not count as a self-reference', () => {
+    // An attachment's body parses to {asset_key: K} which is the
+    // attachment pointing at its own bytes. That self-link must
+    // NOT keep the attachment alive — the helper is asking
+    // "does anyone ELSE point at this?".
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-solo', archetype: 'attachment', body: attachmentBody('ast-solo') }),
+      ],
+    });
+    expect(Array.from(collectUnreferencedAttachmentLids(container))).toEqual(['att-solo']);
+  });
+
+  it('legacy inline-body attachments without an asset_key still get flagged when no entry: link points at them', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-legacy', archetype: 'attachment', body: legacyAttachmentBody() }),
+      ],
+    });
+    expect(Array.from(collectUnreferencedAttachmentLids(container))).toEqual(['att-legacy']);
+  });
+
+  it('handles multiple unreferenced attachments + one referenced one', () => {
+    const container = makeContainer({
+      entries: [
+        makeEntry({ lid: 'att-a', archetype: 'attachment', body: attachmentBody('ast-a') }),
+        makeEntry({ lid: 'att-b', archetype: 'attachment', body: attachmentBody('ast-b') }),
+        makeEntry({ lid: 'att-c', archetype: 'attachment', body: attachmentBody('ast-c') }),
+        makeEntry({
+          lid: 't1',
+          archetype: 'text',
+          body: '[link](entry:att-b) and image ![](asset:ast-c)',
+        }),
+      ],
+    });
+    const result = collectUnreferencedAttachmentLids(container);
+    expect(result.has('att-a')).toBe(true);
+    expect(result.has('att-b')).toBe(false);
+    expect(result.has('att-c')).toBe(false);
+    expect(result.size).toBe(1);
   });
 });
