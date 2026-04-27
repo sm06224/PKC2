@@ -6506,6 +6506,24 @@ mark.pkc-search-mark {
     display: none;
   }
 
+  /* TEXT split-editor (textarea + preview side-by-side) is a
+   * desktop affordance — at 375 px it crams the writing surface
+   * into a 150 px column. The user audit asked for the preview
+   * to be hidden on phone so the textarea can occupy the full
+   * width; users can still see the rendered output by saving
+   * (Done) which lands them on the detail view. */
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-text-split-editor {
+    display: block;
+  }
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-text-split-resize-handle,
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-text-edit-preview {
+    display: none;
+  }
+  #pkc-root[data-pkc-mobile-page="edit"] .pkc-text-split-editor .pkc-editor-body {
+    width: 100%;
+    min-height: calc(100vh - 120px);
+  }
+
   .pkc-tray-bar,
   .pkc-resize-handle {
     display: none;
