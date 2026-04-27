@@ -305,8 +305,7 @@ export function render(state: AppState, root: HTMLElement): void {
   root.setAttribute('data-pkc-embedded', String(state.embedded));
   root.setAttribute('data-pkc-readonly', String(state.readonly));
   root.setAttribute('data-pkc-capabilities', BUILD_FEATURES.join(','));
-  // 2026-04-26 iPhone push/pop redesign: a single attribute drives
-  // the mobile shell's page routing — `list` (no selection) →
+  // iPhone push/pop shell page routing — `list` (no selection) →
   // `detail` (selection, view) → `edit` (selection, editing). On
   // desktop the attribute is set but ignored (no responsive CSS
   // queries activate). On the iPhone tier (`pointer:coarse +
@@ -314,6 +313,16 @@ export function render(state: AppState, root: HTMLElement): void {
   // hide / show rules off this attribute so each page renders as
   // a full-screen native-feeling view.
   root.setAttribute('data-pkc-mobile-page', resolveMobilePage(state));
+  // Coarser binary "is something selected" flag retained from
+  // PR #172 — drives the tablet / iPad master-detail responsive
+  // CSS block (`data-pkc-has-selection="true|false"`). The two
+  // attributes serve different viewports and are intentionally
+  // kept side-by-side; the iPhone block keys off mobile-page,
+  // the tablet block keys off has-selection.
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
   applySystemSettings(root, state.settings, state);
 
   switch (state.phase) {
@@ -703,6 +712,21 @@ function renderMobileHeader(state: AppState): HTMLElement {
 
 function renderHeader(state: AppState): HTMLElement {
   const header = createElement('header', 'pkc-header');
+
+  // 2026-04-26 mobile master-detail: a back arrow button that
+  // deselects the current entry, used by the touch-coarse phone
+  // layout to return from the detail view to the list. Always
+  // emitted when there is a selection; CSS hides it on desktop /
+  // tablet (the back-arrow is `display: none` outside the phone
+  // master-detail @media block in `base.css`).
+  if (state.selectedLid) {
+    const backBtn = createElement('button', 'pkc-mobile-back-btn');
+    backBtn.setAttribute('data-pkc-action', 'mobile-back-to-list');
+    backBtn.setAttribute('title', '一覧に戻る');
+    backBtn.setAttribute('aria-label', '一覧に戻る');
+    backBtn.textContent = '←';
+    header.appendChild(backBtn);
+  }
 
   const title = createElement('span', 'pkc-header-title');
   title.textContent = state.container?.meta?.title ?? 'PKC2';

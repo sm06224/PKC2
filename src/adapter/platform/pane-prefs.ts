@@ -47,8 +47,15 @@ let cached: PanePrefs | null = null;
  * the meta pane is rendered as a slide-over drawer; we default it
  * to collapsed on first paint so the user sees the entry detail
  * full-screen and opens the drawer explicitly via the ⓘ button
- * in the mobile header. The desktop default (both panes open)
- * is preserved everywhere else.
+ * in the mobile header. The desktop / tablet default (both panes
+ * open) is preserved everywhere else — including iPad, which
+ * keeps the 3-pane chrome until its own dedicated PR lands.
+ *
+ * (Conflict resolution 2026-04-27: PR #172 had a wider 1024 px
+ * gate that pre-collapsed the meta pane on iPad portrait too;
+ * PR #173 narrowed it to 640 px because the iPhone push/pop
+ * shell is the only viewport that uses the slide-over drawer
+ * model. Took the iPhone-only gate.)
  */
 export function loadPanePrefs(): PanePrefs {
   if (cached) return cached;
@@ -57,15 +64,16 @@ export function loadPanePrefs(): PanePrefs {
 }
 
 function defaultPrefsForViewport(): PanePrefs {
+  // Phone tier (`pointer: coarse and (max-width: 640px)`): meta
+  // drawer closed so the entry detail is the hero on first paint.
+  // Sidebar default stays open because the master-detail CSS
+  // hides it via `data-pkc-mobile-page` when an entry is selected.
+  // iPad and desktop keep the legacy "both panes open" default.
   if (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches
   ) {
-    // Phone — meta drawer closed so the entry detail is the
-    // hero on first paint. Sidebar default stays open because
-    // the master-detail CSS hides it via `data-pkc-mobile-page`
-    // when an entry is selected.
     return { sidebar: false, meta: true };
   }
   return { ...DEFAULT_PANE_PREFS };

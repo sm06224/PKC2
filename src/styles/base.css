@@ -2825,6 +2825,36 @@ mark.pkc-search-mark {
   accent-color: var(--c-accent);
 }
 
+.pkc-advanced-filters {
+  margin: 0.2rem 0.4rem;
+  border-top: 1px solid var(--c-border);
+  padding-top: 0.2rem;
+}
+
+.pkc-advanced-filters-summary {
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--c-muted);
+  padding: 0.25rem 0.4rem;
+  user-select: none;
+  list-style: none;
+}
+
+.pkc-advanced-filters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.pkc-advanced-filters-summary::before {
+  content: '▸ ';
+  display: inline-block;
+  margin-right: 0.15rem;
+  transition: transform 0.1s ease;
+}
+
+.pkc-advanced-filters[open] > .pkc-advanced-filters-summary::before {
+  content: '▾ ';
+}
+
 .pkc-todo-date-input {
   width: auto;
   max-width: 180px;
@@ -6756,5 +6786,25 @@ mark.pkc-search-mark {
   .pkc-mobile-drawer,
   .pkc-mobile-drawer-backdrop {
     display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * iPad portrait master-detail (640 < width ≤ 1024 with coarse
+ * pointer). 2026-04-27 conflict-resolution merge of PR #172's
+ * tablet rule into the PR #173 iPhone push/pop branch.
+ *
+ * The iPhone block above (`max-width: 640 px`) replaces the
+ * desktop chrome entirely with a push/pop master-detail shell.
+ * iPad falls through that gate and lands on the desktop 3-pane
+ * shell, which is fine for landscape but cramped on portrait —
+ * this single snippet just slims the sidebar so the center pane
+ * has more breathing room. Anything more iPad-shaped is owned
+ * by the future "iPad Split View" PR; this is the minimal slice
+ * inherited from PR #172 to avoid regressing iPad portrait.
+ * ───────────────────────────────────────────────────────────── */
+@media (pointer: coarse) and (max-width: 1024px) and (min-width: 641px) {
+  .pkc-sidebar {
+    width: 240px;
   }
 }

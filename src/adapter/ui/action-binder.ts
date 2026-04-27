@@ -1493,6 +1493,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'DELETE_SAVED_SEARCH', id });
         break;
       }
+      case 'mobile-back-to-list': {
+        // 2026-04-26 mobile master-detail back-arrow. Mirrors the
+        // Escape key path inside `handleKeydown` but reachable from
+        // a touch surface where the soft keyboard's Escape is not
+        // available. CSS gates the button visibility to the phone
+        // pointer-coarse @media block, so on desktop / tablet this
+        // case is unreachable through the UI.
+        const st = dispatcher.getState();
+        if (st.phase === 'editing') {
+          dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.selectedLid) {
+          dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+        }
+        break;
+      }
       case 'rename-saved-search': {
         // 2026-04-26 sidebar audit follow-up — give the
         // quick-saved (auto-named) row a custom label after the
