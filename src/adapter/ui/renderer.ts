@@ -2210,80 +2210,120 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     if (recentPane) sidebar.appendChild(recentPane);
   }
 
-  // Show archived toggle (only when there are archived todos)
-  if (allEntries.some((e) => e.archetype === 'todo' && parseTodoBody(e.body).archived)) {
-    const toggle = createElement('label', 'pkc-show-archived-toggle');
-    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.checked = state.showArchived;
-    check.setAttribute('data-pkc-action', 'toggle-show-archived');
-    toggle.appendChild(check);
-    const labelText = createElement('span', '');
-    labelText.textContent = 'Show archived';
-    toggle.appendChild(labelText);
-    sidebar.appendChild(toggle);
-  }
-
-  // Unreferenced-attachment cleanup toggle. Surfaces once the
-  // container has at least one attachment entry so the affordance
-  // is silent on text-only containers. The toggle is destructive-
-  // workflow-only — flipping it restricts the list to "unused
-  // uploads" so the user can multi-select + bulk-delete.
-  if (allEntries.some((e) => e.archetype === 'attachment')) {
-    const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
-    unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.checked = state.unreferencedAttachmentsOnly ?? false;
-    check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
-    unrefToggle.appendChild(check);
-    const labelText = createElement('span', '');
-    labelText.textContent = 'Show only unused attachments';
-    unrefToggle.appendChild(labelText);
-    if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
-      const count = collectUnreferencedAttachmentLids(state.container).size;
-      const badge = createElement('span', 'pkc-unref-count');
-      badge.textContent = ` (${count})`;
-      unrefToggle.appendChild(badge);
-    }
-    sidebar.appendChild(unrefToggle);
-  }
-
-  // Bucket-hide toggle: surfaces only when a filter is active and at
-  // least one bucket-routed entry exists, so the control disappears
-  // when it would have no effect. Default state is `hide` per user
-  // direction; flipping the checkbox includes ASSETS/TODOS contents
-  // in the result list.
-  {
-    const filterIsActiveForToggle =
-      state.searchQuery !== '' ||
-      state.archetypeFilter.size > 0 ||
-      (state.tagFilter?.size ?? 0) > 0 ||
-      (state.colorTagFilter?.size ?? 0) > 0 ||
-      state.categoricalPeerFilter !== null;
-    if (filterIsActiveForToggle && state.container) {
-      const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
-      const containerRef = state.container;
-      const hasBucketed = allEntries.some((e) => {
+  // 2026-04-27 user direction:「Show Only unused attachmentsもそうだ
+  // けど、トグル自体を折りたたんで隠したうえで」 — collapse all of
+  // the list-shape toggles into one `<details>` disclosure section
+  // so the typical browse view stays clean. The section persists
+  // its open/closed state via `state.advancedFiltersOpen` so it
+  // survives the next dispatch's full-shell rebuild.
+  const hasArchivedTodo = allEntries.some(
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
+  );
+  const hasAttachment = allEntries.some((e) => e.archetype === 'attachment');
+  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+  const hasBucketFolder = !!state.container
+    && state.container.entries.some(
+      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
+    );
+  const filterIsActiveForToggle =
+    state.searchQuery !== '' ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0 ||
+    state.categoricalPeerFilter !== null;
+  const hasBucketedEntryInResults =
+    filterIsActiveForToggle
+    && !!state.container
+    && (() => {
+      const containerRef = state.container!;
+      return allEntries.some((e) => {
         const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
         return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
       });
-      if (hasBucketed) {
-        const toggle = createElement('label', 'pkc-show-archived-toggle');
-        toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
-        const check = document.createElement('input');
-        check.type = 'checkbox';
-        // Inverted UX: checkbox checked = "show ASSETS / TODOS contents".
-        check.checked = !(state.searchHideBuckets ?? true);
-        check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
-        toggle.appendChild(check);
-        const labelText = createElement('span', '');
-        labelText.textContent = 'Show ASSETS / TODOS contents';
-        toggle.appendChild(labelText);
-        sidebar.appendChild(toggle);
-      }
+    })();
+  const hasAnyToggle =
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults;
+  if (hasAnyToggle) {
+    const details = document.createElement('details');
+    details.className = 'pkc-advanced-filters';
+    details.setAttribute('data-pkc-region', 'advanced-filters');
+    if (state.advancedFiltersOpen ?? false) {
+      details.setAttribute('open', '');
     }
+    const summary = document.createElement('summary');
+    summary.className = 'pkc-advanced-filters-summary';
+    summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
+    summary.textContent = '⚙ Filters';
+    details.appendChild(summary);
+
+    if (hasArchivedTodo) {
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = state.showArchived;
+      check.setAttribute('data-pkc-action', 'toggle-show-archived');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show archived';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasBucketFolder) {
+      // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !(state.treeHideBuckets ?? true);
+      check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show ASSETS / TODOS folders';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasBucketedEntryInResults) {
+      // Inverted UX: checked = "show ASSETS / TODOS contents in
+      // search results". Distinct from the tree-folder toggle —
+      // user may want folder visibility OFF but search-result
+      // visibility ON, or vice versa.
+      const toggle = createElement('label', 'pkc-show-archived-toggle');
+      toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !(state.searchHideBuckets ?? true);
+      check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
+      toggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show ASSETS / TODOS in search results';
+      toggle.appendChild(labelText);
+      details.appendChild(toggle);
+    }
+
+    if (hasAttachment) {
+      const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
+      unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = state.unreferencedAttachmentsOnly ?? false;
+      check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
+      unrefToggle.appendChild(check);
+      const labelText = createElement('span', '');
+      labelText.textContent = 'Show only unused attachments';
+      unrefToggle.appendChild(labelText);
+      if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
+        const count = collectUnreferencedAttachmentLids(state.container).size;
+        const badge = createElement('span', 'pkc-unref-count');
+        badge.textContent = ` (${count})`;
+        unrefToggle.appendChild(badge);
+      }
+      details.appendChild(unrefToggle);
+    }
+
+    sidebar.appendChild(details);
   }
 
   // Active tag filter indicator (categorical relation peer).
@@ -2447,6 +2487,36 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
       if (!parent || parent.archetype !== 'folder') return true;
       return !bucketNames.has(parent.title);
     });
+  }
+
+  // Tree-hide-buckets: by default the entries list (both tree and
+  // flat modes) hides ASSETS / TODOS bucket folders AND every
+  // entry inside them. Auto-placement keeps the buckets full of
+  // attachments and todos that the user normally doesn't need to
+  // see — the folders themselves are clutter for browsing flow.
+  // Spec: user direction 2026-04-27
+  // 「フォルダすらもハイドする感じです」.
+  // Bypassed by the unreferenced-attachments lens (which is
+  // intentionally about surfacing bucket-routed candidates).
+  if (
+    (state.treeHideBuckets ?? true)
+    && !(state.unreferencedAttachmentsOnly ?? false)
+    && state.container
+  ) {
+    const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+    const container = state.container;
+    const hiddenLids = new Set<string>();
+    for (const e of container.entries) {
+      if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
+        hiddenLids.add(e.lid);
+        for (const d of collectDescendantLids(container.relations, e.lid)) {
+          hiddenLids.add(d);
+        }
+      }
+    }
+    if (hiddenLids.size > 0) {
+      filtered = filtered.filter((e) => !hiddenLids.has(e.lid));
+    }
   }
 
   // Unreferenced-attachments cleanup filter. Active only when the

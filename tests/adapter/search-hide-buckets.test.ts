@@ -76,8 +76,22 @@ function rowLids(): string[] {
 }
 
 describe('search hides ASSETS-bucketed entries by default', () => {
-  it('without a search, tree mode shows the ASSETS folder + its contents intact', () => {
+  it('without a search, tree mode hides the ASSETS folder + its contents by default (treeHideBuckets)', () => {
     setupReady();
+    const lids = rowLids();
+    // 2026-04-27 follow-up: bucket folders are also dropped from
+    // the unfiltered tree by default. Toggling tree-hide-buckets
+    // off would bring them back; the search-hide tests now
+    // explicitly do that to keep the existing behaviour pinned.
+    expect(lids).toContain('note');
+    expect(lids).not.toContain('snap');
+    expect(lids).not.toContain('assets');
+  });
+
+  it('with tree-hide-buckets disabled, tree mode shows the ASSETS folder + its contents intact', () => {
+    const dispatcher = setupReady();
+    dispatcher.dispatch({ type: 'TOGGLE_TREE_HIDE_BUCKETS' });
+    render(dispatcher.getState(), root);
     const lids = rowLids();
     expect(lids).toContain('snap');
     expect(lids).toContain('assets');
@@ -94,8 +108,11 @@ describe('search hides ASSETS-bucketed entries by default', () => {
     expect(lids).not.toContain('snap');
   });
 
-  it('toggle "Show ASSETS / TODOS contents" surfaces during an active search and re-includes the bucketed entry when checked', () => {
+  it('with tree-hide-buckets off + search active, the search-hide toggle re-includes the bucketed entry when checked', () => {
     const dispatcher = setupReady();
+    // Surface buckets in the tree first so the per-result toggle
+    // is the only remaining gate.
+    dispatcher.dispatch({ type: 'TOGGLE_TREE_HIDE_BUCKETS' });
     dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: 'lunch' });
     render(dispatcher.getState(), root);
 

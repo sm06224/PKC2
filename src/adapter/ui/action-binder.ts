@@ -2753,6 +2753,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' });
         break;
       }
+      case 'toggle-tree-hide-buckets': {
+        dispatcher.dispatch({ type: 'TOGGLE_TREE_HIDE_BUCKETS' });
+        break;
+      }
+      case 'toggle-advanced-filters': {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'TOGGLE_ADVANCED_FILTERS' });
+        break;
+      }
       case 'toggle-focus-mode': {
         toggleFocusMode(root);
         break;

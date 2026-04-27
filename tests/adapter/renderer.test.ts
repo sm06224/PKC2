@@ -9714,11 +9714,12 @@ describe('Recent Entries Pane v1', () => {
     expect(items.map((el) => el.textContent)).toEqual(['(untitled)', 'Titled']);
   });
 
-  it('pane is placed between sort controls and archive toggle in sidebar', () => {
+  it('pane is placed between sort controls and the advanced-filters disclosure section', () => {
     const container = makeContainer([
       mkEntry('t', 'todo', '2026-04-20T00:00:00Z', '2026-04-20T00:00:00Z', 'T'),
     ]);
-    // Inject an archived todo so the archive toggle renders too.
+    // Inject an archived todo so the archive toggle renders inside
+    // the disclosure (whose placement we're pinning here).
     container.entries.push({
       lid: 'arch',
       title: 'Archived',
@@ -9733,11 +9734,16 @@ describe('Recent Entries Pane v1', () => {
     const children = Array.from(sidebar.children);
     const sortIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'sort-controls');
     const paneIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'recent-entries');
-    const toggleIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'show-archived-toggle');
+    const filtersIdx = children.findIndex((c) => c.getAttribute('data-pkc-region') === 'advanced-filters');
 
     expect(sortIdx).toBeGreaterThanOrEqual(0);
     expect(paneIdx).toBeGreaterThan(sortIdx);
-    expect(toggleIdx).toBeGreaterThan(paneIdx);
+    // 2026-04-27: list-shape toggles (show-archived included) now
+    // live inside the collapsed `<details>` advanced-filters
+    // wrapper instead of as direct sidebar children.
+    expect(filtersIdx).toBeGreaterThan(paneIdx);
+    const filtersEl = children[filtersIdx]!;
+    expect(filtersEl.querySelector('[data-pkc-region="show-archived-toggle"]')).not.toBeNull();
   });
 
   it('uses a dedicated action name distinct from select-entry', () => {

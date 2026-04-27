@@ -281,6 +281,25 @@ export interface AppState {
    * Runtime-only, not persisted, optional with default `false`.
    */
   unreferencedAttachmentsOnly?: boolean;
+  /**
+   * When `true`, the entries list (both tree and flat modes) hides
+   * ASSETS / TODOS bucket folders AND every entry inside them.
+   * Default `true` per user direction 2026-04-27:
+   *   「ASSETSとTODOSをデフォで隠すのは… フォルダすらもハイドする
+   *    感じです」
+   * Optional with default-true semantics so older inline test
+   * fixtures continue to type-check.
+   */
+  treeHideBuckets?: boolean;
+  /**
+   * Sidebar "advanced filters" disclosure-section open state.
+   * Default `false` (collapsed) so the show-archived / show-unused-
+   * attachments / show-buckets toggles don't clutter the sidebar
+   * for the typical browsing flow. Once expanded, persists across
+   * dispatches via the reducer until the user collapses it again.
+   * Runtime-only, not persisted to storage.
+   */
+  advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
   viewMode: 'detail' | 'calendar' | 'kanban';
   /** Calendar navigation: year. Runtime-only. */
@@ -496,6 +515,8 @@ export function createInitialState(): AppState {
     showArchived: false,
     searchHideBuckets: true,
     unreferencedAttachmentsOnly: false,
+    treeHideBuckets: true,
+    advancedFiltersOpen: false,
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth() + 1,
@@ -2308,6 +2329,20 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = {
         ...state,
         unreferencedAttachmentsOnly: !(state.unreferencedAttachmentsOnly ?? false),
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_TREE_HIDE_BUCKETS': {
+      const next: AppState = {
+        ...state,
+        treeHideBuckets: !(state.treeHideBuckets ?? true),
+      };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_ADVANCED_FILTERS': {
+      const next: AppState = {
+        ...state,
+        advancedFiltersOpen: !(state.advancedFiltersOpen ?? false),
       };
       return { state: next, events: [] };
     }
