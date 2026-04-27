@@ -6422,10 +6422,23 @@ mark.pkc-search-mark {
     display: none;
   }
 
-  /* In list mode: sidebar IS the page, full-width. */
-  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar {
-    width: 100%;
-    min-width: 0;
+  /* In list mode: sidebar IS the page, full-width. The legacy
+   * desktop rule `.pkc-sidebar[data-pkc-collapsed="true"]
+   * { width: 0 !important }` has higher specificity than the
+   * master-detail rule below, so a stored `panePrefs.sidebar:
+   * true` would leave the sidebar at 0 width on phone — rotating
+   * to landscape (where the desktop 3-pane chrome takes over) and
+   * toggling the sidebar back to open was the only escape, which
+   * the user reported as "美しくない". Match the collapsed
+   * attribute selector AND override the inline-zero properties
+   * with `!important` so the iPhone list page is never affected
+   * by stored desktop pane prefs. */
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar,
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar[data-pkc-collapsed="true"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    overflow-y: auto !important;
     border-right: none;
   }
   #pkc-root[data-pkc-mobile-page="list"] .pkc-center,

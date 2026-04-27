@@ -84,6 +84,42 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
     await expect(root).toHaveAttribute('data-pkc-mobile-page', 'list');
   });
 
+  test('list page shows the sidebar even with persisted pane-prefs sidebar=true', async ({ page }) => {
+    // Regression for the user-reported bug:
+    //   > デフォルトで縦画面だと左ペイン相当が開いていない時がある。
+    //   > 横表示にしていったんサイドペインを出せば見えるようになる。
+    // The legacy `.pkc-sidebar[data-pkc-collapsed="true"]
+    // { width: 0 !important }` rule was winning over the
+    // master-detail rule because of the `!important`. Stale prefs
+    // (e.g. from a previous landscape session that toggled the
+    // sidebar shut) left the iPhone list page silently empty.
+    //
+    // Seed `localStorage` with the bad pref BEFORE navigating so
+    // the renderer reads it on first paint, then verify the
+    // sidebar is still painted full-width.
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'pkc2.panePrefs',
+        JSON.stringify({ sidebar: true, meta: true }),
+      );
+    });
+    await page.goto('/pkc2.html');
+    const root = page.locator('#pkc-root');
+    await root.waitFor({ state: 'visible' });
+    await expect(root).toHaveAttribute('data-pkc-mobile-page', 'list');
+
+    const sidebarLayout = await page
+      .locator('[data-pkc-region="sidebar"]')
+      .evaluate((el) => {
+        const cs = window.getComputedStyle(el);
+        return { width: cs.width, display: cs.display };
+      });
+    expect(sidebarLayout.display, 'sidebar must be visible on list page').not.toBe('none');
+    // 375 px viewport — sidebar must take the full width, not 0.
+    expect(parseFloat(sidebarLayout.width), 'sidebar width should not be zero').toBeGreaterThan(300);
+  });
+
   test('mobile-back during editing cancels the edit before popping', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/pkc2.html');

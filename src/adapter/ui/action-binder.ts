@@ -415,6 +415,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   const PDR_TAP_THRESHOLD_PX = 6;
   let pdrColorPickerOrigin: { x: number; y: number } | null = null;
   let pdrColorPickerMoved = false;
+  let pdrColorPickerWasOpenBeforeGesture = false;
 
   function trackColorPickerMove(ev: MouseEvent): void {
     if (!pdrColorPickerOrigin) return;
@@ -439,8 +440,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleColorPickerMouseUp(e: MouseEvent): void {
     document.removeEventListener('mousemove', trackColorPickerMove, true);
     const moved = pdrColorPickerMoved;
+    const wasOpenBeforeGesture = pdrColorPickerWasOpenBeforeGesture;
     pdrColorPickerOrigin = null;
     pdrColorPickerMoved = false;
+    pdrColorPickerWasOpenBeforeGesture = false;
     const t = e.target;
     let actionEl: HTMLElement | null = null;
     if (t instanceof Element) {
@@ -449,10 +452,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const action = actionEl?.getAttribute('data-pkc-action') ?? null;
     const lid = colorPickerLid;
 
-    // Tap (no drag) on the trigger itself — leave the popover
-    // open and swallow the click so the existing click handler
-    // does not toggle it shut. The user picks via a second tap.
+    // Tap (no drag) on the trigger itself: toggle. If the popover
+    // was already open when this gesture started, the tap closes
+    // it; if the popover only just opened on the matching
+    // mousedown, keep it open so the user can pick via a second
+    // tap on a swatch. Either way, swallow the natural click so
+    // the legacy click handler does not double-fire.
     if (!moved && (action === 'open-color-picker' || actionEl === colorPickerTrigger)) {
+      if (wasOpenBeforeGesture) {
+        closeColorPicker();
+      }
       registerOneShotClickSwallow();
       return;
     }
@@ -513,7 +522,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!triggerEl) return;
     e.preventDefault();
     e.stopPropagation();
-    if (colorPickerTrigger !== triggerEl || colorPickerEl === null) {
+    // Snapshot whether the popover was already open BEFORE this
+    // gesture (= same trigger + popover element exists). The
+    // mouseup handler uses this to decide whether a tap-no-drag
+    // should close the popover (toggle) or keep it open (just
+    // opened it via this mousedown).
+    pdrColorPickerWasOpenBeforeGesture =
+      colorPickerTrigger === triggerEl && colorPickerEl !== null;
+    if (!pdrColorPickerWasOpenBeforeGesture) {
       openColorPickerAt(triggerEl);
     }
     pdrColorPickerOrigin = { x: e.clientX, y: e.clientY };
@@ -647,6 +663,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    *      close the menu and swallow.
    */
   let pdrMenuOpenDetails: HTMLDetailsElement | null = null;
+  let pdrMenuWasOpenBeforeGesture = false;
   let pdrMenuOrigin: { x: number; y: number } | null = null;
   let pdrMenuMoved = false;
 
@@ -668,6 +685,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const details = summary.parentElement as HTMLDetailsElement | null;
     if (!details || details.tagName !== 'DETAILS') return;
     e.preventDefault();
+    // Snapshot whether the menu was already open BEFORE this
+    // gesture. The mouseup handler uses this to decide whether a
+    // tap-no-drag should close the menu (toggle, when it was
+    // already open) or keep it open (we just opened it via this
+    // mousedown). Without this branch a click on an open Data… /
+    // More… stayed open, with no way to close — the user
+    // reported it as "パレットが閉じない".
+    pdrMenuWasOpenBeforeGesture = details.open === true;
     details.open = true;
     pdrMenuOpenDetails = details;
     pdrMenuOrigin = { x: e.clientX, y: e.clientY };
@@ -682,20 +707,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleDetailsMenuMouseUp(e: MouseEvent): void {
     document.removeEventListener('mousemove', trackDetailsMenuMove, true);
     const moved = pdrMenuMoved;
+    const wasOpenBeforeGesture = pdrMenuWasOpenBeforeGesture;
     pdrMenuOrigin = null;
     pdrMenuMoved = false;
+    pdrMenuWasOpenBeforeGesture = false;
     const details = pdrMenuOpenDetails;
     pdrMenuOpenDetails = null;
     if (!details) return;
     const t = e.target;
-    // Tap (no drag) on the summary itself — leave the menu open
-    // (matches the touch UX users expect on iOS Safari, where the
-    // press-drag-release gesture is rare and a tap should toggle).
-    // Swallow the natural click so the `<details>` native toggle
-    // does not flip the open state back shut.
+    // Tap (no drag) on the summary itself: toggle. If the menu
+    // was already open when this gesture started, the tap closes
+    // it; if it just opened on the matching mousedown, keep it
+    // open so the user can pick via a second tap. Either way
+    // swallow the natural click so the `<details>` native toggle
+    // does not flip the state back.
     if (!moved) {
       const summary = t instanceof Element ? t.closest('summary[data-pkc-pdr-menu]') : null;
       if (summary && details.contains(summary)) {
+        if (wasOpenBeforeGesture) {
+          details.open = false;
+        }
         registerOneShotClickSwallow();
         return;
       }
