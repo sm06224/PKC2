@@ -399,7 +399,18 @@ export function buildRenderedViewerHtml(
 (function(){
   var printBtn = document.getElementById('pkc-viewer-print-btn');
   var dlBtn = document.getElementById('pkc-viewer-download-btn');
+  var closeBtn = document.getElementById('pkc-viewer-close-btn');
   if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+  if (closeBtn) closeBtn.addEventListener('click', function(){
+    // PWA / standalone mode users have no OS-chrome to dismiss
+    // the viewer; try window.close first, fall back to
+    // history.back so a tab opened by an in-app navigation can
+    // still return to the source entry.
+    try { window.close(); } catch (e) { /* fall through */ }
+    if (!window.closed && window.history.length > 1) {
+      window.history.back();
+    }
+  });
   if (dlBtn) dlBtn.addEventListener('click', function(){
     var root = document.documentElement.cloneNode(true);
     var tb = root.querySelector('[data-pkc-region="viewer-toolbar"]');
@@ -437,6 +448,14 @@ export function buildRenderedViewerHtml(
     '<header class="pkc-viewer-toolbar" data-pkc-region="viewer-toolbar">',
     '<button type="button" id="pkc-viewer-print-btn" data-pkc-action="viewer-print">🖨 Print</button>',
     '<button type="button" id="pkc-viewer-download-btn" data-pkc-action="viewer-download">💾 Download HTML</button>',
+    // 2026-04-26 user request: an explicit ✕ Close button so users
+    // can dismiss the viewer when running PKC2 as a PWA / installed
+    // app. The OS chrome (browser tab close, address bar Back) is
+    // hidden in standalone mode, leaving the user trapped in the
+    // viewer popup with no way back to the source entry. Calling
+    // `window.close()` from a script that itself opened the window
+    // is allowed by the WebKit / Blink popup-policy.
+    '<button type="button" id="pkc-viewer-close-btn" data-pkc-action="viewer-close">✕ Close</button>',
     '</header>',
     '<header class="pkc-viewer-header">',
     `<h1>${title}</h1>`,

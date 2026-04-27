@@ -151,10 +151,14 @@ describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
 
   // ── Slice 4-B: Output Actions + meta tags ──
 
-  it('includes Print and Download HTML toolbar buttons (hidden under @media print)', () => {
+  it('includes Print, Download HTML, and Close toolbar buttons (hidden under @media print)', () => {
     const html = buildRenderedViewerHtml(textlogEntry(), baseContainer());
     expect(html).toContain('id="pkc-viewer-print-btn"');
     expect(html).toContain('id="pkc-viewer-download-btn"');
+    // 2026-04-26: Close button so PWA users can dismiss the viewer
+    // when no OS-chrome back-affordance is available.
+    expect(html).toContain('id="pkc-viewer-close-btn"');
+    expect(html).toContain('data-pkc-action="viewer-close"');
     expect(html).toContain('data-pkc-region="viewer-toolbar"');
     // Print media query hides the toolbar.  The @media block contains
     // multiple rules (body, header, toolbar, day, log); we match the
