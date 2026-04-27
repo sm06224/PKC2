@@ -1,5 +1,6 @@
 import './styles/base.css';
 import { SLOT } from './runtime/contract';
+import { start as profileStart, mark as profileMark } from './runtime/profile';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
@@ -89,9 +90,14 @@ import { resolveSettingsPayload } from './core/model/system-settings-payload';
  * 4. All failed → SYS_INIT_ERROR
  */
 async function boot(): Promise<void> {
+  // PR #176 profile wave: mark boot enter/exit; the bench computes
+  // boot:enter → boot:exit duration. Marks (vs measures) avoid
+  // having to thread an `end()` thunk past every early return.
+  profileMark('boot:enter');
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
+    profileMark('boot:exit');
     return;
   }
 
@@ -495,8 +501,12 @@ async function boot(): Promise<void> {
   // Embedded-iframe context bypasses the chooser (embedded PKC2 has
   // parent-driven data flow; the chooser would confuse that UX).
   try {
+    const endReadPkcData = profileStart('boot:readPkcData');
     const pkcData = await readPkcData();
+    endReadPkcData();
+    const endLoadFromStore = profileStart('boot:loadFromStore');
     const { container: idbContainer } = await loadFromStore(store);
+    endLoadFromStore();
     let chosen = chooseBootSource(pkcData, idbContainer);
 
     if (chosen.source === 'chooser') {
@@ -576,6 +586,12 @@ async function boot(): Promise<void> {
     }
   } catch (e) {
     dispatcher.dispatch({ type: 'SYS_INIT_ERROR', error: String(e) });
+  } finally {
+    // PR #176 profile wave: emit boot:exit on every path including
+    // the early-`return` inside the chooser switch. Without the
+    // `finally` the trailing mark below was unreachable and the
+    // bench `waitForBoot()` hung waiting for it.
+    profileMark('boot:exit');
   }
 }
 

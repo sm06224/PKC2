@@ -1,0 +1,105 @@
+{
+  "scale": "c-100",
+  "entries": 100,
+  "scenario": "cold-boot",
+  "measures": [
+    {
+      "name": "render:phase=initializing",
+      "startTime": 38.09999999962747,
+      "duration": 0.3000000002793968
+    },
+    {
+      "name": "boot:readPkcData",
+      "startTime": 39,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "boot:loadFromStore",
+      "startTime": 39.09999999962747,
+      "duration": 13.200000000186265
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
+      "startTime": 52.39999999990687,
+      "duration": 0
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 52.39999999990687,
+      "duration": 7.2999999998137355
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+      "startTime": 52.39999999990687,
+      "duration": 7.600000000093132
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE",
+      "startTime": 52.39999999990687,
+      "duration": 7.899999999906868
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 54.799999999813735,
+      "duration": 4.399999999906868
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 55.39999999990687,
+      "duration": 0
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 55.89999999990687,
+      "duration": 0.39999999990686774
+    },
+    {
+      "name": "render:center",
+      "startTime": 59.299999999813735,
+      "duration": 0.2999999998137355
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:reduce",
+      "startTime": 60.299999999813735,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:notify-state",
+      "startTime": 60.299999999813735,
+      "duration": 47.700000000186265
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS",
+      "startTime": 60.299999999813735,
+      "duration": 47.700000000186265
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 97.39999999990687,
+      "duration": 10.600000000093132
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 98.89999999990687,
+      "duration": 3.1000000000931323
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 99.6999999997206,
+      "duration": 0.10000000009313226
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 100.29999999981374,
+      "duration": 0.10000000009313226
+    },
+    {
+      "name": "render:center",
+      "startTime": 102,
+      "duration": 0
+    }
+  ],
+  "bootElapsedMs": 70.10000000009313,
+  "heapUsedMb": 9.54,
+  "capturedAt": "2026-04-27T21:27:14.712Z"
+}

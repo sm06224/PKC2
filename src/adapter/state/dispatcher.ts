@@ -2,6 +2,7 @@ import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
 import { reduce, createInitialState } from './app-state';
 import type { AppState, ReduceResult } from './app-state';
+import { start } from '../../runtime/profile';
 
 /**
  * EventListener: subscribes to domain events emitted after state transitions.
@@ -56,13 +57,22 @@ export function createDispatcher(): Dispatcher {
 
   function dispatch(action: Dispatchable): ReduceResult {
     const prev = state;
+    // Profile gate (PR #176): the action's `type` is short ASCII so
+    // it doubles as the per-dispatch measure label. Reducer +
+    // listener flush together — listener cost is the dominant share
+    // for full-shell renders.
+    const endDispatch = start(`dispatch:${action.type}`);
+    const endReduce = start(`dispatch:${action.type}:reduce`);
     const result = reduce(state, action);
+    endReduce();
     state = result.state;
 
     if (state !== prev) {
+      const endNotify = start(`dispatch:${action.type}:notify-state`);
       for (const listener of stateListeners) {
         listener(state, prev);
       }
+      endNotify();
     }
 
     for (const event of result.events) {
@@ -71,6 +81,7 @@ export function createDispatcher(): Dispatcher {
       }
     }
 
+    endDispatch();
     return result;
   }
 
