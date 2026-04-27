@@ -173,6 +173,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let colorPickerEl: HTMLElement | null = null;
   let colorPickerTrigger: HTMLElement | null = null;
 
+  // 2026-04-26 user report:
+  //   "シェルメニューの色設定 / スポイトツールが表示されるけど、
+  //    なぞって色合いを確認しようとし離すと閉じる"
+  //
+  // Native `<input type="color">` opens an OS / browser eyedropper.
+  // When the user releases the eyedropper drag, the synthetic click
+  // bubbles back into the page; if the release coordinates land on
+  // the shell-menu backdrop (the dim overlay around the card), the
+  // legacy `pkc-shell-menu-overlay` click → CLOSE_MENU branch
+  // dismisses the whole menu mid-color-pick.
+  //
+  // Track whether the click's matching mousedown actually started
+  // on the overlay; only treat the click as a "tap-outside-to-
+  // close" gesture when both halves agree. The flag is captured at
+  // the document mousedown phase so it survives capture-phase
+  // listeners on the way down.
+  let shellMenuOverlayMouseDown = false;
+  function handleShellMenuOverlayMouseDown(e: MouseEvent): void {
+    const t = e.target as HTMLElement | null;
+    shellMenuOverlayMouseDown =
+      t?.classList?.contains('pkc-shell-menu-overlay') === true;
+  }
+
   function closeColorPicker(): void {
     if (colorPickerEl) {
       colorPickerEl.remove();
@@ -848,12 +871,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleClick(e: Event): void {
-    // Shell menu backdrop click: close menu if user clicked outside the card.
+    // Shell menu backdrop click: close menu if user clicked outside
+    // the card. Both halves of the gesture must agree — a click
+    // whose mousedown was NOT on the overlay (e.g., the trailing
+    // synthetic click from the OS-level color-input eyedropper
+    // releasing over the dim backdrop) leaves the menu alone.
     const rawTarget = e.target as HTMLElement | null;
     if (rawTarget?.classList.contains('pkc-shell-menu-overlay')) {
-      dispatcher.dispatch({ type: 'CLOSE_MENU' });
+      const startedOnOverlay = shellMenuOverlayMouseDown;
+      shellMenuOverlayMouseDown = false;
+      if (startedOnOverlay) {
+        dispatcher.dispatch({ type: 'CLOSE_MENU' });
+      }
       return;
     }
+    shellMenuOverlayMouseDown = false;
 
     // Slice 4: `Alt+Click` on a TEXTLOG log row body is the modifier
     // gesture that replaces the old dblclick-to-edit. Native dblclick
@@ -5562,6 +5594,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('dragend', handleCalendarDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   root.addEventListener('mousedown', handleStaleDragCleanup);
+  // Capture-phase shell-menu-overlay tracker — see the
+  // `shellMenuOverlayMouseDown` flag declaration for the
+  // eyedropper-trailing-click rationale.
+  document.addEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
   document.addEventListener('keydown', handleKeydown);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
@@ -5628,6 +5664,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
     root.removeEventListener('input', handleTextEditPreviewInput);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
