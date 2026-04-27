@@ -1019,7 +1019,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
-          dispatcher.dispatch({ type: 'SELECT_RANGE', lid });
+          // Snapshot the sidebar's visible LIDs in DOM order so the
+          // reducer can pick the range in tree-traversal order
+          // instead of storage order. Without this the user reports
+          // "歯抜け" — Shift+click across folder boundaries skips
+          // entries that are not contiguous in `container.entries`.
+          const sidebar = root.querySelector<HTMLElement>(
+            '[data-pkc-region="sidebar"]',
+          );
+          const visibleOrder = sidebar
+            ? Array.from(
+                sidebar.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+              )
+                .map((el) => el.getAttribute('data-pkc-lid'))
+                .filter((v): v is string => typeof v === 'string')
+            : undefined;
+          dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
           if (dispatcher.getState().viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });

@@ -973,6 +973,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // silently falls back to root; `ensureSubfolder` is ignored in
       // that case (we don't auto-create root-level bucket folders).
       let placementParentLid: string | null = null;
+      // Collect any auto-created bucket-folder lids (`ASSETS` /
+      // `TODOS`) so the renderer mounts them collapsed by default.
+      // The user audit (2026-04-26) called this out: "アセットとTODO
+      // は通常見えなくても問題ない、自動でその階層のASSETSとTODOSに
+      // 整理されることが重要" — the value of the auto-organisation is
+      // that it stays out of the way until the user wants it.
+      const autoCollapsedNewFolders: string[] = [];
       if (action.parentFolder) {
         const parent = container.entries.find((e) => e.lid === action.parentFolder);
         if (parent && parent.archetype === 'folder') {
@@ -998,6 +1005,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
                 from: parent.lid, to: subLid, kind: 'structural',
               });
               placementParentLid = subLid;
+              autoCollapsedNewFolders.push(subLid);
             }
           }
         }
@@ -1024,6 +1032,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         phase: 'editing',
         editingLid: lid,
         viewMode: 'detail',
+        // Newly-auto-created bucket folders (`ASSETS` / `TODOS`)
+        // start collapsed so the user's sidebar stays clean — they
+        // can tap to expand whenever they need to see what landed
+        // inside. Already-collapsed folders are preserved verbatim.
+        collapsedFolders: autoCollapsedNewFolders.length > 0
+          ? [...state.collapsedFolders, ...autoCollapsedNewFolders]
+          : state.collapsedFolders,
       };
       return { state: next, events };
     }
@@ -2559,6 +2574,30 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SELECT_RANGE': {
       if (!state.container) return blocked(state, action);
+      // 2026-04-26 user audit: "Shiftを押しながら複数階層を含む
+      // エントリを選択すると、歯抜けで選択される". The legacy
+      // path picks the range from `container.entries` storage
+      // order, which does not match the sidebar's tree-traversal
+      // visual order — so Shift+click across folder boundaries
+      // selects rows that do not lie between anchor and target
+      // visually. When the dispatch carries a `visibleOrder` list
+      // (action-binder snapshots the sidebar's DOM-order LIDs),
+      // pick the slice from that list instead. Other multi-select
+      // surfaces (calendar / kanban) keep the storage-order
+      // fallback below.
+      if (action.visibleOrder && action.visibleOrder.length > 0) {
+        const order = action.visibleOrder;
+        const anchorVisualIdx = order.indexOf(state.selectedLid ?? '');
+        const targetVisualIdx = order.indexOf(action.lid);
+        if (anchorVisualIdx < 0 || targetVisualIdx < 0) {
+          return blocked(state, action);
+        }
+        const from = Math.min(anchorVisualIdx, targetVisualIdx);
+        const to = Math.max(anchorVisualIdx, targetVisualIdx);
+        const lids = order.slice(from, to + 1);
+        const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: [...lids] };
+        return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: [...lids] }] };
+      }
       const entries = state.container.entries;
       const anchorIdx = entries.findIndex((e) => e.lid === state.selectedLid);
       const targetIdx = entries.findIndex((e) => e.lid === action.lid);
