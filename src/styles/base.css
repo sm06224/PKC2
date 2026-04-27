@@ -2636,6 +2636,18 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-bg);
   font-family: var(--font-sans);
+  /* 2026-04-26 user audit: "Add Relation/Categorical/Folder の
+   * プルダウンがエントリが多くなると表示しきれなくなってる".
+   * The native <select> dropdown panel was inheriting
+   * `width: max-content` from the longest option, pushing it past
+   * the meta pane's right edge on large containers. Cap the
+   * trigger width so it sits inside the meta pane, and the open
+   * dropdown panel's max-width with it; modern browsers cap the
+   * opened-panel width to roughly the trigger's `max-width` plus
+   * its own option text, scrolling vertically beyond that. */
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 /* ── Revision / History ── */

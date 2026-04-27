@@ -1075,6 +1075,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           return blocked(state, action);
         }
       }
+      // 2026-04-26 user audit: "Add Relationが同じエントリに対して
+      // 何度もできてしまう". Reject a duplicate (from, to, kind)
+      // edge so the user cannot accumulate identical relations on
+      // the same target — the desktop UI exposes them as a list,
+      // and N copies of the same row is just visual noise.
+      const isDuplicate = state.container.relations.some(
+        (r) =>
+          r.from === action.from &&
+          r.to === action.to &&
+          r.kind === action.kind,
+      );
+      if (isDuplicate) return blocked(state, action);
       const id = generateLid();
       const ts = now();
       const container = addRelation(

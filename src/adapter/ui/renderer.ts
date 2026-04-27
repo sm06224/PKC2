@@ -2515,7 +2515,20 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
 
   // Restore candidates (deleted entries with revisions) — collapsible, closed by default
   if (state.container && state.phase === 'ready') {
-    const candidates = getRestoreCandidates(state.container);
+    const rawCandidates = getRestoreCandidates(state.container);
+    // 2026-04-26 user audit: the restore-candidates pane was
+    // surfacing deleted `__settings__` / `__about__` revisions
+    // ("システム設定が見えています"). System entries are
+    // app-managed — users never deleted them on purpose and
+    // restoring them only re-creates the silent infrastructure
+    // record. Filter them out so the trash only shows actual
+    // user content the user can recognise.
+    const candidates = rawCandidates.filter((rev) => {
+      if (isReservedLid(rev.entry_lid)) return false;
+      const parsed = parseRevisionSnapshot(rev);
+      if (parsed && isSystemArchetype(parsed.archetype)) return false;
+      return true;
+    });
     if (candidates.length > 0) {
       const details = document.createElement('details');
       details.className = 'pkc-restore-candidates';
@@ -3864,7 +3877,10 @@ function renderMetaPane(
       for (const e of available) {
         const opt = document.createElement('option');
         opt.value = e.lid;
-        opt.textContent = e.title || `(${e.lid})`;
+        // Truncate so the dropdown panel stays inside the meta
+        // pane on long titles (see relation-target select).
+        opt.textContent = truncate(e.title || `(${e.lid})`, 32);
+        opt.title = e.title || `(${e.lid})`;
         select.appendChild(opt);
       }
       addForm.appendChild(select);
@@ -3913,7 +3929,10 @@ function renderMetaPane(
     for (const f of folders) {
       const opt = document.createElement('option');
       opt.value = f.lid;
-      opt.textContent = f.title || `(${f.lid})`;
+      // Truncate to keep the dropdown panel inside the meta pane
+      // (see relation-target select for the same rationale).
+      opt.textContent = truncate(f.title || `(${f.lid})`, 32);
+      opt.title = f.title || `(${f.lid})`;
       if (currentParent && currentParent.lid === f.lid) opt.selected = true;
       select.appendChild(opt);
     }
@@ -4613,7 +4632,13 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
 
   const row = createElement('div', 'pkc-relation-create-row');
 
-  // Target entry select
+  // Target entry select.
+  // 2026-04-26 user audit: "プルダウンがエントリが多くなると表示
+  // しきれなくなってる". Native `<select>` opens its dropdown panel
+  // sized to the longest option, which can spill past the meta
+  // pane on long titles. Truncate option labels (the underlying
+  // `value` keeps the full lid) so the panel sits inside the
+  // pane while the option still reads as the entry it points to.
   const targetSelect = document.createElement('select');
   targetSelect.setAttribute('data-pkc-field', 'relation-target');
   targetSelect.className = 'pkc-relation-select';
@@ -4625,7 +4650,8 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
     if (e.lid === fromLid) continue;
     const opt = document.createElement('option');
     opt.value = e.lid;
-    opt.textContent = e.title || `(${e.lid})`;
+    opt.textContent = truncate(e.title || `(${e.lid})`, 32);
+    opt.title = e.title || `(${e.lid})`;
     targetSelect.appendChild(opt);
   }
   row.appendChild(targetSelect);
