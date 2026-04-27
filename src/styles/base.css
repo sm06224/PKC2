@@ -6397,6 +6397,31 @@ mark.pkc-search-mark {
     position: relative;
   }
 
+  /* Stop iOS Safari from rubber-banding the whole page when the
+   * user reaches a scroll edge — both axes. The user reported
+   * the entire shell sliding around during touch interactions
+   * ("画面全体が動く、気持ち悪い"). `overscroll-behavior: contain`
+   * confines bounce-scroll to the inner pane that owns the
+   * gesture. */
+  #pkc-root,
+  .pkc-shell,
+  .pkc-main,
+  .pkc-center,
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar {
+    overscroll-behavior: contain;
+  }
+
+  /* TEXTLOG's append textarea sits at the top of the entry detail
+   * even in read mode; on phone it grabs focus from accidental
+   * taps and pops the soft keyboard, which the user reported as
+   * annoying ("テキストエリアを選択するとフォーカスしちゃって").
+   * Hide it on phone — log entries are added through the regular
+   * Edit page (✏ button), so the affordance is still reachable
+   * without ambushing reads. */
+  .pkc-textlog-append {
+    display: none;
+  }
+
   /* In list mode: sidebar IS the page, full-width. */
   #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar {
     width: 100%;
