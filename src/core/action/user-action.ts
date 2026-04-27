@@ -435,6 +435,7 @@ export type UserAction =
    */
   | { type: 'REHYDRATE' }
   | { type: 'TOGGLE_SHOW_ARCHIVED' }
+  | { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }

@@ -32,6 +32,7 @@ import { buildConnectednessSets, type ConnectednessSets } from '../../features/c
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
+import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -2214,6 +2215,42 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     sidebar.appendChild(toggle);
   }
 
+  // Bucket-hide toggle: surfaces only when a filter is active and at
+  // least one bucket-routed entry exists, so the control disappears
+  // when it would have no effect. Default state is `hide` per user
+  // direction; flipping the checkbox includes ASSETS/TODOS contents
+  // in the result list.
+  {
+    const filterIsActiveForToggle =
+      state.searchQuery !== '' ||
+      state.archetypeFilter.size > 0 ||
+      (state.tagFilter?.size ?? 0) > 0 ||
+      (state.colorTagFilter?.size ?? 0) > 0 ||
+      state.categoricalPeerFilter !== null;
+    if (filterIsActiveForToggle && state.container) {
+      const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+      const containerRef = state.container;
+      const hasBucketed = allEntries.some((e) => {
+        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
+        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
+      });
+      if (hasBucketed) {
+        const toggle = createElement('label', 'pkc-show-archived-toggle');
+        toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        // Inverted UX: checkbox checked = "show ASSETS / TODOS contents".
+        check.checked = !(state.searchHideBuckets ?? true);
+        check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
+        toggle.appendChild(check);
+        const labelText = createElement('span', '');
+        labelText.textContent = 'Show ASSETS / TODOS contents';
+        toggle.appendChild(labelText);
+        sidebar.appendChild(toggle);
+      }
+    }
+  }
+
   // Active tag filter indicator (categorical relation peer).
   // The `tagFilter` state field was renamed to `categoricalPeerFilter`
   // post W1 Slice B; the user-visible label and data-pkc-action names
@@ -2354,6 +2391,26 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     filtered = filtered.filter((e) => {
       if (e.archetype !== 'todo') return true;
       return !parseTodoBody(e.body).archived;
+    });
+  }
+  // Hide entries inside auto-bucket folders (ASSETS / TODOS) from
+  // search-result lists by default. Only kicks in when a filter is
+  // active — tree mode and unfiltered list both keep showing them.
+  // Spec: user direction 2026-04-26
+  // 「ASSETSとTODOSは検索オプションでデフォでハイドして」.
+  const filterIsActive =
+    state.searchQuery !== '' ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0 ||
+    state.categoricalPeerFilter !== null;
+  if (filterIsActive && (state.searchHideBuckets ?? true) && state.container) {
+    const bucketNames = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+    const container = state.container;
+    filtered = filtered.filter((e) => {
+      const parent = getStructuralParent(container.relations, container.entries, e.lid);
+      if (!parent || parent.archetype !== 'folder') return true;
+      return !bucketNames.has(parent.title);
     });
   }
   // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder

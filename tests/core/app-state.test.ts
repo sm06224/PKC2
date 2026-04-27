@@ -1583,6 +1583,32 @@ describe('show archived', () => {
   });
 });
 
+describe('search-result bucket hide', () => {
+  it('createInitialState has searchHideBuckets true (hide by default)', () => {
+    const state = createInitialState();
+    expect(state.searchHideBuckets).toBe(true);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS flips true → false', () => {
+    const { state } = reduce(readyState(), { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(false);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS flips back to true', () => {
+    const base = { ...readyState(), searchHideBuckets: false };
+    const { state } = reduce(base, { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(true);
+  });
+
+  it('TOGGLE_SEARCH_HIDE_BUCKETS treats undefined as `true` and flips to false', () => {
+    // Inline state literals in older fixtures may omit the field —
+    // the optional shape resolves to default-true at use sites.
+    const base = { ...readyState(), searchHideBuckets: undefined };
+    const { state } = reduce(base, { type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+    expect(state.searchHideBuckets).toBe(false);
+  });
+});
+
 // ── Sort ────────────────────────
 
 describe('sort', () => {

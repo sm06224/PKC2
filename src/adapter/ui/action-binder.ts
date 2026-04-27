@@ -2719,6 +2719,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
       }
+      case 'toggle-search-hide-buckets': {
+        dispatcher.dispatch({ type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
+        break;
+      }
       case 'set-view-mode': {
         const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
@@ -6822,7 +6826,28 @@ function processFileAttachmentWithDedupe(
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
 
-    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
+    // Atomic placement: pass parentFolder + ensureSubfolder to
+    // CREATE_ENTRY so the reducer creates the ASSETS bucket folder
+    // and the structural relation in the same step. Falls back to
+    // auto-placement (selectedLid → first folder ancestor) when no
+    // explicit contextFolder is provided — that's what makes left-
+    // pane drop-zone DnD route into ASSETS instead of root.
+    const preState = dispatcher.getState();
+    const autoPlacementFolder =
+      !contextFolder && preState.container
+        ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
+        : null;
+    const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
+    const subfolderName = getSubfolderNameForArchetype('attachment');
+    const ensureSubfolder =
+      parentFolder && subfolderName ? subfolderName : undefined;
+    dispatcher.dispatch({
+      type: 'CREATE_ENTRY',
+      archetype: 'attachment',
+      title: file.name,
+      parentFolder,
+      ensureSubfolder,
+    });
     const state = dispatcher.getState();
     if (state.editingLid) {
       dispatcher.dispatch({
@@ -6832,17 +6857,6 @@ function processFileAttachmentWithDedupe(
         body: bodyMeta,
         assets: buildAttachmentAssets(assetKey, payload),
       });
-      if (contextFolder) {
-        const newState = dispatcher.getState();
-        if (newState.selectedLid) {
-          dispatcher.dispatch({
-            type: 'CREATE_RELATION',
-            from: contextFolder,
-            to: newState.selectedLid,
-            kind: 'structural',
-          });
-        }
-      }
     }
     onComplete();
   };

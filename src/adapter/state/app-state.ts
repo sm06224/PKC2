@@ -261,6 +261,16 @@ export interface AppState {
   };
   /** Show archived todos in sidebar. Runtime-only, not persisted. Default off. */
   showArchived: boolean;
+  /**
+   * Hide entries that live inside auto-bucket folders (ASSETS / TODOS)
+   * from search-result lists. Default `true` per user direction
+   * 2026-04-26: 「ASSETSとTODOSは検索オプションでデフォでハイドして」.
+   * Only applies when a search / archetype / tag / color filter is
+   * active — tree mode is unaffected. Runtime-only, not persisted.
+   * Optional so that existing inline test fixtures don't have to be
+   * touched; missing / undefined resolves to `true` (hide).
+   */
+  searchHideBuckets?: boolean;
   /** Current center pane view mode. Runtime-only. */
   viewMode: 'detail' | 'calendar' | 'kanban';
   /** Calendar navigation: year. Runtime-only. */
@@ -474,6 +484,7 @@ export function createInitialState(): AppState {
     lightSource: false,
     viewOnlySource: false,
     showArchived: false,
+    searchHideBuckets: true,
     viewMode: 'detail',
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth() + 1,
@@ -2273,6 +2284,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'TOGGLE_SHOW_ARCHIVED': {
       const next: AppState = { ...state, showArchived: !state.showArchived };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_SEARCH_HIDE_BUCKETS': {
+      const next: AppState = {
+        ...state,
+        searchHideBuckets: !(state.searchHideBuckets ?? true),
+      };
       return { state: next, events: [] };
     }
     case 'SAVE_SEARCH': {
