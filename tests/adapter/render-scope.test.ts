@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { computeRenderScope } from '@adapter/ui/render-scope';
 import { createInitialState } from '@adapter/state/app-state';
 import type { AppState } from '@adapter/state/app-state';
-import type { SystemSettingsPayload } from '@core/model/system-settings-payload';
+import { SETTINGS_DEFAULTS } from '@core/model/system-settings-payload';
 
 /**
  * PR #177 scope-detection contract.
@@ -20,11 +20,6 @@ import type { SystemSettingsPayload } from '@core/model/system-settings-payload'
  * Conservative-by-default: when in doubt, 'full'. Misclassifying
  * a delta as 'settings-only' or 'none' could leave the UI stale.
  */
-
-const SETTINGS_DEFAULTS: SystemSettingsPayload = {
-  theme: { mode: 'auto', scanline: false, accentColor: null },
-  locale: { language: 'auto', timezone: 'auto' },
-};
 
 function withChange(base: AppState, mutate: (s: AppState) => AppState): AppState {
   return mutate({ ...base });
