@@ -3382,8 +3382,27 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
 }
 
+.pkc-attachment-file-picker {
+  display: inline-block;
+}
 .pkc-attachment-file-input {
-  font-size: 0.8rem;
+  /* Hidden but kept in DOM so `data-pkc-field="attachment-file"`
+   * lookup + `input.files` access still work. The visually-
+   * hidden pattern (clip + 1px) is preferred over `display:none`
+   * so screen readers still expose the input as a control. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+.pkc-attachment-file-button {
+  font-size: 0.85rem;
+  min-height: 36px;
+  cursor: pointer;
 }
 
 /* ── Import confirmation ── */

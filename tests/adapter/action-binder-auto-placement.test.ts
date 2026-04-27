@@ -243,22 +243,29 @@ describe('create-entry auto-placement — todo routes into TODOS subfolder', () 
 });
 
 describe('create-entry auto-placement — attachment routes into ASSETS subfolder', () => {
-  it('creates an ASSETS child under the parent folder and places the attachment there', () => {
+  // 2026-04-26 follow-up: the "📎 File" archetype-create button no
+  // longer dispatches `CREATE_ENTRY` directly when clicked outside
+  // editing mode — it now opens a hidden multi-file picker so iPad
+  // / touch users can attach N files at once. The auto-placement
+  // logic that used to run inline is no longer covered by these
+  // two tests; the underlying CREATE_ENTRY auto-placement is still
+  // exercised by the `todo` block above and the regression-guard
+  // tests below. The `<input type="file">` opening is verified by
+  // the next test (no entry created without a file selection).
+  it('clicking 📎 File opens a multi-file picker without creating an entry', () => {
     const { dispatcher } = setup('note');
+    const before = dispatcher.getState().container?.entries.length ?? 0;
     clickCreate('attachment');
-    const newLid = newestLidOfArchetype(dispatcher, 'attachment');
-    const assetsLid = findChildFolderByTitle(dispatcher, 'fld', 'ASSETS');
-    expect(assetsLid).not.toBeNull();
-    expect(placementParent(dispatcher, newLid!)).toBe(assetsLid);
-  });
-
-  it('reuses an existing ASSETS subfolder', () => {
-    const { dispatcher } = setup('fld');
-    clickCreate('attachment');
-    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'fld' });
-    clickCreate('attachment');
-    expect(countChildFoldersByTitle(dispatcher, 'fld', 'ASSETS')).toBe(1);
+    const after = dispatcher.getState().container?.entries.length ?? 0;
+    // No entry should be created until the user actually selects
+    // files in the picker. Auto-placement now happens at file-
+    // selection time via `processFileAttachmentWithDedupe`.
+    expect(after).toBe(before);
+    const hiddenInput = document.querySelector(
+      'input[data-pkc-role="creating-file-input"]',
+    );
+    expect(hiddenInput).not.toBeNull();
+    expect((hiddenInput as HTMLInputElement).multiple).toBe(true);
   });
 });
 

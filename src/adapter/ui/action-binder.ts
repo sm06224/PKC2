@@ -1173,6 +1173,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           triggerEditingFileAttach();
           break;
         }
+        // 2026-04-26 user audit: outside of editing mode, "📎 File"
+        // (iPad / touch entry point that has no DnD) should pick
+        // multiple files at once and create one attachment entry
+        // per file — matching the desktop DnD multi-file flow.
+        // The previous behaviour silently created an empty
+        // attachment record and forced the user to bind a file
+        // afterwards via the editor's single-file picker.
+        if (arch === 'attachment') {
+          const ctxFolder = target.getAttribute('data-pkc-context-folder') ?? undefined;
+          triggerCreateFileAttach(ctxFolder);
+          break;
+        }
         const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
         const title = titleMap[arch] ?? 'New Text';
         // Explicit context from a "+ New" button inside a folder row.
@@ -4907,6 +4919,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   let editingFileInput: HTMLInputElement | null = null;
 
+  // 2026-04-26 user audit: "iPadだとDnDできないから、必然的にFileから
+  // 添付になるけど、複数添付できない". Mirror the DnD multi-file
+  // path through the "📎 File" archetype-create button so iPad /
+  // touch users can pick N files at once and get N attachment
+  // entries created — same behaviour as dragging N files onto
+  // the sidebar drop zone.
+  let creatingFileInput: HTMLInputElement | null = null;
+
+  function triggerCreateFileAttach(contextFolder: string | undefined): void {
+    const state = dispatcher.getState();
+    if (state.phase !== 'ready' || state.readonly) return;
+    if (!creatingFileInput) {
+      creatingFileInput = document.createElement('input');
+      creatingFileInput.type = 'file';
+      creatingFileInput.multiple = true;
+      creatingFileInput.style.display = 'none';
+      creatingFileInput.setAttribute('data-pkc-role', 'creating-file-input');
+      document.body.appendChild(creatingFileInput);
+    }
+    const input = creatingFileInput;
+    const handleChange = (): void => {
+      input.removeEventListener('change', handleChange);
+      const fileList = input.files;
+      if (!fileList?.length) {
+        input.value = '';
+        return;
+      }
+      const files = Array.from(fileList);
+      input.value = '';
+      function processNext(idx: number): void {
+        if (idx >= files.length) return;
+        processFileAttachmentWithDedupe(
+          files[idx]!,
+          contextFolder,
+          dispatcher,
+          () => processNext(idx + 1),
+        );
+      }
+      processNext(0);
+    };
+    input.addEventListener('change', handleChange);
+    input.click();
+  }
+
   function triggerEditingFileAttach(): void {
     const state = dispatcher.getState();
     if (state.phase !== 'editing' || state.readonly) return;
@@ -5656,6 +5712,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('drop', handleEditorFileDrop);
     if (editingFileInput) { editingFileInput.remove(); editingFileInput = null; }
+    if (creatingFileInput) { creatingFileInput.remove(); creatingFileInput = null; }
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
