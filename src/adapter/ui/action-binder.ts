@@ -1027,6 +1027,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'select-entry': {
         if (!lid) break;
         const me = e as MouseEvent;
+        // 2026-04-27 user audit: "左ペインがスクロールオンするほどの
+        // エントリが大量にある状態で、エントリを選択すると、エントリ
+        // がスクロール表示域の下端になるように勝手にずれる". The
+        // post-render `scrollSelectedSidebarNodeIntoView` helper runs
+        // unconditionally on selection change; when the clicked row
+        // is partially clipped at the bottom of the sidebar viewport,
+        // `scrollIntoView({block:'nearest'})` pulls the row up to
+        // align its bottom with the visible edge — shifting the
+        // cursor onto a DIFFERENT entry above, so the user's intended
+        // double-click lands on the wrong row.
+        // The clicked row is by definition already visible (the user
+        // just hit it), so when SELECT_ENTRY originates from a click
+        // INSIDE the sidebar we pre-write the renderer's `last-
+        // scrolled` memo to the new lid; the helper short-circuits
+        // and leaves the scroll alone. External jumps (breadcrumb,
+        // recent pane, calendar / kanban tap, search-result row,
+        // entry-ref link) keep the auto-scroll because they may
+        // target an entry that's collapsed-out / scrolled-out.
+        const sidebarRegion = root.querySelector<HTMLElement>(
+          '[data-pkc-region="sidebar"]',
+        );
+        const fromSidebarClick = !!sidebarRegion?.contains(target);
+        const suppressAutoScroll = (clickLid: string): void => {
+          if (fromSidebarClick) {
+            root.dataset.pkcLastScrolledLid = clickLid;
+          }
+        };
         if (me.detail >= 2) {
           handleDblClickAction(target, lid);
         } else if (me.ctrlKey || me.metaKey) {
@@ -1037,21 +1064,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           // instead of storage order. Without this the user reports
           // "歯抜け" — Shift+click across folder boundaries skips
           // entries that are not contiguous in `container.entries`.
-          const sidebar = root.querySelector<HTMLElement>(
-            '[data-pkc-region="sidebar"]',
-          );
-          const visibleOrder = sidebar
+          const visibleOrder = sidebarRegion
             ? Array.from(
-                sidebar.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+                sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
               )
                 .map((el) => el.getAttribute('data-pkc-lid'))
                 .filter((v): v is string => typeof v === 'string')
             : undefined;
+          suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
           if (dispatcher.getState().viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
+          suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
