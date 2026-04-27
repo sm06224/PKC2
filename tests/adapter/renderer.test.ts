@@ -8282,9 +8282,11 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Ctrl+:');
     expect(overlay!.textContent).toContain('Ctrl+D');
     expect(overlay!.textContent).toContain('ISO 8601');
-    // Has group separator elements (Panes + Date/Time + Slash Commands)
+    // Has group separator elements: Panes + Editing + Date/Time +
+    // Slash Commands. The "Editing" group was added 2026-04-26
+    // alongside the Tab-key textarea-tab-character shortcut.
     const groups = overlay!.querySelectorAll('.pkc-shortcut-group');
-    expect(groups.length).toBe(3);
+    expect(groups.length).toBe(4);
     // Contains slash command section
     expect(overlay!.textContent).toContain('Slash Commands');
     expect(overlay!.textContent).toContain('input assist menu');

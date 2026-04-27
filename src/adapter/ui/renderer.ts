@@ -1350,6 +1350,7 @@ function renderShortcutHelp(): HTMLElement {
   const shortcuts: { key: string; desc: string; group?: string }[] = [
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
+    { key: 'Ctrl+E / ⌘+E', desc: 'Edit selected entry' },
     { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
     { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
@@ -1357,6 +1358,10 @@ function renderShortcutHelp(): HTMLElement {
     { key: '', desc: '', group: 'Panes' },
     { key: 'Ctrl+\\ / ⌘+\\', desc: 'Toggle sidebar (left pane)' },
     { key: 'Ctrl+Shift+\\', desc: 'Toggle meta pane (right pane)' },
+    { key: 'Ctrl+Alt+\\', desc: 'Focus mode — hide both panes (Windows / cross-platform)' },
+    { key: 'Alt+Space', desc: 'Focus mode — hide both panes (Mac / Linux only; blocked by Windows OS menu)' },
+    { key: '', desc: '', group: 'Editing' },
+    { key: 'Tab (in textarea)', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
     { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
     { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },

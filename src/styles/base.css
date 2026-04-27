@@ -6411,17 +6411,15 @@ mark.pkc-search-mark {
     overscroll-behavior: contain;
   }
 
-  /* TEXTLOG's append textarea sits at the top of the entry detail
-   * even in read mode; on phone it grabs focus from accidental
-   * taps and pops the soft keyboard, which the user reported as
-   * annoying ("テキストエリアを選択するとフォーカスしちゃって").
-   * Hide it on phone — log entries are added through the regular
-   * Edit page (✏ button), so the affordance is still reachable
-   * without ambushing reads. */
-  .pkc-textlog-append {
-    display: none;
-  }
-
+  /* (2026-04-26 follow-up) TEXTLOG's append textarea was previously
+   * hidden on phone to keep accidental taps from popping the soft
+   * keyboard. The user reported "縦表示でtextlogのaddができない /
+   * テキストエリアが表示されない" — hiding the area broke the
+   * primary log-add flow because the in-view append form IS the
+   * canonical way to add log entries on textlog. Restore it; the
+   * accidental-focus complaint will be revisited via a different
+   * affordance (e.g. tap-to-reveal) once we have signal on the
+   * actual frequency of misfires. */
   /* In list mode: sidebar IS the page, full-width. The legacy
    * desktop rule `.pkc-sidebar[data-pkc-collapsed="true"]
    * { width: 0 !important }` has higher specificity than the

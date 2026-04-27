@@ -3166,14 +3166,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
-    // Focus mode (2026-04-26 user request): Alt+Space hides BOTH
-    // panes at once for distraction-free editing. The user reports
-    // this is a frequent flow ("両方のペインを隠す操作を頻繁に使う"),
-    // and `Ctrl+\` / `Ctrl+Shift+\` are awkward when used together.
-    // Suppressed while a text input is focused so Alt+Space stays
-    // available to OS-level IME / window-menu hotkeys when the user
-    // is mid-typing.
-    if (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    // Focus mode (2026-04-26 user request): Alt+Space (Mac/Linux)
+    // and Ctrl+Alt+\ (everywhere) hide BOTH panes at once for
+    // distraction-free editing. Alt+Space is intercepted by
+    // Windows / Edge as the OS-level window-menu hotkey before the
+    // page sees it ("Windowsとedgeの組み合わせでalt+spaceのショト
+    // カが使えなかった"), so the Ctrl+Alt+\ binding is the
+    // canonical cross-platform path. Suppressed while a text input
+    // is focused so neither chord clobbers IME / typing.
+    const isFocusModeChord =
+      (e.altKey && e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.shiftKey) ||
+      ((e.ctrlKey || e.metaKey) && e.altKey && e.key === '\\' && !e.shiftKey);
+    if (isFocusModeChord) {
       const target = e.target as Element | null;
       if (
         target instanceof HTMLTextAreaElement
