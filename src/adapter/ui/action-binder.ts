@@ -2723,6 +2723,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
         break;
       }
+      case 'toggle-focus-mode': {
+        toggleFocusMode(root);
+        break;
+      }
       case 'set-view-mode': {
         const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
@@ -3243,7 +3247,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // keyboard and tray-icon paths stay in sync. Suppressed while any
     // text input has focus so `\` keeps its literal meaning during
     // typing — pane shortcuts never clobber editing.
-    if (mod && e.key === '\\') {
+    //
+    // Exclude `altKey` here so `Ctrl+Alt+\` (the focus-mode chord)
+    // can fall through to its own handler below — otherwise the
+    // single-pane toggle short-circuits and only the sidebar folds.
+    if (mod && !e.altKey && e.key === '\\') {
       const target = e.target as Element | null;
       if (
         target instanceof HTMLTextAreaElement
@@ -3278,27 +3286,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      // If either pane is currently open, fold both. Otherwise, expand
-      // both. Mirrors how OS focus-modes work (one keystroke flips the
-      // whole layout state regardless of intermediate mixed states).
-      const sidebarEl = root.querySelector<HTMLElement>(
-        '[data-pkc-region="sidebar"]',
-      );
-      const metaEl = root.querySelector<HTMLElement>(
-        '[data-pkc-region="meta"]',
-      );
-      const sidebarCollapsed =
-        sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
-      const metaCollapsed =
-        metaEl?.getAttribute('data-pkc-collapsed') === 'true';
-      const eitherOpen = !sidebarCollapsed || !metaCollapsed;
-      if (eitherOpen) {
-        if (!sidebarCollapsed) togglePane(root, 'sidebar');
-        if (!metaCollapsed) togglePane(root, 'meta');
-      } else {
-        if (sidebarCollapsed) togglePane(root, 'sidebar');
-        if (metaCollapsed) togglePane(root, 'meta');
-      }
+      toggleFocusMode(root);
       return;
     }
 
@@ -6987,6 +6975,26 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
   // by setPaneCollapsed is authoritative for the next render.
   setPaneCollapsed(pane, nextCollapsed);
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
+}
+
+// Focus-mode toggle: shared by the Ctrl+Alt+\ keyboard chord and
+// the header `▣` button. If either pane is open, fold both;
+// otherwise expand both. The "either-open → fold-both" rule
+// mirrors OS focus modes — one trigger flips the whole layout
+// regardless of mixed intermediate states.
+function toggleFocusMode(root: HTMLElement): void {
+  const sidebarEl = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+  const metaEl = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
+  const sidebarCollapsed = sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
+  const metaCollapsed = metaEl?.getAttribute('data-pkc-collapsed') === 'true';
+  const eitherOpen = !sidebarCollapsed || !metaCollapsed;
+  if (eitherOpen) {
+    if (!sidebarCollapsed) togglePane(root, 'sidebar');
+    if (!metaCollapsed) togglePane(root, 'meta');
+  } else {
+    if (sidebarCollapsed) togglePane(root, 'sidebar');
+    if (metaCollapsed) togglePane(root, 'meta');
+  }
 }
 
 

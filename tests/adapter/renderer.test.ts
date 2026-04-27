@@ -3315,17 +3315,34 @@ describe('Renderer', () => {
     expect(f1Title.textContent).toContain('📊');
   });
 
-  it('detail view shows archetype label next to title', () => {
+  it('detail view shows Copy link button next to title (replaces the bottom-right-redundant archetype badge)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
     };
     render(state, root);
 
-    const label = root.querySelector('.pkc-archetype-label');
-    expect(label).not.toBeNull();
-    expect(label!.textContent).toContain('Text');
-    expect(label!.getAttribute('data-pkc-archetype')).toBe('text');
+    // The view's title row no longer carries an archetype label —
+    // the bottom-right action-bar info still shows the archetype
+    // text, so the duplicate at the top of the pane was dropped.
+    const view = root.querySelector('[data-pkc-mode="view"]');
+    expect(view).not.toBeNull();
+    expect(view!.querySelector('.pkc-archetype-label')).toBeNull();
+
+    // The freed slot is now a Copy link button that mirrors the
+    // meta-pane permalink copy (so the affordance survives meta
+    // being collapsed AND the More… group not being rendered).
+    const copyLink = view!.querySelector(
+      'button.pkc-action-copy-permalink[data-pkc-action="copy-entry-permalink"]',
+    );
+    expect(copyLink).not.toBeNull();
+    expect(copyLink!.getAttribute('data-pkc-lid')).toBe('e1');
+
+    // The action-bar info badge still spells out the archetype
+    // textually on the right of the bottom action bar.
+    const barInfo = root.querySelector('.pkc-action-bar-info');
+    expect(barInfo).not.toBeNull();
+    expect(barInfo!.textContent).toContain('Text');
   });
 
   it('editor shows archetype label next to title input', () => {

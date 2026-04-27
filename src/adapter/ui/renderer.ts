@@ -863,6 +863,15 @@ function renderHeader(state: AppState): HTMLElement {
   metaToggle.textContent = '◨';
   toggles.appendChild(metaToggle);
 
+  // Focus mode: hide / restore both side panes at once. Mirrors the
+  // Ctrl+Alt+\ keyboard chord so touch / mouse users can reach the
+  // same affordance without a keyboard.
+  const focusToggle = createElement('button', 'pkc-tray-toggle');
+  focusToggle.setAttribute('data-pkc-action', 'toggle-focus-mode');
+  focusToggle.setAttribute('title', 'Focus mode — hide both panes (Ctrl+Alt+\\)');
+  focusToggle.textContent = '▣';
+  toggles.appendChild(focusToggle);
+
   // Shell menu button
   const menuBtn = createElement('button', 'pkc-tray-toggle pkc-shell-menu-btn');
   menuBtn.setAttribute('data-pkc-action', 'toggle-shell-menu');
@@ -3566,19 +3575,6 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
 
       const moreContent = createElement('div', 'pkc-action-bar-more-content');
 
-      // 2026-04-26 user audit: "右ペイン上の Copy Link ボタンが
-      // 右ペインをハイドしていると選択しにくい". The permalink
-      // copy lives in the meta pane info header, which is
-      // unreachable when the user has the meta pane collapsed.
-      // Surface a duplicate inside the More… menu so the
-      // affordance is one tap away regardless of pane state.
-      const copyLinkInMore = createElement('button', 'pkc-btn pkc-action-copy-permalink');
-      copyLinkInMore.setAttribute('data-pkc-action', 'copy-entry-permalink');
-      copyLinkInMore.setAttribute('data-pkc-lid', entry.lid);
-      copyLinkInMore.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
-      copyLinkInMore.textContent = '🔗 Copy link';
-      moreContent.appendChild(copyLinkInMore);
-
       // Slice 4-B: Copy MD / Copy Rich emit markdown-source round-trip
       // payloads and therefore only make sense for TEXT. TEXTLOG's
       // flatten path (`serializeTextlogAsMarkdown`) has been removed —
@@ -3685,10 +3681,26 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   title.textContent = entry.title || '(untitled)';
   titleRow.appendChild(title);
 
-  const archLabel = createElement('span', 'pkc-archetype-label');
-  archLabel.setAttribute('data-pkc-archetype', entry.archetype);
-  archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
-  titleRow.appendChild(archLabel);
+  // 2026-04-27 user direction: the archetype badge that used to sit
+  // here was redundant — the action bar's bar-info already shows
+  // the archetype on the bottom-right of the same pane. Surface a
+  // Copy Link button instead so the affordance survives the meta
+  // pane being collapsed AND the More… menu not being rendered
+  // (some archetypes / phases skip the More… group entirely). The
+  // meta-pane Copy Link stays put as the canonical detailed
+  // location; the title-row button is the always-visible mirror.
+  if (
+    !isSystemArchetype(entry.archetype) &&
+    !isReservedLid(entry.lid)
+  ) {
+    const copyLinkBtn = createElement('button', 'pkc-btn-small pkc-action-copy-permalink');
+    copyLinkBtn.setAttribute('data-pkc-action', 'copy-entry-permalink');
+    copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+    copyLinkBtn.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+    copyLinkBtn.setAttribute('aria-label', 'Copy permalink for this entry');
+    copyLinkBtn.textContent = '🔗 Copy link';
+    titleRow.appendChild(copyLinkBtn);
+  }
 
   // Color tag Slice 3 — picker trigger. Hidden for system entries
   // (about / settings) and for reserved lids; the reducer would
