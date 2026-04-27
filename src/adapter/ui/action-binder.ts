@@ -525,6 +525,97 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     });
   }
 
+  // ── Swipe-to-delete on touch (2026-04-26 user request) ─────────
+  // > スマホとタブレットではエントリのスワイプ削除を有効化して
+  //
+  // Mail-style left-swipe on a sidebar entry row reveals an inline
+  // Delete confirmation; the user releases either past the
+  // commit-threshold (immediate delete) or before it (snap back).
+  // Pure JS — no new state, no AppState attribute, no extra DOM
+  // node ahead of time. The translateX is applied directly to the
+  // touched `<li>` and torn down on release / next render.
+  const SWIPE_COMMIT_PX = 80;
+  const SWIPE_REVEAL_PX = 120; // max translateX magnitude
+  let swipeState:
+    | { lid: string; startX: number; startY: number; row: HTMLElement; locked: 'horizontal' | 'vertical' | null }
+    | null = null;
+
+  function handleEntrySwipeStart(e: TouchEvent): void {
+    if (e.touches.length !== 1) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const row = target.closest(
+      '[data-pkc-action="select-entry"][data-pkc-lid].pkc-entry-item',
+    ) as HTMLElement | null;
+    if (!row) return;
+    const lid = row.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    swipeState = {
+      lid,
+      startX: e.touches[0]!.clientX,
+      startY: e.touches[0]!.clientY,
+      row,
+      locked: null,
+    };
+  }
+
+  function handleEntrySwipeMove(e: TouchEvent): void {
+    if (!swipeState || e.touches.length !== 1) return;
+    const dx = e.touches[0]!.clientX - swipeState.startX;
+    const dy = e.touches[0]!.clientY - swipeState.startY;
+    if (swipeState.locked === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      swipeState.locked = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal';
+      if (swipeState.locked === 'vertical') {
+        // Vertical scroll wins — drop our gesture so the sidebar
+        // can scroll freely.
+        swipeState = null;
+        return;
+      }
+    }
+    if (swipeState.locked === 'horizontal' && dx < 0) {
+      e.preventDefault();
+      const offset = Math.max(dx, -SWIPE_REVEAL_PX);
+      swipeState.row.style.transform = `translateX(${offset}px)`;
+      swipeState.row.style.transition = 'none';
+      swipeState.row.setAttribute(
+        'data-pkc-swiping',
+        offset <= -SWIPE_COMMIT_PX ? 'commit' : 'preview',
+      );
+    }
+  }
+
+  function handleEntrySwipeEnd(e: TouchEvent): void {
+    if (!swipeState) return;
+    const captured = swipeState;
+    swipeState = null;
+    captured.row.style.transition = '';
+    captured.row.style.transform = '';
+    captured.row.removeAttribute('data-pkc-swiping');
+    const dxRaw = e.changedTouches[0]?.clientX;
+    if (typeof dxRaw !== 'number') return;
+    const dx = dxRaw - captured.startX;
+    if (captured.locked !== 'horizontal') return;
+    if (dx > -SWIPE_COMMIT_PX) return;
+    // Crossed the commit threshold — fire DELETE_ENTRY directly.
+    // No confirm dialog (touch users hate dialogs interrupting a
+    // gesture) — the soft-delete reducer keeps the entry's
+    // revisions, so the row remains restorable from the
+    // 🗑️ Deleted pane until the user empties the trash. Matches
+    // the Apple Mail "full swipe = immediate delete with undo
+    // available" model.
+    dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: captured.lid });
+  }
+
+  function handleEntrySwipeCancel(): void {
+    if (!swipeState) return;
+    const captured = swipeState;
+    swipeState = null;
+    captured.row.style.transition = '';
+    captured.row.style.transform = '';
+    captured.row.removeAttribute('data-pkc-swiping');
+  }
+
   /**
    * Press-drag-release UX for `<details>`-style anchored menus
    * (Data… in the header, More… in the entry action bar). The
@@ -5349,6 +5440,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Press-drag-release for anchored `<details>` menus (Data… and
   // More… — see `handleDetailsMenuMouseDown`).
   root.addEventListener('mousedown', handleDetailsMenuMouseDown);
+
+  // Mail-style swipe-to-delete on entry list rows (touch only).
+  // touchmove uses `passive: false` so we can call preventDefault
+  // when the gesture locks horizontal — without that the browser
+  // would scroll the sidebar instead of letting us slide the row.
+  root.addEventListener('touchstart', handleEntrySwipeStart, { passive: true });
+  root.addEventListener('touchmove', handleEntrySwipeMove, { passive: false });
+  root.addEventListener('touchend', handleEntrySwipeEnd);
+  root.addEventListener('touchcancel', handleEntrySwipeCancel);
   root.addEventListener('input', handleInput);
   // S-14: IME guard for the search input lives on root via event
   // delegation so it survives re-render (the input element is
@@ -5409,6 +5509,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('mousedown', handleDetailsMenuMouseDown);
+    root.removeEventListener('touchstart', handleEntrySwipeStart);
+    root.removeEventListener('touchmove', handleEntrySwipeMove);
+    root.removeEventListener('touchend', handleEntrySwipeEnd);
+    root.removeEventListener('touchcancel', handleEntrySwipeCancel);
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
     root.removeEventListener('compositionstart', handleSearchCompositionStart);

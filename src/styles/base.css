@@ -6457,6 +6457,44 @@ mark.pkc-search-mark {
     font-size: 0.95rem;
     min-height: 48px;
     gap: 0.5rem;
+    /* Capture horizontal touch input for the swipe-to-delete
+     * gesture; let vertical pan fall through to the sidebar
+     * scroll. Without this iOS Safari can interpret a left
+     * swipe as the system "back" gesture or rubber-band the
+     * whole page horizontally — the user reported "スワイプで
+     * 画面全体が動く、気持ち悪い". */
+    touch-action: pan-y;
+    /* Swipe-to-delete visual feedback (action-binder
+     * `handleEntrySwipeMove`): the row translates left as the
+     * touch travels. The danger gradient at the right edge is
+     * revealed underneath via `background-image`, so the user
+     * sees a Mail-style red wedge growing as they swipe past
+     * the commit threshold. */
+    background-image: linear-gradient(
+      to right,
+      transparent calc(100% - 120px),
+      var(--c-danger, #b91c1c) 100%
+    );
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: right center;
+  }
+  /* Sidebar list itself contains scroll + horizontal-pan-trapped
+   * rows; tell the browser no vertical chain into the document. */
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-sidebar {
+    overscroll-behavior: contain;
+  }
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-entry-item[data-pkc-swiping="commit"] {
+    /* Stronger red once the user has crossed the threshold so
+     * the release-to-delete commitment is visible. */
+    background-image: linear-gradient(
+      to right,
+      transparent 0%,
+      var(--c-danger, #b91c1c) 100%
+    );
+  }
+  #pkc-root[data-pkc-mobile-page="list"] .pkc-entry-item:not([data-pkc-swiping]) {
+    background-image: none;
   }
   #pkc-root[data-pkc-mobile-page="list"] .pkc-entry-title {
     font-size: 0.95rem;
