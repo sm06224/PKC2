@@ -5,146 +5,146 @@
   "measures": [
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 414.8000000002794,
+      "startTime": 353.69999999925494,
       "duration": 0
     },
     {
-      "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 414.8000000002794,
-      "duration": 208.60000000009313
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 353.69999999925494,
+      "duration": 207.30000000074506
     },
     {
-      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 414.90000000037253,
-      "duration": 208.5
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 353.69999999925494,
+      "duration": 207.30000000074506
     },
     {
       "name": "render:phase=ready",
-      "startTime": 415.3000000002794,
-      "duration": 207
+      "startTime": 354,
+      "duration": 206.19999999925494
     },
     {
       "name": "render:sidebar",
-      "startTime": 427.40000000037253,
-      "duration": 65.89999999990687
+      "startTime": 363.5,
+      "duration": 67.59999999962747
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 446.3000000002794,
-      "duration": 2.7999999998137355
+      "startTime": 377.79999999981374,
+      "duration": 2.2000000001862645
     },
     {
       "name": "render:center",
-      "startTime": 493.70000000018626,
-      "duration": 0.20000000018626451
+      "startTime": 431.5,
+      "duration": 0.19999999925494194
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 686,
-      "duration": 0
+      "startTime": 621.1999999992549,
+      "duration": 0.10000000055879354
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 621.1999999992549,
+      "duration": 196.1000000005588
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 686,
-      "duration": 208.20000000018626
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 686,
-      "duration": 208.3000000002794
+      "startTime": 621.2999999998137,
+      "duration": 196
     },
     {
       "name": "render:phase=ready",
-      "startTime": 686.7000000001863,
-      "duration": 206.10000000009313
+      "startTime": 621.8999999994412,
+      "duration": 194.20000000018626
     },
     {
       "name": "render:sidebar",
-      "startTime": 701.7000000001863,
-      "duration": 47.10000000009313
+      "startTime": 635.0999999996275,
+      "duration": 45.299999999813735
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 709.3000000002794,
-      "duration": 1.1000000000931323
+      "startTime": 641.7999999998137,
+      "duration": 0.7999999998137355
     },
     {
       "name": "render:center",
-      "startTime": 749.2000000001863,
-      "duration": 0.10000000009313226
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 948.8000000002794,
-      "duration": 129.6999999997206
+      "startTime": 680.6999999992549,
+      "duration": 0.10000000055879354
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 948.9000000003725,
+      "startTime": 868.8999999994412,
       "duration": 0
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 948.9000000003725,
-      "duration": 129.59999999962747
-    },
-    {
-      "name": "render:phase=ready",
-      "startTime": 949.4000000003725,
-      "duration": 128.1999999997206
-    },
-    {
-      "name": "render:sidebar",
-      "startTime": 962.6000000000931,
-      "duration": 40
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 969.1000000000931,
-      "duration": 0.7000000001862645
-    },
-    {
-      "name": "render:center",
-      "startTime": 1003,
-      "duration": 0.10000000009313226
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 1119.7000000001863,
-      "duration": 0
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 1119.7000000001863,
-      "duration": 143.20000000018626
+      "startTime": 868.8999999994412,
+      "duration": 130.6000000005588
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 1119.7000000001863,
-      "duration": 143.20000000018626
+      "startTime": 868.8999999994412,
+      "duration": 130.6000000005588
     },
     {
       "name": "render:phase=ready",
-      "startTime": 1120.3000000002794,
-      "duration": 141.89999999990687
+      "startTime": 869.3999999994412,
+      "duration": 129.40000000037253
     },
     {
       "name": "render:sidebar",
-      "startTime": 1132.9000000003725,
-      "duration": 43.299999999813735
+      "startTime": 882.1999999992549,
+      "duration": 43
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 1140.8000000002794,
-      "duration": 0.5
+      "startTime": 890,
+      "duration": 0.8999999994412065
     },
     {
       "name": "render:center",
-      "startTime": 1176.5,
-      "duration": 0.10000000009313226
+      "startTime": 925.5,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:reduce",
+      "startTime": 1037.199999999255,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 1037.199999999255,
+      "duration": 161.6000000005588
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 1037.199999999255,
+      "duration": 161.6000000005588
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 1037.5999999996275,
+      "duration": 160.5
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 1049.5999999996275,
+      "duration": 37.700000000186265
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 1055.8999999994412,
+      "duration": 0.7999999998137355
+    },
+    {
+      "name": "render:center",
+      "startTime": 1087.5,
+      "duration": 0.19999999925494194
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 16.31,
-  "capturedAt": "2026-04-27T21:27:22.622Z"
+  "capturedAt": "2026-04-27T21:55:13.292Z"
 }

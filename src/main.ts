@@ -3,6 +3,8 @@ import { SLOT } from './runtime/contract';
 import { start as profileStart, mark as profileMark } from './runtime/profile';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
+import { computeRenderScope } from './adapter/ui/render-scope';
+import type { AppState } from './adapter/state/app-state';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
 import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
@@ -121,6 +123,11 @@ async function boot(): Promise<void> {
   // 2. Renderer: state → DOM (with scroll/focus restoration + flash feedback)
   let prevSelectedLid: string | null = null;
   let prevEntryCount = 0;
+  // PR #177: track the last state we passed to `render()` so the
+  // renderer can compute its scope and short-circuit when nothing
+  // visible changed. Stays `null` until the FIRST render so that
+  // initial mount keeps the existing full-shell behaviour.
+  let prevRenderState: AppState | null = null;
   // S-18 (A-4 FULL, 2026-04-14): sub-location navigation post-render
   // effect. The tracker compares the `ticket` in state.pendingNav
   // against the last-seen value and fires the scroll + highlight
@@ -129,6 +136,31 @@ async function boot(): Promise<void> {
   const locationNavTracker = createLocationNavTracker();
 
   dispatcher.onState((state) => {
+    // PR #177: scope-driven short-circuit so the renderer subscriber
+    // skips the full pre/post-render hook chain (continuity capture,
+    // blob cleanup, attachment-preview hydration, etc) when the
+    // delta is render-irrelevant. The renderer itself ALSO bails on
+    // its scope check below; the duplicate guard here is so the
+    // subscriber's surrounding work (which the renderer doesn't
+    // know about) doesn't fire either.
+    const renderScope = computeRenderScope(state, prevRenderState);
+
+    if (renderScope === 'none') {
+      // Render-irrelevant dispatch — but post-render side effects
+      // that watch other state slices (sub-location scroll ticket)
+      // still need to run. Settings-only also skips the heavy
+      // hooks — applySystemSettings is idempotent on root attrs.
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
+    if (renderScope === 'settings-only') {
+      render(state, root, prevRenderState);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
+
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records
     // scroll positions of every `data-pkc-region` scroller, and
@@ -150,7 +182,7 @@ async function boot(): Promise<void> {
     // Revoke preview Blob URLs before DOM replacement to prevent memory leaks
     cleanupBlobUrls(root);
 
-    render(state, root);
+    render(state, root, prevRenderState);
 
     restoreRenderContinuity(root, continuity);
 
@@ -184,6 +216,7 @@ async function boot(): Promise<void> {
 
     prevSelectedLid = state.selectedLid;
     prevEntryCount = currentCount;
+    prevRenderState = state;
 
     // Populate attachment image previews (needs container.assets data)
     populateAttachmentPreviews(root, dispatcher);
