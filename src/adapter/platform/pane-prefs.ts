@@ -42,11 +42,33 @@ let cached: PanePrefs | null = null;
  * render hot path don't hit localStorage.
  *
  * Idempotent; safe to call before every render.
+ *
+ * On the iPhone shell (`pointer: coarse and (max-width: 640px)`)
+ * the meta pane is rendered as a slide-over drawer; we default it
+ * to collapsed on first paint so the user sees the entry detail
+ * full-screen and opens the drawer explicitly via the ⓘ button
+ * in the mobile header. The desktop default (both panes open)
+ * is preserved everywhere else.
  */
 export function loadPanePrefs(): PanePrefs {
   if (cached) return cached;
-  cached = readFromStorage() ?? { ...DEFAULT_PANE_PREFS };
+  cached = readFromStorage() ?? defaultPrefsForViewport();
   return cached;
+}
+
+function defaultPrefsForViewport(): PanePrefs {
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches
+  ) {
+    // Phone — meta drawer closed so the entry detail is the
+    // hero on first paint. Sidebar default stays open because
+    // the master-detail CSS hides it via `data-pkc-mobile-page`
+    // when an entry is selected.
+    return { sidebar: false, meta: true };
+  }
+  return { ...DEFAULT_PANE_PREFS };
 }
 
 /**

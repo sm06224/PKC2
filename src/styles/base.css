@@ -6463,12 +6463,33 @@ mark.pkc-search-mark {
     line-height: 1.35;
   }
 
-  /* In detail / edit mode: center pane IS the page, full-width. */
+  /* In detail / edit mode: center pane IS the page, full-width.
+   * Sidebar disappears in both, and the meta pane normally
+   * disappears too — the iPhone header's ⓘ button toggles it
+   * back ON via the existing `toggle-meta` action, at which
+   * point the rule below positions it as a slide-over drawer
+   * from the right edge instead of the desktop inline column. */
   #pkc-root[data-pkc-mobile-page="detail"] .pkc-sidebar,
-  #pkc-root[data-pkc-mobile-page="detail"] .pkc-meta-pane,
   #pkc-root[data-pkc-mobile-page="edit"] .pkc-sidebar,
   #pkc-root[data-pkc-mobile-page="edit"] .pkc-meta-pane {
     display: none;
+  }
+  #pkc-root[data-pkc-mobile-page="detail"] .pkc-meta-pane[data-pkc-collapsed="true"] {
+    display: none;
+  }
+  #pkc-root[data-pkc-mobile-page="detail"] .pkc-meta-pane:not([data-pkc-collapsed="true"]) {
+    position: fixed;
+    /* Sit below the mobile header (44 px min-height + 1 px border)
+     * so the ⓘ toggle button stays tappable to close the drawer. */
+    top: 45px;
+    right: 0;
+    bottom: 0;
+    width: min(85vw, 360px);
+    z-index: 70;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    border-left: 1px solid var(--c-border);
+    overflow-y: auto;
+    background: var(--c-bg);
   }
   #pkc-root[data-pkc-mobile-page="detail"] .pkc-center,
   #pkc-root[data-pkc-mobile-page="edit"] .pkc-center {

@@ -407,7 +407,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * collapse and must use the press-drag-release sequence
    * (`page.mouse.down` → move → `page.mouse.up`) instead.
    */
+  // Threshold (in CSS px) below which a mouse / touch gesture is
+  // treated as a "tap, no drag" and the press-drag-release flow
+  // falls back to plain click-toggle. 6 px matches the OS-level
+  // drag detection on Chromium / Safari and is wide enough to
+  // tolerate finger jitter without misreading a true drag.
+  const PDR_TAP_THRESHOLD_PX = 6;
+  let pdrColorPickerOrigin: { x: number; y: number } | null = null;
+  let pdrColorPickerMoved = false;
+
+  function trackColorPickerMove(ev: MouseEvent): void {
+    if (!pdrColorPickerOrigin) return;
+    const dx = ev.clientX - pdrColorPickerOrigin.x;
+    const dy = ev.clientY - pdrColorPickerOrigin.y;
+    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+      pdrColorPickerMoved = true;
+    }
+  }
+
+  /**
+   * `handleColorPickerMouseUp` flow on touch (Safari iOS / iPhone
+   * Chrome) was reported by the user as "パレットが開けない" — a
+   * quick tap fired mousedown → mouseup on the trigger before the
+   * user could drag onto a swatch, and the release-on-trigger
+   * branch closed the popover immediately. The `pdrColorPickerMoved`
+   * flag distinguishes a genuine press-drag from a quick tap; if
+   * the pointer never travelled past the tap threshold, we keep
+   * the popover open and let the user pick via a second tap on a
+   * swatch (which then takes the apply-color-tag click path).
+   */
   function handleColorPickerMouseUp(e: MouseEvent): void {
+    document.removeEventListener('mousemove', trackColorPickerMove, true);
+    const moved = pdrColorPickerMoved;
+    pdrColorPickerOrigin = null;
+    pdrColorPickerMoved = false;
     const t = e.target;
     let actionEl: HTMLElement | null = null;
     if (t instanceof Element) {
@@ -415,6 +448,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     const action = actionEl?.getAttribute('data-pkc-action') ?? null;
     const lid = colorPickerLid;
+
+    // Tap (no drag) on the trigger itself — leave the popover
+    // open and swallow the click so the existing click handler
+    // does not toggle it shut. The user picks via a second tap.
+    if (!moved && (action === 'open-color-picker' || actionEl === colorPickerTrigger)) {
+      registerOneShotClickSwallow();
+      return;
+    }
+
     if (action === 'apply-color-tag') {
       const color = actionEl?.getAttribute('data-pkc-color');
       if (color && lid) {
@@ -474,6 +516,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (colorPickerTrigger !== triggerEl || colorPickerEl === null) {
       openColorPickerAt(triggerEl);
     }
+    pdrColorPickerOrigin = { x: e.clientX, y: e.clientY };
+    pdrColorPickerMoved = false;
+    document.addEventListener('mousemove', trackColorPickerMove, true);
     document.addEventListener('mouseup', handleColorPickerMouseUp, {
       capture: true,
       once: true,
@@ -511,6 +556,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    *      close the menu and swallow.
    */
   let pdrMenuOpenDetails: HTMLDetailsElement | null = null;
+  let pdrMenuOrigin: { x: number; y: number } | null = null;
+  let pdrMenuMoved = false;
+
+  function trackDetailsMenuMove(ev: MouseEvent): void {
+    if (!pdrMenuOrigin) return;
+    const dx = ev.clientX - pdrMenuOrigin.x;
+    const dy = ev.clientY - pdrMenuOrigin.y;
+    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+      pdrMenuMoved = true;
+    }
+  }
 
   function handleDetailsMenuMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
@@ -523,6 +579,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     e.preventDefault();
     details.open = true;
     pdrMenuOpenDetails = details;
+    pdrMenuOrigin = { x: e.clientX, y: e.clientY };
+    pdrMenuMoved = false;
+    document.addEventListener('mousemove', trackDetailsMenuMove, true);
     document.addEventListener('mouseup', handleDetailsMenuMouseUp, {
       capture: true,
       once: true,
@@ -530,10 +589,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleDetailsMenuMouseUp(e: MouseEvent): void {
+    document.removeEventListener('mousemove', trackDetailsMenuMove, true);
+    const moved = pdrMenuMoved;
+    pdrMenuOrigin = null;
+    pdrMenuMoved = false;
     const details = pdrMenuOpenDetails;
     pdrMenuOpenDetails = null;
     if (!details) return;
     const t = e.target;
+    // Tap (no drag) on the summary itself — leave the menu open
+    // (matches the touch UX users expect on iOS Safari, where the
+    // press-drag-release gesture is rare and a tap should toggle).
+    // Swallow the natural click so the `<details>` native toggle
+    // does not flip the open state back shut.
+    if (!moved) {
+      const summary = t instanceof Element ? t.closest('summary[data-pkc-pdr-menu]') : null;
+      if (summary && details.contains(summary)) {
+        registerOneShotClickSwallow();
+        return;
+      }
+    }
     // Native form controls inside the menu (e.g. the More…
     // "compact" checkbox) should keep the menu open and let the
     // native click open the platform UX. The user closes the menu

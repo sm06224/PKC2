@@ -612,13 +612,21 @@ function renderMobileHeader(state: AppState): HTMLElement {
     titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
     bar.appendChild(titleEl);
 
-    // The right-hand "more" affordance is intentionally minimal in
-    // v1 — desktop's full action bar already renders inside the
-    // entry detail body, so a redundant hamburger here would just
-    // crowd the bar. v2 will add per-entry context-menu actions
-    // here once they have iPhone-friendly affordances.
     const spacer = createElement('span', 'pkc-mobile-header-spacer');
     bar.appendChild(spacer);
+
+    // 2026-04-26 user feedback ("メタ情報にアクセスできない"):
+    // On the iPhone shell the meta pane is normally hidden in
+    // detail mode (the full-screen entry view). Expose it via an
+    // explicit ⓘ "Info" button that toggles a slide-over drawer
+    // from the right edge so users can reach Tags / Relations /
+    // History / Folder etc. without rotating to landscape.
+    const metaBtn = createElement('button', 'pkc-mobile-header-btn');
+    metaBtn.setAttribute('data-pkc-action', 'toggle-meta');
+    metaBtn.setAttribute('aria-label', 'メタ情報');
+    metaBtn.setAttribute('title', 'タグ / 関連 / 履歴などのメタ情報');
+    metaBtn.textContent = 'ⓘ';
+    bar.appendChild(metaBtn);
     return bar;
   }
 
