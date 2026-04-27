@@ -6,254 +6,240 @@ _Captured by `tests/bench/profile.bench.ts`. Re-generate via `npm run bench` (re
 
 | scale | entries | boot enter→exit (ms) | heap used (MB) |
 |---|---|---|---|
-| c-100 | 100 | 17.4 | 9.54 |
-| c-500 | 500 | 50.1 | 9.54 |
-| c-1000 | 1000 | 87.9 | 11.35 |
-| c-5000 | 5000 | 14.7 | 26.32 |
+| c-100 | 100 | 22.8 | 9.54 |
+| c-500 | 500 | 52.2 | 9.54 |
+| c-1000 | 1000 | 86.6 | 12.11 |
+| c-5000 | 5000 | 9.2 | 26.32 |
 
 ## c-100 (100 entries) — `archetype-toggle`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:06.833Z
+- captured: 2026-04-27T22:18:02.076Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 7.4 | 7.4 | 7.4 | 7.4 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 7.4 | 7.4 | 7.4 | 7.4 |
-| `render:phase=ready` | 1 | 6.8 | 6.8 | 6.8 | 6.8 |
-| `render:sidebar` | 1 | 1.7 | 1.7 | 1.7 | 1.7 |
-| `render:center` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
-| `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 5.7 | 5.7 | 5.7 | 5.7 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 5.6 | 5.6 | 5.6 | 5.6 |
+| `render:scope=sidebar-only` | 1 | 5.2 | 5.2 | 5.2 | 5.2 |
+| `render:sidebar` | 1 | 2.1 | 2.1 | 2.1 | 2.1 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `filter:applyFilters` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 
 ## c-100 (100 entries) — `cold-boot`
 
-- boot enter→exit: **17.4 ms**
+- boot enter→exit: **22.8 ms**
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:05.491Z
+- captured: 2026-04-27T22:18:00.605Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 8.5 | 8.5 | 8.5 | 8.5 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 8.2 | 8.2 | 8.2 | 8.2 |
-| `render:phase=ready` | 1 | 7.8 | 7.8 | 7.8 | 7.8 |
-| `boot:loadFromStore` | 1 | 7.4 | 7.4 | 7.4 | 7.4 |
-| `render:sidebar` | 1 | 4.8 | 4.8 | 4.8 | 4.8 |
+| `boot:loadFromStore` | 1 | 13.5 | 13.5 | 13.5 | 13.5 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 7.8 | 7.8 | 7.8 | 7.8 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 7.6 | 7.6 | 7.6 | 7.6 |
+| `render:phase=ready` | 1 | 7.4 | 7.4 | 7.4 | 7.4 |
+| `render:sidebar` | 1 | 4.4 | 4.4 | 4.4 | 4.4 |
 | `tree:buildTree` | 1 | 0.6 | 0.6 | 0.6 | 0.6 |
 | `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `render:center` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `render:scope=settings-only` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:RESTORE_SETTINGS` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `boot:readPkcData` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:SYS_INIT_COMPLETE:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:RESTORE_SETTINGS:reduce` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-100 (100 entries) — `search-keystroke`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:06.238Z
+- captured: 2026-04-27T22:18:01.433Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 96.5 | 21.2 | 33.3 | 33.3 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 96.4 | 21.2 | 33.2 | 33.2 |
-| `render:phase=ready` | 4 | 93.3 | 20.5 | 32.3 | 32.3 |
-| `render:sidebar` | 4 | 24.1 | 4.1 | 11.1 | 11.1 |
-| `filter:applyFilters` | 4 | 0.6 | 0.1 | 0.3 | 0.3 |
-| `render:center` | 4 | 0.2 | 0 | 0.1 | 0.1 |
-| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 101.1 | 21.9 | 37.9 | 37.9 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 101 | 21.9 | 37.9 | 37.9 |
+| `render:scope=sidebar-only` | 4 | 98.5 | 21.1 | 37.1 | 37.1 |
+| `render:sidebar` | 4 | 26.4 | 4.5 | 12.8 | 12.8 |
+| `filter:applyFilters` | 4 | 0.8 | 0.1 | 0.4 | 0.4 |
+| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0.1 | 0 | 0.1 | 0.1 |
 
 ## c-100 (100 entries) — `select-entry`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:07.549Z
+- captured: 2026-04-27T22:18:02.723Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 66 | 66 | 66 | 66 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 62.5 | 62.5 | 62.5 | 62.5 |
-| `render:phase=ready` | 1 | 62 | 62 | 62 | 62 |
-| `render:sidebar` | 1 | 6.9 | 6.9 | 6.9 | 6.9 |
-| `render:meta` | 1 | 5.4 | 5.4 | 5.4 | 5.4 |
-| `tree:buildTree` | 1 | 4 | 4 | 4 | 4 |
-| `render:center` | 1 | 2.9 | 2.9 | 2.9 | 2.9 |
+| `dispatch:SELECT_ENTRY` | 1 | 47.3 | 47.3 | 47.3 | 47.3 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 44 | 44 | 44 | 44 |
+| `render:phase=ready` | 1 | 43.6 | 43.6 | 43.6 | 43.6 |
+| `render:meta` | 1 | 4.2 | 4.2 | 4.2 | 4.2 |
+| `render:sidebar` | 1 | 2.5 | 2.5 | 2.5 | 2.5 |
+| `render:center` | 1 | 1.8 | 1.8 | 1.8 | 1.8 |
+| `tree:buildTree` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-500 (500 entries) — `archetype-toggle`
 
-- heap used: **11.35 MB**
-- captured: 2026-04-27T21:55:10.028Z
+- heap used: **10.68 MB**
+- captured: 2026-04-27T22:18:04.971Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 19.2 | 19.2 | 19.2 | 19.2 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 19.2 | 19.2 | 19.2 | 19.2 |
-| `render:phase=ready` | 1 | 18.7 | 18.7 | 18.7 | 18.7 |
-| `render:sidebar` | 1 | 9.9 | 9.9 | 9.9 | 9.9 |
-| `filter:applyFilters` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:center` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 17 | 17 | 17 | 17 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 17 | 17 | 17 | 17 |
+| `render:scope=sidebar-only` | 1 | 16.5 | 16.5 | 16.5 | 16.5 |
+| `render:sidebar` | 1 | 10.7 | 10.7 | 10.7 | 10.7 |
+| `filter:applyFilters` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-500 (500 entries) — `cold-boot`
 
-- boot enter→exit: **50.1 ms**
+- boot enter→exit: **52.2 ms**
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:08.185Z
+- captured: 2026-04-27T22:18:03.237Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `boot:loadFromStore` | 1 | 25.3 | 25.3 | 25.3 | 25.3 |
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 22.8 | 22.8 | 22.8 | 22.8 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 22.7 | 22.7 | 22.7 | 22.7 |
-| `render:phase=ready` | 1 | 22.5 | 22.5 | 22.5 | 22.5 |
-| `render:sidebar` | 1 | 11.9 | 11.9 | 11.9 | 11.9 |
-| `tree:buildTree` | 1 | 0.7 | 0.7 | 0.7 | 0.7 |
-| `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:center` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `boot:readPkcData` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `render:scope=settings-only` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `boot:loadFromStore` | 1 | 30.7 | 30.7 | 30.7 | 30.7 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 19.8 | 19.8 | 19.8 | 19.8 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 19.3 | 19.3 | 19.3 | 19.3 |
+| `render:phase=ready` | 1 | 19 | 19 | 19 | 19 |
+| `render:sidebar` | 1 | 12 | 12 | 12 | 12 |
+| `tree:buildTree` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
+| `render:center` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `boot:readPkcData` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `render:phase=initializing` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `dispatch:RESTORE_SETTINGS` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `dispatch:SYS_INIT_COMPLETE:reduce` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-500 (500 entries) — `search-keystroke`
 
-- heap used: **10.11 MB**
-- captured: 2026-04-27T21:55:09.347Z
+- heap used: **9.54 MB**
+- captured: 2026-04-27T22:18:04.299Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 360.8 | 81 | 109.7 | 109.7 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 360.6 | 81 | 109.7 | 109.7 |
-| `render:phase=ready` | 4 | 356.6 | 80 | 108.7 | 108.7 |
-| `render:sidebar` | 4 | 91.6 | 18.8 | 35.8 | 35.8 |
-| `filter:applyFilters` | 4 | 3.1 | 0.4 | 1.4 | 1.4 |
-| `render:center` | 4 | 0.3 | 0.1 | 0.1 | 0.1 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 325 | 72.7 | 102.8 | 102.8 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 324.9 | 72.7 | 102.8 | 102.8 |
+| `render:scope=sidebar-only` | 4 | 321.4 | 72.1 | 102 | 102 |
+| `render:sidebar` | 4 | 89.6 | 18.6 | 35.4 | 35.4 |
+| `filter:applyFilters` | 4 | 2 | 0.4 | 0.8 | 0.8 |
 | `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
 
 ## c-500 (500 entries) — `select-entry`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-27T21:55:10.813Z
+- captured: 2026-04-27T22:18:05.821Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 108.7 | 108.7 | 108.7 | 108.7 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 104.9 | 104.9 | 104.9 | 104.9 |
-| `render:phase=ready` | 1 | 104.2 | 104.2 | 104.2 | 104.2 |
-| `render:meta` | 1 | 11.7 | 11.7 | 11.7 | 11.7 |
-| `render:sidebar` | 1 | 10.1 | 10.1 | 10.1 | 10.1 |
-| `render:center` | 1 | 2.9 | 2.9 | 2.9 | 2.9 |
-| `tree:buildTree` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
-| `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:SELECT_ENTRY` | 1 | 121.5 | 121.5 | 121.5 | 121.5 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 117.6 | 117.6 | 117.6 | 117.6 |
+| `render:phase=ready` | 1 | 116.8 | 116.8 | 116.8 | 116.8 |
+| `render:meta` | 1 | 11.9 | 11.9 | 11.9 | 11.9 |
+| `render:sidebar` | 1 | 9.6 | 9.6 | 9.6 | 9.6 |
+| `render:center` | 1 | 2.6 | 2.6 | 2.6 | 2.6 |
+| `tree:buildTree` | 1 | 0.7 | 0.7 | 0.7 | 0.7 |
+| `dispatch:SELECT_ENTRY:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-1000 (1000 entries) — `archetype-toggle`
 
-- heap used: **11.35 MB**
-- captured: 2026-04-27T21:55:14.043Z
+- heap used: **18.41 MB**
+- captured: 2026-04-27T22:18:08.962Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 28.8 | 28.8 | 28.8 | 28.8 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 28.8 | 28.8 | 28.8 | 28.8 |
-| `render:phase=ready` | 1 | 28.2 | 28.2 | 28.2 | 28.2 |
-| `render:sidebar` | 1 | 15.5 | 15.5 | 15.5 | 15.5 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 23.8 | 23.8 | 23.8 | 23.8 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 23.8 | 23.8 | 23.8 | 23.8 |
+| `render:scope=sidebar-only` | 1 | 23.2 | 23.2 | 23.2 | 23.2 |
+| `render:sidebar` | 1 | 14.2 | 14.2 | 14.2 | 14.2 |
 | `filter:applyFilters` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `render:center` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-1000 (1000 entries) — `cold-boot`
 
-- boot enter→exit: **87.9 ms**
-- heap used: **11.35 MB**
-- captured: 2026-04-27T21:55:11.537Z
+- boot enter→exit: **86.6 ms**
+- heap used: **12.11 MB**
+- captured: 2026-04-27T22:18:06.564Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `boot:loadFromStore` | 1 | 46.4 | 46.4 | 46.4 | 46.4 |
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 38.7 | 38.7 | 38.7 | 38.7 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 38.3 | 38.3 | 38.3 | 38.3 |
-| `render:phase=ready` | 1 | 37.8 | 37.8 | 37.8 | 37.8 |
-| `render:sidebar` | 1 | 23.3 | 23.3 | 23.3 | 23.3 |
-| `tree:buildTree` | 1 | 1.9 | 1.9 | 1.9 | 1.9 |
+| `boot:loadFromStore` | 1 | 46.9 | 46.9 | 46.9 | 46.9 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 37 | 37 | 37 | 37 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 36.7 | 36.7 | 36.7 | 36.7 |
+| `render:phase=ready` | 1 | 36.3 | 36.3 | 36.3 | 36.3 |
+| `render:sidebar` | 1 | 24.7 | 24.7 | 24.7 | 24.7 |
+| `tree:buildTree` | 1 | 2 | 2 | 2 | 2 |
 | `dispatch:RESTORE_SETTINGS` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
 | `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `render:center` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `render:scope=settings-only` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `boot:readPkcData` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `boot:readPkcData` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 
 ## c-1000 (1000 entries) — `search-keystroke`
 
-- heap used: **16.31 MB**
-- captured: 2026-04-27T21:55:13.292Z
+- heap used: **14.5 MB**
+- captured: 2026-04-27T22:18:08.207Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 695.6 | 161.6 | 207.3 | 207.3 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 695.5 | 161.6 | 207.3 | 207.3 |
-| `render:phase=ready` | 4 | 690.3 | 160.5 | 206.2 | 206.2 |
-| `render:sidebar` | 4 | 193.6 | 43 | 67.6 | 67.6 |
-| `filter:applyFilters` | 4 | 4.7 | 0.8 | 2.2 | 2.2 |
-| `render:center` | 4 | 0.6 | 0.1 | 0.2 | 0.2 |
-| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0.1 | 0 | 0.1 | 0.1 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 687.2 | 159.8 | 214.1 | 214.1 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 686.8 | 159.7 | 214 | 214 |
+| `render:scope=sidebar-only` | 4 | 682.4 | 158.7 | 212.6 | 212.6 |
+| `render:sidebar` | 4 | 190.8 | 41.4 | 61.8 | 61.8 |
+| `filter:applyFilters` | 4 | 4.2 | 0.6 | 2.2 | 2.2 |
+| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
 
 ## c-1000 (1000 entries) — `select-entry`
 
 - heap used: **17.36 MB**
-- captured: 2026-04-27T21:55:14.958Z
+- captured: 2026-04-27T22:18:09.877Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 164.1 | 164.1 | 164.1 | 164.1 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 160.5 | 160.5 | 160.5 | 160.5 |
-| `render:phase=ready` | 1 | 159.4 | 159.4 | 159.4 | 159.4 |
-| `render:meta` | 1 | 18.7 | 18.7 | 18.7 | 18.7 |
-| `render:sidebar` | 1 | 17 | 17 | 17 | 17 |
-| `render:center` | 1 | 2.6 | 2.6 | 2.6 | 2.6 |
-| `tree:buildTree` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
+| `dispatch:SELECT_ENTRY` | 1 | 171.2 | 171.2 | 171.2 | 171.2 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 167.3 | 167.3 | 167.3 | 167.3 |
+| `render:phase=ready` | 1 | 166.2 | 166.2 | 166.2 | 166.2 |
+| `render:meta` | 1 | 18.3 | 18.3 | 18.3 | 18.3 |
+| `render:sidebar` | 1 | 17.5 | 17.5 | 17.5 | 17.5 |
+| `render:center` | 1 | 3 | 3 | 3 | 3 |
+| `tree:buildTree` | 1 | 1.5 | 1.5 | 1.5 | 1.5 |
 | `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
-## c-5000 (5000 entries) — `archetype-toggle`
-
-- heap used: **24.8 MB**
-- captured: 2026-04-27T21:30:30.171Z
-
-| measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
-|---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 187.3 | 187.3 | 187.3 | 187.3 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 187.3 | 187.3 | 187.3 | 187.3 |
-| `render:phase=ready` | 1 | 185.6 | 185.6 | 185.6 | 185.6 |
-| `render:sidebar` | 1 | 134.8 | 134.8 | 134.8 | 134.8 |
-| `filter:applyFilters` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
-| `render:center` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
-
 ## c-5000 (5000 entries) — `cold-boot`
 
-- boot enter→exit: **14.7 ms**
+- boot enter→exit: **9.2 ms**
 - heap used: **26.32 MB**
-- captured: 2026-04-27T21:55:15.872Z
+- captured: 2026-04-27T22:18:10.890Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `boot:loadFromStore` | 1 | 11.3 | 11.3 | 11.3 | 11.3 |
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 1.9 | 1.9 | 1.9 | 1.9 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 1.7 | 1.7 | 1.7 | 1.7 |
-| `render:phase=ready` | 1 | 1.4 | 1.4 | 1.4 | 1.4 |
+| `boot:loadFromStore` | 1 | 5.5 | 5.5 | 5.5 | 5.5 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 2.2 | 2.2 | 2.2 | 2.2 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 2 | 2 | 2 | 2 |
+| `render:phase=ready` | 1 | 1.8 | 1.8 | 1.8 | 1.8 |
+| `render:center` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
 | `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:center` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `boot:readPkcData` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `render:sidebar` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:RESTORE_SETTINGS` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:SYS_INIT_COMPLETE:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `boot:readPkcData` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `dispatch:SYS_INIT_COMPLETE:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
+| `render:sidebar` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:RESTORE_SETTINGS:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `render:scope=settings-only` | 1 | 0 | 0 | 0 | 0 |
 
-## c-5000 (5000 entries) — `select-entry`
+## c-5000 (5000 entries) — `search-keystroke`
 
-- heap used: **26.32 MB**
-- captured: 2026-04-27T21:30:31.143Z
+- heap used: **29.75 MB**
+- captured: 2026-04-27T22:18:17.192Z
 
-*(no measures recorded)*
+| measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
+|---|---|---|---|---|---|
+| `dispatch:SET_SEARCH_QUERY` | 4 | 3762.2 | 940.3 | 1043.4 | 1043.4 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 3762 | 940.3 | 1043.3 | 1043.3 |
+| `render:scope=sidebar-only` | 4 | 3750.4 | 937.6 | 1040.4 | 1040.4 |
+| `render:sidebar` | 4 | 1511.4 | 370.5 | 403.3 | 403.3 |
+| `filter:applyFilters` | 4 | 22.4 | 3.4 | 12.3 | 12.3 |
+| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |

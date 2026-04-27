@@ -301,6 +301,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     endProfile();
     return;
   }
+  if (scope === 'sidebar-only') {
+    const endProfile = profileStart('render:scope=sidebar-only');
+    replaceSidebarRegion(state, root);
+    endProfile();
+    return;
+  }
   // PR #176 profile wave: outermost wrapper for the full-shell
   // rebuild. `render:phase=<phase>` is the canonical "renderer
   // wall-clock" measure used by the bench runner. No-op when
@@ -477,6 +483,48 @@ function scrollSelectedSidebarNodeIntoView(
   if (!node) return;
   node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   root.dataset.pkcLastScrolledLid = state.selectedLid;
+}
+
+/**
+ * PR #178: sidebar-only region replacement.
+ *
+ * Replaces the `[data-pkc-region="sidebar"]` subtree in place when
+ * the dispatch's state delta only affects sidebar content (search /
+ * filter / sort / show-archived / advanced-filter toggles). Header /
+ * center / meta / overlays stay put.
+ *
+ * Critical contract:
+ *   - The new sidebar inherits the OLD element's `data-pkc-collapsed`
+ *     attribute so a user-collapsed sidebar doesn't suddenly re-open
+ *     mid-keystroke.
+ *   - Scroll position is preserved manually because `replaceWith`
+ *     resets `scrollTop` on the new element. The renderer subscriber
+ *     in main.ts also runs `captureRenderContinuity` →
+ *     `restoreRenderContinuity` for focus / caret restoration on
+ *     sub-elements (e.g. the search input), so explicit focus
+ *     handling here is unnecessary.
+ *   - linkIndex is recomputed from the unchanged `state.container`.
+ *     `buildLinkIndex` is fast (single-pass scan) and the meta-pane
+ *     side that shares it doesn't get re-rendered, so a stale
+ *     reference there is fine until the next 'full' render.
+ *
+ * Silent no-op when no sidebar exists (the boot transient
+ * `phase === 'initializing'` window). The scope detector wouldn't
+ * normally classify a phase change as 'sidebar-only', but the guard
+ * keeps a programmer surprise from corrupting state.
+ */
+function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
+  const oldSidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+  if (!oldSidebar) return;
+  const scrollTop = oldSidebar.scrollTop;
+  const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
+
+  const linkIndex = state.container ? buildLinkIndex(state.container) : null;
+  const newSidebar = renderSidebar(state, linkIndex);
+  if (wasCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
+
+  oldSidebar.replaceWith(newSidebar);
+  newSidebar.scrollTop = scrollTop;
 }
 
 function renderInitializing(): HTMLElement {
