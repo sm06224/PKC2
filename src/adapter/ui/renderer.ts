@@ -3485,6 +3485,19 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
 
       const moreContent = createElement('div', 'pkc-action-bar-more-content');
 
+      // 2026-04-26 user audit: "右ペイン上の Copy Link ボタンが
+      // 右ペインをハイドしていると選択しにくい". The permalink
+      // copy lives in the meta pane info header, which is
+      // unreachable when the user has the meta pane collapsed.
+      // Surface a duplicate inside the More… menu so the
+      // affordance is one tap away regardless of pane state.
+      const copyLinkInMore = createElement('button', 'pkc-btn pkc-action-copy-permalink');
+      copyLinkInMore.setAttribute('data-pkc-action', 'copy-entry-permalink');
+      copyLinkInMore.setAttribute('data-pkc-lid', entry.lid);
+      copyLinkInMore.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+      copyLinkInMore.textContent = '🔗 Copy link';
+      moreContent.appendChild(copyLinkInMore);
+
       // Slice 4-B: Copy MD / Copy Rich emit markdown-source round-trip
       // payloads and therefore only make sense for TEXT. TEXTLOG's
       // flatten path (`serializeTextlogAsMarkdown`) has been removed —
