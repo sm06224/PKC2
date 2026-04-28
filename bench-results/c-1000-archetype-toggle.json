@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 373.1000000000349,
-      "duration": 0
+      "startTime": 328.69999999995343,
+      "duration": 0.10000000009313226
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 373.1000000000349,
-      "duration": 23.20000000001164
+      "startTime": 328.69999999995343,
+      "duration": 20.800000000046566
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 373.20000000001164,
-      "duration": 23.100000000034925
+      "startTime": 328.80000000004657,
+      "duration": 20.699999999953434
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 374.1000000000349,
-      "duration": 22.099999999976717
+      "startTime": 329.60000000009313,
+      "duration": 19.800000000046566
     },
     {
       "name": "render:sidebar",
-      "startTime": 374.20000000001164,
-      "duration": 16.70000000001164
+      "startTime": 329.69999999995343,
+      "duration": 14.700000000186265
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 388.1000000000349,
-      "duration": 0.5
+      "startTime": 342.69999999995343,
+      "duration": 0.30000000004656613
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 388.1000000000349,
-      "duration": 0.5999999999767169
+      "startTime": 342.69999999995343,
+      "duration": 0.4000000001396984
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 388.70000000001164,
-      "duration": 0.5
+      "startTime": 343.10000000009313,
+      "duration": 0
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 389.6000000000349,
-      "duration": 1.099999999976717
+      "startTime": 343.4000000001397,
+      "duration": 0.7999999998137355
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 17.36,
-  "capturedAt": "2026-04-28T14:40:39.909Z"
+  "capturedAt": "2026-04-28T14:54:17.966Z"
 }

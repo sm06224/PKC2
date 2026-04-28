@@ -86,19 +86,68 @@ export function findSubLocationHits(
   if (trimmed === '') return [];
   if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return [];
 
+  // PR #190 prefix-incremental cache. The user typically extends
+  // the search one character at a time ("m" → "me" → "mee" → ...).
+  // Any entry whose body does NOT contain the previous query
+  // CANNOT contain a longer query (longer query has previous as
+  // substring). Tracking the "no-match" set by Entry reference
+  // saves the full body scan for the vast majority of entries on
+  // every subsequent keystroke.
+  maybeResetSubLocationCache(trimmed);
+  if (lastNoMatch.has(entry)) return [];
+
   // PR #182 fast-path: skip the line-split / heading-regex / fence
   // detection pipeline when the body has no chance of matching.
   // String#includes is one V8-optimized pass; the alternative is
   // O(lines × regex evaluations + heading slug counter state) per
   // entry, multiplied across the whole sidebar list on every keystroke.
-  // For c-1000 with a typical search, ~95% of entries fail this check.
   const lowerQuery = trimmed.toLowerCase();
-  if (!entry.body.toLowerCase().includes(lowerQuery)) return [];
+  if (!entry.body.toLowerCase().includes(lowerQuery)) {
+    lastNoMatch.add(entry);
+    return [];
+  }
 
   if (entry.archetype === 'text') {
     return findTextHits(entry, trimmed, maxPerEntry);
   }
   return findTextlogHits(entry, trimmed, maxPerEntry);
+}
+
+// ── PR #190 prefix-incremental no-match cache ─────────────────────
+//
+// Invariant: `lastNoMatch.has(entry)` ⇒ `entry.body` (lowercased)
+// does NOT contain `lastQueryStem` (lowercased). The cache is valid
+// while subsequent queries are prefix-extensions of `lastQueryStem`
+// (longer query ⇒ matches subset of shorter query's matches).
+//
+// WeakSet keys are Entry object references — when the reducer
+// rebuilds an Entry (COMMIT_EDIT / QUICK_UPDATE_ENTRY swap the
+// reference), the new instance falls out of the set automatically
+// and re-validates on its first lookup. No explicit per-entry
+// invalidation needed.
+let lastQueryStem = '';
+let lastNoMatch: WeakSet<Entry> = new WeakSet();
+
+function maybeResetSubLocationCache(query: string): void {
+  if (query === lastQueryStem) return;
+  // Extension (e.g. "me" → "mee"): keep the no-match set; longer
+  // queries are strictly more selective.
+  if (lastQueryStem !== '' && query.startsWith(lastQueryStem)) {
+    lastQueryStem = query;
+    return;
+  }
+  // Different / shorter / first call → invalidate.
+  lastQueryStem = query;
+  lastNoMatch = new WeakSet();
+}
+
+/**
+ * Test-only reset for the prefix-incremental no-match cache. Used
+ * by tests that exercise multiple query sequences in one suite.
+ */
+export function __resetSubLocationHitsCacheForTest(): void {
+  lastQueryStem = '';
+  lastNoMatch = new WeakSet();
 }
 
 // ─────────────────────────────── TEXT ───────────────────────────────
