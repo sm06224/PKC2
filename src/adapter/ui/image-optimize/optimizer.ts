@@ -9,8 +9,22 @@
  * fallback value when the browser API is unavailable or fails.
  * Callers treat that as "skip optimization, save original".
  *
+ * PR #187 (2026-04-28): the heavy `createImageBitmap` + canvas
+ * decode/resize/encode now runs in a worker via `OffscreenCanvas`
+ * when available (`./optimize-worker-client.ts`). The main-thread
+ * path below is the fallback for older Safari and any environment
+ * where Worker / OffscreenCanvas construction fails. The choice
+ * is transparent to callers — same async signature, same result
+ * shape — so the worker handoff cannot regress correctness; only
+ * wall-clock differs.
+ *
  * See behavior contract §2-5 for v1 default parameters.
  */
+
+import {
+  optimizeImageInWorker,
+  hasAlphaChannelInWorker,
+} from './optimize-worker-client';
 
 export interface OptimizeParams {
   quality: number;
@@ -44,7 +58,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number):
   });
 }
 
-export async function optimizeImage(file: File, params: OptimizeParams): Promise<OptimizeResult | null> {
+async function optimizeImageOnMainThread(file: File, params: OptimizeParams): Promise<OptimizeResult | null> {
   const bitmap = await safeCreateImageBitmap(file);
   if (!bitmap) return null;
 
@@ -83,6 +97,15 @@ export async function optimizeImage(file: File, params: OptimizeParams): Promise
   }
 }
 
+export async function optimizeImage(file: File, params: OptimizeParams): Promise<OptimizeResult | null> {
+  // Worker-first. Returns null when the worker is unavailable
+  // (OffscreenCanvas missing, Worker blocked, etc.) — fall back to
+  // the main-thread path so the result is identical in shape.
+  const viaWorker = await optimizeImageInWorker(file, params);
+  if (viaWorker) return viaWorker;
+  return optimizeImageOnMainThread(file, params);
+}
+
 /**
  * Detect whether an image has a non-opaque alpha channel.
  *
@@ -93,7 +116,7 @@ export async function optimizeImage(file: File, params: OptimizeParams): Promise
  *
  * Returns false on any failure (safe default: proceed to optimize).
  */
-export async function hasAlphaChannel(file: File): Promise<boolean> {
+async function hasAlphaChannelOnMainThread(file: File): Promise<boolean> {
   const bitmap = await safeCreateImageBitmap(file);
   if (!bitmap) return false;
 
@@ -122,6 +145,12 @@ export async function hasAlphaChannel(file: File): Promise<boolean> {
       // ignore
     }
   }
+}
+
+export async function hasAlphaChannel(file: File): Promise<boolean> {
+  const viaWorker = await hasAlphaChannelInWorker(file);
+  if (viaWorker !== null) return viaWorker;
+  return hasAlphaChannelOnMainThread(file);
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {
