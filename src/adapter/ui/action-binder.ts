@@ -2053,6 +2053,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         void copyMarkdownAndHtml(src, html);
         break;
       }
+      case 'copy-md-block': {
+        // PR #196: copy a rendered markdown table or fenced code block
+        // (button injected by the renderer in markdown-render.ts).
+        // Writes both plain text and HTML so paste targets choose:
+        //   - editor / terminal → plain (TSV for tables, raw code text)
+        //   - rich target (Word, Slack, browser textbox) → rendered HTML
+        const block = target.closest<HTMLElement>('.pkc-md-block');
+        if (!block) break;
+        // Prefer the inner block element (skip the copy button itself).
+        const inner = block.querySelector<HTMLElement>(':scope > pre, :scope > table');
+        if (!inner) break;
+        const plain = extractMdBlockPlainText(inner);
+        const html = inner.outerHTML;
+        void copyMarkdownAndHtml(plain, html).then((ok) => {
+          if (ok) {
+            target.setAttribute('data-pkc-flash', 'true');
+            setTimeout(() => target.removeAttribute('data-pkc-flash'), 700);
+          }
+        });
+        break;
+      }
       case 'copy-entry-ref': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -6133,6 +6154,41 @@ function escapeMarkdownLabel(label: string): string {
  * The `entry:` scheme is reserved for future cross-entry linking
  * (see `reference-string-format.md`).
  */
+
+/**
+ * PR #196: extract plain-text from a rendered markdown block element.
+ *
+ * `<pre><code>...</code></pre>` (fenced code) — return `textContent`
+ * verbatim; this is the raw source the user wrote.
+ *
+ * `<table>...</table>` — flatten into TSV (tab-separated rows). Each
+ * row becomes "cell\tcell\t...", rows joined by `\n`. Headers and
+ * body merge into a single block in document order, matching what
+ * users expect when pasting into a spreadsheet.
+ *
+ * Anything else: fall back to `textContent`.
+ */
+function extractMdBlockPlainText(inner: HTMLElement): string {
+  const tag = inner.tagName.toLowerCase();
+  if (tag === 'pre') {
+    return inner.textContent ?? '';
+  }
+  if (tag === 'table') {
+    const rows: string[] = [];
+    for (const tr of inner.querySelectorAll('tr')) {
+      const cells: string[] = [];
+      for (const cell of tr.querySelectorAll('th, td')) {
+        // Tabs and newlines inside cells break TSV — collapse to spaces.
+        const text = (cell.textContent ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+        cells.push(text);
+      }
+      rows.push(cells.join('\t'));
+    }
+    return rows.join('\n');
+  }
+  return inner.textContent ?? '';
+}
+
 function formatEntryReference(entry: Entry): string {
   const label = escapeMarkdownLabel(entry.title || '(untitled)');
   return `[${label}](entry:${entry.lid})`;

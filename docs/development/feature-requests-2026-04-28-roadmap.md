@@ -119,12 +119,19 @@ User direction(原文):
 ### 要望
 - 字下げ維持(改行時に前行のインデントを保つ)
 - 囲み文字補完("(" → "()" のようなペア自動挿入)
-- リスト改行時の自動字下げ + リスト記号挿入(`- ` 行で Enter →
+- リスト改行時の自動字下げ + リスト記号插入(`- ` 行で Enter →
   次行も `- ` を自動挿入、空行で消える)
+- **iPhone / iPad 入力支援**(2026-04-28 追記):バッククォート(`` ` ``)が
+  iOS / iPadOS の標準キーボードで容易に入力できない(英字キーボード上
+  では深い階層に隠れている)。コードブロック / インラインコード入力時
+  に「バッククォート挿入」ボタン or ジェスチャーを編集ツールバーに
+  用意するか、`tab` キーで fence 開始など別キー割当てを検討。
 
 ### 現状
 - textarea の標準動作のみ(改行 = `\n` 一文字、補完なし)
 - `quote-assist` 系の機能は markdown plugin として一部存在
+- iPhone / iPad 標準キーボードはバッククォートを number-pad の long-press
+  でしか入力できず、ユーザーが諦めるレベル
 
 ### 設計骨子
 1. **Textarea wrapper にキーハンドラ**:
@@ -135,6 +142,13 @@ User direction(原文):
    - 空のリスト行で Enter → リスト記号削除(脱出)
    - tab / shift+tab で indent / outdent
 3. **設定**: ユーザーが editing-helper を toggle で off にできる
+4. **iPhone / iPad キーボードツールバー**(2026-04-28 追記):
+   - 編集中の textarea にフォーカス時、画面下に「``」「```」「``` 言語名」
+     「[]」「{}」「<>」等のスニペット ボタンを表示
+   - tap でカーソル位置に挿入 + コードブロックは複数行 + 末尾 fence 自動挿入
+   - keyboardappearance に追従(または既存の編集ツールバーを mobile shell
+     にも露出)
+   - 候補:既存の slash-menu / 領域 7 の iPhone action bar と統合可能
 
 ### 依存 / 注意
 - 既存の paste-into-textarea / asset-link 挿入と相互干渉しないよう
