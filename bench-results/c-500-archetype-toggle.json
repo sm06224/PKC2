@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 212.10000000009313,
+      "startTime": 290.70000000001164,
       "duration": 0.09999999997671694
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 212.10000000009313,
-      "duration": 12.599999999976717
+      "startTime": 290.70000000001164,
+      "duration": 16.70000000001164
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 212.20000000006985,
-      "duration": 12.400000000023283
+      "startTime": 290.79999999998836,
+      "duration": 16.600000000034925
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 212.5,
-      "duration": 12.100000000093132
+      "startTime": 291.4000000000233,
+      "duration": 15.799999999988358
     },
     {
       "name": "render:sidebar",
-      "startTime": 212.60000000009313,
-      "duration": 9.29999999993015
+      "startTime": 291.5,
+      "duration": 12.200000000011642
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 220.80000000004657,
-      "duration": 0.30000000004656613
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 220.80000000004657,
+      "startTime": 302.20000000001164,
       "duration": 0.40000000002328306
     },
     {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 302.20000000001164,
+      "duration": 0.5
+    },
+    {
       "name": "render:sidebar:sort",
-      "startTime": 221.20000000006985,
+      "startTime": 302.70000000001164,
       "duration": 0.09999999997671694
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 221.40000000002328,
-      "duration": 0.30000000004656613
+      "startTime": 303,
+      "duration": 0.6000000000349246
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 10.11,
-  "capturedAt": "2026-04-28T10:06:12.506Z"
+  "heapUsedMb": 10.68,
+  "capturedAt": "2026-04-28T14:40:35.303Z"
 }

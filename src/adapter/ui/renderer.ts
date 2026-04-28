@@ -34,6 +34,7 @@ import { filterByTag } from '../../features/relation/tag-filter';
 import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
+import { getFilterIndexes } from './filter-cache';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
@@ -2578,13 +2579,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     (state.colorTagFilter?.size ?? 0) > 0 ||
     state.categoricalPeerFilter !== null;
   if (filterIsActive && (state.searchHideBuckets ?? true) && state.container) {
-    const bucketNames = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
-    const container = state.container;
-    filtered = filtered.filter((e) => {
-      const parent = getStructuralParent(container.relations, container.entries, e.lid);
-      if (!parent || parent.archetype !== 'folder') return true;
-      return !bucketNames.has(parent.title);
-    });
+    // PR #189: memoized — bucketChildLids is a Set built once per
+    // container ref (not per filter call). Pre-PR-189 ran an
+    // O(R) `getStructuralParent` walk per entry per render.
+    const { bucketChildLids } = getFilterIndexes(state.container);
+    if (bucketChildLids.size > 0) {
+      filtered = filtered.filter((e) => !bucketChildLids.has(e.lid));
+    }
   }
 
   // Tree-hide-buckets: by default the entries list (both tree and
@@ -2601,19 +2602,12 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     && !(state.unreferencedAttachmentsOnly ?? false)
     && state.container
   ) {
-    const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
-    const container = state.container;
-    const hiddenLids = new Set<string>();
-    for (const e of container.entries) {
-      if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
-        hiddenLids.add(e.lid);
-        for (const d of collectDescendantLids(container.relations, e.lid)) {
-          hiddenLids.add(d);
-        }
-      }
-    }
-    if (hiddenLids.size > 0) {
-      filtered = filtered.filter((e) => !hiddenLids.has(e.lid));
+    // PR #189: memoized — hiddenBucketLids includes bucket folders
+    // AND their transitive descendants, computed once per container
+    // ref. Pre-PR-189 ran the walk per render.
+    const { hiddenBucketLids } = getFilterIndexes(state.container);
+    if (hiddenBucketLids.size > 0) {
+      filtered = filtered.filter((e) => !hiddenBucketLids.has(e.lid));
     }
   }
 
@@ -2623,8 +2617,10 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // attachment entries that nothing else points at, so the user
   // can multi-select + bulk-delete in one pass.
   if ((state.unreferencedAttachmentsOnly ?? false) && state.container) {
-    const unreferenced = collectUnreferencedAttachmentLids(state.container);
-    filtered = filtered.filter((e) => unreferenced.has(e.lid));
+    // PR #189: memoized — same Set reused across keystrokes /
+    // archetype toggles within the same container snapshot.
+    const { unreferencedAttachmentLids } = getFilterIndexes(state.container);
+    filtered = filtered.filter((e) => unreferencedAttachmentLids.has(e.lid));
   }
   endFilterPipeline();
   // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
