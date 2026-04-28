@@ -2,8 +2,69 @@
   "scale": "c-1000",
   "entries": 1000,
   "scenario": "select-entry",
-  "measures": [],
+  "measures": [
+    {
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 309.9000000000233,
+      "duration": 0.09999999997671694
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 309.9000000000233,
+      "duration": 157.59999999997672
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY:notify-state",
+      "startTime": 310,
+      "duration": 152.80000000004657
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 311.1000000000349,
+      "duration": 151.39999999996508
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 316.9000000000233,
+      "duration": 19.400000000023283
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 318.6000000000349,
+      "duration": 0
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 318.6000000000349,
+      "duration": 0.3999999999650754
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 319,
+      "duration": 0.40000000002328306
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 319.6000000000349,
+      "duration": 1
+    },
+    {
+      "name": "render:sidebar:tree-loop",
+      "startTime": 320.6000000000349,
+      "duration": 14.899999999965075
+    },
+    {
+      "name": "render:center",
+      "startTime": 336.4000000000233,
+      "duration": 4.5
+    },
+    {
+      "name": "render:meta",
+      "startTime": 340.9000000000233,
+      "duration": 23.5
+    }
+  ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 10.68,
-  "capturedAt": "2026-04-28T15:31:37.186Z"
+  "heapUsedMb": 17.36,
+  "capturedAt": "2026-04-28T20:02:55.924Z"
 }

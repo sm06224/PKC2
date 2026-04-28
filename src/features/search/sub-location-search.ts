@@ -137,6 +137,32 @@ interface TextAnalysis {
   lines: ReadonlyArray<string>;
   /** Lowercased lines, parallel index to `lines`. */
   lowerLines: ReadonlyArray<string>;
+  /**
+   * PR #193: per-line precomputed metadata. The fence-toggle regex,
+   * heading regex, and slug counter all depended only on `lines`;
+   * caching them here means `findTextHits` becomes a tight
+   * `lower.includes(query)` loop with no regex execution per call.
+   */
+  lineMeta: ReadonlyArray<LineMeta>;
+}
+
+/**
+ * Per-line precomputed state used by `findTextHits`.
+ *
+ *   - `skip` collapses two pre-PR-193 conditions:
+ *       a. fence-toggle line (`^\s{0,3}(?:\`\`\`|~~~)`) which itself
+ *          never produced a hit
+ *       b. lines INSIDE a fenced code block
+ *     The hot-path skips `meta.skip` lines without any string check.
+ *
+ *   - `currentHeading` is the active heading context for hit
+ *     attribution (`subId`, `label`, `kind`). Heading detection +
+ *     slug-counter state both lived in the per-call line walk
+ *     pre-PR-193 — now they're computed once during build.
+ */
+interface LineMeta {
+  skip: boolean;
+  currentHeading: { slug: string; text: string } | null;
 }
 
 interface TextlogAnalysis {
@@ -156,7 +182,35 @@ function buildTextAnalysis(entry: Entry): TextAnalysis {
   const lines = entry.body.split(/\r?\n/);
   const lowerLines = lines.map((l) => l.toLowerCase());
   const lowerBody = lowerLines.join('\n');
-  return { kind: 'text', lowerBody, lines, lowerLines };
+
+  // PR #193: precompute per-line skip flag + heading context once.
+  // Mirrors the pre-PR-193 in-loop logic exactly so hits are
+  // identical: heading lines themselves are NOT marked `skip` so the
+  // hit attributes to that heading; fence-toggle and fenced-content
+  // lines ARE marked `skip` so they produce no hits.
+  const lineMeta: LineMeta[] = [];
+  const slugOf = makeSlugCounter();
+  let currentHeading: { slug: string; text: string } | null = null;
+  let inFence = false;
+  for (const line of lines) {
+    if (/^\s{0,3}(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+      lineMeta.push({ skip: true, currentHeading });
+      continue;
+    }
+    if (inFence) {
+      lineMeta.push({ skip: true, currentHeading });
+      continue;
+    }
+    const headingMatch = /^ {0,3}(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (headingMatch) {
+      const text = headingMatch[2]!.trim();
+      if (text) currentHeading = { slug: slugOf(text), text };
+    }
+    lineMeta.push({ skip: false, currentHeading });
+  }
+
+  return { kind: 'text', lowerBody, lines, lowerLines, lineMeta };
 }
 
 function buildTextlogAnalysis(entry: Entry): TextlogAnalysis {
@@ -230,41 +284,20 @@ function findTextHits(
   const hits: SubLocationHit[] = [];
   const seen = new Set<string>();
 
-  // PR #191: lines + lowerLines come from the WeakMap cache — same
-  // values across every keystroke for an unchanged Entry.
-  const { lines, lowerLines } = analysis;
-  const slugOf = makeSlugCounter();
-  let currentHeading: { slug: string; text: string } | null = null;
-  let inFence = false;
+  // PR #191 + PR #193: lines / lowerLines / lineMeta all come from
+  // the WeakMap cache. The hot loop is now a pure
+  // `lower.includes(query)` check + pre-resolved heading context —
+  // no regex execution per call, no slug-counter state, no fence
+  // bookkeeping. All of that ran once during `buildTextAnalysis`.
+  const { lines, lowerLines, lineMeta } = analysis;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const lower = lowerLines[i]!;
-    // Fenced code block toggle (matches extractHeadingsFromMarkdown).
-    if (/^\s{0,3}(?:```|~~~)/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+    const meta = lineMeta[i]!;
+    if (meta.skip) continue;
 
-    // Heading detection drives the "current section" context. Use the
-    // same regex as the TOC extractor so slugs stay aligned with the
-    // renderer's `id=` emission.
-    const headingMatch = /^ {0,3}(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (headingMatch) {
-      const text = headingMatch[2]!.trim();
-      if (text) {
-        currentHeading = { slug: slugOf(text), text };
-      }
-      // Heading lines don't count as their own hit — if the user
-      // searches for text that appears in a heading, we surface it
-      // as a hit attributed to THAT heading, which still works
-      // because the regex below runs on the same line.
-    }
+    if (!lowerLines[i]!.includes(lowerQuery)) continue;
 
-    // Check match on this line. PR #191: lowerLine is precomputed.
-    if (!lower.includes(lowerQuery)) continue;
-
+    const currentHeading = meta.currentHeading;
     const subId = currentHeading
       ? `heading:${currentHeading.slug}`
       : `entry:${entry.lid}`;
@@ -280,7 +313,7 @@ function findTextHits(
       subId,
       kind,
       label,
-      snippet: buildSnippet(line, lowerQuery),
+      snippet: buildSnippet(lines[i]!, lowerQuery),
     });
     if (hits.length >= maxPerEntry) break;
   }
