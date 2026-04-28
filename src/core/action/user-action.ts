@@ -584,7 +584,7 @@ export type UserAction =
       size: number;
       assetKey: string;
       assetData: string;
-      contextLid: string;
+      contextLid: string | null;
       /**
        * v1 image intake optimization (paste + editor-drop surfaces).
        * When provided, `assetData` is the optimized payload and
