@@ -1,0 +1,85 @@
+{
+  "scale": "c-500",
+  "entries": 500,
+  "scenario": "cold-boot",
+  "measures": [
+    {
+      "name": "render:phase=initializing",
+      "startTime": 39.09999999962747,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "boot:readPkcData",
+      "startTime": 39.799999999813735,
+      "duration": 0.20000000018626451
+    },
+    {
+      "name": "boot:loadFromStore",
+      "startTime": 40,
+      "duration": 30.699999999254942
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
+      "startTime": 70.8999999994412,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+      "startTime": 70.8999999994412,
+      "duration": 19.299999999813735
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE",
+      "startTime": 70.8999999994412,
+      "duration": 19.799999999813735
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 71,
+      "duration": 19
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 77.29999999981374,
+      "duration": 12
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 78.5,
+      "duration": 0
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 79.8999999994412,
+      "duration": 0.7999999998137355
+    },
+    {
+      "name": "render:center",
+      "startTime": 89.3999999994412,
+      "duration": 0.2999999998137355
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:reduce",
+      "startTime": 90.79999999981374,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:notify-state",
+      "startTime": 90.79999999981374,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS",
+      "startTime": 90.79999999981374,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "render:scope=settings-only",
+      "startTime": 90.8999999994412,
+      "duration": 0
+    }
+  ],
+  "bootElapsedMs": 52.200000000186265,
+  "heapUsedMb": 9.54,
+  "capturedAt": "2026-04-27T22:18:03.237Z"
+}

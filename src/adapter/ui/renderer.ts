@@ -519,7 +519,7 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   const scrollTop = oldSidebar.scrollTop;
   const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
 
-  const linkIndex = state.container ? buildLinkIndex(state.container) : null;
+  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
   const newSidebar = renderSidebar(state, linkIndex);
   if (wasCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
 
@@ -617,7 +617,10 @@ function renderShell(state: AppState): HTMLElement {
   // `buildConnectednessSets` (sidebar) and the References sub-panels
   // (meta pane) share the same result instead of each invoking a
   // second `buildLinkIndex(container)` over the same container.
-  const linkIndex = state.container ? buildLinkIndex(state.container) : null;
+  // PR #179: also memoize across renders — same container reference
+  // ⇒ cached linkIndex re-used, skipping the per-keystroke O(N)
+  // body scan.
+  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
 
   // Left pane: entry list / tree / search / filters
   const sidebar = renderSidebar(state, linkIndex);
@@ -2686,15 +2689,32 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // for `.pkc-orphan-marker` / `data-pkc-orphan`; v3 sets drive the new
   // `data-pkc-connectedness` attribute and `.pkc-unconnected-marker`. See
   // docs/development/unified-orphan-detection-v3-contract.md §2.3 / §4.4.
+  // PR #179: memoized — same container ⇒ cached graph traversal
+  // result reused. Falls through to a fresh build when sharedLinkIndex
+  // is missing because the per-render memo is keyed off container
+  // alone and is consistent with whichever linkIndex memo returned.
   const connectednessSets: ConnectednessSets | null = state.container
-    ? buildConnectednessSets(state.container, sharedLinkIndex ?? undefined)
+    ? memoizedBuildConnectednessSets(state.container, sharedLinkIndex ?? memoizedBuildLinkIndex(state.container))
     : null;
 
   if (hasActiveFilter || !state.container) {
-    // Flat mode when filters are active (tree doesn't make sense for search results)
+    // Flat mode when filters are active (tree doesn't make sense for search results).
+    // PR #179: memoize per-entry rows so a search-keystroke that
+    // narrows the visible list does not rebuild markup for rows it
+    // already produced. Cache invalidation hooks off container
+    // reference equality — see `getOrCreateMemoizedEntryItem`.
+    clearEntryRowMemoIfStale(state.container ?? null);
     const query = state.searchQuery.trim();
     for (const entry of entries) {
-      list.appendChild(renderEntryItem(entry, state, backlinkCounts, connectedLids, connectednessSets));
+      list.appendChild(
+        getOrCreateMemoizedEntryItem(
+          entry,
+          state,
+          backlinkCounts,
+          connectedLids,
+          connectednessSets,
+        ),
+      );
       // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
       // search query AND the entry has sub-location matches, expand
       // them as clickable sidebar rows that scroll to the exact spot
@@ -3044,6 +3064,138 @@ function renderTreeNode(
   for (const child of node.children) {
     renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets);
   }
+}
+
+// ── PR #179: container-derived index memoization ────────────────
+//
+// `buildLinkIndex` walks every entry's body for `entry:` references
+// to count incoming relations / build the backlinks adjacency map.
+// `buildConnectednessSets` does a graph walk over relations + the
+// link-index. Both are O(N) in container size and BOTH run on
+// every render (full or sidebar-only). At 5000 entries each is
+// ~50-150 ms, dominating the per-keystroke cost the row memo
+// alone could not address.
+//
+// Both depend ONLY on container + (for connectedness) the linkIndex
+// derived from the same container. Memoize by container reference;
+// cache invalidates wholesale when the reducer hands us a new
+// container ref (every reducer that touches entries / relations /
+// revisions returns `{...prev, entries|relations|...}`, so identity
+// equality is a perfect proxy for "container content unchanged").
+let cachedLinkIndexContainer: import('@core/model/container').Container | null = null;
+let cachedLinkIndex: ReturnType<typeof buildLinkIndex> | null = null;
+let cachedConnectednessContainer: import('@core/model/container').Container | null = null;
+let cachedConnectedness: ConnectednessSets | null = null;
+
+function memoizedBuildLinkIndex(
+  container: import('@core/model/container').Container,
+): ReturnType<typeof buildLinkIndex> {
+  if (container !== cachedLinkIndexContainer || cachedLinkIndex === null) {
+    cachedLinkIndexContainer = container;
+    cachedLinkIndex = buildLinkIndex(container);
+  }
+  return cachedLinkIndex;
+}
+
+function memoizedBuildConnectednessSets(
+  container: import('@core/model/container').Container,
+  linkIndex: ReturnType<typeof buildLinkIndex>,
+): ConnectednessSets {
+  if (container !== cachedConnectednessContainer || cachedConnectedness === null) {
+    cachedConnectednessContainer = container;
+    cachedConnectedness = buildConnectednessSets(container, linkIndex);
+  }
+  return cachedConnectedness;
+}
+
+/** Test-only reset of the index memos. Tests that exercise repeated
+ *  renders with synthetic containers expect a clean slate. */
+export function __resetIndexMemoForTest(): void {
+  cachedLinkIndexContainer = null;
+  cachedLinkIndex = null;
+  cachedConnectednessContainer = null;
+  cachedConnectedness = null;
+}
+
+// ── PR #179: flat-mode entry-row memoization ────────────────────
+//
+// The PR #178 bench showed `render:sidebar` itself was the dominant
+// per-keystroke cost (370 ms at 5000 entries). Most of that was
+// per-row markup-build for entries that hadn't changed since the
+// previous render — a search keystroke filters the list but the
+// rows themselves are identical.
+//
+// This cache memoizes flat-mode `<li>` rows by `Entry` REFERENCE.
+// Reducer paths that mutate an entry produce a new object ref
+// (`...prev, body, updated_at`), so referential equality is enough
+// to detect "this entry's content unchanged since last render". A
+// container-reference change (the entries array itself swapped)
+// invalidates the entire cache because relations / revisions /
+// connectedness derived counts are then stale across all rows.
+//
+// Selection (`data-pkc-selected` / `data-pkc-multi-selected`) is
+// applied as a POST-PASS on every render — including cache hits —
+// so cached rows always reflect the current selectedLid /
+// multiSelectedLids without needing a cache-key dimension.
+//
+// Tree mode (renderTreeNode) is intentionally NOT memoized: each
+// row is decorated with depth-padding + drag handle + folder-toggle
+// + child-count, and folder rows additionally depend on tree-shape
+// state (collapsed children); the cache invalidation matrix would
+// outweigh the win. Search keystroke / filter toggle scenarios
+// always run in flat mode (`hasActiveFilter`), which is exactly
+// where the cache pays off.
+let cachedContainerForRowMemo: import('@core/model/container').Container | null = null;
+let entryRowMemo = new WeakMap<Entry, HTMLElement>();
+
+function clearEntryRowMemoIfStale(
+  container: import('@core/model/container').Container | null,
+): void {
+  if (container !== cachedContainerForRowMemo) {
+    cachedContainerForRowMemo = container;
+    entryRowMemo = new WeakMap();
+  }
+}
+
+function applyEntryRowSelectionAttrs(li: HTMLElement, entry: Entry, state: AppState): void {
+  if (entry.lid === state.selectedLid) {
+    li.setAttribute('data-pkc-selected', 'true');
+  } else {
+    li.removeAttribute('data-pkc-selected');
+  }
+  if (state.multiSelectedLids.includes(entry.lid)) {
+    li.setAttribute('data-pkc-multi-selected', 'true');
+  } else {
+    li.removeAttribute('data-pkc-multi-selected');
+  }
+}
+
+function getOrCreateMemoizedEntryItem(
+  entry: Entry,
+  state: AppState,
+  backlinkCounts: ReadonlyMap<string, number> | undefined,
+  connectedLids: ReadonlySet<string> | undefined,
+  connectednessSets: ConnectednessSets | null,
+): HTMLElement {
+  let li = entryRowMemo.get(entry);
+  if (!li) {
+    li = renderEntryItem(entry, state, backlinkCounts, connectedLids, connectednessSets);
+    entryRowMemo.set(entry, li);
+  }
+  applyEntryRowSelectionAttrs(li, entry, state);
+  return li;
+}
+
+/** Test-only reset of the row memo. Used by integration tests that
+ *  exercise repeated renders within a single test fixture and want
+ *  a clean slate without juggling Container references. Module-
+ *  level state is not normally observable from outside the
+ *  renderer, but the cache's wholesale-invalidation behaviour IS
+ *  observable (cache hit on second render of the same entry), and
+ *  tests need a deterministic starting point. */
+export function __resetEntryRowMemoForTest(): void {
+  cachedContainerForRowMemo = null;
+  entryRowMemo = new WeakMap();
 }
 
 function renderEntryItem(

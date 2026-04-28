@@ -1,0 +1,40 @@
+{
+  "scale": "c-500",
+  "entries": 500,
+  "scenario": "archetype-toggle",
+  "measures": [
+    {
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
+      "startTime": 245.5,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
+      "startTime": 245.5,
+      "duration": 17
+    },
+    {
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
+      "startTime": 245.5,
+      "duration": 17
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 246,
+      "duration": 16.5
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 247.29999999981374,
+      "duration": 10.700000000186265
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 256.3999999994412,
+      "duration": 0.20000000018626451
+    }
+  ],
+  "bootElapsedMs": -1,
+  "heapUsedMb": 10.68,
+  "capturedAt": "2026-04-27T22:18:04.971Z"
+}
