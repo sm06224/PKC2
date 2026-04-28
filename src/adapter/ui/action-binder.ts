@@ -1263,8 +1263,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // phase, where follow-up CREATE_RELATION / CREATE_ENTRY would
         // be blocked by the reducer.
         const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
-        const ensureSubfolder =
-          parentFolder && subfolderName ? subfolderName : undefined;
+        // PR #186 (2026-04-28) — User direction:
+        //   「root配置はNG rootでもASSETS、TODOSの挙動は一緒」
+        // For incidental archetypes always pass `ensureSubfolder`. The
+        // reducer interprets it: with `parentFolder` set → nested
+        // subfolder of that folder; without → root-level subfolder
+        // auto-created. Root unfiled is no longer a valid landing for
+        // attachments / todos.
+        const ensureSubfolder = subfolderName ?? undefined;
         dispatcher.dispatch({
           type: 'CREATE_ENTRY',
           archetype: arch,
@@ -5039,13 +5045,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       const files = Array.from(fileList);
       input.value = '';
+      // PR #186: yield between files so the previous file's base64 +
+      // payload become GC-eligible AND the browser can paint /
+      // process touch events before the next FileReader allocation.
+      // Mirrors the drag-drop outer loop (PR #181). Without this the
+      // iPhone file picker (the only attach surface on touch) freezes
+      // the main thread for the full sequential processing window.
       function processNext(idx: number): void {
         if (idx >= files.length) return;
         processFileAttachmentWithDedupe(
           files[idx]!,
           contextFolder,
           dispatcher,
-          () => processNext(idx + 1),
+          () => {
+            if (idx + 1 < files.length) {
+              void yieldToEventLoop().then(() => processNext(idx + 1));
+            } else {
+              processNext(idx + 1);
+            }
+          },
         );
       }
       processNext(0);

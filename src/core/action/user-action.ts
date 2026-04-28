@@ -74,10 +74,16 @@ export type UserAction =
    *   same reduction and the new entry is placed inside it. If
    *   `parentFolder` itself already has title === `ensureSubfolder`,
    *   the subfolder layer is skipped (no nested `TODOS/TODOS`).
-   * - When `parentFolder` does not resolve (root fallback),
-   *   `ensureSubfolder` is ignored — incidentals at root are still
-   *   allowed to land at root, we don't auto-create root-level
-   *   bucket folders.
+   * - PR #186 (2026-04-28): when `parentFolder` does NOT resolve but
+   *   `ensureSubfolder` IS set (incidental archetype — todo /
+   *   attachment), the reducer uses `findRootLevelFolder` to locate
+   *   an existing root-level folder of that title and routes the new
+   *   entry through it. If none exists, a root-level folder with that
+   *   title is created in the same reduction. Primary documents
+   *   (text, textlog, folder, form) leave `ensureSubfolder` undefined
+   *   and continue to land at root unfiled.
+   *   See `docs/development/auto-folder-placement-for-generated-entries.md`
+   *   §"Root-level bucket fallback (PR #186)".
    * - Atomic placement matters here because CREATE_ENTRY itself moves
    *   the state machine into `editing`, where follow-up
    *   CREATE_RELATION / CREATE_ENTRY would be blocked.

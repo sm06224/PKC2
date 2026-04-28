@@ -123,3 +123,40 @@ export function findSubfolder(
   }
   return null;
 }
+
+/**
+ * Find a root-level folder by title. "Root-level" means the folder
+ * has no incoming structural relation — nothing else owns it as a
+ * structural child.
+ *
+ * Returns the matching folder's lid, or `null` if none exists. When
+ * multiple root-level folders share the same title (rare; possible
+ * across imports), the first one in `entries` order is returned.
+ *
+ * PR #186: this is the root-fallback target for auto-placement of
+ * incidentals (attachments → ASSETS, todos → TODOS). Previously
+ * `resolveAutoPlacementFolder` returning `null` (no folder ancestor)
+ * meant "land at root unfiled". User direction (2026-04-28):
+ *   「root配置はNG rootでもASSETS、TODOSの挙動は一緒」
+ * — root-fallback now routes through a root-level archetype-named
+ * folder, auto-created if missing. The reducer is responsible for the
+ * create step; this helper only locates an existing one.
+ */
+export function findRootLevelFolder(
+  container: Container,
+  title: string,
+): string | null {
+  // Build a set of every entry that is the `to` end of any structural
+  // relation. Folders not in this set are root-level.
+  const hasParent = new Set<string>();
+  for (const rel of container.relations) {
+    if (rel.kind === 'structural') hasParent.add(rel.to);
+  }
+  for (const entry of container.entries) {
+    if (entry.archetype !== 'folder') continue;
+    if (entry.title !== title) continue;
+    if (hasParent.has(entry.lid)) continue;
+    return entry.lid;
+  }
+  return null;
+}
