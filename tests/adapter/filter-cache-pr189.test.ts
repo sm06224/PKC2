@@ -138,4 +138,41 @@ describe('filter-cache (PR #189)', () => {
     expect(idx.hiddenBucketLids.has('t1')).toBe(true);
     expect(idx.bucketChildLids.has('t1')).toBe(true);
   });
+
+  // ── PR #192 relation-derived caches ──
+  it('PR #192: backlinkCounts is cached by container ref', () => {
+    const c = makeContainer();
+    const a = getFilterIndexes(c);
+    const b = getFilterIndexes(c);
+    expect(b.backlinkCounts).toBe(a.backlinkCounts);
+  });
+
+  it('PR #192: backlinkCounts contains incoming relation counts per target', () => {
+    const c = makeContainer();
+    const idx = getFilterIndexes(c);
+    // a1 has 1 incoming (asts → a1)
+    expect(idx.backlinkCounts.get('a1')).toBeGreaterThanOrEqual(1);
+    // asts has 1 incoming (fld → asts)
+    expect(idx.backlinkCounts.get('asts')).toBeGreaterThanOrEqual(1);
+    // fld has 0 incoming
+    expect(idx.backlinkCounts.get('fld') ?? 0).toBe(0);
+  });
+
+  it('PR #192: connectedLids contains lids from any relation end', () => {
+    const c = makeContainer();
+    const idx = getFilterIndexes(c);
+    expect(idx.connectedLids.has('fld')).toBe(true);   // from end of r1
+    expect(idx.connectedLids.has('asts')).toBe(true);  // both ends
+    expect(idx.connectedLids.has('a1')).toBe(true);    // to end
+    expect(idx.connectedLids.has('note')).toBe(true);  // to end of r4
+  });
+
+  it('PR #192: relation-derived cache invalidates with container ref', () => {
+    const c1 = makeContainer();
+    const a = getFilterIndexes(c1);
+    const c2: Container = { ...c1 };
+    const b = getFilterIndexes(c2);
+    expect(b.backlinkCounts).not.toBe(a.backlinkCounts);
+    expect(b.connectedLids).not.toBe(a.connectedLids);
+  });
 });

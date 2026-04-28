@@ -2678,16 +2678,18 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   const list = createElement('ul', 'pkc-entry-list');
   const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
-  // v1 backlink count badge: build `Map<targetLid, count>` once per
-  // sidebar render so per-row badge lookup stays O(1). Relations-based
-  // only — link-index backlinks are not mixed in. See
+  // v1 backlink count badge: per-target count map. PR #192 routes
+  // through `getFilterIndexes` so the O(R) walk is cached by
+  // container ref — search keystrokes no longer pay it. Same source
+  // and contract as `buildInboundCountMap`. See
   // docs/development/sidebar-backlink-badge-v1.md.
-  const backlinkCounts = buildInboundCountMap(state.container?.relations ?? []);
-  // v1 orphan detection: set of lids that appear in ANY relation (from
-  // or to). Entries whose lid is NOT in this set are relations-based
-  // orphans. Same O(R+N) pattern as backlink counts — see
-  // docs/development/orphan-detection-ui-v1.md.
-  const connectedLids = buildConnectedLidSet(state.container?.relations ?? []);
+  const filterIndexes = state.container ? getFilterIndexes(state.container) : null;
+  const backlinkCounts = filterIndexes?.backlinkCounts
+    ?? buildInboundCountMap(state.container?.relations ?? []);
+  // v1 orphan detection: lids appearing in ANY relation. PR #192
+  // also routes through the same cache.
+  const connectedLids = filterIndexes?.connectedLids
+    ?? buildConnectedLidSet(state.container?.relations ?? []);
   // v3 connectedness sets (Unified Orphan Detection, S4). Additive layer
   // built alongside the v1 helpers — v1 `connectedLids` stays authoritative
   // for `.pkc-orphan-marker` / `data-pkc-orphan`; v3 sets drive the new
