@@ -4785,35 +4785,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const files = Array.from(e.dataTransfer.files);
     const contextFolder = zone.getAttribute('data-pkc-context-folder') ?? undefined;
 
-    // G-1: process all files in FileList index order, sequentially.
-    // Each file's dispatches complete before the next FileReader starts,
-    // preserving container.entries append order (I-FI04-4).
-    // PR #181: yield to the event loop between files so the previous
-    // file's base64 + payload become GC-eligible before the next
-    // FileReader allocates — keeps peak heap to one file's worth on
-    // burst drops.
-    // PR #184: show non-blocking progress badge for multi-file drops.
-    // Single-file drops skip the badge (showAttachProgress is a no-op
-    // when total <= 1).
+    // G-1 (preserved order). PR #181 yield, PR #184 progress badge,
+    // PR #188 batched dispatch:
+    //   - Each file is *prepared* (worker base64 + optimize + dedupe
+    //     toast) sequentially, with a yield between files.
+    //   - All prepared payloads are accumulated and dispatched in a
+    //     single BATCH_PASTE_ATTACHMENTS at the end → one render.
     const totalFiles = files.length;
     showAttachProgress(0, totalFiles);
-    function processNext(index: number): void {
-      if (index >= totalFiles) {
-        showAttachProgress(totalFiles, totalFiles);
-        zone.setAttribute('data-pkc-drop-success', 'true');
-        setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
-        return;
+    void (async () => {
+      const items: AttachmentItem[] = [];
+      for (let i = 0; i < totalFiles; i++) {
+        const item = await prepareAttachmentPayload(files[i]!, contextFolder, dispatcher);
+        if (item) items.push(item);
+        showAttachProgress(i + 1, totalFiles);
+        if (i + 1 < totalFiles) await yieldToEventLoop();
       }
-      processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () => {
-        showAttachProgress(index + 1, totalFiles);
-        if (index + 1 < totalFiles) {
-          void yieldToEventLoop().then(() => processNext(index + 1));
-        } else {
-          processNext(index + 1);
-        }
-      });
-    }
-    processNext(0);
+      if (items.length > 0) {
+        dispatcher.dispatch({ type: 'BATCH_PASTE_ATTACHMENTS', items });
+      }
+      zone.setAttribute('data-pkc-drop-success', 'true');
+      setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
+    })();
   }
 
   // ── Clipboard paste handler (screenshot / image → attachment entry) ──
@@ -5045,28 +5038,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       const files = Array.from(fileList);
       input.value = '';
-      // PR #186: yield between files so the previous file's base64 +
-      // payload become GC-eligible AND the browser can paint /
-      // process touch events before the next FileReader allocation.
-      // Mirrors the drag-drop outer loop (PR #181). Without this the
-      // iPhone file picker (the only attach surface on touch) freezes
-      // the main thread for the full sequential processing window.
-      function processNext(idx: number): void {
-        if (idx >= files.length) return;
-        processFileAttachmentWithDedupe(
-          files[idx]!,
-          contextFolder,
-          dispatcher,
-          () => {
-            if (idx + 1 < files.length) {
-              void yieldToEventLoop().then(() => processNext(idx + 1));
-            } else {
-              processNext(idx + 1);
-            }
-          },
-        );
-      }
-      processNext(0);
+      // PR #186 yield + PR #188 batch dispatch (mirrors drop zone path).
+      // The iPhone file picker is the only attach surface on touch,
+      // so here is where multi-file ergonomics matter most.
+      const totalFiles = files.length;
+      showAttachProgress(0, totalFiles);
+      void (async () => {
+        const items: AttachmentItem[] = [];
+        for (let i = 0; i < totalFiles; i++) {
+          const item = await prepareAttachmentPayload(files[i]!, contextFolder, dispatcher);
+          if (item) items.push(item);
+          showAttachProgress(i + 1, totalFiles);
+          if (i + 1 < totalFiles) await yieldToEventLoop();
+        }
+        if (items.length > 0) {
+          dispatcher.dispatch({ type: 'BATCH_PASTE_ATTACHMENTS', items });
+        }
+      })();
     };
     input.addEventListener('change', handleChange);
     input.click();
@@ -6809,18 +6797,34 @@ function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
 }
 
 /**
- * FI-04: Process one file with G-2 dedupe detection.
- * Reads the file once, checks for duplicates (hash + size), shows an
- * informational toast if a duplicate is found, then always creates the
- * attachment entry (I-FI04-1). Calls onComplete after all dispatches finish
- * so callers can chain the next file (G-1 sequential ordering).
+ * Per-file attachment payload preparation (PR #188).
+ *
+ * Reads the file via the worker, runs image optimisation, fires the
+ * informational dedupe toast, and returns a payload object suitable
+ * for `BATCH_PASTE_ATTACHMENTS.items` (or single `PASTE_ATTACHMENT`
+ * dispatch). Does NOT dispatch — the caller decides whether to batch
+ * or send individually.
+ *
+ * Returns `null` when the file is rejected (oversized) or read failed
+ * (FileReader error). All toasts / console-warns surface here so the
+ * caller's loop stays focused on coordination.
  */
-function processFileAttachmentWithDedupe(
+type AttachmentItem = {
+  name: string;
+  mime: string;
+  size: number;
+  assetKey: string;
+  assetData: string;
+  contextLid: string | null;
+  originalAssetData?: string;
+  optimizationMeta?: IntakePayload['optimizationMeta'];
+};
+
+async function prepareAttachmentPayload(
   file: File,
   contextFolder: string | undefined,
   dispatcher: Dispatcher,
-  onComplete: () => void,
-): void {
+): Promise<AttachmentItem | null> {
   if (isFileTooLarge(file.size)) {
     const msg = fileSizeWarningMessage(file.size) ?? 'File too large.';
     console.warn(`[PKC2] Drop rejected: ${msg}`);
@@ -6829,56 +6833,49 @@ function processFileAttachmentWithDedupe(
       kind: 'warn',
       onExport: () => dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
     });
-    onComplete();
-    return;
+    return null;
   }
 
   preflightStorageWarn(file, dispatcher);
 
-  void (async () => {
-    // PR #184: read + hash the file in a worker so the main thread
-    // stays responsive during burst drops. processFileViaWorker
-    // falls back to a main-thread read when Worker construction
-    // fails, so behaviour stays correct on hostile environments.
-    let base64: string;
-    try {
-      const processed = await processFileViaWorker(file);
-      base64 = processed.base64;
-    } catch (err) {
-      const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}.`;
-      console.warn(`[PKC2] ${msg}`);
-      showToast({ message: msg, kind: 'error' });
-      onComplete();
-      return;
-    }
+  // PR #184: read + hash the file in a worker so the main thread
+  // stays responsive during burst drops. processFileViaWorker falls
+  // back to a main-thread read when Worker construction fails.
+  let base64: string;
+  try {
+    const processed = await processFileViaWorker(file);
+    base64 = processed.base64;
+  } catch (err) {
+    const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}.`;
+    console.warn(`[PKC2] ${msg}`);
+    showToast({ message: msg, kind: 'error' });
+    return null;
+  }
 
-    // v1 image intake optimization (drop surface). Returns the
-    // original payload as-is for non-image files / sub-threshold
-    // images / unsupported formats.
-    let payload: IntakePayload;
-    try {
-      payload = await prepareOptimizedIntake(file, base64, 'drop');
-    } catch {
-      payload = {
-        assetData: base64,
-        mime: file.type || 'application/octet-stream',
-        size: file.size,
-      };
-    }
+  // v1 image intake optimization (drop surface).
+  let payload: IntakePayload;
+  try {
+    payload = await prepareOptimizedIntake(file, base64, 'drop');
+  } catch {
+    payload = {
+      assetData: base64,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+    };
+  }
 
-    // G-2: informational dedupe — never blocks attachment (I-FI04-1).
-    // Run on the post-optimization bytes since that is what gets stored.
-    try {
-      if (checkAssetDuplicate(payload.assetData, payload.size, dispatcher.getState().container)) {
-        showToast({
-          kind: 'info',
-          message: `「${file.name}」は既存の添付と同一内容です`,
-          autoDismissMs: 3000,
-        });
-      }
-    } catch (dedupeErr) {
-      console.warn(`[PKC2] FI-04: dedupe check failed for "${file.name}"`, dedupeErr);
+  // G-2: informational dedupe toast — never blocks attachment.
+  try {
+    if (checkAssetDuplicate(payload.assetData, payload.size, dispatcher.getState().container)) {
+      showToast({
+        kind: 'info',
+        message: `「${file.name}」は既存の添付と同一内容です`,
+        autoDismissMs: 3000,
+      });
     }
+  } catch (dedupeErr) {
+    console.warn(`[PKC2] FI-04: dedupe check failed for "${file.name}"`, dedupeErr);
+  }
 
     // PR #185: dispatch as PASTE_ATTACHMENT instead of
     // CREATE_ENTRY + COMMIT_EDIT.
@@ -6893,34 +6890,28 @@ function processFileAttachmentWithDedupe(
     //
     // PASTE_ATTACHMENT (used by the paste path historically) creates
     // the entry + body + asset atomically and **does not touch
-    // selectedLid / editingLid / phase / viewMode**. The user keeps
-    // their context; only the sidebar list grows.
-    //
-    // contextLid drives auto-placement:
-    //   - explicit contextFolder (drop on folder) → routes into
-    //     ASSETS subfolder of that folder
-    //   - undefined → uses current selectedLid → walks to nearest
-    //     folder ancestor → routes into ASSETS subfolder
-    // Identical to the CREATE_ENTRY parentFolder/ensureSubfolder
-    // resolution that ran here pre-PR-185.
-    const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const preState = dispatcher.getState();
-    const contextLid: string | null =
-      contextFolder ?? preState.selectedLid ?? null;
+  // selectedLid / editingLid / phase / viewMode**. The user keeps
+  // their context; only the sidebar list grows.
+  //
+  // PR #188: this function is preparation only — the caller decides
+  // whether to dispatch PASTE_ATTACHMENT (single-file path) or
+  // accumulate items into a BATCH_PASTE_ATTACHMENTS dispatch (multi-
+  // file drop / file-picker path) so the renderer fires once per
+  // batch instead of once per file.
+  const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const preState = dispatcher.getState();
+  const contextLid: string | null = contextFolder ?? preState.selectedLid ?? null;
 
-    dispatcher.dispatch({
-      type: 'PASTE_ATTACHMENT',
-      name: file.name,
-      mime: payload.mime,
-      size: payload.size,
-      assetKey,
-      assetData: payload.assetData,
-      contextLid,
-      originalAssetData: payload.originalAssetData,
-      optimizationMeta: payload.optimizationMeta,
-    });
-    onComplete();
-  })();
+  return {
+    name: file.name,
+    mime: payload.mime,
+    size: payload.size,
+    assetKey,
+    assetData: payload.assetData,
+    contextLid,
+    originalAssetData: payload.originalAssetData,
+    optimizationMeta: payload.optimizationMeta,
+  };
 }
 
 /**
