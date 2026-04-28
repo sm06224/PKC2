@@ -19,6 +19,8 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
+import { processFileViaWorker } from './attach-worker-client';
+import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import {
@@ -4786,14 +4788,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // file's base64 + payload become GC-eligible before the next
     // FileReader allocates — keeps peak heap to one file's worth on
     // burst drops.
+    // PR #184: show non-blocking progress badge for multi-file drops.
+    // Single-file drops skip the badge (showAttachProgress is a no-op
+    // when total <= 1).
+    const totalFiles = files.length;
+    showAttachProgress(0, totalFiles);
     function processNext(index: number): void {
-      if (index >= files.length) {
+      if (index >= totalFiles) {
+        showAttachProgress(totalFiles, totalFiles);
         zone.setAttribute('data-pkc-drop-success', 'true');
         setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
         return;
       }
       processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () => {
-        if (index + 1 < files.length) {
+        showAttachProgress(index + 1, totalFiles);
+        if (index + 1 < totalFiles) {
           void yieldToEventLoop().then(() => processNext(index + 1));
         } else {
           processNext(index + 1);
@@ -6811,9 +6820,14 @@ function processFileAttachmentWithDedupe(
   preflightStorageWarn(file, dispatcher);
 
   void (async () => {
+    // PR #184: read + hash the file in a worker so the main thread
+    // stays responsive during burst drops. processFileViaWorker
+    // falls back to a main-thread read when Worker construction
+    // fails, so behaviour stays correct on hostile environments.
     let base64: string;
     try {
-      base64 = await fileToBase64(file);
+      const processed = await processFileViaWorker(file);
+      base64 = processed.base64;
     } catch (err) {
       const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}.`;
       console.warn(`[PKC2] ${msg}`);
