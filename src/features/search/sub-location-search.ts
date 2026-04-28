@@ -84,13 +84,21 @@ export function findSubLocationHits(
 ): SubLocationHit[] {
   const trimmed = query.trim();
   if (trimmed === '') return [];
+  if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return [];
+
+  // PR #182 fast-path: skip the line-split / heading-regex / fence
+  // detection pipeline when the body has no chance of matching.
+  // String#includes is one V8-optimized pass; the alternative is
+  // O(lines × regex evaluations + heading slug counter state) per
+  // entry, multiplied across the whole sidebar list on every keystroke.
+  // For c-1000 with a typical search, ~95% of entries fail this check.
+  const lowerQuery = trimmed.toLowerCase();
+  if (!entry.body.toLowerCase().includes(lowerQuery)) return [];
+
   if (entry.archetype === 'text') {
     return findTextHits(entry, trimmed, maxPerEntry);
   }
-  if (entry.archetype === 'textlog') {
-    return findTextlogHits(entry, trimmed, maxPerEntry);
-  }
-  return [];
+  return findTextlogHits(entry, trimmed, maxPerEntry);
 }
 
 // ─────────────────────────────── TEXT ───────────────────────────────

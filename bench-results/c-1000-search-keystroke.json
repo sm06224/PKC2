@@ -5,126 +5,206 @@
   "measures": [
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 370.5,
+      "startTime": 289.3999999999942,
       "duration": 0
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 370.5,
-      "duration": 204.79999999993015
+      "startTime": 289.3999999999942,
+      "duration": 170.10000000000582
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 370.5,
-      "duration": 204.79999999993015
+      "startTime": 289.3999999999942,
+      "duration": 170.10000000000582
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 370.89999999990687,
-      "duration": 203
+      "startTime": 289.6000000000058,
+      "duration": 169.29999999998836
     },
     {
       "name": "render:sidebar",
-      "startTime": 371,
-      "duration": 71
+      "startTime": 289.70000000001164,
+      "duration": 57.29999999998836
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 382.69999999995343,
-      "duration": 2.599999999976717
+      "startTime": 300.6000000000058,
+      "duration": 1.8999999999941792
     },
     {
-      "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 637.7999999999302,
-      "duration": 229.5
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 300.6000000000058,
+      "duration": 6.199999999982538
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 306.79999999998836,
+      "duration": 0.40000000002328306
+    },
+    {
+      "name": "render:sidebar:flat-loop",
+      "startTime": 307.5,
+      "duration": 38.79999999998836
+    },
+    {
+      "name": "render:sidebar:sublocation-scan",
+      "startTime": 307.70000000001164,
+      "duration": 38.59999999997672
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 637.8999999999069,
+      "startTime": 519.1000000000058,
       "duration": 0
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 637.8999999999069,
-      "duration": 229.40000000002328
+      "startTime": 519.1000000000058,
+      "duration": 182.80000000001746
     },
     {
-      "name": "render:sidebar",
-      "startTime": 638.1999999999534,
-      "duration": 46.5
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 519.1000000000058,
+      "duration": 182.80000000001746
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 638.1999999999534,
-      "duration": 227.30000000004657
+      "startTime": 519.2999999999884,
+      "duration": 181.5
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 519.3999999999942,
+      "duration": 39.30000000001746
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 526.7000000000116,
+      "duration": 5.7999999999883585
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 643.8999999999069,
-      "duration": 0.9000000000232831
+      "startTime": 526.7999999999884,
+      "duration": 0.7000000000116415
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 532.5,
+      "duration": 0.10000000000582077
+    },
+    {
+      "name": "render:sidebar:sublocation-scan",
+      "startTime": 532.8999999999942,
+      "duration": 25.300000000017462
+    },
+    {
+      "name": "render:sidebar:flat-loop",
+      "startTime": 532.8999999999942,
+      "duration": 25.39999999999418
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 925.6999999999534,
+      "startTime": 757.5,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
+      "startTime": 757.5,
+      "duration": 109.79999999998836
+    },
+    {
+      "name": "dispatch:SET_SEARCH_QUERY",
+      "startTime": 757.5,
+      "duration": 109.79999999998836
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 757.9000000000233,
+      "duration": 36.29999999998836
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 757.9000000000233,
+      "duration": 108.89999999996508
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 764,
+      "duration": 0.7000000000116415
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 764,
+      "duration": 5.5
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 769.5,
       "duration": 0.09999999997671694
     },
     {
+      "name": "render:sidebar:flat-loop",
+      "startTime": 769.7999999999884,
+      "duration": 23.900000000023283
+    },
+    {
+      "name": "render:sidebar:sublocation-scan",
+      "startTime": 769.9000000000233,
+      "duration": 23.79999999998836
+    },
+    {
       "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 925.6999999999534,
-      "duration": 112.69999999995343
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 925.7999999999302,
-      "duration": 112.59999999997672
-    },
-    {
-      "name": "render:scope=sidebar-only",
-      "startTime": 926.1999999999534,
-      "duration": 111.09999999997672
-    },
-    {
-      "name": "render:sidebar",
-      "startTime": 926.2999999999302,
-      "duration": 37.5
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 932,
-      "duration": 0.6999999999534339
+      "startTime": 903.7000000000116,
+      "duration": 121.29999999998836
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:reduce",
-      "startTime": 1092.2999999999302,
+      "startTime": 903.7999999999884,
       "duration": 0
     },
     {
       "name": "dispatch:SET_SEARCH_QUERY:notify-state",
-      "startTime": 1092.2999999999302,
-      "duration": 151.80000000004657
-    },
-    {
-      "name": "dispatch:SET_SEARCH_QUERY",
-      "startTime": 1092.2999999999302,
-      "duration": 151.80000000004657
+      "startTime": 903.7999999999884,
+      "duration": 121.20000000001164
     },
     {
       "name": "render:sidebar",
-      "startTime": 1092.6999999999534,
-      "duration": 39.09999999997672
+      "startTime": 904.0999999999767,
+      "duration": 33.100000000034925
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 1092.6999999999534,
-      "duration": 150.40000000002328
+      "startTime": 904.0999999999767,
+      "duration": 120.30000000004657
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 1098.2999999999302,
-      "duration": 0.7000000000698492
+      "startTime": 910,
+      "duration": 0.5999999999767169
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 910,
+      "duration": 4.7000000000116415
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 914.7000000000116,
+      "duration": 0.09999999997671694
+    },
+    {
+      "name": "render:sidebar:sublocation-scan",
+      "startTime": 915,
+      "duration": 21.79999999998836
+    },
+    {
+      "name": "render:sidebar:flat-loop",
+      "startTime": 915,
+      "duration": 21.79999999998836
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 11.35,
-  "capturedAt": "2026-04-28T03:28:46.732Z"
+  "heapUsedMb": 13.64,
+  "capturedAt": "2026-04-28T04:05:48.841Z"
 }

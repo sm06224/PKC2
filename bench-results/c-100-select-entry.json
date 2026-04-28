@@ -4,52 +4,67 @@
   "scenario": "select-entry",
   "measures": [
     {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 172.89999999999418,
+      "duration": 53.19999999998254
+    },
+    {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 214.59999999997672,
+      "startTime": 173,
       "duration": 0
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 214.59999999997672,
-      "duration": 61.59999999997672
-    },
-    {
-      "name": "dispatch:SELECT_ENTRY",
-      "startTime": 214.59999999997672,
-      "duration": 65.29999999993015
+      "startTime": 173,
+      "duration": 50.09999999997672
     },
     {
       "name": "render:phase=ready",
-      "startTime": 215.29999999993015,
-      "duration": 60.70000000006985
+      "startTime": 173.29999999998836,
+      "duration": 49.79999999998836
     },
     {
       "name": "render:sidebar",
-      "startTime": 217.69999999995343,
-      "duration": 2.800000000046566
+      "startTime": 175.19999999998254,
+      "duration": 2.1000000000058208
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 218.29999999993015,
+      "startTime": 175.5,
+      "duration": 0
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 175.5,
       "duration": 0.09999999997671694
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 175.59999999997672,
+      "duration": 0.20000000001164153
     },
     {
       "name": "tree:buildTree",
-      "startTime": 218.69999999995343,
-      "duration": 0.09999999997671694
+      "startTime": 175.79999999998836,
+      "duration": 0.10000000000582077
+    },
+    {
+      "name": "render:sidebar:tree-loop",
+      "startTime": 175.89999999999418,
+      "duration": 1.2999999999883585
     },
     {
       "name": "render:center",
-      "startTime": 220.59999999997672,
-      "duration": 2.799999999930151
+      "startTime": 177.29999999998836,
+      "duration": 2
     },
     {
       "name": "render:meta",
-      "startTime": 223.5,
-      "duration": 5.099999999976717
+      "startTime": 179.29999999998836,
+      "duration": 4.899999999994179
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 9.54,
-  "capturedAt": "2026-04-28T03:28:40.502Z"
+  "capturedAt": "2026-04-28T04:05:43.932Z"
 }
