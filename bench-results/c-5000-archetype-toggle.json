@@ -4,52 +4,52 @@
   "scenario": "archetype-toggle",
   "measures": [
     {
-      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 1018.8000000000466,
-      "duration": 148.09999999997672
-    },
-    {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 1018.9000000000233,
+      "startTime": 679.2999999999884,
       "duration": 0
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 1018.9000000000233,
-      "duration": 148
+      "startTime": 679.2999999999884,
+      "duration": 148.5
     },
     {
-      "name": "render:scope=sidebar-only",
-      "startTime": 1021.4000000000233,
-      "duration": 145.30000000004657
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
+      "startTime": 679.2999999999884,
+      "duration": 148.5
     },
     {
       "name": "render:sidebar",
-      "startTime": 1021.5,
-      "duration": 127.70000000006985
+      "startTime": 680.7000000000116,
+      "duration": 135.70000000001164
     },
     {
-      "name": "filter:applyFilters",
-      "startTime": 1142.8000000000466,
-      "duration": 0.9000000000232831
+      "name": "render:scope=sidebar-only",
+      "startTime": 680.7000000000116,
+      "duration": 147
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 1142.8000000000466,
-      "duration": 1
+      "startTime": 811.5,
+      "duration": 0.7999999999883585
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 811.6000000000349,
+      "duration": 0.5
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 1143.8000000000466,
-      "duration": 0.09999999997671694
+      "startTime": 812.2999999999884,
+      "duration": 0.30000000004656613
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 1143.9000000000233,
-      "duration": 3.700000000069849
+      "startTime": 812.7000000000116,
+      "duration": 2.2999999999883585
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 45.2,
-  "capturedAt": "2026-04-28T15:31:48.139Z"
+  "heapUsedMb": 48.07,
+  "capturedAt": "2026-04-28T20:03:03.705Z"
 }
