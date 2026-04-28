@@ -1583,6 +1583,56 @@
      as surrounding chrome without losing readability. */
   line-height: 1.35;
 }
+
+/* PR #196: copy button overlay for code fences and tables.
+ * The renderer wraps every <pre>…</pre> and <table>…</table> in a
+ * `.pkc-md-block` host. The button sits top-right; hover (desktop)
+ * or `:focus-within` (touch) reveals it. A click is dispatched
+ * through action-binder's `copy-md-block` handler which reads the
+ * host's textContent + innerHTML and writes both to the clipboard. */
+.pkc-md-block {
+  position: relative;
+}
+.pkc-md-block > .pkc-md-copy-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 2;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  background: var(--c-bg-elevated, rgba(20, 20, 30, 0.85));
+  color: var(--c-fg, #eaeaea);
+  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius, 4px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+  /* keep button text/icon visible regardless of code-block bg */
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+.pkc-md-block:hover > .pkc-md-copy-btn,
+.pkc-md-block:focus-within > .pkc-md-copy-btn,
+.pkc-md-copy-btn:focus,
+.pkc-md-copy-btn[data-pkc-flash="true"] {
+  opacity: 1;
+}
+.pkc-md-copy-btn:hover {
+  background: var(--c-accent, #4aa3ff);
+  color: #fff;
+}
+.pkc-md-copy-btn[data-pkc-flash="true"] {
+  background: var(--c-success, #2ea043);
+  color: #fff;
+}
+/* Touch: always visible, larger tap target */
+@media (pointer: coarse) {
+  .pkc-md-block > .pkc-md-copy-btn {
+    opacity: 0.85;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.95rem;
+  }
+}
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
   margin: 0.5em 0 0.25em;

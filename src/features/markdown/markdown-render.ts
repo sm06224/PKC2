@@ -122,9 +122,33 @@ const defaultFence = md.renderer.rules.fence ??
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
   const html = renderCsvFence(token.content, token.info);
-  if (html !== null) return html;
-  return defaultFence(tokens, idx, options, env, self);
+  if (html !== null) return wrapWithCopyButton(html, 'code');
+  const fenceHtml = defaultFence(tokens, idx, options, env, self);
+  return wrapWithCopyButton(fenceHtml, 'code');
 };
+
+// PR #196: table copy button overlay. Wraps the entire <table>…</table>
+// in a `<div class="pkc-md-block">` carrying the copy button. The
+// button reads the rendered table cell text on click (via
+// action-binder) and writes both `text/plain` (TSV) and `text/html`
+// (the table's own HTML) to the clipboard via `copyMarkdownAndHtml`-
+// style multi-MIME write.
+md.renderer.rules.table_open = function (tokens, idx, options, _env, self) {
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
+};
+md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
+  return `${self.renderToken(tokens, idx, options)}</div>`;
+};
+
+/**
+ * PR #196: wrap a code block's HTML in a copy-button host. The button
+ * carries `data-pkc-action="copy-md-block"` so the existing
+ * `action-binder` event delegation picks it up. The host element is
+ * `position: relative` so the button can sit absolutely top-right.
+ */
+function wrapWithCopyButton(innerHtml: string, kind: 'code' | 'table'): string {
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
+}
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
