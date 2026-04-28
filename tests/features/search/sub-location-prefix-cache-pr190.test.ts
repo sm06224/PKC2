@@ -98,34 +98,28 @@ describe('findSubLocationHits — PR #190 prefix-incremental cache', () => {
     }
   });
 
-  it('cache invalidates when query shrinks (longer → shorter)', () => {
-    const entry = makeEntry('e1', 'abc');
-    findSubLocationHits(entry, 'xyz'); // no-match
-    const spy = spyOnBody(entry);
-    try {
-      // Shorter query "xy" is NOT an extension of "xyz" — cache must
-      // invalidate and the body must be re-scanned.
-      findSubLocationHits(entry, 'xy');
-      expect(spy.reads).toBeGreaterThan(0);
-    } finally {
-      spy.restore();
-    }
+  it('cache invalidates when query shrinks: prior no-match entries get re-evaluated', () => {
+    // PR #190 + PR #191 layering: PR #191's WeakMap-keyed analysis
+    // cache means the body is only read once per Entry ref. The
+    // PR #190 no-match cache, when invalidated, must let the entry
+    // re-evaluate against the cached analysis — verified here by
+    // result behaviour rather than spy.reads.
+    const entry = makeEntry('e1', 'definitely contains xy here');
+    findSubLocationHits(entry, 'xyz'); // no-match cached for "xyz"
+    // Shorter query "xy" is NOT an extension of "xyz" — cache invalidates.
+    // The entry's body DOES contain "xy" so we must get a hit.
+    const hits = findSubLocationHits(entry, 'xy');
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it('cache invalidates when query changes to non-extension', () => {
-    const entry = makeEntry('e1', 'abc');
-    findSubLocationHits(entry, 'xy'); // no-match
-    const spy = spyOnBody(entry);
-    try {
-      // "ab" is a different query, not an extension of "xy". Body
-      // contains "abc" → the new query DOES match. Cache must
-      // invalidate.
-      const hits = findSubLocationHits(entry, 'ab');
-      expect(hits.length).toBeGreaterThan(0);
-      expect(spy.reads).toBeGreaterThan(0);
-    } finally {
-      spy.restore();
-    }
+    const entry = makeEntry('e1', 'abc here');
+    findSubLocationHits(entry, 'xy'); // no-match cached
+    // "ab" is a different query, not an extension of "xy". Body
+    // contains "abc" → the new query DOES match. Cache must
+    // invalidate so we see the hit.
+    const hits = findSubLocationHits(entry, 'ab');
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it('a different Entry reference (post-edit) is NOT in the no-match set', () => {

@@ -98,19 +98,87 @@ export function findSubLocationHits(
 
   // PR #182 fast-path: skip the line-split / heading-regex / fence
   // detection pipeline when the body has no chance of matching.
-  // String#includes is one V8-optimized pass; the alternative is
-  // O(lines × regex evaluations + heading slug counter state) per
-  // entry, multiplied across the whole sidebar list on every keystroke.
+  // PR #191: lowerBody is now precomputed once per Entry ref via
+  // WeakMap; the per-keystroke `entry.body.toLowerCase()` allocation
+  // disappears after the first scan of each entry.
+  const analysis = getEntryAnalysis(entry);
   const lowerQuery = trimmed.toLowerCase();
-  if (!entry.body.toLowerCase().includes(lowerQuery)) {
+  if (!analysis.lowerBody.includes(lowerQuery)) {
     lastNoMatch.add(entry);
     return [];
   }
 
   if (entry.archetype === 'text') {
-    return findTextHits(entry, trimmed, maxPerEntry);
+    return findTextHits(entry, analysis as TextAnalysis, trimmed, maxPerEntry);
   }
-  return findTextlogHits(entry, trimmed, maxPerEntry);
+  return findTextlogHits(entry, analysis as TextlogAnalysis, trimmed, maxPerEntry);
+}
+
+// ── PR #191 prebuilt per-entry analysis cache ─────────────────────
+//
+// `findSubLocationHits` is called once per entry on every keystroke,
+// and inside it `findTextHits` re-splits + re-lowercases the entire
+// body. Both are pure functions of the Entry's `body` string — and
+// since the reducer rebuilds the Entry reference on any body change
+// (COMMIT_EDIT / QUICK_UPDATE_ENTRY), keying a cache on the Entry
+// reference itself is sufficient:
+//
+//   - same Entry ref ⇒ body unchanged ⇒ cached splits / lower are valid
+//   - new Entry ref (post-edit) ⇒ WeakMap miss ⇒ rebuild on next read
+//
+// WeakMap auto-collects entries that fall out of `container.entries`,
+// so the cache shape never grows beyond the live container size.
+
+interface TextAnalysis {
+  kind: 'text';
+  /** Body lowercased once (used by the early-exit fast path). */
+  lowerBody: string;
+  /** Body split into lines (`/\r?\n/`). */
+  lines: ReadonlyArray<string>;
+  /** Lowercased lines, parallel index to `lines`. */
+  lowerLines: ReadonlyArray<string>;
+}
+
+interface TextlogAnalysis {
+  kind: 'textlog';
+  lowerBody: string;
+  /** Pre-parsed textlog body. Cached so every keystroke skips the parse. */
+  parsed: ReturnType<typeof parseTextlogBody>;
+  /** Lowercased log texts, parallel index to `parsed.entries`. */
+  lowerLogTexts: ReadonlyArray<string>;
+}
+
+type EntryAnalysis = TextAnalysis | TextlogAnalysis;
+
+const analysisCache: WeakMap<Entry, EntryAnalysis> = new WeakMap();
+
+function buildTextAnalysis(entry: Entry): TextAnalysis {
+  const lines = entry.body.split(/\r?\n/);
+  const lowerLines = lines.map((l) => l.toLowerCase());
+  const lowerBody = lowerLines.join('\n');
+  return { kind: 'text', lowerBody, lines, lowerLines };
+}
+
+function buildTextlogAnalysis(entry: Entry): TextlogAnalysis {
+  const parsed = parseTextlogBody(entry.body);
+  const lowerLogTexts = parsed.entries.map((l) => (l.text ?? '').toLowerCase());
+  return {
+    kind: 'textlog',
+    lowerBody: lowerLogTexts.join('\n'),
+    parsed,
+    lowerLogTexts,
+  };
+}
+
+function getEntryAnalysis(entry: Entry): EntryAnalysis {
+  let cached = analysisCache.get(entry);
+  if (!cached) {
+    cached = entry.archetype === 'text'
+      ? buildTextAnalysis(entry)
+      : buildTextlogAnalysis(entry);
+    analysisCache.set(entry, cached);
+  }
+  return cached;
 }
 
 // ── PR #190 prefix-incremental no-match cache ─────────────────────
@@ -152,17 +220,26 @@ export function __resetSubLocationHitsCacheForTest(): void {
 
 // ─────────────────────────────── TEXT ───────────────────────────────
 
-function findTextHits(entry: Entry, query: string, maxPerEntry: number): SubLocationHit[] {
+function findTextHits(
+  entry: Entry,
+  analysis: TextAnalysis,
+  query: string,
+  maxPerEntry: number,
+): SubLocationHit[] {
   const lowerQuery = query.toLowerCase();
   const hits: SubLocationHit[] = [];
   const seen = new Set<string>();
 
-  const lines = entry.body.split(/\r?\n/);
+  // PR #191: lines + lowerLines come from the WeakMap cache — same
+  // values across every keystroke for an unchanged Entry.
+  const { lines, lowerLines } = analysis;
   const slugOf = makeSlugCounter();
   let currentHeading: { slug: string; text: string } | null = null;
   let inFence = false;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const lower = lowerLines[i]!;
     // Fenced code block toggle (matches extractHeadingsFromMarkdown).
     if (/^\s{0,3}(?:```|~~~)/.test(line)) {
       inFence = !inFence;
@@ -185,8 +262,8 @@ function findTextHits(entry: Entry, query: string, maxPerEntry: number): SubLoca
       // because the regex below runs on the same line.
     }
 
-    // Check match on this line.
-    if (!line.toLowerCase().includes(lowerQuery)) continue;
+    // Check match on this line. PR #191: lowerLine is precomputed.
+    if (!lower.includes(lowerQuery)) continue;
 
     const subId = currentHeading
       ? `heading:${currentHeading.slug}`
@@ -212,15 +289,23 @@ function findTextHits(entry: Entry, query: string, maxPerEntry: number): SubLoca
 
 // ─────────────────────────────── TEXTLOG ────────────────────────────
 
-function findTextlogHits(entry: Entry, query: string, maxPerEntry: number): SubLocationHit[] {
+function findTextlogHits(
+  entry: Entry,
+  analysis: TextlogAnalysis,
+  query: string,
+  maxPerEntry: number,
+): SubLocationHit[] {
   const lowerQuery = query.toLowerCase();
-  const body = parseTextlogBody(entry.body);
   const hits: SubLocationHit[] = [];
   const seen = new Set<string>();
 
-  for (const log of body.entries) {
+  // PR #191: parsed body + lowercased log texts come from the
+  // WeakMap cache — `parseTextlogBody` runs once per Entry ref.
+  const { parsed, lowerLogTexts } = analysis;
+  for (let i = 0; i < parsed.entries.length; i++) {
+    const log = parsed.entries[i]!;
     if (!log.text) continue;
-    if (!log.text.toLowerCase().includes(lowerQuery)) continue;
+    if (!lowerLogTexts[i]!.includes(lowerQuery)) continue;
     const subId = `log:${log.id}`;
     if (seen.has(subId)) continue;
     seen.add(subId);

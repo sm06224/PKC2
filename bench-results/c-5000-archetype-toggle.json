@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 993.3000000000466,
+      "startTime": 688.5,
       "duration": 0
     },
     {
-      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 993.3000000000466,
-      "duration": 167.19999999995343
-    },
-    {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 993.3999999999069,
-      "duration": 167.10000000009313
+      "startTime": 688.5,
+      "duration": 159.70000000001164
     },
     {
-      "name": "render:scope=sidebar-only",
-      "startTime": 996.1999999999534,
-      "duration": 164.10000000009313
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
+      "startTime": 688.5,
+      "duration": 159.70000000001164
     },
     {
       "name": "render:sidebar",
-      "startTime": 996.3000000000466,
-      "duration": 149.5
+      "startTime": 689.7999999999884,
+      "duration": 146.80000000004657
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 689.7999999999884,
+      "duration": 158.40000000002328
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 1138.1999999999534,
-      "duration": 1.1000000000931323
+      "startTime": 831.1000000000349,
+      "duration": 0.5999999999767169
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 1138.1999999999534,
-      "duration": 1.4000000001396984
+      "startTime": 831.1000000000349,
+      "duration": 0.8999999999650754
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 1139.6999999999534,
+      "startTime": 832,
       "duration": 0
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 1141.1999999999534,
-      "duration": 3.199999999953434
+      "startTime": 833.2999999999884,
+      "duration": 2.300000000046566
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 33.47,
-  "capturedAt": "2026-04-28T14:54:29.020Z"
+  "capturedAt": "2026-04-28T15:10:35.474Z"
 }
