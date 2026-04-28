@@ -611,6 +611,48 @@ export type UserAction =
       };
     }
   /**
+   * BATCH_PASTE_ATTACHMENTS — atomic multi-attachment intake (PR #188).
+   *
+   * Contract:
+   * - Same per-item semantics as PASTE_ATTACHMENT (ASSETS auto-place
+   *   per item, root-level ASSETS fallback per PR #186, no phase /
+   *   editingLid / selectedLid mutation).
+   * - All items are applied in ONE reduction → ONE container snapshot
+   *   → ONE render. Contrast pre-PR-188 path: N PASTE_ATTACHMENT
+   *   dispatches → N renders → N visible sidebar updates.
+   * - Items are processed in array order; later items see the
+   *   accumulated container from earlier items in the same batch
+   *   (so e.g. the auto-created root-level ASSETS folder is reused
+   *   across all items in a single drop).
+   * - Empty `items` is a no-op (no events, identity-equal state).
+   * - Blocked when readonly / container absent (same as PASTE_ATTACHMENT).
+   *
+   * Used by the multi-file drop / file-picker outer loops in
+   * action-binder.ts. Single-file paths still dispatch PASTE_ATTACHMENT
+   * directly (no reason to batch a single item).
+   */
+  | {
+      type: 'BATCH_PASTE_ATTACHMENTS';
+      items: Array<{
+        name: string;
+        mime: string;
+        size: number;
+        assetKey: string;
+        assetData: string;
+        contextLid: string | null;
+        originalAssetData?: string;
+        optimizationMeta?: {
+          originalMime: string;
+          originalSize: number;
+          method: string;
+          quality: number;
+          resized: boolean;
+          originalDimensions: { width: number; height: number };
+          optimizedDimensions: { width: number; height: number };
+        };
+      }>;
+    }
+  /**
    * SET_SANDBOX_POLICY — update container-level default sandbox policy.
    *
    * Contract:

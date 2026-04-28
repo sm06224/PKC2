@@ -591,6 +591,132 @@ function blocked(state: AppState, action: Dispatchable): ReduceResult {
   return { state, events: [] };
 }
 
+/**
+ * Per-item attachment intake — shared by `PASTE_ATTACHMENT` (single)
+ * and `BATCH_PASTE_ATTACHMENTS` (multi, PR #188).
+ *
+ * Applies one attachment to `container`:
+ *   - resolves the placement folder (auto-placement → ASSETS subfolder
+ *     of the context folder, or root-level ASSETS if no context)
+ *   - lazily creates the bucket folder when missing
+ *   - adds the attachment entry + body + assets
+ *   - links the attachment under the bucket folder via a structural
+ *     relation
+ *
+ * Mutates `events` (push). Returns the new container snapshot. Does
+ * NOT touch phase / selectedLid / editingLid / viewMode — that's the
+ * point of routing through PASTE_ATTACHMENT (silent attach).
+ *
+ * The function expects `item` to carry the same shape as a single
+ * `PASTE_ATTACHMENT` payload (`{ name, mime, size, assetKey,
+ * assetData, contextLid, originalAssetData?, optimizationMeta? }`).
+ */
+function applyAttachmentItem(
+  containerIn: import('../../core/model/container').Container,
+  events: DomainEvent[],
+  item: {
+    name: string;
+    mime: string;
+    size: number;
+    assetKey: string;
+    assetData: string;
+    contextLid: string | null;
+    originalAssetData?: string;
+    optimizationMeta?: {
+      originalMime: string;
+      originalSize: number;
+      method: string;
+      quality: number;
+      resized: boolean;
+      originalDimensions: { width: number; height: number };
+      optimizedDimensions: { width: number; height: number };
+    };
+  },
+  ts: string,
+): import('../../core/model/container').Container {
+  let container = containerIn;
+  const subName = 'ASSETS';
+  const contextFolderLid = resolveAutoPlacementFolder(container, item.contextLid);
+  let placementParentLid: string | null = null;
+
+  if (contextFolderLid) {
+    const contextFolder = container.entries.find((e) => e.lid === contextFolderLid);
+    if (contextFolder && contextFolder.title === subName) {
+      placementParentLid = contextFolderLid;
+    } else {
+      const existing = findSubfolder(container, contextFolderLid, subName);
+      if (existing) {
+        placementParentLid = existing;
+      } else {
+        const subLid = generateLid();
+        container = addEntry(container, subLid, 'folder', subName, ts);
+        events.push({ type: 'ENTRY_CREATED', lid: subLid, archetype: 'folder' });
+        const subRelId = generateLid();
+        container = addRelation(container, subRelId, contextFolderLid, subLid, 'structural', ts);
+        events.push({
+          type: 'RELATION_CREATED', id: subRelId,
+          from: contextFolderLid, to: subLid, kind: 'structural',
+        });
+        placementParentLid = subLid;
+      }
+    }
+  } else {
+    // PR #186 root-fallback — auto-create root-level ASSETS folder.
+    const existingRoot = findRootLevelFolder(container, subName);
+    if (existingRoot) {
+      placementParentLid = existingRoot;
+    } else {
+      const rootSubLid = generateLid();
+      container = addEntry(container, rootSubLid, 'folder', subName, ts);
+      events.push({ type: 'ENTRY_CREATED', lid: rootSubLid, archetype: 'folder' });
+      placementParentLid = rootSubLid;
+    }
+  }
+
+  const attachmentLid = generateLid();
+  const bodyData: Record<string, unknown> = {
+    name: item.name,
+    mime: item.mime,
+    size: item.size,
+    asset_key: item.assetKey,
+  };
+  if (item.optimizationMeta) {
+    const provenance: Record<string, unknown> = {
+      original_mime: item.optimizationMeta.originalMime,
+      original_size: item.optimizationMeta.originalSize,
+      method: item.optimizationMeta.method,
+      quality: item.optimizationMeta.quality,
+      resized: item.optimizationMeta.resized,
+      original_dimensions: item.optimizationMeta.originalDimensions,
+      optimized_dimensions: item.optimizationMeta.optimizedDimensions,
+    };
+    if (item.originalAssetData) {
+      provenance.original_asset_key = `${item.assetKey}__original`;
+    }
+    bodyData.optimized = provenance;
+  }
+  const bodyMeta = JSON.stringify(bodyData);
+  container = addEntry(container, attachmentLid, 'attachment', item.name, ts);
+  container = updateEntry(container, attachmentLid, item.name, bodyMeta, ts);
+  const assetsToMerge: Record<string, string> = { [item.assetKey]: item.assetData };
+  if (item.originalAssetData) {
+    assetsToMerge[`${item.assetKey}__original`] = item.originalAssetData;
+  }
+  container = mergeAssets(container, assetsToMerge);
+  events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
+
+  if (placementParentLid) {
+    const attRelId = generateLid();
+    container = addRelation(container, attRelId, placementParentLid, attachmentLid, 'structural', ts);
+    events.push({
+      type: 'RELATION_CREATED', id: attRelId,
+      from: placementParentLid, to: attachmentLid, kind: 'structural',
+    });
+  }
+
+  return container;
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -2829,106 +2955,27 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
 
       const ts = now();
       const events: DomainEvent[] = [];
+      const container = applyAttachmentItem(state.container, events, action, ts);
+      const next: AppState = { ...state, container };
+      return { state: next, events };
+    }
+    case 'BATCH_PASTE_ATTACHMENTS': {
+      // PR #188: same per-item semantics as PASTE_ATTACHMENT, applied
+      // in one reduction so the dispatcher fires one render for the
+      // whole burst. Items are processed in order and later items see
+      // earlier ones in the accumulating container — so the auto-
+      // created root-level / nested ASSETS folder is reused across
+      // every file in the same drop.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (action.items.length === 0) return { state, events: [] };
+
+      const ts = now();
+      const events: DomainEvent[] = [];
       let container = state.container;
-
-      // Auto-placement: inherit the current context's folder and
-      // route the attachment into an `ASSETS` subfolder inside it. See
-      // docs/development/auto-folder-placement-for-generated-entries.md.
-      const contextFolderLid = resolveAutoPlacementFolder(container, action.contextLid);
-
-      // Resolve final placement parent: skip the subfolder layer when
-      // the context is already titled ASSETS; otherwise reuse existing
-      // ASSETS child or create one in the same reduction.
-      //
-      // PR #186 (2026-04-28) — User direction:
-      //   「root配置はNG rootでもASSETS、TODOSの挙動は一緒」
-      // Pre-PR-186 the contextFolderLid === null branch silently
-      // dropped the attachment at root unfiled. The new contract is:
-      // attachments ALWAYS land in an ASSETS folder. When no folder
-      // ancestor resolves, we fall back to a root-level ASSETS folder,
-      // creating it on first use.
-      const subName = 'ASSETS';
-      let placementParentLid: string | null = null;
-      if (contextFolderLid) {
-        const contextFolder = container.entries.find((e) => e.lid === contextFolderLid);
-        if (contextFolder && contextFolder.title === subName) {
-          placementParentLid = contextFolderLid;
-        } else {
-          const existing = findSubfolder(container, contextFolderLid, subName);
-          if (existing) {
-            placementParentLid = existing;
-          } else {
-            const subLid = generateLid();
-            container = addEntry(container, subLid, 'folder', subName, ts);
-            events.push({ type: 'ENTRY_CREATED', lid: subLid, archetype: 'folder' });
-            const subRelId = generateLid();
-            container = addRelation(container, subRelId, contextFolderLid, subLid, 'structural', ts);
-            events.push({
-              type: 'RELATION_CREATED', id: subRelId,
-              from: contextFolderLid, to: subLid, kind: 'structural',
-            });
-            placementParentLid = subLid;
-          }
-        }
-      } else {
-        // No folder context — route through root-level ASSETS.
-        const existingRoot = findRootLevelFolder(container, subName);
-        if (existingRoot) {
-          placementParentLid = existingRoot;
-        } else {
-          const rootSubLid = generateLid();
-          container = addEntry(container, rootSubLid, 'folder', subName, ts);
-          events.push({ type: 'ENTRY_CREATED', lid: rootSubLid, archetype: 'folder' });
-          placementParentLid = rootSubLid;
-        }
+      for (const item of action.items) {
+        container = applyAttachmentItem(container, events, item, ts);
       }
-
-      // Create attachment entry (no phase transition).
-      const attachmentLid = generateLid();
-      const bodyData: Record<string, unknown> = {
-        name: action.name,
-        mime: action.mime,
-        size: action.size,
-        asset_key: action.assetKey,
-      };
-      // v1 image intake optimization (paste + editor-drop surfaces):
-      // attach provenance metadata + optional original asset pointer.
-      if (action.optimizationMeta) {
-        const provenance: Record<string, unknown> = {
-          original_mime: action.optimizationMeta.originalMime,
-          original_size: action.optimizationMeta.originalSize,
-          method: action.optimizationMeta.method,
-          quality: action.optimizationMeta.quality,
-          resized: action.optimizationMeta.resized,
-          original_dimensions: action.optimizationMeta.originalDimensions,
-          optimized_dimensions: action.optimizationMeta.optimizedDimensions,
-        };
-        if (action.originalAssetData) {
-          provenance.original_asset_key = `${action.assetKey}__original`;
-        }
-        bodyData.optimized = provenance;
-      }
-      const bodyMeta = JSON.stringify(bodyData);
-      container = addEntry(container, attachmentLid, 'attachment', action.name, ts);
-      container = updateEntry(container, attachmentLid, action.name, bodyMeta, ts);
-      const assetsToMerge: Record<string, string> = { [action.assetKey]: action.assetData };
-      if (action.originalAssetData) {
-        assetsToMerge[`${action.assetKey}__original`] = action.originalAssetData;
-      }
-      container = mergeAssets(container, assetsToMerge);
-      events.push({ type: 'ENTRY_CREATED', lid: attachmentLid, archetype: 'attachment' });
-
-      // Place the attachment under the resolved folder. When no
-      // context folder exists (selection at root / unresolved), no
-      // structural relation is added and the attachment lands at root
-      // — preserving the historical root-fallback path and avoiding
-      // any root-level auto-ASSETS bucket.
-      if (placementParentLid) {
-        const attRelId = generateLid();
-        container = addRelation(container, attRelId, placementParentLid, attachmentLid, 'structural', ts);
-        events.push({ type: 'RELATION_CREATED', id: attRelId, from: placementParentLid, to: attachmentLid, kind: 'structural' });
-      }
-
       const next: AppState = { ...state, container };
       return { state: next, events };
     }
