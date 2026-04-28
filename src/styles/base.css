@@ -6697,6 +6697,40 @@ mark.pkc-search-mark {
   .pkc-textlog-append-input {
     min-height: 9rem;
   }
+
+  /* PR #195 (2026-04-28): iOS Safari auto-zooms when focusing an
+   * input / textarea whose computed font-size is < 16 px. The zoom
+   * leaves the user stuck at >100 % scale until they manually
+   * pinch-out, which the user audit calls out as
+   *   「iPhoneでテキストエリア選択時などに拡大縮小されて、
+   *    俯瞰性が崩れる。なんとかならないか?」
+   *
+   * Fix: bump every editable surface's font-size to 16 px on touch
+   * devices. Desktop (`pointer: fine`) keeps the existing 0.7-0.9 rem
+   * scales — only iPhone / iPad touch flows are affected.
+   *
+   * Selectors cover every interactive surface that can take focus:
+   *   - textarea  (TEXT body editor, TEXTLOG append, todo description, …)
+   *   - text-like inputs (search, title, todo date, palette filter, …)
+   * Buttons / range / radio / checkbox don't trigger the zoom and
+   * keep their current sizing. */
+  textarea,
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="url"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="month"],
+  input[type="week"],
+  input:not([type]),
+  [contenteditable="true"] {
+    font-size: 16px;
+  }
 }
 
 @media (pointer: coarse) and (max-width: 640px) {
