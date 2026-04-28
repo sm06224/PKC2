@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 328.69999999995343,
-      "duration": 0.10000000009313226
-    },
-    {
-      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 328.69999999995343,
-      "duration": 20.800000000046566
+      "startTime": 270.20000000001164,
+      "duration": 0
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 328.80000000004657,
-      "duration": 20.699999999953434
+      "startTime": 270.20000000001164,
+      "duration": 17.79999999998836
+    },
+    {
+      "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
+      "startTime": 270.20000000001164,
+      "duration": 17.899999999965075
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 329.60000000009313,
-      "duration": 19.800000000046566
+      "startTime": 270.70000000001164,
+      "duration": 17.20000000001164
     },
     {
       "name": "render:sidebar",
-      "startTime": 329.69999999995343,
-      "duration": 14.700000000186265
+      "startTime": 270.9000000000233,
+      "duration": 13.5
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 342.69999999995343,
+      "startTime": 282.5999999999767,
       "duration": 0.30000000004656613
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 342.69999999995343,
-      "duration": 0.4000000001396984
+      "startTime": 282.5999999999767,
+      "duration": 0.30000000004656613
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 343.10000000009313,
+      "startTime": 282.9000000000233,
       "duration": 0
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 343.4000000001397,
-      "duration": 0.7999999998137355
+      "startTime": 283.4000000000233,
+      "duration": 0.6999999999534339
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 17.36,
-  "capturedAt": "2026-04-28T14:54:17.966Z"
+  "capturedAt": "2026-04-28T15:10:26.801Z"
 }

@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 257.5999999998603,
+      "startTime": 188.19999999995343,
       "duration": 0
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 257.5999999998603,
-      "duration": 6.699999999953434
+      "startTime": 188.19999999995343,
+      "duration": 5.100000000034925
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 257.5999999998603,
-      "duration": 6.800000000046566
-    },
-    {
-      "name": "render:scope=sidebar-only",
-      "startTime": 258,
-      "duration": 6.199999999953434
+      "startTime": 188.19999999995343,
+      "duration": 5.100000000034925
     },
     {
       "name": "render:sidebar",
-      "startTime": 258.0999999998603,
-      "duration": 2.6000000000931323
+      "startTime": 188.59999999997672,
+      "duration": 2.2000000000116415
+    },
+    {
+      "name": "render:scope=sidebar-only",
+      "startTime": 188.59999999997672,
+      "duration": 4.599999999976717
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 259.89999999990687,
-      "duration": 0.19999999995343387
+      "startTime": 190,
+      "duration": 0.29999999998835847
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 259.89999999990687,
-      "duration": 0.19999999995343387
+      "startTime": 190,
+      "duration": 0.29999999998835847
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 260.0999999998603,
+      "startTime": 190.29999999998836,
       "duration": 0
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 260.0999999998603,
+      "startTime": 190.29999999998836,
       "duration": 0.5
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 9.54,
-  "capturedAt": "2026-04-28T14:54:09.873Z"
+  "capturedAt": "2026-04-28T15:10:20.329Z"
 }
