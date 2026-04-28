@@ -193,23 +193,36 @@ describe('FI-04 error resilience (integration)', () => {
   it('I-3: first of 2 files fails to read → second file is still attached', async () => {
     const dispatcher = setupReady();
 
-    // Stub FileReader so the first read triggers onerror
+    // Stub FileReader so the first read triggers onerror.
+    // PR #181 switched the attach pipeline from readAsArrayBuffer to
+    // readAsDataURL so the base64 conversion happens in C++. We mock
+    // both methods because either could be called depending on
+    // which intake path the file takes.
     let callCount = 0;
     vi.stubGlobal('FileReader', class MockFileReader {
-      result: ArrayBuffer | null = null;
+      result: ArrayBuffer | string | null = null;
       error: { message: string } | null = null;
       onload: (() => void) | null = null;
       onerror: (() => void) | null = null;
       readAsArrayBuffer(_file: File): void {
         callCount++;
         if (callCount === 1) {
-          // First file: simulate error
           this.error = { message: 'read error' };
           setTimeout(() => this.onerror?.(), 0);
         } else {
-          // Second file: simulate success with minimal ArrayBuffer
           const buf = new Uint8Array([98, 98, 98, 98]).buffer; // 'bbbb'
           this.result = buf;
+          setTimeout(() => this.onload?.(), 0);
+        }
+      }
+      readAsDataURL(_file: File): void {
+        callCount++;
+        if (callCount === 1) {
+          this.error = { message: 'read error' };
+          setTimeout(() => this.onerror?.(), 0);
+        } else {
+          // 'bbbb' base64-encoded → 'YmJiYg=='
+          this.result = 'data:text/plain;base64,YmJiYg==';
           setTimeout(() => this.onload?.(), 0);
         }
       }
