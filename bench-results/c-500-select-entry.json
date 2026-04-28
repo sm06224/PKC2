@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 231.40000000002328,
-      "duration": 0.09999999997671694
-    },
-    {
-      "name": "dispatch:SELECT_ENTRY",
-      "startTime": 231.40000000002328,
-      "duration": 119.5
-    },
-    {
-      "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 231.5,
-      "duration": 115.19999999995343
-    },
-    {
-      "name": "render:phase=ready",
-      "startTime": 232.30000000004657,
-      "duration": 114.19999999995343
-    },
-    {
-      "name": "render:sidebar",
-      "startTime": 236.90000000002328,
-      "duration": 9.599999999976717
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 238.09999999997672,
+      "startTime": 258.5,
       "duration": 0
     },
     {
+      "name": "dispatch:SELECT_ENTRY:notify-state",
+      "startTime": 258.5,
+      "duration": 120.40000000002328
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 258.5,
+      "duration": 124.80000000004657
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 259.80000000004657,
+      "duration": 118.80000000004657
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 264.60000000009313,
+      "duration": 11.599999999976717
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 265.70000000006985,
+      "duration": 0.19999999995343387
+    },
+    {
       "name": "tree:buildTree",
-      "startTime": 239.09999999997672,
-      "duration": 0.5
+      "startTime": 266.60000000009313,
+      "duration": 1.2999999999301508
     },
     {
       "name": "render:center",
-      "startTime": 246.69999999995343,
-      "duration": 2.700000000069849
+      "startTime": 276.5,
+      "duration": 3.6000000000931323
     },
     {
       "name": "render:meta",
-      "startTime": 249.40000000002328,
-      "duration": 13.29999999993015
+      "startTime": 280.20000000006985,
+      "duration": 15
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 9.54,
-  "capturedAt": "2026-04-27T22:48:16.835Z"
+  "capturedAt": "2026-04-28T03:28:44.150Z"
 }
