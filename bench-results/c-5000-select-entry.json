@@ -2,8 +2,54 @@
   "scale": "c-5000",
   "entries": 5000,
   "scenario": "select-entry",
-  "measures": [],
+  "measures": [
+    {
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 852.1999999999534,
+      "duration": 0
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY:notify-state",
+      "startTime": 852.1999999999534,
+      "duration": 766.1000000000931
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 852.1999999999534,
+      "duration": 771.2000000000698
+    },
+    {
+      "name": "render:phase=ready",
+      "startTime": 857.8000000000466,
+      "duration": 756.8999999999069
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 898.3000000000466,
+      "duration": 86.5
+    },
+    {
+      "name": "filter:applyFilters",
+      "startTime": 904.0999999999767,
+      "duration": 0
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 909.3000000000466,
+      "duration": 15
+    },
+    {
+      "name": "render:center",
+      "startTime": 986,
+      "duration": 8.300000000046566
+    },
+    {
+      "name": "render:meta",
+      "startTime": 994.5,
+      "duration": 97.80000000004657
+    }
+  ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 26.32,
-  "capturedAt": "2026-04-27T22:18:20.037Z"
+  "heapUsedMb": 42.63,
+  "capturedAt": "2026-04-28T03:29:01.789Z"
 }

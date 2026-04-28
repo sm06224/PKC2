@@ -1,18 +1,31 @@
 import type { Container } from '../../core/model/container';
+import type { BatchOp, StorageAdapter } from './storage/storage-adapter';
+import { createIDBAdapter } from './storage/idb-adapter';
+import { createMemoryAdapter } from './storage/memory-adapter';
 
 /**
- * ContainerStore: abstract interface for Container persistence.
+ * ContainerStore: high-level facade for Container persistence.
  *
- * This abstraction exists so that:
- * - core stays free of browser APIs
- * - tests can use a mock implementation
- * - future backends (localStorage, File System API) plug in here
+ * Built on top of `StorageAdapter` (see `./storage/storage-adapter.ts`).
+ * The adapter layer abstracts the kv backend (IDB today, OPFS in
+ * the future, an in-memory map for tests). The facade encodes
+ * Container-shape semantics:
  *
- * All methods are async because IDB is inherently async.
+ *   - assets are stored separately from the container record so a
+ *     loaded entry list does not drag asset blobs through the cold
+ *     path
+ *   - default-pointer key (`__default__`) tracks the most recently
+ *     saved container_id so `loadDefault()` is a single key lookup
+ *   - save diff-deletes asset keys that disappeared from
+ *     `container.assets` (B5 invariant) so PURGE_ORPHAN_ASSETS +
+ *     reload stays purged
  *
- * Phase 1 (Issue #36): assets are stored separately from the container.
- * save() strips container.assets before writing; assets go to a separate store.
- * load()/loadDefault() reassemble container.assets from the assets store.
+ * Phase 1 (Issue #36) separated assets from the container record.
+ * Phase 2 (PR #180) introduced StorageAdapter and parallelised asset
+ * reassembly: the previous loop opened a fresh transaction per asset
+ * key, so cold boot scaled with asset count. The new path issues
+ * `getAll(range)` once and zips with `getAllKeys(range)` in the same
+ * transaction.
  */
 export interface ContainerStore {
   save(container: Container): Promise<void>;
@@ -22,266 +35,156 @@ export interface ContainerStore {
   /** Delete all data from all stores (workspace reset). */
   clearAll(): Promise<void>;
 
-  // Phase 1: asset operations
+  // Per-asset CRUD (Phase 1 contract)
   saveAsset(cid: string, key: string, data: string): Promise<void>;
   loadAsset(cid: string, key: string): Promise<string | null>;
   deleteAsset(cid: string, key: string): Promise<void>;
   listAssetKeys(cid: string): Promise<string[]>;
 }
 
-// ── IDB implementation ───────────────────────
-
-const DB_NAME = 'pkc2';
-const DB_VERSION = 2;
-const CONTAINERS_STORE = 'containers';
-const ASSETS_STORE = 'assets';
 const DEFAULT_KEY = '__default__';
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-
-    req.onupgradeneeded = (event) => {
-      const db = req.result;
-      const oldVersion = event.oldVersion;
-
-      // v0 → v1: create containers store
-      if (oldVersion < 1) {
-        if (!db.objectStoreNames.contains(CONTAINERS_STORE)) {
-          db.createObjectStore(CONTAINERS_STORE);
-        }
-      }
-
-      // v1 → v2: create assets store + migrate existing container.assets
-      if (oldVersion < 2) {
-        if (!db.objectStoreNames.contains(ASSETS_STORE)) {
-          db.createObjectStore(ASSETS_STORE);
-        }
-
-        // Migration: move container.assets to assets store
-        if (oldVersion >= 1) {
-          const tx = req.transaction!;
-          const containersStore = tx.objectStore(CONTAINERS_STORE);
-          const assetsStore = tx.objectStore(ASSETS_STORE);
-
-          const cursorReq = containersStore.openCursor();
-          cursorReq.onsuccess = () => {
-            const cursor = cursorReq.result;
-            if (!cursor) return;
-
-            const key = cursor.key as string;
-            // Skip the __default__ pointer
-            if (key === DEFAULT_KEY) {
-              cursor.continue();
-              return;
-            }
-
-            const container = cursor.value as Container;
-            if (container && container.assets && Object.keys(container.assets).length > 0) {
-              const cid = container.meta?.container_id ?? key;
-              // Move assets to assets store
-              for (const [assetKey, assetData] of Object.entries(container.assets)) {
-                assetsStore.put(assetData, `${cid}:${assetKey}`);
-              }
-              // Clear assets in container record
-              const stripped = { ...container, assets: {} };
-              cursor.update(stripped);
-            }
-            cursor.continue();
-          };
-        }
-      }
-    };
-
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function assetFullKey(cid: string, assetKey: string): string {
+  return `${cid}:${assetKey}`;
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function assetPrefix(cid: string): string {
+  return `${cid}:`;
+}
+
+/**
+ * Build a ContainerStore on top of any StorageAdapter.
+ *
+ * Public adapters live in `./storage/`. This factory is the only
+ * place where Container-shape knowledge meets the kv primitive — keep
+ * adapters dumb and the facade small.
+ */
+export function createContainerStore(adapter: StorageAdapter): ContainerStore {
+  const containers = adapter.bucket('containers');
+  const assets = adapter.bucket('assets');
+
+  async function save(container: Container): Promise<void> {
+    const cid = container.meta.container_id;
+    const prefix = assetPrefix(cid);
+
+    // Diff-delete asset keys that vanished from `container.assets`
+    // since the previous save (B5 invariant). One range scan instead
+    // of N gets — still cheap because keys-only.
+    const existingKeys = await assets.getKeysByPrefix(prefix);
+    const incomingFullKeys = new Set(
+      Object.keys(container.assets).map((k) => assetFullKey(cid, k)),
+    );
+
+    const assetOps: BatchOp[] = [];
+    for (const fullKey of existingKeys) {
+      if (!incomingFullKeys.has(fullKey)) {
+        assetOps.push({ kind: 'delete', key: fullKey });
+      }
+    }
+    for (const [key, data] of Object.entries(container.assets)) {
+      assetOps.push({ kind: 'put', key: assetFullKey(cid, key), value: data });
+    }
+    await assets.applyBatch(assetOps);
+
+    // Container record sans assets — the assets bucket owns those.
+    const stripped: Container = { ...container, assets: {} };
+    await containers.applyBatch([
+      { kind: 'put', key: cid, value: stripped },
+      { kind: 'put', key: DEFAULT_KEY, value: cid },
+    ]);
+  }
+
+  async function reassembleAssets(cid: string, container: Container): Promise<Container> {
+    // PR #180: single-call range scan, single transaction. Replaces
+    // the previous `for (key) { db.transaction(...).get(key) }` loop
+    // that opened one tx per asset and serialized the round-trips.
+    const pairs = await assets.getAllByPrefix(assetPrefix(cid));
+    if (pairs.length === 0) return container;
+    const reassembled: Record<string, string> = {};
+    for (const { key, value } of pairs) {
+      const assetKey = key.slice(assetPrefix(cid).length);
+      if (typeof value === 'string') {
+        reassembled[assetKey] = value;
+      }
+    }
+    return { ...container, assets: reassembled };
+  }
+
+  async function load(containerId: string): Promise<Container | null> {
+    const record = await containers.get(containerId);
+    if (!record) return null;
+    return reassembleAssets(containerId, record as Container);
+  }
+
+  async function loadDefault(): Promise<Container | null> {
+    const defaultId = await containers.get(DEFAULT_KEY);
+    if (typeof defaultId !== 'string') return null;
+    const record = await containers.get(defaultId);
+    if (!record) return null;
+    return reassembleAssets(defaultId, record as Container);
+  }
+
+  async function del(containerId: string): Promise<void> {
+    const prefix = assetPrefix(containerId);
+    const assetKeys = await assets.getKeysByPrefix(prefix);
+    const assetOps: BatchOp[] = assetKeys.map((key) => ({ kind: 'delete', key }));
+    await Promise.all([
+      containers.applyBatch([{ kind: 'delete', key: containerId }]),
+      assets.applyBatch(assetOps),
+    ]);
+  }
+
+  async function saveAsset(cid: string, key: string, data: string): Promise<void> {
+    await assets.put(assetFullKey(cid, key), data);
+  }
+
+  async function loadAsset(cid: string, key: string): Promise<string | null> {
+    const result = await assets.get(assetFullKey(cid, key));
+    return typeof result === 'string' ? result : null;
+  }
+
+  async function deleteAsset(cid: string, key: string): Promise<void> {
+    await assets.delete(assetFullKey(cid, key));
+  }
+
+  async function listAssetKeys(cid: string): Promise<string[]> {
+    const prefix = assetPrefix(cid);
+    const keys = await assets.getKeysByPrefix(prefix);
+    return keys.map((k) => k.slice(prefix.length));
+  }
+
+  async function clearAll(): Promise<void> {
+    await Promise.all([containers.clear(), assets.clear()]);
+  }
+
+  return {
+    save,
+    load,
+    loadDefault,
+    delete: del,
+    clearAll,
+    saveAsset,
+    loadAsset,
+    deleteAsset,
+    listAssetKeys,
+  };
 }
 
 /**
  * Create the IDB-backed ContainerStore.
  *
- * Phase 1: container is stored without assets in the containers store.
- * Assets are stored in a separate assets store keyed by "<cid>:<asset_key>".
+ * Internally: `createIDBAdapter()` → `createContainerStore(adapter)`.
+ * Callers do not need to know the adapter exists.
  */
 export function createIDBStore(): ContainerStore {
-  async function save(container: Container): Promise<void> {
-    const db = await openDB();
-    const cid = container.meta.container_id;
+  return createContainerStore(createIDBAdapter());
+}
 
-    // B5 (2026-04-22): orphan-purge + reload resurrection fix.
-    // Previously this function was put-only, so asset keys removed
-    // from `container.assets` in memory (e.g. via
-    // PURGE_ORPHAN_ASSETS) were never deleted from IDB. Reload then
-    // reassembled the stale keys and the orphans came back.
-    // Now we compute the diff against the current IDB contents for
-    // this container_id and delete any key the incoming container
-    // no longer carries, before putting the incoming set. Same
-    // transaction so the window between delete and put is minimal.
-    const prefix = `${cid}:`;
-    const assetsTx = db.transaction(ASSETS_STORE, 'readwrite');
-    const assetsStore = assetsTx.objectStore(ASSETS_STORE);
-    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
-    const existingFullKeys = (await wrap(assetsStore.getAllKeys(range))) as string[];
-    const incomingFullKeys = new Set(
-      Object.keys(container.assets).map((k) => `${prefix}${k}`),
-    );
-    for (const fullKey of existingFullKeys) {
-      if (!incomingFullKeys.has(fullKey)) {
-        assetsStore.delete(fullKey);
-      }
-    }
-    for (const [key, data] of Object.entries(container.assets)) {
-      assetsStore.put(data, `${prefix}${key}`);
-    }
-
-    // Save container WITHOUT assets
-    const stripped: Container = { ...container, assets: {} };
-    const containersTx = db.transaction(CONTAINERS_STORE, 'readwrite');
-    const containersStore = containersTx.objectStore(CONTAINERS_STORE);
-    containersStore.put(stripped, cid);
-    containersStore.put(cid, DEFAULT_KEY);
-    await wrap(containersTx.objectStore(CONTAINERS_STORE).count());
-
-    db.close();
-  }
-
-  async function reassembleAssets(db: IDBDatabase, cid: string, container: Container): Promise<Container> {
-    const prefix = `${cid}:`;
-    const assetsTx = db.transaction(ASSETS_STORE, 'readonly');
-    const assetsStore = assetsTx.objectStore(ASSETS_STORE);
-
-    // Use IDBKeyRange to get all keys with the cid prefix
-    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
-    const allKeys = await wrap(assetsStore.getAllKeys(range));
-    if (allKeys.length === 0) return container;
-
-    const assets: Record<string, string> = {};
-    for (const fullKey of allKeys) {
-      const assetKey = (fullKey as string).slice(prefix.length);
-      const data = await wrap(
-        db.transaction(ASSETS_STORE, 'readonly').objectStore(ASSETS_STORE).get(fullKey),
-      );
-      if (typeof data === 'string') {
-        assets[assetKey] = data;
-      }
-    }
-
-    return { ...container, assets };
-  }
-
-  async function load(containerId: string): Promise<Container | null> {
-    const db = await openDB();
-    const containersTx = db.transaction(CONTAINERS_STORE, 'readonly');
-    const result = await wrap(containersTx.objectStore(CONTAINERS_STORE).get(containerId));
-    if (!result) {
-      db.close();
-      return null;
-    }
-    const container = result as Container;
-    const reassembled = await reassembleAssets(db, containerId, container);
-    db.close();
-    return reassembled;
-  }
-
-  async function loadDefault(): Promise<Container | null> {
-    const db = await openDB();
-    const containersTx = db.transaction(CONTAINERS_STORE, 'readonly');
-    const defaultId = await wrap(containersTx.objectStore(CONTAINERS_STORE).get(DEFAULT_KEY));
-    if (!defaultId || typeof defaultId !== 'string') {
-      db.close();
-      return null;
-    }
-    const result = await wrap(
-      db.transaction(CONTAINERS_STORE, 'readonly').objectStore(CONTAINERS_STORE).get(defaultId),
-    );
-    if (!result) {
-      db.close();
-      return null;
-    }
-    const container = result as Container;
-    const reassembled = await reassembleAssets(db, defaultId, container);
-    db.close();
-    return reassembled;
-  }
-
-  async function del(containerId: string): Promise<void> {
-    const db = await openDB();
-    // Delete container
-    const containersTx = db.transaction(CONTAINERS_STORE, 'readwrite');
-    containersTx.objectStore(CONTAINERS_STORE).delete(containerId);
-
-    // Delete all assets for this container
-    const prefix = `${containerId}:`;
-    const assetsTx = db.transaction(ASSETS_STORE, 'readwrite');
-    const assetsStore = assetsTx.objectStore(ASSETS_STORE);
-    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
-    const allKeys = await wrap(assetsStore.getAllKeys(range));
-    for (const key of allKeys) {
-      db.transaction(ASSETS_STORE, 'readwrite').objectStore(ASSETS_STORE).delete(key);
-    }
-
-    db.close();
-  }
-
-  // ── Asset operations ──────────────────
-
-  async function saveAsset(cid: string, key: string, data: string): Promise<void> {
-    const db = await openDB();
-    const tx = db.transaction(ASSETS_STORE, 'readwrite');
-    tx.objectStore(ASSETS_STORE).put(data, `${cid}:${key}`);
-    await wrap(tx.objectStore(ASSETS_STORE).count());
-    db.close();
-  }
-
-  async function loadAsset(cid: string, key: string): Promise<string | null> {
-    const db = await openDB();
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
-    const result = await wrap(tx.objectStore(ASSETS_STORE).get(`${cid}:${key}`));
-    db.close();
-    return typeof result === 'string' ? result : null;
-  }
-
-  async function deleteAsset(cid: string, key: string): Promise<void> {
-    const db = await openDB();
-    const tx = db.transaction(ASSETS_STORE, 'readwrite');
-    tx.objectStore(ASSETS_STORE).delete(`${cid}:${key}`);
-    db.close();
-  }
-
-  async function listAssetKeys(cid: string): Promise<string[]> {
-    const db = await openDB();
-    const prefix = `${cid}:`;
-    const tx = db.transaction(ASSETS_STORE, 'readonly');
-    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
-    const allKeys = await wrap(tx.objectStore(ASSETS_STORE).getAllKeys(range));
-    db.close();
-    return (allKeys as string[]).map((k) => k.slice(prefix.length));
-  }
-
-  async function clearAll(): Promise<void> {
-    const db = await openDB();
-    const tx = db.transaction([CONTAINERS_STORE, ASSETS_STORE], 'readwrite');
-    tx.objectStore(CONTAINERS_STORE).clear();
-    tx.objectStore(ASSETS_STORE).clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-  }
-
-  return {
-    save, load, loadDefault, delete: del, clearAll,
-    saveAsset, loadAsset, deleteAsset, listAssetKeys,
-  };
+/**
+ * Create the in-memory ContainerStore (tests, SSR).
+ */
+export function createMemoryStore(): ContainerStore {
+  return createContainerStore(createMemoryAdapter());
 }
 
 // ── Availability probe ──────────────────────
@@ -361,96 +264,4 @@ export async function probeIDBAvailability(): Promise<IDBAvailability> {
       }
     };
   });
-}
-
-// ── In-memory mock (for tests and SSR) ───────
-
-export function createMemoryStore(): ContainerStore {
-  const containers = new Map<string, Container>();
-  const assets = new Map<string, string>(); // key: "<cid>:<asset_key>"
-  let defaultId: string | null = null;
-
-  function stripAssets(container: Container): Container {
-    return { ...container, assets: {} };
-  }
-
-  function reassemble(container: Container): Container {
-    const cid = container.meta.container_id;
-    const prefix = `${cid}:`;
-    const reassembled: Record<string, string> = {};
-    for (const [key, data] of assets) {
-      if (key.startsWith(prefix)) {
-        reassembled[key.slice(prefix.length)] = data;
-      }
-    }
-    return { ...container, assets: reassembled };
-  }
-
-  return {
-    async save(container) {
-      const cid = container.meta.container_id;
-      const prefix = `${cid}:`;
-      // B5: mirror the real IDB save's delete-diff semantics. Keys
-      // present in `assets` under this container_id but missing from
-      // the incoming `container.assets` must be removed; otherwise
-      // tests and any code paths using the memory backing store hit
-      // the same "purge then save leaves stale data" bug as IDB.
-      const incomingFullKeys = new Set(
-        Object.keys(container.assets).map((k) => `${prefix}${k}`),
-      );
-      for (const existingKey of [...assets.keys()]) {
-        if (existingKey.startsWith(prefix) && !incomingFullKeys.has(existingKey)) {
-          assets.delete(existingKey);
-        }
-      }
-      for (const [key, data] of Object.entries(container.assets)) {
-        assets.set(`${prefix}${key}`, data);
-      }
-      // Store container without assets
-      containers.set(cid, structuredClone(stripAssets(container)));
-      defaultId = cid;
-    },
-    async load(containerId) {
-      const c = containers.get(containerId);
-      if (!c) return null;
-      return structuredClone(reassemble(c));
-    },
-    async loadDefault() {
-      if (!defaultId) return null;
-      const c = containers.get(defaultId);
-      if (!c) return null;
-      return structuredClone(reassemble(c));
-    },
-    async delete(containerId) {
-      containers.delete(containerId);
-      // Delete associated assets
-      const prefix = `${containerId}:`;
-      for (const key of [...assets.keys()]) {
-        if (key.startsWith(prefix)) assets.delete(key);
-      }
-      if (defaultId === containerId) defaultId = null;
-    },
-    async clearAll() {
-      containers.clear();
-      assets.clear();
-      defaultId = null;
-    },
-    async saveAsset(cid, key, data) {
-      assets.set(`${cid}:${key}`, data);
-    },
-    async loadAsset(cid, key) {
-      return assets.get(`${cid}:${key}`) ?? null;
-    },
-    async deleteAsset(cid, key) {
-      assets.delete(`${cid}:${key}`);
-    },
-    async listAssetKeys(cid) {
-      const prefix = `${cid}:`;
-      const result: string[] = [];
-      for (const key of assets.keys()) {
-        if (key.startsWith(prefix)) result.push(key.slice(prefix.length));
-      }
-      return result;
-    },
-  };
 }
