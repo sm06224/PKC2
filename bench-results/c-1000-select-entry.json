@@ -5,51 +5,66 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 335.5,
+      "startTime": 268.6000000000349,
       "duration": 0
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 335.5,
-      "duration": 190.39999999990687
+      "startTime": 268.6000000000349,
+      "duration": 146.79999999998836
     },
     {
       "name": "dispatch:SELECT_ENTRY",
-      "startTime": 335.5,
-      "duration": 195.5
+      "startTime": 268.6000000000349,
+      "duration": 150.29999999998836
     },
     {
       "name": "render:phase=ready",
-      "startTime": 337.19999999995343,
-      "duration": 187.90000000002328
+      "startTime": 269.5,
+      "duration": 145.60000000003492
     },
     {
       "name": "render:sidebar",
-      "startTime": 346,
-      "duration": 18.699999999953434
+      "startTime": 275,
+      "duration": 15.5
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 347.5,
+      "startTime": 276.1000000000349,
       "duration": 0
     },
     {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 276.1000000000349,
+      "duration": 0.29999999998835847
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 276.5,
+      "duration": 0.20000000001164153
+    },
+    {
       "name": "tree:buildTree",
-      "startTime": 348.79999999993015,
+      "startTime": 276.9000000000233,
       "duration": 1.099999999976717
     },
     {
+      "name": "render:sidebar:tree-loop",
+      "startTime": 278,
+      "duration": 12.100000000034925
+    },
+    {
       "name": "render:center",
-      "startTime": 365.0999999999767,
-      "duration": 2.799999999930151
+      "startTime": 290.79999999998836,
+      "duration": 2.7000000000116415
     },
     {
       "name": "render:meta",
-      "startTime": 368,
-      "duration": 23.699999999953434
+      "startTime": 293.6000000000349,
+      "duration": 17
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 16.31,
-  "capturedAt": "2026-04-28T03:28:48.731Z"
+  "capturedAt": "2026-04-28T04:05:50.474Z"
 }

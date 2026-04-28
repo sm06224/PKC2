@@ -2543,6 +2543,11 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // Slice D (2026-04-23): Tag axis threaded through `applyFilters`
   // with AND-by-default semantics (see
   // `docs/spec/search-filter-semantics-v1.md` §4.2).
+  // PR #182: outer `render:sidebar:filter-pipeline` wraps the whole
+  // filter chain (applyFilters + categoricalPeer + showArchived +
+  // searchHide + treeHide + unreferenced) so the bench can attribute
+  // residual time to filter work versus sort / loop / DOM assemble.
+  const endFilterPipeline = profileStart('render:sidebar:filter-pipeline');
   const endApplyFilters = profileStart('filter:applyFilters');
   let filtered = applyFilters(
     allEntries,
@@ -2621,12 +2626,15 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     const unreferenced = collectUnreferencedAttachmentLids(state.container);
     filtered = filtered.filter((e) => unreferenced.has(e.lid));
   }
+  endFilterPipeline();
   // C-2 v1 (2026-04-17): manual mode routes through applyManualOrder
   // using `container.meta.entry_order` (contract §2.2). Non-manual
   // modes fall through to the existing stable temporal/title sort.
+  const endSort = profileStart('render:sidebar:sort');
   const entries = state.sortKey === 'manual'
     ? applyManualOrder(filtered, state.container?.meta.entry_order ?? [])
     : sortEntries(filtered, state.sortKey, state.sortDirection);
+  endSort();
 
   // Result count (shown when any filter is active)
   if (allEntries.length > 0 && (state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null)) {
@@ -2705,6 +2713,12 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     // reference equality — see `getOrCreateMemoizedEntryItem`.
     clearEntryRowMemoIfStale(state.container ?? null);
     const query = state.searchQuery.trim();
+    // PR #182: split flat-loop into row-construction vs sub-location
+    // hit scanning. The former is dominated by memo hits + DOM
+    // append; the latter is the body-scan path that was the prime
+    // suspect in PR #179's residual cost.
+    const endFlatLoop = profileStart('render:sidebar:flat-loop');
+    let endSubLocation: (() => void) | null = null;
     for (const entry of entries) {
       list.appendChild(
         getOrCreateMemoizedEntryItem(
@@ -2723,12 +2737,15 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
       // entry by the indexer's maxPerEntry default — keeps the list
       // scannable on frequent terms.
       if (query !== '') {
+        if (!endSubLocation) endSubLocation = profileStart('render:sidebar:sublocation-scan');
         const hits = findSubLocationHits(entry, query);
         for (const hit of hits) {
           list.appendChild(renderSubLocationItem(hit));
         }
       }
     }
+    endSubLocation?.();
+    endFlatLoop();
   } else {
     // Tree mode: build from structural relations
     const endBuildTree = profileStart('tree:buildTree');
@@ -2740,9 +2757,11 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     const displayTree = state.sortKey === 'manual'
       ? reorderTreeByEntries(tree, entries)
       : tree;
+    const endTreeLoop = profileStart('render:sidebar:tree-loop');
     for (const node of displayTree) {
       renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
     }
+    endTreeLoop();
   }
   sidebar.appendChild(list);
 
