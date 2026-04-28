@@ -5,96 +5,96 @@
   "measures": [
     {
       "name": "render:phase=initializing",
-      "startTime": 41.90000000002328,
-      "duration": 0.29999999998835847
+      "startTime": 89,
+      "duration": 0.2999999999301508
     },
     {
       "name": "boot:readPkcData",
-      "startTime": 43.100000000034925,
-      "duration": 0.09999999997671694
+      "startTime": 90.40000000002328,
+      "duration": 0.19999999995343387
     },
     {
       "name": "boot:loadFromStore",
-      "startTime": 43.20000000001164,
-      "duration": 24.70000000001164
-    },
-    {
-      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
-      "startTime": 68.70000000001164,
-      "duration": 0
-    },
-    {
-      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
-      "startTime": 68.70000000001164,
-      "duration": 45.70000000001164
+      "startTime": 90.59999999997672,
+      "duration": 38.699999999953434
     },
     {
       "name": "dispatch:SYS_INIT_COMPLETE",
-      "startTime": 68.70000000001164,
-      "duration": 46
+      "startTime": 130.69999999995343,
+      "duration": 79.80000000004657
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:reduce",
+      "startTime": 130.79999999993015,
+      "duration": 0.10000000009313226
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+      "startTime": 130.90000000002328,
+      "duration": 79
     },
     {
       "name": "render:phase=ready",
-      "startTime": 68.80000000004657,
-      "duration": 45.199999999953434
+      "startTime": 131,
+      "duration": 78.29999999993015
     },
     {
       "name": "render:sidebar",
-      "startTime": 80.80000000004657,
-      "duration": 31.899999999965075
+      "startTime": 152.59999999997672,
+      "duration": 55.09999999997672
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 83,
-      "duration": 0.1000000000349246
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 83,
-      "duration": 6.100000000034925
-    },
-    {
-      "name": "render:sidebar:sort",
-      "startTime": 89.20000000001164,
-      "duration": 0.40000000002328306
-    },
-    {
-      "name": "tree:buildTree",
-      "startTime": 91,
-      "duration": 2
-    },
-    {
-      "name": "render:sidebar:tree-loop",
-      "startTime": 93,
-      "duration": 19.100000000034925
-    },
-    {
-      "name": "render:center",
-      "startTime": 112.80000000004657,
-      "duration": 0.6999999999534339
-    },
-    {
-      "name": "dispatch:RESTORE_SETTINGS:reduce",
-      "startTime": 114.70000000001164,
+      "startTime": 157.19999999995343,
       "duration": 0
     },
     {
-      "name": "dispatch:RESTORE_SETTINGS:notify-state",
-      "startTime": 114.70000000001164,
-      "duration": 0.29999999998835847
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 157.19999999995343,
+      "duration": 7.700000000069849
+    },
+    {
+      "name": "render:sidebar:sort",
+      "startTime": 164.90000000002328,
+      "duration": 0.5
+    },
+    {
+      "name": "tree:buildTree",
+      "startTime": 167.19999999995343,
+      "duration": 6.200000000069849
+    },
+    {
+      "name": "render:sidebar:tree-loop",
+      "startTime": 173.5,
+      "duration": 33.5
+    },
+    {
+      "name": "render:center",
+      "startTime": 208.19999999995343,
+      "duration": 0.40000000002328306
     },
     {
       "name": "dispatch:RESTORE_SETTINGS",
-      "startTime": 114.70000000001164,
-      "duration": 0.29999999998835847
+      "startTime": 210.59999999997672,
+      "duration": 0.40000000002328306
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:reduce",
+      "startTime": 210.69999999995343,
+      "duration": 0
     },
     {
       "name": "render:scope=settings-only",
-      "startTime": 114.80000000004657,
-      "duration": 0.19999999995343387
+      "startTime": 210.79999999993015,
+      "duration": 0.2000000000698492
+    },
+    {
+      "name": "dispatch:RESTORE_SETTINGS:notify-state",
+      "startTime": 210.79999999993015,
+      "duration": 0.2000000000698492
     }
   ],
-  "bootElapsedMs": 73.29999999998836,
+  "bootElapsedMs": 122.5,
   "heapUsedMb": 12.78,
-  "capturedAt": "2026-04-28T15:10:24.716Z"
+  "capturedAt": "2026-04-28T15:31:33.084Z"
 }

@@ -31,6 +31,7 @@ import type { Container } from '../../core/model/container';
 import { collectDescendantLids, getStructuralParent } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
+import { buildConnectedLidSet, buildInboundCountMap } from '../../features/relation/selector';
 
 export interface FilterIndexes {
   /**
@@ -50,6 +51,18 @@ export interface FilterIndexes {
    * relation. Used by the unreferenced-attachments cleanup lens.
    */
   unreferencedAttachmentLids: ReadonlySet<string>;
+  /**
+   * PR #192: per-target inbound relation counts. Used by the sidebar
+   * row's backlink badge. `O(R)` walk per build; cached so search
+   * keystrokes (container ref unchanged) reuse it.
+   */
+  backlinkCounts: ReadonlyMap<string, number>;
+  /**
+   * PR #192: lids that appear in any relation (from or to).
+   * Sidebar row uses this to flag relations-based orphans (entries
+   * outside this set).
+   */
+  connectedLids: ReadonlySet<string>;
 }
 
 let cachedContainer: Container | null = null;
@@ -85,7 +98,22 @@ function buildIndexes(container: Container): FilterIndexes {
   // unreferencedAttachmentLids: attachments with no incoming references.
   const unreferencedAttachmentLids = collectUnreferencedAttachmentLids(container);
 
-  return { hiddenBucketLids, bucketChildLids, unreferencedAttachmentLids };
+  // PR #192: relation-derived data also lives on `container.relations`,
+  // so it's coherent with the same container-ref cache key.
+  // backlinkCounts: Map<targetLid, count> for the sidebar backlink
+  // badge. Pre-PR-192 ran the O(R) walk on every render.
+  const backlinkCounts = buildInboundCountMap(container.relations);
+  // connectedLids: any lid appearing in any relation (from or to).
+  // Used by the orphan marker; same O(R) walk pre-PR-192.
+  const connectedLids = buildConnectedLidSet(container.relations);
+
+  return {
+    hiddenBucketLids,
+    bucketChildLids,
+    unreferencedAttachmentLids,
+    backlinkCounts,
+    connectedLids,
+  };
 }
 
 /**
