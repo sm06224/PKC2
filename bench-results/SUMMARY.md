@@ -6,307 +6,301 @@ _Captured by `tests/bench/profile.bench.ts`. Re-generate via `npm run bench` (re
 
 | scale | entries | boot enter→exit (ms) | heap used (MB) |
 |---|---|---|---|
-| c-100 | 100 | 22.7 | 9.54 |
-| c-500 | 500 | 34.7 | 10.11 |
-| c-1000 | 1000 | 58.4 | 12.11 |
-| c-5000 | 5000 | 186.4 | 35.57 |
+| c-100 | 100 | 16.4 | 9.54 |
+| c-500 | 500 | 34.9 | 10.11 |
+| c-1000 | 1000 | 60.6 | 11.35 |
+| c-5000 | 5000 | 178.9 | 35.57 |
 
 ## c-100 (100 entries) — `archetype-toggle`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:43.344Z
+- captured: 2026-04-28T10:06:09.912Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 4.5 | 4.5 | 4.5 | 4.5 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 4.5 | 4.5 | 4.5 | 4.5 |
-| `render:scope=sidebar-only` | 1 | 4.2 | 4.2 | 4.2 | 4.2 |
-| `render:sidebar` | 1 | 2.1 | 2.1 | 2.1 | 2.1 |
-| `render:sidebar:filter-pipeline` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `filter:applyFilters` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `render:sidebar:flat-loop` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 4.9 | 4.9 | 4.9 | 4.9 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 4.8 | 4.8 | 4.8 | 4.8 |
+| `render:scope=sidebar-only` | 1 | 4.5 | 4.5 | 4.5 | 4.5 |
+| `render:sidebar` | 1 | 2.4 | 2.4 | 2.4 | 2.4 |
+| `render:sidebar:filter-pipeline` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `render:sidebar:flat-loop` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `filter:applyFilters` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `render:sidebar:sort` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-100 (100 entries) — `cold-boot`
 
-- boot enter→exit: **22.7 ms**
+- boot enter→exit: **16.4 ms**
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:42.103Z
+- captured: 2026-04-28T10:06:08.670Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `boot:loadFromStore` | 1 | 12.8 | 12.8 | 12.8 | 12.8 |
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 8.1 | 8.1 | 8.1 | 8.1 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 7.5 | 7.5 | 7.5 | 7.5 |
-| `render:phase=ready` | 1 | 7.2 | 7.2 | 7.2 | 7.2 |
-| `render:sidebar` | 1 | 4.2 | 4.2 | 4.2 | 4.2 |
-| `render:sidebar:tree-loop` | 1 | 2.3 | 2.3 | 2.3 | 2.3 |
-| `tree:buildTree` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
-| `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 9.1 | 9.1 | 9.1 | 9.1 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 8.9 | 8.9 | 8.9 | 8.9 |
+| `render:phase=ready` | 1 | 8.6 | 8.6 | 8.6 | 8.6 |
+| `boot:loadFromStore` | 1 | 5.8 | 5.8 | 5.8 | 5.8 |
+| `render:sidebar` | 1 | 5.2 | 5.2 | 5.2 | 5.2 |
+| `render:sidebar:tree-loop` | 1 | 3.1 | 3.1 | 3.1 | 3.1 |
+| `render:center` | 1 | 0.6 | 0.6 | 0.6 | 0.6 |
+| `tree:buildTree` | 1 | 0.5 | 0.5 | 0.5 | 0.5 |
+| `render:phase=initializing` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `boot:readPkcData` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `render:center` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `dispatch:RESTORE_SETTINGS` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `render:sidebar:sort` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `render:sidebar:filter-pipeline` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 
 ## c-100 (100 entries) — `search-keystroke`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:42.816Z
+- captured: 2026-04-28T10:06:09.359Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 79 | 15.9 | 30.6 | 30.6 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 78.8 | 15.9 | 30.5 | 30.5 |
-| `render:scope=sidebar-only` | 4 | 76.4 | 15.4 | 29.8 | 29.8 |
-| `render:sidebar` | 4 | 22.3 | 3.8 | 10.7 | 10.7 |
-| `render:sidebar:flat-loop` | 4 | 17.2 | 3.2 | 8.2 | 8.2 |
-| `render:sidebar:sublocation-scan` | 4 | 16.7 | 3.2 | 7.8 | 7.8 |
-| `render:sidebar:filter-pipeline` | 4 | 1.8 | 0.4 | 0.7 | 0.7 |
-| `filter:applyFilters` | 4 | 0.9 | 0.2 | 0.4 | 0.4 |
-| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0.2 | 0 | 0.1 | 0.1 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 41.5 | 7.7 | 17.4 | 17.4 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 41.4 | 7.6 | 17.4 | 17.4 |
+| `render:scope=sidebar-only` | 4 | 39 | 7.3 | 16.8 | 16.8 |
+| `render:sidebar` | 4 | 24.3 | 3.9 | 12 | 12 |
+| `render:sidebar:flat-loop` | 4 | 17.2 | 3.1 | 8 | 8 |
+| `render:sidebar:sublocation-scan` | 4 | 16.8 | 3.1 | 7.6 | 7.6 |
+| `render:sidebar:filter-pipeline` | 4 | 2.4 | 0.4 | 1.3 | 1.3 |
+| `filter:applyFilters` | 4 | 1.1 | 0.2 | 0.4 | 0.4 |
 | `render:sidebar:sort` | 4 | 0.1 | 0 | 0.1 | 0.1 |
+| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
 
 ## c-100 (100 entries) — `select-entry`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:43.932Z
+- captured: 2026-04-28T10:06:10.496Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 53.2 | 53.2 | 53.2 | 53.2 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 50.1 | 50.1 | 50.1 | 50.1 |
-| `render:phase=ready` | 1 | 49.8 | 49.8 | 49.8 | 49.8 |
+| `dispatch:SELECT_ENTRY` | 1 | 45.4 | 45.4 | 45.4 | 45.4 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 42 | 42 | 42 | 42 |
+| `render:phase=ready` | 1 | 41.6 | 41.6 | 41.6 | 41.6 |
 | `render:meta` | 1 | 4.9 | 4.9 | 4.9 | 4.9 |
-| `render:sidebar` | 1 | 2.1 | 2.1 | 2.1 | 2.1 |
-| `render:center` | 1 | 2 | 2 | 2 | 2 |
-| `render:sidebar:tree-loop` | 1 | 1.3 | 1.3 | 1.3 | 1.3 |
-| `render:sidebar:sort` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `render:sidebar` | 1 | 2.6 | 2.6 | 2.6 | 2.6 |
+| `render:center` | 1 | 1.9 | 1.9 | 1.9 | 1.9 |
+| `render:sidebar:tree-loop` | 1 | 1.4 | 1.4 | 1.4 | 1.4 |
+| `render:sidebar:sort` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `tree:buildTree` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `render:sidebar:filter-pipeline` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `tree:buildTree` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-500 (500 entries) — `archetype-toggle`
 
 - heap used: **10.11 MB**
-- captured: 2026-04-28T04:05:46.022Z
+- captured: 2026-04-28T10:06:12.506Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 14.1 | 14.1 | 14.1 | 14.1 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 14 | 14 | 14 | 14 |
-| `render:scope=sidebar-only` | 1 | 13.7 | 13.7 | 13.7 | 13.7 |
-| `render:sidebar` | 1 | 9.9 | 9.9 | 9.9 | 9.9 |
-| `render:sidebar:filter-pipeline` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:sidebar:sort` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 12.6 | 12.6 | 12.6 | 12.6 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 12.4 | 12.4 | 12.4 | 12.4 |
+| `render:scope=sidebar-only` | 1 | 12.1 | 12.1 | 12.1 | 12.1 |
+| `render:sidebar` | 1 | 9.3 | 9.3 | 9.3 | 9.3 |
+| `render:sidebar:filter-pipeline` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `filter:applyFilters` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `render:sidebar:flat-loop` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `filter:applyFilters` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `render:sidebar:sort` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 
 ## c-500 (500 entries) — `cold-boot`
 
-- boot enter→exit: **34.7 ms**
+- boot enter→exit: **34.9 ms**
 - heap used: **10.11 MB**
-- captured: 2026-04-28T04:05:44.424Z
+- captured: 2026-04-28T10:06:10.986Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 17.7 | 17.7 | 17.7 | 17.7 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 17.3 | 17.3 | 17.3 | 17.3 |
-| `render:phase=ready` | 1 | 17.1 | 17.1 | 17.1 | 17.1 |
-| `boot:loadFromStore` | 1 | 15.1 | 15.1 | 15.1 | 15.1 |
-| `render:sidebar` | 1 | 10.3 | 10.3 | 10.3 | 10.3 |
-| `render:sidebar:tree-loop` | 1 | 6.4 | 6.4 | 6.4 | 6.4 |
-| `tree:buildTree` | 1 | 0.7 | 0.7 | 0.7 | 0.7 |
-| `render:sidebar:sort` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 18.5 | 18.5 | 18.5 | 18.5 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 18.2 | 18.2 | 18.2 | 18.2 |
+| `render:phase=ready` | 1 | 18 | 18 | 18 | 18 |
+| `boot:loadFromStore` | 1 | 14.6 | 14.6 | 14.6 | 14.6 |
+| `render:sidebar` | 1 | 10.9 | 10.9 | 10.9 | 10.9 |
+| `render:sidebar:tree-loop` | 1 | 6.7 | 6.7 | 6.7 | 6.7 |
+| `tree:buildTree` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
 | `render:center` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `dispatch:RESTORE_SETTINGS` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
 | `render:phase=initializing` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `boot:readPkcData` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `render:sidebar:filter-pipeline` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `render:sidebar:sort` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 
 ## c-500 (500 entries) — `search-keystroke`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:45.427Z
+- captured: 2026-04-28T10:06:11.888Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 279.3 | 60 | 96.1 | 96.1 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 279 | 59.9 | 96.1 | 96.1 |
-| `render:scope=sidebar-only` | 4 | 276.5 | 59.2 | 95.3 | 95.3 |
-| `render:sidebar` | 4 | 79.8 | 14.7 | 33.9 | 33.9 |
-| `render:sidebar:flat-loop` | 4 | 51.8 | 10.9 | 17.8 | 17.8 |
-| `render:sidebar:sublocation-scan` | 4 | 51.5 | 10.8 | 17.7 | 17.7 |
-| `render:sidebar:filter-pipeline` | 4 | 10.3 | 1.5 | 5.7 | 5.7 |
-| `filter:applyFilters` | 4 | 1.4 | 0.2 | 0.6 | 0.6 |
-| `render:sidebar:sort` | 4 | 0.4 | 0.1 | 0.2 | 0.2 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 126.2 | 27.2 | 47.1 | 47.1 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 126 | 27.1 | 47.1 | 47.1 |
+| `render:scope=sidebar-only` | 4 | 123.7 | 26.6 | 46.4 | 46.4 |
+| `render:sidebar` | 4 | 82.8 | 16.5 | 33.9 | 33.9 |
+| `render:sidebar:flat-loop` | 4 | 57 | 11.8 | 21.3 | 21.3 |
+| `render:sidebar:sublocation-scan` | 4 | 56.7 | 11.8 | 21.1 | 21.1 |
+| `render:sidebar:filter-pipeline` | 4 | 7.5 | 1.7 | 2.2 | 2.2 |
+| `filter:applyFilters` | 4 | 1.7 | 0.3 | 0.6 | 0.6 |
+| `render:sidebar:sort` | 4 | 0.5 | 0.1 | 0.2 | 0.2 |
 | `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0.1 | 0 | 0.1 | 0.1 |
 
 ## c-500 (500 entries) — `select-entry`
 
 - heap used: **9.54 MB**
-- captured: 2026-04-28T04:05:46.749Z
+- captured: 2026-04-28T10:06:13.250Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 96 | 96 | 96 | 96 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 92.7 | 92.7 | 92.7 | 92.7 |
-| `render:phase=ready` | 1 | 91.8 | 91.8 | 91.8 | 91.8 |
-| `render:meta` | 1 | 11.1 | 11.1 | 11.1 | 11.1 |
-| `render:sidebar` | 1 | 9.7 | 9.7 | 9.7 | 9.7 |
-| `render:sidebar:tree-loop` | 1 | 6.7 | 6.7 | 6.7 | 6.7 |
-| `render:center` | 1 | 2.6 | 2.6 | 2.6 | 2.6 |
+| `dispatch:SELECT_ENTRY` | 1 | 88.2 | 88.2 | 88.2 | 88.2 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 84.3 | 84.3 | 84.3 | 84.3 |
+| `render:phase=ready` | 1 | 83.5 | 83.5 | 83.5 | 83.5 |
+| `render:meta` | 1 | 12 | 12 | 12 | 12 |
+| `render:sidebar` | 1 | 8.8 | 8.8 | 8.8 | 8.8 |
+| `render:sidebar:tree-loop` | 1 | 6.2 | 6.2 | 6.2 | 6.2 |
+| `render:center` | 1 | 2.4 | 2.4 | 2.4 | 2.4 |
 | `tree:buildTree` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
-| `render:sidebar:filter-pipeline` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:sidebar:sort` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
+| `render:sidebar:sort` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `render:sidebar:filter-pipeline` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-1000 (1000 entries) — `archetype-toggle`
 
 - heap used: **17.36 MB**
-- captured: 2026-04-28T04:05:49.579Z
+- captured: 2026-04-28T10:06:15.785Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 19.2 | 19.2 | 19.2 | 19.2 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 19.1 | 19.1 | 19.1 | 19.1 |
-| `render:scope=sidebar-only` | 1 | 18.5 | 18.5 | 18.5 | 18.5 |
-| `render:sidebar` | 1 | 12 | 12 | 12 | 12 |
-| `render:sidebar:flat-loop` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
-| `render:sidebar:filter-pipeline` | 1 | 0.7 | 0.7 | 0.7 | 0.7 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 19 | 19 | 19 | 19 |
+| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 18.9 | 18.9 | 18.9 | 18.9 |
+| `render:scope=sidebar-only` | 1 | 18.2 | 18.2 | 18.2 | 18.2 |
+| `render:sidebar` | 1 | 14.6 | 14.6 | 14.6 | 14.6 |
+| `render:sidebar:flat-loop` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
+| `render:sidebar:filter-pipeline` | 1 | 0.6 | 0.6 | 0.6 | 0.6 |
+| `filter:applyFilters` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
 | `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `filter:applyFilters` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 | `render:sidebar:sort` | 1 | 0.1 | 0.1 | 0.1 | 0.1 |
 
 ## c-1000 (1000 entries) — `cold-boot`
 
-- boot enter→exit: **58.4 ms**
-- heap used: **12.11 MB**
-- captured: 2026-04-28T04:05:47.335Z
+- boot enter→exit: **60.6 ms**
+- heap used: **11.35 MB**
+- captured: 2026-04-28T10:06:13.854Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 34.9 | 34.9 | 34.9 | 34.9 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 34.7 | 34.7 | 34.7 | 34.7 |
-| `render:phase=ready` | 1 | 34.4 | 34.4 | 34.4 | 34.4 |
-| `render:sidebar` | 1 | 21.4 | 21.4 | 21.4 | 21.4 |
-| `boot:loadFromStore` | 1 | 21.3 | 21.3 | 21.3 | 21.3 |
-| `render:sidebar:tree-loop` | 1 | 14.8 | 14.8 | 14.8 | 14.8 |
-| `tree:buildTree` | 1 | 1.5 | 1.5 | 1.5 | 1.5 |
-| `render:sidebar:filter-pipeline` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
-| `render:center` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
-| `render:sidebar:sort` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `dispatch:RESTORE_SETTINGS` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 35.8 | 35.8 | 35.8 | 35.8 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 35.5 | 35.5 | 35.5 | 35.5 |
+| `render:phase=ready` | 1 | 35.2 | 35.2 | 35.2 | 35.2 |
+| `boot:loadFromStore` | 1 | 22.8 | 22.8 | 22.8 | 22.8 |
+| `render:sidebar` | 1 | 22.1 | 22.1 | 22.1 | 22.1 |
+| `render:sidebar:tree-loop` | 1 | 15.6 | 15.6 | 15.6 | 15.6 |
+| `tree:buildTree` | 1 | 1.7 | 1.7 | 1.7 | 1.7 |
+| `render:center` | 1 | 0.6 | 0.6 | 0.6 | 0.6 |
+| `render:sidebar:sort` | 1 | 0.5 | 0.5 | 0.5 | 0.5 |
+| `render:sidebar:filter-pipeline` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
+| `render:phase=initializing` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
+| `render:scope=settings-only` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 
 ## c-1000 (1000 entries) — `search-keystroke`
 
-- heap used: **13.64 MB**
-- captured: 2026-04-28T04:05:48.841Z
+- heap used: **12.11 MB**
+- captured: 2026-04-28T10:06:15.057Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 584 | 121.3 | 182.8 | 182.8 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 583.9 | 121.2 | 182.8 | 182.8 |
-| `render:scope=sidebar-only` | 4 | 580 | 120.3 | 181.5 | 181.5 |
-| `render:sidebar` | 4 | 166 | 36.3 | 57.3 | 57.3 |
-| `render:sidebar:flat-loop` | 4 | 109.9 | 23.9 | 38.8 | 38.8 |
-| `render:sidebar:sublocation-scan` | 4 | 109.5 | 23.8 | 38.6 | 38.6 |
-| `render:sidebar:filter-pipeline` | 4 | 22.2 | 5.5 | 6.2 | 6.2 |
-| `filter:applyFilters` | 4 | 3.9 | 0.7 | 1.9 | 1.9 |
-| `render:sidebar:sort` | 4 | 0.7 | 0.1 | 0.4 | 0.4 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 248.8 | 53.9 | 84.1 | 84.1 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 248.6 | 53.9 | 84 | 84 |
+| `render:scope=sidebar-only` | 4 | 245.4 | 53.1 | 83.2 | 83.2 |
+| `render:sidebar` | 4 | 171.6 | 37.5 | 60.4 | 60.4 |
+| `render:sidebar:flat-loop` | 4 | 114.1 | 24.8 | 41.3 | 41.3 |
+| `render:sidebar:sublocation-scan` | 4 | 113.8 | 24.7 | 41.2 | 41.2 |
+| `render:sidebar:filter-pipeline` | 4 | 24.5 | 5.7 | 7.1 | 7.1 |
+| `filter:applyFilters` | 4 | 5.1 | 0.8 | 2.6 | 2.6 |
+| `render:sidebar:sort` | 4 | 0.5 | 0.1 | 0.2 | 0.2 |
 | `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
 
 ## c-1000 (1000 entries) — `select-entry`
 
 - heap used: **16.31 MB**
-- captured: 2026-04-28T04:05:50.474Z
+- captured: 2026-04-28T10:06:16.685Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 150.3 | 150.3 | 150.3 | 150.3 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 146.8 | 146.8 | 146.8 | 146.8 |
-| `render:phase=ready` | 1 | 145.6 | 145.6 | 145.6 | 145.6 |
-| `render:meta` | 1 | 17 | 17 | 17 | 17 |
-| `render:sidebar` | 1 | 15.5 | 15.5 | 15.5 | 15.5 |
-| `render:sidebar:tree-loop` | 1 | 12.1 | 12.1 | 12.1 | 12.1 |
-| `render:center` | 1 | 2.7 | 2.7 | 2.7 | 2.7 |
-| `tree:buildTree` | 1 | 1.1 | 1.1 | 1.1 | 1.1 |
+| `dispatch:SELECT_ENTRY` | 1 | 131.1 | 131.1 | 131.1 | 131.1 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 127.7 | 127.7 | 127.7 | 127.7 |
+| `render:phase=ready` | 1 | 126.4 | 126.4 | 126.4 | 126.4 |
+| `render:meta` | 1 | 20.6 | 20.6 | 20.6 | 20.6 |
+| `render:sidebar` | 1 | 17.6 | 17.6 | 17.6 | 17.6 |
+| `render:sidebar:tree-loop` | 1 | 14.1 | 14.1 | 14.1 | 14.1 |
+| `render:center` | 1 | 2.9 | 2.9 | 2.9 | 2.9 |
+| `tree:buildTree` | 1 | 1.4 | 1.4 | 1.4 | 1.4 |
 | `render:sidebar:filter-pipeline` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
-| `render:sidebar:sort` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `render:sidebar:sort` | 1 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |
 
 ## c-5000 (5000 entries) — `archetype-toggle`
 
-- heap used: **45.2 MB**
-- captured: 2026-04-28T04:08:55.764Z
+- heap used: **26.32 MB**
+- captured: 2026-04-28T10:06:23.234Z
 
-| measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
-|---|---|---|---|---|---|
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state` | 1 | 154.1 | 154.1 | 154.1 | 154.1 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER` | 1 | 154.1 | 154.1 | 154.1 | 154.1 |
-| `render:scope=sidebar-only` | 1 | 153 | 153 | 153 | 153 |
-| `render:sidebar` | 1 | 124.9 | 124.9 | 124.9 | 124.9 |
-| `render:sidebar:filter-pipeline` | 1 | 3.9 | 3.9 | 3.9 | 3.9 |
-| `render:sidebar:flat-loop` | 1 | 2.7 | 2.7 | 2.7 | 2.7 |
-| `filter:applyFilters` | 1 | 0.4 | 0.4 | 0.4 | 0.4 |
-| `render:sidebar:sort` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
-| `dispatch:TOGGLE_ARCHETYPE_FILTER:reduce` | 1 | 0 | 0 | 0 | 0 |
+*(no measures recorded)*
 
 ## c-5000 (5000 entries) — `cold-boot`
 
-- boot enter→exit: **186.4 ms**
+- boot enter→exit: **178.9 ms**
 - heap used: **35.57 MB**
-- captured: 2026-04-28T04:05:51.894Z
+- captured: 2026-04-28T10:06:17.967Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SYS_INIT_COMPLETE` | 1 | 131.6 | 131.6 | 131.6 | 131.6 |
-| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 131.2 | 131.2 | 131.2 | 131.2 |
-| `render:phase=ready` | 1 | 130 | 130 | 130 | 130 |
-| `render:sidebar` | 1 | 93 | 93 | 93 | 93 |
-| `render:sidebar:tree-loop` | 1 | 66.3 | 66.3 | 66.3 | 66.3 |
-| `boot:loadFromStore` | 1 | 50.2 | 50.2 | 50.2 | 50.2 |
-| `tree:buildTree` | 1 | 8.4 | 8.4 | 8.4 | 8.4 |
-| `render:sidebar:sort` | 1 | 2.2 | 2.2 | 2.2 | 2.2 |
-| `render:sidebar:filter-pipeline` | 1 | 1.5 | 1.5 | 1.5 | 1.5 |
-| `dispatch:RESTORE_SETTINGS:notify-state` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
+| `dispatch:SYS_INIT_COMPLETE` | 1 | 126.8 | 126.8 | 126.8 | 126.8 |
+| `dispatch:SYS_INIT_COMPLETE:notify-state` | 1 | 126.5 | 126.5 | 126.5 | 126.5 |
+| `render:phase=ready` | 1 | 125.5 | 125.5 | 125.5 | 125.5 |
+| `render:sidebar` | 1 | 91 | 91 | 91 | 91 |
+| `render:sidebar:tree-loop` | 1 | 66.2 | 66.2 | 66.2 | 66.2 |
+| `boot:loadFromStore` | 1 | 47.7 | 47.7 | 47.7 | 47.7 |
+| `tree:buildTree` | 1 | 7.9 | 7.9 | 7.9 | 7.9 |
+| `render:sidebar:filter-pipeline` | 1 | 2.6 | 2.6 | 2.6 | 2.6 |
+| `render:sidebar:sort` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
 | `dispatch:RESTORE_SETTINGS` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
+| `render:center` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
 | `render:scope=settings-only` | 1 | 0.8 | 0.8 | 0.8 | 0.8 |
 
 ## c-5000 (5000 entries) — `search-keystroke`
 
-- heap used: **40.15 MB**
-- captured: 2026-04-28T03:28:57.138Z
+- heap used: **33.47 MB**
+- captured: 2026-04-28T10:06:22.341Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SET_SEARCH_QUERY` | 4 | 3977.2 | 1047.8 | 1106.3 | 1106.3 |
-| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 3976.6 | 1047.8 | 1105.9 | 1105.9 |
-| `render:scope=sidebar-only` | 4 | 3955.3 | 1042.5 | 1100.9 | 1100.9 |
-| `render:sidebar` | 4 | 1443.8 | 354 | 398.6 | 398.6 |
-| `filter:applyFilters` | 4 | 23.6 | 3.8 | 12.2 | 12.2 |
-| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0 | 0 | 0 | 0 |
+| `dispatch:SET_SEARCH_QUERY` | 4 | 1899.5 | 452.5 | 537.2 | 537.2 |
+| `dispatch:SET_SEARCH_QUERY:notify-state` | 4 | 1899.2 | 452.4 | 537.2 | 537.2 |
+| `render:scope=sidebar-only` | 4 | 1888.5 | 450 | 534 | 534 |
+| `render:sidebar` | 4 | 1447.5 | 348.2 | 400.8 | 400.8 |
+| `render:sidebar:flat-loop` | 4 | 520.2 | 118.8 | 158.7 | 158.7 |
+| `render:sidebar:sublocation-scan` | 4 | 519.5 | 118.7 | 158.3 | 158.3 |
+| `render:sidebar:filter-pipeline` | 4 | 416.3 | 100.6 | 111.7 | 111.7 |
+| `filter:applyFilters` | 4 | 22.5 | 3.2 | 12.4 | 12.4 |
+| `render:sidebar:sort` | 4 | 2.6 | 0.6 | 0.8 | 0.8 |
+| `dispatch:SET_SEARCH_QUERY:reduce` | 4 | 0.2 | 0 | 0.1 | 0.1 |
 
 ## c-5000 (5000 entries) — `select-entry`
 
 - heap used: **42.63 MB**
-- captured: 2026-04-28T04:08:58.043Z
+- captured: 2026-04-28T10:08:13.929Z
 
 | measure | count | total (ms) | p50 (ms) | p95 (ms) | max (ms) |
 |---|---|---|---|---|---|
-| `dispatch:SELECT_ENTRY` | 1 | 684.6 | 684.6 | 684.6 | 684.6 |
-| `dispatch:SELECT_ENTRY:notify-state` | 1 | 680.7 | 680.7 | 680.7 | 680.7 |
-| `render:phase=ready` | 1 | 675 | 675 | 675 | 675 |
-| `render:meta` | 1 | 85.6 | 85.6 | 85.6 | 85.6 |
-| `render:sidebar` | 1 | 80.5 | 80.5 | 80.5 | 80.5 |
-| `render:sidebar:tree-loop` | 1 | 60.1 | 60.1 | 60.1 | 60.1 |
-| `tree:buildTree` | 1 | 10.6 | 10.6 | 10.6 | 10.6 |
-| `render:center` | 1 | 7.6 | 7.6 | 7.6 | 7.6 |
-| `render:sidebar:sort` | 1 | 1 | 1 | 1 | 1 |
-| `render:sidebar:filter-pipeline` | 1 | 0.9 | 0.9 | 0.9 | 0.9 |
-| `dispatch:SELECT_ENTRY:reduce` | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| `dispatch:SELECT_ENTRY` | 1 | 507.8 | 507.8 | 507.8 | 507.8 |
+| `dispatch:SELECT_ENTRY:notify-state` | 1 | 504.3 | 504.3 | 504.3 | 504.3 |
+| `render:phase=ready` | 1 | 499 | 499 | 499 | 499 |
+| `render:meta` | 1 | 84.7 | 84.7 | 84.7 | 84.7 |
+| `render:sidebar` | 1 | 84.5 | 84.5 | 84.5 | 84.5 |
+| `render:sidebar:tree-loop` | 1 | 60.2 | 60.2 | 60.2 | 60.2 |
+| `tree:buildTree` | 1 | 12 | 12 | 12 | 12 |
+| `render:center` | 1 | 6.5 | 6.5 | 6.5 | 6.5 |
+| `render:sidebar:sort` | 1 | 2.3 | 2.3 | 2.3 | 2.3 |
+| `render:sidebar:filter-pipeline` | 1 | 1 | 1 | 1 | 1 |
+| `dispatch:SELECT_ENTRY:reduce` | 1 | 0 | 0 | 0 | 0 |
 | `filter:applyFilters` | 1 | 0 | 0 | 0 | 0 |

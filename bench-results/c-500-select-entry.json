@@ -5,66 +5,66 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 233.29999999998836,
+      "startTime": 237.59999999997672,
       "duration": 0
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 233.29999999998836,
-      "duration": 92.70000000001164
+      "startTime": 237.59999999997672,
+      "duration": 84.30000000004657
     },
     {
       "name": "dispatch:SELECT_ENTRY",
-      "startTime": 233.29999999998836,
-      "duration": 96
+      "startTime": 237.59999999997672,
+      "duration": 88.20000000006985
     },
     {
       "name": "render:phase=ready",
-      "startTime": 233.89999999999418,
-      "duration": 91.79999999998836
+      "startTime": 238.19999999995343,
+      "duration": 83.5
     },
     {
       "name": "render:sidebar",
-      "startTime": 237.89999999999418,
-      "duration": 9.699999999982538
+      "startTime": 241.5,
+      "duration": 8.800000000046566
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 239.09999999997672,
+      "startTime": 242.30000000004657,
       "duration": 0
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 239.09999999997672,
-      "duration": 0.3000000000174623
-    },
-    {
-      "name": "render:sidebar:sort",
-      "startTime": 239.5,
+      "startTime": 242.30000000004657,
       "duration": 0.09999999997671694
     },
     {
+      "name": "render:sidebar:sort",
+      "startTime": 242.40000000002328,
+      "duration": 0.40000000002328306
+    },
+    {
       "name": "tree:buildTree",
-      "startTime": 239.79999999998836,
-      "duration": 0.7999999999883585
+      "startTime": 243,
+      "duration": 0.8000000000465661
     },
     {
       "name": "render:sidebar:tree-loop",
-      "startTime": 240.59999999997672,
-      "duration": 6.7000000000116415
+      "startTime": 243.80000000004657,
+      "duration": 6.199999999953434
     },
     {
       "name": "render:center",
-      "startTime": 247.69999999998254,
-      "duration": 2.6000000000058208
+      "startTime": 250.40000000002328,
+      "duration": 2.400000000023283
     },
     {
       "name": "render:meta",
-      "startTime": 250.39999999999418,
-      "duration": 11.10000000000582
+      "startTime": 252.90000000002328,
+      "duration": 12
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 9.54,
-  "capturedAt": "2026-04-28T04:05:46.749Z"
+  "capturedAt": "2026-04-28T10:06:13.250Z"
 }

@@ -5,96 +5,96 @@
   "measures": [
     {
       "name": "render:phase=initializing",
-      "startTime": 36.79999999998836,
-      "duration": 0.20000000001164153
+      "startTime": 38.79999999993015,
+      "duration": 0.30000000004656613
     },
     {
       "name": "boot:readPkcData",
-      "startTime": 37.5,
-      "duration": 0.10000000000582077
+      "startTime": 39.5,
+      "duration": 0.09999999997671694
     },
     {
       "name": "boot:loadFromStore",
-      "startTime": 37.60000000000582,
-      "duration": 21.29999999998836
+      "startTime": 39.59999999997672,
+      "duration": 22.79999999993015
+    },
+    {
+      "name": "dispatch:SYS_INIT_COMPLETE",
+      "startTime": 63,
+      "duration": 35.79999999993015
     },
     {
       "name": "dispatch:SYS_INIT_COMPLETE:reduce",
-      "startTime": 59.60000000000582,
+      "startTime": 63.09999999997672,
       "duration": 0
     },
     {
       "name": "render:phase=ready",
-      "startTime": 59.60000000000582,
-      "duration": 34.39999999999418
+      "startTime": 63.09999999997672,
+      "duration": 35.199999999953434
     },
     {
       "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
-      "startTime": 59.60000000000582,
-      "duration": 34.69999999998254
-    },
-    {
-      "name": "dispatch:SYS_INIT_COMPLETE",
-      "startTime": 59.60000000000582,
-      "duration": 34.89999999999418
+      "startTime": 63.09999999997672,
+      "duration": 35.5
     },
     {
       "name": "render:sidebar",
-      "startTime": 71.29999999998836,
-      "duration": 21.39999999999418
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 73.39999999999418,
-      "duration": 0.8999999999941792
+      "startTime": 75,
+      "duration": 22.099999999976717
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 73.5,
+      "startTime": 76.89999999990687,
       "duration": 0
+    },
+    {
+      "name": "render:sidebar:filter-pipeline",
+      "startTime": 76.89999999990687,
+      "duration": 0.40000000002328306
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 74.29999999998836,
-      "duration": 0.3000000000174623
+      "startTime": 77.29999999993015,
+      "duration": 0.5
     },
     {
       "name": "tree:buildTree",
-      "startTime": 75.89999999999418,
-      "duration": 1.5
+      "startTime": 79.29999999993015,
+      "duration": 1.7000000000698492
     },
     {
       "name": "render:sidebar:tree-loop",
-      "startTime": 77.39999999999418,
-      "duration": 14.799999999988358
+      "startTime": 81,
+      "duration": 15.599999999976717
     },
     {
       "name": "render:center",
-      "startTime": 93,
-      "duration": 0.39999999999417923
+      "startTime": 97.19999999995343,
+      "duration": 0.5999999999767169
     },
     {
       "name": "dispatch:RESTORE_SETTINGS:reduce",
-      "startTime": 94.60000000000582,
+      "startTime": 98.89999999990687,
       "duration": 0
     },
     {
+      "name": "render:scope=settings-only",
+      "startTime": 98.89999999990687,
+      "duration": 0.30000000004656613
+    },
+    {
       "name": "dispatch:RESTORE_SETTINGS:notify-state",
-      "startTime": 94.60000000000582,
-      "duration": 0.29999999998835847
+      "startTime": 98.89999999990687,
+      "duration": 0.30000000004656613
     },
     {
       "name": "dispatch:RESTORE_SETTINGS",
-      "startTime": 94.60000000000582,
-      "duration": 0.29999999998835847
-    },
-    {
-      "name": "render:scope=settings-only",
-      "startTime": 94.69999999998254,
-      "duration": 0.20000000001164153
+      "startTime": 98.89999999990687,
+      "duration": 0.30000000004656613
     }
   ],
-  "bootElapsedMs": 58.39999999999418,
-  "heapUsedMb": 12.11,
-  "capturedAt": "2026-04-28T04:05:47.335Z"
+  "bootElapsedMs": 60.59999999997672,
+  "heapUsedMb": 11.35,
+  "capturedAt": "2026-04-28T10:06:13.854Z"
 }
