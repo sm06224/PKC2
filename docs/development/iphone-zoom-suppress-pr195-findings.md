@@ -20,7 +20,24 @@ iOS Safari は input / textarea をフォーカスしたとき、その要素の
 PKC2 の編集 UI は font-size を 0.7-0.9 rem (= 11-14 px) で揃えている
 ため、iPhone でほぼ全ての編集面でこの zoom が発生していた。
 
-## 2. 修正
+## 2. 修正(改訂版 2026-04-28)
+
+第 1 案(font-size 16 px のみ)が **イマイチ** とのフィードバックを
+受けて、ユーザー方針として「**哲学優先で WCAG を一度無視する**」判断:
+
+### a. viewport meta:`maximum-scale=1, user-scalable=no` を追加
+
+`build/shell.html`(release-build の埋め込み HTML)+ `index.html`
+(dev mode):
+
+```html
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+```
+
+これでフォーカス時の auto-zoom も、ユーザー手動の pinch-zoom も、
+**両方** ブロックされる。俯瞰性の維持が最優先という判断。
+
+### b. font-size 16 px ルール(belt-and-suspenders として残す)
 
 `src/styles/base.css` の既存 `@media (pointer: coarse)` ブロックに
 編集面の font-size 16 px 強制ルールを追加:
@@ -52,8 +69,8 @@ PKC2 の編集 UI は font-size を 0.7-0.9 rem (= 11-14 px) で揃えている
 
 | 案 | 採用 | 理由 |
 |---|---|---|
-| viewport meta `maximum-scale=1, user-scalable=no` | × | アクセシビリティ違反(ピンチズーム拒否は WCAG 1.4.4 失格)|
-| input / textarea のみ font-size 16 px(touch時)| **○** | 副作用最小、desktop は不変 |
+| viewport meta `maximum-scale=1, user-scalable=no` | **○(改訂版)** | 俯瞰性最優先、ユーザー方針で WCAG を一旦無視 |
+| input / textarea のみ font-size 16 px(touch時)| ○(belt-and-suspenders) | 副作用最小、desktop は不変。viewport meta が外された場合の保険 |
 | 全 root font-size 引き上げ | × | 全 layout への波及大 |
 
 `pointer: coarse` メディアクエリを使うことで:
@@ -90,7 +107,10 @@ PKC2 の編集 UI は font-size を 0.7-0.9 rem (= 11-14 px) で揃えている
 
 実機検証方針:
 - iOS Safari で textarea / search input にタップ → 拡大が起きないこと
-- ピンチズーム自体は引き続き有効(accessibility 維持)
+- ピンチズーム自体も無効化(viewport meta `user-scalable=no`)。
+  accessibility より俯瞰性を優先するユーザー判断。リバートしたい時は
+  viewport meta から `maximum-scale=1.0,user-scalable=no` を削れば
+  font-size 16 px ルールが belt-and-suspenders として残る
 
 ## 6. roadmap 残り
 
