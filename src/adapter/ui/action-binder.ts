@@ -25,8 +25,6 @@ import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import {
   prepareOptimizedIntake,
-  buildAttachmentBodyMeta,
-  buildAttachmentAssets,
   deriveDisplayFilename,
   type IntakePayload,
 } from './image-optimize/paste-optimization';
@@ -6864,42 +6862,45 @@ function processFileAttachmentWithDedupe(
       console.warn(`[PKC2] FI-04: dedupe check failed for "${file.name}"`, dedupeErr);
     }
 
-    // Always create the attachment entry (I-FI04-1, I-FI04-2)
+    // PR #185: dispatch as PASTE_ATTACHMENT instead of
+    // CREATE_ENTRY + COMMIT_EDIT.
+    //
+    // The previous flow:
+    //   - CREATE_ENTRY moved selectedLid + editingLid + phase to the
+    //     new attachment, opening the editor and (on iPhone) shoving
+    //     the user out of whatever they were doing into the entry view
+    //   - COMMIT_EDIT closed editing back to ready
+    // For burst drops of 30 files this fired 60 transitions and the
+    // user lost their place after every file.
+    //
+    // PASTE_ATTACHMENT (used by the paste path historically) creates
+    // the entry + body + asset atomically and **does not touch
+    // selectedLid / editingLid / phase / viewMode**. The user keeps
+    // their context; only the sidebar list grows.
+    //
+    // contextLid drives auto-placement:
+    //   - explicit contextFolder (drop on folder) → routes into
+    //     ASSETS subfolder of that folder
+    //   - undefined → uses current selectedLid → walks to nearest
+    //     folder ancestor → routes into ASSETS subfolder
+    // Identical to the CREATE_ENTRY parentFolder/ensureSubfolder
+    // resolution that ran here pre-PR-185.
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
-
-    // Atomic placement: pass parentFolder + ensureSubfolder to
-    // CREATE_ENTRY so the reducer creates the ASSETS bucket folder
-    // and the structural relation in the same step. Falls back to
-    // auto-placement (selectedLid → first folder ancestor) when no
-    // explicit contextFolder is provided — that's what makes left-
-    // pane drop-zone DnD route into ASSETS instead of root.
     const preState = dispatcher.getState();
-    const autoPlacementFolder =
-      !contextFolder && preState.container
-        ? resolveAutoPlacementFolder(preState.container, preState.selectedLid ?? null)
-        : null;
-    const parentFolder = contextFolder ?? autoPlacementFolder ?? undefined;
-    const subfolderName = getSubfolderNameForArchetype('attachment');
-    const ensureSubfolder =
-      parentFolder && subfolderName ? subfolderName : undefined;
+    const contextLid: string | null =
+      contextFolder ?? preState.selectedLid ?? null;
+
     dispatcher.dispatch({
-      type: 'CREATE_ENTRY',
-      archetype: 'attachment',
-      title: file.name,
-      parentFolder,
-      ensureSubfolder,
+      type: 'PASTE_ATTACHMENT',
+      name: file.name,
+      mime: payload.mime,
+      size: payload.size,
+      assetKey,
+      assetData: payload.assetData,
+      contextLid,
+      originalAssetData: payload.originalAssetData,
+      optimizationMeta: payload.optimizationMeta,
     });
-    const state = dispatcher.getState();
-    if (state.editingLid) {
-      dispatcher.dispatch({
-        type: 'COMMIT_EDIT',
-        lid: state.editingLid,
-        title: file.name,
-        body: bodyMeta,
-        assets: buildAttachmentAssets(assetKey, payload),
-      });
-    }
     onComplete();
   })();
 }
@@ -6954,39 +6955,26 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
       };
     }
 
-    // Generate asset key
+    // PR #185: same as processFileAttachmentWithDedupe — dispatch
+    // PASTE_ATTACHMENT (atomic, no selection / editing transition)
+    // instead of the old CREATE_ENTRY + COMMIT_EDIT [+ CREATE_RELATION]
+    // chain that would have flipped the user out of their context.
     const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const preState = dispatcher.getState();
+    const contextLid: string | null =
+      contextFolder ?? preState.selectedLid ?? null;
 
-    // Build attachment body metadata (includes optimized provenance when present)
-    const bodyMeta = buildAttachmentBodyMeta(file.name, assetKey, payload);
-
-    // Step 1: Create entry (enters editing mode automatically)
-    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'attachment', title: file.name });
-
-    // Step 2: Get the new entry's lid and commit with file data
-    const state = dispatcher.getState();
-    if (state.editingLid) {
-      dispatcher.dispatch({
-        type: 'COMMIT_EDIT',
-        lid: state.editingLid,
-        title: file.name,
-        body: bodyMeta,
-        assets: buildAttachmentAssets(assetKey, payload),
-      });
-
-      // Step 3: Place in context folder if applicable
-      if (contextFolder) {
-        const newState = dispatcher.getState();
-        if (newState.selectedLid) {
-          dispatcher.dispatch({
-            type: 'CREATE_RELATION',
-            from: contextFolder,
-            to: newState.selectedLid,
-            kind: 'structural',
-          });
-        }
-      }
-    }
+    dispatcher.dispatch({
+      type: 'PASTE_ATTACHMENT',
+      name: file.name,
+      mime: payload.mime,
+      size: payload.size,
+      assetKey,
+      assetData: payload.assetData,
+      contextLid,
+      originalAssetData: payload.originalAssetData,
+      optimizationMeta: payload.optimizationMeta,
+    });
   })();
 }
 
