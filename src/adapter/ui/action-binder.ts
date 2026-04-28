@@ -18,6 +18,7 @@ import {
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
+import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import {
@@ -4781,15 +4782,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // G-1: process all files in FileList index order, sequentially.
     // Each file's dispatches complete before the next FileReader starts,
     // preserving container.entries append order (I-FI04-4).
+    // PR #181: yield to the event loop between files so the previous
+    // file's base64 + payload become GC-eligible before the next
+    // FileReader allocates — keeps peak heap to one file's worth on
+    // burst drops.
     function processNext(index: number): void {
       if (index >= files.length) {
         zone.setAttribute('data-pkc-drop-success', 'true');
         setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
         return;
       }
-      processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () =>
-        processNext(index + 1),
-      );
+      processFileAttachmentWithDedupe(files[index]!, contextFolder, dispatcher, () => {
+        if (index + 1 < files.length) {
+          void yieldToEventLoop().then(() => processNext(index + 1));
+        } else {
+          processNext(index + 1);
+        }
+      });
     }
     processNext(0);
   }
@@ -4874,7 +4883,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     let accumulatedRefs = '';
     let fileIndex = 0;
 
-    function processNext(): void {
+    async function processNext(): Promise<void> {
       if (fileIndex >= files.length) return;
       const file = files[fileIndex]!;
       fileIndex++;
@@ -4888,72 +4897,73 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           onExport: () =>
             dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode: 'full', mutability: 'editable' }),
         });
-        processNext();
+        void processNext();
         return;
       }
 
       preflightStorageWarn(file, dispatcher);
 
-      const reader = new FileReader();
-      reader.onerror = () => {
-        const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
+      let base64: string;
+      try {
+        base64 = await fileToBase64(file);
+      } catch (err) {
+        const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}.`;
         console.warn(`[PKC2] ${msg}`);
         showToast({ message: msg, kind: 'error' });
-        processNext();
-      };
-      reader.onload = async () => {
-        const arrayBuffer = reader.result as ArrayBuffer;
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]!);
-        }
-        const base64 = btoa(binary);
+        void processNext();
+        return;
+      }
 
-        // v1 image intake optimization (drop surface — editor inline drop
-        // is still a drop gesture, so it shares the 'drop' surface
-        // preference with the sidebar drop zone).
-        let payload: IntakePayload;
-        try {
-          payload = await prepareOptimizedIntake(file, base64, 'drop');
-        } catch {
-          payload = {
-            assetData: base64,
-            mime: file.type || 'application/octet-stream',
-            size: file.size,
-          };
-        }
+      // v1 image intake optimization (drop surface — editor inline drop
+      // is still a drop gesture, so it shares the 'drop' surface
+      // preference with the sidebar drop zone).
+      let payload: IntakePayload;
+      try {
+        payload = await prepareOptimizedIntake(file, base64, 'drop');
+      } catch {
+        payload = {
+          assetData: base64,
+          mime: file.type || 'application/octet-stream',
+          size: file.size,
+        };
+      }
 
-        const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        dispatcher.dispatch({
-          type: 'PASTE_ATTACHMENT',
-          name: file.name,
-          mime: payload.mime,
-          size: payload.size,
-          assetKey,
-          assetData: payload.assetData,
-          contextLid,
-          originalAssetData: payload.originalAssetData,
-          optimizationMeta: payload.optimizationMeta,
-        });
+      dispatcher.dispatch({
+        type: 'PASTE_ATTACHMENT',
+        name: file.name,
+        mime: payload.mime,
+        size: payload.size,
+        assetKey,
+        assetData: payload.assetData,
+        contextLid,
+        originalAssetData: payload.originalAssetData,
+        optimizationMeta: payload.optimizationMeta,
+      });
 
-        if (insertCtx) {
-          const ref = buildAssetRef(file.name, assetKey, payload.mime);
-          const separator = accumulatedRefs.length > 0 ? '\n' : '';
-          accumulatedRefs += separator + ref;
-          insertAssetLinkAtContext(
-            { ...insertCtx, cursorPos: insertCtx.cursorPos, currentValue: insertCtx.currentValue },
-            accumulatedRefs,
-          );
-        }
+      if (insertCtx) {
+        const ref = buildAssetRef(file.name, assetKey, payload.mime);
+        const separator = accumulatedRefs.length > 0 ? '\n' : '';
+        accumulatedRefs += separator + ref;
+        insertAssetLinkAtContext(
+          { ...insertCtx, cursorPos: insertCtx.cursorPos, currentValue: insertCtx.currentValue },
+          accumulatedRefs,
+        );
+      }
 
-        processNext();
-      };
-      reader.readAsArrayBuffer(file);
+      // Yield between files so the previous file's base64 + payload
+      // become GC-eligible before the next FileReader allocates. On
+      // burst drops of 5-10 large images this keeps peak heap to one
+      // file's worth instead of N files'. setTimeout(0) is preferred
+      // over rAF: a backgrounded tab still progresses.
+      if (fileIndex < files.length) {
+        await yieldToEventLoop();
+      }
+      void processNext();
     }
 
-    processNext();
+    void processNext();
   }
 
   // ── FI-05: Editor file drop (editing phase) ──
@@ -5263,15 +5273,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const currentValue = textarea.value;
 
       pasteInProgress = true;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const arrayBuffer = reader.result as ArrayBuffer;
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]!);
+      void (async () => {
+        let base64: string;
+        try {
+          base64 = await fileToBase64(file);
+        } catch (err) {
+          pasteInProgress = false;
+          // Paste conversion failed — most commonly because the source
+          // was too large for ArrayBuffer allocation. Surface it
+          // instead of silently dropping the paste.
+          const msg = `Paste failed to read "${name}": ${(err as Error).message ?? 'unknown error'}. The file may be too large.`;
+          console.warn(`[PKC2] ${msg}`);
+          showToast({ message: msg, kind: 'error' });
+          return;
         }
-        const base64 = btoa(binary);
 
         // v1 image intake optimization (paste surface).
         // The pipeline may be asynchronous (Canvas + confirm UI);
@@ -5326,17 +5341,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           freshTextarea.focus();
           updateTextEditPreview(freshTextarea);
         }
-      };
-      reader.onerror = () => {
-        pasteInProgress = false;
-        // Paste conversion failed — most commonly because the source
-        // was too large for btoa/ArrayBuffer allocation. Surface it
-        // instead of silently dropping the paste.
-        const msg = `Paste failed to read "${name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
-        console.warn(`[PKC2] ${msg}`);
-        showToast({ message: msg, kind: 'error' });
-      };
-      reader.readAsArrayBuffer(file);
+      })();
       return;
     }
 
@@ -6805,21 +6810,17 @@ function processFileAttachmentWithDedupe(
 
   preflightStorageWarn(file, dispatcher);
 
-  const reader = new FileReader();
-  reader.onerror = () => {
-    const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}.`;
-    console.warn(`[PKC2] ${msg}`);
-    showToast({ message: msg, kind: 'error' });
-    onComplete();
-  };
-  reader.onload = async () => {
-    const arrayBuffer = reader.result as ArrayBuffer;
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]!);
+  void (async () => {
+    let base64: string;
+    try {
+      base64 = await fileToBase64(file);
+    } catch (err) {
+      const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}.`;
+      console.warn(`[PKC2] ${msg}`);
+      showToast({ message: msg, kind: 'error' });
+      onComplete();
+      return;
     }
-    const base64 = btoa(binary);
 
     // v1 image intake optimization (drop surface). Returns the
     // original payload as-is for non-image files / sub-threshold
@@ -6886,8 +6887,7 @@ function processFileAttachmentWithDedupe(
       });
     }
     onComplete();
-  };
-  reader.readAsArrayBuffer(file);
+  })();
 }
 
 /**
@@ -6917,22 +6917,16 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
   // a quota warning alongside the attempt. Does not block the drop.
   preflightStorageWarn(file, dispatcher);
 
-  const reader = new FileReader();
-  reader.onerror = () => {
-    const msg = `Failed to read "${file.name}": ${reader.error?.message ?? 'unknown error'}. The file may be too large.`;
-    console.warn(`[PKC2] ${msg}`);
-    showToast({ message: msg, kind: 'error' });
-  };
-  reader.onload = async () => {
-    const arrayBuffer = reader.result as ArrayBuffer;
-    const bytes = new Uint8Array(arrayBuffer);
-
-    // Convert to base64
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]!);
+  void (async () => {
+    let base64: string;
+    try {
+      base64 = await fileToBase64(file);
+    } catch (err) {
+      const msg = `Failed to read "${file.name}": ${(err as Error).message ?? 'unknown error'}. The file may be too large.`;
+      console.warn(`[PKC2] ${msg}`);
+      showToast({ message: msg, kind: 'error' });
+      return;
     }
-    const base64 = btoa(binary);
 
     // v1 image intake optimization (attach surface).
     let payload: IntakePayload;
@@ -6979,8 +6973,7 @@ function processFileAttachment(file: File, contextFolder: string | undefined, di
         }
       }
     }
-  };
-  reader.readAsArrayBuffer(file);
+  })();
 }
 
 /**
