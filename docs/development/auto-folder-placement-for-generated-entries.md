@@ -36,15 +36,16 @@ Two layers, applied in order:
 Done by `resolveAutoPlacementFolder(container, selectedLid)`
 (`src/features/relation/auto-placement.ts`):
 
-1. `selectedLid` is `null` / unresolved → `null` (root).
+1. `selectedLid` is `null` / unresolved → `null` (root fallback path).
 2. The selected entry is itself a folder → that folder's lid.
 3. The selected entry has a structural parent chain → the first
    `archetype === 'folder'` ancestor along the chain.
-4. No folder ancestor → `null` (root fallback).
+4. No folder ancestor → `null` (root fallback path).
 
-`null` means "no auto-placement" — the reducer adds no structural
-relation and the new entry sits at root. This preserves the
-historical fallback whenever there is no meaningful folder nearby.
+`null` means "no folder context resolved". For incidental archetypes
+(todo, attachment) the reducer then engages the **PR #186 root-level
+bucket** path instead of leaving the entry unfiled. See §"Root-level
+bucket fallback (PR #186)" below.
 
 Cycle-safe (visited set) and depth-capped at
 `MAX_ANCESTOR_DEPTH = 32`, matching the subset-builder and
@@ -66,15 +67,49 @@ through an archetype-specific subfolder:
   user is already inside an `ASSETS/` folder), the subfolder layer is
   **skipped** — no nested `ASSETS/ASSETS`.
 
-When the context resolver returned `null` (root fallback), the
-subfolder layer is skipped entirely. We explicitly do **not**
-auto-create root-level `TODOS` / `ASSETS` buckets — those would scatter
-at root in exactly the way we set out to stop.
-
 Title matching is case-sensitive and exact. Multiple same-titled
 subfolders are tolerated — the first match (in relation order) is
 used, mirroring how the rest of the app disambiguates sibling
 collisions.
+
+### 3. Root-level bucket fallback (PR #186, 2026-04-28)
+
+User direction: 「root配置はNG rootでもASSETS、TODOSの挙動は一緒
+仕様が間違ってる 最初の要望ではそんなこと言っていない」
+
+**Pre-PR-186** the resolver returning `null` left the new incidental at
+root unfiled. That meant:
+
+- Touch entry points (iPhone "+ Compose") with no selection → todo
+  lands at root, scatters across the tree
+- Sidebar drop zone with no selection → attachment lands at root
+- The user has to manually drag every incidental into a bucket
+
+**PR #186** inverts the rule for incidental archetypes:
+
+When `resolveAutoPlacementFolder` returns `null` AND the action carries
+an `ensureSubfolder` hint (set by the action-binder for
+`todo` / `attachment`), the reducer:
+
+1. Calls `findRootLevelFolder(container, ensureSubfolder)` to look up
+   an existing root-level folder with that title. "Root-level" =
+   no incoming structural relation.
+2. Reuses it if found.
+3. Creates a new root-level folder with that title in the same
+   reduction if not (auto-collapsed by default, mirroring the nested
+   subfolder behaviour).
+4. Routes the new entry into that folder via a structural relation.
+
+Primary documents (`text` / `textlog` / `folder` / `form` / `generic` /
+`opaque`) are unchanged — they still land at root when no folder
+context resolves, since `getSubfolderNameForArchetype` returns `null`
+for them and the action-binder doesn't pass `ensureSubfolder`.
+
+Reducer touchpoints:
+- `CREATE_ENTRY` — new branch handles `parentFolder undefined` +
+  `ensureSubfolder set`
+- `PASTE_ATTACHMENT` — new branch handles `contextFolderLid === null`
+  by calling `findRootLevelFolder('ASSETS')` / creating one
 
 ## Why a subfolder rather than direct placement
 

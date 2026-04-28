@@ -133,7 +133,7 @@ describe('PR #185 — ASSETS auto-placement preservation', () => {
     expect(assetsParent.lid).toBe('fld-1');
   });
 
-  it('no selection → drop lands at root (no ASSETS auto-folder)', async () => {
+  it('no selection → drop routes into a root-level ASSETS folder (PR #186 contract)', async () => {
     const dispatcher = setup(null);
     const file = new File(['x'], 'pic.png', { type: 'image/png' });
 
@@ -149,6 +149,12 @@ describe('PR #185 — ASSETS auto-placement preservation', () => {
     const c = dispatcher.getState().container!;
     const att = c.entries.find((e) => e.archetype === 'attachment')!;
     const parent = getStructuralParent(c, att.lid);
-    expect(parent).toBeNull(); // root placement, no structural parent
+    // PR #186: no folder context now lands in root-level ASSETS (auto-created),
+    // not at root unfiled.
+    expect(parent).not.toBeNull();
+    expect(parent!.title).toBe('ASSETS');
+    expect(parent!.archetype).toBe('folder');
+    // ASSETS folder itself is at root.
+    expect(getStructuralParent(c, parent!.lid)).toBeNull();
   });
 });

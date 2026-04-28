@@ -49,7 +49,7 @@ import {
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
 import { getAncestorFolderLids, isDescendant } from '../../features/relation/tree';
-import { resolveAutoPlacementFolder, findSubfolder } from '../../features/relation/auto-placement';
+import { resolveAutoPlacementFolder, findSubfolder, findRootLevelFolder } from '../../features/relation/auto-placement';
 import { applyFilters } from '../../features/search/filter';
 import { filterByTag } from '../../features/relation/tag-filter';
 import {
@@ -1051,6 +1051,25 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
               autoCollapsedNewFolders.push(subLid);
             }
           }
+        }
+      } else if (action.ensureSubfolder && action.ensureSubfolder.length > 0) {
+        // PR #186 (2026-04-28) — User direction:
+        //   「root配置はNG rootでもASSETS、TODOSの挙動は一緒」
+        // No parentFolder but the caller asked for a subfolder bucket
+        // (always set for incidental archetypes — todo, attachment).
+        // Route through a root-level bucket folder, auto-created on
+        // first use. Pre-PR-186 this branch silently dropped the
+        // ensureSubfolder hint and the entry landed at root unfiled.
+        const sub = action.ensureSubfolder;
+        const existingRoot = findRootLevelFolder(container, sub);
+        if (existingRoot) {
+          placementParentLid = existingRoot;
+        } else {
+          const rootSubLid = generateLid();
+          container = addEntry(container, rootSubLid, 'folder', sub, ts);
+          events.push({ type: 'ENTRY_CREATED', lid: rootSubLid, archetype: 'folder' });
+          placementParentLid = rootSubLid;
+          autoCollapsedNewFolders.push(rootSubLid);
         }
       }
 
@@ -2820,10 +2839,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // Resolve final placement parent: skip the subfolder layer when
       // the context is already titled ASSETS; otherwise reuse existing
       // ASSETS child or create one in the same reduction.
+      //
+      // PR #186 (2026-04-28) — User direction:
+      //   「root配置はNG rootでもASSETS、TODOSの挙動は一緒」
+      // Pre-PR-186 the contextFolderLid === null branch silently
+      // dropped the attachment at root unfiled. The new contract is:
+      // attachments ALWAYS land in an ASSETS folder. When no folder
+      // ancestor resolves, we fall back to a root-level ASSETS folder,
+      // creating it on first use.
+      const subName = 'ASSETS';
       let placementParentLid: string | null = null;
       if (contextFolderLid) {
         const contextFolder = container.entries.find((e) => e.lid === contextFolderLid);
-        const subName = 'ASSETS';
         if (contextFolder && contextFolder.title === subName) {
           placementParentLid = contextFolderLid;
         } else {
@@ -2842,6 +2869,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             });
             placementParentLid = subLid;
           }
+        }
+      } else {
+        // No folder context — route through root-level ASSETS.
+        const existingRoot = findRootLevelFolder(container, subName);
+        if (existingRoot) {
+          placementParentLid = existingRoot;
+        } else {
+          const rootSubLid = generateLid();
+          container = addEntry(container, rootSubLid, 'folder', subName, ts);
+          events.push({ type: 'ENTRY_CREATED', lid: rootSubLid, archetype: 'folder' });
+          placementParentLid = rootSubLid;
         }
       }
 

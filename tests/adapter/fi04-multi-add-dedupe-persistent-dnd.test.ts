@@ -328,7 +328,7 @@ describe('FI-04 auto-placement (ASSETS subfolder)', () => {
     expect(structuralParentOf(container, parentLid!)).toBe('fld');
   });
 
-  it('sidebar drop with no selection → file lands at root (no auto-placement, no ASSETS)', async () => {
+  it('sidebar drop with no selection → file routes into a root-level ASSETS folder (PR #186 contract)', async () => {
     const dispatcher = setupReady();
     const zone = root.querySelector<HTMLElement>('[data-pkc-region="sidebar-file-drop-zone"]');
     expect(zone).not.toBeNull();
@@ -343,9 +343,15 @@ describe('FI-04 auto-placement (ASSETS subfolder)', () => {
 
     const container = dispatcher.getState().container!;
     const att = container.entries.find((e) => e.archetype === 'attachment')!;
-    expect(structuralParentOf(container, att.lid)).toBeNull();
-    // No ASSETS folder created at root level.
-    expect(container.entries.find((e) => e.archetype === 'folder' && e.title === 'ASSETS')).toBeUndefined();
+    // PR #186: no folder context now lands in root-level ASSETS (auto-created),
+    // not at root unfiled.
+    const parentLid = structuralParentOf(container, att.lid);
+    expect(parentLid).not.toBeNull();
+    const parent = container.entries.find((e) => e.lid === parentLid);
+    expect(parent?.title).toBe('ASSETS');
+    expect(parent?.archetype).toBe('folder');
+    // ASSETS folder itself is at root.
+    expect(structuralParentOf(container, parent!.lid)).toBeNull();
   });
 
   it('center-pane drop with explicit context-folder → file lands in <ctx>/ASSETS', async () => {

@@ -226,19 +226,45 @@ describe('create-entry auto-placement — todo routes into TODOS subfolder', () 
     expect(countChildFoldersByTitle(dispatcher, todosLid, 'TODOS')).toBe(0);
   });
 
-  it('leaves a new todo at root when the selected entry has no folder ancestor', () => {
+  it('routes a new todo into a root-level TODOS folder when the selected entry has no folder ancestor', () => {
+    // PR #186 (2026-04-28): root unfiled is no longer a valid landing
+    // for incidentals. A root-level TODOS folder is auto-created on
+    // first use and the new todo lands inside it.
     const { dispatcher } = setup('root-note');
     clickCreate('todo');
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
-    // Root fallback: no context folder → no TODOS auto-create.
-    expect(placementParent(dispatcher, newLid!)).toBeNull();
+    const parentLid = placementParent(dispatcher, newLid!);
+    expect(parentLid).not.toBeNull();
+    const parent = dispatcher.getState().container?.entries.find((e) => e.lid === parentLid);
+    expect(parent?.title).toBe('TODOS');
+    expect(parent?.archetype).toBe('folder');
   });
 
-  it('leaves a new todo at root when nothing is selected', () => {
+  it('routes a new todo into a root-level TODOS folder when nothing is selected', () => {
     const { dispatcher } = setup(null);
     clickCreate('todo');
     const newLid = newestLidOfArchetype(dispatcher, 'todo');
-    expect(placementParent(dispatcher, newLid!)).toBeNull();
+    const parentLid = placementParent(dispatcher, newLid!);
+    expect(parentLid).not.toBeNull();
+    const parent = dispatcher.getState().container?.entries.find((e) => e.lid === parentLid);
+    expect(parent?.title).toBe('TODOS');
+  });
+
+  it('reuses an existing root-level TODOS folder if one is already present', () => {
+    const { dispatcher } = setup(null);
+    clickCreate('todo');
+    const firstLid = newestLidOfArchetype(dispatcher, 'todo')!;
+    const firstParent = placementParent(dispatcher, firstLid)!;
+    // Reset out of editing so the second CREATE_ENTRY isn't blocked.
+    dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+    clickCreate('todo');
+    const secondLid = newestLidOfArchetype(dispatcher, 'todo')!;
+    const secondParent = placementParent(dispatcher, secondLid)!;
+    expect(secondLid).not.toBe(firstLid);
+    expect(secondParent).toBe(firstParent);
+    const todosFolders = dispatcher.getState().container!.entries
+      .filter((e) => e.archetype === 'folder' && e.title === 'TODOS');
+    expect(todosFolders.length).toBe(1);
   });
 });
 
