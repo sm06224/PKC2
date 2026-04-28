@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-04-28T10:08:24.015Z",
+  "capturedAt": "2026-04-28T14:41:01.344Z",
   "scenarios": [
     {
       "scale": "c-100",
@@ -11,58 +11,58 @@
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
           "count": 1,
-          "sumMs": 4.9,
-          "p50Ms": 4.9,
-          "p95Ms": 4.9,
-          "maxMs": 4.9
+          "sumMs": 8.5,
+          "p50Ms": 8.5,
+          "p95Ms": 8.5,
+          "maxMs": 8.5
         },
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
           "count": 1,
-          "sumMs": 4.8,
-          "p50Ms": 4.8,
-          "p95Ms": 4.8,
-          "maxMs": 4.8
+          "sumMs": 8.4,
+          "p50Ms": 8.4,
+          "p95Ms": 8.4,
+          "maxMs": 8.4
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 1,
-          "sumMs": 4.5,
-          "p50Ms": 4.5,
-          "p95Ms": 4.5,
-          "maxMs": 4.5
+          "sumMs": 7.4,
+          "p50Ms": 7.4,
+          "p95Ms": 7.4,
+          "maxMs": 7.4
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 2.4,
-          "p50Ms": 2.4,
-          "p95Ms": 2.4,
-          "maxMs": 2.4
+          "sumMs": 3.3,
+          "p50Ms": 3.3,
+          "p95Ms": 3.3,
+          "maxMs": 3.3
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 0.4,
-          "p50Ms": 0.4,
-          "p95Ms": 0.4,
-          "maxMs": 0.4
+          "sumMs": 0.5,
+          "p50Ms": 0.5,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
         },
         {
           "name": "render:sidebar:flat-loop",
+          "count": 1,
+          "sumMs": 0.5,
+          "p50Ms": 0.5,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
+        },
+        {
+          "name": "filter:applyFilters",
           "count": 1,
           "sumMs": 0.3,
           "p50Ms": 0.3,
           "p95Ms": 0.3,
           "maxMs": 0.3
-        },
-        {
-          "name": "filter:applyFilters",
-          "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
         },
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
@@ -86,11 +86,35 @@
       "scale": "c-100",
       "entries": 100,
       "scenario": "cold-boot",
-      "bootElapsedMs": 16.399999999906868,
+      "bootElapsedMs": 23.400000000023283,
       "heapUsedMb": 9.54,
       "aggregate": [
         {
           "name": "dispatch:SYS_INIT_COMPLETE",
+          "count": 1,
+          "sumMs": 11.8,
+          "p50Ms": 11.8,
+          "p95Ms": 11.8,
+          "maxMs": 11.8
+        },
+        {
+          "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+          "count": 1,
+          "sumMs": 11.5,
+          "p50Ms": 11.5,
+          "p95Ms": 11.5,
+          "maxMs": 11.5
+        },
+        {
+          "name": "render:phase=ready",
+          "count": 1,
+          "sumMs": 11,
+          "p50Ms": 11,
+          "p95Ms": 11,
+          "maxMs": 11
+        },
+        {
+          "name": "boot:loadFromStore",
           "count": 1,
           "sumMs": 9.1,
           "p50Ms": 9.1,
@@ -98,68 +122,52 @@
           "maxMs": 9.1
         },
         {
-          "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
-          "count": 1,
-          "sumMs": 8.9,
-          "p50Ms": 8.9,
-          "p95Ms": 8.9,
-          "maxMs": 8.9
-        },
-        {
-          "name": "render:phase=ready",
-          "count": 1,
-          "sumMs": 8.6,
-          "p50Ms": 8.6,
-          "p95Ms": 8.6,
-          "maxMs": 8.6
-        },
-        {
-          "name": "boot:loadFromStore",
-          "count": 1,
-          "sumMs": 5.8,
-          "p50Ms": 5.8,
-          "p95Ms": 5.8,
-          "maxMs": 5.8
-        },
-        {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 5.2,
-          "p50Ms": 5.2,
-          "p95Ms": 5.2,
-          "maxMs": 5.2
+          "sumMs": 6.8,
+          "p50Ms": 6.8,
+          "p95Ms": 6.8,
+          "maxMs": 6.8
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 3.1,
-          "p50Ms": 3.1,
-          "p95Ms": 3.1,
-          "maxMs": 3.1
+          "sumMs": 3,
+          "p50Ms": 3,
+          "p95Ms": 3,
+          "maxMs": 3
         },
         {
-          "name": "render:center",
+          "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 0.6,
-          "p50Ms": 0.6,
-          "p95Ms": 0.6,
-          "maxMs": 0.6
+          "sumMs": 1.6,
+          "p50Ms": 1.6,
+          "p95Ms": 1.6,
+          "maxMs": 1.6
         },
         {
           "name": "tree:buildTree",
           "count": 1,
-          "sumMs": 0.5,
-          "p50Ms": 0.5,
-          "p95Ms": 0.5,
-          "maxMs": 0.5
+          "sumMs": 0.4,
+          "p50Ms": 0.4,
+          "p95Ms": 0.4,
+          "maxMs": 0.4
         },
         {
           "name": "render:phase=initializing",
           "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
+          "sumMs": 0.3,
+          "p50Ms": 0.3,
+          "p95Ms": 0.3,
+          "maxMs": 0.3
+        },
+        {
+          "name": "render:center",
+          "count": 1,
+          "sumMs": 0.3,
+          "p50Ms": 0.3,
+          "p95Ms": 0.3,
+          "maxMs": 0.3
         },
         {
           "name": "boot:readPkcData",
@@ -172,13 +180,29 @@
         {
           "name": "render:sidebar:sort",
           "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
         },
         {
-          "name": "render:sidebar:filter-pipeline",
+          "name": "render:scope=settings-only",
+          "count": 1,
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
+        },
+        {
+          "name": "dispatch:RESTORE_SETTINGS:notify-state",
+          "count": 1,
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
+        },
+        {
+          "name": "dispatch:RESTORE_SETTINGS",
           "count": 1,
           "sumMs": 0.1,
           "p50Ms": 0.1,
@@ -208,30 +232,6 @@
           "p50Ms": 0,
           "p95Ms": 0,
           "maxMs": 0
-        },
-        {
-          "name": "render:scope=settings-only",
-          "count": 1,
-          "sumMs": 0,
-          "p50Ms": 0,
-          "p95Ms": 0,
-          "maxMs": 0
-        },
-        {
-          "name": "dispatch:RESTORE_SETTINGS:notify-state",
-          "count": 1,
-          "sumMs": 0,
-          "p50Ms": 0,
-          "p95Ms": 0,
-          "maxMs": 0
-        },
-        {
-          "name": "dispatch:RESTORE_SETTINGS",
-          "count": 1,
-          "sumMs": 0,
-          "p50Ms": 0,
-          "p95Ms": 0,
-          "maxMs": 0
         }
       ]
     },
@@ -245,66 +245,66 @@
         {
           "name": "dispatch:SET_SEARCH_QUERY",
           "count": 4,
-          "sumMs": 41.5,
-          "p50Ms": 7.7,
-          "p95Ms": 17.4,
-          "maxMs": 17.4
+          "sumMs": 57.6,
+          "p50Ms": 12.2,
+          "p95Ms": 19.5,
+          "maxMs": 19.5
         },
         {
           "name": "dispatch:SET_SEARCH_QUERY:notify-state",
           "count": 4,
-          "sumMs": 41.4,
-          "p50Ms": 7.6,
-          "p95Ms": 17.4,
-          "maxMs": 17.4
+          "sumMs": 57.4,
+          "p50Ms": 12.2,
+          "p95Ms": 19.5,
+          "maxMs": 19.5
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 4,
-          "sumMs": 39,
-          "p50Ms": 7.3,
-          "p95Ms": 16.8,
-          "maxMs": 16.8
+          "sumMs": 53,
+          "p50Ms": 11.2,
+          "p95Ms": 18.4,
+          "maxMs": 18.4
         },
         {
           "name": "render:sidebar",
           "count": 4,
-          "sumMs": 24.3,
-          "p50Ms": 3.9,
-          "p95Ms": 12,
-          "maxMs": 12
+          "sumMs": 28.1,
+          "p50Ms": 5.5,
+          "p95Ms": 10.5,
+          "maxMs": 10.5
         },
         {
           "name": "render:sidebar:flat-loop",
           "count": 4,
-          "sumMs": 17.2,
-          "p50Ms": 3.1,
-          "p95Ms": 8,
-          "maxMs": 8
+          "sumMs": 21,
+          "p50Ms": 4.3,
+          "p95Ms": 7.4,
+          "maxMs": 7.4
         },
         {
           "name": "render:sidebar:sublocation-scan",
           "count": 4,
-          "sumMs": 16.8,
-          "p50Ms": 3.1,
-          "p95Ms": 7.6,
-          "maxMs": 7.6
+          "sumMs": 20.4,
+          "p50Ms": 4.2,
+          "p95Ms": 7.1,
+          "maxMs": 7.1
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 4,
-          "sumMs": 2.4,
-          "p50Ms": 0.4,
-          "p95Ms": 1.3,
-          "maxMs": 1.3
+          "sumMs": 1.3,
+          "p50Ms": 0.2,
+          "p95Ms": 0.7,
+          "maxMs": 0.7
         },
         {
           "name": "filter:applyFilters",
           "count": 4,
           "sumMs": 1.1,
           "p50Ms": 0.2,
-          "p95Ms": 0.4,
-          "maxMs": 0.4
+          "p95Ms": 0.6,
+          "maxMs": 0.6
         },
         {
           "name": "render:sidebar:sort",
@@ -334,37 +334,45 @@
         {
           "name": "dispatch:SELECT_ENTRY",
           "count": 1,
-          "sumMs": 45.4,
-          "p50Ms": 45.4,
-          "p95Ms": 45.4,
-          "maxMs": 45.4
+          "sumMs": 70.9,
+          "p50Ms": 70.9,
+          "p95Ms": 70.9,
+          "maxMs": 70.9
         },
         {
           "name": "dispatch:SELECT_ENTRY:notify-state",
           "count": 1,
-          "sumMs": 42,
-          "p50Ms": 42,
-          "p95Ms": 42,
-          "maxMs": 42
+          "sumMs": 66.1,
+          "p50Ms": 66.1,
+          "p95Ms": 66.1,
+          "maxMs": 66.1
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 41.6,
-          "p50Ms": 41.6,
-          "p95Ms": 41.6,
-          "maxMs": 41.6
+          "sumMs": 65.2,
+          "p50Ms": 65.2,
+          "p95Ms": 65.2,
+          "maxMs": 65.2
         },
         {
           "name": "render:meta",
           "count": 1,
-          "sumMs": 4.9,
-          "p50Ms": 4.9,
-          "p95Ms": 4.9,
-          "maxMs": 4.9
+          "sumMs": 6.1,
+          "p50Ms": 6.1,
+          "p95Ms": 6.1,
+          "maxMs": 6.1
         },
         {
           "name": "render:sidebar",
+          "count": 1,
+          "sumMs": 3.3,
+          "p50Ms": 3.3,
+          "p95Ms": 3.3,
+          "maxMs": 3.3
+        },
+        {
+          "name": "render:center",
           "count": 1,
           "sumMs": 2.6,
           "p50Ms": 2.6,
@@ -372,28 +380,12 @@
           "maxMs": 2.6
         },
         {
-          "name": "render:center",
-          "count": 1,
-          "sumMs": 1.9,
-          "p50Ms": 1.9,
-          "p95Ms": 1.9,
-          "maxMs": 1.9
-        },
-        {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 1.4,
-          "p50Ms": 1.4,
-          "p95Ms": 1.4,
-          "maxMs": 1.4
-        },
-        {
-          "name": "render:sidebar:sort",
-          "count": 1,
-          "sumMs": 0.3,
-          "p50Ms": 0.3,
-          "p95Ms": 0.3,
-          "maxMs": 0.3
+          "sumMs": 1.5,
+          "p50Ms": 1.5,
+          "p95Ms": 1.5,
+          "maxMs": 1.5
         },
         {
           "name": "tree:buildTree",
@@ -405,6 +397,14 @@
         },
         {
           "name": "render:sidebar:filter-pipeline",
+          "count": 1,
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
+        },
+        {
+          "name": "render:sidebar:sort",
           "count": 1,
           "sumMs": 0.1,
           "p50Ms": 0.1,
@@ -434,63 +434,63 @@
       "entries": 500,
       "scenario": "archetype-toggle",
       "bootElapsedMs": -1,
-      "heapUsedMb": 10.11,
+      "heapUsedMb": 10.68,
       "aggregate": [
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
           "count": 1,
-          "sumMs": 12.6,
-          "p50Ms": 12.6,
-          "p95Ms": 12.6,
-          "maxMs": 12.6
+          "sumMs": 16.7,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.7
         },
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
           "count": 1,
-          "sumMs": 12.4,
-          "p50Ms": 12.4,
-          "p95Ms": 12.4,
-          "maxMs": 12.4
+          "sumMs": 16.6,
+          "p50Ms": 16.6,
+          "p95Ms": 16.6,
+          "maxMs": 16.6
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 1,
-          "sumMs": 12.1,
-          "p50Ms": 12.1,
-          "p95Ms": 12.1,
-          "maxMs": 12.1
+          "sumMs": 15.8,
+          "p50Ms": 15.8,
+          "p95Ms": 15.8,
+          "maxMs": 15.8
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 9.3,
-          "p50Ms": 9.3,
-          "p95Ms": 9.3,
-          "maxMs": 9.3
+          "sumMs": 12.2,
+          "p50Ms": 12.2,
+          "p95Ms": 12.2,
+          "maxMs": 12.2
+        },
+        {
+          "name": "render:sidebar:flat-loop",
+          "count": 1,
+          "sumMs": 0.6,
+          "p50Ms": 0.6,
+          "p95Ms": 0.6,
+          "maxMs": 0.6
         },
         {
           "name": "render:sidebar:filter-pipeline",
+          "count": 1,
+          "sumMs": 0.5,
+          "p50Ms": 0.5,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
+        },
+        {
+          "name": "filter:applyFilters",
           "count": 1,
           "sumMs": 0.4,
           "p50Ms": 0.4,
           "p95Ms": 0.4,
           "maxMs": 0.4
-        },
-        {
-          "name": "filter:applyFilters",
-          "count": 1,
-          "sumMs": 0.3,
-          "p50Ms": 0.3,
-          "p95Ms": 0.3,
-          "maxMs": 0.3
-        },
-        {
-          "name": "render:sidebar:flat-loop",
-          "count": 1,
-          "sumMs": 0.3,
-          "p50Ms": 0.3,
-          "p95Ms": 0.3,
-          "maxMs": 0.3
         },
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
@@ -514,67 +514,75 @@
       "scale": "c-500",
       "entries": 500,
       "scenario": "cold-boot",
-      "bootElapsedMs": 34.90000000002328,
+      "bootElapsedMs": 41,
       "heapUsedMb": 10.11,
       "aggregate": [
         {
           "name": "dispatch:SYS_INIT_COMPLETE",
           "count": 1,
-          "sumMs": 18.5,
-          "p50Ms": 18.5,
-          "p95Ms": 18.5,
-          "maxMs": 18.5
+          "sumMs": 25.6,
+          "p50Ms": 25.6,
+          "p95Ms": 25.6,
+          "maxMs": 25.6
         },
         {
           "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
           "count": 1,
-          "sumMs": 18.2,
-          "p50Ms": 18.2,
-          "p95Ms": 18.2,
-          "maxMs": 18.2
+          "sumMs": 25.1,
+          "p50Ms": 25.1,
+          "p95Ms": 25.1,
+          "maxMs": 25.1
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 18,
-          "p50Ms": 18,
-          "p95Ms": 18,
-          "maxMs": 18
-        },
-        {
-          "name": "boot:loadFromStore",
-          "count": 1,
-          "sumMs": 14.6,
-          "p50Ms": 14.6,
-          "p95Ms": 14.6,
-          "maxMs": 14.6
+          "sumMs": 24.7,
+          "p50Ms": 24.7,
+          "p95Ms": 24.7,
+          "maxMs": 24.7
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 10.9,
-          "p50Ms": 10.9,
-          "p95Ms": 10.9,
-          "maxMs": 10.9
+          "sumMs": 15,
+          "p50Ms": 15,
+          "p95Ms": 15,
+          "maxMs": 15
+        },
+        {
+          "name": "boot:loadFromStore",
+          "count": 1,
+          "sumMs": 13.3,
+          "p50Ms": 13.3,
+          "p95Ms": 13.3,
+          "maxMs": 13.3
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 6.7,
-          "p50Ms": 6.7,
-          "p95Ms": 6.7,
-          "maxMs": 6.7
+          "sumMs": 8.2,
+          "p50Ms": 8.2,
+          "p95Ms": 8.2,
+          "maxMs": 8.2
+        },
+        {
+          "name": "render:sidebar:filter-pipeline",
+          "count": 1,
+          "sumMs": 2.4,
+          "p50Ms": 2.4,
+          "p95Ms": 2.4,
+          "maxMs": 2.4
         },
         {
           "name": "tree:buildTree",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 0.9,
+          "p50Ms": 0.9,
+          "p95Ms": 0.9,
+          "maxMs": 0.9
         },
         {
-          "name": "render:center",
+          "name": "render:sidebar:sort",
           "count": 1,
           "sumMs": 0.4,
           "p50Ms": 0.4,
@@ -582,7 +590,7 @@
           "maxMs": 0.4
         },
         {
-          "name": "dispatch:RESTORE_SETTINGS",
+          "name": "render:center",
           "count": 1,
           "sumMs": 0.4,
           "p50Ms": 0.4,
@@ -598,23 +606,15 @@
           "maxMs": 0.2
         },
         {
-          "name": "render:sidebar:filter-pipeline",
-          "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
-        },
-        {
-          "name": "render:sidebar:sort",
-          "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
-        },
-        {
           "name": "dispatch:RESTORE_SETTINGS:notify-state",
+          "count": 1,
+          "sumMs": 0.2,
+          "p50Ms": 0.2,
+          "p95Ms": 0.2,
+          "maxMs": 0.2
+        },
+        {
+          "name": "dispatch:RESTORE_SETTINGS",
           "count": 1,
           "sumMs": 0.2,
           "p50Ms": 0.2,
@@ -673,82 +673,82 @@
         {
           "name": "dispatch:SET_SEARCH_QUERY",
           "count": 4,
-          "sumMs": 126.2,
-          "p50Ms": 27.2,
-          "p95Ms": 47.1,
-          "maxMs": 47.1
+          "sumMs": 168.4,
+          "p50Ms": 37.4,
+          "p95Ms": 62.3,
+          "maxMs": 62.3
         },
         {
           "name": "dispatch:SET_SEARCH_QUERY:notify-state",
           "count": 4,
-          "sumMs": 126,
-          "p50Ms": 27.1,
-          "p95Ms": 47.1,
-          "maxMs": 47.1
+          "sumMs": 168.3,
+          "p50Ms": 37.4,
+          "p95Ms": 62.3,
+          "maxMs": 62.3
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 4,
-          "sumMs": 123.7,
-          "p50Ms": 26.6,
-          "p95Ms": 46.4,
-          "maxMs": 46.4
+          "sumMs": 163.6,
+          "p50Ms": 36.2,
+          "p95Ms": 60.9,
+          "maxMs": 60.9
         },
         {
           "name": "render:sidebar",
           "count": 4,
-          "sumMs": 82.8,
-          "p50Ms": 16.5,
-          "p95Ms": 33.9,
-          "maxMs": 33.9
+          "sumMs": 103,
+          "p50Ms": 20,
+          "p95Ms": 42.8,
+          "maxMs": 42.8
         },
         {
           "name": "render:sidebar:flat-loop",
           "count": 4,
-          "sumMs": 57,
-          "p50Ms": 11.8,
-          "p95Ms": 21.3,
-          "maxMs": 21.3
+          "sumMs": 76.9,
+          "p50Ms": 16.3,
+          "p95Ms": 28.6,
+          "maxMs": 28.6
         },
         {
           "name": "render:sidebar:sublocation-scan",
           "count": 4,
-          "sumMs": 56.7,
-          "p50Ms": 11.8,
-          "p95Ms": 21.1,
-          "maxMs": 21.1
+          "sumMs": 76.3,
+          "p50Ms": 16.2,
+          "p95Ms": 28.3,
+          "maxMs": 28.3
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 4,
-          "sumMs": 7.5,
-          "p50Ms": 1.7,
-          "p95Ms": 2.2,
-          "maxMs": 2.2
+          "sumMs": 3.5,
+          "p50Ms": 0.6,
+          "p95Ms": 1.6,
+          "maxMs": 1.6
         },
         {
           "name": "filter:applyFilters",
           "count": 4,
-          "sumMs": 1.7,
-          "p50Ms": 0.3,
-          "p95Ms": 0.6,
-          "maxMs": 0.6
+          "sumMs": 2.7,
+          "p50Ms": 0.5,
+          "p95Ms": 1.2,
+          "maxMs": 1.2
         },
         {
           "name": "render:sidebar:sort",
           "count": 4,
-          "sumMs": 0.5,
+          "sumMs": 0.6,
           "p50Ms": 0.1,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
+          "p95Ms": 0.4,
+          "maxMs": 0.4
         },
         {
           "name": "dispatch:SET_SEARCH_QUERY:reduce",
           "count": 4,
-          "sumMs": 0.1,
+          "sumMs": 0,
           "p50Ms": 0,
-          "p95Ms": 0.1,
-          "maxMs": 0.1
+          "p95Ms": 0,
+          "maxMs": 0
         }
       ]
     },
@@ -762,90 +762,90 @@
         {
           "name": "dispatch:SELECT_ENTRY",
           "count": 1,
-          "sumMs": 88.2,
-          "p50Ms": 88.2,
-          "p95Ms": 88.2,
-          "maxMs": 88.2
+          "sumMs": 115.5,
+          "p50Ms": 115.5,
+          "p95Ms": 115.5,
+          "maxMs": 115.5
         },
         {
           "name": "dispatch:SELECT_ENTRY:notify-state",
           "count": 1,
-          "sumMs": 84.3,
-          "p50Ms": 84.3,
-          "p95Ms": 84.3,
-          "maxMs": 84.3
+          "sumMs": 109.7,
+          "p50Ms": 109.7,
+          "p95Ms": 109.7,
+          "maxMs": 109.7
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 83.5,
-          "p50Ms": 83.5,
-          "p95Ms": 83.5,
-          "maxMs": 83.5
+          "sumMs": 108.3,
+          "p50Ms": 108.3,
+          "p95Ms": 108.3,
+          "maxMs": 108.3
         },
         {
           "name": "render:meta",
           "count": 1,
-          "sumMs": 12,
-          "p50Ms": 12,
-          "p95Ms": 12,
-          "maxMs": 12
+          "sumMs": 15.1,
+          "p50Ms": 15.1,
+          "p95Ms": 15.1,
+          "maxMs": 15.1
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 8.8,
-          "p50Ms": 8.8,
-          "p95Ms": 8.8,
-          "maxMs": 8.8
+          "sumMs": 11.2,
+          "p50Ms": 11.2,
+          "p95Ms": 11.2,
+          "maxMs": 11.2
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 6.2,
-          "p50Ms": 6.2,
-          "p95Ms": 6.2,
-          "maxMs": 6.2
+          "sumMs": 7.6,
+          "p50Ms": 7.6,
+          "p95Ms": 7.6,
+          "maxMs": 7.6
         },
         {
           "name": "render:center",
           "count": 1,
-          "sumMs": 2.4,
-          "p50Ms": 2.4,
-          "p95Ms": 2.4,
-          "maxMs": 2.4
+          "sumMs": 3.4,
+          "p50Ms": 3.4,
+          "p95Ms": 3.4,
+          "maxMs": 3.4
         },
         {
           "name": "tree:buildTree",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "render:sidebar:sort",
           "count": 1,
-          "sumMs": 0.4,
-          "p50Ms": 0.4,
-          "p95Ms": 0.4,
-          "maxMs": 0.4
+          "sumMs": 0.3,
+          "p50Ms": 0.3,
+          "p95Ms": 0.3,
+          "maxMs": 0.3
         },
         {
           "name": "render:sidebar:filter-pipeline",
+          "count": 1,
+          "sumMs": 0.2,
+          "p50Ms": 0.2,
+          "p95Ms": 0.2,
+          "maxMs": 0.2
+        },
+        {
+          "name": "dispatch:SELECT_ENTRY:reduce",
           "count": 1,
           "sumMs": 0.1,
           "p50Ms": 0.1,
           "p95Ms": 0.1,
           "maxMs": 0.1
-        },
-        {
-          "name": "dispatch:SELECT_ENTRY:reduce",
-          "count": 1,
-          "sumMs": 0,
-          "p50Ms": 0,
-          "p95Ms": 0,
-          "maxMs": 0
         },
         {
           "name": "filter:applyFilters",
@@ -867,42 +867,42 @@
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
           "count": 1,
-          "sumMs": 19,
-          "p50Ms": 19,
-          "p95Ms": 19,
-          "maxMs": 19
+          "sumMs": 23.2,
+          "p50Ms": 23.2,
+          "p95Ms": 23.2,
+          "maxMs": 23.2
         },
         {
           "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
           "count": 1,
-          "sumMs": 18.9,
-          "p50Ms": 18.9,
-          "p95Ms": 18.9,
-          "maxMs": 18.9
+          "sumMs": 23.1,
+          "p50Ms": 23.1,
+          "p95Ms": 23.1,
+          "maxMs": 23.1
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 1,
-          "sumMs": 18.2,
-          "p50Ms": 18.2,
-          "p95Ms": 18.2,
-          "maxMs": 18.2
+          "sumMs": 22.1,
+          "p50Ms": 22.1,
+          "p95Ms": 22.1,
+          "maxMs": 22.1
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 14.6,
-          "p50Ms": 14.6,
-          "p95Ms": 14.6,
-          "maxMs": 14.6
+          "sumMs": 16.7,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.7
         },
         {
           "name": "render:sidebar:flat-loop",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 1.1,
+          "p50Ms": 1.1,
+          "p95Ms": 1.1,
+          "maxMs": 1.1
         },
         {
           "name": "render:sidebar:filter-pipeline",
@@ -915,99 +915,10 @@
         {
           "name": "filter:applyFilters",
           "count": 1,
-          "sumMs": 0.2,
-          "p50Ms": 0.2,
-          "p95Ms": 0.2,
-          "maxMs": 0.2
-        },
-        {
-          "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-          "count": 1,
-          "sumMs": 0.1,
-          "p50Ms": 0.1,
-          "p95Ms": 0.1,
-          "maxMs": 0.1
-        },
-        {
-          "name": "render:sidebar:sort",
-          "count": 1,
-          "sumMs": 0.1,
-          "p50Ms": 0.1,
-          "p95Ms": 0.1,
-          "maxMs": 0.1
-        }
-      ]
-    },
-    {
-      "scale": "c-1000",
-      "entries": 1000,
-      "scenario": "cold-boot",
-      "bootElapsedMs": 60.59999999997672,
-      "heapUsedMb": 11.35,
-      "aggregate": [
-        {
-          "name": "dispatch:SYS_INIT_COMPLETE",
-          "count": 1,
-          "sumMs": 35.8,
-          "p50Ms": 35.8,
-          "p95Ms": 35.8,
-          "maxMs": 35.8
-        },
-        {
-          "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
-          "count": 1,
-          "sumMs": 35.5,
-          "p50Ms": 35.5,
-          "p95Ms": 35.5,
-          "maxMs": 35.5
-        },
-        {
-          "name": "render:phase=ready",
-          "count": 1,
-          "sumMs": 35.2,
-          "p50Ms": 35.2,
-          "p95Ms": 35.2,
-          "maxMs": 35.2
-        },
-        {
-          "name": "boot:loadFromStore",
-          "count": 1,
-          "sumMs": 22.8,
-          "p50Ms": 22.8,
-          "p95Ms": 22.8,
-          "maxMs": 22.8
-        },
-        {
-          "name": "render:sidebar",
-          "count": 1,
-          "sumMs": 22.1,
-          "p50Ms": 22.1,
-          "p95Ms": 22.1,
-          "maxMs": 22.1
-        },
-        {
-          "name": "render:sidebar:tree-loop",
-          "count": 1,
-          "sumMs": 15.6,
-          "p50Ms": 15.6,
-          "p95Ms": 15.6,
-          "maxMs": 15.6
-        },
-        {
-          "name": "tree:buildTree",
-          "count": 1,
-          "sumMs": 1.7,
-          "p50Ms": 1.7,
-          "p95Ms": 1.7,
-          "maxMs": 1.7
-        },
-        {
-          "name": "render:center",
-          "count": 1,
-          "sumMs": 0.6,
-          "p50Ms": 0.6,
-          "p95Ms": 0.6,
-          "maxMs": 0.6
+          "sumMs": 0.5,
+          "p50Ms": 0.5,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
         },
         {
           "name": "render:sidebar:sort",
@@ -1018,12 +929,101 @@
           "maxMs": 0.5
         },
         {
+          "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
+          "count": 1,
+          "sumMs": 0,
+          "p50Ms": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        }
+      ]
+    },
+    {
+      "scale": "c-1000",
+      "entries": 1000,
+      "scenario": "cold-boot",
+      "bootElapsedMs": 84.5,
+      "heapUsedMb": 12.78,
+      "aggregate": [
+        {
+          "name": "dispatch:SYS_INIT_COMPLETE",
+          "count": 1,
+          "sumMs": 54.1,
+          "p50Ms": 54.1,
+          "p95Ms": 54.1,
+          "maxMs": 54.1
+        },
+        {
+          "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
+          "count": 1,
+          "sumMs": 53.6,
+          "p50Ms": 53.6,
+          "p95Ms": 53.6,
+          "maxMs": 53.6
+        },
+        {
+          "name": "render:phase=ready",
+          "count": 1,
+          "sumMs": 53,
+          "p50Ms": 53,
+          "p95Ms": 53,
+          "maxMs": 53
+        },
+        {
+          "name": "render:sidebar",
+          "count": 1,
+          "sumMs": 36.3,
+          "p50Ms": 36.3,
+          "p95Ms": 36.3,
+          "maxMs": 36.3
+        },
+        {
+          "name": "boot:loadFromStore",
+          "count": 1,
+          "sumMs": 27.7,
+          "p50Ms": 27.7,
+          "p95Ms": 27.7,
+          "maxMs": 27.7
+        },
+        {
+          "name": "render:sidebar:tree-loop",
+          "count": 1,
+          "sumMs": 21.7,
+          "p50Ms": 21.7,
+          "p95Ms": 21.7,
+          "maxMs": 21.7
+        },
+        {
           "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 0.4,
-          "p50Ms": 0.4,
-          "p95Ms": 0.4,
-          "maxMs": 0.4
+          "sumMs": 6.5,
+          "p50Ms": 6.5,
+          "p95Ms": 6.5,
+          "maxMs": 6.5
+        },
+        {
+          "name": "tree:buildTree",
+          "count": 1,
+          "sumMs": 2.1,
+          "p50Ms": 2.1,
+          "p95Ms": 2.1,
+          "maxMs": 2.1
+        },
+        {
+          "name": "render:center",
+          "count": 1,
+          "sumMs": 0.8,
+          "p50Ms": 0.8,
+          "p95Ms": 0.8,
+          "maxMs": 0.8
+        },
+        {
+          "name": "render:sidebar:sort",
+          "count": 1,
+          "sumMs": 0.6,
+          "p50Ms": 0.6,
+          "p95Ms": 0.6,
+          "maxMs": 0.6
         },
         {
           "name": "render:phase=initializing",
@@ -1060,10 +1060,10 @@
         {
           "name": "boot:readPkcData",
           "count": 1,
-          "sumMs": 0.1,
-          "p50Ms": 0.1,
-          "p95Ms": 0.1,
-          "maxMs": 0.1
+          "sumMs": 0,
+          "p50Ms": 0,
+          "p95Ms": 0,
+          "maxMs": 0
         },
         {
           "name": "dispatch:SYS_INIT_COMPLETE:reduce",
@@ -1096,71 +1096,71 @@
       "entries": 1000,
       "scenario": "search-keystroke",
       "bootElapsedMs": -1,
-      "heapUsedMb": 12.11,
+      "heapUsedMb": 13.64,
       "aggregate": [
-        {
-          "name": "dispatch:SET_SEARCH_QUERY",
-          "count": 4,
-          "sumMs": 248.8,
-          "p50Ms": 53.9,
-          "p95Ms": 84.1,
-          "maxMs": 84.1
-        },
         {
           "name": "dispatch:SET_SEARCH_QUERY:notify-state",
           "count": 4,
-          "sumMs": 248.6,
-          "p50Ms": 53.9,
-          "p95Ms": 84,
-          "maxMs": 84
+          "sumMs": 336.2,
+          "p50Ms": 71.5,
+          "p95Ms": 113.6,
+          "maxMs": 113.6
+        },
+        {
+          "name": "dispatch:SET_SEARCH_QUERY",
+          "count": 4,
+          "sumMs": 336.2,
+          "p50Ms": 71.5,
+          "p95Ms": 113.6,
+          "maxMs": 113.6
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 4,
-          "sumMs": 245.4,
-          "p50Ms": 53.1,
-          "p95Ms": 83.2,
-          "maxMs": 83.2
+          "sumMs": 329.6,
+          "p50Ms": 69.9,
+          "p95Ms": 111.8,
+          "maxMs": 111.8
         },
         {
           "name": "render:sidebar",
           "count": 4,
-          "sumMs": 171.6,
-          "p50Ms": 37.5,
-          "p95Ms": 60.4,
-          "maxMs": 60.4
+          "sumMs": 220.1,
+          "p50Ms": 48.2,
+          "p95Ms": 79.1,
+          "maxMs": 79.1
         },
         {
           "name": "render:sidebar:flat-loop",
           "count": 4,
-          "sumMs": 114.1,
-          "p50Ms": 24.8,
-          "p95Ms": 41.3,
-          "maxMs": 41.3
+          "sumMs": 155.6,
+          "p50Ms": 34.6,
+          "p95Ms": 52.7,
+          "maxMs": 52.7
         },
         {
           "name": "render:sidebar:sublocation-scan",
           "count": 4,
-          "sumMs": 113.8,
-          "p50Ms": 24.7,
-          "p95Ms": 41.2,
-          "maxMs": 41.2
+          "sumMs": 154.7,
+          "p50Ms": 34.5,
+          "p95Ms": 52.4,
+          "maxMs": 52.4
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 4,
-          "sumMs": 24.5,
-          "p50Ms": 5.7,
-          "p95Ms": 7.1,
-          "maxMs": 7.1
+          "sumMs": 7.1,
+          "p50Ms": 1,
+          "p95Ms": 3.7,
+          "maxMs": 3.7
         },
         {
           "name": "filter:applyFilters",
           "count": 4,
-          "sumMs": 5.1,
-          "p50Ms": 0.8,
-          "p95Ms": 2.6,
-          "maxMs": 2.6
+          "sumMs": 6.1,
+          "p50Ms": 1,
+          "p95Ms": 3,
+          "maxMs": 3
         },
         {
           "name": "render:sidebar:sort",
@@ -1185,79 +1185,168 @@
       "entries": 1000,
       "scenario": "select-entry",
       "bootElapsedMs": -1,
-      "heapUsedMb": 16.31,
+      "heapUsedMb": 17.36,
       "aggregate": [
         {
           "name": "dispatch:SELECT_ENTRY",
           "count": 1,
-          "sumMs": 131.1,
-          "p50Ms": 131.1,
-          "p95Ms": 131.1,
-          "maxMs": 131.1
+          "sumMs": 158.7,
+          "p50Ms": 158.7,
+          "p95Ms": 158.7,
+          "maxMs": 158.7
         },
         {
           "name": "dispatch:SELECT_ENTRY:notify-state",
           "count": 1,
-          "sumMs": 127.7,
-          "p50Ms": 127.7,
-          "p95Ms": 127.7,
-          "maxMs": 127.7
+          "sumMs": 154.1,
+          "p50Ms": 154.1,
+          "p95Ms": 154.1,
+          "maxMs": 154.1
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 126.4,
-          "p50Ms": 126.4,
-          "p95Ms": 126.4,
-          "maxMs": 126.4
+          "sumMs": 152.2,
+          "p50Ms": 152.2,
+          "p95Ms": 152.2,
+          "maxMs": 152.2
         },
         {
           "name": "render:meta",
           "count": 1,
-          "sumMs": 20.6,
-          "p50Ms": 20.6,
-          "p95Ms": 20.6,
-          "maxMs": 20.6
+          "sumMs": 23.7,
+          "p50Ms": 23.7,
+          "p95Ms": 23.7,
+          "maxMs": 23.7
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 17.6,
-          "p50Ms": 17.6,
-          "p95Ms": 17.6,
-          "maxMs": 17.6
+          "sumMs": 21.4,
+          "p50Ms": 21.4,
+          "p95Ms": 21.4,
+          "maxMs": 21.4
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 14.1,
-          "p50Ms": 14.1,
-          "p95Ms": 14.1,
-          "maxMs": 14.1
+          "sumMs": 16,
+          "p50Ms": 16,
+          "p95Ms": 16,
+          "maxMs": 16
         },
         {
           "name": "render:center",
           "count": 1,
-          "sumMs": 2.9,
-          "p50Ms": 2.9,
-          "p95Ms": 2.9,
-          "maxMs": 2.9
+          "sumMs": 3.6,
+          "p50Ms": 3.6,
+          "p95Ms": 3.6,
+          "maxMs": 3.6
         },
         {
           "name": "tree:buildTree",
           "count": 1,
-          "sumMs": 1.4,
-          "p50Ms": 1.4,
-          "p95Ms": 1.4,
-          "maxMs": 1.4
+          "sumMs": 1.2,
+          "p50Ms": 1.2,
+          "p95Ms": 1.2,
+          "maxMs": 1.2
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 0.3,
-          "p50Ms": 0.3,
-          "p95Ms": 0.3,
-          "maxMs": 0.3
+          "sumMs": 0.6,
+          "p50Ms": 0.6,
+          "p95Ms": 0.6,
+          "maxMs": 0.6
+        },
+        {
+          "name": "render:sidebar:sort",
+          "count": 1,
+          "sumMs": 0.6,
+          "p50Ms": 0.6,
+          "p95Ms": 0.6,
+          "maxMs": 0.6
+        },
+        {
+          "name": "dispatch:SELECT_ENTRY:reduce",
+          "count": 1,
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
+        },
+        {
+          "name": "filter:applyFilters",
+          "count": 1,
+          "sumMs": 0.1,
+          "p50Ms": 0.1,
+          "p95Ms": 0.1,
+          "maxMs": 0.1
+        }
+      ]
+    },
+    {
+      "scale": "c-5000",
+      "entries": 5000,
+      "scenario": "archetype-toggle",
+      "bootElapsedMs": -1,
+      "heapUsedMb": 33.47,
+      "aggregate": [
+        {
+          "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
+          "count": 1,
+          "sumMs": 171.8,
+          "p50Ms": 171.8,
+          "p95Ms": 171.8,
+          "maxMs": 171.8
+        },
+        {
+          "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
+          "count": 1,
+          "sumMs": 171.7,
+          "p50Ms": 171.7,
+          "p95Ms": 171.7,
+          "maxMs": 171.7
+        },
+        {
+          "name": "render:scope=sidebar-only",
+          "count": 1,
+          "sumMs": 169.2,
+          "p50Ms": 169.2,
+          "p95Ms": 169.2,
+          "maxMs": 169.2
+        },
+        {
+          "name": "render:sidebar",
+          "count": 1,
+          "sumMs": 154.4,
+          "p50Ms": 154.4,
+          "p95Ms": 154.4,
+          "maxMs": 154.4
+        },
+        {
+          "name": "render:sidebar:flat-loop",
+          "count": 1,
+          "sumMs": 3,
+          "p50Ms": 3,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "render:sidebar:filter-pipeline",
+          "count": 1,
+          "sumMs": 1.2,
+          "p50Ms": 1.2,
+          "p95Ms": 1.2,
+          "maxMs": 1.2
+        },
+        {
+          "name": "filter:applyFilters",
+          "count": 1,
+          "sumMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "render:sidebar:sort",
@@ -1268,15 +1357,7 @@
           "maxMs": 0.3
         },
         {
-          "name": "dispatch:SELECT_ENTRY:reduce",
-          "count": 1,
-          "sumMs": 0,
-          "p50Ms": 0,
-          "p95Ms": 0,
-          "maxMs": 0
-        },
-        {
-          "name": "filter:applyFilters",
+          "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
           "count": 1,
           "sumMs": 0,
           "p50Ms": 0,
@@ -1288,121 +1369,113 @@
     {
       "scale": "c-5000",
       "entries": 5000,
-      "scenario": "archetype-toggle",
-      "bootElapsedMs": -1,
-      "heapUsedMb": 26.32,
-      "aggregate": []
-    },
-    {
-      "scale": "c-5000",
-      "entries": 5000,
       "scenario": "cold-boot",
-      "bootElapsedMs": 178.90000000002328,
-      "heapUsedMb": 35.57,
+      "bootElapsedMs": 258.5,
+      "heapUsedMb": 40.15,
       "aggregate": [
         {
           "name": "dispatch:SYS_INIT_COMPLETE",
           "count": 1,
-          "sumMs": 126.8,
-          "p50Ms": 126.8,
-          "p95Ms": 126.8,
-          "maxMs": 126.8
+          "sumMs": 197.3,
+          "p50Ms": 197.3,
+          "p95Ms": 197.3,
+          "maxMs": 197.3
         },
         {
           "name": "dispatch:SYS_INIT_COMPLETE:notify-state",
           "count": 1,
-          "sumMs": 126.5,
-          "p50Ms": 126.5,
-          "p95Ms": 126.5,
-          "maxMs": 126.5
+          "sumMs": 196.7,
+          "p50Ms": 196.7,
+          "p95Ms": 196.7,
+          "maxMs": 196.7
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 125.5,
-          "p50Ms": 125.5,
-          "p95Ms": 125.5,
-          "maxMs": 125.5
+          "sumMs": 195.1,
+          "p50Ms": 195.1,
+          "p95Ms": 195.1,
+          "maxMs": 195.1
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 91,
-          "p50Ms": 91,
-          "p95Ms": 91,
-          "maxMs": 91
+          "sumMs": 152.7,
+          "p50Ms": 152.7,
+          "p95Ms": 152.7,
+          "maxMs": 152.7
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 66.2,
-          "p50Ms": 66.2,
-          "p95Ms": 66.2,
-          "maxMs": 66.2
+          "sumMs": 84.8,
+          "p50Ms": 84.8,
+          "p95Ms": 84.8,
+          "maxMs": 84.8
         },
         {
           "name": "boot:loadFromStore",
           "count": 1,
-          "sumMs": 47.7,
-          "p50Ms": 47.7,
-          "p95Ms": 47.7,
-          "maxMs": 47.7
-        },
-        {
-          "name": "tree:buildTree",
-          "count": 1,
-          "sumMs": 7.9,
-          "p50Ms": 7.9,
-          "p95Ms": 7.9,
-          "maxMs": 7.9
+          "sumMs": 55,
+          "p50Ms": 55,
+          "p95Ms": 55,
+          "maxMs": 55
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 2.6,
-          "p50Ms": 2.6,
-          "p95Ms": 2.6,
-          "maxMs": 2.6
+          "sumMs": 37.7,
+          "p50Ms": 37.7,
+          "p95Ms": 37.7,
+          "maxMs": 37.7
+        },
+        {
+          "name": "tree:buildTree",
+          "count": 1,
+          "sumMs": 6.8,
+          "p50Ms": 6.8,
+          "p95Ms": 6.8,
+          "maxMs": 6.8
         },
         {
           "name": "render:sidebar:sort",
           "count": 1,
-          "sumMs": 0.9,
-          "p50Ms": 0.9,
-          "p95Ms": 0.9,
-          "maxMs": 0.9
+          "sumMs": 1.5,
+          "p50Ms": 1.5,
+          "p95Ms": 1.5,
+          "maxMs": 1.5
         },
         {
           "name": "dispatch:RESTORE_SETTINGS",
           "count": 1,
-          "sumMs": 0.9,
-          "p50Ms": 0.9,
-          "p95Ms": 0.9,
-          "maxMs": 0.9
+          "sumMs": 1.1,
+          "p50Ms": 1.1,
+          "p95Ms": 1.1,
+          "maxMs": 1.1
         },
         {
           "name": "render:center",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "render:scope=settings-only",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "dispatch:RESTORE_SETTINGS:notify-state",
           "count": 1,
-          "sumMs": 0.8,
-          "p50Ms": 0.8,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "render:phase=initializing",
@@ -1451,87 +1524,87 @@
       "entries": 5000,
       "scenario": "search-keystroke",
       "bootElapsedMs": -1,
-      "heapUsedMb": 33.47,
+      "heapUsedMb": 31.57,
       "aggregate": [
         {
           "name": "dispatch:SET_SEARCH_QUERY",
           "count": 4,
-          "sumMs": 1899.5,
-          "p50Ms": 452.5,
-          "p95Ms": 537.2,
-          "maxMs": 537.2
+          "sumMs": 1914.2,
+          "p50Ms": 443.4,
+          "p95Ms": 573.5,
+          "maxMs": 573.5
         },
         {
           "name": "dispatch:SET_SEARCH_QUERY:notify-state",
           "count": 4,
-          "sumMs": 1899.2,
-          "p50Ms": 452.4,
-          "p95Ms": 537.2,
-          "maxMs": 537.2
+          "sumMs": 1913.8,
+          "p50Ms": 443.3,
+          "p95Ms": 573.4,
+          "maxMs": 573.4
         },
         {
           "name": "render:scope=sidebar-only",
           "count": 4,
-          "sumMs": 1888.5,
-          "p50Ms": 450,
-          "p95Ms": 534,
-          "maxMs": 534
+          "sumMs": 1895.1,
+          "p50Ms": 438.3,
+          "p95Ms": 569.5,
+          "maxMs": 569.5
         },
         {
           "name": "render:sidebar",
           "count": 4,
-          "sumMs": 1447.5,
-          "p50Ms": 348.2,
-          "p95Ms": 400.8,
-          "maxMs": 400.8
+          "sumMs": 1288,
+          "p50Ms": 300.8,
+          "p95Ms": 389.3,
+          "maxMs": 389.3
         },
         {
           "name": "render:sidebar:flat-loop",
           "count": 4,
-          "sumMs": 520.2,
-          "p50Ms": 118.8,
-          "p95Ms": 158.7,
-          "maxMs": 158.7
+          "sumMs": 693,
+          "p50Ms": 155.5,
+          "p95Ms": 222.3,
+          "maxMs": 222.3
         },
         {
           "name": "render:sidebar:sublocation-scan",
           "count": 4,
-          "sumMs": 519.5,
-          "p50Ms": 118.7,
-          "p95Ms": 158.3,
-          "maxMs": 158.3
+          "sumMs": 692.4,
+          "p50Ms": 155.4,
+          "p95Ms": 222,
+          "maxMs": 222
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 4,
-          "sumMs": 416.3,
-          "p50Ms": 100.6,
-          "p95Ms": 111.7,
-          "maxMs": 111.7
+          "sumMs": 30.4,
+          "p50Ms": 4.4,
+          "p95Ms": 15.9,
+          "maxMs": 15.9
         },
         {
           "name": "filter:applyFilters",
           "count": 4,
-          "sumMs": 22.5,
-          "p50Ms": 3.2,
-          "p95Ms": 12.4,
-          "maxMs": 12.4
+          "sumMs": 27.9,
+          "p50Ms": 4,
+          "p95Ms": 15.1,
+          "maxMs": 15.1
         },
         {
           "name": "render:sidebar:sort",
           "count": 4,
-          "sumMs": 2.6,
-          "p50Ms": 0.6,
-          "p95Ms": 0.8,
-          "maxMs": 0.8
+          "sumMs": 3.4,
+          "p50Ms": 0.9,
+          "p95Ms": 1,
+          "maxMs": 1
         },
         {
           "name": "dispatch:SET_SEARCH_QUERY:reduce",
           "count": 4,
-          "sumMs": 0.2,
+          "sumMs": 0,
           "p50Ms": 0,
-          "p95Ms": 0.1,
-          "maxMs": 0.1
+          "p95Ms": 0,
+          "maxMs": 0
         }
       ]
     },
@@ -1540,87 +1613,87 @@
       "entries": 5000,
       "scenario": "select-entry",
       "bootElapsedMs": -1,
-      "heapUsedMb": 42.63,
+      "heapUsedMb": 48.07,
       "aggregate": [
         {
           "name": "dispatch:SELECT_ENTRY",
           "count": 1,
-          "sumMs": 507.8,
-          "p50Ms": 507.8,
-          "p95Ms": 507.8,
-          "maxMs": 507.8
+          "sumMs": 687.8,
+          "p50Ms": 687.8,
+          "p95Ms": 687.8,
+          "maxMs": 687.8
         },
         {
           "name": "dispatch:SELECT_ENTRY:notify-state",
           "count": 1,
-          "sumMs": 504.3,
-          "p50Ms": 504.3,
-          "p95Ms": 504.3,
-          "maxMs": 504.3
+          "sumMs": 682.5,
+          "p50Ms": 682.5,
+          "p95Ms": 682.5,
+          "maxMs": 682.5
         },
         {
           "name": "render:phase=ready",
           "count": 1,
-          "sumMs": 499,
-          "p50Ms": 499,
-          "p95Ms": 499,
-          "maxMs": 499
+          "sumMs": 671.5,
+          "p50Ms": 671.5,
+          "p95Ms": 671.5,
+          "maxMs": 671.5
         },
         {
           "name": "render:meta",
           "count": 1,
-          "sumMs": 84.7,
-          "p50Ms": 84.7,
-          "p95Ms": 84.7,
-          "maxMs": 84.7
+          "sumMs": 116.4,
+          "p50Ms": 116.4,
+          "p95Ms": 116.4,
+          "maxMs": 116.4
         },
         {
           "name": "render:sidebar",
           "count": 1,
-          "sumMs": 84.5,
-          "p50Ms": 84.5,
-          "p95Ms": 84.5,
-          "maxMs": 84.5
+          "sumMs": 98,
+          "p50Ms": 98,
+          "p95Ms": 98,
+          "maxMs": 98
         },
         {
           "name": "render:sidebar:tree-loop",
           "count": 1,
-          "sumMs": 60.2,
-          "p50Ms": 60.2,
-          "p95Ms": 60.2,
-          "maxMs": 60.2
-        },
-        {
-          "name": "tree:buildTree",
-          "count": 1,
-          "sumMs": 12,
-          "p50Ms": 12,
-          "p95Ms": 12,
-          "maxMs": 12
+          "sumMs": 79.4,
+          "p50Ms": 79.4,
+          "p95Ms": 79.4,
+          "maxMs": 79.4
         },
         {
           "name": "render:center",
           "count": 1,
-          "sumMs": 6.5,
-          "p50Ms": 6.5,
-          "p95Ms": 6.5,
-          "maxMs": 6.5
+          "sumMs": 10.3,
+          "p50Ms": 10.3,
+          "p95Ms": 10.3,
+          "maxMs": 10.3
+        },
+        {
+          "name": "tree:buildTree",
+          "count": 1,
+          "sumMs": 7.8,
+          "p50Ms": 7.8,
+          "p95Ms": 7.8,
+          "maxMs": 7.8
         },
         {
           "name": "render:sidebar:sort",
           "count": 1,
-          "sumMs": 2.3,
-          "p50Ms": 2.3,
-          "p95Ms": 2.3,
-          "maxMs": 2.3
+          "sumMs": 0.8,
+          "p50Ms": 0.8,
+          "p95Ms": 0.8,
+          "maxMs": 0.8
         },
         {
           "name": "render:sidebar:filter-pipeline",
           "count": 1,
-          "sumMs": 1,
-          "p50Ms": 1,
-          "p95Ms": 1,
-          "maxMs": 1
+          "sumMs": 0.6,
+          "p50Ms": 0.6,
+          "p95Ms": 0.6,
+          "maxMs": 0.6
         },
         {
           "name": "dispatch:SELECT_ENTRY:reduce",

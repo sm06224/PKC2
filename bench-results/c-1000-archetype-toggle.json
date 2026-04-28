@@ -5,51 +5,51 @@
   "measures": [
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:reduce",
-      "startTime": 249.90000000002328,
-      "duration": 0.09999999997671694
+      "startTime": 373.1000000000349,
+      "duration": 0
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER",
-      "startTime": 249.90000000002328,
-      "duration": 19
+      "startTime": 373.1000000000349,
+      "duration": 23.20000000001164
     },
     {
       "name": "dispatch:TOGGLE_ARCHETYPE_FILTER:notify-state",
-      "startTime": 250,
-      "duration": 18.900000000023283
-    },
-    {
-      "name": "render:sidebar",
-      "startTime": 250.59999999997672,
-      "duration": 14.600000000093132
+      "startTime": 373.20000000001164,
+      "duration": 23.100000000034925
     },
     {
       "name": "render:scope=sidebar-only",
-      "startTime": 250.59999999997672,
-      "duration": 18.20000000006985
+      "startTime": 374.1000000000349,
+      "duration": 22.099999999976717
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 374.20000000001164,
+      "duration": 16.70000000001164
     },
     {
       "name": "filter:applyFilters",
-      "startTime": 262.80000000004657,
-      "duration": 0.19999999995343387
+      "startTime": 388.1000000000349,
+      "duration": 0.5
     },
     {
       "name": "render:sidebar:filter-pipeline",
-      "startTime": 262.80000000004657,
+      "startTime": 388.1000000000349,
       "duration": 0.5999999999767169
     },
     {
       "name": "render:sidebar:sort",
-      "startTime": 263.4000000000233,
-      "duration": 0.09999999997671694
+      "startTime": 388.70000000001164,
+      "duration": 0.5
     },
     {
       "name": "render:sidebar:flat-loop",
-      "startTime": 263.9000000000233,
-      "duration": 0.8000000000465661
+      "startTime": 389.6000000000349,
+      "duration": 1.099999999976717
     }
   ],
   "bootElapsedMs": -1,
   "heapUsedMb": 17.36,
-  "capturedAt": "2026-04-28T10:06:15.785Z"
+  "capturedAt": "2026-04-28T14:40:39.909Z"
 }
