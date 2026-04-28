@@ -1013,6 +1013,24 @@
   font-size: 0.8rem;
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
   position: relative;
+
+  /* PR #183: skip layout / paint for off-screen entry rows.
+   * On a 5000-entry sidebar the browser previously laid out every
+   * <li> after a region-replace, costing 600+ ms / keystroke. With
+   * content-visibility:auto the engine treats off-screen rows as
+   * subtree-rendering-skipped until they scroll into view.
+   *
+   * `contain-intrinsic-size: auto 32px` reserves a stable 32 px
+   * placeholder when the engine has not yet measured the row, so the
+   * scrollbar doesn't jump as rows materialize. Once measured the
+   * `auto` keyword caches the real height, so resize math stays
+   * correct on scroll.
+   *
+   * Browser support: Chrome 85+, Edge 85+, Safari 18+. Firefox
+   * (no support yet) ignores the property and renders as before
+   * — the optimization is purely additive. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
 }
 
 /* Color tag Slice 3 — left-edge color band on entry rows.
@@ -1742,6 +1760,9 @@ mark.pkc-search-mark {
   border-left: 1px dashed var(--c-border);
   margin-left: 0.4rem;
   transition: background 120ms ease, color 120ms ease;
+  /* PR #183: same layout-skip treatment as the parent entry rows. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24px;
 }
 .pkc-entry-subloc:hover {
   background: var(--c-hover);
