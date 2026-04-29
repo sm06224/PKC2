@@ -104,6 +104,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 ## Specification Documents
 
 - `docs/development/completed/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
+- `docs/development/markdown-render-scope.md` — どの archetype / field が markdown を render するか、`.pkc-md-rendered` を共通 selector とする contract、新 markdown 拡張の scope 規約
 
 ## PR Workflow / Review Checklist
 
