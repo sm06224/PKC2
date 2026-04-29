@@ -6946,6 +6946,12 @@ mark.pkc-search-mark {
 
 @media (pointer: coarse) {
   .pkc-snippet-trigger {
+    /* Override the base `display: none` so the trigger is visible
+     * on touch devices when not `[hidden]`. Was missing in v4 —
+     * the trigger never showed up on iPhone. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     position: fixed;
     z-index: 9000;
     width: 28px;
