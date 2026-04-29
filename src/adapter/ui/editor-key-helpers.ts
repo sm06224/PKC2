@@ -346,9 +346,64 @@ export function handleEditorSpaceIndent(ta: HTMLTextAreaElement): boolean {
 }
 
 /**
+ * iOS Safari + Japanese IME workaround (PR #198 follow-up,
+ * 2026-04-29):
+ *
+ * Bracket auto-pair and skip-out are routed through `beforeinput`
+ * instead of `keydown`. On iOS, calling `preventDefault()` on a
+ * `keydown` whose source is the on-screen keyboard with IME enabled
+ * is **not honoured** — the platform inserts the character anyway,
+ * producing duplicates like `((` for a typed `(`. `beforeinput`
+ * is reliably cancelable across iOS / Android / desktop and fires
+ * for the committed text insertion (after IME has decided), so the
+ * platform character can be cleanly substituted with our pair.
+ *
+ * Filtering: only `inputType === 'insertText'` with single-character
+ * `data` participates; pastes / drops / IME composition fragments
+ * are untouched.
+ */
+export function handleEditorBeforeInput(
+  ta: HTMLTextAreaElement,
+  event: InputEvent,
+): boolean {
+  if (event.inputType !== 'insertText') return false;
+  const data = event.data;
+  if (!data || data.length !== 1) return false;
+
+  const start = ta.selectionStart ?? 0;
+  const end = ta.selectionEnd ?? start;
+  if (start !== end) return false;
+
+  // Skip-out: cursor sits directly before the same closer the user
+  // just typed → swallow the input and step cursor forward.
+  if (isLikelyClosing(data)) {
+    if (ta.value.charAt(start) === data) {
+      ta.selectionStart = ta.selectionEnd = start + 1;
+      return true;
+    }
+  }
+
+  // Auto-pair: typing an opener inserts the closer too (cursor
+  // between). Skipped when next char is a word character (literal
+  // mid-word opener).
+  const close = PAIRS[data];
+  if (close) {
+    const next = ta.value.charAt(start);
+    if (/\w/.test(next)) return false;
+    spliceText(ta, start, start, data + close, 'inside', 1);
+    notifyInput(ta);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Master dispatch: route a keydown into the appropriate helper.
  * Returns `true` when one of the helpers handled the event; the
  * caller should `event.preventDefault()`.
+ *
+ * Bracket auto-pair and skip-out are NOT routed here — they go
+ * through `handleEditorBeforeInput` (see iOS workaround note).
  *
  * Caller is expected to have already filtered:
  *   - target is a textarea with a markdown-capable `data-pkc-field`
@@ -374,15 +429,6 @@ export function tryHandleEditorKey(
   }
   if (event.key === 'Enter' && !event.shiftKey) {
     return handleEditorEnter(ta);
-  }
-  // Single-character keys: open bracket OR closing skip-out.
-  // Symmetric pairs (`"`, `'`, `` ` ``) ambiguity: try skip-out first.
-  // Asymmetric closers (`)`, `]`, `}`) only do skip-out.
-  if (event.key.length === 1 && isLikelyClosing(event.key)) {
-    if (handleEditorSkipOut(ta, event.key)) return true;
-  }
-  if (event.key.length === 1 && PAIRS[event.key]) {
-    return handleEditorBracketOpen(ta, event.key);
   }
   return false;
 }

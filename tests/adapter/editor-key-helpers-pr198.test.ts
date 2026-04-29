@@ -7,6 +7,7 @@ import {
   handleEditorTab,
   handleEditorSpaceIndent,
   tryHandleEditorKey,
+  handleEditorBeforeInput,
 } from '@adapter/ui/editor-key-helpers';
 
 /**
@@ -320,6 +321,85 @@ describe('handleEditorSpaceIndent — Space at empty list slot', () => {
   });
 });
 
+describe('handleEditorBeforeInput — bracket auto-pair / skip-out via beforeinput (iOS workaround)', () => {
+  function makeBeforeInput(data: string): InputEvent {
+    return new InputEvent('beforeinput', { data, inputType: 'insertText' });
+  }
+
+  it('inserts () with cursor between when typing (', () => {
+    ta.value = '';
+    setCursor(0);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput('('))).toBe(true);
+    expect(ta.value).toBe('()');
+    expect(ta.selectionStart).toBe(1);
+  });
+
+  it('inserts pair for [ ` { "', () => {
+    for (const open of ['[', '`', '{', '"']) {
+      ta.value = '';
+      setCursor(0);
+      expect(handleEditorBeforeInput(ta, makeBeforeInput(open))).toBe(true);
+      expect(ta.value.length).toBe(2);
+      expect(ta.selectionStart).toBe(1);
+    }
+  });
+
+  it('does NOT pair when next char is a word character', () => {
+    ta.value = 'foo';
+    setCursor(0);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput('('))).toBe(false);
+  });
+
+  it('does NOT pair on selection range', () => {
+    ta.value = 'abcdef';
+    setSelection(1, 4);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput('('))).toBe(false);
+  });
+
+  it('skip-out: cursor before same closer steps cursor forward', () => {
+    ta.value = '()';
+    setCursor(1);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(')'))).toBe(true);
+    expect(ta.value).toBe('()');
+    expect(ta.selectionStart).toBe(2);
+  });
+
+  it('skip-out for symmetric quote', () => {
+    ta.value = '""';
+    setCursor(1);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput('"'))).toBe(true);
+    expect(ta.value).toBe('""');
+    expect(ta.selectionStart).toBe(2);
+  });
+
+  it('returns false for non-pair / non-closer single chars', () => {
+    ta.value = '';
+    setCursor(0);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput('a'))).toBe(false);
+  });
+
+  it('ignores composition / paste / non-insertText input types', () => {
+    ta.value = '';
+    setCursor(0);
+    const e = new InputEvent('beforeinput', { data: '(', inputType: 'insertCompositionText' });
+    expect(handleEditorBeforeInput(ta, e)).toBe(false);
+  });
+
+  it('ignores multi-character data (e.g. paste-by-key)', () => {
+    ta.value = '';
+    setCursor(0);
+    const e = new InputEvent('beforeinput', { data: '((', inputType: 'insertText' });
+    expect(handleEditorBeforeInput(ta, e)).toBe(false);
+  });
+
+  it('ignores null data (e.g. delete)', () => {
+    ta.value = 'abc';
+    setCursor(3);
+    const e = new InputEvent('beforeinput', { inputType: 'deleteContentBackward' });
+    expect(handleEditorBeforeInput(ta, e)).toBe(false);
+  });
+});
+
 describe('tryHandleEditorKey — dispatch master', () => {
   it('routes Enter to handleEditorEnter', () => {
     ta.value = '- foo';
@@ -329,21 +409,20 @@ describe('tryHandleEditorKey — dispatch master', () => {
     expect(ta.value).toBe('- foo\n- ');
   });
 
-  it('routes ( to bracket pair', () => {
+  it('does NOT route ( in keydown (bracket logic moved to beforeinput, iOS workaround)', () => {
     ta.value = '';
     setCursor(0);
     const e = new KeyboardEvent('keydown', { key: '(' });
-    expect(tryHandleEditorKey(ta, e)).toBe(true);
-    expect(ta.value).toBe('()');
+    expect(tryHandleEditorKey(ta, e)).toBe(false);
+    expect(ta.value).toBe('');
   });
 
-  it('prefers skip-out over re-pairing for symmetric quotes', () => {
+  it('does NOT route closing quote in keydown (bracket logic moved to beforeinput)', () => {
     ta.value = '""';
     setCursor(1);
     const e = new KeyboardEvent('keydown', { key: '"' });
-    expect(tryHandleEditorKey(ta, e)).toBe(true);
-    expect(ta.value).toBe('""'); // not """""
-    expect(ta.selectionStart).toBe(2);
+    expect(tryHandleEditorKey(ta, e)).toBe(false);
+    expect(ta.value).toBe('""');
   });
 
   it('Shift+Enter is NOT consumed (let user insert literal newline)', () => {

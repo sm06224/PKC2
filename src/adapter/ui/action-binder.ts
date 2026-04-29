@@ -19,7 +19,10 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
-import { tryHandleEditorKey } from './editor-key-helpers';
+import {
+  tryHandleEditorKey,
+  handleEditorBeforeInput,
+} from './editor-key-helpers';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -3025,6 +3028,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
   }
 
+  /**
+   * `beforeinput` dispatcher for markdown-capable textareas (PR #198
+   * follow-up, 2026-04-29). Bracket auto-pair / skip-out routes
+   * through here instead of `keydown` because iOS Safari doesn't
+   * honour `preventDefault()` on keydown when an IME is active —
+   * `beforeinput` is reliably cancelable across iOS / Android /
+   * desktop and fires for the committed text insertion (after IME
+   * has decided), so we can substitute the platform character with
+   * our pair without producing duplicates.
+   */
+  function handleEditorBeforeInputDispatch(e: Event): void {
+    if (!(e instanceof InputEvent)) return;
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (e.isComposing) return;
+    const field = target.getAttribute('data-pkc-field');
+    const isMarkdownField =
+      field === 'body'
+      || field === 'textlog-entry-text'
+      || field === 'textlog-append-text'
+      || field === 'todo-description';
+    if (!isMarkdownField) return;
+    if (handleEditorBeforeInput(target, e)) {
+      e.preventDefault();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     // Asset picker takes priority over slash menu when open (it replaces the
     // slash menu at the same trigger point).
@@ -5816,6 +5846,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // eyedropper-trailing-click rationale.
   document.addEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
   document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('beforeinput', handleEditorBeforeInputDispatch, true);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
@@ -5884,6 +5915,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('beforeinput', handleEditorBeforeInputDispatch, true);
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
