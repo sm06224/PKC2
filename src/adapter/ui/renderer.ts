@@ -3,6 +3,7 @@ import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
 import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
+import { renderSnippetToolbar } from './snippet-toolbar';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -675,6 +676,14 @@ function renderShell(state: AppState): HTMLElement {
   // so iPhone users still see the bar at the top of the
   // viewport.
   shell.appendChild(renderMobileHeader(state));
+
+  // Snippet toolbar (PR #201) — fixed-bottom bar shown on
+  // `pointer:coarse` devices when a markdown textarea has focus.
+  // Hidden by default; action-binder toggles `hidden` on
+  // focusin / focusout. CSS gates visibility on touch tier so the
+  // element stays display:none on desktop even if accidentally
+  // unhidden.
+  shell.appendChild(renderSnippetToolbar());
   return shell;
 }
 

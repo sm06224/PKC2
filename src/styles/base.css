@@ -6913,3 +6913,65 @@ mark.pkc-search-mark {
     width: 240px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #201 — iPhone / iPad snippet toolbar.
+ *
+ * Fixed bottom bar shown when a markdown textarea has focus.
+ * Hidden by default(`hidden` attribute via JS), and gated by
+ * `(pointer: coarse)` so desktop never sees it even if the
+ * `hidden` attribute is removed accidentally.
+ *
+ * Sits ABOVE the keyboard via `bottom: env(safe-area-inset-bottom)`
+ * which on iOS Safari gets pushed up by the keyboard's appearance
+ * (visualViewport-aware fixed positioning, modern Safari behaviour).
+ *
+ * Buttons are intentionally large(min 36px tall, 44px wide) for
+ * fat-finger reliability per Apple HIG.
+ * ───────────────────────────────────────────────────────────── */
+.pkc-snippet-toolbar {
+  display: none;
+}
+.pkc-snippet-toolbar[hidden] {
+  display: none !important;
+}
+@media (pointer: coarse) {
+  .pkc-snippet-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: env(safe-area-inset-bottom, 0);
+    z-index: 100;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--c-surface);
+    border-top: 1px solid var(--c-accent-dim);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+    -webkit-overflow-scrolling: touch;
+  }
+  .pkc-snippet-toolbar[hidden] {
+    display: none !important;
+  }
+  .pkc-snippet-toolbar-btn {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 36px;
+    padding: 0.4rem 0.6rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--c-text);
+    background: var(--c-surface-2, var(--c-surface));
+    border: 1px solid var(--c-accent-dim);
+    border-radius: 6px;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .pkc-snippet-toolbar-btn:active {
+    background: var(--c-accent-dim);
+  }
+}

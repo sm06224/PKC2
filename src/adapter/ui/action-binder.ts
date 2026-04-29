@@ -20,6 +20,7 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
+import { applySnippet, type SnippetKind } from './snippet-toolbar';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -3025,6 +3026,78 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
   }
 
+  /**
+   * Snippet toolbar focus / click coordination (PR #201, 2026-04-29).
+   *
+   * The toolbar element is rendered once per shell and toggled via
+   * `hidden`. We track the most-recently-focused markdown textarea
+   * so a button click can reach it after the focus has moved to the
+   * button(`pointerdown` preventDefault on the button itself
+   * usually keeps focus, but Safari occasionally still blurs).
+   */
+  let snippetToolbarTextarea: HTMLTextAreaElement | null = null;
+
+  function isSnippetTargetTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
+    if (!(el instanceof HTMLTextAreaElement)) return false;
+    const field = el.getAttribute('data-pkc-field');
+    return (
+      field === 'body'
+      || field === 'textlog-entry-text'
+      || field === 'textlog-append-text'
+      || field === 'todo-description'
+    );
+  }
+
+  function findSnippetToolbar(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('[data-pkc-region="snippet-toolbar"]');
+  }
+
+  function handleSnippetToolbarFocusIn(e: FocusEvent): void {
+    if (!isSnippetTargetTextarea(e.target)) return;
+    snippetToolbarTextarea = e.target;
+    const toolbar = findSnippetToolbar();
+    if (toolbar) toolbar.hidden = false;
+  }
+
+  function handleSnippetToolbarFocusOut(e: FocusEvent): void {
+    if (!isSnippetTargetTextarea(e.target)) return;
+    // If focus is moving to a snippet button, keep the toolbar
+    // visible(button click will refocus the textarea).
+    const next = e.relatedTarget as Element | null;
+    if (next && next.closest('[data-pkc-region="snippet-toolbar"]')) {
+      return;
+    }
+    snippetToolbarTextarea = null;
+    const toolbar = findSnippetToolbar();
+    if (toolbar) toolbar.hidden = true;
+  }
+
+  function handleSnippetToolbarPointerDown(e: PointerEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
+    if (!btn) return;
+    // Prevent the textarea from blurring when the user taps a
+    // toolbar button — without this, iOS dismisses the keyboard
+    // mid-tap and the click lands on a blurred textarea.
+    e.preventDefault();
+  }
+
+  function handleSnippetToolbarClick(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
+    if (!btn) return;
+    const kind = btn.getAttribute('data-pkc-snippet') as SnippetKind | null;
+    if (!kind) return;
+    const ta = snippetToolbarTextarea;
+    if (!ta) return;
+    applySnippet(ta, kind);
+    // Restore focus + caret in the textarea so the user can keep
+    // typing without an extra tap.
+    ta.focus();
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     // Asset picker takes priority over slash menu when open (it replaces the
     // slash menu at the same trigger point).
@@ -5819,6 +5892,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
+  // PR #201 snippet toolbar: focus tracking + button handling.
+  document.addEventListener('focusin', handleSnippetToolbarFocusIn);
+  document.addEventListener('focusout', handleSnippetToolbarFocusOut);
+  document.addEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
+  document.addEventListener('click', handleSnippetToolbarClick);
 
   // v1.2: close any floating autocomplete / picker popups when phase
   // transitions away from 'editing'. The root re-render wipes their DOM
@@ -5887,6 +5965,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
+    document.removeEventListener('focusin', handleSnippetToolbarFocusIn);
+    document.removeEventListener('focusout', handleSnippetToolbarFocusOut);
+    document.removeEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
+    document.removeEventListener('click', handleSnippetToolbarClick);
     clearAllDragState();
     unsubPopupCleanup();
     closeSlashMenu();
