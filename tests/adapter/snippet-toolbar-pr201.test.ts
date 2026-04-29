@@ -61,7 +61,9 @@ describe('renderFloatingPopup — DOM shape', () => {
   it('emits one snippet button per kind', () => {
     const el = renderFloatingPopup();
     const btns = el.querySelectorAll('[data-pkc-snippet]');
-    expect(btns.length).toBe(9);
+    // backtick / fence / paren / bracket / brace / angle / dash /
+    // quote / heading (h1) / heading2 / heading3
+    expect(btns.length).toBe(11);
   });
 
   it('all popup buttons are type=button with a11y attrs', () => {
@@ -239,6 +241,30 @@ describe('applySnippet — line-prefix snippets (dash / quote / heading)', () =>
     applySnippet(ta, 'heading');
     expect(ta.value).toBe('previous\n# ');
     expect(ta.selectionStart).toBe(11);
+  });
+
+  it('heading2 at start of line inserts "## "', () => {
+    ta.value = '';
+    setCursor(0);
+    applySnippet(ta, 'heading2');
+    expect(ta.value).toBe('## ');
+    expect(ta.selectionStart).toBe(3);
+  });
+
+  it('heading3 at start of line inserts "### "', () => {
+    ta.value = '';
+    setCursor(0);
+    applySnippet(ta, 'heading3');
+    expect(ta.value).toBe('### ');
+    expect(ta.selectionStart).toBe(4);
+  });
+
+  it('heading2 mid-content inserts the bare "##" (no trailing space)', () => {
+    ta.value = 'foo';
+    setCursor(3);
+    applySnippet(ta, 'heading2');
+    expect(ta.value).toBe('foo##');
+    expect(ta.selectionStart).toBe(5);
   });
 
   it('whitespace-only line is treated as line start', () => {

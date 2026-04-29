@@ -39,7 +39,9 @@ export type SnippetKind =
   | 'angle'
   | 'dash'
   | 'quote'
-  | 'heading';
+  | 'heading'
+  | 'heading2'
+  | 'heading3';
 
 const SNIPPET_ORDER: readonly SnippetKind[] = [
   'backtick',
@@ -51,6 +53,8 @@ const SNIPPET_ORDER: readonly SnippetKind[] = [
   'dash',
   'quote',
   'heading',
+  'heading2',
+  'heading3',
 ];
 
 interface SnippetSpec {
@@ -69,7 +73,9 @@ const SNIPPETS: Readonly<Record<SnippetKind, SnippetSpec>> = {
   angle:    { label: '<>', title: 'Angle brackets' },
   dash:     { label: '-', title: 'List item' },
   quote:    { label: '>', title: 'Quote' },
-  heading:  { label: '#', title: 'Heading' },
+  heading:  { label: '#', title: 'Heading 1' },
+  heading2: { label: '##', title: 'Heading 2' },
+  heading3: { label: '###', title: 'Heading 3' },
 };
 
 /**
@@ -288,16 +294,23 @@ export function applySnippet(ta: HTMLTextAreaElement, kind: SnippetKind): void {
 
     case 'dash':
     case 'quote':
-    case 'heading': {
+    case 'heading':
+    case 'heading2':
+    case 'heading3': {
       const lineStart = value.lastIndexOf('\n', start - 1) + 1;
       const beforeOnLine = value.slice(lineStart, start);
       const atLineStart = /^\s*$/.test(beforeOnLine);
-      const marker = kind === 'dash' ? '-' : kind === 'quote' ? '>' : '#';
+      const marker =
+        kind === 'dash' ? '-'
+        : kind === 'quote' ? '>'
+        : kind === 'heading' ? '#'
+        : kind === 'heading2' ? '##'
+        : '###';
       if (atLineStart) {
         const insert = marker + ' ';
         replaceRange(ta, start, end, insert, start + insert.length);
       } else {
-        replaceRange(ta, start, end, marker, start + 1);
+        replaceRange(ta, start, end, marker, start + marker.length);
       }
       break;
     }
