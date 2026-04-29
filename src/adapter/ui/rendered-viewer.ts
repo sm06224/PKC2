@@ -391,6 +391,20 @@ export function buildRenderedViewerHtml(
       }
       .pkc-textlog-day { break-inside: avoid; }
       .pkc-textlog-log { break-inside: avoid; }
+      /* Print pre-flight (PR #204 follow-up, 2026-04-29):
+       * the rendered viewer renders markdown via the same
+       * renderMarkdown() that wraps tables / fences in
+       * .pkc-md-block with a copy button overlay. The button
+       * isn't wired to anything in this standalone window (no
+       * action-binder runs here), so it serves no purpose in
+       * print output — just chrome on the page. Strip it. */
+      .pkc-md-copy-btn,
+      [data-pkc-action="copy-md-block"],
+      .pkc-md-table-sort,
+      .pkc-md-table-filter-toggle,
+      .pkc-md-table-filter-row {
+        display: none !important;
+      }
     }
   `;
 
