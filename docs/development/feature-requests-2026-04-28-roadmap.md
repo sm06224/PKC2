@@ -155,6 +155,35 @@ User direction(原文):
   キーハンドラの優先度を調整
 - IME 中(`isComposing`)は無効化が必須
 
+### iOS Safari の auto-pair 制限と緩和パス(2026-04-29 追記)
+
+PR #198 v3 は **keydown** ベースで bracket / skip-out を実装。
+Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
+二重挿入** になる(iOS Safari は IME 有効時の keydown への
+`preventDefault()` を尊重しないため、PKC2 の `()` 挿入と OS の
+`(` 挿入が並走する)。
+
+#### 試した修正と結果
+
+- **PR #200**(close、未 merge):bracket 系を `keydown` から
+  `beforeinput` に移管。iOS では beforeinput が cancelable で
+  IME commit 確定後に発火する想定だったが、**iPhone 実機で auto-pair
+  が一切発火しない** regression を起こし revert(close)。原因は
+  `isComposing` フィルタの可能性高だが実機 debug 環境がなく仮説検証
+  不能。
+
+#### 現在の暫定方針
+
+- iPhone / iPad の bracket auto-pair は **緩和方針**:本体側で
+  直さず、**入力補助パレット**(本領域 4 末尾 + 領域 7 で計画済の
+  iPhone/iPad スニペットツールバー)に bracket / fence ボタンを
+  配置して palette 経由で入力 → keydown / beforeinput を経由しない
+  ので OS との競合なし
+- desktop は keydown 経由で従来通り動作
+- 将来 iOS が preventDefault を尊重するようになったら、`beforeinput`
+  への再移行を検討(`docs/development/editor-key-helpers-pr198-findings.md`
+  を更新)
+
 ### サイズ: 中
 
 ---
