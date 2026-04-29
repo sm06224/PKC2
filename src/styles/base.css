@@ -7180,34 +7180,49 @@ mark.pkc-search-mark {
   width: 1%;
   white-space: nowrap;
 }
+/* Sort + filter handles are absolutely positioned at the top-right
+ * corner of the header cell so they DO NOT contribute to column
+ * width or shift the header label. The cell is the positioning
+ * context (`position: relative`); handles float over its corner
+ * and only become visible on hover (desktop) or always (touch).
+ * Padding-right on the cell content keeps the label clear of the
+ * handle area when the handles are visible. */
 .pkc-md-rendered .pkc-md-table-th-enhanced {
   position: relative;
 }
 .pkc-md-rendered .pkc-md-table-th-content {
-  margin-right: 0.4em;
+  display: inline;
 }
 .pkc-md-rendered .pkc-md-table-sort,
 .pkc-md-rendered .pkc-md-table-filter-toggle {
+  position: absolute;
+  top: 1px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  vertical-align: baseline;
-  width: 1.4em;
-  height: 1.4em;
-  margin-left: 0.15em;
+  width: 1.2em;
+  height: 1.2em;
   padding: 0;
-  font-size: 0.85em;
+  font-size: 0.78em;
   line-height: 1;
   color: var(--c-muted);
   background: transparent;
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  opacity: 0.4;
+  opacity: 0;
+  pointer-events: auto;
   transition: opacity 120ms ease, background 120ms ease;
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+/* Sort sits at the very right edge; filter sits just to its left. */
+.pkc-md-rendered .pkc-md-table-sort {
+  right: 2px;
+}
+.pkc-md-rendered .pkc-md-table-filter-toggle {
+  right: calc(1.2em + 4px);
 }
 .pkc-md-rendered .pkc-md-table-th-enhanced:hover .pkc-md-table-sort,
 .pkc-md-rendered .pkc-md-table-th-enhanced:hover .pkc-md-table-filter-toggle,
@@ -7225,11 +7240,13 @@ mark.pkc-search-mark {
 .pkc-md-rendered .pkc-md-table-filter-toggle:hover {
   background: var(--c-accent-dim);
 }
-/* Touch tier: handles always visible (hover doesn't fire reliably). */
+/* Touch tier: handles always visible (hover doesn't fire reliably).
+ * The handle layer is opaque enough to be discoverable but kept
+ * out of the visual rhythm of the column label. */
 @media (pointer: coarse) {
   .pkc-md-rendered .pkc-md-table-sort,
   .pkc-md-rendered .pkc-md-table-filter-toggle {
-    opacity: 0.7;
+    opacity: 0.55;
   }
 }
 
