@@ -6957,7 +6957,15 @@ mark.pkc-search-mark {
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    /* Anchor sheet at the TOP of the viewport, just below the mobile
+     * editing header. Bottom-anchored sheets get covered by iOS
+     * keyboard chrome in portrait (URL bar / accessory bar fight),
+     * so we drop down from the header instead — top-of-viewport is
+     * always visible regardless of keyboard state. */
+    justify-content: flex-start;
+    /* Mobile header ≈ 44 px touch target + 0.45 rem × 2 padding +
+     * 1 px border ≈ 60 px. Plus iOS top safe-area inset. */
+    padding-top: calc(env(safe-area-inset-top, 0) + 60px);
     -webkit-tap-highlight-color: transparent;
   }
   .pkc-snippet-sheet-backdrop[hidden] {
@@ -6965,11 +6973,11 @@ mark.pkc-search-mark {
   }
   .pkc-snippet-sheet {
     background: var(--c-surface);
-    border-top: 1px solid var(--c-accent-dim);
-    border-top-left-radius: 14px;
-    border-top-right-radius: 14px;
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
-    padding: 0.5rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+    border-bottom: 1px solid var(--c-accent-dim);
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 0.5rem 0.75rem 0.75rem;
     max-height: 60vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
