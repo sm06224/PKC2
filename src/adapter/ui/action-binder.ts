@@ -3037,6 +3037,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    */
   let snippetToolbarTextarea: HTMLTextAreaElement | null = null;
 
+  /**
+   * Reposition the snippet toolbar so its bottom edge sits at the
+   * visual viewport bottom (= just above the iOS keyboard).
+   *
+   * iOS 13-15 anchors `position: fixed` to the LAYOUT viewport, so
+   * `bottom: 0` lands UNDER the keyboard. iOS 16+ is visualViewport-
+   * aware and `bottom: 0` already lands above the keyboard. We
+   * detect both cases by measuring whether the toolbar's bottom
+   * extends past the visual viewport, and only inject a `bottom`
+   * inline override when it does — modern iOS keeps the CSS default
+   * untouched.
+   */
+  function updateSnippetToolbarPosition(): void {
+    const toolbar = findSnippetToolbar();
+    if (!toolbar || toolbar.hidden) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    // Reset any previous adjustment so we measure against the CSS
+    // default (`bottom: env(safe-area-inset-bottom)`).
+    toolbar.style.bottom = '';
+    const rect = toolbar.getBoundingClientRect();
+    const visualBottom = vv.offsetTop + vv.height;
+    if (rect.bottom > visualBottom + 0.5) {
+      const overflow = rect.bottom - visualBottom;
+      toolbar.style.bottom = `${overflow}px`;
+    }
+  }
+
+  function handleVisualViewportChange(): void {
+    updateSnippetToolbarPosition();
+  }
+
   function isSnippetTargetTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
     if (!(el instanceof HTMLTextAreaElement)) return false;
     const field = el.getAttribute('data-pkc-field');
@@ -3056,7 +3088,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!isSnippetTargetTextarea(e.target)) return;
     snippetToolbarTextarea = e.target;
     const toolbar = findSnippetToolbar();
-    if (toolbar) toolbar.hidden = false;
+    if (toolbar) {
+      toolbar.hidden = false;
+      // Wait for the keyboard to settle. visualViewport.resize will
+      // fire when iOS finishes raising the keyboard; until then the
+      // initial geometry is the keyboard-closed state.
+      requestAnimationFrame(updateSnippetToolbarPosition);
+    }
   }
 
   function handleSnippetToolbarFocusOut(e: FocusEvent): void {
@@ -3069,7 +3107,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     snippetToolbarTextarea = null;
     const toolbar = findSnippetToolbar();
-    if (toolbar) toolbar.hidden = true;
+    if (toolbar) {
+      toolbar.hidden = true;
+      // Clear inline override so the next focusin starts from CSS
+      // default and re-measures.
+      toolbar.style.bottom = '';
+    }
   }
 
   function handleSnippetToolbarPointerDown(e: PointerEvent): void {
@@ -5897,6 +5940,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('focusout', handleSnippetToolbarFocusOut);
   document.addEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
   document.addEventListener('click', handleSnippetToolbarClick);
+  // visualViewport tracks iOS keyboard appearance/dismissal — when
+  // it fires, recompute toolbar position so old iOS Safari (which
+  // anchors `position: fixed` to the layout viewport) lifts the
+  // toolbar above the keyboard.
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleVisualViewportChange);
+    window.visualViewport.addEventListener('scroll', handleVisualViewportChange);
+  }
 
   // v1.2: close any floating autocomplete / picker popups when phase
   // transitions away from 'editing'. The root re-render wipes their DOM
@@ -5969,6 +6020,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('focusout', handleSnippetToolbarFocusOut);
     document.removeEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
     document.removeEventListener('click', handleSnippetToolbarClick);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', handleVisualViewportChange);
+      window.visualViewport.removeEventListener('scroll', handleVisualViewportChange);
+    }
     clearAllDragState();
     unsubPopupCleanup();
     closeSlashMenu();
