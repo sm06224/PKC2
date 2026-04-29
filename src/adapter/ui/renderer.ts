@@ -3,6 +3,7 @@ import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
 import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
+import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -675,6 +676,14 @@ function renderShell(state: AppState): HTMLElement {
   // so iPhone users still see the bar at the top of the
   // viewport.
   shell.appendChild(renderMobileHeader(state));
+
+  // Snippet floating helpers (PR #201 v4) — small "✚" trigger that
+  // follows the caret in markdown textareas, plus a compact popup
+  // with snippet buttons that opens next to the trigger. Hidden by
+  // default; action-binder positions / toggles them based on focus
+  // and selection events. CSS gates visibility on `pointer: coarse`.
+  shell.appendChild(renderFloatingTrigger());
+  shell.appendChild(renderFloatingPopup());
   return shell;
 }
 

@@ -6913,3 +6913,106 @@ mark.pkc-search-mark {
     width: 240px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #201 v4 — floating cursor-following snippet helper.
+ *
+ * Replaces v1/v2 fixed-bottom toolbar AND v3 modal sheet. Both
+ * earlier designs lost the iOS chrome fight (portrait) or wasted
+ * screen space (3×3 sheet). User direction: «philosophy first,
+ * ignore WCAG when the spec hurts UX». Compact = beautiful.
+ *
+ * Two elements, both `position: fixed` with JS-driven coordinates:
+ *   - `.pkc-snippet-trigger`: small "✚" button (~28 px) hovering
+ *     just to the right of the caret, follows it as the user
+ *     types / scrolls.
+ *   - `.pkc-snippet-popup`: compact horizontal row of icon-sized
+ *     buttons, opens next to the trigger when tapped.
+ *
+ * Touch-only (`pointer: coarse`); desktop is `display: none`.
+ * Buttons are intentionally below WCAG min-target (56 → 28 px) —
+ * symbolic glyphs aid disambiguation, and a transient floating
+ * helper that occluded a 56 px chunk of the screen would defeat
+ * the purpose.
+ * ───────────────────────────────────────────────────────────── */
+.pkc-snippet-trigger,
+.pkc-snippet-popup {
+  display: none;
+}
+.pkc-snippet-trigger[hidden],
+.pkc-snippet-popup[hidden] {
+  display: none !important;
+}
+
+@media (pointer: coarse) {
+  .pkc-snippet-trigger {
+    /* Override the base `display: none` so the trigger is visible
+     * on touch devices when not `[hidden]`. Was missing in v4 —
+     * the trigger never showed up on iPhone. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    z-index: 9000;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--c-accent-dim);
+    border-radius: 50%;
+    background: var(--c-surface);
+    color: var(--c-text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    opacity: 0.9;
+  }
+  .pkc-snippet-trigger[hidden] {
+    display: none !important;
+  }
+  .pkc-snippet-trigger:active {
+    background: var(--c-accent-dim);
+    opacity: 1;
+  }
+  .pkc-snippet-popup {
+    position: fixed;
+    z-index: 9001;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-accent-dim);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    overflow-x: auto;
+    max-width: calc(100vw - 16px);
+    -webkit-overflow-scrolling: touch;
+  }
+  .pkc-snippet-popup[hidden] {
+    display: none !important;
+  }
+  .pkc-snippet-popup-btn {
+    flex: 0 0 auto;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--c-text);
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .pkc-snippet-popup-btn:active {
+    background: var(--c-accent-dim);
+  }
+}
