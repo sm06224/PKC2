@@ -7275,3 +7275,40 @@ mark.pkc-search-mark {
   border-color: var(--c-accent);
   outline: none;
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #206 — source ↔ preview synchronization marker.
+ *
+ * The active block (= the preview element matching the textarea
+ * caret's source line) gets a subtle accent on its left edge.
+ * Kept understated so it serves as a "you-are-here" indicator
+ * without competing with the rendered content.
+ *
+ * Cursor on `.pkc-md-rendered` block elements while inside the
+ * split editor preview becomes a text caret hint, signalling that
+ * tapping moves the editor cursor to the matching line.
+ * ───────────────────────────────────────────────────────────── */
+.pkc-md-rendered [data-pkc-active-source] {
+  position: relative;
+}
+.pkc-md-rendered [data-pkc-active-source]::before {
+  content: '';
+  position: absolute;
+  left: -0.6rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--c-accent);
+  border-radius: 1.5px;
+  opacity: 0.75;
+  pointer-events: none;
+}
+.pkc-text-edit-preview [data-pkc-source-line] {
+  cursor: text;
+}
+/* Override zoom-in cursor from PR #203 inside the split-editor
+ * preview — caret-sync click is the dominant intent there. */
+.pkc-text-edit-preview .pkc-md-block,
+.pkc-text-edit-preview img {
+  cursor: text;
+}

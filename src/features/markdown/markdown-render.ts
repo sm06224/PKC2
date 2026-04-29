@@ -109,7 +109,47 @@ const defaultLinkOpen = md.renderer.rules.link_open ??
     return self.renderToken(tokens, idx, options);
   };
 
-// ── B-1 (USER_REQUEST_LEDGER S-16, 2026-04-14): CSV / TSV / PSV
+/**
+ * PR #206: source-line tagging for caret ↔ preview synchronization.
+ *
+ * Every block-level token whose `map` field reports a source range
+ * gets a `data-pkc-source-line="<startLine>"` attribute. The sync
+ * adapter uses these anchors to:
+ *   - scroll the preview pane to the block matching the caret's
+ *     current source line as the user types
+ *   - move the caret in the textarea when the user taps a preview
+ *     element
+ *
+ * For wrapped blocks (`fence`, `table` — wrapped in `.pkc-md-block`
+ * for the copy / expand chrome) the wrapper takes the attribute so
+ * the sync layer can target the user-visible card directly.
+ */
+const BLOCK_TOKEN_TYPES_TO_TAG = new Set([
+  'paragraph_open',
+  'heading_open',
+  'bullet_list_open',
+  'ordered_list_open',
+  'list_item_open',
+  'blockquote_open',
+  'fence',
+  'code_block',
+  'table_open',
+  'hr',
+  'html_block',
+]);
+
+function tagSourceLines(tokens: Token[]): void {
+  for (const token of tokens) {
+    if (token.map && BLOCK_TOKEN_TYPES_TO_TAG.has(token.type)) {
+      token.attrSet('data-pkc-source-line', String(token.map[0]));
+    }
+    if (token.children && token.children.length > 0) {
+      tagSourceLines(token.children);
+    }
+  }
+}
+
+
 //    fenced blocks render as `<table>`. Short-circuits BEFORE the
 //    `highlight:` hook so CSV blocks bypass syntax highlighting
 //    (they're not code). On parse failure or unknown lang, fall
@@ -121,20 +161,36 @@ const defaultFence = md.renderer.rules.fence ??
   };
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
+  // PR #206: lift the source-line attr we stamped during
+  // `tagSourceLines` onto the `.pkc-md-block` wrapper so the sync
+  // layer can target the user-visible card directly. We strip it
+  // from the inner token so the inner `<code>` doesn't carry a
+  // duplicate.
+  const sourceLine = token.attrGet('data-pkc-source-line') ?? undefined;
+  if (sourceLine !== undefined) {
+    const idxAttr = token.attrIndex('data-pkc-source-line');
+    if (idxAttr >= 0 && token.attrs) token.attrs.splice(idxAttr, 1);
+  }
   const html = renderCsvFence(token.content, token.info);
-  if (html !== null) return wrapWithCopyButton(html, 'code');
+  if (html !== null) return wrapWithCopyButton(html, 'code', sourceLine);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
-  return wrapWithCopyButton(fenceHtml, 'code');
+  return wrapWithCopyButton(fenceHtml, 'code', sourceLine);
 };
 
 // PR #196: table copy button overlay. Wraps the entire <table>…</table>
-// in a `<div class="pkc-md-block">` carrying the copy button. The
-// button reads the rendered table cell text on click (via
-// action-binder) and writes both `text/plain` (TSV) and `text/html`
-// (the table's own HTML) to the clipboard via `copyMarkdownAndHtml`-
-// style multi-MIME write.
+// in a `<div class="pkc-md-block">` carrying the copy button.
+// PR #206: the wrapper also carries `data-pkc-source-line` from the
+// `table_open` token so the caret-sync adapter can scroll-to / pop
+// the card without descending into the table.
 md.renderer.rules.table_open = function (tokens, idx, options, _env, self) {
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
+  const token = tokens[idx]!;
+  const sourceLine = token.attrGet('data-pkc-source-line') ?? undefined;
+  if (sourceLine !== undefined) {
+    const idxAttr = token.attrIndex('data-pkc-source-line');
+    if (idxAttr >= 0 && token.attrs) token.attrs.splice(idxAttr, 1);
+  }
+  const lineAttr = sourceLine ? ` data-pkc-source-line="${sourceLine}"` : '';
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"${lineAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
 };
 md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
   return `${self.renderToken(tokens, idx, options)}</div>`;
@@ -146,8 +202,13 @@ md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
  * `action-binder` event delegation picks it up. The host element is
  * `position: relative` so the button can sit absolutely top-right.
  */
-function wrapWithCopyButton(innerHtml: string, kind: 'code' | 'table'): string {
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
+function wrapWithCopyButton(
+  innerHtml: string,
+  kind: 'code' | 'table',
+  sourceLine?: string,
+): string {
+  const lineAttr = sourceLine ? ` data-pkc-source-line="${sourceLine}"` : '';
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"${lineAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
 }
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
@@ -502,6 +563,14 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
  */
 export interface RenderMarkdownOptions {
   readonly currentContainerId?: string;
+  /**
+   * PR #206: stamp `data-pkc-source-line="<n>"` on every block-level
+   * token's rendered output so the caret-sync adapter can match
+   * preview elements to editor source lines (and vice versa).
+   * Opt-in — view-only call sites (detail / todo / folder / textlog
+   * presenters) leave this off and emit clean HTML.
+   */
+  readonly sourceLineAnchors?: boolean;
 }
 
 /**
@@ -518,7 +587,17 @@ export function renderMarkdown(
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
-  return md.render(text, env);
+  // PR #206: when `sourceLineAnchors` is opt-in, stamp every block-
+  // level token with `data-pkc-source-line` so the caret-sync
+  // adapter can match preview blocks to editor lines (and vice
+  // versa). Off by default so view-only call sites (detail / todo /
+  // folder / textlog presenters) emit clean HTML.
+  if (!opts.sourceLineAnchors) {
+    return md.render(text, env);
+  }
+  const tokens = md.parse(text, env);
+  tagSourceLines(tokens);
+  return md.renderer.render(tokens, md.options, env);
 }
 
 /**

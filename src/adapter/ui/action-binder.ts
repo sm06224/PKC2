@@ -40,6 +40,10 @@ import {
   cycleSortDirection,
   resetOtherSortButtons,
 } from './table-interactive';
+import {
+  syncPreviewToCaret,
+  syncCaretToPreview,
+} from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -6065,7 +6069,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     if (hasMarkdownSyntax(resolved)) {
-      preview.innerHTML = renderMarkdown(resolved);
+      // PR #206: opt in to source-line anchors so the preview pane
+      // can be kept in sync with the editor caret.
+      preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');
@@ -6095,10 +6101,89 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     previewDebounceTimer = setTimeout(() => {
       previewDebounceTimer = null;
       updateTextEditPreview(target);
+      // After re-rendering, the source-line anchors are fresh, so
+      // re-run the caret sync to land the active marker on the
+      // current caret's line.
+      syncSplitEditorPreviewToCaret(target);
     }, 500);
   }
+
+  /**
+   * PR #206: source ↔ preview sync wiring for the split editor.
+   *
+   * - On caret movement (selectionchange / keyup) inside the split
+   *   editor textarea, scroll the preview pane to the rendered
+   *   block matching the caret's source line and mark it active.
+   * - On click inside the preview, move the caret to the start of
+   *   the corresponding source line.
+   *
+   * Sync is debounced via rAF so rapid arrow-key navigation doesn't
+   * trigger redundant scroll work.
+   */
+  let previewSyncRafToken: number | null = null;
+
+  function syncSplitEditorPreviewToCaret(textarea: HTMLTextAreaElement): void {
+    const wrapper = textarea.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
+    previewSyncRafToken = requestAnimationFrame(() => {
+      previewSyncRafToken = null;
+      syncPreviewToCaret(textarea, preview);
+    });
+  }
+
+  function handleSplitEditorCaretChange(e: Event): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    syncSplitEditorPreviewToCaret(target);
+  }
+
+  function handleSplitEditorSelectionChange(): void {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLTextAreaElement)) return;
+    if (active.getAttribute('data-pkc-field') !== 'body') return;
+    if (!active.closest('.pkc-text-split-editor')) return;
+    syncSplitEditorPreviewToCaret(active);
+  }
+
+  function handleSplitEditorPreviewClick(e: Event): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    // Don't hijack clicks on real interactive descendants — links,
+    // buttons (copy / expand / sort / filter), input fields, table
+    // cells getting selected. Sync only on bare text / surface clicks.
+    if (
+      target.closest('a')
+      || target.closest('button')
+      || target.closest('input')
+      || target.closest('[data-pkc-action]')
+    ) {
+      return;
+    }
+    const preview = target.closest<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    const wrapper = preview.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const textarea = wrapper.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    syncCaretToPreview(textarea, target);
+  }
+
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
   root.addEventListener('input', handleTextEditPreviewInput);
+  // Caret-tracking: keyup catches arrow-key navigation, focus
+  // catches initial mount; selectionchange (document) catches
+  // mouse-driven caret moves and IME selection updates.
+  root.addEventListener('keyup', handleSplitEditorCaretChange);
+  root.addEventListener('focus', handleSplitEditorCaretChange, true);
+  document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
+  root.addEventListener('click', handleSplitEditorPreviewClick);
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6258,6 +6343,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleStaleDragCleanup);
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
     root.removeEventListener('input', handleTextEditPreviewInput);
+    root.removeEventListener('keyup', handleSplitEditorCaretChange);
+    root.removeEventListener('focus', handleSplitEditorCaretChange, true);
+    document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
+    root.removeEventListener('click', handleSplitEditorPreviewClick);
+    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
