@@ -43,6 +43,13 @@ export interface SlashCommand {
    */
   insert?: string | (() => string);
   /**
+   * Where to land the caret relative to the start of the inserted
+   * text. Used for wrap-style commands (`/bold` → `****` with caret
+   * between the two `**`). When undefined, caret goes to the end of
+   * the insertion (default behaviour).
+   */
+  cursorOffset?: number;
+  /**
    * Custom handler invoked instead of text insertion. The handler is
    * responsible for closing the slash menu (or not) and performing any
    * follow-up UI. When set, `insert` is ignored.
@@ -65,14 +72,40 @@ export function registerAssetPickerCallback(
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
+  // ── Date / time ──
   { id: 'date', label: '/date — yyyy/MM/dd', insert: () => formatDate() },
   { id: 'time', label: '/time — HH:mm:ss', insert: () => formatTime() },
   { id: 'datetime', label: '/datetime — yyyy/MM/dd HH:mm:ss', insert: () => formatDateTime() },
   { id: 'iso', label: '/iso — ISO 8601', insert: () => formatISO8601() },
-  { id: 'h1', label: '/h1 — # Heading', insert: '# ' },
+
+  // ── Heading levels ──
+  { id: 'h1', label: '/h1 — # Heading 1', insert: '# ' },
+  { id: 'h2', label: '/h2 — ## Heading 2', insert: '## ' },
+  { id: 'h3', label: '/h3 — ### Heading 3', insert: '### ' },
+
+  // ── Block elements ──
   { id: 'list', label: '/list — - Bullet list', insert: '- ' },
-  { id: 'code', label: '/code — ``` Code block', insert: '```\n\n```' },
+  { id: 'todo', label: '/todo — - [ ] Task', insert: '- [ ] ' },
+  { id: 'done', label: '/done — - [x] Done task', insert: '- [x] ' },
+  { id: 'quote', label: '/quote — > Quote', insert: '> ' },
+  { id: 'hr', label: '/hr — Horizontal rule', insert: '\n---\n' },
+  { id: 'code', label: '/code — ``` Code block', insert: '```\n\n```', cursorOffset: 4 },
+  {
+    id: 'table',
+    label: '/table — | Header | scaffold',
+    insert: '| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n',
+  },
+
+  // ── Inline marks (caret lands BETWEEN the wrapping markers so the
+  //    user can immediately type the content). ──
+  { id: 'bold', label: '/bold — **bold**', insert: '****', cursorOffset: 2 },
+  { id: 'italic', label: '/italic — *italic*', insert: '**', cursorOffset: 1 },
+  { id: 'strike', label: '/strike — ~~strikethrough~~', insert: '~~~~', cursorOffset: 2 },
+  { id: 'inlinecode', label: '/inlinecode — `inline code`', insert: '``', cursorOffset: 1 },
+
+  // ── Links / media ──
   { id: 'link', label: '/link — [text](url)', insert: '[text](url)' },
+  { id: 'img', label: '/img — ![alt](src)', insert: '![alt](src)' },
   {
     id: 'asset',
     label: '/asset — Insert image asset',
@@ -273,10 +306,15 @@ function renderMenuItems(inst: ActiveSlashMenu): void {
 
 function updateSelection(inst: ActiveSlashMenu): void {
   if (!inst.menu) return;
-  const items = inst.menu.querySelectorAll('.pkc-slash-menu-item');
+  const items = inst.menu.querySelectorAll<HTMLElement>('.pkc-slash-menu-item');
   for (let i = 0; i < items.length; i++) {
     if (i === inst.selectedIndex) {
       items[i]!.setAttribute('data-pkc-selected', 'true');
+      // Keep the active item visible inside the scrolling menu —
+      // `block: 'nearest'` scrolls only when the item is fully /
+      // partially out of view, so keyboard navigation past either
+      // edge always lands on something the user can see.
+      items[i]!.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     } else {
       items[i]!.removeAttribute('data-pkc-selected');
     }
@@ -284,13 +322,48 @@ function updateSelection(inst: ActiveSlashMenu): void {
 }
 
 /**
+ * Subsequence (fuzzy) match: every character of `query` appears in
+ * `text` in order, case-insensitive. Empty query matches everything.
+ *
+ * Examples:
+ *   - `dt`   matches `datetime`(d…t)
+ *   - `tdo`  matches `todo`(t-d-o)
+ *   - `xyz`  doesn't match `link`
+ *
+ * Trades off ranking quality for code simplicity; if a power-user
+ * scenario emerges where two commands match equally we can layer in
+ * scoring (start-of-word boost, contiguous-run boost) without
+ * changing the call sites.
+ */
+function fuzzyMatch(query: string, text: string): boolean {
+  if (query.length === 0) return true;
+  let qi = 0;
+  for (let i = 0; i < text.length && qi < query.length; i++) {
+    if (text[i] === query[qi]) qi++;
+  }
+  return qi === query.length;
+}
+
+/**
  * Filters commands based on text typed after `/`.
+ *
+ * Two-tier match (case-insensitive):
+ *   1. **Substring** match against `id` or `label` (cheap, what users
+ *      typically type — `da` → `date` / `datetime`).
+ *   2. **Subsequence (fuzzy)** match against `id` only (catches
+ *      `dt` → `datetime`, `tdo` → `todo`). Restricted to `id` so the
+ *      noisy long labels don't generate false positives.
  */
 export function filterSlashMenu(query: string): void {
   const inst = getActiveInstance();
   if (!inst || !inst.menu) return;
   const q = query.toLowerCase();
-  inst.filteredCommands = SLASH_COMMANDS.filter((cmd) => cmd.id.includes(q) || cmd.label.toLowerCase().includes(q));
+  inst.filteredCommands = SLASH_COMMANDS.filter((cmd) => {
+    const id = cmd.id.toLowerCase();
+    const label = cmd.label.toLowerCase();
+    if (id.includes(q) || label.includes(q)) return true;
+    return fuzzyMatch(q, id);
+  });
   inst.selectedIndex = 0;
   renderMenuItems(inst);
 }
@@ -371,14 +444,13 @@ function executeCommand(inst: ActiveSlashMenu, cmd: SlashCommand): void {
   const after = textarea.value.slice(caretPos);
   textarea.value = before + text + after;
 
-  // Place cursor after inserted text
-  const newPos = slashPos + text.length;
+  // Caret placement: by default land at the end of the insertion;
+  // commands with a `cursorOffset` set the caret at that offset
+  // relative to the insertion start (used by /bold, /italic, /code,
+  // /inlinecode etc. to drop the caret between wrapping markers).
+  const offset = cmd.cursorOffset ?? text.length;
+  const newPos = slashPos + offset;
   textarea.selectionStart = textarea.selectionEnd = newPos;
-
-  // For code block, place cursor between the fences
-  if (cmd.id === 'code') {
-    textarea.selectionStart = textarea.selectionEnd = slashPos + 4; // after "```\n"
-  }
 
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
   textarea.focus();

@@ -193,6 +193,45 @@ describe('slash menu filtering', () => {
     const empty = root.querySelector('.pkc-slash-menu-empty');
     expect(empty).not.toBeNull();
   });
+
+  it('subsequence (fuzzy) match on id catches non-contiguous typing', () => {
+    // PR #205: typing `dt` should match `datetime` via fuzzy id
+    // even though "dt" is not a substring of any id or label.
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('dt');
+    const items = root.querySelectorAll<HTMLElement>('.pkc-slash-menu-item');
+    const ids = Array.from(items).map((el) => el.getAttribute('data-pkc-slash-id'));
+    expect(ids).toContain('datetime');
+  });
+
+  it('fuzzy match catches typos in scrambled order (tdo → todo)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('tdo');
+    const items = root.querySelectorAll<HTMLElement>('.pkc-slash-menu-item');
+    const ids = Array.from(items).map((el) => el.getAttribute('data-pkc-slash-id'));
+    expect(ids).toContain('todo');
+  });
+
+  it('substring match still wins (no false positives from fuzzy)', () => {
+    // `xy` shouldn't match anything because no command id has 'x'
+    // followed by 'y' anywhere.
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('xy');
+    const items = root.querySelectorAll('.pkc-slash-menu-item');
+    expect(items.length).toBe(0);
+  });
 });
 
 // ── Keyboard navigation ──
@@ -346,13 +385,151 @@ describe('slash command insertion', () => {
     // '/' at pos 7 through caret at 10 replaced by '# '
     expect(ta.value).toBe('Before # ' + ' After');
   });
+
+  it('/bold inserts **** with caret in the middle (cursorOffset)', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/bold';
+    ta.selectionStart = ta.selectionEnd = 5;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('bold');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('****');
+    // Caret between the two `**` so user can type the bold content.
+    expect(ta.selectionStart).toBe(2);
+  });
+
+  it('/italic inserts ** with caret in the middle', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/italic';
+    ta.selectionStart = ta.selectionEnd = 7;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('italic');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('**');
+    expect(ta.selectionStart).toBe(1);
+  });
+
+  it('/inlinecode inserts `` with caret in the middle', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/inlinecode';
+    ta.selectionStart = ta.selectionEnd = 11;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('inlinecode');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('``');
+    expect(ta.selectionStart).toBe(1);
+  });
+
+  it('/strike inserts ~~~~ with caret in the middle', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/strike';
+    ta.selectionStart = ta.selectionEnd = 7;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('strike');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('~~~~');
+    expect(ta.selectionStart).toBe(2);
+  });
+
+  it('/todo inserts checkbox prefix', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/todo';
+    ta.selectionStart = ta.selectionEnd = 5;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('todo');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('- [ ] ');
+  });
+
+  it('/done inserts checked checkbox prefix', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/done';
+    ta.selectionStart = ta.selectionEnd = 5;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('done');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toBe('- [x] ');
+  });
+
+  it('/h2 and /h3 insert their respective prefixes', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/h2';
+    ta.selectionStart = ta.selectionEnd = 3;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('h2');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(ta.value).toBe('## ');
+
+    ta.value = '/h3';
+    ta.selectionStart = ta.selectionEnd = 3;
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('h3');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(ta.value).toBe('### ');
+  });
+
+  it('/table inserts a 2-column scaffold', () => {
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    root.appendChild(ta);
+    ta.value = '/table';
+    ta.selectionStart = ta.selectionEnd = 6;
+
+    openSlashMenu(ta, 0, root);
+    filterSlashMenu('table');
+    handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(ta.value).toContain('| Header 1 | Header 2 |');
+    expect(ta.value).toContain('| --- | --- |');
+    expect(ta.value).toContain('| Cell 1 | Cell 2 |');
+  });
 });
 
 // ── Command count ──
 
 describe('SLASH_COMMANDS', () => {
-  it('has expected initial set of 9 commands', () => {
-    expect(SLASH_COMMANDS.length).toBe(9);
+  it('has the expanded command set (date/time + headings + blocks + inline marks + media)', () => {
+    // PR #205 expanded the command list from 9 to ~20 by adding
+    // h2 / h3 / quote / hr / todo / done / table / bold / italic /
+    // strike / inlinecode / img.
+    expect(SLASH_COMMANDS.length).toBeGreaterThanOrEqual(20);
+    const ids = SLASH_COMMANDS.map((c) => c.id);
+    for (const expected of [
+      'date', 'time', 'datetime', 'iso',
+      'h1', 'h2', 'h3',
+      'list', 'todo', 'done', 'quote', 'hr', 'code', 'table',
+      'bold', 'italic', 'strike', 'inlinecode',
+      'link', 'img', 'asset',
+    ]) {
+      expect(ids).toContain(expected);
+    }
   });
 
   it('all commands have id and label', () => {
