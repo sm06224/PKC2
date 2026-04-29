@@ -187,6 +187,19 @@ export function handleEditorBracketOpen(
   // user is likely typing a literal opener mid-word.
   if (/\w/.test(next)) return false;
 
+  // PR #198 follow-up (2026-04-29): for backtick specifically, do
+  // NOT auto-pair when the previous char is also a backtick. Three-
+  // backtick code fences (` ``` `) are a real markdown construct,
+  // and previously the third keystroke would re-pair to ` ```` `
+  // (4 backticks). The flow now is:
+  //   - 1st `` ` `` → pair to `` `|` ``  (open + close, cursor mid)
+  //   - 2nd `` ` `` → skip-out (cursor before `` ` ``) → `` ``| ``
+  //   - 3rd `` ` `` → prev is `` ` ``, skip pairing → `` ```| ``
+  // Other pair chars (`(` `[` `{` `"`) don't get this carve-out:
+  // typing `((` to mean "two parens with nothing inside" is much
+  // rarer than typing inline code AFTER a literal backtick.
+  if (ch === '`' && ta.value.charAt(start - 1) === '`') return false;
+
   spliceText(ta, start, start, ch + close, 'inside', 1);
   notifyInput(ta);
   return true;
