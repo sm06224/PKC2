@@ -4,6 +4,8 @@ import {
   handleEditorEnter,
   handleEditorBracketOpen,
   handleEditorSkipOut,
+  handleEditorTab,
+  handleEditorSpaceIndent,
   tryHandleEditorKey,
 } from '@adapter/ui/editor-key-helpers';
 
@@ -209,6 +211,115 @@ describe('handleEditorSkipOut — skip when cursor before same closer', () => {
   });
 });
 
+describe('handleEditorTab — list indent + multi-line', () => {
+  it('indents an empty list slot (cursor at end of `- `)', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(true);
+    expect(ta.value).toBe('  - ');
+    expect(ta.selectionStart).toBe(ta.value.length);
+  });
+
+  it('indents an ordered list slot (`1. `)', () => {
+    ta.value = '1. ';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(true);
+    expect(ta.value).toBe('  1. ');
+  });
+
+  it('indents an empty checkbox list slot', () => {
+    ta.value = '- [ ] ';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(true);
+    expect(ta.value).toBe('  - [ ] ');
+  });
+
+  it('returns false for plain prose Tab (no list slot, single cursor)', () => {
+    ta.value = 'plain';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(false);
+  });
+
+  it('returns false when content already follows the marker', () => {
+    ta.value = '- foo';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(false);
+  });
+
+  it('Shift+Tab outdents an indented empty list slot', () => {
+    ta.value = '  - ';
+    setCursor(ta.value.length);
+    expect(handleEditorTab(ta, true)).toBe(true);
+    expect(ta.value).toBe('- ');
+  });
+
+  it('Shift+Tab on root-level empty list slot returns false', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    // Already at root indent — nothing to outdent.
+    expect(handleEditorTab(ta, true)).toBe(false);
+  });
+
+  it('multi-line selection: Tab indents every line', () => {
+    ta.value = 'line1\nline2\nline3';
+    setSelection(0, ta.value.length);
+    expect(handleEditorTab(ta, false)).toBe(true);
+    expect(ta.value).toBe('  line1\n  line2\n  line3');
+    // Selection covers all of the indented region.
+    expect(ta.selectionStart).toBe(0);
+    expect(ta.selectionEnd).toBe(ta.value.length);
+  });
+
+  it('multi-line selection: Shift+Tab outdents every line', () => {
+    ta.value = '  line1\n  line2\n  line3';
+    setSelection(0, ta.value.length);
+    expect(handleEditorTab(ta, true)).toBe(true);
+    expect(ta.value).toBe('line1\nline2\nline3');
+  });
+
+  it('multi-line Shift+Tab is idempotent on lines that have nothing to outdent', () => {
+    ta.value = 'a\n  b\nc';
+    setSelection(0, ta.value.length);
+    expect(handleEditorTab(ta, true)).toBe(true);
+    // Only `  b` had indent to remove.
+    expect(ta.value).toBe('a\nb\nc');
+  });
+
+  it('single-line selection on a list slot does NOT trigger multi-line; returns false', () => {
+    // start === end-without-newline AND no list slot precondition
+    ta.value = 'foo bar';
+    setSelection(0, 3); // single line selection
+    expect(handleEditorTab(ta, false)).toBe(false);
+  });
+});
+
+describe('handleEditorSpaceIndent — Space at empty list slot', () => {
+  it('indents empty `- ` slot when Space is pressed', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    expect(handleEditorSpaceIndent(ta)).toBe(true);
+    expect(ta.value).toBe('  - ');
+  });
+
+  it('returns false when content follows the marker (normal Space behavior)', () => {
+    ta.value = '- foo';
+    setCursor(ta.value.length);
+    expect(handleEditorSpaceIndent(ta)).toBe(false);
+  });
+
+  it('returns false on plain prose (no list slot)', () => {
+    ta.value = 'hello';
+    setCursor(ta.value.length);
+    expect(handleEditorSpaceIndent(ta)).toBe(false);
+  });
+
+  it('returns false on selection range', () => {
+    ta.value = '- ';
+    setSelection(0, 2);
+    expect(handleEditorSpaceIndent(ta)).toBe(false);
+  });
+});
+
 describe('tryHandleEditorKey — dispatch master', () => {
   it('routes Enter to handleEditorEnter', () => {
     ta.value = '- foo';
@@ -239,6 +350,44 @@ describe('tryHandleEditorKey — dispatch master', () => {
     ta.value = '- foo';
     setCursor(ta.value.length);
     const e = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true });
+    expect(tryHandleEditorKey(ta, e)).toBe(false);
+  });
+
+  it('routes Tab to handleEditorTab (list slot)', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    const e = new KeyboardEvent('keydown', { key: 'Tab' });
+    expect(tryHandleEditorKey(ta, e)).toBe(true);
+    expect(ta.value).toBe('  - ');
+  });
+
+  it('routes Tab to handleEditorTab (multi-line)', () => {
+    ta.value = 'a\nb\nc';
+    setSelection(0, ta.value.length);
+    const e = new KeyboardEvent('keydown', { key: 'Tab' });
+    expect(tryHandleEditorKey(ta, e)).toBe(true);
+    expect(ta.value).toBe('  a\n  b\n  c');
+  });
+
+  it('Tab on plain prose returns false (falls through to default \\t insert)', () => {
+    ta.value = 'plain';
+    setCursor(ta.value.length);
+    const e = new KeyboardEvent('keydown', { key: 'Tab' });
+    expect(tryHandleEditorKey(ta, e)).toBe(false);
+  });
+
+  it('routes Space to handleEditorSpaceIndent at empty list slot', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    const e = new KeyboardEvent('keydown', { key: ' ' });
+    expect(tryHandleEditorKey(ta, e)).toBe(true);
+    expect(ta.value).toBe('  - ');
+  });
+
+  it('Space on plain prose returns false (let default insert space)', () => {
+    ta.value = 'hello';
+    setCursor(ta.value.length);
+    const e = new KeyboardEvent('keydown', { key: ' ' });
     expect(tryHandleEditorKey(ta, e)).toBe(false);
   });
 

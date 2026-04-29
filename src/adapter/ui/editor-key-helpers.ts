@@ -216,6 +216,135 @@ export function handleEditorSkipOut(
   return true;
 }
 
+/** PR #198 v3 — indent unit used by Tab / Space list-level indent. */
+const INDENT_UNIT = '  ';
+
+/**
+ * Tab / Shift+Tab handler for markdown-capable textareas.
+ *
+ * Three behaviours, in order:
+ *
+ *   1. **Multi-line selection** → indent or outdent every selected
+ *      line. Tab prepends `INDENT_UNIT` ("  ", 2 spaces); Shift+Tab
+ *      removes one leading `INDENT_UNIT` (or one `\t`) from each.
+ *      Selection is preserved across the indent / outdent.
+ *
+ *   2. **Single cursor at the end of an empty list line** (e.g. just
+ *      after Enter continued a list to `- |`) → indent the marker:
+ *      `- |` becomes `  - |`. Shift+Tab outdents by one INDENT_UNIT.
+ *      User-requested:
+ *        「継続補完中の改行後、タブキーもしくは半角空白で字下げ補完して」
+ *
+ *   3. Otherwise → return `false` so the existing single-cursor Tab
+ *      handler in action-binder.ts can do its `\t` insert (preserves
+ *      the historical behaviour for plain prose).
+ *
+ * Returns `true` when handled; caller is expected to preventDefault.
+ */
+export function handleEditorTab(
+  ta: HTMLTextAreaElement,
+  shiftKey: boolean,
+): boolean {
+  const value = ta.value;
+  const start = ta.selectionStart ?? 0;
+  const end = ta.selectionEnd ?? start;
+
+  // Case 1: multi-line selection — indent / outdent each line.
+  if (start !== end) {
+    const selected = value.slice(start, end);
+    if (!selected.includes('\n')) return false; // single-line selection: fall through
+
+    const firstLineStart = value.lastIndexOf('\n', start - 1) + 1;
+    // Selection ending RIGHT AFTER a newline shouldn't expand into
+    // the line below — the user didn't visibly select it.
+    let regionEnd = end;
+    if (value.charAt(end - 1) === '\n') {
+      regionEnd = end - 1;
+    }
+
+    const before = value.slice(0, firstLineStart);
+    const region = value.slice(firstLineStart, regionEnd);
+    const after = value.slice(regionEnd);
+    const lines = region.split('\n');
+
+    const modifiedLines = lines.map((line) => {
+      if (shiftKey) {
+        if (line.startsWith(INDENT_UNIT)) return line.slice(INDENT_UNIT.length);
+        if (line.startsWith('\t')) return line.slice(1);
+        return line;
+      }
+      return INDENT_UNIT + line;
+    });
+    const modified = modifiedLines.join('\n');
+    const delta = modified.length - region.length;
+
+    ta.value = before + modified + after;
+    // Anchor selection at firstLineStart so repeated Tab / Shift+Tab
+    // keep stepping the indent in place.
+    ta.selectionStart = firstLineStart;
+    ta.selectionEnd = regionEnd + delta;
+    notifyInput(ta);
+    return true;
+  }
+
+  // Case 2: cursor at end of empty list line — indent the marker.
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const currentLine = value.slice(lineStart, start);
+  // Same shape as the Enter-continuation regex: indent + marker +
+  // space (+ optional `[ ]` checkbox), with NOTHING after — so we
+  // know this is an "empty list slot" the user just created.
+  const m = /^([\t ]*)([-*+]|\d+\.)\s+(\[[ xX]\]\s+)?$/.exec(currentLine);
+  if (!m) return false;
+
+  const indent = m[1] ?? '';
+  if (shiftKey) {
+    if (indent.startsWith(INDENT_UNIT)) {
+      ta.value = value.slice(0, lineStart) + currentLine.slice(INDENT_UNIT.length) + value.slice(start);
+      ta.selectionStart = ta.selectionEnd = start - INDENT_UNIT.length;
+      notifyInput(ta);
+      return true;
+    }
+    if (indent.startsWith('\t')) {
+      ta.value = value.slice(0, lineStart) + currentLine.slice(1) + value.slice(start);
+      ta.selectionStart = ta.selectionEnd = start - 1;
+      notifyInput(ta);
+      return true;
+    }
+    return false;
+  }
+  // indent: prepend INDENT_UNIT to the current line (which shifts the
+  // marker right and the cursor along with it).
+  ta.value = value.slice(0, lineStart) + INDENT_UNIT + currentLine + value.slice(start);
+  ta.selectionStart = ta.selectionEnd = start + INDENT_UNIT.length;
+  notifyInput(ta);
+  return true;
+}
+
+/**
+ * Space-on-empty-list-line indent. User audit specifies Space as an
+ * alternative to Tab(「タブキーもしくは半角空白で字下げ補完」)— useful
+ * on iPhone / iPad where a hardware Tab is rare.
+ *
+ * Only fires when the cursor is at the end of an "empty list slot"
+ * (same precondition as `handleEditorTab` case 2). Anywhere else,
+ * Space is just Space — surprising mid-content level changes are
+ * worse than missing a shortcut.
+ */
+export function handleEditorSpaceIndent(ta: HTMLTextAreaElement): boolean {
+  const value = ta.value;
+  const start = ta.selectionStart ?? 0;
+  const end = ta.selectionEnd ?? start;
+  if (start !== end) return false;
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const currentLine = value.slice(lineStart, start);
+  const m = /^([\t ]*)([-*+]|\d+\.)\s+(\[[ xX]\]\s+)?$/.exec(currentLine);
+  if (!m) return false;
+  ta.value = value.slice(0, lineStart) + INDENT_UNIT + currentLine + value.slice(start);
+  ta.selectionStart = ta.selectionEnd = start + INDENT_UNIT.length;
+  notifyInput(ta);
+  return true;
+}
+
 /**
  * Master dispatch: route a keydown into the appropriate helper.
  * Returns `true` when one of the helpers handled the event; the
@@ -230,6 +359,19 @@ export function tryHandleEditorKey(
   ta: HTMLTextAreaElement,
   event: KeyboardEvent,
 ): boolean {
+  // Tab / Shift+Tab — list-level indent at empty list slot OR
+  // multi-line indent / outdent. Falls through to action-binder's
+  // existing single-cursor `\t` insert when neither precondition is
+  // met (so plain prose Tab still types a tab character).
+  if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    return handleEditorTab(ta, event.shiftKey);
+  }
+  // Space — list-level indent at empty list slot only. Mirrors the
+  // user audit「タブキーもしくは半角空白で字下げ補完」(Space as
+  // touch-friendly alternative to Tab on iPhone / iPad).
+  if (event.key === ' ' && !event.shiftKey) {
+    if (handleEditorSpaceIndent(ta)) return true;
+  }
   if (event.key === 'Enter' && !event.shiftKey) {
     return handleEditorEnter(ta);
   }
