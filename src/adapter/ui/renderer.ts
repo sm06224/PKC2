@@ -3,7 +3,7 @@ import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
 import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
-import { renderSnippetToolbar } from './snippet-toolbar';
+import { renderSnippetSheet } from './snippet-toolbar';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -677,13 +677,13 @@ function renderShell(state: AppState): HTMLElement {
   // viewport.
   shell.appendChild(renderMobileHeader(state));
 
-  // Snippet toolbar (PR #201) — fixed-bottom bar shown on
-  // `pointer:coarse` devices when a markdown textarea has focus.
-  // Hidden by default; action-binder toggles `hidden` on
-  // focusin / focusout. CSS gates visibility on touch tier so the
-  // element stays display:none on desktop even if accidentally
-  // unhidden.
-  shell.appendChild(renderSnippetToolbar());
+  // Snippet sheet (PR #201) — backdrop + bottom-sheet drawer
+  // opened by tapping the "+" trigger in the mobile editing
+  // header. Hidden by default; action-binder toggles `hidden` on
+  // open / close + outside-tap dismissal. CSS gates visibility on
+  // `pointer: coarse` so desktop never sees the overlay even if
+  // accidentally unhidden.
+  shell.appendChild(renderSnippetSheet());
   return shell;
 }
 
@@ -720,6 +720,18 @@ function renderMobileHeader(state: AppState): HTMLElement {
     const titleEl = createElement('span', 'pkc-mobile-header-title');
     titleEl.textContent = '編集中';
     bar.appendChild(titleEl);
+
+    // PR #201: snippet sheet trigger. Touch-only (CSS-gated).
+    // Opens a bottom-sheet overlay with markdown snippet buttons
+    // (backtick / fence / brackets / list / quote / heading) so
+    // iPhone / iPad users can enter characters that the soft
+    // keyboard buries deep in symbol panels.
+    const snippetBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-snippet');
+    snippetBtn.setAttribute('data-pkc-action', 'open-snippet-sheet');
+    snippetBtn.setAttribute('aria-label', 'Insert markdown snippet');
+    snippetBtn.setAttribute('title', 'マークダウン補助');
+    snippetBtn.textContent = '✚';
+    bar.appendChild(snippetBtn);
 
     const editingLid = state.editingLid ?? state.selectedLid;
     if (editingLid) {

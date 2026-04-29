@@ -1,5 +1,5 @@
 /**
- * iPhone / iPad snippet toolbar (PR #201, 2026-04-29).
+ * iPhone / iPad snippet sheet (PR #201, 2026-04-29).
  *
  * Touch devices have no convenient way to enter many markdown
  * primitives that desktop users get for free:
@@ -8,15 +8,18 @@
  *   - Bracket auto-pair from PR #198 doesn't work on iOS Safari
  *     (`((` duplication, see roadmap 領域 4 iOS limitation note)
  *
- * This module provides a fixed-position button bar shown on
- * `pointer: coarse` devices when a markdown-capable textarea has
- * focus. Each button inserts a snippet at the cursor and keeps
- * focus in the textarea.
+ * Original v1/v2 implementation used a `position: fixed; bottom: 0`
+ * input-accessory-style toolbar above the keyboard. That approach
+ * lost the iOS chrome fight in portrait (URL bar overlap, accessory
+ * bar, predictive text bar — vary by iOS version / orientation).
+ * Plan B (this revision) replaces it with a "+" trigger in the
+ * mobile editing header that opens a **bottom sheet** drawer with
+ * a snippet button grid. iOS-native pattern (Notes, Mail compose),
+ * and iOS chrome doesn't compete with our overlay.
  *
  * Pure DOM helpers — no dispatcher / state coupling. The action
- * binder owns event wiring and the renderer owns DOM insertion;
- * this file only knows how to render the toolbar HTML and apply
- * each snippet kind.
+ * binder owns event wiring; this file only knows how to render the
+ * sheet and apply each snippet kind.
  */
 
 export type SnippetKind =
@@ -40,7 +43,7 @@ interface SnippetSpec {
 /**
  * Display order + label for each snippet button. Order matters —
  * the most touch-painful entries(backtick, fence) come first
- * because they're the original motivation for the toolbar.
+ * because they're the original motivation for the sheet.
  */
 const SNIPPET_ORDER: readonly SnippetKind[] = [
   'backtick',
@@ -67,34 +70,63 @@ const SNIPPETS: Readonly<Record<SnippetKind, SnippetSpec>> = {
 };
 
 /**
- * Render the toolbar element. Hidden by default; the action binder
- * toggles `hidden` on focusin / focusout of markdown textareas.
+ * Render the snippet sheet overlay (backdrop + sheet card). Hidden
+ * by default; the action binder unhides it when the user taps the
+ * "+" trigger in the mobile header during edit mode.
  *
- * On `pointer: coarse` devices CSS gives it a fixed bottom-of-
- * viewport bar layout; on desktop the @media block leaves it
- * `display: none` so the element is invisible even if accidentally
- * unhidden.
+ * The backdrop captures outside-clicks for dismissal; the sheet
+ * itself is a flex card pinned to the viewport bottom on touch
+ * tier (`@media (pointer: coarse)`). On desktop the entire overlay
+ * stays `display: none` since desktop users have a hardware
+ * keyboard and don't need this.
  */
-export function renderSnippetToolbar(): HTMLElement {
-  const toolbar = document.createElement('div');
-  toolbar.className = 'pkc-snippet-toolbar';
-  toolbar.setAttribute('data-pkc-region', 'snippet-toolbar');
-  toolbar.hidden = true;
-  toolbar.setAttribute('role', 'toolbar');
-  toolbar.setAttribute('aria-label', 'Markdown snippet toolbar');
+export function renderSnippetSheet(): HTMLElement {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pkc-snippet-sheet-backdrop';
+  backdrop.setAttribute('data-pkc-region', 'snippet-sheet-backdrop');
+  backdrop.hidden = true;
 
+  const sheet = document.createElement('div');
+  sheet.className = 'pkc-snippet-sheet';
+  sheet.setAttribute('data-pkc-region', 'snippet-sheet');
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-label', 'Insert markdown snippet');
+  sheet.setAttribute('aria-modal', 'true');
+
+  const header = document.createElement('div');
+  header.className = 'pkc-snippet-sheet-header';
+
+  const title = document.createElement('span');
+  title.className = 'pkc-snippet-sheet-title';
+  title.textContent = 'Insert';
+  header.appendChild(title);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'pkc-snippet-sheet-close';
+  closeBtn.setAttribute('data-pkc-action', 'close-snippet-sheet');
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '✕';
+  header.appendChild(closeBtn);
+
+  sheet.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'pkc-snippet-sheet-grid';
   for (const kind of SNIPPET_ORDER) {
     const spec = SNIPPETS[kind];
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pkc-snippet-toolbar-btn';
+    btn.className = 'pkc-snippet-sheet-btn';
     btn.setAttribute('data-pkc-snippet', kind);
     btn.setAttribute('title', spec.title);
     btn.setAttribute('aria-label', spec.title);
     btn.textContent = spec.label;
-    toolbar.appendChild(btn);
+    grid.appendChild(btn);
   }
-  return toolbar;
+  sheet.appendChild(grid);
+  backdrop.appendChild(sheet);
+  return backdrop;
 }
 
 /**
@@ -150,8 +182,6 @@ export function applySnippet(ta: HTMLTextAreaElement, kind: SnippetKind): void {
       const beforeOnLine = value.slice(lineStart, start);
       const atLineStart = beforeOnLine.length === 0;
       if (hasSelection) {
-        // Wrap the selection in a fence; place cursor right after
-        // the opening fence so the user can type a language tag.
         const prefix = atLineStart ? '' : '\n';
         const open = prefix + '```\n';
         const close = '\n```\n';
@@ -170,10 +200,6 @@ export function applySnippet(ta: HTMLTextAreaElement, kind: SnippetKind): void {
     case 'dash':
     case 'quote':
     case 'heading': {
-      // Line-prefix snippets: when at the start of an empty / fresh
-      // line, emit `${marker} ` with cursor after. Mid-line they
-      // just insert the bare character so the user can type a real
-      // shrug / emoji / quote without surprise.
       const lineStart = value.lastIndexOf('\n', start - 1) + 1;
       const beforeOnLine = value.slice(lineStart, start);
       const atLineStart = /^\s*$/.test(beforeOnLine);
@@ -199,8 +225,6 @@ function insertPair(
   selected: string,
 ): void {
   if (selected.length > 0) {
-    // Wrap selection: cursor lands after the closer so the user
-    // can keep typing in flow.
     const text = open + selected + close;
     replaceRange(ta, start, end, text, start + text.length);
   } else {

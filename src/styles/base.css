@@ -6915,63 +6915,112 @@ mark.pkc-search-mark {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * PR #201 — iPhone / iPad snippet toolbar.
+ * PR #201 — iPhone / iPad snippet sheet (Plan B).
  *
- * Fixed bottom bar shown when a markdown textarea has focus.
- * Hidden by default(`hidden` attribute via JS), and gated by
- * `(pointer: coarse)` so desktop never sees it even if the
- * `hidden` attribute is removed accidentally.
+ * Backdrop + bottom-sheet card shown when the user taps the "+"
+ * trigger in the mobile editing header. Replaces the original
+ * v1/v2 fixed-bottom toolbar (which lost the iOS chrome fight in
+ * portrait — URL bar, accessory bar, predictive text bar all
+ * compete for the same screen real estate).
  *
- * Sits ABOVE the keyboard via `bottom: env(safe-area-inset-bottom)`
- * which on iOS Safari gets pushed up by the keyboard's appearance
- * (visualViewport-aware fixed positioning, modern Safari behaviour).
+ * Modal sheets DON'T conflict with the keyboard because:
+ *   - Tapping the "+" trigger doesn't blur the textarea
+ *     (`pointerdown` preventDefault), so the keyboard stays raised
+ *   - The backdrop dim covers the page content (including any
+ *     iOS chrome bleeding through)
+ *   - The sheet card pinned at `bottom: env(safe-area-inset-bottom)`
+ *     sits BELOW the keyboard's footprint when it's still visible;
+ *     on phones the sheet replaces the keyboard's vertical region
+ *     after iOS rebalances the layout (when sheet is tall enough)
  *
- * Buttons are intentionally large(min 36px tall, 44px wide) for
- * fat-finger reliability per Apple HIG.
+ * Hidden by default (`hidden` attribute toggled by JS). Gated to
+ * `(pointer: coarse)` so desktop never sees it.
  * ───────────────────────────────────────────────────────────── */
-.pkc-snippet-toolbar {
+.pkc-snippet-sheet-backdrop {
   display: none;
 }
-.pkc-snippet-toolbar[hidden] {
+.pkc-snippet-sheet-backdrop[hidden] {
   display: none !important;
 }
+.pkc-mobile-header-snippet {
+  display: none;
+}
+
 @media (pointer: coarse) {
-  .pkc-snippet-toolbar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: env(safe-area-inset-bottom, 0);
-    z-index: 100;
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 0.25rem;
-    padding: 0.35rem 0.5rem;
-    background: var(--c-surface);
-    border-top: 1px solid var(--c-accent-dim);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
-    -webkit-overflow-scrolling: touch;
+  .pkc-mobile-header-snippet {
+    display: inline-flex;
   }
-  .pkc-snippet-toolbar[hidden] {
+  .pkc-snippet-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pkc-snippet-sheet-backdrop[hidden] {
     display: none !important;
   }
-  .pkc-snippet-toolbar-btn {
-    flex: 0 0 auto;
-    min-width: 44px;
-    min-height: 36px;
-    padding: 0.4rem 0.6rem;
-    font-family: var(--font-mono, monospace);
+  .pkc-snippet-sheet {
+    background: var(--c-surface);
+    border-top: 1px solid var(--c-accent-dim);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+    padding: 0.5rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pkc-snippet-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.25rem 0.6rem;
+    border-bottom: 1px solid var(--c-accent-dim);
+    margin-bottom: 0.5rem;
+  }
+  .pkc-snippet-sheet-title {
     font-size: 1rem;
+    font-weight: 600;
+    color: var(--c-text);
+  }
+  .pkc-snippet-sheet-close {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0.3rem 0.5rem;
+    font-size: 1.1rem;
+    color: var(--c-muted);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    touch-action: manipulation;
+  }
+  .pkc-snippet-sheet-close:active {
+    background: var(--c-accent-dim);
+  }
+  .pkc-snippet-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  .pkc-snippet-sheet-btn {
+    min-height: 56px;
+    padding: 0.5rem 0.5rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 1.15rem;
     font-weight: 600;
     color: var(--c-text);
     background: var(--c-surface-2, var(--c-surface));
     border: 1px solid var(--c-accent-dim);
-    border-radius: 6px;
+    border-radius: 8px;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
   }
-  .pkc-snippet-toolbar-btn:active {
+  .pkc-snippet-sheet-btn:active {
     background: var(--c-accent-dim);
   }
 }

@@ -3027,47 +3027,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   /**
-   * Snippet toolbar focus / click coordination (PR #201, 2026-04-29).
+   * Snippet sheet coordination (PR #201, 2026-04-29).
    *
-   * The toolbar element is rendered once per shell and toggled via
-   * `hidden`. We track the most-recently-focused markdown textarea
-   * so a button click can reach it after the focus has moved to the
-   * button(`pointerdown` preventDefault on the button itself
-   * usually keeps focus, but Safari occasionally still blurs).
-   */
-  let snippetToolbarTextarea: HTMLTextAreaElement | null = null;
-
-  /**
-   * Reposition the snippet toolbar so its bottom edge sits at the
-   * visual viewport bottom (= just above the iOS keyboard).
+   * "+" button in the mobile edit header opens a bottom-sheet
+   * drawer with snippet buttons. The sheet flow:
    *
-   * iOS 13-15 anchors `position: fixed` to the LAYOUT viewport, so
-   * `bottom: 0` lands UNDER the keyboard. iOS 16+ is visualViewport-
-   * aware and `bottom: 0` already lands above the keyboard. We
-   * detect both cases by measuring whether the toolbar's bottom
-   * extends past the visual viewport, and only inject a `bottom`
-   * inline override when it does — modern iOS keeps the CSS default
-   * untouched.
+   *   1. User focuses a markdown textarea → keyboard appears, we
+   *      track the textarea via focusin.
+   *   2. User taps the "+" trigger → sheet opens. The trigger's
+   *      `pointerdown` is prevented so the textarea keeps focus
+   *      (keyboard stays raised; no flicker).
+   *   3. User taps a snippet button → applySnippet inserts at the
+   *      tracked textarea's caret, sheet closes, focus restored.
+   *   4. User taps backdrop / close button / Escape → sheet closes
+   *      without inserting; textarea regains focus.
+   *
+   * The sheet replaces the original v1/v2 fixed-bottom toolbar
+   * which lost the iOS chrome fight in portrait. Plan B: above-
+   * keyboard accessory views are unreliable on iOS Safari, but
+   * modal sheets pinned bottom-of-viewport DON'T conflict with the
+   * keyboard because they hide the keyboard temporarily anyway.
    */
-  function updateSnippetToolbarPosition(): void {
-    const toolbar = findSnippetToolbar();
-    if (!toolbar || toolbar.hidden) return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-    // Reset any previous adjustment so we measure against the CSS
-    // default (`bottom: env(safe-area-inset-bottom)`).
-    toolbar.style.bottom = '';
-    const rect = toolbar.getBoundingClientRect();
-    const visualBottom = vv.offsetTop + vv.height;
-    if (rect.bottom > visualBottom + 0.5) {
-      const overflow = rect.bottom - visualBottom;
-      toolbar.style.bottom = `${overflow}px`;
-    }
-  }
-
-  function handleVisualViewportChange(): void {
-    updateSnippetToolbarPosition();
-  }
+  let snippetTargetTextarea: HTMLTextAreaElement | null = null;
 
   function isSnippetTargetTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
     if (!(el instanceof HTMLTextAreaElement)) return false;
@@ -3080,65 +3061,90 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     );
   }
 
-  function findSnippetToolbar(): HTMLElement | null {
-    return document.querySelector<HTMLElement>('[data-pkc-region="snippet-toolbar"]');
+  function findSnippetSheet(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('[data-pkc-region="snippet-sheet-backdrop"]');
   }
 
-  function handleSnippetToolbarFocusIn(e: FocusEvent): void {
-    if (!isSnippetTargetTextarea(e.target)) return;
-    snippetToolbarTextarea = e.target;
-    const toolbar = findSnippetToolbar();
-    if (toolbar) {
-      toolbar.hidden = false;
-      // Wait for the keyboard to settle. visualViewport.resize will
-      // fire when iOS finishes raising the keyboard; until then the
-      // initial geometry is the keyboard-closed state.
-      requestAnimationFrame(updateSnippetToolbarPosition);
+  function isSnippetSheetOpen(): boolean {
+    const backdrop = findSnippetSheet();
+    return !!backdrop && !backdrop.hidden;
+  }
+
+  function openSnippetSheet(): void {
+    const backdrop = findSnippetSheet();
+    if (!backdrop) return;
+    backdrop.hidden = false;
+  }
+
+  function closeSnippetSheet(refocus: boolean): void {
+    const backdrop = findSnippetSheet();
+    if (!backdrop) return;
+    backdrop.hidden = true;
+    if (refocus && snippetTargetTextarea) {
+      snippetTargetTextarea.focus();
     }
   }
 
-  function handleSnippetToolbarFocusOut(e: FocusEvent): void {
+  function handleSnippetSheetFocusIn(e: FocusEvent): void {
     if (!isSnippetTargetTextarea(e.target)) return;
-    // If focus is moving to a snippet button, keep the toolbar
-    // visible(button click will refocus the textarea).
-    const next = e.relatedTarget as Element | null;
-    if (next && next.closest('[data-pkc-region="snippet-toolbar"]')) {
+    snippetTargetTextarea = e.target;
+  }
+
+  function handleSnippetSheetPointerDown(e: PointerEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    // The "+" trigger and snippet buttons all need to NOT steal
+    // focus from the textarea; the click handler will take care of
+    // the actual action (open / insert / close).
+    const trigger = target.closest<HTMLElement>(
+      '[data-pkc-action="open-snippet-sheet"], '
+      + '[data-pkc-action="close-snippet-sheet"], '
+      + '[data-pkc-snippet]',
+    );
+    if (trigger) {
+      e.preventDefault();
+    }
+  }
+
+  function handleSnippetSheetClick(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+
+    // 1. "+" trigger → open sheet
+    if (target.closest('[data-pkc-action="open-snippet-sheet"]')) {
+      openSnippetSheet();
       return;
     }
-    snippetToolbarTextarea = null;
-    const toolbar = findSnippetToolbar();
-    if (toolbar) {
-      toolbar.hidden = true;
-      // Clear inline override so the next focusin starts from CSS
-      // default and re-measures.
-      toolbar.style.bottom = '';
+
+    // 2. Backdrop tap (outside the sheet card itself) → dismiss
+    const backdrop = target.closest<HTMLElement>('[data-pkc-region="snippet-sheet-backdrop"]');
+    if (backdrop && !target.closest('[data-pkc-region="snippet-sheet"]')) {
+      closeSnippetSheet(true);
+      return;
+    }
+
+    // 3. Close button → dismiss
+    if (target.closest('[data-pkc-action="close-snippet-sheet"]')) {
+      closeSnippetSheet(true);
+      return;
+    }
+
+    // 4. Snippet button → apply + dismiss
+    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
+    if (btn) {
+      const kind = btn.getAttribute('data-pkc-snippet') as SnippetKind | null;
+      if (kind && snippetTargetTextarea) {
+        applySnippet(snippetTargetTextarea, kind);
+      }
+      closeSnippetSheet(true);
     }
   }
 
-  function handleSnippetToolbarPointerDown(e: PointerEvent): void {
-    const target = e.target as Element | null;
-    if (!target) return;
-    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
-    if (!btn) return;
-    // Prevent the textarea from blurring when the user taps a
-    // toolbar button — without this, iOS dismisses the keyboard
-    // mid-tap and the click lands on a blurred textarea.
-    e.preventDefault();
-  }
-
-  function handleSnippetToolbarClick(e: MouseEvent): void {
-    const target = e.target as Element | null;
-    if (!target) return;
-    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
-    if (!btn) return;
-    const kind = btn.getAttribute('data-pkc-snippet') as SnippetKind | null;
-    if (!kind) return;
-    const ta = snippetToolbarTextarea;
-    if (!ta) return;
-    applySnippet(ta, kind);
-    // Restore focus + caret in the textarea so the user can keep
-    // typing without an extra tap.
-    ta.focus();
+  function handleSnippetSheetKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && isSnippetSheetOpen()) {
+      closeSnippetSheet(true);
+      e.preventDefault();
+    }
   }
 
   function handleKeydown(e: KeyboardEvent): void {
@@ -5935,19 +5941,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
-  // PR #201 snippet toolbar: focus tracking + button handling.
-  document.addEventListener('focusin', handleSnippetToolbarFocusIn);
-  document.addEventListener('focusout', handleSnippetToolbarFocusOut);
-  document.addEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
-  document.addEventListener('click', handleSnippetToolbarClick);
-  // visualViewport tracks iOS keyboard appearance/dismissal — when
-  // it fires, recompute toolbar position so old iOS Safari (which
-  // anchors `position: fixed` to the layout viewport) lifts the
-  // toolbar above the keyboard.
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleVisualViewportChange);
-    window.visualViewport.addEventListener('scroll', handleVisualViewportChange);
-  }
+  // PR #201 snippet sheet: track focused textarea, intercept
+  // pointerdown on triggers/buttons to keep the textarea focused,
+  // route clicks to open/close/insert handlers, ESC to close.
+  document.addEventListener('focusin', handleSnippetSheetFocusIn);
+  document.addEventListener('pointerdown', handleSnippetSheetPointerDown, true);
+  document.addEventListener('click', handleSnippetSheetClick);
+  document.addEventListener('keydown', handleSnippetSheetKeydown);
 
   // v1.2: close any floating autocomplete / picker popups when phase
   // transitions away from 'editing'. The root re-render wipes their DOM
@@ -6016,14 +6016,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
-    document.removeEventListener('focusin', handleSnippetToolbarFocusIn);
-    document.removeEventListener('focusout', handleSnippetToolbarFocusOut);
-    document.removeEventListener('pointerdown', handleSnippetToolbarPointerDown, true);
-    document.removeEventListener('click', handleSnippetToolbarClick);
-    if (window.visualViewport) {
-      window.visualViewport.removeEventListener('resize', handleVisualViewportChange);
-      window.visualViewport.removeEventListener('scroll', handleVisualViewportChange);
-    }
+    document.removeEventListener('focusin', handleSnippetSheetFocusIn);
+    document.removeEventListener('pointerdown', handleSnippetSheetPointerDown, true);
+    document.removeEventListener('click', handleSnippetSheetClick);
+    document.removeEventListener('keydown', handleSnippetSheetKeydown);
     clearAllDragState();
     unsubPopupCleanup();
     closeSlashMenu();

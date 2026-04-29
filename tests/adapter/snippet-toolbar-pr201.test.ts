@@ -1,16 +1,16 @@
 /** @vitest-environment happy-dom */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  renderSnippetToolbar,
+  renderSnippetSheet,
   applySnippet,
 } from '@adapter/ui/snippet-toolbar';
 
 /**
- * PR #201 — iPhone / iPad snippet toolbar.
+ * PR #201 — iPhone / iPad snippet sheet (Plan B).
  *
  * Tests pin two surfaces:
- *   1. `renderSnippetToolbar()` — DOM shape (region marker, buttons,
- *      a11y attrs, hidden by default).
+ *   1. `renderSnippetSheet()` — backdrop + dialog DOM shape, region
+ *      markers, buttons, a11y attrs, hidden by default.
  *   2. `applySnippet(ta, kind)` — text insertion + caret placement
  *      for each snippet kind, including selection wrap behaviour.
  */
@@ -32,32 +32,42 @@ function setSelection(start: number, end: number): void {
   ta.selectionEnd = end;
 }
 
-describe('renderSnippetToolbar — DOM shape', () => {
-  it('renders a region marked container, hidden by default', () => {
-    const el = renderSnippetToolbar();
-    expect(el.getAttribute('data-pkc-region')).toBe('snippet-toolbar');
-    expect(el.hidden).toBe(true);
-    expect(el.getAttribute('role')).toBe('toolbar');
-    expect(el.getAttribute('aria-label')).toBeTruthy();
+describe('renderSnippetSheet — DOM shape', () => {
+  it('renders backdrop + dialog, hidden by default', () => {
+    const backdrop = renderSnippetSheet();
+    expect(backdrop.getAttribute('data-pkc-region')).toBe('snippet-sheet-backdrop');
+    expect(backdrop.hidden).toBe(true);
+    const dialog = backdrop.querySelector('[data-pkc-region="snippet-sheet"]');
+    expect(dialog).toBeTruthy();
+    expect(dialog!.getAttribute('role')).toBe('dialog');
+    expect(dialog!.getAttribute('aria-modal')).toBe('true');
+    expect(dialog!.getAttribute('aria-label')).toBeTruthy();
   });
 
-  it('emits one button per snippet kind', () => {
-    const el = renderSnippetToolbar();
+  it('emits one snippet button per kind', () => {
+    const el = renderSnippetSheet();
     const btns = el.querySelectorAll('[data-pkc-snippet]');
     // backtick / fence / paren / bracket / brace / angle / dash / quote / heading
     expect(btns.length).toBe(9);
   });
 
-  it('each button has type=button to avoid form submission', () => {
-    const el = renderSnippetToolbar();
-    const btns = el.querySelectorAll<HTMLButtonElement>('[data-pkc-snippet]');
+  it('exposes a close action button', () => {
+    const el = renderSnippetSheet();
+    const closeBtn = el.querySelector('[data-pkc-action="close-snippet-sheet"]');
+    expect(closeBtn).toBeTruthy();
+    expect((closeBtn as HTMLButtonElement).type).toBe('button');
+  });
+
+  it('all buttons have type=button to avoid form submission', () => {
+    const el = renderSnippetSheet();
+    const btns = el.querySelectorAll<HTMLButtonElement>('button');
     for (const b of btns) {
       expect(b.type).toBe('button');
     }
   });
 
-  it('each button has a title and aria-label for a11y', () => {
-    const el = renderSnippetToolbar();
+  it('each snippet button has a title and aria-label for a11y', () => {
+    const el = renderSnippetSheet();
     const btns = el.querySelectorAll<HTMLElement>('[data-pkc-snippet]');
     for (const b of btns) {
       expect(b.getAttribute('title')).toBeTruthy();
