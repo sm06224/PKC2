@@ -29,6 +29,7 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { mountNavHistory } from './adapter/ui/nav-history';
 import {
   loadCollapsedFolders,
   saveCollapsedFolders,
@@ -394,6 +395,12 @@ async function boot(): Promise<void> {
         }),
     });
   });
+
+  // PR #197: navigation history bridge — wires browser back/forward
+  // (toolbar arrows, mouse button 4/5, Alt+← / Alt+→ / Cmd+[ / Cmd+])
+  // to internal SELECT_ENTRY / SET_VIEW_MODE via history.pushState +
+  // popstate. Mounted after persistence so initial state has settled.
+  mountNavHistory(dispatcher);
 
   // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
   dispatcher.onState((state) => {
