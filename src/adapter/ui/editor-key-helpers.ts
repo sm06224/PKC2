@@ -372,6 +372,18 @@ export function handleEditorBeforeInput(
 
   const start = ta.selectionStart ?? 0;
   const end = ta.selectionEnd ?? start;
+
+  // Space at empty list slot — iOS soft keyboard doesn't have Tab,
+  // so Space is the touch-friendly indent trigger. The keydown
+  // path also handles this for hardware keyboards on desktop /
+  // iPad (Bluetooth), but iOS Safari ignores `preventDefault` on
+  // soft-keyboard keydown, so beforeinput is the reliable route.
+  // `handleEditorSpaceIndent` returns false outside an empty list
+  // slot, so plain-prose Space falls through normally.
+  if (data === ' ' && start === end) {
+    if (handleEditorSpaceIndent(ta)) return true;
+  }
+
   if (start !== end) return false;
 
   // Skip-out: cursor sits directly before the same closer the user

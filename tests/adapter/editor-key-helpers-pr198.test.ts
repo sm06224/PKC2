@@ -398,6 +398,40 @@ describe('handleEditorBeforeInput — bracket auto-pair / skip-out via beforeinp
     const e = new InputEvent('beforeinput', { inputType: 'deleteContentBackward' });
     expect(handleEditorBeforeInput(ta, e)).toBe(false);
   });
+
+  it('Space at empty list slot indents (iOS soft-keyboard workaround)', () => {
+    ta.value = '- ';
+    setCursor(ta.value.length);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(' '))).toBe(true);
+    expect(ta.value).toBe('  - ');
+    expect(ta.selectionStart).toBe(ta.value.length);
+  });
+
+  it('Space at empty ordered list slot indents', () => {
+    ta.value = '1. ';
+    setCursor(ta.value.length);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(' '))).toBe(true);
+    expect(ta.value).toBe('  1. ');
+  });
+
+  it('Space at empty checkbox list slot indents', () => {
+    ta.value = '- [ ] ';
+    setCursor(ta.value.length);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(' '))).toBe(true);
+    expect(ta.value).toBe('  - [ ] ');
+  });
+
+  it('Space on plain prose returns false (let default insert space)', () => {
+    ta.value = 'hello';
+    setCursor(ta.value.length);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(' '))).toBe(false);
+  });
+
+  it('Space when content already follows the marker returns false', () => {
+    ta.value = '- foo';
+    setCursor(ta.value.length);
+    expect(handleEditorBeforeInput(ta, makeBeforeInput(' '))).toBe(false);
+  });
 });
 
 describe('tryHandleEditorKey — dispatch master', () => {

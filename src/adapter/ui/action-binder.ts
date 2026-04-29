@@ -3042,7 +3042,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!(e instanceof InputEvent)) return;
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
-    if (e.isComposing) return;
+    // NOTE 2026-04-29: do NOT filter on `e.isComposing` here. iOS
+    // Safari's Japanese keyboard often dispatches direct-character
+    // beforeinput with `isComposing: true` even outside an active
+    // IME composition (the IME machinery is "always running"),
+    // which previously suppressed our bracket / Space-indent
+    // handlers entirely on iPhone. The composition discriminator
+    // we DO trust is `inputType` — `'insertText'` denotes a
+    // committed text insertion, while ongoing IME fragments use
+    // `'insertCompositionText'`. `handleEditorBeforeInput`
+    // filters on `inputType === 'insertText'` internally.
     const field = target.getAttribute('data-pkc-field');
     const isMarkdownField =
       field === 'body'
