@@ -180,6 +180,26 @@ describe('handleEditorBracketOpen — pair completion', () => {
     setCursor(0);
     expect(handleEditorBracketOpen(ta, 'x')).toBe(false);
   });
+
+  it('does NOT pair backtick when previous char is also a backtick (code fence support)', () => {
+    // After the user has skipped out of an auto-paired backtick,
+    // value is "``" with cursor at the end. Typing a third backtick
+    // for a fence must not auto-pair to "````".
+    ta.value = '``';
+    setCursor(2);
+    expect(handleEditorBracketOpen(ta, '`')).toBe(false);
+    // Value stays unchanged — caller falls through to the default
+    // keydown which inserts a literal third backtick.
+    expect(ta.value).toBe('``');
+  });
+
+  it('still pairs backtick when previous char is NOT a backtick', () => {
+    ta.value = 'foo ';
+    setCursor(4);
+    expect(handleEditorBracketOpen(ta, '`')).toBe(true);
+    expect(ta.value).toBe('foo ``');
+    expect(ta.selectionStart).toBe(5);
+  });
 });
 
 describe('handleEditorSkipOut — skip when cursor before same closer', () => {
