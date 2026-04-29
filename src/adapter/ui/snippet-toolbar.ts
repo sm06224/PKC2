@@ -122,8 +122,12 @@ export function renderFloatingPopup(): HTMLElement {
  * (so it doesn't visually cover the line itself). Falls back to
  * placing below the line if there's not enough horizontal room.
  *
- * `coords` are in viewport coordinates (compatible with
- * `position: fixed`).
+ * `coords` are in **layout viewport** coordinates (same coordinate
+ * system as `getBoundingClientRect`). On iOS 16+ `position: fixed`
+ * is anchored to the **visual viewport**, so we subtract
+ * `visualViewport.offsetTop / offsetLeft` to convert. This was the
+ * cause of «trigger appears way higher than the caret» in v4 —
+ * mixed coordinate systems.
  */
 export function placeFloatingTrigger(
   trigger: HTMLElement,
@@ -132,24 +136,32 @@ export function placeFloatingTrigger(
   trigger.style.position = 'fixed';
   const triggerSize = 28; // matches CSS
   const margin = 4;
+
+  const vv = window.visualViewport;
+  const offsetTop = vv?.offsetTop ?? 0;
+  const offsetLeft = vv?.offsetLeft ?? 0;
+  const viewWidth = vv?.width ?? window.innerWidth;
+  const viewHeight = vv?.height ?? window.innerHeight;
+
+  // Convert layout-viewport coords to visual-viewport coords (which
+  // is what `position: fixed` uses on iOS 16+).
+  const caretTop = coords.top - offsetTop;
+  const caretLeft = coords.left - offsetLeft;
+
   // Default placement: just to the right of the caret, vertically
   // centred on the caret line.
-  let left = coords.left + margin;
-  let top = coords.top + (coords.height - triggerSize) / 2;
+  let left = caretLeft + margin;
+  let top = caretTop + (coords.height - triggerSize) / 2;
 
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
   // If the right-side placement would clip the viewport, flip to
   // the left side of the caret.
-  if (left + triggerSize > vw - margin) {
-    left = coords.left - triggerSize - margin;
+  if (left + triggerSize > viewWidth - margin) {
+    left = caretLeft - triggerSize - margin;
   }
-  // Final clamp so the trigger is always fully on-screen even when
-  // both sides would overflow (e.g. tiny viewports with a caret in
-  // the corner).
-  if (left + triggerSize > vw - margin) left = vw - triggerSize - margin;
+  // Final clamp so the trigger is always fully on-screen.
+  if (left + triggerSize > viewWidth - margin) left = viewWidth - triggerSize - margin;
   if (left < margin) left = margin;
-  if (top + triggerSize > vh - margin) top = vh - triggerSize - margin;
+  if (top + triggerSize > viewHeight - margin) top = viewHeight - triggerSize - margin;
   if (top < margin) top = margin;
 
   trigger.style.left = `${left}px`;
@@ -159,6 +171,9 @@ export function placeFloatingTrigger(
 /**
  * Place the popup near a caret coordinate. Prefers BELOW the caret
  * line; flips ABOVE when below would clip viewport bottom.
+ *
+ * Same coordinate-system note as `placeFloatingTrigger`: `coords`
+ * are layout-viewport, output is visual-viewport (via vv offset).
  */
 export function placeFloatingPopup(
   popup: HTMLElement,
@@ -176,21 +191,27 @@ export function placeFloatingPopup(
 
   const popupW = popupRect.width || 280;
   const popupH = popupRect.height || 36;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vv = window.visualViewport;
+  const offsetTop = vv?.offsetTop ?? 0;
+  const offsetLeft = vv?.offsetLeft ?? 0;
+  const viewWidth = vv?.width ?? window.innerWidth;
+  const viewHeight = vv?.height ?? window.innerHeight;
   const margin = 4;
 
+  const caretTop = coords.top - offsetTop;
+  const caretLeft = coords.left - offsetLeft;
+
   // Horizontal: prefer popup-left = caret-left, clamp to viewport.
-  let left = coords.left;
-  if (left + popupW > vw - margin) left = vw - popupW - margin;
+  let left = caretLeft;
+  if (left + popupW > viewWidth - margin) left = viewWidth - popupW - margin;
   if (left < margin) left = margin;
 
   // Vertical: prefer below; flip above when no room.
-  let top = coords.top + coords.height + margin;
-  if (top + popupH > vh - margin) {
-    const flipped = coords.top - popupH - margin;
+  let top = caretTop + coords.height + margin;
+  if (top + popupH > viewHeight - margin) {
+    const flipped = caretTop - popupH - margin;
     if (flipped >= margin) top = flipped;
-    else top = Math.max(margin, vh - popupH - margin);
+    else top = Math.max(margin, viewHeight - popupH - margin);
   }
 
   popup.style.left = `${left}px`;
