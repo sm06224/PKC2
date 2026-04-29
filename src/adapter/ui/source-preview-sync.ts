@@ -24,6 +24,52 @@
  */
 
 const ACTIVE_ATTR = 'data-pkc-active-source';
+const MARKER_REGION = 'sync-marker';
+
+/**
+ * Render the floating overlay marker that visualises which preview
+ * block the system currently maps the caret to. Translucent accent
+ * fill + dashed accent border, hidden by default. Positioned by
+ * `placeSyncMarker` whenever sync runs.
+ *
+ * Pure DOM — caller appends to the shell.
+ */
+export function renderSyncMarker(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'pkc-sync-marker';
+  el.setAttribute('data-pkc-region', MARKER_REGION);
+  el.hidden = true;
+  // pointer-events:none in CSS so taps pass through to the block.
+  return el;
+}
+
+function findSyncMarker(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-pkc-region="' + MARKER_REGION + '"]');
+}
+
+/**
+ * Position the floating marker over `target`'s bounding rect (in
+ * viewport / fixed coordinates). Hides the marker when target is
+ * null.
+ */
+export function placeSyncMarker(target: HTMLElement | null): void {
+  const marker = findSyncMarker();
+  if (!marker) return;
+  if (!target) {
+    marker.hidden = true;
+    return;
+  }
+  const rect = target.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    marker.hidden = true;
+    return;
+  }
+  marker.hidden = false;
+  marker.style.left = `${rect.left}px`;
+  marker.style.top = `${rect.top}px`;
+  marker.style.width = `${rect.width}px`;
+  marker.style.height = `${rect.height}px`;
+}
 
 /**
  * Returns the source line (0-indexed) of the textarea caret. Counts
@@ -105,10 +151,14 @@ export function syncPreviewToCaret(
   const target = findPreviewElementForLine(preview, line);
   if (!target) {
     setActive(preview, null);
+    placeSyncMarker(null);
     return;
   }
   setActive(preview, target);
   target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+  // Place the floating overlay AFTER scrollIntoView so the marker's
+  // bounding rect reflects the post-scroll position.
+  placeSyncMarker(target);
 }
 
 /**

@@ -6150,6 +6150,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     syncSplitEditorPreviewToCaret(active);
   }
 
+  function handleSplitEditorScroll(e: Event): void {
+    const target = e.target;
+    // Only re-sync when scroll bubbles from the split editor pane
+    // or the document/window. Other scroll sources (sidebar, kanban)
+    // don't affect the marker position relative to the active block.
+    const isWindowScroll = target === document || target === window;
+    const isSplitEditorScroll =
+      target instanceof Element && target.closest('.pkc-text-split-editor') !== null;
+    if (!isWindowScroll && !isSplitEditorScroll) return;
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      '.pkc-text-split-editor textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    syncSplitEditorPreviewToCaret(textarea);
+  }
+
   function handleSplitEditorPreviewClick(e: Event): void {
     const target = e.target as Element | null;
     if (!target) return;
@@ -6184,6 +6200,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('focus', handleSplitEditorCaretChange, true);
   document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
   root.addEventListener('click', handleSplitEditorPreviewClick);
+  // Marker reposition: preview / textarea / window scroll + resize
+  // re-place the floating overlay at the active block's new viewport
+  // rect. Scroll captures via capture phase since the inner panes
+  // emit scroll events that don't bubble.
+  root.addEventListener('scroll', handleSplitEditorScroll, true);
+  window.addEventListener('resize', handleSplitEditorScroll);
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6347,6 +6369,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('focus', handleSplitEditorCaretChange, true);
     document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
     root.removeEventListener('click', handleSplitEditorPreviewClick);
+    root.removeEventListener('scroll', handleSplitEditorScroll, true);
+    window.removeEventListener('resize', handleSplitEditorScroll);
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);

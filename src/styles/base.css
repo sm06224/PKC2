@@ -7303,6 +7303,34 @@ mark.pkc-search-mark {
   opacity: 0.75;
   pointer-events: none;
 }
+
+/* PR #206 v2 — floating sync marker.
+ *
+ * Translucent accent-colored rectangle that overlays the active
+ * preview block so the user can see at a glance which rendered
+ * region the caret-sync layer currently maps the cursor to. Helps
+ * diagnose offsets in tall blocks (e.g. multi-row tables where the
+ * source line maps to the entire table, not a single cell).
+ *
+ * Positioned via JS using the active block's viewport rect; CSS
+ * provides the visual style + crosshair-style corner accents. */
+.pkc-sync-marker {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--c-accent);
+  /* Subtle accent fill — high enough to spot, low enough to not
+   * obscure content. Combined with the dashed border this reads as
+   * a "system thinks you're here" highlight, not a body decoration. */
+  opacity: 0.12;
+  border: 1px dashed var(--c-accent);
+  border-radius: 4px;
+  box-sizing: border-box;
+  transition: opacity 80ms ease;
+}
+.pkc-sync-marker[hidden] {
+  display: none !important;
+}
 .pkc-text-edit-preview [data-pkc-source-line] {
   cursor: text;
 }

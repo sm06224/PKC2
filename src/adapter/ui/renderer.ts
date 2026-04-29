@@ -5,6 +5,7 @@ import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import { renderSyncMarker } from './source-preview-sync';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -691,6 +692,13 @@ function renderShell(state: AppState): HTMLElement {
   // the user can read it without surrounding chrome. Hidden until
   // the action binder opens it via `openMediaViewer(source)`.
   shell.appendChild(renderMediaViewer());
+
+  // Source ↔ preview sync overlay (PR #206 v2) — translucent
+  // accent-colored rectangle that visualises which rendered block
+  // the caret-sync layer currently maps the textarea cursor to.
+  // Hidden until `placeSyncMarker(target)` is called by the action
+  // binder. CSS gives it `pointer-events: none` so taps pass through.
+  shell.appendChild(renderSyncMarker());
   return shell;
 }
 
