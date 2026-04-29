@@ -4,6 +4,7 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
+import { renderMediaViewer } from './media-viewer';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -684,6 +685,12 @@ function renderShell(state: AppState): HTMLElement {
   // and selection events. CSS gates visibility on `pointer: coarse`.
   shell.appendChild(renderFloatingTrigger());
   shell.appendChild(renderFloatingPopup());
+
+  // Media viewer (PR #203) — modal overlay that shows a tapped
+  // markdown block (table / code fence / image) at full screen so
+  // the user can read it without surrounding chrome. Hidden until
+  // the action binder opens it via `openMediaViewer(source)`.
+  shell.appendChild(renderMediaViewer());
   return shell;
 }
 
