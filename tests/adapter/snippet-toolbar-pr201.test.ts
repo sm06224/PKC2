@@ -1,17 +1,22 @@
 /** @vitest-environment happy-dom */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  renderSnippetSheet,
+  renderFloatingTrigger,
+  renderFloatingPopup,
+  placeFloatingTrigger,
+  placeFloatingPopup,
   applySnippet,
 } from '@adapter/ui/snippet-toolbar';
 
 /**
- * PR #201 — iPhone / iPad snippet sheet (Plan B).
+ * PR #201 v4 — floating cursor-following snippet helper.
  *
- * Tests pin two surfaces:
- *   1. `renderSnippetSheet()` — backdrop + dialog DOM shape, region
- *      markers, buttons, a11y attrs, hidden by default.
- *   2. `applySnippet(ta, kind)` — text insertion + caret placement
+ * Tests pin three surfaces:
+ *   1. `renderFloatingTrigger()` / `renderFloatingPopup()` — DOM
+ *      shape (region markers, buttons, a11y attrs, hidden=true).
+ *   2. `placeFloatingTrigger` / `placeFloatingPopup` — coordinate
+ *      placement for given caret coords + viewport-edge clamping.
+ *   3. `applySnippet(ta, kind)` — text insertion + caret placement
  *      for each snippet kind, including selection wrap behaviour.
  */
 
@@ -32,47 +37,76 @@ function setSelection(start: number, end: number): void {
   ta.selectionEnd = end;
 }
 
-describe('renderSnippetSheet — DOM shape', () => {
-  it('renders backdrop + dialog, hidden by default', () => {
-    const backdrop = renderSnippetSheet();
-    expect(backdrop.getAttribute('data-pkc-region')).toBe('snippet-sheet-backdrop');
-    expect(backdrop.hidden).toBe(true);
-    const dialog = backdrop.querySelector('[data-pkc-region="snippet-sheet"]');
-    expect(dialog).toBeTruthy();
-    expect(dialog!.getAttribute('role')).toBe('dialog');
-    expect(dialog!.getAttribute('aria-modal')).toBe('true');
-    expect(dialog!.getAttribute('aria-label')).toBeTruthy();
+describe('renderFloatingTrigger — DOM shape', () => {
+  it('renders a region-marked button hidden by default', () => {
+    const el = renderFloatingTrigger();
+    expect(el.tagName).toBe('BUTTON');
+    expect(el.getAttribute('data-pkc-region')).toBe('snippet-trigger');
+    expect(el.getAttribute('data-pkc-action')).toBe('open-snippet-popup');
+    expect(el.hidden).toBe(true);
+    expect((el as HTMLButtonElement).type).toBe('button');
+    expect(el.getAttribute('aria-label')).toBeTruthy();
+  });
+});
+
+describe('renderFloatingPopup — DOM shape', () => {
+  it('renders a region-marked menu hidden by default', () => {
+    const el = renderFloatingPopup();
+    expect(el.getAttribute('data-pkc-region')).toBe('snippet-popup');
+    expect(el.getAttribute('role')).toBe('menu');
+    expect(el.hidden).toBe(true);
+    expect(el.getAttribute('aria-label')).toBeTruthy();
   });
 
   it('emits one snippet button per kind', () => {
-    const el = renderSnippetSheet();
+    const el = renderFloatingPopup();
     const btns = el.querySelectorAll('[data-pkc-snippet]');
-    // backtick / fence / paren / bracket / brace / angle / dash / quote / heading
     expect(btns.length).toBe(9);
   });
 
-  it('exposes a close action button', () => {
-    const el = renderSnippetSheet();
-    const closeBtn = el.querySelector('[data-pkc-action="close-snippet-sheet"]');
-    expect(closeBtn).toBeTruthy();
-    expect((closeBtn as HTMLButtonElement).type).toBe('button');
-  });
-
-  it('all buttons have type=button to avoid form submission', () => {
-    const el = renderSnippetSheet();
-    const btns = el.querySelectorAll<HTMLButtonElement>('button');
+  it('all popup buttons are type=button with a11y attrs', () => {
+    const el = renderFloatingPopup();
+    const btns = el.querySelectorAll<HTMLButtonElement>('[data-pkc-snippet]');
     for (const b of btns) {
       expect(b.type).toBe('button');
-    }
-  });
-
-  it('each snippet button has a title and aria-label for a11y', () => {
-    const el = renderSnippetSheet();
-    const btns = el.querySelectorAll<HTMLElement>('[data-pkc-snippet]');
-    for (const b of btns) {
       expect(b.getAttribute('title')).toBeTruthy();
       expect(b.getAttribute('aria-label')).toBeTruthy();
     }
+  });
+});
+
+describe('placeFloatingTrigger / placeFloatingPopup — coordinate placement', () => {
+  let trigger: HTMLElement;
+  let popup: HTMLElement;
+  beforeEach(() => {
+    trigger = renderFloatingTrigger();
+    document.body.appendChild(trigger);
+    popup = renderFloatingPopup();
+    document.body.appendChild(popup);
+  });
+
+  it('places trigger to the right of the caret (default position)', () => {
+    placeFloatingTrigger(trigger, { top: 100, left: 200, height: 20 });
+    expect(trigger.style.position).toBe('fixed');
+    // 200 + 4 px margin = 204
+    expect(parseFloat(trigger.style.left)).toBeCloseTo(204, 0);
+    // top centred on caret line: 100 + (20 - 28) / 2 = 96
+    expect(parseFloat(trigger.style.top)).toBeCloseTo(96, 0);
+  });
+
+  it('clamps trigger to viewport when caret is past the right edge', () => {
+    const vw = window.innerWidth || 1024;
+    placeFloatingTrigger(trigger, { top: 100, left: vw + 100, height: 20 });
+    expect(parseFloat(trigger.style.left)).toBeLessThanOrEqual(vw);
+    expect(parseFloat(trigger.style.left)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('places popup below the caret line', () => {
+    placeFloatingPopup(popup, { top: 100, left: 50, height: 20 });
+    expect(popup.style.position).toBe('fixed');
+    // top = caret.top + height + 4 = 124
+    expect(parseFloat(popup.style.top)).toBeCloseTo(124, 0);
+    expect(parseFloat(popup.style.left)).toBeCloseTo(50, 0);
   });
 });
 

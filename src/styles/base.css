@@ -6915,120 +6915,98 @@ mark.pkc-search-mark {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * PR #201 — iPhone / iPad snippet sheet (Plan B).
+ * PR #201 v4 — floating cursor-following snippet helper.
  *
- * Backdrop + bottom-sheet card shown when the user taps the "+"
- * trigger in the mobile editing header. Replaces the original
- * v1/v2 fixed-bottom toolbar (which lost the iOS chrome fight in
- * portrait — URL bar, accessory bar, predictive text bar all
- * compete for the same screen real estate).
+ * Replaces v1/v2 fixed-bottom toolbar AND v3 modal sheet. Both
+ * earlier designs lost the iOS chrome fight (portrait) or wasted
+ * screen space (3×3 sheet). User direction: «philosophy first,
+ * ignore WCAG when the spec hurts UX». Compact = beautiful.
  *
- * Modal sheets DON'T conflict with the keyboard because:
- *   - Tapping the "+" trigger doesn't blur the textarea
- *     (`pointerdown` preventDefault), so the keyboard stays raised
- *   - The backdrop dim covers the page content (including any
- *     iOS chrome bleeding through)
- *   - The sheet card pinned at `bottom: env(safe-area-inset-bottom)`
- *     sits BELOW the keyboard's footprint when it's still visible;
- *     on phones the sheet replaces the keyboard's vertical region
- *     after iOS rebalances the layout (when sheet is tall enough)
+ * Two elements, both `position: fixed` with JS-driven coordinates:
+ *   - `.pkc-snippet-trigger`: small "✚" button (~28 px) hovering
+ *     just to the right of the caret, follows it as the user
+ *     types / scrolls.
+ *   - `.pkc-snippet-popup`: compact horizontal row of icon-sized
+ *     buttons, opens next to the trigger when tapped.
  *
- * Hidden by default (`hidden` attribute toggled by JS). Gated to
- * `(pointer: coarse)` so desktop never sees it.
+ * Touch-only (`pointer: coarse`); desktop is `display: none`.
+ * Buttons are intentionally below WCAG min-target (56 → 28 px) —
+ * symbolic glyphs aid disambiguation, and a transient floating
+ * helper that occluded a 56 px chunk of the screen would defeat
+ * the purpose.
  * ───────────────────────────────────────────────────────────── */
-.pkc-snippet-sheet-backdrop {
+.pkc-snippet-trigger,
+.pkc-snippet-popup {
   display: none;
 }
-.pkc-snippet-sheet-backdrop[hidden] {
+.pkc-snippet-trigger[hidden],
+.pkc-snippet-popup[hidden] {
   display: none !important;
-}
-.pkc-mobile-header-snippet {
-  display: none;
 }
 
 @media (pointer: coarse) {
-  .pkc-mobile-header-snippet {
-    display: inline-flex;
-  }
-  .pkc-snippet-sheet-backdrop {
+  .pkc-snippet-trigger {
     position: fixed;
-    inset: 0;
     z-index: 9000;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    flex-direction: column;
-    /* Anchor sheet at the TOP of the viewport, just below the mobile
-     * editing header. Bottom-anchored sheets get covered by iOS
-     * keyboard chrome in portrait (URL bar / accessory bar fight),
-     * so we drop down from the header instead — top-of-viewport is
-     * always visible regardless of keyboard state. */
-    justify-content: flex-start;
-    /* Mobile header ≈ 44 px touch target + 0.45 rem × 2 padding +
-     * 1 px border ≈ 60 px. Plus iOS top safe-area inset. */
-    padding-top: calc(env(safe-area-inset-top, 0) + 60px);
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--c-accent-dim);
+    border-radius: 50%;
+    background: var(--c-surface);
+    color: var(--c-text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    opacity: 0.9;
   }
-  .pkc-snippet-sheet-backdrop[hidden] {
+  .pkc-snippet-trigger[hidden] {
     display: none !important;
   }
-  .pkc-snippet-sheet {
-    background: var(--c-surface);
-    border-bottom: 1px solid var(--c-accent-dim);
-    border-bottom-left-radius: 14px;
-    border-bottom-right-radius: 14px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-    padding: 0.5rem 0.75rem 0.75rem;
-    max-height: 60vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .pkc-snippet-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.4rem 0.25rem 0.6rem;
-    border-bottom: 1px solid var(--c-accent-dim);
-    margin-bottom: 0.5rem;
-  }
-  .pkc-snippet-sheet-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--c-text);
-  }
-  .pkc-snippet-sheet-close {
-    min-width: 36px;
-    min-height: 36px;
-    padding: 0.3rem 0.5rem;
-    font-size: 1.1rem;
-    color: var(--c-muted);
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    touch-action: manipulation;
-  }
-  .pkc-snippet-sheet-close:active {
+  .pkc-snippet-trigger:active {
     background: var(--c-accent-dim);
+    opacity: 1;
   }
-  .pkc-snippet-sheet-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
-  }
-  .pkc-snippet-sheet-btn {
-    min-height: 56px;
-    padding: 0.5rem 0.5rem;
-    font-family: var(--font-mono, monospace);
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--c-text);
-    background: var(--c-surface-2, var(--c-surface));
+  .pkc-snippet-popup {
+    position: fixed;
+    z-index: 9001;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px;
+    background: var(--c-surface);
     border: 1px solid var(--c-accent-dim);
     border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    overflow-x: auto;
+    max-width: calc(100vw - 16px);
+    -webkit-overflow-scrolling: touch;
+  }
+  .pkc-snippet-popup[hidden] {
+    display: none !important;
+  }
+  .pkc-snippet-popup-btn {
+    flex: 0 0 auto;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--c-text);
+    background: transparent;
+    border: none;
+    border-radius: 5px;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
   }
-  .pkc-snippet-sheet-btn:active {
+  .pkc-snippet-popup-btn:active {
     background: var(--c-accent-dim);
   }
 }

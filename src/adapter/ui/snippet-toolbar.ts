@@ -1,25 +1,33 @@
 /**
- * iPhone / iPad snippet sheet (PR #201, 2026-04-29).
+ * iPhone / iPad floating snippet helper (PR #201, 2026-04-29).
  *
  * Touch devices have no convenient way to enter many markdown
  * primitives that desktop users get for free:
  *   - Backtick (`` ` ``) is buried under Number → Symbol on iOS
- *   - Triple-backtick fence is even worse(three taps + return)
+ *   - Triple-backtick fence is even worse
  *   - Bracket auto-pair from PR #198 doesn't work on iOS Safari
  *     (`((` duplication, see roadmap 領域 4 iOS limitation note)
  *
- * Original v1/v2 implementation used a `position: fixed; bottom: 0`
- * input-accessory-style toolbar above the keyboard. That approach
- * lost the iOS chrome fight in portrait (URL bar overlap, accessory
- * bar, predictive text bar — vary by iOS version / orientation).
- * Plan B (this revision) replaces it with a "+" trigger in the
- * mobile editing header that opens a **bottom sheet** drawer with
- * a snippet button grid. iOS-native pattern (Notes, Mail compose),
- * and iOS chrome doesn't compete with our overlay.
+ * **Design history:**
+ *   - v1/v2 (input accessory): `position: fixed; bottom: 0` toolbar
+ *     above the keyboard. iOS chrome (URL bar / accessory bar /
+ *     predictive bar) competed for the same screen real estate;
+ *     portrait mode covered the toolbar.
+ *   - v3 (modal sheet): bottom-sheet drawer, then header-anchored
+ *     drop-down. Both were rejected as "ugly + bad usability" —
+ *     too much screen taken, 3×3 grid felt heavyweight.
+ *   - v4 (this file, floating cursor-following): a small "+" trigger
+ *     hovers near the caret as the user types. Tapping it spawns a
+ *     compact horizontal popup (single row, ~28 px buttons) right
+ *     next to the cursor. WCAG min-target deliberately relaxed
+ *     (per user's «philosophy first, ignore WCAG when the spec
+ *     hurts UX») because the popup is transient and the buttons
+ *     carry distinct symbolic glyphs that aid disambiguation.
  *
  * Pure DOM helpers — no dispatcher / state coupling. The action
- * binder owns event wiring; this file only knows how to render the
- * sheet and apply each snippet kind.
+ * binder owns event wiring; this file knows how to render the
+ * trigger / popup, position them given a caret coordinate, and
+ * apply each snippet kind to a textarea.
  */
 
 export type SnippetKind =
@@ -33,18 +41,6 @@ export type SnippetKind =
   | 'quote'
   | 'heading';
 
-interface SnippetSpec {
-  /** Visible button label */
-  label: string;
-  /** Hover / a11y title */
-  title: string;
-}
-
-/**
- * Display order + label for each snippet button. Order matters —
- * the most touch-painful entries(backtick, fence) come first
- * because they're the original motivation for the sheet.
- */
 const SNIPPET_ORDER: readonly SnippetKind[] = [
   'backtick',
   'fence',
@@ -57,76 +53,148 @@ const SNIPPET_ORDER: readonly SnippetKind[] = [
   'heading',
 ];
 
+interface SnippetSpec {
+  /** Visible button label (compact glyph) */
+  label: string;
+  /** a11y title */
+  title: string;
+}
+
 const SNIPPETS: Readonly<Record<SnippetKind, SnippetSpec>> = {
   backtick: { label: '`', title: 'Inline code' },
   fence:    { label: '```', title: 'Code block' },
-  paren:    { label: '( )', title: 'Parentheses' },
-  bracket:  { label: '[ ]', title: 'Brackets' },
-  brace:    { label: '{ }', title: 'Braces' },
-  angle:    { label: '< >', title: 'Angle brackets' },
+  paren:    { label: '()', title: 'Parentheses' },
+  bracket:  { label: '[]', title: 'Brackets' },
+  brace:    { label: '{}', title: 'Braces' },
+  angle:    { label: '<>', title: 'Angle brackets' },
   dash:     { label: '-', title: 'List item' },
   quote:    { label: '>', title: 'Quote' },
   heading:  { label: '#', title: 'Heading' },
 };
 
 /**
- * Render the snippet sheet overlay (backdrop + sheet card). Hidden
- * by default; the action binder unhides it when the user taps the
- * "+" trigger in the mobile header during edit mode.
- *
- * The backdrop captures outside-clicks for dismissal; the sheet
- * itself is a flex card pinned to the viewport bottom on touch
- * tier (`@media (pointer: coarse)`). On desktop the entire overlay
- * stays `display: none` since desktop users have a hardware
- * keyboard and don't need this.
+ * Render the floating "+" trigger element (small circular button).
+ * Hidden by default; positioned by `placeFloatingTrigger`.
  */
-export function renderSnippetSheet(): HTMLElement {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'pkc-snippet-sheet-backdrop';
-  backdrop.setAttribute('data-pkc-region', 'snippet-sheet-backdrop');
-  backdrop.hidden = true;
+export function renderFloatingTrigger(): HTMLElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pkc-snippet-trigger';
+  btn.setAttribute('data-pkc-region', 'snippet-trigger');
+  btn.setAttribute('data-pkc-action', 'open-snippet-popup');
+  btn.setAttribute('aria-label', 'Insert markdown snippet');
+  btn.setAttribute('title', 'マークダウン補助');
+  btn.hidden = true;
+  btn.textContent = '✚';
+  return btn;
+}
 
-  const sheet = document.createElement('div');
-  sheet.className = 'pkc-snippet-sheet';
-  sheet.setAttribute('data-pkc-region', 'snippet-sheet');
-  sheet.setAttribute('role', 'dialog');
-  sheet.setAttribute('aria-label', 'Insert markdown snippet');
-  sheet.setAttribute('aria-modal', 'true');
+/**
+ * Render the snippet popup (horizontal row of compact buttons).
+ * Hidden by default; positioned by `placeFloatingPopup`.
+ */
+export function renderFloatingPopup(): HTMLElement {
+  const popup = document.createElement('div');
+  popup.className = 'pkc-snippet-popup';
+  popup.setAttribute('data-pkc-region', 'snippet-popup');
+  popup.setAttribute('role', 'menu');
+  popup.setAttribute('aria-label', 'Markdown snippet menu');
+  popup.hidden = true;
 
-  const header = document.createElement('div');
-  header.className = 'pkc-snippet-sheet-header';
-
-  const title = document.createElement('span');
-  title.className = 'pkc-snippet-sheet-title';
-  title.textContent = 'Insert';
-  header.appendChild(title);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'pkc-snippet-sheet-close';
-  closeBtn.setAttribute('data-pkc-action', 'close-snippet-sheet');
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '✕';
-  header.appendChild(closeBtn);
-
-  sheet.appendChild(header);
-
-  const grid = document.createElement('div');
-  grid.className = 'pkc-snippet-sheet-grid';
   for (const kind of SNIPPET_ORDER) {
     const spec = SNIPPETS[kind];
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pkc-snippet-sheet-btn';
+    btn.className = 'pkc-snippet-popup-btn';
     btn.setAttribute('data-pkc-snippet', kind);
-    btn.setAttribute('title', spec.title);
     btn.setAttribute('aria-label', spec.title);
+    btn.setAttribute('title', spec.title);
     btn.textContent = spec.label;
-    grid.appendChild(btn);
+    popup.appendChild(btn);
   }
-  sheet.appendChild(grid);
-  backdrop.appendChild(sheet);
-  return backdrop;
+  return popup;
+}
+
+/**
+ * Place the trigger near a caret coordinate.
+ *
+ * Strategy: trigger sits **immediately to the right of the caret line**
+ * (so it doesn't visually cover the line itself). Falls back to
+ * placing below the line if there's not enough horizontal room.
+ *
+ * `coords` are in viewport coordinates (compatible with
+ * `position: fixed`).
+ */
+export function placeFloatingTrigger(
+  trigger: HTMLElement,
+  coords: { top: number; left: number; height: number },
+): void {
+  trigger.style.position = 'fixed';
+  const triggerSize = 28; // matches CSS
+  const margin = 4;
+  // Default placement: just to the right of the caret, vertically
+  // centred on the caret line.
+  let left = coords.left + margin;
+  let top = coords.top + (coords.height - triggerSize) / 2;
+
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // If the right-side placement would clip the viewport, flip to
+  // the left side of the caret.
+  if (left + triggerSize > vw - margin) {
+    left = coords.left - triggerSize - margin;
+  }
+  // Final clamp so the trigger is always fully on-screen even when
+  // both sides would overflow (e.g. tiny viewports with a caret in
+  // the corner).
+  if (left + triggerSize > vw - margin) left = vw - triggerSize - margin;
+  if (left < margin) left = margin;
+  if (top + triggerSize > vh - margin) top = vh - triggerSize - margin;
+  if (top < margin) top = margin;
+
+  trigger.style.left = `${left}px`;
+  trigger.style.top = `${top}px`;
+}
+
+/**
+ * Place the popup near a caret coordinate. Prefers BELOW the caret
+ * line; flips ABOVE when below would clip viewport bottom.
+ */
+export function placeFloatingPopup(
+  popup: HTMLElement,
+  coords: { top: number; left: number; height: number },
+): void {
+  popup.style.position = 'fixed';
+  // Make sure popup is laid out before we measure its width.
+  const prevVisibility = popup.style.visibility;
+  popup.style.visibility = 'hidden';
+  popup.hidden = false;
+  const popupRect = popup.getBoundingClientRect();
+  popup.hidden = true;
+  popup.style.visibility = prevVisibility;
+  popup.hidden = false;
+
+  const popupW = popupRect.width || 280;
+  const popupH = popupRect.height || 36;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const margin = 4;
+
+  // Horizontal: prefer popup-left = caret-left, clamp to viewport.
+  let left = coords.left;
+  if (left + popupW > vw - margin) left = vw - popupW - margin;
+  if (left < margin) left = margin;
+
+  // Vertical: prefer below; flip above when no room.
+  let top = coords.top + coords.height + margin;
+  if (top + popupH > vh - margin) {
+    const flipped = coords.top - popupH - margin;
+    if (flipped >= margin) top = flipped;
+    else top = Math.max(margin, vh - popupH - margin);
+  }
+
+  popup.style.left = `${left}px`;
+  popup.style.top = `${top}px`;
 }
 
 /**

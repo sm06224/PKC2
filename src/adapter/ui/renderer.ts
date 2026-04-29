@@ -3,7 +3,7 @@ import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
 import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
-import { renderSnippetSheet } from './snippet-toolbar';
+import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -677,13 +677,13 @@ function renderShell(state: AppState): HTMLElement {
   // viewport.
   shell.appendChild(renderMobileHeader(state));
 
-  // Snippet sheet (PR #201) — backdrop + bottom-sheet drawer
-  // opened by tapping the "+" trigger in the mobile editing
-  // header. Hidden by default; action-binder toggles `hidden` on
-  // open / close + outside-tap dismissal. CSS gates visibility on
-  // `pointer: coarse` so desktop never sees the overlay even if
-  // accidentally unhidden.
-  shell.appendChild(renderSnippetSheet());
+  // Snippet floating helpers (PR #201 v4) — small "✚" trigger that
+  // follows the caret in markdown textareas, plus a compact popup
+  // with snippet buttons that opens next to the trigger. Hidden by
+  // default; action-binder positions / toggles them based on focus
+  // and selection events. CSS gates visibility on `pointer: coarse`.
+  shell.appendChild(renderFloatingTrigger());
+  shell.appendChild(renderFloatingPopup());
   return shell;
 }
 
@@ -720,18 +720,6 @@ function renderMobileHeader(state: AppState): HTMLElement {
     const titleEl = createElement('span', 'pkc-mobile-header-title');
     titleEl.textContent = '編集中';
     bar.appendChild(titleEl);
-
-    // PR #201: snippet sheet trigger. Touch-only (CSS-gated).
-    // Opens a bottom-sheet overlay with markdown snippet buttons
-    // (backtick / fence / brackets / list / quote / heading) so
-    // iPhone / iPad users can enter characters that the soft
-    // keyboard buries deep in symbol panels.
-    const snippetBtn = createElement('button', 'pkc-mobile-header-btn pkc-mobile-header-snippet');
-    snippetBtn.setAttribute('data-pkc-action', 'open-snippet-sheet');
-    snippetBtn.setAttribute('aria-label', 'Insert markdown snippet');
-    snippetBtn.setAttribute('title', 'マークダウン補助');
-    snippetBtn.textContent = '✚';
-    bar.appendChild(snippetBtn);
 
     const editingLid = state.editingLid ?? state.selectedLid;
     if (editingLid) {
