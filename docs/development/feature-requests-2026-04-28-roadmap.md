@@ -199,32 +199,114 @@ User direction(原文):
 - 図表タイトル(caption)
 - 折りたたみ見出し(`<details>` のような)
 - 画像のサイズと位置調整
+- **下線**(2026-04-28 追記)— 現状未対応、要拡張
+- **2026-04-28 追記:Word / PowerPoint へのトランス出力**を将来ビジョン
+  として持つ。方言の syntax 設計時に Word/PPT primitive(段落 align、
+  underline、page break、figure caption、image scale 等)に
+  **1:1 で写像できる**ことを優先する
+- **2026-04-28 追記:方言記法されたエントリから basic markdown だけを
+  取り出す機能**(strip-dialect 経路)。dialect 構文を CommonMark に
+  落とす変換器。
 
 ### 現状
+
+emphasis 系の現状(markdown-it 標準):
+
+| 入力 | 出力 |
+|---|---|
+| `**bold**` | `<strong>bold</strong>` ✓ |
+| `*italic*` / `_italic_` | `<em>italic</em>` ✓ |
+| `__double__` | `<strong>double</strong>` (CommonMark 規定で strong)|
+| `~~strike~~` | `<s>strike</s>` ✓ |
+| underline | **未対応** — CommonMark に存在しない |
+
 - markdown-it ベース。標準の markdown 構文 + 一部 plugin
 - 折りたたみ見出しは現在 unsupported
 - 画像 size/位置は unsupported
+- 下線、罫線、改ページ、テキスト align、caption 全て未対応
 
-### 設計骨子(優先度順)
-1. **画像 size 調整**: `![alt](asset:k){.large}` のような attribute 拡張
-   または `![alt](asset:k =200x100)` 構文(よくある markdown 拡張)
-2. **画像 align**: `![alt](asset:k){.center}` または `> ![alt](...)`
-   風 wrapper
-3. **折りたたみ見出し**: `<details><summary>...</summary>...</details>`
-   を許容、または `>! ` (spoiler ライク)プレフィックス
-4. **罫線(rules)**: 既存 `---` で水平線サポート確認、表罫線は GFM table で
-5. **caption**: `![alt](src "caption")` の title attribute → `<figcaption>`
-6. **align / 均等割付け**: GFM table の `:---:` 構文があるが、本文段落
-   の center / right / justify は CSS class または `::: center {}` 風 fence
-7. **改ページ(印刷時)**: CSS `page-break-before` を発動する fence /
-   class
+### 設計指針(2026-04-28 改訂)
+
+ユーザー言:
+> wordとpptへのトランスを実現したいので、方言を考えるときはその点を
+> 考慮願います
+> 方言記法されたエントリから、ベーシックなマークダウンだけを取り出す
+> 機能も実装が必要です
+
+→ **3 つの設計原則** を方言全体に適用:
+
+1. **1:1 写像可能**:各拡張は Word / PPT の native primitive に対応
+   できる構造を選ぶ:
+   - underline → Word `<w:u/>` / PPT run property
+   - alignment → 段落 alignment(left/center/right/justify)
+   - page break → Word `<w:br w:type="page"/>` / PPT slide break
+   - figure caption → Word `<w:caption>` / PPT placeholder
+   - image scale → run-level inline shape size
+2. **Strippable**:全ての方言マーカーを「記号削除 / 中身保持」で
+   CommonMark 互換にダウングレードできる構文を選ぶ。例:
+     `[text]{.center}` → strip → `text`
+     `++underline++` → strip → `underline`
+     `::: page-break :::` → strip → 削除 or `---`
+3. **Forward-compat**: dialect が無効な reader でも壊れない(中身が
+   読める)構文を優先。生 HTML タグ(`<u>`)は markdown-it html:false
+   設定で escape されるため不可。
+
+### 構文候補表(優先度順)
+
+| 機能 | 候補構文 | Word/PPT 写像 | strip 後 |
+|---|---|---|---|
+| 下線 | `++text++` (Pandoc 互換) or `[text]{.underline}` | `<w:u/>` | `text` |
+| 段落 align | `::: center` … `:::` fenced container | paragraph align | 中身そのまま |
+| 改ページ | `\page` 行 or `::: page-break :::` | page break | 削除 or `---` |
+| 折りたたみ | `>! summary` で details/summary | (Word: 通常段落)| summary + 中身 |
+| 画像 size | `![alt](src){.w-200 .h-100}` | inline shape size | `![alt](src)` |
+| 画像 align | `![alt](src){.center}` | paragraph align | `![alt](src)` |
+| 罫線 | 既存 `---`(thematic break)| Word horizontal rule | `---` |
+| caption | `![alt](src "caption")` の title attr → `<figcaption>` | Word caption | `![alt](src)` |
+| 表 align | GFM `:---:`(既存)| table cell align | 既存どおり |
+
+### 設計骨子(実装順、優先度順)
+
+1. **画像 size / align**: `![alt](src){.w-200 .h-100 .center}`
+   markdown-it-attrs 統合
+2. **下線**: `++text++` を text inline rule で plugin 化
+3. **折りたたみ見出し**: `>! ` prefix → `<details><summary>...</summary>`
+4. **caption**: `![alt](src "caption")` の title attribute を
+   `<figcaption>` に翻訳
+5. **段落 align**: `::: center` ... `:::` fenced container
+   (markdown-it-container)
+6. **改ページ**: `\page` または `::: page-break :::`
+7. **均等割付け**: `::: justify` と同じ container で
+
+### Word / PPT export 経路(将来 PR、領域 6 完了後)
+
+PKC2 → markdown-it AST → Word OOXML(.docx) / PPT OOXML(.pptx)変換器。
+既存の export 経路(html / markdown bundle / pdf)に並列で追加。
+
+ライブラリ:
+- `docx` npm — pure JS で Word docx 生成
+- `pptxgenjs` — PPT 生成
+- 両方とも 単一 HTML build 制約下(IIFE)で動くか要確認
+
+`renderMarkdown` の token stream を walk して block-level / inline-level
+の primitive を docx / pptx の primitive に写像する translator を書く。
+
+### Strip-dialect 経路(中規模、領域 6 と並走可)
+
+新関数 `stripDialect(markdownSource: string): string`(features 層)。
+PR 順:
+- Phase 1:正規表現ベースで dialect マーカーを削除する純関数
+  (`++` `[ ]{}` `:::` `>!` `\page` 等)
+- Phase 2:export 経路に「basic markdown」モードを追加(設定 toggle)
 
 ### 依存 / 注意
-- markdown 方言が増えると import / export 互換性が複雑化
+- markdown 方言が増えると import / export 互換性が複雑化 → 必ず
+  strip 関数 + 単独の plugin として実装し、root config から toggle
+  できる構造に
 - PKC1 互換 / GFM 互換のバランス
 - 各拡張は 1 PR ずつ切るのが安全
 
-### サイズ: 大(複数 PR)
+### サイズ: 大(複数 PR、想定 6-10 PR)
 
 ---
 

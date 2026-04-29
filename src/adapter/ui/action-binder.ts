@@ -19,6 +19,7 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
+import { tryHandleEditorKey } from './editor-key-helpers';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -3080,6 +3081,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // an `input` event on its own.
       ta.dispatchEvent(new Event('input', { bubbles: true }));
       return;
+    }
+
+    // PR #198: markdown editor enhancements — Enter (indent + list
+    // continuation), bracket pair completion, skip-out. Only fires on
+    // textareas marked as markdown-capable (TEXT body, TEXTLOG entry
+    // text, todo description). Modifier keys other than Shift bail
+    // out so existing shortcuts (Ctrl+S, Cmd+K, Alt+arrows) keep
+    // working. IME input bypasses the helpers — composition first.
+    if (
+      e.target instanceof HTMLTextAreaElement
+      && !e.isComposing
+      && !e.ctrlKey
+      && !e.metaKey
+      && !e.altKey
+    ) {
+      const ta = e.target;
+      const field = ta.getAttribute('data-pkc-field');
+      const isMarkdownField =
+        field === 'body'
+        || field === 'textlog-entry-text'
+        || field === 'textlog-append-text'
+        || field === 'todo-description';
+      if (isMarkdownField) {
+        if (tryHandleEditorKey(ta, e)) {
+          e.preventDefault();
+          return;
+        }
+      }
     }
 
     // Slice 1 / 2: Kanban / Calendar Todo-add popover input takes
