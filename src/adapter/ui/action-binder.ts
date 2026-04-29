@@ -32,6 +32,14 @@ import {
   closeMediaViewer,
   isMediaViewerOpen,
 } from './media-viewer';
+import {
+  enhanceTable,
+  sortColumn,
+  toggleFilterRow,
+  applyFilters,
+  cycleSortDirection,
+  resetOtherSortButtons,
+} from './table-interactive';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -5017,6 +5025,78 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  /**
+   * Markdown table interactive enhancements (PR #204, 2026-04-29).
+   *
+   * MutationObserver watches for new `.pkc-md-rendered table` nodes
+   * and lazily injects row-number cells + sort / filter handles.
+   * Click delegation routes the resulting handle interactions back
+   * into `table-interactive`'s pure helpers.
+   */
+  function enhanceTablesIn(scope: Element | Document): void {
+    const tables = scope.querySelectorAll<HTMLTableElement>('.pkc-md-rendered table');
+    for (const table of tables) {
+      enhanceTable(table);
+    }
+  }
+
+  const tableEnhancementObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        // Either the added node IS a table, or contains one.
+        if (
+          node.matches?.('.pkc-md-rendered table')
+          || node.matches?.('.pkc-md-rendered')
+        ) {
+          enhanceTablesIn(node);
+        } else {
+          enhanceTablesIn(node);
+        }
+      }
+    }
+  });
+
+  function handleTableSortClick(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-sort"]');
+    if (!btn) return;
+    const table = btn.closest<HTMLTableElement>('table');
+    if (!table) return;
+    const colIdx = parseInt(btn.getAttribute('data-pkc-table-col') ?? '-1', 10);
+    if (colIdx < 0) return;
+    const dir = cycleSortDirection(btn);
+    resetOtherSortButtons(table, btn);
+    sortColumn(table, colIdx, dir);
+    // Re-apply filters so any hidden-row state survives the reorder
+    // (sort moves rows but doesn't clear `hidden` flags).
+    applyFilters(table);
+    e.stopPropagation();
+  }
+
+  function handleTableFilterToggle(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-filter-toggle"]');
+    if (!btn) return;
+    const table = btn.closest<HTMLTableElement>('table');
+    if (!table) return;
+    toggleFilterRow(table);
+    applyFilters(table);
+    e.stopPropagation();
+  }
+
+  function handleTableFilterInput(e: Event): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!target.classList.contains('pkc-md-table-filter-input')) return;
+    const table = target.closest<HTMLTableElement>('table');
+    if (!table) return;
+    applyFilters(table);
+  }
+
   function handleDocumentClick(e: MouseEvent): void {
     // Close slash menu on click outside
     if (isSlashMenuOpen()) {
@@ -6089,6 +6169,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('click', handleMediaViewerClose);
   document.addEventListener('keydown', handleMediaViewerKeydown);
 
+  // PR #204 markdown-table interactivity: lazy-enhance any
+  // .pkc-md-rendered table that appears in the DOM, plus delegated
+  // click / input handlers for the sort / filter handles.
+  enhanceTablesIn(document);
+  tableEnhancementObserver.observe(root, { childList: true, subtree: true });
+  document.addEventListener('click', handleTableSortClick, true);
+  document.addEventListener('click', handleTableFilterToggle, true);
+  document.addEventListener('input', handleTableFilterInput, true);
+
   // PR #201 v4 floating snippet helper: track focused textarea,
   // follow caret via input/scroll/selectionchange/visualViewport,
   // intercept pointerdown on trigger/popup so the keyboard stays
@@ -6178,6 +6267,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('click', handleMediaViewerOpen);
     document.removeEventListener('click', handleMediaViewerClose);
     document.removeEventListener('keydown', handleMediaViewerKeydown);
+    tableEnhancementObserver.disconnect();
+    document.removeEventListener('click', handleTableSortClick, true);
+    document.removeEventListener('click', handleTableFilterToggle, true);
+    document.removeEventListener('input', handleTableFilterInput, true);
     document.removeEventListener('focusin', handleSnippetSheetFocusIn);
     document.removeEventListener('focusout', handleSnippetSheetFocusOut);
     document.removeEventListener('input', handleSnippetCaretInput, true);

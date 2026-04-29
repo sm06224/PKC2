@@ -7150,7 +7150,111 @@ mark.pkc-search-mark {
   .pkc-md-block > .pkc-md-copy-btn,
   .pkc-media-viewer-backdrop,
   .pkc-snippet-trigger,
-  .pkc-snippet-popup {
+  .pkc-snippet-popup,
+  .pkc-md-table-sort,
+  .pkc-md-table-filter-toggle,
+  .pkc-md-table-filter-row {
     display: none !important;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #204 — markdown table interactivity (advanced-user features).
+ *
+ * Row-number column, sort handles (cycle ↕ → ↑ → ↓), filter inputs
+ * (toggle row of `<input>`s below the header). Visuals stay subtle:
+ * handles are inline-text glyphs, half-opaque until hover/focus, so
+ * casual readers don't see chrome but power users discover them.
+ * ───────────────────────────────────────────────────────────── */
+.pkc-md-rendered .pkc-md-table-rownum {
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-weight: normal;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: 0.85em;
+  padding-left: 0.4em;
+  padding-right: 0.4em;
+  width: 1%;
+  white-space: nowrap;
+}
+.pkc-md-rendered .pkc-md-table-th-enhanced {
+  position: relative;
+}
+.pkc-md-rendered .pkc-md-table-th-content {
+  margin-right: 0.4em;
+}
+.pkc-md-rendered .pkc-md-table-sort,
+.pkc-md-rendered .pkc-md-table-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: baseline;
+  width: 1.4em;
+  height: 1.4em;
+  margin-left: 0.15em;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1;
+  color: var(--c-muted);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 120ms ease, background 120ms ease;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pkc-md-rendered .pkc-md-table-th-enhanced:hover .pkc-md-table-sort,
+.pkc-md-rendered .pkc-md-table-th-enhanced:hover .pkc-md-table-filter-toggle,
+.pkc-md-rendered .pkc-md-table-sort:focus,
+.pkc-md-rendered .pkc-md-table-filter-toggle:focus,
+.pkc-md-rendered .pkc-md-table-sort[data-pkc-sort-dir="asc"],
+.pkc-md-rendered .pkc-md-table-sort[data-pkc-sort-dir="desc"] {
+  opacity: 1;
+}
+.pkc-md-rendered .pkc-md-table-sort[data-pkc-sort-dir="asc"],
+.pkc-md-rendered .pkc-md-table-sort[data-pkc-sort-dir="desc"] {
+  color: var(--c-accent);
+}
+.pkc-md-rendered .pkc-md-table-sort:hover,
+.pkc-md-rendered .pkc-md-table-filter-toggle:hover {
+  background: var(--c-accent-dim);
+}
+/* Touch tier: handles always visible (hover doesn't fire reliably). */
+@media (pointer: coarse) {
+  .pkc-md-rendered .pkc-md-table-sort,
+  .pkc-md-rendered .pkc-md-table-filter-toggle {
+    opacity: 0.7;
+  }
+}
+
+/* Filter row + inputs */
+.pkc-md-rendered .pkc-md-table-filter-row {
+  background: transparent;
+}
+.pkc-md-rendered .pkc-md-table-filter-cell {
+  padding: 0.15em 0.25em;
+  background: transparent;
+  border-top: none;
+}
+.pkc-md-rendered .pkc-md-table-filter-input {
+  width: 100%;
+  min-width: 4ch;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  font-family: inherit;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.pkc-md-rendered .pkc-md-table-filter-input:focus {
+  border-color: var(--c-accent);
+  outline: none;
 }
