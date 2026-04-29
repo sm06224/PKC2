@@ -19,6 +19,7 @@ import {
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
+import { tryHandleEditorKey } from './editor-key-helpers';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -3046,6 +3047,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (handleSlashMenuKeydown(e)) return;
     }
 
+    // PR #198: markdown editor enhancements — Enter (indent + list
+    // continuation), bracket pair completion, skip-out, list-level
+    // Tab/Space indent, multi-line Tab/Shift+Tab. Only fires on
+    // textareas marked as markdown-capable (TEXT body, TEXTLOG entry
+    // text, todo description). Modifier keys other than Shift bail
+    // out so existing shortcuts (Ctrl+S, Cmd+K, Alt+arrows) keep
+    // working. IME input bypasses the helpers — composition first.
+    //
+    // Placed BEFORE the generic Tab `\t` handler below so list-level
+    // Tab and multi-line Tab can claim the event. tryHandleEditorKey
+    // returns false for plain Tab (no list slot, no multi-line
+    // selection), allowing the generic handler to fire as before.
+    if (
+      e.target instanceof HTMLTextAreaElement
+      && !e.isComposing
+      && !e.ctrlKey
+      && !e.metaKey
+      && !e.altKey
+    ) {
+      const ta = e.target;
+      const field = ta.getAttribute('data-pkc-field');
+      const isMarkdownField =
+        field === 'body'
+        || field === 'textlog-entry-text'
+        || field === 'textlog-append-text'
+        || field === 'todo-description';
+      if (isMarkdownField) {
+        if (tryHandleEditorKey(ta, e)) {
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     // Tab key inside a `<textarea>` inserts a literal `\t` instead
     // of moving focus (2026-04-26 user request: enable tab-character
     // input). CSS `tab-size: 4` keeps the visual width matched to
@@ -3053,6 +3088,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // interchangeable in practice. Only fires for plain Tab —
     // Shift+Tab / Ctrl+Tab keep their browser-native semantics so
     // accessible tab-out-of-textarea still works.
+    //
+    // PR #198 v3 ordering: the markdown enhancements block above runs
+    // first; this generic `\t` insert is the fall-through for
+    // non-markdown fields and for cursor-Tab on plain prose lines.
     if (
       e.key === 'Tab'
       && !e.shiftKey
