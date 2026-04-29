@@ -27,6 +27,11 @@ import {
   type SnippetKind,
 } from './snippet-toolbar';
 import { getCaretViewportCoords } from './caret-position';
+import {
+  openMediaViewer,
+  closeMediaViewer,
+  isMediaViewerOpen,
+} from './media-viewer';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -4942,6 +4947,76 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     clampMenuToViewport(menu);
   }
 
+  /**
+   * Media viewer click coordination (PR #203, 2026-04-29).
+   *
+   * Tap on a `.pkc-md-block` (table or code fence) or
+   * `.pkc-md-rendered img` opens the media viewer with a clone of
+   * that element. Skipped when:
+   *   - the click hits a link / copy button / expand button
+   *   - text is selected (user is selecting / has selected text)
+   *   - the viewer itself is the click target (close handled below)
+   *
+   * Backdrop tap / close-X tap / Escape → close.
+   */
+  function handleMediaViewerOpen(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+
+    // Don't hijack clicks the user wanted on something else inside.
+    if (
+      target.closest('a')
+      || target.closest('[data-pkc-action="copy-md-block"]')
+      || target.closest('[data-pkc-action="expand-md-block"]')
+      || target.closest('[data-pkc-region="media-viewer-backdrop"]')
+    ) {
+      return;
+    }
+    // Active text selection means the user was selecting; treat the
+    // pointerup-as-click as the end of a selection drag, not a tap.
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+
+    // Find the source: .pkc-md-block (table / code) takes priority,
+    // then standalone images inside the rendered region.
+    const block = target.closest<HTMLElement>('.pkc-md-block');
+    if (block) {
+      void openMediaViewer(block);
+      return;
+    }
+    const img = target.closest<HTMLImageElement>('.pkc-md-rendered img');
+    if (img) {
+      void openMediaViewer(img);
+      return;
+    }
+  }
+
+  function handleMediaViewerClose(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+
+    // Explicit close button → close.
+    if (target.closest('[data-pkc-action="close-media-viewer"]')) {
+      closeMediaViewer();
+      return;
+    }
+    // Tap on the backdrop (outside the card itself) → close.
+    if (
+      target.closest('[data-pkc-region="media-viewer-backdrop"]')
+      && !target.closest('[data-pkc-region="media-viewer"]')
+    ) {
+      closeMediaViewer();
+      return;
+    }
+  }
+
+  function handleMediaViewerKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && isMediaViewerOpen()) {
+      closeMediaViewer();
+      e.preventDefault();
+    }
+  }
+
   function handleDocumentClick(e: MouseEvent): void {
     // Close slash menu on click outside
     if (isSlashMenuOpen()) {
@@ -6005,6 +6080,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
+  // PR #203 media viewer: tap on .pkc-md-block / .pkc-md-rendered img
+  // → open viewer; backdrop / X / Escape → close. The open handler
+  // runs in the bubble phase so anchors / copy-buttons inside the
+  // block can claim the click first via `target.closest(...)` early-
+  // exit guards.
+  document.addEventListener('click', handleMediaViewerOpen);
+  document.addEventListener('click', handleMediaViewerClose);
+  document.addEventListener('keydown', handleMediaViewerKeydown);
+
   // PR #201 v4 floating snippet helper: track focused textarea,
   // follow caret via input/scroll/selectionchange/visualViewport,
   // intercept pointerdown on trigger/popup so the keyboard stays
@@ -6091,6 +6175,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
+    document.removeEventListener('click', handleMediaViewerOpen);
+    document.removeEventListener('click', handleMediaViewerClose);
+    document.removeEventListener('keydown', handleMediaViewerKeydown);
     document.removeEventListener('focusin', handleSnippetSheetFocusIn);
     document.removeEventListener('focusout', handleSnippetSheetFocusOut);
     document.removeEventListener('input', handleSnippetCaretInput, true);

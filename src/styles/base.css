@@ -7016,3 +7016,141 @@ mark.pkc-search-mark {
     background: var(--c-accent-dim);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #203 — md-block overflow + media viewer + print shrink.
+ *
+ * Three concerns addressed:
+ *
+ *   1. **Wide tables that previously overflowed the rendered area
+ *      now scroll horizontally** within the `.pkc-md-block` wrapper.
+ *      Code blocks already had `overflow-x: auto` on `<pre>`; this
+ *      generalises the same affordance to tables.
+ *
+ *   2. **Tap on a `.pkc-md-block` (table/code) or rendered image**
+ *      opens a modal viewer (`.pkc-media-viewer-backdrop`) showing
+ *      the cloned element at full screen size. Useful for wide
+ *      tables / long code that's hard to read inline.
+ *
+ *   3. **Print pre-flight**: shrink tables proportionally so they
+ *      fit the printed page; hide overlay chrome (copy / expand
+ *      buttons, viewer backdrop) so paper output is clean.
+ * ───────────────────────────────────────────────────────────── */
+
+/* Wide tables overflow horizontally inside the wrapper. The cursor
+ * hint signals "this scrolls". `touch-action: pan-x` ensures iOS
+ * recognises horizontal swipe as scroll, not page scroll. */
+.pkc-md-block[data-pkc-md-block-kind="table"] {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+/* Tap-to-expand affordance: click cursor on tappable blocks (the
+ * actual click handler lives in action-binder; this is the visual
+ * cue). Inline links / buttons inside the block override the
+ * cursor via their own selectors. */
+.pkc-md-block,
+.pkc-md-rendered img {
+  cursor: zoom-in;
+}
+.pkc-md-block a,
+.pkc-md-block button,
+.pkc-md-block .pkc-md-copy-btn {
+  cursor: auto;
+}
+
+/* Media viewer overlay: full-screen backdrop + centred card with
+ * the cloned content. The card has its own scroll so very wide /
+ * very tall content can pan within the viewer. */
+.pkc-media-viewer-backdrop {
+  display: none;
+}
+.pkc-media-viewer-backdrop[hidden] {
+  display: none !important;
+}
+.pkc-media-viewer-backdrop:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  -webkit-tap-highlight-color: transparent;
+}
+.pkc-media-viewer-card {
+  position: relative;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pkc-media-viewer-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 1.1rem;
+  color: var(--c-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pkc-media-viewer-close:active {
+  background: var(--c-accent-dim);
+}
+.pkc-media-viewer-content {
+  flex: 1;
+  min-height: 0;
+  padding: 2.5rem 1rem 1rem;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* The cloned block inside the viewer should not inherit its
+ * narrow-area overflow caps — let it expand to the viewer's full
+ * width. */
+.pkc-media-viewer-content .pkc-media-viewer-clone {
+  cursor: auto;
+  max-width: none;
+  overflow-x: visible;
+}
+.pkc-media-viewer-content .pkc-media-viewer-clone table {
+  font-size: 1em;
+}
+.pkc-media-viewer-content img {
+  cursor: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Print: shrink wide tables so they fit, and hide overlay chrome
+ * that has no place on paper. */
+@media print {
+  .pkc-md-rendered table {
+    font-size: 0.75em;
+    page-break-inside: avoid;
+  }
+  .pkc-md-block[data-pkc-md-block-kind="table"] {
+    overflow: visible !important;
+  }
+  .pkc-md-block > .pkc-md-copy-btn,
+  .pkc-media-viewer-backdrop,
+  .pkc-snippet-trigger,
+  .pkc-snippet-popup {
+    display: none !important;
+  }
+}
