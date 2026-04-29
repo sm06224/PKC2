@@ -20,6 +20,13 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
+import {
+  applySnippet,
+  placeFloatingTrigger,
+  placeFloatingPopup,
+  type SnippetKind,
+} from './snippet-toolbar';
+import { getCaretViewportCoords } from './caret-position';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -3025,6 +3032,185 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
   }
 
+  /**
+   * Floating snippet helper (PR #201 v4, 2026-04-29).
+   *
+   * A small "✚" trigger follows the textarea caret. Tap it to open
+   * a compact horizontal popup right next to the cursor. Tap a
+   * snippet to insert; tap outside (or anywhere) to dismiss.
+   *
+   * Lifecycle:
+   *   - focusin on a markdown textarea → start tracking caret,
+   *     show trigger near current caret coordinate.
+   *   - input / scroll / selectionchange / window resize / vv resize
+   *     → reposition trigger to follow caret.
+   *   - focusout (away from trigger / popup) → hide both.
+   *   - tap on trigger → show popup, position next to trigger.
+   *   - tap on snippet button → applySnippet, hide popup, refocus
+   *     textarea.
+   *   - tap anywhere outside popup → hide popup.
+   */
+  let snippetTargetTextarea: HTMLTextAreaElement | null = null;
+  let snippetTrackingActive = false;
+
+  function isSnippetTargetTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
+    if (!(el instanceof HTMLTextAreaElement)) return false;
+    const field = el.getAttribute('data-pkc-field');
+    return (
+      field === 'body'
+      || field === 'textlog-entry-text'
+      || field === 'textlog-append-text'
+      || field === 'todo-description'
+    );
+  }
+
+  function findSnippetTrigger(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('[data-pkc-region="snippet-trigger"]');
+  }
+
+  function findSnippetPopup(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('[data-pkc-region="snippet-popup"]');
+  }
+
+  function updateSnippetTriggerPosition(): void {
+    if (!snippetTrackingActive) return;
+    const ta = snippetTargetTextarea;
+    const trigger = findSnippetTrigger();
+    if (!ta || !trigger) return;
+    if (document.activeElement !== ta) return;
+    const coords = getCaretViewportCoords(ta);
+    placeFloatingTrigger(trigger, coords);
+    trigger.hidden = false;
+  }
+
+  function showSnippetPopup(): void {
+    const ta = snippetTargetTextarea;
+    const popup = findSnippetPopup();
+    if (!ta || !popup) return;
+    const coords = getCaretViewportCoords(ta);
+    placeFloatingPopup(popup, coords);
+  }
+
+  function hideSnippetPopup(): void {
+    const popup = findSnippetPopup();
+    if (popup) popup.hidden = true;
+  }
+
+  function isSnippetPopupOpen(): boolean {
+    const popup = findSnippetPopup();
+    return !!popup && !popup.hidden;
+  }
+
+  function hideSnippetTrigger(): void {
+    const trigger = findSnippetTrigger();
+    if (trigger) trigger.hidden = true;
+  }
+
+  function startSnippetTracking(ta: HTMLTextAreaElement): void {
+    snippetTargetTextarea = ta;
+    snippetTrackingActive = true;
+    // RAF lets the keyboard begin to settle before we measure.
+    requestAnimationFrame(updateSnippetTriggerPosition);
+  }
+
+  function stopSnippetTracking(): void {
+    snippetTrackingActive = false;
+    snippetTargetTextarea = null;
+    hideSnippetTrigger();
+    hideSnippetPopup();
+  }
+
+  function handleSnippetSheetFocusIn(e: FocusEvent): void {
+    if (!isSnippetTargetTextarea(e.target)) return;
+    startSnippetTracking(e.target);
+  }
+
+  function handleSnippetSheetFocusOut(e: FocusEvent): void {
+    if (!isSnippetTargetTextarea(e.target)) return;
+    // Don't drop tracking if focus is moving onto the trigger /
+    // popup itself — that's the user reaching for our UI.
+    const next = e.relatedTarget as Element | null;
+    if (
+      next
+      && (next.closest('[data-pkc-region="snippet-trigger"]')
+        || next.closest('[data-pkc-region="snippet-popup"]'))
+    ) {
+      return;
+    }
+    stopSnippetTracking();
+  }
+
+  function handleSnippetCaretInput(e: Event): void {
+    if (!isSnippetTargetTextarea(e.target)) return;
+    if (e.target !== snippetTargetTextarea) return;
+    if (isSnippetPopupOpen()) hideSnippetPopup();
+    updateSnippetTriggerPosition();
+  }
+
+  function handleSnippetSelectionChange(): void {
+    const ta = snippetTargetTextarea;
+    if (!ta) return;
+    if (document.activeElement !== ta) return;
+    if (isSnippetPopupOpen()) hideSnippetPopup();
+    updateSnippetTriggerPosition();
+  }
+
+  function handleSnippetViewportChange(): void {
+    if (isSnippetPopupOpen()) hideSnippetPopup();
+    updateSnippetTriggerPosition();
+  }
+
+  function handleSnippetSheetPointerDown(e: PointerEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    // Tapping the trigger / popup buttons must not steal focus from
+    // the textarea (keyboard would dismiss + caret moves to body).
+    const ourElement = target.closest(
+      '[data-pkc-region="snippet-trigger"], [data-pkc-region="snippet-popup"]',
+    );
+    if (ourElement) {
+      e.preventDefault();
+    }
+  }
+
+  function handleSnippetSheetClick(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+
+    // 1. Trigger tap → open popup
+    if (target.closest('[data-pkc-action="open-snippet-popup"]')) {
+      showSnippetPopup();
+      return;
+    }
+
+    // 2. Snippet button tap → apply + close popup
+    const btn = target.closest<HTMLElement>('[data-pkc-snippet]');
+    if (btn) {
+      const kind = btn.getAttribute('data-pkc-snippet') as SnippetKind | null;
+      if (kind && snippetTargetTextarea) {
+        applySnippet(snippetTargetTextarea, kind);
+        snippetTargetTextarea.focus();
+        // Reposition trigger to the new caret location after insert.
+        requestAnimationFrame(updateSnippetTriggerPosition);
+      }
+      hideSnippetPopup();
+      return;
+    }
+
+    // 3. Click anywhere else while popup is open → close it (but
+    // keep the trigger visible so the user can reopen quickly).
+    if (isSnippetPopupOpen()) {
+      hideSnippetPopup();
+    }
+  }
+
+  function handleSnippetSheetKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && isSnippetPopupOpen()) {
+      hideSnippetPopup();
+      e.preventDefault();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     // Asset picker takes priority over slash menu when open (it replaces the
     // slash menu at the same trigger point).
@@ -5819,6 +6005,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
+  // PR #201 v4 floating snippet helper: track focused textarea,
+  // follow caret via input/scroll/selectionchange/visualViewport,
+  // intercept pointerdown on trigger/popup so the keyboard stays
+  // raised, route clicks to open/insert/close handlers, ESC to
+  // close.
+  document.addEventListener('focusin', handleSnippetSheetFocusIn);
+  document.addEventListener('focusout', handleSnippetSheetFocusOut);
+  document.addEventListener('input', handleSnippetCaretInput, true);
+  document.addEventListener('scroll', handleSnippetCaretInput, true);
+  document.addEventListener('selectionchange', handleSnippetSelectionChange);
+  document.addEventListener('pointerdown', handleSnippetSheetPointerDown, true);
+  document.addEventListener('click', handleSnippetSheetClick);
+  document.addEventListener('keydown', handleSnippetSheetKeydown);
+  window.addEventListener('resize', handleSnippetViewportChange);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleSnippetViewportChange);
+    window.visualViewport.addEventListener('scroll', handleSnippetViewportChange);
+  }
 
   // v1.2: close any floating autocomplete / picker popups when phase
   // transitions away from 'editing'. The root re-render wipes their DOM
@@ -5887,6 +6091,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
+    document.removeEventListener('focusin', handleSnippetSheetFocusIn);
+    document.removeEventListener('focusout', handleSnippetSheetFocusOut);
+    document.removeEventListener('input', handleSnippetCaretInput, true);
+    document.removeEventListener('scroll', handleSnippetCaretInput, true);
+    document.removeEventListener('selectionchange', handleSnippetSelectionChange);
+    document.removeEventListener('pointerdown', handleSnippetSheetPointerDown, true);
+    document.removeEventListener('click', handleSnippetSheetClick);
+    document.removeEventListener('keydown', handleSnippetSheetKeydown);
+    window.removeEventListener('resize', handleSnippetViewportChange);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', handleSnippetViewportChange);
+      window.visualViewport.removeEventListener('scroll', handleSnippetViewportChange);
+    }
     clearAllDragState();
     unsubPopupCleanup();
     closeSlashMenu();
