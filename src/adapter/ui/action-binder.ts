@@ -4981,12 +4981,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // then standalone images inside the rendered region.
     const block = target.closest<HTMLElement>('.pkc-md-block');
     if (block) {
-      openMediaViewer(block);
+      void openMediaViewer(block);
       return;
     }
     const img = target.closest<HTMLImageElement>('.pkc-md-rendered img');
     if (img) {
-      openMediaViewer(img);
+      void openMediaViewer(img);
       return;
     }
   }
