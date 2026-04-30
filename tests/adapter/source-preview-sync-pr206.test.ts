@@ -108,16 +108,6 @@ describe('renderMarkdown — emits data-pkc-source-line on block tokens', () => 
       /<span class="pkc-md-fence-line" data-pkc-source-line="5">baz<\/span>/,
     );
   });
-
-  it('per-line anchors: GFM table rows carry source line (separator skipped)', () => {
-    const src = '| H1 | H2 |\n| --- | --- |\n| A | B |\n| C | D |';
-    const html = renderMarkdown(src, { sourceLineAnchors: true });
-    // table_open is at line 0. Header tr is line 0. Body trs are
-    // lines 2 (skipping separator at 1), 3.
-    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="0"/);
-    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="2"/);
-    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="3"/);
-  });
 });
 
 describe('findPreviewElementForLine — closest anchor at or before line', () => {

@@ -4991,6 +4991,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     ) {
       return;
     }
+    // Disable media viewer entirely inside the split editor preview
+    // (PR #206 v10): caret-sync click is the dominant intent there,
+    // and the PiP / modal pop-up steals focus from the editing flow.
+    // Read-only views (detail / textlog body) keep the original
+    // tap-to-zoom behaviour.
+    if (target.closest('[data-pkc-region="text-edit-preview"]')) return;
     // Active text selection means the user was selecting; treat the
     // pointerup-as-click as the end of a selection drag, not a tap.
     const sel = window.getSelection();
@@ -6183,23 +6189,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       .closest('.pkc-text-split-editor')
       ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
 
-    // Reverse sync: only when (a) scroll is on the preview pane,
-    // (b) sync layer didn't trigger it, (c) user is not currently
-    // typing in the textarea (selectionchange would race).
+    // Reverse sync: only when scroll is on the preview pane. v10:
+    // consume the suppression flag ONLY when we'd otherwise act on
+    // it — checking unconditionally on every scroll event (textarea,
+    // window, …) ate the flag the programmatic preview scroll
+    // depended on, and let the next preview scroll (the
+    // programmatic one) be misclassified as user-initiated → caret
+    // moved → preview scrolled → caret moved → bounce.
     const isPreviewScroll =
       preview !== null
       && e.target instanceof Element
       && (e.target === preview || preview.contains(e.target));
-    const userInitiated = !consumeScrollSuppression();
-    if (isPreviewScroll && userInitiated && preview) {
+    if (isPreviewScroll && preview && !consumeScrollSuppression()) {
       syncCaretToPreviewScroll(textarea, preview);
     }
 
-    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
-    previewSyncRafToken = requestAnimationFrame(() => {
-      previewSyncRafToken = null;
-      repositionMarkers(textarea, preview);
-    });
+    // v10: synchronous reposition (no rAF). The mirror-div cache in
+    // `getCaretViewportCoords` keeps this O(1) on scroll events
+    // where the caret hasn't moved. Skipping rAF removes the
+    // schedule/cancel churn that was interacting badly with Mac
+    // momentum scroll inertia.
+    repositionMarkers(textarea, preview);
   }
 
   function handleSyncToggleClick(e: Event): void {

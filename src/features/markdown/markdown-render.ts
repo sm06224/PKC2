@@ -147,39 +147,6 @@ function tagSourceLines(tokens: Token[]): void {
     if (token.children && token.children.length > 0) {
       tagSourceLines(token.children);
     }
-    // PR #206 v9 (案 3 per-line anchors): stamp each `<tr>` of a
-    // GFM table with its source line. Header tr matches table_open's
-    // line; body trs at +2, +3, … because line +1 is the
-    // `| --- | --- |` separator row that has no token.
-    if (token.type === 'table_open' && token.map) {
-      tagTableRowLines(tokens, i, token.map[0]);
-    }
-  }
-}
-
-function tagTableRowLines(
-  tokens: Token[],
-  tableOpenIdx: number,
-  startLine: number,
-): void {
-  let inThead = false;
-  let inTbody = false;
-  let bodyRowOffset = 2;
-  for (let i = tableOpenIdx + 1; i < tokens.length; i++) {
-    const t = tokens[i]!;
-    if (t.type === 'table_close') break;
-    if (t.type === 'thead_open') inThead = true;
-    if (t.type === 'thead_close') inThead = false;
-    if (t.type === 'tbody_open') inTbody = true;
-    if (t.type === 'tbody_close') inTbody = false;
-    if (t.type === 'tr_open') {
-      if (inThead) {
-        t.attrSet('data-pkc-source-line', String(startLine));
-      } else if (inTbody) {
-        t.attrSet('data-pkc-source-line', String(startLine + bodyRowOffset));
-        bodyRowOffset++;
-      }
-    }
   }
 }
 
