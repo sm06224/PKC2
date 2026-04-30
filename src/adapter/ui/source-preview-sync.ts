@@ -23,8 +23,11 @@
  * binder owns event wiring.
  */
 
+import { getCaretViewportCoords } from './caret-position';
+
 const ACTIVE_ATTR = 'data-pkc-active-source';
 const MARKER_REGION = 'sync-marker';
+const EDITOR_MARKER_REGION = 'sync-editor-marker';
 
 /**
  * Render the floating overlay marker that visualises which preview
@@ -48,6 +51,26 @@ function findSyncMarker(): HTMLElement | null {
 }
 
 /**
+ * Render the editor-side caret marker — a translucent accent bar
+ * spanning the textarea's active line. Pairs with the preview-side
+ * `pkc-sync-marker` so the user can see "you are here" on both
+ * panes simultaneously.
+ *
+ * Hidden by default; positioned by `placeEditorCaretMarker`.
+ */
+export function renderEditorCaretMarker(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'pkc-editor-caret-marker';
+  el.setAttribute('data-pkc-region', EDITOR_MARKER_REGION);
+  el.hidden = true;
+  return el;
+}
+
+function findEditorCaretMarker(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-pkc-region="' + EDITOR_MARKER_REGION + '"]');
+}
+
+/**
  * Position the floating marker over `target`'s bounding rect (in
  * viewport / fixed coordinates). Hides the marker when target is
  * null.
@@ -60,7 +83,20 @@ export function placeSyncMarker(target: HTMLElement | null): void {
     return;
   }
   const rect = target.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
+  // Hide when the target has zero geometry (display: none, detached
+  // from layout) or when it has scrolled fully out of the viewport.
+  // Keeping the marker visible while the active block is off-screen
+  // is the "overlay left behind" bug — fixed by clipping here.
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const offscreen =
+    rect.width === 0
+    || rect.height === 0
+    || rect.bottom <= 0
+    || rect.right <= 0
+    || rect.top >= vh
+    || rect.left >= vw;
+  if (offscreen) {
     marker.hidden = true;
     return;
   }
@@ -181,6 +217,48 @@ export function syncCaretToPreview(
   // do this automatically when focusing + setting selection range,
   // but `scrollIntoView` is a defensive belt-and-braces.
   return true;
+}
+
+/**
+ * Position the editor-side caret marker over the textarea's active
+ * line. Uses `getCaretViewportCoords` (mirror-div technique) for
+ * accurate per-line vertical positioning even when the textarea
+ * has wrapped lines or scrolled internally.
+ *
+ * Hides the marker when the caret line is scrolled out of the
+ * textarea's visible region (clipped by the textarea's bounding
+ * rect — overflow on the textarea would have hidden the line
+ * itself anyway).
+ */
+export function placeEditorCaretMarker(
+  textarea: HTMLTextAreaElement | null,
+): void {
+  const marker = findEditorCaretMarker();
+  if (!marker) return;
+  if (!textarea || document.activeElement !== textarea) {
+    marker.hidden = true;
+    return;
+  }
+  const taRect = textarea.getBoundingClientRect();
+  if (taRect.width === 0 || taRect.height === 0) {
+    marker.hidden = true;
+    return;
+  }
+  const coords = getCaretViewportCoords(textarea);
+  // Clip the marker to the textarea's visible region. When the
+  // caret has scrolled out of the textarea's viewport, the bar
+  // would otherwise hover over the wrong content.
+  const top = Math.max(coords.top, taRect.top);
+  const bottom = Math.min(coords.top + coords.height, taRect.bottom);
+  if (bottom <= top) {
+    marker.hidden = true;
+    return;
+  }
+  marker.hidden = false;
+  marker.style.left = `${taRect.left}px`;
+  marker.style.top = `${top}px`;
+  marker.style.width = `${taRect.width}px`;
+  marker.style.height = `${bottom - top}px`;
 }
 
 /**

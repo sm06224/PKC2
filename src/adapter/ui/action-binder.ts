@@ -43,6 +43,7 @@ import {
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
+  placeEditorCaretMarker,
 } from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
@@ -6131,6 +6132,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     previewSyncRafToken = requestAnimationFrame(() => {
       previewSyncRafToken = null;
       syncPreviewToCaret(textarea, preview);
+      // Editor-side caret marker shares the same rAF tick — both
+      // overlays get placed in one paint frame.
+      placeEditorCaretMarker(textarea);
     });
   }
 
@@ -6150,15 +6154,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     syncSplitEditorPreviewToCaret(active);
   }
 
-  function handleSplitEditorScroll(e: Event): void {
-    const target = e.target;
-    // Only re-sync when scroll bubbles from the split editor pane
-    // or the document/window. Other scroll sources (sidebar, kanban)
-    // don't affect the marker position relative to the active block.
-    const isWindowScroll = target === document || target === window;
-    const isSplitEditorScroll =
-      target instanceof Element && target.closest('.pkc-text-split-editor') !== null;
-    if (!isWindowScroll && !isSplitEditorScroll) return;
+  function handleSplitEditorScroll(): void {
+    // Reposition unconditionally — split-editor may not be the
+    // direct scroll target (the user could be scrolling an ancestor
+    // pane / the window itself), and the active block's viewport
+    // rect changes regardless. Cheap because syncSplitEditorPreview…
+    // is rAF-debounced.
     const textarea = document.querySelector<HTMLTextAreaElement>(
       '.pkc-text-split-editor textarea[data-pkc-field="body"]',
     );
@@ -6200,11 +6201,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('focus', handleSplitEditorCaretChange, true);
   document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
   root.addEventListener('click', handleSplitEditorPreviewClick);
-  // Marker reposition: preview / textarea / window scroll + resize
-  // re-place the floating overlay at the active block's new viewport
-  // rect. Scroll captures via capture phase since the inner panes
-  // emit scroll events that don't bubble.
-  root.addEventListener('scroll', handleSplitEditorScroll, true);
+  // Marker reposition: capture-phase scroll on window catches all
+  // scrollable elements (window itself, panes, textarea, preview),
+  // so the floating overlay tracks its active block as anything
+  // moves. Resize handles browser viewport changes.
+  window.addEventListener('scroll', handleSplitEditorScroll, true);
   window.addEventListener('resize', handleSplitEditorScroll);
 
   root.addEventListener('click', handleClick);
@@ -6369,7 +6370,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('focus', handleSplitEditorCaretChange, true);
     document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
     root.removeEventListener('click', handleSplitEditorPreviewClick);
-    root.removeEventListener('scroll', handleSplitEditorScroll, true);
+    window.removeEventListener('scroll', handleSplitEditorScroll, true);
     window.removeEventListener('resize', handleSplitEditorScroll);
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }

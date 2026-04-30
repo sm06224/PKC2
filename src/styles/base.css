@@ -7331,6 +7331,27 @@ mark.pkc-search-mark {
 .pkc-sync-marker[hidden] {
   display: none !important;
 }
+
+/* PR #206 v3 — editor-side active-line marker.
+ *
+ * Pairs with `pkc-sync-marker` (preview side). A translucent accent
+ * bar spanning the textarea's active line, so the user sees "you
+ * are here" on both panes simultaneously. Same pointer-events:none
+ * + viewport-fixed positioning model. */
+.pkc-editor-caret-marker {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--c-accent);
+  opacity: 0.10;
+  border-left: 3px solid var(--c-accent);
+  border-radius: 0 2px 2px 0;
+  box-sizing: border-box;
+  transition: opacity 80ms ease;
+}
+.pkc-editor-caret-marker[hidden] {
+  display: none !important;
+}
 .pkc-text-edit-preview [data-pkc-source-line] {
   cursor: text;
 }
