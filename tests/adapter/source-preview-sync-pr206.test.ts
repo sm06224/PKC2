@@ -93,6 +93,31 @@ describe('renderMarkdown — emits data-pkc-source-line on block tokens', () => 
     expect(html).toMatch(/<blockquote[^>]*data-pkc-source-line="2"/);
     expect(html).toMatch(/<hr[^>]*data-pkc-source-line="4"/);
   });
+
+  it('per-line anchors: fence content has data-pkc-source-line on each line span', () => {
+    const src = 'pre\n\n```\nfoo\nbar\nbaz\n```';
+    const html = renderMarkdown(src, { sourceLineAnchors: true });
+    // Fence opens at source line 2 (0-indexed); content starts at 3.
+    expect(html).toMatch(
+      /<span class="pkc-md-fence-line" data-pkc-source-line="3">foo<\/span>/,
+    );
+    expect(html).toMatch(
+      /<span class="pkc-md-fence-line" data-pkc-source-line="4">bar<\/span>/,
+    );
+    expect(html).toMatch(
+      /<span class="pkc-md-fence-line" data-pkc-source-line="5">baz<\/span>/,
+    );
+  });
+
+  it('per-line anchors: GFM table rows carry source line (separator skipped)', () => {
+    const src = '| H1 | H2 |\n| --- | --- |\n| A | B |\n| C | D |';
+    const html = renderMarkdown(src, { sourceLineAnchors: true });
+    // table_open is at line 0. Header tr is line 0. Body trs are
+    // lines 2 (skipping separator at 1), 3.
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="0"/);
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="2"/);
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="3"/);
+  });
 });
 
 describe('findPreviewElementForLine — closest anchor at or before line', () => {

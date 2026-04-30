@@ -139,12 +139,46 @@ const BLOCK_TOKEN_TYPES_TO_TAG = new Set([
 ]);
 
 function tagSourceLines(tokens: Token[]): void {
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
     if (token.map && BLOCK_TOKEN_TYPES_TO_TAG.has(token.type)) {
       token.attrSet('data-pkc-source-line', String(token.map[0]));
     }
     if (token.children && token.children.length > 0) {
       tagSourceLines(token.children);
+    }
+    // PR #206 v9 (案 3 per-line anchors): stamp each `<tr>` of a
+    // GFM table with its source line. Header tr matches table_open's
+    // line; body trs at +2, +3, … because line +1 is the
+    // `| --- | --- |` separator row that has no token.
+    if (token.type === 'table_open' && token.map) {
+      tagTableRowLines(tokens, i, token.map[0]);
+    }
+  }
+}
+
+function tagTableRowLines(
+  tokens: Token[],
+  tableOpenIdx: number,
+  startLine: number,
+): void {
+  let inThead = false;
+  let inTbody = false;
+  let bodyRowOffset = 2;
+  for (let i = tableOpenIdx + 1; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (t.type === 'table_close') break;
+    if (t.type === 'thead_open') inThead = true;
+    if (t.type === 'thead_close') inThead = false;
+    if (t.type === 'tbody_open') inTbody = true;
+    if (t.type === 'tbody_close') inTbody = false;
+    if (t.type === 'tr_open') {
+      if (inThead) {
+        t.attrSet('data-pkc-source-line', String(startLine));
+      } else if (inTbody) {
+        t.attrSet('data-pkc-source-line', String(startLine + bodyRowOffset));
+        bodyRowOffset++;
+      }
     }
   }
 }
@@ -174,8 +208,53 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const html = renderCsvFence(token.content, token.info);
   if (html !== null) return wrapWithCopyButton(html, 'code', sourceLine);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
-  return wrapWithCopyButton(fenceHtml, 'code', sourceLine);
+  // PR #206 v9 (案 3 per-line anchors): wrap each line of code in
+  // a `<span data-pkc-source-line="N">` so caret moves WITHIN a
+  // long fence drive line-by-line preview anchoring instead of
+  // only block-level.
+  const fenceContentStartLine =
+    sourceLine !== undefined ? parseInt(sourceLine, 10) + 1 : null;
+  const wrapped =
+    fenceContentStartLine !== null && Number.isFinite(fenceContentStartLine)
+      ? wrapFenceLinesWithAnchors(fenceHtml, fenceContentStartLine)
+      : fenceHtml;
+  return wrapWithCopyButton(wrapped, 'code', sourceLine);
 };
+
+/**
+ * PR #206 v9: split a `<pre><code>...</code></pre>` HTML string
+ * into per-line spans carrying `data-pkc-source-line`. Inputs:
+ *
+ *   - `html` is the rendered fence (from `defaultFence` or a CSV
+ *     wrapper). Expected shape: `<pre><code class="...">…</code></pre>`.
+ *   - `startLine` is the source-line number of the FIRST content
+ *     line (i.e. fence open is at startLine - 1, first code line
+ *     at startLine, etc.).
+ *
+ * Falls through unchanged if the wrapper shape isn't matched —
+ * no harm done (sync layer just won't have per-line anchors for
+ * that fence). Splitting by literal `\n` may incorrectly break
+ * tokens that span newlines (multi-line strings in highlighted
+ * source) but those are rare; v9 accepts the limitation.
+ */
+function wrapFenceLinesWithAnchors(html: string, startLine: number): string {
+  const m = html.match(/^([\s\S]*?<code[^>]*>)([\s\S]*?)(<\/code>[\s\S]*)$/);
+  if (!m) return html;
+  const [, openTag, inner, closeTag] = m;
+  const lines = inner!.split('\n');
+  // markdown-it's fence renderer typically appends a trailing `\n`,
+  // producing an empty final element after split — drop it so the
+  // anchored span count matches actual code lines.
+  const lastIsEmpty = lines[lines.length - 1] === '';
+  const content = lastIsEmpty ? lines.slice(0, -1) : lines;
+  const wrappedLines = content
+    .map(
+      (line, i) =>
+        `<span class="pkc-md-fence-line" data-pkc-source-line="${startLine + i}">${line}</span>`,
+    )
+    .join('\n');
+  return `${openTag}${wrappedLines}${lastIsEmpty ? '\n' : ''}${closeTag}`;
+}
 
 // PR #196: table copy button overlay. Wraps the entire <table>…</table>
 // in a `<div class="pkc-md-block">` carrying the copy button.

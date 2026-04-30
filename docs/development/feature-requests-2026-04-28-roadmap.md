@@ -408,6 +408,27 @@ PR #206 の以下の資産を WYSIWYG への足場として保持:
    minimize、preview を expand(WYSIWYG モード)、caret 動かさない
    時はソース表示と切替
 
+### 実装経路: PKC2 core ではなく PKC-Extension で(2026-04-29 user 判断)
+
+> 案 4 はいずれ PKC-Extension(PKC-Message 経由、version 3 拡張で
+> ほぼ全権 PKC を安全に扱うように拡張が必要かも)で実現かな？
+
+WYSIWYG 編集は CodeMirror 6 / ProseMirror クラスのリッチエディタ
+フレームワークが必要で、PKC2 core(単一 HTML 制約 + 5-layer
+architecture)に直接組み込むには規模・依存関係ともに重い。
+
+代わりに **PKC-Extension(別 HTML、PostMessage 経由で host PKC
+と通信)** として実装する経路を採る:
+
+- **PKC-Message protocol v3 拡張** が前提:現状の subset(read /
+  write entry / select)では足りず、編集中 entry の caret
+  座標情報、リアルタイムの body 更新、undo/redo 統合等の API
+  が必要
+- extension 側では framework を自由に採用可能(bundle size 制約が
+  PKC2 core と独立)
+- 安全性: extension は sandbox iframe 内に隔離、PKC-Message を
+  通じてのみ host と通信(現行設計を維持)
+
 ### 依存 / 注意
 
 - 領域 6(markdown 方言拡充)と密結合:WYSIWYG で編集できる構文
