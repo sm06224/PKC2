@@ -64,6 +64,43 @@ export function isSyncEnabled(): boolean {
   return syncEnabled;
 }
 
+/**
+ * Single-shot suppression flags. When the sync layer scrolls the
+ * preview programmatically, the resulting scroll event would
+ * otherwise feed back into the reverse-sync handler (preview→
+ * editor) and form a loop. Same for caret moves. Each flag is set
+ * just before a programmatic action and consumed by the next
+ * matching event handler.
+ *
+ * Backed by `setTimeout` so a missed event (scrollTop didn't
+ * change → no scroll event) doesn't leave the flag stuck.
+ */
+let suppressNextScrollEvent = false;
+let suppressNextSelectionChange = false;
+
+export function markProgrammaticScroll(): void {
+  suppressNextScrollEvent = true;
+  setTimeout(() => { suppressNextScrollEvent = false; }, 80);
+}
+export function consumeScrollSuppression(): boolean {
+  if (suppressNextScrollEvent) {
+    suppressNextScrollEvent = false;
+    return true;
+  }
+  return false;
+}
+export function markProgrammaticCaretMove(): void {
+  suppressNextSelectionChange = true;
+  setTimeout(() => { suppressNextSelectionChange = false; }, 80);
+}
+export function consumeSelectionSuppression(): boolean {
+  if (suppressNextSelectionChange) {
+    suppressNextSelectionChange = false;
+    return true;
+  }
+  return false;
+}
+
 export function setSyncEnabled(enabled: boolean): void {
   syncEnabled = enabled;
   try {
@@ -269,6 +306,11 @@ function scrollContainerToAlignWithCaret(
   } else {
     desired = offsetInContainer - (containerH - targetH) / 2;
   }
+  // Mark the upcoming scrollTop change as programmatic so the
+  // bidirectional sync's preview→editor handler ignores the resulting
+  // scroll event (otherwise we'd loop: caret-change → preview scroll
+  // → caret update → preview scroll → …).
+  markProgrammaticScroll();
   scrollContainer.scrollTop = Math.max(0, Math.min(max, desired));
 }
 
@@ -339,11 +381,75 @@ export function syncCaretToPreview(
   if (line === null) return false;
   const offset = lineNumberToOffset(textarea.value, line);
   textarea.focus();
+  // Mark programmatic so the resulting selectionchange doesn't feed
+  // back into the editor→preview sync (which would scroll preview
+  // to align, fighting the user's preview scroll).
+  markProgrammaticCaretMove();
   textarea.selectionStart = textarea.selectionEnd = offset;
-  // Scroll the textarea so the caret is visible. Modern browsers
-  // do this automatically when focusing + setting selection range,
-  // but `scrollIntoView` is a defensive belt-and-braces.
   return true;
+}
+
+/**
+ * Find the topmost anchored block visible in a scrollable preview
+ * pane. Returns its source line, or null when no anchor is in view.
+ *
+ * Strategy: scan the anchored block list and pick the first whose
+ * top is within the preview's visible area, with a small tolerance
+ * for blocks whose top is slightly above the visible top (still
+ * "in view" if the bulk of the block is visible).
+ */
+export function findVisibleLineInPreview(preview: Element): number | null {
+  const previewRect = preview.getBoundingClientRect();
+  const anchored = preview.querySelectorAll<HTMLElement>('[data-pkc-source-line]');
+  if (anchored.length === 0) return null;
+  let lastBeforeView: HTMLElement | null = null;
+  for (const el of anchored) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < previewRect.top) {
+      // Entirely above the visible area — keep tracking as fallback.
+      lastBeforeView = el;
+      continue;
+    }
+    // First element whose bottom reaches the visible area.
+    const lineStr = el.getAttribute('data-pkc-source-line');
+    if (lineStr === null) continue;
+    const line = parseInt(lineStr, 10);
+    return Number.isFinite(line) ? line : null;
+  }
+  // Every anchored element is above the visible area — return the
+  // last one's line as the "current section".
+  if (lastBeforeView) {
+    const lineStr = lastBeforeView.getAttribute('data-pkc-source-line');
+    if (lineStr !== null) {
+      const line = parseInt(lineStr, 10);
+      return Number.isFinite(line) ? line : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reverse sync: move the textarea caret to follow the topmost
+ * visible block in the preview. Called when the user scrolls the
+ * preview pane manually (not when our own sync caused the scroll).
+ *
+ * Does NOT scroll or focus the textarea. The caret silently moves
+ * to the matching source line so when the user clicks back to the
+ * editor or starts typing, they're in the right place. The editor
+ * caret marker reflects the new position via the next `placeEditor
+ * CaretMarker` call.
+ */
+export function syncCaretToPreviewScroll(
+  textarea: HTMLTextAreaElement,
+  preview: Element,
+): void {
+  if (!syncEnabled) return;
+  const line = findVisibleLineInPreview(preview);
+  if (line === null) return;
+  const offset = lineNumberToOffset(textarea.value, line);
+  if (textarea.selectionStart === offset && textarea.selectionEnd === offset) return;
+  markProgrammaticCaretMove();
+  textarea.selectionStart = textarea.selectionEnd = offset;
 }
 
 /**

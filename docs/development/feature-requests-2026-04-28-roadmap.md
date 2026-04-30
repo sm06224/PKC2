@@ -372,6 +372,62 @@ PR 順:
 
 ---
 
+## 領域 9: WYSIWYG 編集ビジョン(将来構想、2026-04-29 user 着想)
+
+**Status**: 構想(凍結中、PR #206 の caret↔preview 双方向 sync が
+踏み台)
+
+### 着想の経緯
+
+PR #206 v7 で **caret↔preview 双方向 sync** を実装中、user 発言:
+
+> おそらくこれを極めていけば、一つのウィンドウ上で両方を叶える
+> WYSIWYG 設計につながるんですね
+
+caret 移動 → preview がそれに合うようスクロール / preview を
+スクロール → caret がそれに合う行へ移動、という双方向ハーモニーを
+極限化すると、最終形は **「ソースエディタとレンダリング結果の
+区別を意識しない単一面の編集体験」** に到達する。
+
+### 構成要素の再活用
+
+PR #206 の以下の資産を WYSIWYG への足場として保持:
+
+- `data-pkc-source-line` 属性ベースの双方向対応表
+- caret 座標(`getCaretViewportCoords` mirror-div 計算)
+- 同期 ON/OFF toggle と suppression 系のループ防止
+- `.pkc-md-rendered` を共通レンダリング contract とした opt-in API
+
+### 想定される拡張パス
+
+1. **inline edit** — preview の段落 / 見出しを直接 contenteditable
+   化し、変更を source(textarea)に逆書き
+2. **block-level toolbar** — preview block を tap → 行頭マーカー
+   切替(heading level / list type / blockquote)等の構造編集 UI
+3. **side-by-side fade** — caret 行が active な時、source side を
+   minimize、preview を expand(WYSIWYG モード)、caret 動かさない
+   時はソース表示と切替
+
+### 依存 / 注意
+
+- 領域 6(markdown 方言拡充)と密結合:WYSIWYG で編集できる構文
+  範囲は dialect の整理具合に依存
+- contenteditable の XSS / undo / IME / clipboard 周りは難所、
+  既存 textarea ベースの安全網を捨てない範囲で
+- 現状の `breaks: true` / `linkify: true` 等の markdown-it 設定
+  との折り合い
+
+### サイズ: 大(設計検討フェーズから含めて 5-10 PR、あるいは別シリーズ)
+
+### 着手前提
+
+- 領域 6(markdown 方言)整理が一定収束
+- caret↔preview sync(PR #206 系)が安定運用
+- container 設定で「WYSIWYG モード」「クラシックモード」を切替可能
+  にする UX 議論が完了
+
+---
+
 ## 領域 8: 番号体系 — 順序リスト + 章節項アウトライン番号(未決定)
 
 **Status**: 未決定 / 凍結中(2026-04-29 ユーザー判断で保留)

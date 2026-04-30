@@ -43,10 +43,13 @@ import {
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
+  syncCaretToPreviewScroll,
   placeEditorCaretMarker,
   repositionMarkers,
   isSyncEnabled,
   setSyncEnabled,
+  consumeScrollSuppression,
+  consumeSelectionSuppression,
 } from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
@@ -6154,15 +6157,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!(active instanceof HTMLTextAreaElement)) return;
     if (active.getAttribute('data-pkc-field') !== 'body') return;
     if (!active.closest('.pkc-text-split-editor')) return;
+    // PR #206 v7: skip when our own preview→editor sync just moved
+    // the caret. Otherwise we'd loop:
+    //   preview scroll → caret move → preview scroll → …
+    if (consumeSelectionSuppression()) return;
     syncSplitEditorPreviewToCaret(active);
   }
 
-  function handleSplitEditorScroll(): void {
-    // Scroll handler: ONLY reposition the floating markers (no
-    // scrollIntoView). The earlier behaviour fought the user — any
-    // attempt to manually scroll the preview snapped it back to
-    // the active block. Now scroll just keeps the overlays glued
-    // to their anchor elements as content moves.
+  function handleSplitEditorScroll(e: Event): void {
+    // Scroll handler: keeps overlays glued to their anchor elements
+    // as content moves. When the scroll target IS the preview pane
+    // AND the scroll wasn't programmatic(= user-initiated), also
+    // run the reverse sync: move the textarea caret to follow the
+    // topmost visible block. This gives the user the "look at
+    // preview, find issue, ready to edit" workflow without an
+    // explicit click.
     const textarea = document.querySelector<HTMLTextAreaElement>(
       '.pkc-text-split-editor textarea[data-pkc-field="body"]',
     );
@@ -6173,6 +6182,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const preview = textarea
       .closest('.pkc-text-split-editor')
       ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
+
+    // Reverse sync: only when (a) scroll is on the preview pane,
+    // (b) sync layer didn't trigger it, (c) user is not currently
+    // typing in the textarea (selectionchange would race).
+    const isPreviewScroll =
+      preview !== null
+      && e.target instanceof Element
+      && (e.target === preview || preview.contains(e.target));
+    const userInitiated = !consumeScrollSuppression();
+    if (isPreviewScroll && userInitiated && preview) {
+      syncCaretToPreviewScroll(textarea, preview);
+    }
+
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
     previewSyncRafToken = requestAnimationFrame(() => {
       previewSyncRafToken = null;
