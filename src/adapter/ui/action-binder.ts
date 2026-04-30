@@ -6170,46 +6170,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     syncSplitEditorPreviewToCaret(active);
   }
 
+  let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
+
   function handleSplitEditorScroll(e: Event): void {
-    // Scroll handler: keeps overlays glued to their anchor elements
-    // as content moves. When the scroll target IS the preview pane
-    // AND the scroll wasn't programmatic(= user-initiated), also
-    // run the reverse sync: move the textarea caret to follow the
-    // topmost visible block. This gives the user the "look at
-    // preview, find issue, ready to edit" workflow without an
-    // explicit click.
-    const textarea = document.querySelector<HTMLTextAreaElement>(
-      '.pkc-text-split-editor textarea[data-pkc-field="body"]',
-    );
-    if (!textarea) {
-      repositionMarkers(null, null);
-      return;
-    }
-    const preview = textarea
-      .closest('.pkc-text-split-editor')
-      ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
-
-    // Reverse sync: only when scroll is on the preview pane. v10:
-    // consume the suppression flag ONLY when we'd otherwise act on
-    // it — checking unconditionally on every scroll event (textarea,
-    // window, …) ate the flag the programmatic preview scroll
-    // depended on, and let the next preview scroll (the
-    // programmatic one) be misclassified as user-initiated → caret
-    // moved → preview scrolled → caret moved → bounce.
-    const isPreviewScroll =
-      preview !== null
-      && e.target instanceof Element
-      && (e.target === preview || preview.contains(e.target));
-    if (isPreviewScroll && preview && !consumeScrollSuppression()) {
-      syncCaretToPreviewScroll(textarea, preview);
-    }
-
-    // v10: synchronous reposition (no rAF). The mirror-div cache in
-    // `getCaretViewportCoords` keeps this O(1) on scroll events
-    // where the caret hasn't moved. Skipping rAF removes the
-    // schedule/cancel churn that was interacting badly with Mac
-    // momentum scroll inertia.
-    repositionMarkers(textarea, preview);
+    // PR #206 v11: scroll handler does ZERO work synchronously.
+    // The earlier versions read layout (getBoundingClientRect on
+    // textarea / preview blocks / markers) inside the handler,
+    // which made each scroll event a layout-read cycle. On Mac
+    // Chrome the cumulative cost during momentum-scroll bounce
+    // visibly corrupted the inertia: scrolling up then immediately
+    // down produced a "stuck" rubber-band that needed two attempts
+    // to release.
+    //
+    // Now we just stash the event target and reschedule a single
+    // post-scroll update. The actual sync work runs once, ~100 ms
+    // after the LAST scroll event (= scroll has settled). During
+    // active scroll the markers do nothing — they're position:
+    // fixed so they sit at the previous viewport coordinate while
+    // content moves under them, briefly disconnected from their
+    // anchors. When scroll settles the post-scroll handler snaps
+    // them to the correct positions.
+    const target = e.target;
+    if (scrollSettleTimer !== null) clearTimeout(scrollSettleTimer);
+    scrollSettleTimer = setTimeout(() => {
+      scrollSettleTimer = null;
+      const textarea = document.querySelector<HTMLTextAreaElement>(
+        '.pkc-text-split-editor textarea[data-pkc-field="body"]',
+      );
+      if (!textarea) {
+        repositionMarkers(null, null);
+        return;
+      }
+      const preview =
+        textarea
+          .closest('.pkc-text-split-editor')
+          ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
+      const isPreviewScroll =
+        preview !== null
+        && target instanceof Element
+        && (target === preview || preview.contains(target));
+      if (isPreviewScroll && preview && !consumeScrollSuppression()) {
+        syncCaretToPreviewScroll(textarea, preview);
+      }
+      repositionMarkers(textarea, preview);
+    }, 100);
   }
 
   function handleSyncToggleClick(e: Event): void {
@@ -6439,6 +6443,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     window.removeEventListener('scroll', handleSplitEditorScroll, true);
     window.removeEventListener('resize', handleSplitEditorScroll);
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
+    if (scrollSettleTimer !== null) { clearTimeout(scrollSettleTimer); scrollSettleTimer = null; }
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
