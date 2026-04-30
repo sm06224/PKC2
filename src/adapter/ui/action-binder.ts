@@ -44,6 +44,7 @@ import {
   syncPreviewToCaret,
   syncCaretToPreview,
   placeEditorCaretMarker,
+  repositionMarkers,
 } from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
@@ -6155,16 +6156,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   function handleSplitEditorScroll(): void {
-    // Reposition unconditionally — split-editor may not be the
-    // direct scroll target (the user could be scrolling an ancestor
-    // pane / the window itself), and the active block's viewport
-    // rect changes regardless. Cheap because syncSplitEditorPreview…
-    // is rAF-debounced.
+    // Scroll handler: ONLY reposition the floating markers (no
+    // scrollIntoView). The earlier behaviour fought the user — any
+    // attempt to manually scroll the preview snapped it back to
+    // the active block. Now scroll just keeps the overlays glued
+    // to their anchor elements as content moves.
     const textarea = document.querySelector<HTMLTextAreaElement>(
       '.pkc-text-split-editor textarea[data-pkc-field="body"]',
     );
-    if (!textarea) return;
-    syncSplitEditorPreviewToCaret(textarea);
+    if (!textarea) {
+      repositionMarkers(null, null);
+      return;
+    }
+    const preview = textarea
+      .closest('.pkc-text-split-editor')
+      ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
+    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
+    previewSyncRafToken = requestAnimationFrame(() => {
+      previewSyncRafToken = null;
+      repositionMarkers(textarea, preview);
+    });
   }
 
   function handleSplitEditorPreviewClick(e: Event): void {

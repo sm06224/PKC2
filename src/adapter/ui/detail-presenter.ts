@@ -142,7 +142,11 @@ const textPresenter: DetailPresenter = {
     // Initial preview
     const initialSource = entry.body;
     if (initialSource && hasMarkdownSyntax(initialSource)) {
-      preview.innerHTML = renderMarkdown(initialSource);
+      // PR #206: opt in to source-line anchors so caret↔preview
+      // sync works from the moment the editor opens (without this
+      // the user had to type / press Enter to retrigger render
+      // before the overlay activated).
+      preview.innerHTML = renderMarkdown(initialSource, { sourceLineAnchors: true });
     } else if (initialSource) {
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';

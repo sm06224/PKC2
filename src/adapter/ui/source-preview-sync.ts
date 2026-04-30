@@ -191,10 +191,32 @@ export function syncPreviewToCaret(
     return;
   }
   setActive(preview, target);
-  target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+  // `block: 'center'` keeps the active block near the viewport
+  // middle rather than letting `nearest` glue it to whichever edge
+  // the user just navigated past.
+  target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
   // Place the floating overlay AFTER scrollIntoView so the marker's
   // bounding rect reflects the post-scroll position.
   placeSyncMarker(target);
+}
+
+/**
+ * Re-place the floating markers without triggering scroll. Called
+ * on scroll / resize so the overlay tracks its anchor element
+ * without fighting the user's own scrolling.
+ */
+export function repositionMarkers(
+  textarea: HTMLTextAreaElement | null,
+  preview: Element | null,
+): void {
+  if (preview && textarea) {
+    const line = caretSourceLine(textarea);
+    const target = findPreviewElementForLine(preview, line);
+    placeSyncMarker(target);
+  } else {
+    placeSyncMarker(null);
+  }
+  placeEditorCaretMarker(textarea);
 }
 
 /**
