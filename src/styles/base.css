@@ -7353,15 +7353,15 @@ mark.pkc-search-mark {
   display: none !important;
 }
 
-/* PR #206 v5 — sync ON/OFF toggle button.
+/* PR #206 v5 / v6 — sync ON/OFF toggle button.
  *
- * Lives in the split-editor wrapper, positioned absolute at top-
- * right of the preview area. State stored persistently via
- * `localStorage('pkc2.sync-enabled')`; the button reflects current
- * state via `data-pkc-sync-state="on" | "off"`.
- *
- * `.pkc-text-split-editor` should already be `position: relative`
- * (carries the resize handle); we lean on that. */
+ * Lives in the split-editor wrapper as a sibling of textarea /
+ * resize-handle / preview. Wrapper is `position: relative` (grid
+ * container, doesn't scroll) so the toggle's absolute positioning
+ * stays put as preview scrolls. State stored persistently via
+ * `localStorage('pkc2.sync-enabled')`; the button reflects state
+ * via `data-pkc-sync-state="on" | "off"`.
+ */
 .pkc-text-split-editor {
   position: relative;
 }

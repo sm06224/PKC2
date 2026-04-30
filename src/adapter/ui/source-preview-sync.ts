@@ -37,16 +37,27 @@ const EDITOR_MARKER_REGION = 'sync-editor-marker';
  * accent rectangles compete with content focus.
  *
  * Persisted via `localStorage('pkc2.sync-enabled')` so the
- * preference survives reloads. Default = true.
+ * preference survives reloads. Default:
+ *   - **off** on iPhone portrait (`pointer:coarse + max-width:640px`)
+ *     because the markers crowd the small viewport and the user
+ *     usually edits in textarea-only mode there
+ *   - **on** elsewhere (desktop / iPad / large screens)
  */
 let syncEnabled: boolean = (() => {
   try {
     const raw = window.localStorage?.getItem('pkc2.sync-enabled');
-    if (raw === null || raw === undefined) return true;
-    return raw !== 'false';
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
   } catch {
-    return true;
+    /* localStorage unavailable — fall through to media-query default. */
   }
+  // Never set: default depends on screen / pointer tier.
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    if (window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches) {
+      return false;
+    }
+  }
+  return true;
 })();
 
 export function isSyncEnabled(): boolean {
@@ -225,19 +236,20 @@ function setActive(preview: Element, el: HTMLElement | null): void {
 }
 
 /**
- * Custom scroll: bring `target` into view by scrolling **only**
- * the `scrollContainer`. Avoids `Element.scrollIntoView`'s default
- * behaviour of walking the whole scroll chain (which would scroll
- * outer panes / the window itself, dragging the textarea along
- * and breaking free scrolling inside the editor).
+ * Custom scroll: scroll **only** the preview pane so the active
+ * block's top edge aligns vertically with the editor caret's top
+ * edge. This is the "guide line" alignment the user asked for —
+ * a horizontal sweep at the caret y will visually intersect the
+ * matching preview block, instead of the block sitting several
+ * lines off as it did with `block: 'center'`.
  *
- * Centers the target vertically when possible; clamps to scroll
- * range so very-tall targets that exceed the container height
- * don't produce weird negative scrollTop values.
+ * Falls back to centering when the textarea isn't focused or
+ * caret coords aren't available.
  */
-function scrollContainerToCenter(
+function scrollContainerToAlignWithCaret(
   scrollContainer: HTMLElement,
   target: HTMLElement,
+  textarea: HTMLTextAreaElement | null,
 ): void {
   const containerRect = scrollContainer.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
@@ -245,16 +257,27 @@ function scrollContainerToCenter(
     (targetRect.top - containerRect.top) + scrollContainer.scrollTop;
   const containerH = scrollContainer.clientHeight;
   const targetH = targetRect.height;
-  const desired = offsetInContainer - (containerH - targetH) / 2;
   const max = scrollContainer.scrollHeight - containerH;
+  let desired: number;
+  // Try to align the block top with the caret top (= visually
+  // equal y across both panes).
+  if (textarea && document.activeElement === textarea) {
+    const caretY = getCaretViewportCoords(textarea).top;
+    const desiredBlockTopInViewport = caretY;
+    const desiredBlockTopInContainer = desiredBlockTopInViewport - containerRect.top;
+    desired = offsetInContainer - desiredBlockTopInContainer;
+  } else {
+    desired = offsetInContainer - (containerH - targetH) / 2;
+  }
   scrollContainer.scrollTop = Math.max(0, Math.min(max, desired));
 }
 
 /**
  * Sync the preview pane to the textarea caret: find the preview
- * element matching the caret's source line, scroll it into view,
- * and mark it as active. No-op if the preview has no anchored
- * elements (e.g. plain-text fallback render path).
+ * element matching the caret's source line, scroll it so its top
+ * edge aligns with the caret line, and mark it as active. No-op
+ * if the preview has no anchored elements (e.g. plain-text
+ * fallback render path).
  */
 export function syncPreviewToCaret(
   textarea: HTMLTextAreaElement,
@@ -274,7 +297,7 @@ export function syncPreviewToCaret(
   // main pane / window and drag the sibling textarea along, which
   // breaks free scrolling inside the editor.
   if (preview instanceof HTMLElement) {
-    scrollContainerToCenter(preview, target);
+    scrollContainerToAlignWithCaret(preview, target, textarea);
   }
   // Place the floating overlay AFTER scrolling so the marker's
   // bounding rect reflects the post-scroll position.

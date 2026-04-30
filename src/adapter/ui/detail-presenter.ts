@@ -158,11 +158,10 @@ const textPresenter: DetailPresenter = {
     }
     wrapper.appendChild(preview);
 
-    // PR #206 v5: sync ON/OFF toggle button. Lives in the wrapper
-    // (positioned absolute via CSS, top-right of preview area) so
-    // it's reachable but doesn't interfere with the rendered HTML.
-    // Initial visual state is reflected by `setSyncEnabled` after
-    // first render via `requestAnimationFrame`.
+    // PR #206 v5/v6: sync ON/OFF toggle. Lives in the wrapper as a
+    // sibling of preview / textarea / resize-handle so preview's
+    // own scroll doesn't carry it off-screen. CSS positions it
+    // absolute over the preview area's top-right corner.
     const syncToggle = document.createElement('button');
     syncToggle.type = 'button';
     syncToggle.className = 'pkc-sync-toggle';
