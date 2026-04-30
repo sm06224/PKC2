@@ -1,5 +1,6 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { isSyncEnabled } from './source-preview-sync';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -156,6 +157,28 @@ const textPresenter: DetailPresenter = {
       preview.textContent = '(preview)';
     }
     wrapper.appendChild(preview);
+
+    // PR #206 v5: sync ON/OFF toggle button. Lives in the wrapper
+    // (positioned absolute via CSS, top-right of preview area) so
+    // it's reachable but doesn't interfere with the rendered HTML.
+    // Initial visual state is reflected by `setSyncEnabled` after
+    // first render via `requestAnimationFrame`.
+    const syncToggle = document.createElement('button');
+    syncToggle.type = 'button';
+    syncToggle.className = 'pkc-sync-toggle';
+    syncToggle.setAttribute('data-pkc-action', 'toggle-source-preview-sync');
+    syncToggle.setAttribute(
+      'data-pkc-sync-state',
+      isSyncEnabled() ? 'on' : 'off',
+    );
+    syncToggle.setAttribute('aria-pressed', isSyncEnabled() ? 'true' : 'false');
+    syncToggle.setAttribute(
+      'title',
+      isSyncEnabled() ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+    );
+    syncToggle.setAttribute('aria-label', 'Toggle caret-preview sync');
+    syncToggle.textContent = '⇄';
+    wrapper.appendChild(syncToggle);
 
     return wrapper;
   },

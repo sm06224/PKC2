@@ -30,6 +30,57 @@ const MARKER_REGION = 'sync-marker';
 const EDITOR_MARKER_REGION = 'sync-editor-marker';
 
 /**
+ * Module-level enable flag. When false, all sync helpers
+ * (`syncPreviewToCaret` / `repositionMarkers` / `placeEditorCaretMarker`)
+ * become no-ops and clear any visual state. Letting the user mute
+ * the overlays is useful when reading long documents where the
+ * accent rectangles compete with content focus.
+ *
+ * Persisted via `localStorage('pkc2.sync-enabled')` so the
+ * preference survives reloads. Default = true.
+ */
+let syncEnabled: boolean = (() => {
+  try {
+    const raw = window.localStorage?.getItem('pkc2.sync-enabled');
+    if (raw === null || raw === undefined) return true;
+    return raw !== 'false';
+  } catch {
+    return true;
+  }
+})();
+
+export function isSyncEnabled(): boolean {
+  return syncEnabled;
+}
+
+export function setSyncEnabled(enabled: boolean): void {
+  syncEnabled = enabled;
+  try {
+    window.localStorage?.setItem('pkc2.sync-enabled', enabled ? 'true' : 'false');
+  } catch {
+    /* localStorage unavailable (private mode / SSR) — in-memory only. */
+  }
+  if (!enabled) {
+    // Tear down all visual state so disabled sync looks fully off.
+    const marker = findSyncMarker();
+    if (marker) marker.hidden = true;
+    const editorMarker = findEditorCaretMarker();
+    if (editorMarker) editorMarker.hidden = true;
+    for (const el of document.querySelectorAll('[' + ACTIVE_ATTR + ']')) {
+      el.removeAttribute(ACTIVE_ATTR);
+    }
+  }
+  // Reflect new state on every toggle button (active style).
+  for (const btn of document.querySelectorAll<HTMLElement>(
+    '[data-pkc-action="toggle-source-preview-sync"]',
+  )) {
+    btn.setAttribute('data-pkc-sync-state', enabled ? 'on' : 'off');
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    btn.setAttribute('title', enabled ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)');
+  }
+}
+
+/**
  * Render the floating overlay marker that visualises which preview
  * block the system currently maps the caret to. Translucent accent
  * fill + dashed accent border, hidden by default. Positioned by
@@ -174,6 +225,32 @@ function setActive(preview: Element, el: HTMLElement | null): void {
 }
 
 /**
+ * Custom scroll: bring `target` into view by scrolling **only**
+ * the `scrollContainer`. Avoids `Element.scrollIntoView`'s default
+ * behaviour of walking the whole scroll chain (which would scroll
+ * outer panes / the window itself, dragging the textarea along
+ * and breaking free scrolling inside the editor).
+ *
+ * Centers the target vertically when possible; clamps to scroll
+ * range so very-tall targets that exceed the container height
+ * don't produce weird negative scrollTop values.
+ */
+function scrollContainerToCenter(
+  scrollContainer: HTMLElement,
+  target: HTMLElement,
+): void {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const offsetInContainer =
+    (targetRect.top - containerRect.top) + scrollContainer.scrollTop;
+  const containerH = scrollContainer.clientHeight;
+  const targetH = targetRect.height;
+  const desired = offsetInContainer - (containerH - targetH) / 2;
+  const max = scrollContainer.scrollHeight - containerH;
+  scrollContainer.scrollTop = Math.max(0, Math.min(max, desired));
+}
+
+/**
  * Sync the preview pane to the textarea caret: find the preview
  * element matching the caret's source line, scroll it into view,
  * and mark it as active. No-op if the preview has no anchored
@@ -183,6 +260,7 @@ export function syncPreviewToCaret(
   textarea: HTMLTextAreaElement,
   preview: Element,
 ): void {
+  if (!syncEnabled) return;
   const line = caretSourceLine(textarea);
   const target = findPreviewElementForLine(preview, line);
   if (!target) {
@@ -191,11 +269,14 @@ export function syncPreviewToCaret(
     return;
   }
   setActive(preview, target);
-  // `block: 'center'` keeps the active block near the viewport
-  // middle rather than letting `nearest` glue it to whichever edge
-  // the user just navigated past.
-  target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
-  // Place the floating overlay AFTER scrollIntoView so the marker's
+  // Scroll ONLY the preview pane (custom function), not the entire
+  // scroll chain. `Element.scrollIntoView` would walk up to the
+  // main pane / window and drag the sibling textarea along, which
+  // breaks free scrolling inside the editor.
+  if (preview instanceof HTMLElement) {
+    scrollContainerToCenter(preview, target);
+  }
+  // Place the floating overlay AFTER scrolling so the marker's
   // bounding rect reflects the post-scroll position.
   placeSyncMarker(target);
 }
@@ -209,6 +290,7 @@ export function repositionMarkers(
   textarea: HTMLTextAreaElement | null,
   preview: Element | null,
 ): void {
+  if (!syncEnabled) return;
   if (preview && textarea) {
     const line = caretSourceLine(textarea);
     const target = findPreviewElementForLine(preview, line);
@@ -255,6 +337,7 @@ export function syncCaretToPreview(
 export function placeEditorCaretMarker(
   textarea: HTMLTextAreaElement | null,
 ): void {
+  if (!syncEnabled) return;
   const marker = findEditorCaretMarker();
   if (!marker) return;
   if (!textarea || document.activeElement !== textarea) {

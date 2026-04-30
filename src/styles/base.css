@@ -7352,6 +7352,53 @@ mark.pkc-search-mark {
 .pkc-editor-caret-marker[hidden] {
   display: none !important;
 }
+
+/* PR #206 v5 — sync ON/OFF toggle button.
+ *
+ * Lives in the split-editor wrapper, positioned absolute at top-
+ * right of the preview area. State stored persistently via
+ * `localStorage('pkc2.sync-enabled')`; the button reflects current
+ * state via `data-pkc-sync-state="on" | "off"`.
+ *
+ * `.pkc-text-split-editor` should already be `position: relative`
+ * (carries the resize handle); we lean on that. */
+.pkc-text-split-editor {
+  position: relative;
+}
+.pkc-sync-toggle {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--c-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pkc-sync-toggle:hover {
+  opacity: 1;
+}
+.pkc-sync-toggle[data-pkc-sync-state="on"] {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+  opacity: 0.85;
+}
+.pkc-sync-toggle[data-pkc-sync-state="off"] {
+  color: var(--c-muted);
+  text-decoration: line-through;
+  opacity: 0.45;
+}
 .pkc-text-edit-preview [data-pkc-source-line] {
   cursor: text;
 }

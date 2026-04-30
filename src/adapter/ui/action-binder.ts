@@ -45,6 +45,8 @@ import {
   syncCaretToPreview,
   placeEditorCaretMarker,
   repositionMarkers,
+  isSyncEnabled,
+  setSyncEnabled,
 } from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
@@ -6178,12 +6180,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     });
   }
 
+  function handleSyncToggleClick(e: Event): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-action="toggle-source-preview-sync"]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSyncEnabled(!isSyncEnabled());
+    // If turning ON, immediately re-sync so the user sees the
+    // markers without needing to type / move caret.
+    if (isSyncEnabled()) {
+      const ta = btn
+        .closest('.pkc-text-split-editor')
+        ?.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+      if (ta) syncSplitEditorPreviewToCaret(ta);
+    }
+  }
+
   function handleSplitEditorPreviewClick(e: Event): void {
     const target = e.target as Element | null;
     if (!target) return;
     // Don't hijack clicks on real interactive descendants — links,
-    // buttons (copy / expand / sort / filter), input fields, table
-    // cells getting selected. Sync only on bare text / surface clicks.
+    // buttons (copy / expand / sort / filter / sync-toggle), input
+    // fields, table cells getting selected. Sync only on bare text
+    // / surface clicks.
     if (
       target.closest('a')
       || target.closest('button')
@@ -6212,6 +6233,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('focus', handleSplitEditorCaretChange, true);
   document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
   root.addEventListener('click', handleSplitEditorPreviewClick);
+  root.addEventListener('click', handleSyncToggleClick);
   // Marker reposition: capture-phase scroll on window catches all
   // scrollable elements (window itself, panes, textarea, preview),
   // so the floating overlay tracks its active block as anything
@@ -6381,6 +6403,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('focus', handleSplitEditorCaretChange, true);
     document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
     root.removeEventListener('click', handleSplitEditorPreviewClick);
+    root.removeEventListener('click', handleSyncToggleClick);
     window.removeEventListener('scroll', handleSplitEditorScroll, true);
     window.removeEventListener('resize', handleSplitEditorScroll);
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
