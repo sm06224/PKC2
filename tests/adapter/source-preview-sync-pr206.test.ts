@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   caretSourceLine,
   findPreviewElementForLine,
+  findSourceLineByPoint,
   findSourceLineForElement,
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -268,5 +269,21 @@ describe('syncCaretToPreview — move textarea caret to a preview line', () => {
     el.setAttribute('data-pkc-source-line', '0');
     syncCaretToPreview(ta, el);
     expect(ta.selectionStart).toBe(0);
+  });
+});
+
+describe('findSourceLineByPoint — Y-position fallback for un-anchored clicks', () => {
+  it('returns null on an empty preview', () => {
+    const preview = document.createElement('div');
+    expect(findSourceLineByPoint(preview, 100)).toBeNull();
+  });
+
+  it('returns the first anchor when no anchor sits at-or-above the click', () => {
+    const preview = document.createElement('div');
+    preview.innerHTML =
+      '<p data-pkc-source-line="3">a</p><p data-pkc-source-line="5">b</p>';
+    document.body.appendChild(preview);
+    // viewportY=-9999 is above every anchor → fallback to first
+    expect(findSourceLineByPoint(preview, -9999)).toBe(3);
   });
 });

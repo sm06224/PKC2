@@ -5280,7 +5280,12 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
       const nameByKey = buildAssetNameMap(container);
       const resolved = resolveAssetReferences(entry.body, { assets: container.assets, mimeByKey, nameByKey });
       if (hasMarkdownSyntax(resolved)) {
-        preview.innerHTML = renderMarkdown(resolved);
+        // PR #206 v16: keep `sourceLineAnchors: true` so caret↔preview
+        // sync still works on entries that contain `asset:` references.
+        // Without this, the asset-resolved re-render strips the
+        // anchors that detail-presenter put down — preview clicks
+        // then can't find a source line and silently no-op.
+        preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
       }
     }
   }

@@ -6206,15 +6206,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleSplitEditorPreviewClick(e: Event): void {
     const target = e.target as Element | null;
     if (!target) return;
-    // Don't hijack clicks on real interactive descendants — links,
-    // buttons (copy / expand / sort / filter / sync-toggle), input
-    // fields, table cells getting selected. Sync only on bare text
-    // / surface clicks.
+    // Block ONLY the chrome controls that own the click — copy /
+    // expand / sort / filter / sync-toggle buttons. Native form
+    // controls also get a pass so the user can interact with them.
+    //
+    // PR #206 v16: previously `[data-pkc-action]` was a blanket block,
+    // which silently ate clicks on `<span data-pkc-action=
+    // "navigate-card-ref">` cards and other inline action elements
+    // — caret jump never fired and the user reported "click does
+    // nothing". Now we only opt out for known conflicting actions;
+    // everything else (cards, entry-refs, asset-refs, plain text /
+    // table cells) gets caret-sync AND any default click handling
+    // (the later `handleClick` still dispatches navigations).
     if (
-      target.closest('a')
-      || target.closest('button')
+      target.closest('button')
       || target.closest('input')
-      || target.closest('[data-pkc-action]')
+      || target.closest('[data-pkc-action="copy-md-block"]')
+      || target.closest('[data-pkc-action="expand-md-block"]')
+      || target.closest('[data-pkc-action="md-table-sort"]')
+      || target.closest('[data-pkc-action="md-table-filter-toggle"]')
     ) {
       return;
     }
@@ -6226,7 +6236,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       'textarea[data-pkc-field="body"]',
     );
     if (!textarea) return;
-    syncCaretToPreview(textarea, target);
+    // Pointer coordinates feed into the Y-fallback when the click
+    // target has no anchored ancestor (e.g. blank gaps between
+    // blocks, the preview's own padding).
+    const me = e instanceof MouseEvent ? e : null;
+    syncCaretToPreview(textarea, target, me ? { x: me.clientX, y: me.clientY } : undefined);
   }
 
   root.addEventListener('keyup', handleTextEditPreviewUpdate);

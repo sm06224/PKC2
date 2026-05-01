@@ -316,6 +316,41 @@ export function caretSourceLine(textarea: HTMLTextAreaElement): number {
 }
 
 /**
+ * Pick a source line based on a viewport Y coordinate inside
+ * `preview` — picks the anchored block whose top is closest to,
+ * but not below, the click. When all anchors are below, falls back
+ * to the very first anchor. Used as a fallback for syncCaretTo
+ * Preview when the click target itself has no anchored ancestor
+ * (e.g. preview padding, blank gap between blocks).
+ *
+ * PR #206 v16.
+ */
+export function findSourceLineByPoint(
+  preview: Element,
+  viewportY: number,
+): number | null {
+  const anchored = preview.querySelectorAll<HTMLElement>('[data-pkc-source-line]');
+  if (anchored.length === 0) return null;
+  let best: HTMLElement | null = null;
+  let bestTop = -Infinity;
+  for (const el of anchored) {
+    const r = el.getBoundingClientRect();
+    if (r.top <= viewportY && r.top > bestTop) {
+      best = el;
+      bestTop = r.top;
+    }
+  }
+  // No anchor sits at-or-above the click — return the very first
+  // anchor (= top of preview).
+  if (!best) best = anchored[0] ?? null;
+  if (!best) return null;
+  const lineStr = best.getAttribute('data-pkc-source-line');
+  if (lineStr === null) return null;
+  const line = parseInt(lineStr, 10);
+  return Number.isFinite(line) ? line : null;
+}
+
+/**
  * Find the preview element whose `data-pkc-source-line` is the
  * closest match for the given source line — preferring the latest
  * (= largest line) anchor at or before `targetLine`. Returns null
@@ -500,8 +535,20 @@ export function repositionMarkers(
 export function syncCaretToPreview(
   textarea: HTMLTextAreaElement,
   el: Element,
+  point?: { x: number; y: number },
 ): boolean {
-  const line = findSourceLineForElement(el);
+  // First try the closest anchored ancestor (most precise). If the
+  // click landed in an un-anchored gap (preview padding, between
+  // blocks, inside a fence's blank line), fall back to "topmost
+  // anchor whose top ≤ click Y" so the editor still jumps to a
+  // sensible nearby line. PR #206 v16.
+  let line = findSourceLineForElement(el);
+  if (line === null && point) {
+    const previewPane = el.closest<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (previewPane) line = findSourceLineByPoint(previewPane, point.y);
+  }
   if (line === null) return false;
   const offset = lineNumberToOffset(textarea.value, line);
   textarea.focus();
