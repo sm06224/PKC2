@@ -75,6 +75,10 @@ function findSyncDebugLine(): HTMLElement | null {
  * Position the debug line at viewport y. Hides it when debug mode
  * is off — so flipping the localStorage flag without reload tears
  * down cleanly.
+ *
+ * v14: clip the line to the split editor wrapper bounds instead of
+ * spanning the whole viewport. Without clipping the trace bled
+ * across sidebar / meta pane / shell chrome.
  */
 function placeSyncDebugLine(viewportY: number | null): void {
   const el = findSyncDebugLine();
@@ -83,8 +87,21 @@ function placeSyncDebugLine(viewportY: number | null): void {
     el.hidden = true;
     return;
   }
+  const wrapper = document.querySelector<HTMLElement>('.pkc-text-split-editor');
+  if (!wrapper) {
+    el.hidden = true;
+    return;
+  }
+  const rect = wrapper.getBoundingClientRect();
+  if (viewportY < rect.top || viewportY > rect.bottom) {
+    el.hidden = true;
+    return;
+  }
   el.hidden = false;
   el.style.top = `${viewportY}px`;
+  el.style.left = `${rect.left}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.right = 'auto';
 }
 
 /**
@@ -257,11 +274,32 @@ export function placeSyncMarker(target: HTMLElement | null): void {
     marker.hidden = true;
     return;
   }
+  // v14: clip the marker to the preview pane's bounds so it never
+  // bleeds above / below the rendered area when the active block
+  // is partially scrolled out of preview's visible region.
+  const previewPane = target.closest<HTMLElement>(
+    '[data-pkc-region="text-edit-preview"]',
+  );
+  let top = rect.top;
+  let bottom = rect.bottom;
+  let left = rect.left;
+  let right = rect.right;
+  if (previewPane) {
+    const paneRect = previewPane.getBoundingClientRect();
+    top = Math.max(top, paneRect.top);
+    bottom = Math.min(bottom, paneRect.bottom);
+    left = Math.max(left, paneRect.left);
+    right = Math.min(right, paneRect.right);
+  }
+  if (bottom <= top || right <= left) {
+    marker.hidden = true;
+    return;
+  }
   marker.hidden = false;
-  marker.style.left = `${rect.left}px`;
-  marker.style.top = `${rect.top}px`;
-  marker.style.width = `${rect.width}px`;
-  marker.style.height = `${rect.height}px`;
+  marker.style.left = `${left}px`;
+  marker.style.top = `${top}px`;
+  marker.style.width = `${right - left}px`;
+  marker.style.height = `${bottom - top}px`;
 }
 
 /**
@@ -472,7 +510,30 @@ export function syncCaretToPreview(
   // to align, fighting the user's preview scroll).
   markProgrammaticCaretMove();
   textarea.selectionStart = textarea.selectionEnd = offset;
+  // v14: also scroll the textarea internally so the targeted line
+  // is visible. browsers don't always auto-scroll on programmatic
+  // selectionStart change. Use the same caret-coords math to
+  // compute where the caret line currently lives, then adjust
+  // textarea.scrollTop so the line lands ~35% from the top of the
+  // visible textarea region.
+  scrollTextareaToCaret(textarea);
   return true;
+}
+
+/**
+ * Scroll the textarea internally so the current caret line is
+ * comfortably visible (~35% from the top, matches preview pane's
+ * safe-scroll behaviour).
+ */
+function scrollTextareaToCaret(textarea: HTMLTextAreaElement): void {
+  const taRect = textarea.getBoundingClientRect();
+  if (taRect.height === 0) return;
+  const coords = getCaretViewportCoords(textarea);
+  // The line's content position inside the textarea (independent
+  // of current scroll): caretY_viewport - taRect.top + scrollTop.
+  const lineContentY = coords.top - taRect.top + textarea.scrollTop;
+  const desiredScrollTop = Math.max(0, lineContentY - taRect.height * 0.35);
+  textarea.scrollTop = desiredScrollTop;
 }
 
 /**
