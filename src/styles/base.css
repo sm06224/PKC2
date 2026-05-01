@@ -7353,6 +7353,33 @@ mark.pkc-search-mark {
   display: none !important;
 }
 
+/* EXPERIMENTAL — sync debug overlay (PR #206 v13).
+ *
+ * Thin horizontal line spanning the viewport at the computed
+ * caret y. Visible only when debug mode is enabled
+ * (localStorage('pkc2.sync-debug') === 'true' or
+ * URL `?pkc-sync-debug=1`).
+ *
+ * To remove: delete this rule + the matching
+ * `renderSyncDebugLine` / `placeSyncDebugLine` / `isSyncDebugMode`
+ * code in `source-preview-sync.ts` + the `renderSyncDebugLine`
+ * call in `renderer.ts`.
+ */
+.pkc-sync-debug-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--c-accent);
+  opacity: 0.55;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.pkc-sync-debug-line[hidden] {
+  display: none !important;
+}
+
 /* PR #206 v5 / v6 — sync ON/OFF toggle button.
  *
  * Lives in the split-editor wrapper as a sibling of textarea /

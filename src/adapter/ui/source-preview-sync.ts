@@ -28,6 +28,64 @@ import { getCaretViewportCoords } from './caret-position';
 const ACTIVE_ATTR = 'data-pkc-active-source';
 const MARKER_REGION = 'sync-marker';
 const EDITOR_MARKER_REGION = 'sync-editor-marker';
+const DEBUG_LINE_REGION = 'sync-debug-line';
+
+/**
+ * EXPERIMENTAL — sync debug overlay (PR #206 v13, 2026-05-01).
+ *
+ * Toggleable via `localStorage('pkc2.sync-debug') === 'true'` or
+ * URL query `?pkc-sync-debug=1`. When enabled, a thin horizontal
+ * line is drawn at the computed caret y (viewport coords),
+ * extending across the whole viewport so it visibly intersects
+ * BOTH the editor caret and the preview block top — letting the
+ * user see whether the alignment math is producing matching y
+ * values.
+ *
+ * To remove this entire feature later: delete the constants /
+ * `renderSyncDebugLine` / `placeSyncDebugLine` / `isSyncDebugMode`
+ * exports + their CSS rule + their renderer wiring. The rest of
+ * the sync layer is untouched.
+ */
+function isSyncDebugMode(): boolean {
+  try {
+    if (window.localStorage?.getItem('pkc2.sync-debug') === 'true') return true;
+  } catch {
+    /* localStorage unavailable */
+  }
+  if (typeof window !== 'undefined' && window.location?.search) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pkc-sync-debug') === '1') return true;
+  }
+  return false;
+}
+
+export function renderSyncDebugLine(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'pkc-sync-debug-line';
+  el.setAttribute('data-pkc-region', DEBUG_LINE_REGION);
+  el.hidden = true;
+  return el;
+}
+
+function findSyncDebugLine(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-pkc-region="' + DEBUG_LINE_REGION + '"]');
+}
+
+/**
+ * Position the debug line at viewport y. Hides it when debug mode
+ * is off — so flipping the localStorage flag without reload tears
+ * down cleanly.
+ */
+function placeSyncDebugLine(viewportY: number | null): void {
+  const el = findSyncDebugLine();
+  if (!el) return;
+  if (!isSyncDebugMode() || viewportY === null) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.style.top = `${viewportY}px`;
+}
 
 /**
  * Module-level enable flag. When false, all sync helpers
@@ -318,10 +376,21 @@ function blockTargetY(
   const range = Math.max(1, end - start);
   const progress = Math.max(0, Math.min(1, (caretLine - start) / range));
   const containerRect = scrollContainer.getBoundingClientRect();
-  const blockRect = block.getBoundingClientRect();
+  // v13: when the anchor is a `.pkc-md-block` wrapper (fence / table
+  // outer chrome with copy / expand buttons + padding), use the
+  // INNER `<pre>` / `<table>` rect for height & top so the caret
+  // alignment lands on the user-visible content, not the wrapper's
+  // padded outer edge. Other anchors (`<p>`, `<h1>`, `<li>`,
+  // `<blockquote>`, `<hr>`, fence per-line `<span>`) have no inner
+  // chrome layer so we use them directly.
+  let measureRect = block.getBoundingClientRect();
+  if (block.classList.contains('pkc-md-block')) {
+    const inner = block.querySelector<HTMLElement>('pre, table');
+    if (inner) measureRect = inner.getBoundingClientRect();
+  }
   const blockTopInScroll =
-    scrollContainer.scrollTop + (blockRect.top - containerRect.top);
-  return blockTopInScroll + blockRect.height * progress;
+    scrollContainer.scrollTop + (measureRect.top - containerRect.top);
+  return blockTopInScroll + measureRect.height * progress;
 }
 
 /**
@@ -341,9 +410,16 @@ export function syncPreviewToCaret(
   if (!target) {
     setActive(preview, null);
     placeSyncMarker(null);
+    placeSyncDebugLine(null);
     return;
   }
   setActive(preview, target);
+  // EXPERIMENTAL debug viz: trace line at caret y across the
+  // whole viewport, so user can see whether the editor caret y
+  // and preview block top end up at the same horizontal sweep.
+  if (document.activeElement === textarea) {
+    placeSyncDebugLine(getCaretViewportCoords(textarea).top);
+  }
   // PR #206 v12: scroll preview only when needed (target outside
   // comfortable zone), and use block-internal progress so tall
   // blocks track the caret's depth, not just glue to the top.

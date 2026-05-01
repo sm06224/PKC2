@@ -5,7 +5,11 @@ import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
-import { renderSyncMarker, renderEditorCaretMarker } from './source-preview-sync';
+import {
+  renderSyncMarker,
+  renderEditorCaretMarker,
+  renderSyncDebugLine,
+} from './source-preview-sync';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -702,6 +706,13 @@ function renderShell(state: AppState): HTMLElement {
   // them `pointer-events: none` so taps pass through.
   shell.appendChild(renderSyncMarker());
   shell.appendChild(renderEditorCaretMarker());
+
+  // EXPERIMENTAL — sync debug horizontal line (PR #206 v13).
+  // Toggle: `localStorage.setItem('pkc2.sync-debug', 'true')` or
+  // URL `?pkc-sync-debug=1`. To remove: delete this line + the
+  // `renderSyncDebugLine` import + the related code in
+  // `source-preview-sync.ts` + the CSS rule.
+  shell.appendChild(renderSyncDebugLine());
   return shell;
 }
 
