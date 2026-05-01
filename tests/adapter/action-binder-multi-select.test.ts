@@ -66,6 +66,15 @@ function createDispatcher() {
 }
 
 beforeEach(() => {
+  // Pin "today" to 2026-04-15 so the calendar (which defaults to
+  // `new Date()`'s month) opens on April — matching the hard-coded
+  // `2026-04-10` / `2026-04-15` dates used by the test todo
+  // containers. Without this, runs after April 30, 2026 fail because
+  // the calendar shows the current month and the test entries (in
+  // April) are absent from the rendered grid → `querySelector`
+  // returns null → assertions explode. PR #207 (reform-2026-05).
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-04-15T12:00:00Z'));
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
@@ -74,6 +83,7 @@ beforeEach(() => {
     for (const fn of _trackedUnsubs) fn();
     _trackedUnsubs.length = 0;
     root.remove();
+    vi.useRealTimers();
   };
 });
 

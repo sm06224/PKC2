@@ -101,10 +101,22 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - Tests mirror src structure: `tests/adapter/`, `tests/core/`, `tests/features/`
 - Renderer tests query DOM using `data-pkc-*` selectors, scoped to regions (`[data-pkc-region="kanban-view"]`)
 
+### 描画と生成は別物 ─ "test pass = ship" 禁止(2026-05 reform)
+
+**生成 (HTML / state mutation) が正しい ≠ ユーザーが見ているピクセルが正しい**。以下を厳守する:
+
+- vitest 単体 / renderer DOM (happy-dom) / Playwright smoke の `locator.click()` は **生成・mutation の正しさ** を確認しているだけ。**ユーザー実機での視認 / 操作の一致を保証しない**。
+- 視覚を持つ feature(クリック・ホバー・ドラッグ・スクロール・座標依存の overlay 等)は、`docs/development/visual-state-parity-testing.md` 規定の **parity test を最低 1 件**持つこと。`elementFromPoint` / `page.mouse.click(x, y)` を経由した実 OS event ベースで assert する。
+- 視覚を持つ feature の PR では、**parity test が green** であることを確認するまで「ユーザー側で merge 判断してよい状態です」と報告しない。
+- ユーザーが「動かない」と報告した瞬間に、自然言語ヒアリングではなく **`?pkc-debug=<feature>` URL flag で再操作 → Report dump** を依頼できる導線を整える。プロトコルは `docs/development/debug-via-url-flag-protocol.md`。
+
 ## Specification Documents
 
 - `docs/development/completed/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
 - `docs/development/markdown-render-scope.md` — どの archetype / field が markdown を render するか、`.pkc-md-rendered` を共通 selector とする contract、新 markdown 拡張の scope 規約
+- `docs/development/debug-via-url-flag-protocol.md` — `?pkc-debug=<feature>` で feature ごとの debug overlay / Report dump を出すユーザー報告導線の規約(reform-2026-05)
+- `docs/development/visual-state-parity-testing.md` — 描画と状態の一致を保証する parity test methodology(reform-2026-05)
+- `docs/development/pr-206-paused.md` — caret↔preview sync の保留判断と仕切り直し方針
 
 ## PR Workflow / Review Checklist
 
