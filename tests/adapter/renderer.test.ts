@@ -6549,6 +6549,17 @@ describe('Todo Kanban DnD Foundation', () => {
 // ── Issue #64: Todo Calendar Date Move Foundation ──
 
 describe('Todo Calendar Date Move Foundation', () => {
+  // Pin "today" to April 2026 so the `today marker still present on
+  // today cell` non-regression test sees a real today cell. The test
+  // calendar is hard-coded to April 2026; for the marker to render
+  // the system date must also be in April. PR #207 (reform-2026-05).
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-15T12:00:00Z'));
+    return () => { vi.useRealTimers(); };
+  });
+
+
   const calDndContainer: Container = {
     meta: mockContainer.meta,
     entries: [
