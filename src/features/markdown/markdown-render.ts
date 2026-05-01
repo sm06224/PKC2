@@ -142,7 +142,15 @@ function tagSourceLines(tokens: Token[]): void {
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!;
     if (token.map && BLOCK_TOKEN_TYPES_TO_TAG.has(token.type)) {
+      // PR #206 v12: stamp BOTH start and end of the source range.
+      // The end-line lets the sync layer compute "block-internal
+      // progress" for tall blocks: caret at line N within a fence
+      // spanning lines [S, E] corresponds to position
+      // (N - S) / (E - S) of the rendered block's height. Without
+      // the end-line we could only land on the block's top edge,
+      // which feels stuck for long fences / tables / lists.
       token.attrSet('data-pkc-source-line', String(token.map[0]));
+      token.attrSet('data-pkc-source-end', String(Math.max(token.map[0], token.map[1] - 1)));
     }
     if (token.children && token.children.length > 0) {
       tagSourceLines(token.children);
@@ -162,30 +170,25 @@ const defaultFence = md.renderer.rules.fence ??
   };
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
-  // PR #206: lift the source-line attr we stamped during
-  // `tagSourceLines` onto the `.pkc-md-block` wrapper so the sync
-  // layer can target the user-visible card directly. We strip it
-  // from the inner token so the inner `<code>` doesn't carry a
-  // duplicate.
+  // PR #206: lift source-line + source-end attrs from token onto
+  // the `.pkc-md-block` wrapper so the sync layer can target the
+  // user-visible card directly.
   const sourceLine = token.attrGet('data-pkc-source-line') ?? undefined;
-  if (sourceLine !== undefined) {
-    const idxAttr = token.attrIndex('data-pkc-source-line');
-    if (idxAttr >= 0 && token.attrs) token.attrs.splice(idxAttr, 1);
+  const sourceEnd = token.attrGet('data-pkc-source-end') ?? undefined;
+  for (const name of ['data-pkc-source-line', 'data-pkc-source-end']) {
+    const i = token.attrIndex(name);
+    if (i >= 0 && token.attrs) token.attrs.splice(i, 1);
   }
   const html = renderCsvFence(token.content, token.info);
-  if (html !== null) return wrapWithCopyButton(html, 'code', sourceLine);
+  if (html !== null) return wrapWithCopyButton(html, 'code', sourceLine, sourceEnd);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
-  // PR #206 v9 (案 3 per-line anchors): wrap each line of code in
-  // a `<span data-pkc-source-line="N">` so caret moves WITHIN a
-  // long fence drive line-by-line preview anchoring instead of
-  // only block-level.
   const fenceContentStartLine =
     sourceLine !== undefined ? parseInt(sourceLine, 10) + 1 : null;
   const wrapped =
     fenceContentStartLine !== null && Number.isFinite(fenceContentStartLine)
       ? wrapFenceLinesWithAnchors(fenceHtml, fenceContentStartLine)
       : fenceHtml;
-  return wrapWithCopyButton(wrapped, 'code', sourceLine);
+  return wrapWithCopyButton(wrapped, 'code', sourceLine, sourceEnd);
 };
 
 /**
@@ -231,12 +234,14 @@ function wrapFenceLinesWithAnchors(html: string, startLine: number): string {
 md.renderer.rules.table_open = function (tokens, idx, options, _env, self) {
   const token = tokens[idx]!;
   const sourceLine = token.attrGet('data-pkc-source-line') ?? undefined;
-  if (sourceLine !== undefined) {
-    const idxAttr = token.attrIndex('data-pkc-source-line');
-    if (idxAttr >= 0 && token.attrs) token.attrs.splice(idxAttr, 1);
+  const sourceEnd = token.attrGet('data-pkc-source-end') ?? undefined;
+  for (const name of ['data-pkc-source-line', 'data-pkc-source-end']) {
+    const i = token.attrIndex(name);
+    if (i >= 0 && token.attrs) token.attrs.splice(i, 1);
   }
   const lineAttr = sourceLine ? ` data-pkc-source-line="${sourceLine}"` : '';
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"${lineAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
+  const endAttr = sourceEnd ? ` data-pkc-source-end="${sourceEnd}"` : '';
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"${lineAttr}${endAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
 };
 md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
   return `${self.renderToken(tokens, idx, options)}</div>`;
@@ -252,9 +257,11 @@ function wrapWithCopyButton(
   innerHtml: string,
   kind: 'code' | 'table',
   sourceLine?: string,
+  sourceEnd?: string,
 ): string {
   const lineAttr = sourceLine ? ` data-pkc-source-line="${sourceLine}"` : '';
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"${lineAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
+  const endAttr = sourceEnd ? ` data-pkc-source-end="${sourceEnd}"` : '';
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"${lineAttr}${endAttr}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
 }
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {

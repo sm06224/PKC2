@@ -273,45 +273,55 @@ function setActive(preview: Element, el: HTMLElement | null): void {
 }
 
 /**
- * Custom scroll: scroll **only** the preview pane so the active
- * block's top edge aligns vertically with the editor caret's top
- * edge. This is the "guide line" alignment the user asked for —
- * a horizontal sweep at the caret y will visually intersect the
- * matching preview block, instead of the block sitting several
- * lines off as it did with `block: 'center'`.
+ * Safe scroll within a single pane (PR #206 v12, ChatGPT 提案 §11).
  *
- * Falls back to centering when the textarea isn't focused or
- * caret coords aren't available.
+ * Avoids the snap-to-edge UX of `scrollIntoView({block:'nearest'})`
+ * by treating the middle 25-75% of the pane as the "comfortable
+ * zone". When the target Y is already inside the comfortable zone,
+ * don't scroll at all (= preserves user's free-scroll attempts).
+ * When outside, scroll so the target lands at ~35% from the top —
+ * a balance between "high enough to read context" and "not glued
+ * to the edge".
+ *
+ * `targetY` is in scroll-space coordinates (= container.scrollTop
+ * frame), not viewport.
  */
-function scrollContainerToAlignWithCaret(
+function safeScrollPane(scrollContainer: HTMLElement, targetY: number): void {
+  const paneH = scrollContainer.clientHeight;
+  const safeTop = scrollContainer.scrollTop + paneH * 0.25;
+  const safeBottom = scrollContainer.scrollTop + paneH * 0.75;
+  if (targetY >= safeTop && targetY <= safeBottom) return;
+  const max = scrollContainer.scrollHeight - paneH;
+  const desired = Math.max(0, Math.min(max, targetY - paneH * 0.35));
+  scrollContainer.scrollTop = desired;
+}
+
+/**
+ * Compute the target Y (in pane scroll-space) for a caret line N
+ * within an anchored block whose source range is [start, end].
+ *
+ * Block-internal progress: the caret's relative position within
+ * the source range becomes the relative position within the
+ * rendered block's height. This makes long fences / lists / quotes
+ * track the caret's actual depth instead of glueing to the block
+ * top — the main complaint about pre-v12 sync.
+ */
+function blockTargetY(
   scrollContainer: HTMLElement,
-  target: HTMLElement,
-  textarea: HTMLTextAreaElement | null,
-): void {
+  block: HTMLElement,
+  caretLine: number,
+): number {
+  const startStr = block.getAttribute('data-pkc-source-line');
+  const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
+  const start = startStr !== null ? parseInt(startStr, 10) : 0;
+  const end = endStr !== null ? parseInt(endStr, 10) : start;
+  const range = Math.max(1, end - start);
+  const progress = Math.max(0, Math.min(1, (caretLine - start) / range));
   const containerRect = scrollContainer.getBoundingClientRect();
-  const targetRect = target.getBoundingClientRect();
-  const offsetInContainer =
-    (targetRect.top - containerRect.top) + scrollContainer.scrollTop;
-  const containerH = scrollContainer.clientHeight;
-  const targetH = targetRect.height;
-  const max = scrollContainer.scrollHeight - containerH;
-  let desired: number;
-  // Try to align the block top with the caret top (= visually
-  // equal y across both panes).
-  if (textarea && document.activeElement === textarea) {
-    const caretY = getCaretViewportCoords(textarea).top;
-    const desiredBlockTopInViewport = caretY;
-    const desiredBlockTopInContainer = desiredBlockTopInViewport - containerRect.top;
-    desired = offsetInContainer - desiredBlockTopInContainer;
-  } else {
-    desired = offsetInContainer - (containerH - targetH) / 2;
-  }
-  // Mark the upcoming scrollTop change as programmatic so the
-  // bidirectional sync's preview→editor handler ignores the resulting
-  // scroll event (otherwise we'd loop: caret-change → preview scroll
-  // → caret update → preview scroll → …).
-  markProgrammaticScroll();
-  scrollContainer.scrollTop = Math.max(0, Math.min(max, desired));
+  const blockRect = block.getBoundingClientRect();
+  const blockTopInScroll =
+    scrollContainer.scrollTop + (blockRect.top - containerRect.top);
+  return blockTopInScroll + blockRect.height * progress;
 }
 
 /**
@@ -334,12 +344,12 @@ export function syncPreviewToCaret(
     return;
   }
   setActive(preview, target);
-  // Scroll ONLY the preview pane (custom function), not the entire
-  // scroll chain. `Element.scrollIntoView` would walk up to the
-  // main pane / window and drag the sibling textarea along, which
-  // breaks free scrolling inside the editor.
+  // PR #206 v12: scroll preview only when needed (target outside
+  // comfortable zone), and use block-internal progress so tall
+  // blocks track the caret's depth, not just glue to the top.
   if (preview instanceof HTMLElement) {
-    scrollContainerToAlignWithCaret(preview, target, textarea);
+    const targetY = blockTargetY(preview, target, line);
+    safeScrollPane(preview, targetY);
   }
   // Place the floating overlay AFTER scrolling so the marker's
   // bounding rect reflects the post-scroll position.

@@ -43,12 +43,9 @@ import {
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
-  syncCaretToPreviewScroll,
   placeEditorCaretMarker,
-  repositionMarkers,
   isSyncEnabled,
   setSyncEnabled,
-  consumeScrollSuppression,
   consumeSelectionSuppression,
 } from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
@@ -6170,51 +6167,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     syncSplitEditorPreviewToCaret(active);
   }
 
-  let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function handleSplitEditorScroll(e: Event): void {
-    // PR #206 v11: scroll handler does ZERO work synchronously.
-    // The earlier versions read layout (getBoundingClientRect on
-    // textarea / preview blocks / markers) inside the handler,
-    // which made each scroll event a layout-read cycle. On Mac
-    // Chrome the cumulative cost during momentum-scroll bounce
-    // visibly corrupted the inertia: scrolling up then immediately
-    // down produced a "stuck" rubber-band that needed two attempts
-    // to release.
-    //
-    // Now we just stash the event target and reschedule a single
-    // post-scroll update. The actual sync work runs once, ~100 ms
-    // after the LAST scroll event (= scroll has settled). During
-    // active scroll the markers do nothing — they're position:
-    // fixed so they sit at the previous viewport coordinate while
-    // content moves under them, briefly disconnected from their
-    // anchors. When scroll settles the post-scroll handler snaps
-    // them to the correct positions.
-    const target = e.target;
-    if (scrollSettleTimer !== null) clearTimeout(scrollSettleTimer);
-    scrollSettleTimer = setTimeout(() => {
-      scrollSettleTimer = null;
-      const textarea = document.querySelector<HTMLTextAreaElement>(
-        '.pkc-text-split-editor textarea[data-pkc-field="body"]',
-      );
-      if (!textarea) {
-        repositionMarkers(null, null);
-        return;
-      }
-      const preview =
-        textarea
-          .closest('.pkc-text-split-editor')
-          ?.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]') ?? null;
-      const isPreviewScroll =
-        preview !== null
-        && target instanceof Element
-        && (target === preview || preview.contains(target));
-      if (isPreviewScroll && preview && !consumeScrollSuppression()) {
-        syncCaretToPreviewScroll(textarea, preview);
-      }
-      repositionMarkers(textarea, preview);
-    }, 100);
-  }
+  // PR #206 v12 (ChatGPT 提案 §6.1, §14, §20.1):
+  //
+  //   - scroll は同期トリガーにしない。
+  //   - 左右ペインの自由スクロール性を完全に保つ。
+  //   - 同期のトリガーは selection / caret 移動 / click のみ。
+  //
+  // 旧 v11 まではこの handler で post-scroll reposition / 逆 sync
+  // を試みていたが、scroll 中の layout reads(同期 / debounce
+  // 関係なく)が Mac の momentum-scroll inertia を corrupt する
+  // 根本原因を生んでいた。さらに scroll-driven な逆 sync は
+  // suppression flag の誤消費でループの種にもなる。
+  //
+  // 完全に scroll handler を撤去するのが正解。markers が anchor
+  // から離れて見えるのは、編集 / 選択 イベント発火時に再計算で
+  // snap する設計で受け入れる。
+  //
+  // (handleSplitEditorScroll function intentionally removed in v12)
 
   function handleSyncToggleClick(e: Event): void {
     const target = e.target as Element | null;
@@ -6270,12 +6239,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
   root.addEventListener('click', handleSplitEditorPreviewClick);
   root.addEventListener('click', handleSyncToggleClick);
-  // Marker reposition: capture-phase scroll on window catches all
-  // scrollable elements (window itself, panes, textarea, preview),
-  // so the floating overlay tracks its active block as anything
-  // moves. Resize handles browser viewport changes.
-  window.addEventListener('scroll', handleSplitEditorScroll, true);
-  window.addEventListener('resize', handleSplitEditorScroll);
+  // PR #206 v12: NO scroll listener. scroll イベントは同期トリガー
+  // から完全に除外(ChatGPT 提案 §20.1)。resize 時のみ markers
+  // を reposition するが、別経路(後述)で対応するか、放置して
+  // 次の selection/click で snap させる。
+  // (window scroll/resize listener removed in v12)
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6440,10 +6408,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
     root.removeEventListener('click', handleSplitEditorPreviewClick);
     root.removeEventListener('click', handleSyncToggleClick);
-    window.removeEventListener('scroll', handleSplitEditorScroll, true);
-    window.removeEventListener('resize', handleSplitEditorScroll);
+    // v12: window scroll/resize listeners removed.
     if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
-    if (scrollSettleTimer !== null) { clearTimeout(scrollSettleTimer); scrollSettleTimer = null; }
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
