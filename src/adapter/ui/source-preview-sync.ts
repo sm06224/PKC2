@@ -512,11 +512,22 @@ export function syncCaretToPreview(
   textarea.selectionStart = textarea.selectionEnd = offset;
   // v14: also scroll the textarea internally so the targeted line
   // is visible. browsers don't always auto-scroll on programmatic
-  // selectionStart change. Use the same caret-coords math to
-  // compute where the caret line currently lives, then adjust
-  // textarea.scrollTop so the line lands ~35% from the top of the
-  // visible textarea region.
+  // selectionStart change.
   scrollTextareaToCaret(textarea);
+  // v15: manually update both markers. The suppression flag above
+  // skips the selectionchange handler, but the user still expects
+  // the floating overlays to reflect the new caret/active block.
+  placeEditorCaretMarker(textarea);
+  const previewPane = el.closest<HTMLElement>(
+    '[data-pkc-region="text-edit-preview"]',
+  );
+  if (previewPane) {
+    const target = findPreviewElementForLine(previewPane, line);
+    if (target) {
+      setActive(previewPane, target);
+      placeSyncMarker(target);
+    }
+  }
   return true;
 }
 
