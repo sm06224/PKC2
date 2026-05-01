@@ -7275,3 +7275,163 @@ mark.pkc-search-mark {
   border-color: var(--c-accent);
   outline: none;
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * PR #206 — source ↔ preview synchronization marker.
+ *
+ * The active block (= the preview element matching the textarea
+ * caret's source line) gets a subtle accent on its left edge.
+ * Kept understated so it serves as a "you-are-here" indicator
+ * without competing with the rendered content.
+ *
+ * Cursor on `.pkc-md-rendered` block elements while inside the
+ * split editor preview becomes a text caret hint, signalling that
+ * tapping moves the editor cursor to the matching line.
+ * ───────────────────────────────────────────────────────────── */
+.pkc-md-rendered [data-pkc-active-source] {
+  position: relative;
+}
+.pkc-md-rendered [data-pkc-active-source]::before {
+  content: '';
+  position: absolute;
+  left: -0.6rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--c-accent);
+  border-radius: 1.5px;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* PR #206 v2 — floating sync marker.
+ *
+ * Translucent accent-colored rectangle that overlays the active
+ * preview block so the user can see at a glance which rendered
+ * region the caret-sync layer currently maps the cursor to. Helps
+ * diagnose offsets in tall blocks (e.g. multi-row tables where the
+ * source line maps to the entire table, not a single cell).
+ *
+ * Positioned via JS using the active block's viewport rect; CSS
+ * provides the visual style + crosshair-style corner accents. */
+.pkc-sync-marker {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--c-accent);
+  /* Subtle accent fill — high enough to spot, low enough to not
+   * obscure content. Combined with the dashed border this reads as
+   * a "system thinks you're here" highlight, not a body decoration. */
+  opacity: 0.12;
+  border: 1px dashed var(--c-accent);
+  border-radius: 4px;
+  box-sizing: border-box;
+  transition: opacity 80ms ease;
+}
+.pkc-sync-marker[hidden] {
+  display: none !important;
+}
+
+/* PR #206 v3 — editor-side active-line marker.
+ *
+ * Pairs with `pkc-sync-marker` (preview side). A translucent accent
+ * bar spanning the textarea's active line, so the user sees "you
+ * are here" on both panes simultaneously. Same pointer-events:none
+ * + viewport-fixed positioning model. */
+.pkc-editor-caret-marker {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--c-accent);
+  opacity: 0.10;
+  border-left: 3px solid var(--c-accent);
+  border-radius: 0 2px 2px 0;
+  box-sizing: border-box;
+  transition: opacity 80ms ease;
+}
+.pkc-editor-caret-marker[hidden] {
+  display: none !important;
+}
+
+/* EXPERIMENTAL — sync debug overlay (PR #206 v13).
+ *
+ * Thin horizontal line spanning the viewport at the computed
+ * caret y. Visible only when debug mode is enabled
+ * (localStorage('pkc2.sync-debug') === 'true' or
+ * URL `?pkc-sync-debug=1`).
+ *
+ * To remove: delete this rule + the matching
+ * `renderSyncDebugLine` / `placeSyncDebugLine` / `isSyncDebugMode`
+ * code in `source-preview-sync.ts` + the `renderSyncDebugLine`
+ * call in `renderer.ts`.
+ */
+.pkc-sync-debug-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--c-accent);
+  opacity: 0.55;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.pkc-sync-debug-line[hidden] {
+  display: none !important;
+}
+
+/* PR #206 v5 / v6 — sync ON/OFF toggle button.
+ *
+ * Lives in the split-editor wrapper as a sibling of textarea /
+ * resize-handle / preview. Wrapper is `position: relative` (grid
+ * container, doesn't scroll) so the toggle's absolute positioning
+ * stays put as preview scrolls. State stored persistently via
+ * `localStorage('pkc2.sync-enabled')`; the button reflects state
+ * via `data-pkc-sync-state="on" | "off"`.
+ */
+.pkc-text-split-editor {
+  position: relative;
+}
+.pkc-sync-toggle {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--c-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pkc-sync-toggle:hover {
+  opacity: 1;
+}
+.pkc-sync-toggle[data-pkc-sync-state="on"] {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+  opacity: 0.85;
+}
+.pkc-sync-toggle[data-pkc-sync-state="off"] {
+  color: var(--c-muted);
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+.pkc-text-edit-preview [data-pkc-source-line] {
+  cursor: text;
+}
+/* Override zoom-in cursor from PR #203 inside the split-editor
+ * preview — caret-sync click is the dominant intent there. */
+.pkc-text-edit-preview .pkc-md-block,
+.pkc-text-edit-preview img {
+  cursor: text;
+}

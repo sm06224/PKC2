@@ -85,13 +85,15 @@ function renderEntryPreview(
   lid: string,
   text: string,
   overrideCtx?: AssetResolutionContext | null,
+  withSourceLineAnchors?: boolean,
 ): string {
+  const opts = withSourceLineAnchors ? { sourceLineAnchors: true } : undefined;
   const ctx = overrideCtx ?? previewResolverContexts.get(lid);
   if (ctx && text && hasAssetReferences(text)) {
     const resolved = resolveAssetReferences(text, ctx);
-    return renderMarkdown(resolved);
+    return renderMarkdown(resolved, opts);
   }
-  return renderMarkdown(text ?? '');
+  return renderMarkdown(text ?? '', opts);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -1739,9 +1741,95 @@ if (useSplitEditor) {
     if (pkcSplitPreviewTimer) clearTimeout(pkcSplitPreviewTimer);
     pkcSplitPreviewTimer = setTimeout(function() {
       var src = document.getElementById('body-edit').value;
-      document.getElementById('body-preview').innerHTML = renderMd(src);
+      /* withAnchors=true so the preview→editor caret-jump handler
+         below can map the click target to a source line. */
+      document.getElementById('body-preview').innerHTML = renderMd(src, true);
     }, 100);
   });
+
+  /* PR #206 v17: preview → editor caret-jump in the popup window.
+     Mirrors the inline detail editor's syncCaretToPreview path but
+     scoped entirely to this child document. The popup runs its own
+     event loop and has no access to the parent's action-binder, so
+     the handler is duplicated here as a small, self-contained block. */
+  var pkcLineNumberToOffset = function(value, line) {
+    if (line <= 0) return 0;
+    var i = 0;
+    var remaining = line;
+    while (i < value.length && remaining > 0) {
+      if (value.charCodeAt(i) === 10) remaining--;
+      i++;
+    }
+    return i;
+  };
+  var pkcFindSourceLineForElement = function(el) {
+    if (!el || !el.closest) return null;
+    var anchored = el.closest('[data-pkc-source-line]');
+    if (!anchored) return null;
+    var s = anchored.getAttribute('data-pkc-source-line');
+    if (s === null) return null;
+    var n = parseInt(s, 10);
+    return isFinite(n) ? n : null;
+  };
+  var pkcFindSourceLineByPoint = function(preview, viewportY) {
+    var anchored = preview.querySelectorAll('[data-pkc-source-line]');
+    if (anchored.length === 0) return null;
+    var best = null;
+    var bestTop = -Infinity;
+    for (var i = 0; i < anchored.length; i++) {
+      var r = anchored[i].getBoundingClientRect();
+      if (r.top <= viewportY && r.top > bestTop) {
+        best = anchored[i];
+        bestTop = r.top;
+      }
+    }
+    if (!best) best = anchored[0];
+    var s = best.getAttribute('data-pkc-source-line');
+    if (s === null) return null;
+    var n = parseInt(s, 10);
+    return isFinite(n) ? n : null;
+  };
+  var preview = document.getElementById('body-preview');
+  preview.addEventListener('click', function(e) {
+    var target = e.target;
+    if (!target) return;
+    if (
+      target.closest('button')
+      || target.closest('input')
+      || target.closest('a[href^="#asset-"]')
+      || target.closest('[data-pkc-action="copy-md-block"]')
+      || target.closest('[data-pkc-action="expand-md-block"]')
+      || target.closest('[data-pkc-action="md-table-sort"]')
+      || target.closest('[data-pkc-action="md-table-filter-toggle"]')
+    ) {
+      return;
+    }
+    var line = pkcFindSourceLineForElement(target);
+    if (line === null) line = pkcFindSourceLineByPoint(preview, e.clientY);
+    if (line === null) return;
+    var ta = document.getElementById('body-edit');
+    var offset = pkcLineNumberToOffset(ta.value, line);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = offset;
+    /* Scroll textarea so the targeted line is visible (~35 % from
+       top). Browsers don't always auto-scroll on programmatic
+       selectionStart change. line is the 0-indexed source line we
+       just jumped to, so line * lineH is the y-offset of the caret
+       content inside the textarea (independent of scroll). */
+    var taRect = ta.getBoundingClientRect();
+    if (taRect.height > 0) {
+      var lineH = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+      var desired = Math.max(0, line * lineH - taRect.height * 0.35);
+      ta.scrollTop = desired;
+    }
+  });
+
+  /* Re-render the initial preview with anchors so the click handler
+     works from the first paint, not just after the user types. */
+  var initialSrc = document.getElementById('body-edit').value;
+  if (initialSrc) {
+    document.getElementById('body-preview').innerHTML = renderMd(initialSrc, true);
+  }
 }
 
 /* ── Attachment preview boot ── */
@@ -2349,7 +2437,7 @@ function showTab(tab) {
  *   3. Plain-text HTML escape — last-resort fallback if the parent is
  *      unavailable (cross-origin or closed).
  */
-function renderMd(text) {
+function renderMd(text, withAnchors) {
   if (!text) return '<em style="color:var(--c-muted)">(empty)</em>';
   try {
     if (window.opener && typeof window.opener.pkcRenderEntryPreview === 'function') {
@@ -2359,8 +2447,12 @@ function renderMd(text) {
        * per-lid map. When childPreviewCtx is still null (no push has
        * arrived yet), the opener falls back to the initial map — so
        * the first Preview tab switch after open keeps working.
+       *
+       * The 4th arg requests data-pkc-source-line attrs on block
+       * tokens — only the split-editor preview needs them so its
+       * click handler can map a click back to a source line.
        */
-      return window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx);
+      return window.opener.pkcRenderEntryPreview(lid, text, childPreviewCtx, !!withAnchors);
     }
     if (window.opener && typeof window.opener.pkcRenderMarkdown === 'function') {
       return window.opener.pkcRenderMarkdown(text);

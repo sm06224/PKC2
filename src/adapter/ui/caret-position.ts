@@ -65,10 +65,71 @@ const COPIED_STYLE_PROPS: readonly (keyof CSSStyleDeclaration)[] = [
   'overflowWrap',
 ];
 
+/**
+ * Per-textarea caret position cache.
+ *
+ * The mirror-div technique requires `appendChild → measure →
+ * removeChild` on `document.body` for every call. During scroll
+ * events on Chrome (especially Mac with momentum scrolling), this
+ * causes a layout thrash that interferes with the scroll inertia
+ * — the user reports "scroll up then immediately down bounces
+ * back".
+ *
+ * Cache strategy:
+ *   - Cache hit when textarea identity, text value, and caret
+ *     position are all unchanged (= caret hasn't moved or text
+ *     hasn't changed since last computation).
+ *   - On hit, return current viewport coords by combining cached
+ *     textarea-relative offsets with the current bounding rect +
+ *     scroll offset (cheap arithmetic, no DOM mutation).
+ *   - On miss (caret moved / text edited / first call), run the
+ *     full mirror-div computation and refresh the cache.
+ */
+interface CaretCache {
+  textarea: HTMLTextAreaElement;
+  value: string;
+  position: number;
+  /** Caret offset from textarea's top edge (= mirror-relative relTop) */
+  relTop: number;
+  /** Caret offset from textarea's left edge */
+  relLeft: number;
+  height: number;
+}
+
+let caretCache: CaretCache | null = null;
+
+/**
+ * Invalidate the cache. Call when the textarea's value changes
+ * outside the normal `selectionchange` / `input` flow (e.g. during
+ * teardown).
+ */
+export function invalidateCaretCache(): void {
+  caretCache = null;
+}
+
 export function getCaretViewportCoords(
   textarea: HTMLTextAreaElement,
   position: number = textarea.selectionStart ?? 0,
 ): CaretViewportCoords {
+  // Cache hit fast path: caret position + text content unchanged
+  // since last call → reuse cached textarea-relative offsets and
+  // recompute viewport coords from current bounding rect + scroll
+  // offset. Skips the mirror-div thrash that interferes with
+  // Chrome's scroll inertia on Mac.
+  if (
+    caretCache
+    && caretCache.textarea === textarea
+    && caretCache.value === textarea.value
+    && caretCache.position === position
+  ) {
+    const taRect = textarea.getBoundingClientRect();
+    return {
+      top: taRect.top + caretCache.relTop - textarea.scrollTop,
+      left: taRect.left + caretCache.relLeft - textarea.scrollLeft,
+      height: caretCache.height,
+    };
+  }
+
   const taRect = textarea.getBoundingClientRect();
   const computed = window.getComputedStyle(textarea);
 
@@ -129,6 +190,17 @@ export function getCaretViewportCoords(
     Number.isFinite(lineHeightPx) && lineHeightPx > 0
       ? lineHeightPx
       : markerRect.height || parseFloat(computed.fontSize) || 16;
+
+  // Refresh cache: store textarea-relative offsets so subsequent
+  // scroll-only calls can return without rebuilding the mirror.
+  caretCache = {
+    textarea,
+    value: textarea.value,
+    position,
+    relTop,
+    relLeft,
+    height,
+  };
 
   return { top, left, height };
 }

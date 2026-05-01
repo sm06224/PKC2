@@ -5,6 +5,11 @@ import { isColorTagId } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import {
+  renderSyncMarker,
+  renderEditorCaretMarker,
+  renderSyncDebugLine,
+} from './source-preview-sync';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
@@ -691,6 +696,23 @@ function renderShell(state: AppState): HTMLElement {
   // the user can read it without surrounding chrome. Hidden until
   // the action binder opens it via `openMediaViewer(source)`.
   shell.appendChild(renderMediaViewer());
+
+  // Source ↔ preview sync overlays (PR #206 v2 / v3):
+  //   - sync-marker: translucent accent rectangle over the active
+  //     preview block (which rendered region maps to the caret)
+  //   - editor-caret-marker: translucent accent bar across the
+  //     textarea's active line (where the caret currently lives)
+  // Both hidden until positioned by the action binder. CSS gives
+  // them `pointer-events: none` so taps pass through.
+  shell.appendChild(renderSyncMarker());
+  shell.appendChild(renderEditorCaretMarker());
+
+  // EXPERIMENTAL — sync debug horizontal line (PR #206 v13).
+  // Toggle: `localStorage.setItem('pkc2.sync-debug', 'true')` or
+  // URL `?pkc-sync-debug=1`. To remove: delete this line + the
+  // `renderSyncDebugLine` import + the related code in
+  // `source-preview-sync.ts` + the CSS rule.
+  shell.appendChild(renderSyncDebugLine());
   return shell;
 }
 
@@ -5258,7 +5280,12 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
       const nameByKey = buildAssetNameMap(container);
       const resolved = resolveAssetReferences(entry.body, { assets: container.assets, mimeByKey, nameByKey });
       if (hasMarkdownSyntax(resolved)) {
-        preview.innerHTML = renderMarkdown(resolved);
+        // PR #206 v16: keep `sourceLineAnchors: true` so caret↔preview
+        // sync still works on entries that contain `asset:` references.
+        // Without this, the asset-resolved re-render strips the
+        // anchors that detail-presenter put down — preview clicks
+        // then can't find a source line and silently no-op.
+        preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
       }
     }
   }

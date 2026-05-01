@@ -1,5 +1,6 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { isSyncEnabled } from './source-preview-sync';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -142,7 +143,11 @@ const textPresenter: DetailPresenter = {
     // Initial preview
     const initialSource = entry.body;
     if (initialSource && hasMarkdownSyntax(initialSource)) {
-      preview.innerHTML = renderMarkdown(initialSource);
+      // PR #206: opt in to source-line anchors so caret↔preview
+      // sync works from the moment the editor opens (without this
+      // the user had to type / press Enter to retrigger render
+      // before the overlay activated).
+      preview.innerHTML = renderMarkdown(initialSource, { sourceLineAnchors: true });
     } else if (initialSource) {
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';
@@ -152,6 +157,27 @@ const textPresenter: DetailPresenter = {
       preview.textContent = '(preview)';
     }
     wrapper.appendChild(preview);
+
+    // PR #206 v5/v6: sync ON/OFF toggle. Lives in the wrapper as a
+    // sibling of preview / textarea / resize-handle so preview's
+    // own scroll doesn't carry it off-screen. CSS positions it
+    // absolute over the preview area's top-right corner.
+    const syncToggle = document.createElement('button');
+    syncToggle.type = 'button';
+    syncToggle.className = 'pkc-sync-toggle';
+    syncToggle.setAttribute('data-pkc-action', 'toggle-source-preview-sync');
+    syncToggle.setAttribute(
+      'data-pkc-sync-state',
+      isSyncEnabled() ? 'on' : 'off',
+    );
+    syncToggle.setAttribute('aria-pressed', isSyncEnabled() ? 'true' : 'false');
+    syncToggle.setAttribute(
+      'title',
+      isSyncEnabled() ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+    );
+    syncToggle.setAttribute('aria-label', 'Toggle caret-preview sync');
+    syncToggle.textContent = '⇄';
+    wrapper.appendChild(syncToggle);
 
     return wrapper;
   },

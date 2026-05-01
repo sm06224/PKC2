@@ -40,6 +40,14 @@ import {
   cycleSortDirection,
   resetOtherSortButtons,
 } from './table-interactive';
+import {
+  syncPreviewToCaret,
+  syncCaretToPreview,
+  placeEditorCaretMarker,
+  isSyncEnabled,
+  setSyncEnabled,
+  consumeSelectionSuppression,
+} from './source-preview-sync';
 import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
@@ -4980,6 +4988,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     ) {
       return;
     }
+    // Disable media viewer entirely inside the split editor preview
+    // (PR #206 v10): caret-sync click is the dominant intent there,
+    // and the PiP / modal pop-up steals focus from the editing flow.
+    // Read-only views (detail / textlog body) keep the original
+    // tap-to-zoom behaviour.
+    if (target.closest('[data-pkc-region="text-edit-preview"]')) return;
     // Active text selection means the user was selecting; treat the
     // pointerup-as-click as the end of a selection drag, not a tap.
     const sel = window.getSelection();
@@ -6065,7 +6079,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     if (hasMarkdownSyntax(resolved)) {
-      preview.innerHTML = renderMarkdown(resolved);
+      // PR #206: opt in to source-line anchors so the preview pane
+      // can be kept in sync with the editor caret.
+      preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');
@@ -6095,10 +6111,153 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     previewDebounceTimer = setTimeout(() => {
       previewDebounceTimer = null;
       updateTextEditPreview(target);
+      // After re-rendering, the source-line anchors are fresh, so
+      // re-run the caret sync to land the active marker on the
+      // current caret's line.
+      syncSplitEditorPreviewToCaret(target);
     }, 500);
   }
+
+  /**
+   * PR #206: source ↔ preview sync wiring for the split editor.
+   *
+   * - On caret movement (selectionchange / keyup) inside the split
+   *   editor textarea, scroll the preview pane to the rendered
+   *   block matching the caret's source line and mark it active.
+   * - On click inside the preview, move the caret to the start of
+   *   the corresponding source line.
+   *
+   * Sync is debounced via rAF so rapid arrow-key navigation doesn't
+   * trigger redundant scroll work.
+   */
+  let previewSyncRafToken: number | null = null;
+
+  function syncSplitEditorPreviewToCaret(textarea: HTMLTextAreaElement): void {
+    const wrapper = textarea.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const preview = wrapper.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
+    previewSyncRafToken = requestAnimationFrame(() => {
+      previewSyncRafToken = null;
+      syncPreviewToCaret(textarea, preview);
+      // Editor-side caret marker shares the same rAF tick — both
+      // overlays get placed in one paint frame.
+      placeEditorCaretMarker(textarea);
+    });
+  }
+
+  function handleSplitEditorCaretChange(e: Event): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    syncSplitEditorPreviewToCaret(target);
+  }
+
+  function handleSplitEditorSelectionChange(): void {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLTextAreaElement)) return;
+    if (active.getAttribute('data-pkc-field') !== 'body') return;
+    if (!active.closest('.pkc-text-split-editor')) return;
+    // PR #206 v7: skip when our own preview→editor sync just moved
+    // the caret. Otherwise we'd loop:
+    //   preview scroll → caret move → preview scroll → …
+    if (consumeSelectionSuppression()) return;
+    syncSplitEditorPreviewToCaret(active);
+  }
+
+  // PR #206 v12 (ChatGPT 提案 §6.1, §14, §20.1):
+  //
+  //   - scroll は同期トリガーにしない。
+  //   - 左右ペインの自由スクロール性を完全に保つ。
+  //   - 同期のトリガーは selection / caret 移動 / click のみ。
+  //
+  // 旧 v11 まではこの handler で post-scroll reposition / 逆 sync
+  // を試みていたが、scroll 中の layout reads(同期 / debounce
+  // 関係なく)が Mac の momentum-scroll inertia を corrupt する
+  // 根本原因を生んでいた。さらに scroll-driven な逆 sync は
+  // suppression flag の誤消費でループの種にもなる。
+  //
+  // 完全に scroll handler を撤去するのが正解。markers が anchor
+  // から離れて見えるのは、編集 / 選択 イベント発火時に再計算で
+  // snap する設計で受け入れる。
+  //
+  // (handleSplitEditorScroll function intentionally removed in v12)
+
+  function handleSyncToggleClick(e: Event): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const btn = target.closest<HTMLElement>('[data-pkc-action="toggle-source-preview-sync"]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSyncEnabled(!isSyncEnabled());
+    // If turning ON, immediately re-sync so the user sees the
+    // markers without needing to type / move caret.
+    if (isSyncEnabled()) {
+      const ta = btn
+        .closest('.pkc-text-split-editor')
+        ?.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+      if (ta) syncSplitEditorPreviewToCaret(ta);
+    }
+  }
+
+  function handleSplitEditorPreviewClick(e: Event): void {
+    const target = e.target as Element | null;
+    if (!target) return;
+    // Block ONLY the chrome controls that own the click — copy /
+    // expand / sort / filter / sync-toggle buttons. Native form
+    // controls also get a pass so the user can interact with them.
+    //
+    // PR #206 v16: previously `[data-pkc-action]` was a blanket block,
+    // which silently ate clicks on `<span data-pkc-action=
+    // "navigate-card-ref">` cards and other inline action elements
+    // — caret jump never fired and the user reported "click does
+    // nothing". Now we only opt out for known conflicting actions;
+    // everything else (cards, entry-refs, asset-refs, plain text /
+    // table cells) gets caret-sync AND any default click handling
+    // (the later `handleClick` still dispatches navigations).
+    if (
+      target.closest('button')
+      || target.closest('input')
+      || target.closest('[data-pkc-action="copy-md-block"]')
+      || target.closest('[data-pkc-action="expand-md-block"]')
+      || target.closest('[data-pkc-action="md-table-sort"]')
+      || target.closest('[data-pkc-action="md-table-filter-toggle"]')
+    ) {
+      return;
+    }
+    const preview = target.closest<HTMLElement>('[data-pkc-region="text-edit-preview"]');
+    if (!preview) return;
+    const wrapper = preview.closest('.pkc-text-split-editor');
+    if (!wrapper) return;
+    const textarea = wrapper.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    // Pointer coordinates feed into the Y-fallback when the click
+    // target has no anchored ancestor (e.g. blank gaps between
+    // blocks, the preview's own padding).
+    const me = e instanceof MouseEvent ? e : null;
+    syncCaretToPreview(textarea, target, me ? { x: me.clientX, y: me.clientY } : undefined);
+  }
+
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
   root.addEventListener('input', handleTextEditPreviewInput);
+  // Caret-tracking: keyup catches arrow-key navigation, focus
+  // catches initial mount; selectionchange (document) catches
+  // mouse-driven caret moves and IME selection updates.
+  root.addEventListener('keyup', handleSplitEditorCaretChange);
+  root.addEventListener('focus', handleSplitEditorCaretChange, true);
+  document.addEventListener('selectionchange', handleSplitEditorSelectionChange);
+  root.addEventListener('click', handleSplitEditorPreviewClick);
+  root.addEventListener('click', handleSyncToggleClick);
+  // PR #206 v12: NO scroll listener. scroll イベントは同期トリガー
+  // から完全に除外(ChatGPT 提案 §20.1)。resize 時のみ markers
+  // を reposition するが、別経路(後述)で対応するか、放置して
+  // 次の selection/click で snap させる。
+  // (window scroll/resize listener removed in v12)
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6258,6 +6417,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleStaleDragCleanup);
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
     root.removeEventListener('input', handleTextEditPreviewInput);
+    root.removeEventListener('keyup', handleSplitEditorCaretChange);
+    root.removeEventListener('focus', handleSplitEditorCaretChange, true);
+    document.removeEventListener('selectionchange', handleSplitEditorSelectionChange);
+    root.removeEventListener('click', handleSplitEditorPreviewClick);
+    root.removeEventListener('click', handleSyncToggleClick);
+    // v12: window scroll/resize listeners removed.
+    if (previewSyncRafToken !== null) cancelAnimationFrame(previewSyncRafToken);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
