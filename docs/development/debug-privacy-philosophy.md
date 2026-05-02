@@ -161,7 +161,7 @@ content を含めたい場合、**追加の URL flag を user が明示的に ty
 
 ```jsonc
 {
-  "schema": 2,
+  "schema": 3,
   "level": "structural",      // 'structural' | 'content'
   "contentsIncluded": false,  // boolean、structural=false / content=true
   ...

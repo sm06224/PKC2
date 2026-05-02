@@ -8,14 +8,13 @@
  * cross-feature contract, and `docs/development/debug-privacy-philosophy.md`
  * for the upper-tier privacy regulation (4 principles: Local-only by
  * construction / Privacy by default / Graduated opt-in / Schema as
- * versioned protocol). This file owns the runtime data shape, the
- * dispatch ring buffer, and the clipboard sink.
+ * versioned protocol).
  *
  * Layer note: this module deliberately does NOT import `AppState`
  * from `src/adapter/state/app-state.ts` — building the state-aware
  * Report happens in `src/adapter/ui/debug-report.ts`. The runtime
- * layer only owns the flag schema, the Report data shape, and the
- * ring buffer.
+ * layer owns the flag schema, the DebugReport data shape, the
+ * dispatch + errors ring buffers, and the download trigger.
  */
 
 import { VERSION } from './release-meta';
@@ -562,8 +561,8 @@ export interface DebugReport {
 /**
  * Hard cap on the total stringified DebugReport. Above this, we
  * truncate in priority order: replay → recent[] FIFO → errors[] FIFO.
- * 1 MiB is a comfortable browser/clipboard/blob-URL handling target
- * even on mobile; the per-content cap (64 KiB) keeps a single dispatch
+ * 1 MiB is a comfortable Blob / download-manager handling target even
+ * on mobile; the per-content cap (64 KiB) keeps a single dispatch
  * from monopolising the budget.
  */
 export const MAX_REPORT_BYTES = 1024 * 1024;

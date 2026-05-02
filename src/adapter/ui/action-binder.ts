@@ -2631,9 +2631,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'dump-debug-report': {
         // Reform-2026-05 stage β: 🐞 button next to ⚙. Builds the
-        // DebugReport from current state and opens it as JSON in a
-        // new tab via Blob URL. No dispatch — debug surfaces are
-        // runtime-only.
+        // DebugReport from current state and triggers a JSON
+        // download via a synthesized <a download> click. No
+        // dispatch — debug surfaces are runtime-only.
         runDebugReportDump(dispatcher);
         break;
       }

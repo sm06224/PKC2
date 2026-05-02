@@ -982,8 +982,8 @@ function renderHeader(state: AppState): HTMLElement {
 
   // 🐞 Debug Report button — placed to the right of the shell menu
   // when `?pkc-debug=<feature>` is active. Click is wired through
-  // action-binder (`dump-debug-report`); the report opens in a new
-  // tab via Blob URL. Inherits all visual styling from
+  // action-binder (`dump-debug-report`); the report downloads as
+  // `pkc2-debug-<ISO-ts>.json`. Inherits all visual styling from
   // `pkc-tray-toggle` so the button is indistinguishable from other
   // header toolbar buttons.
   if (isRecordingEnabled()) {
@@ -991,8 +991,8 @@ function renderHeader(state: AppState): HTMLElement {
     debugBtn.setAttribute('data-pkc-action', 'dump-debug-report');
     debugBtn.setAttribute('data-pkc-region', 'debug-report-button');
     debugBtn.setAttribute('data-pkc-debug', 'true');
-    debugBtn.setAttribute('aria-label', 'Open debug report in a new tab');
-    debugBtn.setAttribute('title', 'Open debug report (PKC2 debug)');
+    debugBtn.setAttribute('aria-label', 'Download debug report as JSON');
+    debugBtn.setAttribute('title', 'Download debug report (PKC2 debug)');
     debugBtn.textContent = '🐞';
     toggles.appendChild(debugBtn);
   }
