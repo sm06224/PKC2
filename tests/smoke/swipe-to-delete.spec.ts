@@ -10,13 +10,24 @@
  * the entry remains restorable from the 🗑️ Deleted pane until the
  * trash is emptied). A short swipe snaps the row back to its
  * original position with no side effects.
+ *
+ * Parity (2026-05-02 Phase 1B PR #2): swipe gesture is dispatched
+ * via Chrome DevTools Protocol `Input.dispatchTouchEvent` so the
+ * browser's real event tree fires (`touchstart` → `touchmove` ×3 →
+ * `touchend` with `pointerType: 'touch'`). Earlier versions called
+ * `el.dispatchEvent(new TouchEvent(...))` from inside `page.evaluate`,
+ * which only synthesizes a JS-level event and bypasses anything
+ * the renderer might filter at the engine boundary —
+ * `visual-state-parity-testing.md` §「test pass = ship 禁止」flagged
+ * that as a half-grade smoke. CDP-level touch events are the touch
+ * counterpart of `page.mouse.click(x, y)`.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.describe('swipe-to-delete (touch only)', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  async function createOne(page: import('@playwright/test').Page, title: string) {
+  async function createOne(page: Page, title: string) {
     await page.locator('[data-pkc-action="mobile-open-drawer"]').first().click();
     await page
       .locator('.pkc-mobile-drawer [data-pkc-action="create-entry"][data-pkc-archetype="text"]')
@@ -26,45 +37,42 @@ test.describe('swipe-to-delete (touch only)', () => {
     await page.locator('[data-pkc-action="mobile-back"]').click();
   }
 
-  async function swipeRow(
-    page: import('@playwright/test').Page,
-    deltaPx: number,
-  ) {
-    const row = page.locator(
-      '[data-pkc-region="sidebar"] li.pkc-entry-item[data-pkc-action="select-entry"]',
-    ).first();
+  async function swipeRow(page: Page, deltaPx: number) {
+    const row = page
+      .locator(
+        '[data-pkc-region="sidebar"] li.pkc-entry-item[data-pkc-action="select-entry"]',
+      )
+      .first();
     const box = await row.boundingBox();
     if (!box) throw new Error('row has no bounding box');
     const startX = box.x + box.width - 20;
     const y = box.y + box.height / 2;
 
-    await page.evaluate(({ x1, dx, cy }) => {
-      const el = document.elementFromPoint(x1, cy) as HTMLElement | null;
-      if (!el) throw new Error('no element at swipe origin');
-      const fire = (type: string, cx: number, cyy: number) => {
-        const touch = new Touch({
-          identifier: 1,
-          target: el,
-          clientX: cx,
-          clientY: cyy,
-        });
-        const ev = new TouchEvent(type, {
-          cancelable: true,
-          bubbles: true,
-          touches: type === 'touchend' ? [] : [touch],
-          targetTouches: type === 'touchend' ? [] : [touch],
-          changedTouches: [touch],
-        });
-        el.dispatchEvent(ev);
-      };
-      fire('touchstart', x1, cy);
-      // Multi-step move so the gesture passes the 8 px lock threshold
-      // and any midpoint listeners observe motion.
-      fire('touchmove', x1 + Math.round(dx * 0.3), cy);
-      fire('touchmove', x1 + Math.round(dx * 0.7), cy);
-      fire('touchmove', x1 + dx, cy);
-      fire('touchend', x1 + dx, cy);
-    }, { x1: startX, dx: deltaPx, cy: y });
+    // Real OS touch event tree via Chrome DevTools Protocol. This is
+    // the touch equivalent of `page.mouse.click(x, y)` — events flow
+    // through the same engine path the user's finger would, and any
+    // upstream listener (`{ passive: false }`, capture phase, etc.)
+    // sees them exactly as in production.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: startX, y, id: 1 }],
+    });
+    // Multi-step move so the gesture passes the 8 px lock threshold
+    // and midpoint listeners observe motion.
+    for (const frac of [0.3, 0.7, 1]) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: startX + Math.round(deltaPx * frac), y, id: 1 },
+        ],
+      });
+    }
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await cdp.detach();
   }
 
   test('left swipe past commit threshold deletes the entry', async ({ page }) => {
