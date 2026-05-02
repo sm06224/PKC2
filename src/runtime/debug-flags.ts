@@ -209,6 +209,75 @@ export function extractStructuralFromAction(
 }
 
 /**
+ * Hard cap on the JSON byte-length of a single `content` payload in
+ * content mode. 64 KiB is more than enough for any realistic
+ * COMMIT_EDIT (markdown body), but shuts down pathological cases like
+ * SYS_INIT_COMPLETE carrying the full Container with base64 assets
+ * (which can run into hundreds of MiB and trip Firefox's
+ * "InternalError: allocation size overflow" later when the report is
+ * stringified).
+ *
+ * Above the cap, we replace `content` with a small marker so the
+ * debug consumer still sees that an action of type X happened, just
+ * not the payload. This is the philosophy doc §4 原則 3 "graduated
+ * opt-in" with a safety floor: opt-in does not mean "unbounded".
+ */
+export const MAX_CONTENT_BYTES = 64 * 1024;
+
+/** Sentinel used in place of `content` when the payload is too big
+ * to safely retain by reference + later JSON-stringify. */
+export interface TruncatedContent {
+  _truncated: true;
+  type: string;
+  approxBytes: number;
+  reason?: 'oversize' | 'unserializable';
+}
+
+/**
+ * Snapshot a Dispatchable for content mode. Eager deep-clone via
+ * JSON round-trip so the ring buffer holds an immutable copy (no
+ * pinning of evolving state objects, no GC anchor on rehydrated
+ * Containers). Payloads above {@link MAX_CONTENT_BYTES} collapse to
+ * a {@link TruncatedContent} marker.
+ *
+ * Returning `unknown` is deliberate: callers MUST treat the value as
+ * opaque user data and not destructure it. The shape is either the
+ * action shape or the truncation marker — encoding both in the type
+ * system would over-constrain consumers (e.g., serializers).
+ */
+export function snapshotActionForContent(action: unknown): unknown {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(action);
+  } catch {
+    return makeTruncated(action, 0, 'unserializable');
+  }
+  if (typeof json !== 'string') {
+    return makeTruncated(action, 0, 'unserializable');
+  }
+  if (json.length > MAX_CONTENT_BYTES) {
+    return makeTruncated(action, json.length, 'oversize');
+  }
+  // Deep clone via re-parse so the buffer entry is immutable and not
+  // a live reference into the dispatcher's action object.
+  return JSON.parse(json);
+}
+
+function makeTruncated(
+  action: unknown,
+  approxBytes: number,
+  reason: 'oversize' | 'unserializable',
+): TruncatedContent {
+  const type =
+    typeof action === 'object' &&
+    action !== null &&
+    typeof (action as { type?: unknown }).type === 'string'
+      ? (action as { type: string }).type
+      : 'unknown';
+  return { _truncated: true, type, approxBytes, reason };
+}
+
+/**
  * DebugReport schema 2 — what gets dumped to clipboard when the user
  * clicks the Report button.
  *

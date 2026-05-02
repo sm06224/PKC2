@@ -10,6 +10,7 @@ import { getRevisionsByBulkId } from '../../core/operations/container-ops';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
+import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
@@ -2626,6 +2627,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'close-shell-menu': {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
+        break;
+      }
+      case 'dump-debug-report': {
+        // Reform-2026-05 stage β: 🐞 button next to ⚙. Builds the
+        // DebugReport from current state, copies pretty JSON to
+        // clipboard, falls back to a modal on clipboard failure. No
+        // dispatch — debug surfaces are runtime-only.
+        void runDebugReportDump(document.body, dispatcher);
+        break;
+      }
+      case 'dismiss-debug-report-fallback': {
+        // Handled inline by the modal's own click listener; this
+        // case is a no-op fallback in case event delegation surfaces
+        // the action through the root binder before the modal handler
+        // resolves. Safe to drop.
         break;
       }
       // ── iPhone push/pop shell (2026-04-26) ──────────────────

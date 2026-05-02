@@ -8,6 +8,7 @@ import {
   isContentModeEnabled,
   isRecordingEnabled,
   recordDebugEvent,
+  snapshotActionForContent,
 } from '../../runtime/debug-flags';
 
 /**
@@ -70,8 +71,11 @@ export function createDispatcher(): Dispatcher {
     const endDispatch = start(`dispatch:${action.type}`);
     // Debug ring buffer (PR #211, stage β). Off when no debug feature
     // is active. Structural mode cherry-picks `{ type, lid? }` only;
-    // content mode (`?pkc-debug-contents=1`) additionally captures the
-    // full action verbatim. See `docs/development/debug-privacy-philosophy.md`.
+    // content mode (`?pkc-debug-contents=1`) additionally captures an
+    // eagerly-cloned snapshot bounded by MAX_CONTENT_BYTES so the
+    // buffer can never pin a SYS_INIT_COMPLETE Container or trip the
+    // engine's string-length cap on later JSON.stringify. See
+    // `docs/development/debug-privacy-philosophy.md`.
     if (isRecordingEnabled()) {
       const structural = extractStructuralFromAction(
         action as { type: string } & Record<string, unknown>,
@@ -81,7 +85,9 @@ export function createDispatcher(): Dispatcher {
         ts: new Date().toISOString(),
         type: structural.type,
         ...(structural.lid !== undefined ? { lid: structural.lid } : {}),
-        ...(isContentModeEnabled() ? { content: action } : {}),
+        ...(isContentModeEnabled()
+          ? { content: snapshotActionForContent(action) }
+          : {}),
       });
     }
     const endReduce = start(`dispatch:${action.type}:reduce`);

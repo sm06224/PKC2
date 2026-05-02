@@ -172,4 +172,37 @@ describe('dispatcher × debug ring buffer — content mode (opt-in)', () => {
     expect(json).toContain('OPT-IN-VISIBLE-TITLE');
     expect(json).toContain('OPT-IN-VISIBLE-BODY');
   });
+
+  it('truncates oversize payloads in content mode (Firefox allocation guard)', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    // Simulate the boot scenario that triggered the user-reported
+    // "InternalError: allocation size overflow": a SYS_INIT_COMPLETE
+    // carrying a Container that exceeds the per-event content cap.
+    // The body sentinel (`HUGE-BODY-...`) must NOT appear in the
+    // serialized buffer; the event must carry a truncation marker.
+    const HUGE = 'A'.repeat(80 * 1024); // > MAX_CONTENT_BYTES
+    const huge: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'e-big',
+          title: 't',
+          body: `HUGE-BODY-SHOULD-BE-TRUNCATED-${HUGE}`,
+          archetype: 'text',
+          created_at: ts,
+          updated_at: ts,
+        },
+      ],
+    };
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: huge });
+    const events = readDebugEvents();
+    expect(events).toHaveLength(1);
+    const content = events[0]!.content as Record<string, unknown>;
+    expect(content._truncated).toBe(true);
+    expect(content.type).toBe('SYS_INIT_COMPLETE');
+    expect(content.reason).toBe('oversize');
+    const json = JSON.stringify(events);
+    expect(json).not.toContain('HUGE-BODY-SHOULD-BE-TRUNCATED');
+  });
 });

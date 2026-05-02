@@ -12,9 +12,11 @@ import {
   isContentModeEnabled,
   isDebugEnabled,
   isRecordingEnabled,
+  MAX_CONTENT_BYTES,
   parseDebugList,
   readDebugEvents,
   recordDebugEvent,
+  snapshotActionForContent,
   type DebugReport,
 } from '@runtime/debug-flags';
 
@@ -371,5 +373,51 @@ describe('extractStructuralFromAction — privacy by construction', () => {
     const out = extractStructuralFromAction(hostile);
     expect(JSON.stringify(out)).not.toContain('leak-me');
     expect(out).toEqual({ type: 'SYS_INIT_COMPLETE', lid: 'e-1' });
+  });
+});
+
+describe('snapshotActionForContent — eager clone + size cap', () => {
+  it('returns a deep clone of small payloads (immutable snapshot)', () => {
+    const action = { type: 'COMMIT_EDIT', lid: 'e-1', body: 'hello' };
+    const snap = snapshotActionForContent(action) as Record<string, unknown>;
+    expect(snap).toEqual(action);
+    // Mutating the original must not affect the snapshot — proves
+    // the buffer is not pinning a live reference.
+    (action as { body: string }).body = 'mutated';
+    expect((snap as { body: string }).body).toBe('hello');
+  });
+
+  it('truncates payloads above MAX_CONTENT_BYTES with a marker', () => {
+    const huge = 'X'.repeat(MAX_CONTENT_BYTES + 100);
+    const snap = snapshotActionForContent({
+      type: 'COMMIT_EDIT',
+      lid: 'e-1',
+      body: huge,
+    }) as Record<string, unknown>;
+    expect(snap._truncated).toBe(true);
+    expect(snap.type).toBe('COMMIT_EDIT');
+    expect(snap.reason).toBe('oversize');
+    expect(typeof snap.approxBytes).toBe('number');
+    expect(snap.approxBytes as number).toBeGreaterThan(MAX_CONTENT_BYTES);
+    // The huge body MUST NOT appear anywhere in the truncated snapshot.
+    expect(JSON.stringify(snap)).not.toContain('XXXX');
+  });
+
+  it('emits an unserializable marker for cyclic / function payloads', () => {
+    const cyclic: Record<string, unknown> = { type: 'BAD' };
+    cyclic.self = cyclic;
+    const snap = snapshotActionForContent(cyclic) as Record<string, unknown>;
+    expect(snap._truncated).toBe(true);
+    expect(snap.reason).toBe('unserializable');
+    expect(snap.type).toBe('BAD');
+  });
+
+  it('preserves nested fields below the cap (deep equality)', () => {
+    const action = {
+      type: 'SYS_INIT_COMPLETE',
+      container: { entries: [{ lid: 'e-1', title: 't', body: 'b' }] },
+    };
+    const snap = snapshotActionForContent(action);
+    expect(snap).toEqual(action);
   });
 });

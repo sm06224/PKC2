@@ -1,76 +1,52 @@
 /**
- * Floating "🐞 Report" button (stage α of the debug-via-URL-flag
- * protocol). Visible only when `?pkc-debug=<list>` (or the
- * `pkc2.debug` localStorage key) selects at least one feature.
+ * Debug-report dump utility.
+ *
+ * Stage α (PR #209) mounted a floating "🐞 Report" button as a
+ * sibling of the renderer root. Stage β follow-up (2026-05-02) moves
+ * the trigger into the header next to the ⚙ shell menu so it's
+ * indistinguishable from a normal toolbar control. This file now
+ * exposes the click-handler logic as a function the action-binder
+ * can invoke, plus the fallback modal helpers.
  *
  * Click → build a DebugReport from the current AppState → copy
  * pretty JSON to clipboard → toast confirmation. Clipboard failure
  * (permission denied, http context without secure origin, etc.)
  * falls back to a modal `<pre>` so the user can copy by hand.
  *
- * Mounted as a sibling of the renderer's root, NOT inside it: the
- * renderer is a pure state→DOM function and the button must persist
- * across unrelated re-renders. See `toast.ts` for the same pattern.
+ * The fallback modal is a sibling of the renderer's root, NOT inside
+ * it: the renderer is a pure state→DOM function and the modal must
+ * persist across unrelated re-renders. See `toast.ts` for the same
+ * pattern.
  */
 
 import type { Dispatcher } from '../state/dispatcher';
 import { showToast } from './toast';
-import {
-  debugFeatures,
-  dispatchDebugReport,
-} from '../../runtime/debug-flags';
+import { dispatchDebugReport } from '../../runtime/debug-flags';
 import { buildDebugReportFromState } from './debug-report';
 
-const BUTTON_REGION = 'debug-report-button';
 const MODAL_REGION = 'debug-report-fallback';
 
 /**
- * Mount the floating Report button. No-op when no debug feature is
- * active. Returns an unmount fn for tests / hot-reload teardown.
+ * Build the report from current state, attempt clipboard copy, then
+ * either toast success or open the fallback modal. `host` should be
+ * a stable container outside the renderer root (e.g. `document.body`)
+ * so the fallback modal survives re-renders.
  */
-export function mountDebugReportButton(
+export async function runDebugReportDump(
   host: HTMLElement,
   dispatcher: Dispatcher,
-): () => void {
-  if (debugFeatures().size === 0) return () => undefined;
-
-  // Idempotent: if already mounted (e.g. accidental double-call),
-  // reuse the existing element so we never end up with two buttons.
-  const existing = host.querySelector<HTMLButtonElement>(
-    `[data-pkc-region="${BUTTON_REGION}"]`,
-  );
-  if (existing) return () => existing.remove();
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'pkc-debug-report-button';
-  btn.setAttribute('data-pkc-region', BUTTON_REGION);
-  btn.setAttribute('data-pkc-debug', 'true');
-  btn.setAttribute('aria-label', 'Copy debug report to clipboard');
-  btn.title = 'Copy debug report (PKC2 debug)';
-  btn.textContent = '🐞 Report';
-
-  const onClick = async () => {
-    const report = buildDebugReportFromState(dispatcher.getState());
-    const ok = await dispatchDebugReport(report);
-    if (ok) {
-      showToast({
-        message: 'Debug report copied to clipboard',
-        kind: 'info',
-        autoDismissMs: 4000,
-      });
-    } else {
-      showFallbackModal(host, report);
-    }
-  };
-  btn.addEventListener('click', onClick);
-
-  host.appendChild(btn);
-  return () => {
-    btn.removeEventListener('click', onClick);
-    btn.remove();
-    closeFallbackModal(host);
-  };
+): Promise<void> {
+  const report = buildDebugReportFromState(dispatcher.getState());
+  const ok = await dispatchDebugReport(report);
+  if (ok) {
+    showToast({
+      message: 'Debug report copied to clipboard',
+      kind: 'info',
+      autoDismissMs: 4000,
+    });
+  } else {
+    showFallbackModal(host, report);
+  }
 }
 
 function showFallbackModal(host: HTMLElement, report: unknown): void {

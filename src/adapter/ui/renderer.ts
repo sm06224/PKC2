@@ -12,6 +12,7 @@ import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { BUILD_FEATURES, VERSION } from '../../runtime/release-meta';
+import { isRecordingEnabled } from '../../runtime/debug-flags';
 import {
   getRevisionCount,
   getLatestRevision,
@@ -978,6 +979,28 @@ function renderHeader(state: AppState): HTMLElement {
   menuBtn.setAttribute('title', 'Menu (?)');
   menuBtn.textContent = '⚙';
   toggles.appendChild(menuBtn);
+
+  // 🐞 Debug Report button — placed to the right of the shell menu so
+  // it's reachable while developers / supporters debug, but only when
+  // a `?pkc-debug=<feature>` flag is active. Click is wired through
+  // action-binder (`dump-debug-report`) which builds the report,
+  // copies to clipboard, and falls back to a modal on failure.
+  if (isRecordingEnabled()) {
+    const debugBtn = createElement(
+      'button',
+      'pkc-tray-toggle pkc-debug-report-button',
+    );
+    debugBtn.setAttribute('data-pkc-action', 'dump-debug-report');
+    debugBtn.setAttribute('data-pkc-region', 'debug-report-button');
+    debugBtn.setAttribute('data-pkc-debug', 'true');
+    debugBtn.setAttribute(
+      'aria-label',
+      'Copy debug report to clipboard',
+    );
+    debugBtn.setAttribute('title', 'Copy debug report (PKC2 debug)');
+    debugBtn.textContent = '🐞';
+    toggles.appendChild(debugBtn);
+  }
 
   header.appendChild(toggles);
 

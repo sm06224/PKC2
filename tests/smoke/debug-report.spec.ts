@@ -1,16 +1,17 @@
 /**
- * Smoke — debug-via-URL-flag stage α.
+ * Smoke — debug-via-URL-flag stage α + stage β UI placement.
  *
  * Proves the round trip the user-report protocol promises:
  *
- *   1. `?pkc-debug=*` makes the floating Report button visible
+ *   1. `?pkc-debug=*` renders the 🐞 Report button next to the ⚙
+ *      shell menu (stage β follow-up, 2026-05-02)
  *   2. Clicking it copies a well-formed JSON DebugReport to clipboard
  *   3. The clipboard text parses and contains the expected schema /
  *      env / app-state slices, with NO entry body or asset bytes
  *
  * `locator.click()` is fine here because this is a structural smoke,
  * not a parity test (visual-state-parity-testing.md §1). Real-OS-event
- * verification of the floating button position belongs in the parity
+ * verification of header button positioning belongs in the parity
  * tier introduced in stage γ.
  */
 
