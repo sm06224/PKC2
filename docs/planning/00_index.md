@@ -88,9 +88,9 @@
 | `../development/zip-export-contract.md` | ZIP stored mode 採用理由 |
 | `../development/archived/boot-container-source/boot-container-source-policy-revision.md` | S-30 boot source policy revision — embedded pkc-data は view-only / IDB 拡張は明示 Import のみ（2026-04-17） |
 | `../development/archived/boot-container-source/boot-container-source-policy-audit.md` | S-30 post-implementation invariance audit（欠陥 0、2026-04-17） |
-| `../development/merge-conflict-pure-slice.md` | H-10 pure slice 実装メモ（`detectEntryConflicts` 等、2026-04-17） |
-| `../development/merge-conflict-state-slice.md` | H-10 state slice 実装メモ（reducer 3 case / event 拡張 / lifecycle、2026-04-17） |
-| `../development/merge-conflict-ui-v1-audit.md` | H-10 pure + state + UI 3 slice 統合監査（DEFECT-1 / DEFECT-2 最小修正、2026-04-17） |
+| `../development/archived/merge-conflict/merge-conflict-pure-slice.md` | H-10 pure slice 実装メモ（`detectEntryConflicts` 等、2026-04-17） |
+| `../development/archived/merge-conflict/merge-conflict-state-slice.md` | H-10 state slice 実装メモ（reducer 3 case / event 拡張 / lifecycle、2026-04-17） |
+| `../development/archived/merge-conflict/merge-conflict-ui-v1-audit.md` | H-10 pure + state + UI 3 slice 統合監査（DEFECT-1 / DEFECT-2 最小修正、2026-04-17） |
 | `../spec/entry-ordering-v1-minimum-scope.md` | C-2 entry-ordering v1 — minimum scope / feasibility（2026-04-17） |
 | `../spec/entry-ordering-v1-behavior-contract.md` | C-2 entry-ordering v1 — behavior contract（`entry_order` / `MOVE_ENTRY` / Manual UI / invariants、2026-04-17） |
 | `../development/entry-ordering-v1-audit.md` | C-2 entry-ordering v1 — post-implementation audit（FINDING-1 / FINDING-2 最小修正、2026-04-17） |
