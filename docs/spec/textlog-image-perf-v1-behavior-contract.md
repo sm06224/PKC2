@@ -3,7 +3,7 @@
 Status: 実装済み(v2.1.0 以前に landing、v2.1.1 時点で稼働中、TEXTLOG 段階的表示 / staged render が動作中)。本書は behavior contract / historical design record として保持。実装の現物は `tests/adapter/textlog-staged-render.test.ts` / `tests/adapter/textlog-staged-render-phase2.test.ts` と textlog presenter 系。
 Pipeline position: behavior contract
 Predecessor: `docs/spec/textlog-image-perf-v1-minimum-scope.md` rev.2.1
-Spike result note: `docs/development/fi-03-spike-native-lazy-result.md`
+Spike result note: `docs/development/archived/fi-audits/fi-03-spike-native-lazy-result.md`
 Sibling: `docs/spec/image-intake-optimization-v1-behavior-contract.md` rev.1.1
 
 ## Revision history
@@ -560,12 +560,12 @@ audit で以下のいずれかが満たされない場合、regression として
 
 - minimum scope: `docs/spec/textlog-image-perf-v1-minimum-scope.md` rev.2.1
 - file issue: `docs/planning/file-issues/03_perf-textlog-image-lazy-rendering.md`
-- spike result: `docs/development/fi-03-spike-native-lazy-result.md`
+- spike result: `docs/development/archived/fi-audits/fi-03-spike-native-lazy-result.md`
 
 ### sibling / 補完
 
 - 画像取り込み最適化 v1 contract: `docs/spec/image-intake-optimization-v1-behavior-contract.md` rev.1.1
-- 画像取り込み最適化 v1 audit: `docs/development/image-intake-optimization-v1-audit.md`
+- 画像取り込み最適化 v1 audit: `docs/development/archived/image-intake-optimization/image-intake-optimization-v1-audit.md`
 
 ### 実装対象コード
 

@@ -157,7 +157,7 @@ v1 のダイアログが提供する入力・オプション：
 
 ### 4.2 v1 / v1.x のオプション搭載状況
 
-- ~~**Selection only** — v1 では非搭載~~ → **delivered v1.x / S-29（2026-04-16）**: log textarea の selection を open 時に snapshot し、ON で `countMatchesInRange` / `replaceAllInRange` を使用、Apply 後 range shift。本書の不変条件（id / createdAt / flags / 配列順 / 他 log 不変）は維持。詳細は `docs/development/textlog-replace-current-log.md` の Selection only セクション
+- ~~**Selection only** — v1 では非搭載~~ → **delivered v1.x / S-29（2026-04-16）**: log textarea の selection を open 時に snapshot し、ON で `countMatchesInRange` / `replaceAllInRange` を使用、Apply 後 range shift。本書の不変条件（id / createdAt / flags / 配列順 / 他 log 不変）は維持。詳細は `docs/development/archived/textlog-replace/textlog-replace-current-log.md` の Selection only セクション
 - **Replace next / Replace prev**: 一括 Replace All のみ（v1.x でも継続非対応）
 - **whole word / multiline toggle / preserve case**: TEXT contract と同様に v1.x では非搭載
 

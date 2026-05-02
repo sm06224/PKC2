@@ -1111,8 +1111,8 @@ manual** という review 駆動の順序を守って積み上げた。
 - **dev doc**（`docs/development/`）:
   - `html-paste-link-markdown.md`
   - `text-replace-current-entry.md`
-  - `textlog-replace-current-log.md`
-  - `textlog-replace-current-log-audit.md`（S-28 post-impl invariance audit、欠陥 0）
+  - `archived/textlog-replace/textlog-replace-current-log.md`
+  - `archived/textlog-replace/textlog-replace-current-log-audit.md`（S-28 post-impl invariance audit、欠陥 0）
   - `archived/boot-container-source/boot-container-source-priority.md`
 - **manual 同期**: 2 回
   - TEXT 側 UX（paste link / Find & Replace / boot priority）
@@ -1195,9 +1195,9 @@ scope を厳守した。
 - **dev doc**（`docs/development/`）:
   - `archived/boot-container-source/boot-container-source-policy-revision.md`（S-30 実装 spec）
   - `archived/boot-container-source/boot-container-source-policy-audit.md`（S-30 audit、欠陥 0）
-  - `merge-conflict-pure-slice.md`（pure 実装メモ）
-  - `merge-conflict-state-slice.md`（state 実装メモ）
-  - `merge-conflict-ui-v1-audit.md`（全 3 slice 統合監査、DEFECT-1 / DEFECT-2 最小修正記録）
+  - `archived/merge-conflict/merge-conflict-pure-slice.md`（pure 実装メモ）
+  - `archived/merge-conflict/merge-conflict-state-slice.md`（state 実装メモ）
+  - `archived/merge-conflict/merge-conflict-ui-v1-audit.md`（全 3 slice 統合監査、DEFECT-1 / DEFECT-2 最小修正記録）
 - **manual 同期**: 2 回
   - boot 側（chooser / view-only）→ 07 / 09
   - H-10 側（Merge mode と conflict 解決 UI / troubleshooting 3 件 / 用語集 3 件）→ 07 / 09
