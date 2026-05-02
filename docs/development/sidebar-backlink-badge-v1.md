@@ -145,5 +145,5 @@ const backlinkCounts = buildInboundCountMap(state.container?.relations ?? []);
 ## 8. 関連文書
 
 - `docs/development/backlinks-panel-v1.md` — "relations-based backlinks" の用語確立元
-- `docs/development/entry-autocomplete-v1.md` 〜 `-v1.5-modifier-enter.md` — authoring loop 側
+- `docs/development/archived/entry-autocomplete/entry-autocomplete-v1.md` 〜 `entry-autocomplete-v1.5-modifier-enter.md` — authoring loop 側
 - `src/features/relation/selector.ts` — 既存 `getRelationsForEntry` / `resolveRelations` と整合

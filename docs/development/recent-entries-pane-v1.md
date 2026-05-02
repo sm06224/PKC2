@@ -203,7 +203,7 @@ v1 viewer / sidebar 既存 CSS には触れない（完全 additive）。
 
 - `docs/development/next-feature-prioritization-after-relations-wave.md` — P1 出典
 - `docs/development/connectedness-s4-v1.md` — orphan marker（対の概念）
-- `docs/development/entry-autocomplete-v1.3-recent-first.md` — "書き" 側の recent 実装
+- `docs/development/archived/entry-autocomplete/entry-autocomplete-v1.3-recent-first.md` — "書き" 側の recent 実装
 - `docs/spec/entry-ordering-v1-behavior-contract.md` — snapshotEntryOrder の sort 規範
 - `src/features/entry-order/recent-entries.ts` — pure helper
 - `src/adapter/ui/renderer.ts` — `renderRecentEntriesPane`

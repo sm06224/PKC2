@@ -86,8 +86,8 @@
 | `../development/textlog-text-conversion.md` | TEXTLOG ↔ TEXT 変換仕様 |
 | `../development/embedded-preview-and-cycle-guard.md` | embed / cycle guard 設計 |
 | `../development/zip-export-contract.md` | ZIP stored mode 採用理由 |
-| `../development/boot-container-source-policy-revision.md` | S-30 boot source policy revision — embedded pkc-data は view-only / IDB 拡張は明示 Import のみ（2026-04-17） |
-| `../development/boot-container-source-policy-audit.md` | S-30 post-implementation invariance audit（欠陥 0、2026-04-17） |
+| `../development/archived/boot-container-source/boot-container-source-policy-revision.md` | S-30 boot source policy revision — embedded pkc-data は view-only / IDB 拡張は明示 Import のみ（2026-04-17） |
+| `../development/archived/boot-container-source/boot-container-source-policy-audit.md` | S-30 post-implementation invariance audit（欠陥 0、2026-04-17） |
 | `../development/merge-conflict-pure-slice.md` | H-10 pure slice 実装メモ（`detectEntryConflicts` 等、2026-04-17） |
 | `../development/merge-conflict-state-slice.md` | H-10 state slice 実装メモ（reducer 3 case / event 拡張 / lifecycle、2026-04-17） |
 | `../development/merge-conflict-ui-v1-audit.md` | H-10 pure + state + UI 3 slice 統合監査（DEFECT-1 / DEFECT-2 最小修正、2026-04-17） |

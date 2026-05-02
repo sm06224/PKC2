@@ -5,9 +5,9 @@
 
 This document complements the per-concern docs below; it does not replace them:
 
-- `boot-container-source-priority.md` — why pkc-data vs IDB order matters
-- `boot-container-source-policy-revision.md` — `viewOnlySource` and chooser UX
-- `boot-container-source-policy-audit.md` — post-revision audit
+- `archived/boot-container-source/boot-container-source-priority.md` — why pkc-data vs IDB order matters
+- `archived/boot-container-source/boot-container-source-policy-revision.md` — `viewOnlySource` and chooser UX
+- `archived/boot-container-source/boot-container-source-policy-audit.md` — post-revision audit
 - `idb-availability.md` — probe failure + runtime save failure banner semantics
 
 Where those docs already own a contract, this doc only points to the line number.
@@ -172,9 +172,9 @@ Zero hits outside the defining file + zero spec mention + zero docstring intent 
 - `src/adapter/platform/pkc-data-source.ts` — `readPkcData` / `chooseBootSource` / `finalizeChooserChoice`
 - `src/adapter/platform/idb-store.ts` — `createIDBStore`, `probeIDBAvailability`
 - `src/adapter/transport/message-bridge.ts` — `mountMessageBridge` (lazy-mounted at §9)
-- `docs/development/boot-container-source-priority.md` — S-24 order flip
-- `docs/development/boot-container-source-policy-revision.md` — viewOnlySource + chooser policy
-- `docs/development/boot-container-source-policy-audit.md` — post-revision audit
+- `docs/development/archived/boot-container-source/boot-container-source-priority.md` — S-24 order flip
+- `docs/development/archived/boot-container-source/boot-container-source-policy-revision.md` — viewOnlySource + chooser policy
+- `docs/development/archived/boot-container-source/boot-container-source-policy-audit.md` — post-revision audit
 - `docs/development/idb-availability.md` — probe + runtime save failure banners
 - `docs/development/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` — inventory including the 10-step summary that motivated this doc
 - `docs/development/dead-path-decision-isUlid-updateLogEntry.md` — worked example of the dead-path-vs-order-sensitive distinction (category 4 retain vs category 6 delete)

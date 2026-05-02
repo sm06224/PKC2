@@ -66,7 +66,7 @@ INDEX.md の section 構成(L27-478):
 orphan 例(全 67 件、`tests/dev-docs-orphan-list.txt` 仮称で C-1 PR の参考付録に list 化):
 - audit-of-audit 系(`addressbar-url-title-paste-v1-audit.md`、`attachment-foundation-fi04-v1-audit.md` 等の "v1 audit" suffix → 実装後に閉じた audit ノート)
 - multi-select sub-slice doc(`calendar-kanban-multi-select-bulk-date.md` 等 5 件 → multi-select 親 doc に統合余地)
-- decision / revision / coordination doc(`card-asset-target-coordination-audit.md`、`boot-container-source-policy-revision.md` 等)
+- decision / revision / coordination doc(`card-asset-target-coordination-audit.md`、`archived/boot-container-source/boot-container-source-policy-revision.md` 等)
 - color slice 設計補助(`color-tag-filter-slice4-design.md`、`color-tag-ui-appstate-audit.md`)
 
 → **C-3+(将来 wave)で「orphan 個別判定」を 1 doc ずつ実施**。本 audit / C-2 では touched なし。

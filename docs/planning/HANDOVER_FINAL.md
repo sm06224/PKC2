@@ -1113,7 +1113,7 @@ manual** という review 駆動の順序を守って積み上げた。
   - `text-replace-current-entry.md`
   - `textlog-replace-current-log.md`
   - `textlog-replace-current-log-audit.md`（S-28 post-impl invariance audit、欠陥 0）
-  - `boot-container-source-priority.md`
+  - `archived/boot-container-source/boot-container-source-priority.md`
 - **manual 同期**: 2 回
   - TEXT 側 UX（paste link / Find & Replace / boot priority）
   - textlog 側 UX（per-log Find & Replace）
@@ -1193,8 +1193,8 @@ scope を厳守した。
   - supervisor 確定事項 2 点: (1) multi-host 代表 = `updatedAt` 最新 + tie-break array index 昇順 (2) `contentHash` 入力 = `body + archetype`（title は分類軸なので除外）
   - I-MergeUI1〜I-MergeUI10 の不変条件固定
 - **dev doc**（`docs/development/`）:
-  - `boot-container-source-policy-revision.md`（S-30 実装 spec）
-  - `boot-container-source-policy-audit.md`（S-30 audit、欠陥 0）
+  - `archived/boot-container-source/boot-container-source-policy-revision.md`（S-30 実装 spec）
+  - `archived/boot-container-source/boot-container-source-policy-audit.md`（S-30 audit、欠陥 0）
   - `merge-conflict-pure-slice.md`（pure 実装メモ）
   - `merge-conflict-state-slice.md`（state 実装メモ）
   - `merge-conflict-ui-v1-audit.md`（全 3 slice 統合監査、DEFECT-1 / DEFECT-2 最小修正記録）
