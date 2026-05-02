@@ -273,15 +273,86 @@ export function applyMessagePrivacy(
  * dispatcher when SYS_INIT_COMPLETE first fires; surfaced in the
  * report only when the user has opted into content mode.
  *
- * The snapshot is held by reference. The Container in PKC2 is treated
- * as immutable by the reducer (state is recreated, not mutated), so
- * the reference stays valid for the page lifetime. JSON-stringify at
- * report time materializes it once.
+ * Hard-bounded at storage time so the snapshot can NEVER blow the
+ * engine's string limit at report time. Two layers of defense:
+ *   1. Asset-byte pre-scan: walk `container.assets` summing string
+ *      lengths. If the assets alone exceed `MAX_REPLAY_ASSET_BYTES`,
+ *      bail with an `oversize-assets` marker — we never even try to
+ *      stringify a container holding hundreds of MB of base64.
+ *   2. JSON.stringify within try/catch with a `MAX_REPLAY_BYTES` total
+ *      check. If the engine throws "allocation size overflow", we
+ *      catch and store an `unserializable` marker.
+ *
+ * The pre-scan is ~O(asset count) — bounded by the container shape,
+ * cheap on real PKC2 sessions. It catches the realistic worst case
+ * (an entry with embedded screenshots) before we hit the stringify
+ * cliff, even on engines (Safari) with smaller string ceilings than
+ * Firefox.
  */
 let initialContainerSnapshot: unknown = null;
 
+/** Per-component caps for replay. Sized so that
+ * recent[].content (max 6.4 MiB) + replay (max 768 KiB) + errors[]
+ * (~20 KiB) + envelope stay well below browser blob/tab limits. */
+export const MAX_REPLAY_BYTES = 768 * 1024;
+/** Heuristic asset budget — when the container's assets alone exceed
+ * this, replay is dropped without even attempting to stringify. */
+export const MAX_REPLAY_ASSET_BYTES = 512 * 1024;
+
 export function recordInitialContainer(container: unknown): void {
-  initialContainerSnapshot = container;
+  if (container === null || container === undefined) {
+    initialContainerSnapshot = container;
+    return;
+  }
+  if (typeof container !== 'object') {
+    initialContainerSnapshot = container;
+    return;
+  }
+  // Layer 1: asset pre-scan. Stop the moment we exceed the budget so
+  // we don't traverse a 100k-asset map needlessly.
+  const assets = (container as { assets?: Record<string, unknown> }).assets;
+  if (assets && typeof assets === 'object') {
+    let totalAssetBytes = 0;
+    for (const v of Object.values(assets)) {
+      if (typeof v === 'string') totalAssetBytes += v.length;
+      if (totalAssetBytes > MAX_REPLAY_ASSET_BYTES) {
+        initialContainerSnapshot = {
+          _truncated: true,
+          reason: 'oversize-assets',
+          approxAssetBytes: totalAssetBytes,
+        };
+        return;
+      }
+    }
+  }
+  // Layer 2: bounded stringify. If the engine throws on allocation
+  // (Firefox / WebKit raise different errors), the catch path stores
+  // a marker rather than letting the error escape.
+  let json: string;
+  try {
+    json = JSON.stringify(container);
+  } catch {
+    initialContainerSnapshot = {
+      _truncated: true,
+      reason: 'unserializable',
+    };
+    return;
+  }
+  if (json.length > MAX_REPLAY_BYTES) {
+    initialContainerSnapshot = {
+      _truncated: true,
+      reason: 'oversize',
+      approxBytes: json.length,
+    };
+    return;
+  }
+  // Below all caps. Re-parse for an immutable copy that can't be
+  // mutated by later state transitions.
+  try {
+    initialContainerSnapshot = JSON.parse(json);
+  } catch {
+    initialContainerSnapshot = { _truncated: true, reason: 'unserializable' };
+  }
 }
 
 export function readInitialContainer(): unknown {
@@ -502,9 +573,16 @@ export const MAX_REPORT_BYTES = 1024 * 1024;
  * `replay` first (largest single payload), then trims `recent` and
  * `errors` from the front (oldest first). Surfaces what was dropped
  * via `truncatedCounts` for transparency.
+ *
+ * Defense-in-depth: every JSON.stringify here is wrapped in
+ * `safeMeasureJsonLength`. If a stringify call throws "allocation
+ * size overflow" (e.g. replay slipped past its own cap due to a
+ * heuristic miss), we treat the size as `Infinity` and proceed with
+ * truncation rather than letting the error escape into the click
+ * handler.
  */
 export function applyTotalSizeCap(report: DebugReport): DebugReport {
-  if (JSON.stringify(report).length <= MAX_REPORT_BYTES) return report;
+  if (safeMeasureJsonLength(report) <= MAX_REPORT_BYTES) return report;
   const out: DebugReport = {
     ...report,
     truncatedCounts: { ...report.truncatedCounts },
@@ -512,17 +590,38 @@ export function applyTotalSizeCap(report: DebugReport): DebugReport {
   if (out.replay !== undefined) {
     delete out.replay;
     out.truncatedCounts.replayDropped = true;
-    if (JSON.stringify(out).length <= MAX_REPORT_BYTES) return out;
+    if (safeMeasureJsonLength(out) <= MAX_REPORT_BYTES) return out;
   }
-  while (out.recent.length > 0 && JSON.stringify(out).length > MAX_REPORT_BYTES) {
+  while (
+    out.recent.length > 0 &&
+    safeMeasureJsonLength(out) > MAX_REPORT_BYTES
+  ) {
     out.recent = out.recent.slice(1);
     out.truncatedCounts.recent += 1;
   }
-  while (out.errors.length > 0 && JSON.stringify(out).length > MAX_REPORT_BYTES) {
+  while (
+    out.errors.length > 0 &&
+    safeMeasureJsonLength(out) > MAX_REPORT_BYTES
+  ) {
     out.errors = out.errors.slice(1);
     out.truncatedCounts.errors += 1;
   }
   return out;
+}
+
+/**
+ * Stringify-and-measure with full overflow protection. Returns
+ * `Infinity` when the engine refuses to allocate the result string —
+ * the caller treats that as "definitely over the cap" and proceeds
+ * with truncation. Never throws.
+ */
+function safeMeasureJsonLength(value: unknown): number {
+  try {
+    const json = JSON.stringify(value);
+    return typeof json === 'string' ? json.length : Infinity;
+  } catch {
+    return Infinity;
+  }
 }
 
 /**
@@ -592,17 +691,29 @@ export function buildDebugEnvironment(commitFromMeta?: string): Pick<
  * URL. The user can review the contents and Ctrl+S / ⌘+S to save —
  * no clipboard permission, no auto-download into the system Downloads
  * folder. Returns the opened Window when successful, or `null` when
- * the host blocks `window.open` (popup blocker, sandboxed iframe);
- * the caller can then fall back to an inline modal.
+ * the host blocks `window.open` (popup blocker, sandboxed iframe) or
+ * when the report itself is too large to stringify; the caller can
+ * then surface a toast or modal to the user.
  *
  * `URL.revokeObjectURL` is scheduled on a long delay so the tab has
  * a comfortable window to load. Modern browsers retain the loaded
  * resource in the tab past revocation; the timer is hygiene to free
  * the kept-alive blob if the user never opens the tab.
+ *
+ * Defense: the `JSON.stringify` is wrapped in try/catch. The expected
+ * failure mode is a Container so large that even after
+ * `applyTotalSizeCap` truncation the serialized form blows the engine
+ * string limit. Returning `null` lets the caller emit the same toast
+ * as the popup-blocker path.
  */
 export function dispatchDebugReport(report: DebugReport): Window | null {
   if (typeof window === 'undefined' || typeof URL === 'undefined') return null;
-  const text = JSON.stringify(report, null, 2);
+  let text: string;
+  try {
+    text = JSON.stringify(report, null, 2);
+  } catch {
+    return null;
+  }
   const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const opened = window.open(url, '_blank', 'noopener');

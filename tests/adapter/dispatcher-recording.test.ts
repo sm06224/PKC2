@@ -16,7 +16,7 @@
  * §5-1 for the upper-tier privacy regulation this verifies.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import {
   clearDebugEvents,
@@ -199,7 +199,12 @@ describe('dispatcher × debug ring buffer — content mode (opt-in)', () => {
     const d = createDispatcher();
     expect(readInitialContainer()).toBeNull();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
-    expect(readInitialContainer()).toBe(mockContainer);
+    // Stored as an immutable deep clone (recordInitialContainer
+    // re-parses the JSON), so we check structural equality, not
+    // identity. Mutating the original after capture must not affect
+    // the snapshot — that's the whole point of the deep clone.
+    expect(readInitialContainer()).toEqual(mockContainer);
+    expect(readInitialContainer()).not.toBe(mockContainer);
   });
 
   it('does NOT capture initialContainer in structural mode', () => {
@@ -240,5 +245,76 @@ describe('dispatcher × debug ring buffer — content mode (opt-in)', () => {
     expect(content.reason).toBe('oversize');
     const json = JSON.stringify(events);
     expect(json).not.toContain('HUGE-BODY-SHOULD-BE-TRUNCATED');
+  });
+});
+
+describe('user stress repro — oversized container in content mode', () => {
+  /**
+   * Reproduces the user-reported "InternalError: allocation size
+   * overflow" path. The user opened a deployment with a real PKC2
+   * container that carried hundreds of MB of base64 assets in IDB,
+   * with `?pkc-debug=*&pkc-debug-contents=1`. The previous fix
+   * (snapshotActionForContent for recent[].content) was protected,
+   * but recordInitialContainer stored a raw reference and
+   * applyTotalSizeCap / dispatchDebugReport called JSON.stringify
+   * on the resulting report unprotected — Firefox / Safari raised
+   * an uncaught allocation overflow.
+   *
+   * This test exercises the whole boot → click flow on a synthetic
+   * but realistic container shape and asserts NOTHING throws.
+   */
+  it('boots and dumps a report without throwing for a 600 KiB-asset container', async () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    const fatContainer: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'e-photo',
+          title: 'photo',
+          body: 'see attached',
+          archetype: 'attachment',
+          created_at: ts,
+          updated_at: ts,
+        },
+      ],
+      assets: {
+        // Single asset above MAX_REPLAY_ASSET_BYTES (512 KiB) → the
+        // pre-scan must trip and store a truncation marker BEFORE
+        // attempting JSON.stringify.
+        'photo-asset': 'A'.repeat(600 * 1024),
+      },
+    };
+    const d = createDispatcher();
+    expect(() => {
+      d.dispatch({ type: 'SYS_INIT_COMPLETE', container: fatContainer });
+    }).not.toThrow();
+
+    // Verify the recorded initialContainer is the truncation marker —
+    // the giant asset string MUST NOT have been pinned in memory.
+    const stored = readInitialContainer() as Record<string, unknown>;
+    expect(stored._truncated).toBe(true);
+    expect(stored.reason).toBe('oversize-assets');
+    expect(JSON.stringify(stored)).not.toContain('AAAAAA');
+
+    // The whole click path: build report → applyTotalSizeCap →
+    // JSON.stringify in dispatchDebugReport. None of these may throw.
+    const { buildDebugReportFromState } = await import(
+      '@adapter/ui/debug-report'
+    );
+    const { dispatchDebugReport } = await import('@runtime/debug-flags');
+    const fakeWindow = {} as Window;
+    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:stress',
+      revokeObjectURL: () => undefined,
+    });
+    expect(() => {
+      const report = buildDebugReportFromState(d.getState());
+      const result = dispatchDebugReport(report);
+      expect(result).toBe(fakeWindow);
+    }).not.toThrow();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 });

@@ -567,4 +567,143 @@ describe('applyTotalSizeCap — 1 MiB hard cap with priority truncation', () => 
     expect(JSON.stringify(out).length).toBeLessThanOrEqual(MAX_REPORT_BYTES);
     expect(out.truncatedCounts.recent).toBeGreaterThan(0);
   });
+
+  it('drops replay when stringify throws (cyclic / overflow surrogate)', async () => {
+    // Real-world failure surrogate: a value that JSON.stringify
+    // refuses to serialize (cyclic). The user-reported Firefox
+    // "InternalError: allocation size overflow" hits the same
+    // try/catch path inside safeMeasureJsonLength → returns Infinity →
+    // applyTotalSizeCap drops replay rather than letting the error
+    // escape into the click handler.
+    const { applyTotalSizeCap } = await import('@runtime/debug-flags');
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const r = makeReport({
+      level: 'content',
+      contentsIncluded: true,
+      replay: { initialContainer: cyclic },
+    });
+    expect(() => applyTotalSizeCap(r)).not.toThrow();
+    const out = applyTotalSizeCap(r);
+    expect(out.replay).toBeUndefined();
+    expect(out.truncatedCounts.replayDropped).toBe(true);
+  });
+});
+
+describe('recordInitialContainer — replay seed bounded at storage time', () => {
+  const TS = '2026-05-02T00:00:00Z';
+
+  function makeContainer(overrides: Record<string, unknown> = {}) {
+    return {
+      meta: {
+        container_id: 'c-stress',
+        title: 'stress',
+        created_at: TS,
+        updated_at: TS,
+        schema_version: 1,
+      },
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets: {},
+      ...overrides,
+    };
+  }
+
+  it('stores plain references for small containers', async () => {
+    const { recordInitialContainer, readInitialContainer, clearInitialContainerForTests } =
+      await import('@runtime/debug-flags');
+    clearInitialContainerForTests();
+    const c = makeContainer({
+      entries: [{ lid: 'e-1', title: 't', body: 'b', archetype: 'text' }],
+    });
+    recordInitialContainer(c);
+    expect(readInitialContainer()).toEqual(c);
+  });
+
+  it('replaces with oversize-assets marker BEFORE attempting JSON.stringify', async () => {
+    // Real-world worst case: a single image asset that exceeds the
+    // asset budget. The pre-scan stops at the first violator so we
+    // never traverse 100k assets needlessly AND never feed a
+    // multi-megabyte string to JSON.stringify.
+    const {
+      recordInitialContainer,
+      readInitialContainer,
+      clearInitialContainerForTests,
+      MAX_REPLAY_ASSET_BYTES,
+    } = await import('@runtime/debug-flags');
+    clearInitialContainerForTests();
+    const huge = 'A'.repeat(MAX_REPLAY_ASSET_BYTES + 1024);
+    const c = makeContainer({
+      assets: { 'big-asset': huge },
+    });
+    recordInitialContainer(c);
+    const stored = readInitialContainer() as Record<string, unknown>;
+    expect(stored._truncated).toBe(true);
+    expect(stored.reason).toBe('oversize-assets');
+    expect(typeof stored.approxAssetBytes).toBe('number');
+    // Critical: the giant asset must NOT appear in the stored value.
+    expect(JSON.stringify(stored)).not.toContain('AAAAAA');
+  });
+
+  it('replaces with oversize marker when stringified container exceeds MAX_REPLAY_BYTES', async () => {
+    // Asset budget passes (no assets), but many entries with large
+    // bodies push the JSON length over MAX_REPLAY_BYTES.
+    const {
+      recordInitialContainer,
+      readInitialContainer,
+      clearInitialContainerForTests,
+      MAX_REPLAY_BYTES,
+    } = await import('@runtime/debug-flags');
+    clearInitialContainerForTests();
+    const body = 'B'.repeat(10 * 1024); // 10 KiB body
+    const entries = Array.from({ length: 100 }, (_, i) => ({
+      lid: `e-${i}`,
+      title: `t${i}`,
+      body,
+      archetype: 'text',
+    }));
+    const c = makeContainer({ entries });
+    recordInitialContainer(c);
+    const stored = readInitialContainer() as Record<string, unknown>;
+    expect(stored._truncated).toBe(true);
+    expect(stored.reason).toBe('oversize');
+    expect(stored.approxBytes as number).toBeGreaterThan(MAX_REPLAY_BYTES);
+  });
+
+  it('replaces with unserializable marker when JSON.stringify throws', async () => {
+    // Surrogate for the Firefox "allocation size overflow" path —
+    // any thrown error inside JSON.stringify must be caught and
+    // mapped to a marker rather than escaping.
+    const { recordInitialContainer, readInitialContainer, clearInitialContainerForTests } =
+      await import('@runtime/debug-flags');
+    clearInitialContainerForTests();
+    const cyclic: Record<string, unknown> = { entries: [], relations: [], assets: {} };
+    cyclic.self = cyclic;
+    expect(() => recordInitialContainer(cyclic)).not.toThrow();
+    expect(readInitialContainer()).toMatchObject({
+      _truncated: true,
+      reason: 'unserializable',
+    });
+  });
+});
+
+describe('dispatchDebugReport — overflow guard at final stringify', () => {
+  it('returns null without throwing when JSON.stringify(report) throws', async () => {
+    // The post-applyTotalSizeCap report should be safe, but defense-
+    // in-depth: if a future schema addition slips an unserializable
+    // value through, the click handler must still bail gracefully.
+    const { dispatchDebugReport } = await import('@runtime/debug-flags');
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const fakeWindow = {} as Window;
+    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:test',
+      revokeObjectURL: () => undefined,
+    });
+    const result = dispatchDebugReport(cyclic as never);
+    expect(result).toBeNull();
+  });
 });
