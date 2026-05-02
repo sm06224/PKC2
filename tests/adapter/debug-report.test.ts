@@ -4,11 +4,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '@adapter/state/app-state';
 import { buildDebugReportFromState } from '@adapter/ui/debug-report';
+import {
+  _resetContentsWarningForTests,
+  clearDebugEvents,
+  recordDebugEvent,
+} from '@runtime/debug-flags';
 import type { Container } from '@core/model/container';
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   window.localStorage.clear();
+  clearDebugEvents();
+  _resetContentsWarningForTests();
 });
 
 function makeContainer(overrides: Partial<Container> = {}): Container {
@@ -115,5 +122,29 @@ describe('buildDebugReportFromState', () => {
     expect(report.view).toBe('kanban');
     expect(report.selectedLid).toBe('e-42');
     expect(report.editingLid).toBe('e-42');
+  });
+
+  it('emits schema 2 with structural defaults when no debug flag is set', () => {
+    const report = buildDebugReportFromState(createInitialState());
+    expect(report.schema).toBe(2);
+    expect(report.level).toBe('structural');
+    expect(report.contentsIncluded).toBe(false);
+    expect(report.recent).toEqual([]);
+  });
+
+  it('propagates the ring buffer into report.recent', () => {
+    window.history.replaceState(null, '', '/?pkc-debug=sync');
+    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
+    const report = buildDebugReportFromState(createInitialState());
+    expect(report.recent).toEqual([
+      { kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
+    ]);
+  });
+
+  it('flips level/contentsIncluded when ?pkc-debug-contents=1 is opted in', () => {
+    window.history.replaceState(null, '', '/?pkc-debug=*&pkc-debug-contents=1');
+    const report = buildDebugReportFromState(createInitialState());
+    expect(report.level).toBe('content');
+    expect(report.contentsIncluded).toBe(true);
   });
 });

@@ -63,7 +63,7 @@ test('debug flag mounts Report button and copies report to clipboard', async ({
   );
   const report = JSON.parse(clipboardText);
 
-  expect(report.schema).toBe(1);
+  expect(report.schema).toBe(2);
   expect(typeof report.pkc.version).toBe('string');
   expect(report.pkc.version.length).toBeGreaterThan(0);
   expect(typeof report.ts).toBe('string');
@@ -74,6 +74,12 @@ test('debug flag mounts Report button and copies report to clipboard', async ({
   expect(report.viewport.w).toBeGreaterThan(0);
   expect(report.viewport.h).toBeGreaterThan(0);
   expect(typeof report.pointer.coarse).toBe('boolean');
+  // Schema 2 additions (PR #211, stage β): structural defaults + ring
+  // buffer. The smoke test page hits ?pkc-debug=* (no contents flag),
+  // so level must be 'structural' and content must not be exposed.
+  expect(report.level).toBe('structural');
+  expect(report.contentsIncluded).toBe(false);
+  expect(Array.isArray(report.recent)).toBe(true);
   expect(report.phase).toBe('ready');
   expect(['detail', 'calendar', 'kanban']).toContain(report.view);
   // selectedLid / editingLid may be null on a fresh boot — but they

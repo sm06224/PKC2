@@ -3,11 +3,18 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  _resetContentsWarningForTests,
   buildDebugEnvironment,
+  clearDebugEvents,
   debugFeatures,
   dispatchDebugReport,
+  extractStructuralFromAction,
+  isContentModeEnabled,
   isDebugEnabled,
+  isRecordingEnabled,
   parseDebugList,
+  readDebugEvents,
+  recordDebugEvent,
   type DebugReport,
 } from '@runtime/debug-flags';
 
@@ -19,6 +26,8 @@ function setUrl(query: string): void {
 beforeEach(() => {
   setUrl('');
   window.localStorage.clear();
+  clearDebugEvents();
+  _resetContentsWarningForTests();
 });
 
 describe('parseDebugList', () => {
@@ -107,7 +116,7 @@ describe('buildDebugEnvironment', () => {
   it('returns the schema-versioned env slice with no app-state fields', () => {
     setUrl('pkc-debug=sync,kanban');
     const env = buildDebugEnvironment();
-    expect(env.schema).toBe(1);
+    expect(env.schema).toBe(2);
     expect(typeof env.pkc.version).toBe('string');
     expect(env.pkc.version.length).toBeGreaterThan(0);
     expect(typeof env.ts).toBe('string');
@@ -128,11 +137,36 @@ describe('buildDebugEnvironment', () => {
   it('reports an empty flags list when no debug feature is active', () => {
     expect(buildDebugEnvironment().flags).toEqual([]);
   });
+
+  it('defaults to structural level / contentsIncluded:false / recent:[]', () => {
+    setUrl('pkc-debug=sync');
+    const env = buildDebugEnvironment();
+    expect(env.level).toBe('structural');
+    expect(env.contentsIncluded).toBe(false);
+    expect(env.recent).toEqual([]);
+  });
+
+  it('reflects ring-buffer contents in env.recent', () => {
+    setUrl('pkc-debug=sync');
+    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
+    recordDebugEvent({ kind: 'dispatch', ts: 't2', type: 'SET_VIEW_MODE' });
+    expect(buildDebugEnvironment().recent).toEqual([
+      { kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
+      { kind: 'dispatch', ts: 't2', type: 'SET_VIEW_MODE' },
+    ]);
+  });
+
+  it('flips level/contentsIncluded when content mode is opted in', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    const env = buildDebugEnvironment();
+    expect(env.level).toBe('content');
+    expect(env.contentsIncluded).toBe(true);
+  });
 });
 
 describe('dispatchDebugReport', () => {
   const sample: DebugReport = {
-    schema: 1,
+    schema: 2,
     pkc: { version: '0.0.0-test' },
     ts: '2026-05-02T00:00:00.000Z',
     url: 'http://test/',
@@ -145,6 +179,9 @@ describe('dispatchDebugReport', () => {
     editingLid: null,
     container: null,
     flags: [],
+    level: 'structural',
+    contentsIncluded: false,
+    recent: [],
   };
 
   afterEach(() => {
@@ -174,5 +211,165 @@ describe('dispatchDebugReport', () => {
     vi.stubGlobal('navigator', {});
     const ok = await dispatchDebugReport(sample);
     expect(ok).toBe(false);
+  });
+});
+
+describe('isRecordingEnabled', () => {
+  it('is false when no debug flag is set', () => {
+    expect(isRecordingEnabled()).toBe(false);
+  });
+
+  it('is true when ?pkc-debug=<feature> is set', () => {
+    setUrl('pkc-debug=sync');
+    expect(isRecordingEnabled()).toBe(true);
+  });
+
+  it('is true when ?pkc-debug=* is set', () => {
+    setUrl('pkc-debug=*');
+    expect(isRecordingEnabled()).toBe(true);
+  });
+});
+
+describe('isContentModeEnabled — graduated opt-in', () => {
+  it('is false when no debug flag is set, even if contents flag is on', () => {
+    setUrl('pkc-debug-contents=1');
+    expect(isContentModeEnabled()).toBe(false);
+  });
+
+  it('is false when only ?pkc-debug=<feature> is set (default structural)', () => {
+    setUrl('pkc-debug=sync');
+    expect(isContentModeEnabled()).toBe(false);
+  });
+
+  it('is true only when both pkc-debug=* and pkc-debug-contents=1 are present', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    expect(isContentModeEnabled()).toBe(true);
+  });
+
+  it('accepts pkc-debug-contents=true as an alias for =1', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=true');
+    expect(isContentModeEnabled()).toBe(true);
+  });
+
+  it('is false for any non-truthy value (e.g., =0 / =off)', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=0');
+    expect(isContentModeEnabled()).toBe(false);
+    setUrl('pkc-debug=*&pkc-debug-contents=off');
+    expect(isContentModeEnabled()).toBe(false);
+  });
+
+  it('reads pkc2.debug-contents from localStorage when URL flag absent', () => {
+    setUrl('pkc-debug=sync');
+    window.localStorage.setItem('pkc2.debug-contents', '1');
+    expect(isContentModeEnabled()).toBe(true);
+  });
+
+  it('console.warn fires once when content mode is read from localStorage', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    setUrl('pkc-debug=sync');
+    window.localStorage.setItem('pkc2.debug-contents', '1');
+    isContentModeEnabled();
+    isContentModeEnabled();
+    isContentModeEnabled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatch(/content mode is enabled via localStorage/);
+    warn.mockRestore();
+  });
+
+  it('console.warn does NOT fire when content mode comes from URL only', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    isContentModeEnabled();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe('recordDebugEvent / readDebugEvents — ring buffer', () => {
+  it('records events in dispatch order', () => {
+    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
+    recordDebugEvent({ kind: 'dispatch', ts: 't2', type: 'B', lid: 'e-1' });
+    recordDebugEvent({ kind: 'dispatch', ts: 't3', type: 'C' });
+    expect(readDebugEvents()).toEqual([
+      { kind: 'dispatch', ts: 't1', type: 'A' },
+      { kind: 'dispatch', ts: 't2', type: 'B', lid: 'e-1' },
+      { kind: 'dispatch', ts: 't3', type: 'C' },
+    ]);
+  });
+
+  it('caps at 100 events with FIFO eviction (oldest dropped)', () => {
+    for (let i = 0; i < 150; i++) {
+      recordDebugEvent({ kind: 'dispatch', ts: `t${i}`, type: `A${i}` });
+    }
+    const events = readDebugEvents();
+    expect(events).toHaveLength(100);
+    // oldest 50 dropped — first remaining should be t50
+    expect(events[0]).toMatchObject({ ts: 't50', type: 'A50' });
+    expect(events[99]).toMatchObject({ ts: 't149', type: 'A149' });
+  });
+
+  it('readDebugEvents returns a snapshot (caller cannot mutate the buffer)', () => {
+    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
+    const snap = readDebugEvents();
+    snap.push({ kind: 'dispatch', ts: 't2', type: 'B' });
+    expect(readDebugEvents()).toHaveLength(1);
+  });
+
+  it('clearDebugEvents empties the buffer', () => {
+    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
+    clearDebugEvents();
+    expect(readDebugEvents()).toEqual([]);
+  });
+});
+
+describe('extractStructuralFromAction — privacy by construction', () => {
+  it('returns only { type } for actions without a lid', () => {
+    expect(extractStructuralFromAction({ type: 'CANCEL_EDIT' })).toEqual({
+      type: 'CANCEL_EDIT',
+    });
+  });
+
+  it('cherry-picks lid when present as a string', () => {
+    expect(
+      extractStructuralFromAction({ type: 'SELECT_ENTRY', lid: 'e-1' }),
+    ).toEqual({ type: 'SELECT_ENTRY', lid: 'e-1' });
+  });
+
+  it('omits lid when it is not a string (e.g., undefined / number)', () => {
+    expect(
+      extractStructuralFromAction({ type: 'X', lid: undefined }),
+    ).toEqual({ type: 'X' });
+    expect(
+      extractStructuralFromAction({ type: 'X', lid: 42 as unknown as string }),
+    ).toEqual({ type: 'X' });
+  });
+
+  it('NEVER copies body / title / asset / from / to even if present', () => {
+    // Privacy by construction (philosophy doc §4 原則 2): the function
+    // cherry-picks fields by name, never spreads the action. A future
+    // action with a new sensitive field cannot leak through this path.
+    const out = extractStructuralFromAction({
+      type: 'COMMIT_EDIT',
+      lid: 'e-1',
+      title: 'TOP-SECRET-TITLE',
+      body: 'TOP-SECRET-BODY',
+      assets: { 'k': 'data:image/png;base64,VEVTVA==' },
+    });
+    expect(out).toEqual({ type: 'COMMIT_EDIT', lid: 'e-1' });
+    const json = JSON.stringify(out);
+    expect(json).not.toContain('TOP-SECRET-TITLE');
+    expect(json).not.toContain('TOP-SECRET-BODY');
+    expect(json).not.toContain('VEVTVA==');
+  });
+
+  it('survives nested / hostile action shapes', () => {
+    const hostile: { type: string } & Record<string, unknown> = {
+      type: 'SYS_INIT_COMPLETE',
+      container: { entries: [{ body: 'leak-me' }] },
+      lid: 'e-1',
+    };
+    const out = extractStructuralFromAction(hostile);
+    expect(JSON.stringify(out)).not.toContain('leak-me');
+    expect(out).toEqual({ type: 'SYS_INIT_COMPLETE', lid: 'e-1' });
   });
 });

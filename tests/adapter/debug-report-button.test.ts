@@ -75,7 +75,7 @@ describe('mountDebugReportButton — click → clipboard → toast', () => {
     expect(writeText).toHaveBeenCalledTimes(1);
     const payload = writeText.mock.calls[0]![0] as string;
     const parsed = JSON.parse(payload);
-    expect(parsed.schema).toBe(1);
+    expect(parsed.schema).toBe(2);
     expect(typeof parsed.pkc.version).toBe('string');
     expect(parsed.phase).toBe('initializing');
 
@@ -111,7 +111,7 @@ describe('mountDebugReportButton — click → clipboard → toast', () => {
     );
     expect(pre).not.toBeNull();
     const parsed = JSON.parse(pre!.textContent ?? '');
-    expect(parsed.schema).toBe(1);
+    expect(parsed.schema).toBe(2);
 
     const close = modal!.querySelector<HTMLButtonElement>(
       '[data-pkc-action="dismiss-debug-report-fallback"]',

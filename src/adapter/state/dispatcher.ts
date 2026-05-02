@@ -3,6 +3,12 @@ import type { DomainEvent } from '../../core/action/domain-event';
 import { reduce, createInitialState } from './app-state';
 import type { AppState, ReduceResult } from './app-state';
 import { start } from '../../runtime/profile';
+import {
+  extractStructuralFromAction,
+  isContentModeEnabled,
+  isRecordingEnabled,
+  recordDebugEvent,
+} from '../../runtime/debug-flags';
 
 /**
  * EventListener: subscribes to domain events emitted after state transitions.
@@ -62,6 +68,22 @@ export function createDispatcher(): Dispatcher {
     // listener flush together — listener cost is the dominant share
     // for full-shell renders.
     const endDispatch = start(`dispatch:${action.type}`);
+    // Debug ring buffer (PR #211, stage β). Off when no debug feature
+    // is active. Structural mode cherry-picks `{ type, lid? }` only;
+    // content mode (`?pkc-debug-contents=1`) additionally captures the
+    // full action verbatim. See `docs/development/debug-privacy-philosophy.md`.
+    if (isRecordingEnabled()) {
+      const structural = extractStructuralFromAction(
+        action as { type: string } & Record<string, unknown>,
+      );
+      recordDebugEvent({
+        kind: 'dispatch',
+        ts: new Date().toISOString(),
+        type: structural.type,
+        ...(structural.lid !== undefined ? { lid: structural.lid } : {}),
+        ...(isContentModeEnabled() ? { content: action } : {}),
+      });
+    }
     const endReduce = start(`dispatch:${action.type}:reduce`);
     const result = reduce(state, action);
     endReduce();
