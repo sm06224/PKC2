@@ -31,19 +31,16 @@ PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198 で実施)で個別 PR
 | #191 | [`sublocation-prebuilt-pr191-findings.md`](./sublocation-prebuilt-pr191-findings.md) | sublocation-scan prebuilt analysis cache、c-1000 dispatch −30% |
 | #192 | [`relation-memo-pr192-findings.md`](./relation-memo-pr192-findings.md) | filter-cache 拡張(backlinkCounts + connectedLids)、c-5000 ~2ms 削減 |
 | #193 | [`line-meta-pr193-findings.md`](./line-meta-pr193-findings.md) | TextAnalysis lineMeta 事前計算、per-call regex eliminate |
-| #195 — | (live tree 残置:iOS Safari 実機 zoom event smoke 不足) | iOS textarea/input focus zoom suppress(viewport meta) |
+| #195 | [`iphone-zoom-suppress-pr195-findings.md`](./iphone-zoom-suppress-pr195-findings.md) | iOS textarea/input focus zoom suppress。Phase 1B PR #5 で `tests/smoke/iphone-zoom-suppress.spec.ts`(viewport meta + computed font-size >= 16 px under pointer:coarse + visualViewport.scale=1)を追加。**parity test が CSS specificity の latent bug を発見** — `.pkc-editor-body { font-size: 0.8rem; }` が belt-and-suspenders rule を上書きしていたため、`!important` で specificity 戦争を回避(viewport meta が現在 zoom を抑制しているので user 影響はゼロだが、Apple が将来 `maximum-scale=1` を無効化したら zoom 復活する潜在 defect だった) |
 | #196 | [`copy-buttons-pr196-findings.md`](./copy-buttons-pr196-findings.md) | code block / table の copy button、smoke 11/11 で button 可視性確認 |
 | #197 | [`nav-history-pr197-findings.md`](./nav-history-pr197-findings.md) | browser back/forward を internal navigation に wire |
 | #198 | [`editor-key-helpers-pr198-findings.md`](./editor-key-helpers-pr198-findings.md) | textarea key helpers(Enter list / bracket pairs / skip-out / Tab indent)— Phase 1B PR #1 で `tests/smoke/editor-key-helpers.spec.ts`(8 件、`page.keyboard.type` real keystroke)を追加し gate 5 を満たしてから archive |
 
-## 残置 2 件(deficit register、`../../INDEX.md` で追跡)
+## 残置 1 件(deficit register、`../../INDEX.md` で追跡)
 
-5-gate verification の **gate 4(parity test) / gate 5(UX 効果の客観確認)** が未充足のため archive せず live tree に残した PR findings:
+5-gate verification の **gate 5(UX 効果の客観確認)** が未充足のため archive せず live tree に残した PR findings:
 
-- `iphone-zoom-suppress-pr195-findings.md`(iOS 実機 zoom event smoke 不在 — Phase 1B PR #5 で対応中)
-- `sublocation-prefix-cache-pr190-findings.md`(no-match cache UX-effect smoke 不在)
-
-これらは Phase 1B 残 PR(#5)で test 補強後 archive 予定。
+- `sublocation-prefix-cache-pr190-findings.md`(no-match prefix-incremental cache の UX-effect 観測が pure correctness test のみ。bench-level の dispatch 時間短縮検証が未着手 — 別 PR で `tests/bench/` に追加予定)
 
 ## 関連
 

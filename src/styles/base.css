@@ -6764,10 +6764,11 @@ mark.pkc-search-mark {
     min-height: 9rem;
   }
 
-  /* PR #195 (2026-04-28): iOS Safari auto-zooms when focusing an
-   * input / textarea whose computed font-size is < 16 px. The zoom
-   * leaves the user stuck at >100 % scale until they manually
-   * pinch-out, which the user audit calls out as
+  /* PR #195 (2026-04-28) + Phase 1B PR #5 (2026-05-02 specificity fix):
+   * iOS Safari auto-zooms when focusing an input / textarea whose
+   * computed font-size is < 16 px. The zoom leaves the user stuck
+   * at >100 % scale until they manually pinch-out, which the user
+   * audit calls out as
    *   「iPhoneでテキストエリア選択時などに拡大縮小されて、
    *    俯瞰性が崩れる。なんとかならないか?」
    *
@@ -6779,7 +6780,22 @@ mark.pkc-search-mark {
    *   - textarea  (TEXT body editor, TEXTLOG append, todo description, …)
    *   - text-like inputs (search, title, todo date, palette filter, …)
    * Buttons / range / radio / checkbox don't trigger the zoom and
-   * keep their current sizing. */
+   * keep their current sizing.
+   *
+   * `!important` is required here — without it, more-specific class
+   * rules win on the cascade. Real example caught by Phase 1B parity
+   * test (`tests/smoke/iphone-zoom-suppress.spec.ts`):
+   *   `.pkc-editor-body { font-size: 0.8rem; }` (specificity 0,1,0)
+   * was beating the bare `textarea` selector (specificity 0,0,1)
+   * inside this @media block, so the body editor textarea ended up
+   * at 12.8 px and would auto-zoom if Apple ever disables
+   * `maximum-scale=1` (the viewport meta also in this PR).
+   * The belt was working silently; the suspenders weren't, until
+   * the parity test caught it.
+   *
+   * `!important` is the right tool for safety rules whose intent is
+   * "no matter what local class says, this MUST hold on touch
+   * devices to prevent the zoom regression". */
   textarea,
   input[type="text"],
   input[type="search"],
@@ -6795,7 +6811,7 @@ mark.pkc-search-mark {
   input[type="week"],
   input:not([type]),
   [contenteditable="true"] {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 }
 
