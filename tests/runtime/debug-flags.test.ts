@@ -166,7 +166,7 @@ describe('buildDebugEnvironment', () => {
   });
 });
 
-describe('dispatchDebugReport', () => {
+describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
   const sample: DebugReport = {
     schema: 2,
     pkc: { version: '0.0.0-test' },
@@ -188,31 +188,59 @@ describe('dispatchDebugReport', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
-  it('writes pretty JSON to navigator.clipboard.writeText and resolves true', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const ok = await dispatchDebugReport(sample);
-    expect(ok).toBe(true);
-    expect(writeText).toHaveBeenCalledTimes(1);
-    const arg = writeText.mock.calls[0]![0] as string;
-    // Must round-trip and remain pretty-printed (2-space indent).
-    expect(JSON.parse(arg)).toEqual(sample);
-    expect(arg).toContain('\n  ');
+  it('creates a Blob URL with the JSON and opens it via window.open', () => {
+    const fakeWindow = {} as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: (b: Blob) => {
+        blobs.push(b);
+        return 'blob:test-1';
+      },
+      revokeObjectURL: () => undefined,
+    });
+
+    const result = dispatchDebugReport(sample);
+    expect(result).toBe(fakeWindow);
+    expect(open).toHaveBeenCalledWith('blob:test-1', '_blank', 'noopener');
+    expect(blobs).toHaveLength(1);
+    expect(blobs[0]!.type).toBe('application/json');
   });
 
-  it('resolves false when clipboard.writeText rejects', async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const ok = await dispatchDebugReport(sample);
-    expect(ok).toBe(false);
+  it('returns null and revokes the URL when window.open is blocked', () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:test-2',
+      revokeObjectURL,
+    });
+
+    const result = dispatchDebugReport(sample);
+    expect(result).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-2');
   });
 
-  it('resolves false when navigator.clipboard is unavailable', async () => {
-    vi.stubGlobal('navigator', {});
-    const ok = await dispatchDebugReport(sample);
-    expect(ok).toBe(false);
+  it('emits pretty-printed JSON (round-trip + 2-space indent)', async () => {
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: (b: Blob) => {
+        blobs.push(b);
+        return 'blob:test-3';
+      },
+      revokeObjectURL: () => undefined,
+    });
+
+    dispatchDebugReport(sample);
+    const text = await blobs[0]!.text();
+    expect(JSON.parse(text)).toEqual(sample);
+    expect(text).toContain('\n  ');
   });
 });
 

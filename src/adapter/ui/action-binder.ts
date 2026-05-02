@@ -2631,10 +2631,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'dump-debug-report': {
         // Reform-2026-05 stage β: 🐞 button next to ⚙. Builds the
-        // DebugReport from current state, copies pretty JSON to
-        // clipboard, falls back to a modal on clipboard failure. No
-        // dispatch — debug surfaces are runtime-only.
-        void runDebugReportDump(document.body, dispatcher);
+        // DebugReport from current state and opens it as JSON in a
+        // new tab via Blob URL; falls back to an inline modal when
+        // window.open is blocked. No dispatch — debug surfaces are
+        // runtime-only.
+        runDebugReportDump(document.body, dispatcher);
         break;
       }
       case 'dismiss-debug-report-fallback': {

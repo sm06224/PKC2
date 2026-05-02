@@ -1,52 +1,39 @@
 /**
  * Debug-report dump utility.
  *
- * Stage α (PR #209) mounted a floating "🐞 Report" button as a
- * sibling of the renderer root. Stage β follow-up (2026-05-02) moves
- * the trigger into the header next to the ⚙ shell menu so it's
- * indistinguishable from a normal toolbar control. This file now
- * exposes the click-handler logic as a function the action-binder
- * can invoke, plus the fallback modal helpers.
+ * Stage α (PR #209) used a clipboard-write pipeline; stage β
+ * follow-up (2026-05-02) replaced that with "open the JSON in a new
+ * tab" — Blob URL via `dispatchDebugReport`. The user reviews the
+ * report directly and saves with Ctrl+S / ⌘+S if they want to keep
+ * it. This sidesteps clipboard permission prompts, dodges the
+ * paste-into-chat formatting mess, and keeps the data fully visible
+ * before the user shares anything (privacy by default, philosophy
+ * doc §4 原則 2).
  *
- * Click → build a DebugReport from the current AppState → copy
- * pretty JSON to clipboard → toast confirmation. Clipboard failure
- * (permission denied, http context without secure origin, etc.)
- * falls back to a modal `<pre>` so the user can copy by hand.
- *
- * The fallback modal is a sibling of the renderer's root, NOT inside
- * it: the renderer is a pure state→DOM function and the modal must
- * persist across unrelated re-renders. See `toast.ts` for the same
- * pattern.
+ * If `window.open` is blocked by a pop-up blocker, the inline
+ * fallback modal (`<pre>` of pretty JSON) takes over so the user can
+ * still recover the report by selecting + copying manually.
  */
 
 import type { Dispatcher } from '../state/dispatcher';
-import { showToast } from './toast';
 import { dispatchDebugReport } from '../../runtime/debug-flags';
 import { buildDebugReportFromState } from './debug-report';
 
 const MODAL_REGION = 'debug-report-fallback';
 
 /**
- * Build the report from current state, attempt clipboard copy, then
- * either toast success or open the fallback modal. `host` should be
- * a stable container outside the renderer root (e.g. `document.body`)
- * so the fallback modal survives re-renders.
+ * Build the report from current state and open it in a new tab.
+ * `host` should be a stable container outside the renderer root
+ * (e.g. `document.body`) so the popup-blocker fallback modal
+ * survives re-renders.
  */
-export async function runDebugReportDump(
+export function runDebugReportDump(
   host: HTMLElement,
   dispatcher: Dispatcher,
-): Promise<void> {
+): void {
   const report = buildDebugReportFromState(dispatcher.getState());
-  const ok = await dispatchDebugReport(report);
-  if (ok) {
-    showToast({
-      message: 'Debug report copied to clipboard',
-      kind: 'info',
-      autoDismissMs: 4000,
-    });
-  } else {
-    showFallbackModal(host, report);
-  }
+  const opened = dispatchDebugReport(report);
+  if (!opened) showFallbackModal(host, report);
 }
 
 function showFallbackModal(host: HTMLElement, report: unknown): void {
@@ -63,7 +50,7 @@ function showFallbackModal(host: HTMLElement, report: unknown): void {
   const heading = document.createElement('p');
   heading.className = 'pkc-debug-report-fallback-heading';
   heading.textContent =
-    'Clipboard write was blocked. Select all and copy manually:';
+    'Pop-up blocked. Select all and copy / save manually:';
   dialog.appendChild(heading);
 
   const pre = document.createElement('pre');

@@ -19,47 +19,81 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
-describe('runDebugReportDump — clipboard happy path', () => {
-  it('writes JSON to clipboard and shows a confirmation toast', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
-    });
+describe('runDebugReportDump — new-tab happy path', () => {
+  it('opens the JSON report in a new tab via a Blob URL', () => {
     setUrl('pkc-debug=*');
+
+    const fakeWindow = { document: { title: 'json' } } as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    const createObjectURL = vi.fn().mockReturnValue('blob:fake-1');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+
     const dispatcher = createDispatcher();
+    runDebugReportDump(document.body, dispatcher);
 
-    await runDebugReportDump(document.body, dispatcher);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blobArg = createObjectURL.mock.calls[0]![0] as Blob;
+    expect(blobArg.type).toBe('application/json');
+    expect(blobArg.size).toBeGreaterThan(0);
 
-    expect(writeText).toHaveBeenCalledTimes(1);
-    const payload = writeText.mock.calls[0]![0] as string;
-    const parsed = JSON.parse(payload);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith('blob:fake-1', '_blank', 'noopener');
+
+    // Fallback modal must NOT appear when the new tab opens.
+    expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
+  });
+
+  it('serializes a schema 2 report into the Blob payload', async () => {
+    setUrl('pkc-debug=*');
+    const fakeWindow = {} as Window;
+    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: (b: Blob) => {
+        blobs.push(b);
+        return 'blob:fake-2';
+      },
+      revokeObjectURL: () => undefined,
+    });
+
+    const dispatcher = createDispatcher();
+    runDebugReportDump(document.body, dispatcher);
+
+    const text = await blobs[0]!.text();
+    const parsed = JSON.parse(text);
     expect(parsed.schema).toBe(2);
-    expect(typeof parsed.pkc.version).toBe('string');
     expect(parsed.phase).toBe('initializing');
-
-    // Toast confirmation appears in the toast stack region.
-    const toast = document.body.querySelector(
-      '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
-    );
-    expect(toast).not.toBeNull();
-    expect(toast!.textContent).toContain('clipboard');
+    expect(parsed.level).toBe('structural');
   });
 });
 
-describe('runDebugReportDump — clipboard failure → fallback modal', () => {
-  it('shows the fallback modal when clipboard.writeText rejects', async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
-    });
+describe('runDebugReportDump — popup blocked → fallback modal', () => {
+  it('opens the inline modal when window.open returns null', () => {
     setUrl('pkc-debug=*');
-    const dispatcher = createDispatcher();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:fake-3',
+      revokeObjectURL,
+    });
 
-    await runDebugReportDump(document.body, dispatcher);
+    const dispatcher = createDispatcher();
+    runDebugReportDump(document.body, dispatcher);
+
+    // Blocked popup → blob URL must be revoked promptly so we don't
+    // leak. The modal exposes the same JSON for manual copy.
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake-3');
 
     const modal = document.body.querySelector(FALLBACK_SELECTOR);
     expect(modal).not.toBeNull();
@@ -77,17 +111,18 @@ describe('runDebugReportDump — clipboard failure → fallback modal', () => {
     expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
   });
 
-  it('replaces an existing modal when re-invoked (no stacking)', async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
-    });
+  it('replaces an existing modal when re-invoked (no stacking)', () => {
     setUrl('pkc-debug=*');
-    const dispatcher = createDispatcher();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:fake-4',
+      revokeObjectURL: () => undefined,
+    });
 
-    await runDebugReportDump(document.body, dispatcher);
-    await runDebugReportDump(document.body, dispatcher);
+    const dispatcher = createDispatcher();
+    runDebugReportDump(document.body, dispatcher);
+    runDebugReportDump(document.body, dispatcher);
 
     expect(document.body.querySelectorAll(FALLBACK_SELECTOR)).toHaveLength(1);
   });

@@ -367,17 +367,28 @@ export function buildDebugEnvironment(): Pick<
 }
 
 /**
- * Write the Report to the clipboard as pretty-printed JSON.
- * Returns true on success, false when the clipboard API rejects /
- * is unavailable (caller can then show a fallback modal).
+ * Open the Report as a JSON document in a new browser tab via a Blob
+ * URL. The user can review the contents and Ctrl+S / ⌘+S to save —
+ * no clipboard permission, no auto-download into the system Downloads
+ * folder. Returns the opened Window when successful, or `null` when
+ * the host blocks `window.open` (popup blocker, sandboxed iframe);
+ * the caller can then fall back to an inline modal.
+ *
+ * `URL.revokeObjectURL` is scheduled on a long delay so the tab has
+ * a comfortable window to load. Modern browsers retain the loaded
+ * resource in the tab past revocation; the timer is hygiene to free
+ * the kept-alive blob if the user never opens the tab.
  */
-export async function dispatchDebugReport(report: DebugReport): Promise<boolean> {
+export function dispatchDebugReport(report: DebugReport): Window | null {
+  if (typeof window === 'undefined' || typeof URL === 'undefined') return null;
   const text = JSON.stringify(report, null, 2);
-  if (typeof navigator === 'undefined' || !navigator.clipboard) return false;
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) {
+    URL.revokeObjectURL(url);
+    return null;
   }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return opened;
 }

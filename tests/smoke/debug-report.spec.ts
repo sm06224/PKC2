@@ -4,10 +4,13 @@
  * Proves the round trip the user-report protocol promises:
  *
  *   1. `?pkc-debug=*` renders the 🐞 Report button next to the ⚙
- *      shell menu (stage β follow-up, 2026-05-02)
- *   2. Clicking it copies a well-formed JSON DebugReport to clipboard
- *   3. The clipboard text parses and contains the expected schema /
- *      env / app-state slices, with NO entry body or asset bytes
+ *      shell menu (stage β follow-up, 2026-05-02).
+ *   2. Clicking it opens the DebugReport JSON in a new tab via a
+ *      Blob URL — no clipboard permission needed; the user can
+ *      Ctrl+S / ⌘+S to save.
+ *   3. The new-tab page text parses as a well-formed JSON DebugReport
+ *      with the expected schema / env / app-state slices and NO
+ *      entry body or asset bytes leaking through structural mode.
  *
  * `locator.click()` is fine here because this is a structural smoke,
  * not a parity test (visual-state-parity-testing.md §1). Real-OS-event
@@ -17,16 +20,10 @@
 
 import { test, expect } from '@playwright/test';
 
-test('debug flag mounts Report button and copies report to clipboard', async ({
+test('debug flag renders 🐞 button and opens the report in a new tab', async ({
   context,
   page,
 }) => {
-  // Chromium needs explicit clipboard permissions for the smoke to
-  // observe what the page wrote. The rest of the smoke suite never
-  // touches clipboard so granting them at the context scope here is
-  // additive and isolated.
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (msg) => {
@@ -46,23 +43,17 @@ test('debug flag mounts Report button and copies report to clipboard', async ({
   await expect(reportBtn).toBeVisible();
   await expect(reportBtn).toHaveAttribute('data-pkc-debug', 'true');
 
+  // Capture the new tab Playwright sees when window.open fires.
+  const popupPromise = context.waitForEvent('page');
   await reportBtn.click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState('domcontentloaded');
 
-  // Wait for the post-click toast that confirms the writeText succeeded.
-  // The same toast region is reused by other warnings, so scope the
-  // expectation to the message text the button uses.
-  const toast = page.locator(
-    '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
-    { hasText: 'Debug report copied to clipboard' },
-  );
-  await expect(toast).toBeVisible({ timeout: 4000 });
-
-  // Now verify the clipboard payload itself — this is the part that
-  // proves stage α fulfils its protocol contract end-to-end.
-  const clipboardText = await page.evaluate(async () =>
-    navigator.clipboard.readText(),
-  );
-  const report = JSON.parse(clipboardText);
+  // The new tab's URL is a blob: URL; its document body holds the
+  // pretty-printed JSON (browsers wrap it in <pre>). Read the visible
+  // text and parse it back.
+  const bodyText = await popup.evaluate(() => document.body.innerText);
+  const report = JSON.parse(bodyText);
 
   expect(report.schema).toBe(2);
   expect(typeof report.pkc.version).toBe('string');
@@ -83,8 +74,6 @@ test('debug flag mounts Report button and copies report to clipboard', async ({
   expect(Array.isArray(report.recent)).toBe(true);
   expect(report.phase).toBe('ready');
   expect(['detail', 'calendar', 'kanban']).toContain(report.view);
-  // selectedLid / editingLid may be null on a fresh boot — but they
-  // must always be present as keys (null or string).
   expect(report).toHaveProperty('selectedLid');
   expect(report).toHaveProperty('editingLid');
   expect(report.flags).toContain('*');
@@ -95,10 +84,11 @@ test('debug flag mounts Report button and copies report to clipboard', async ({
   expect(typeof report.container.entryCount).toBe('number');
   expect(typeof report.container.relationCount).toBe('number');
   expect(Array.isArray(report.container.assetKeys)).toBe(true);
-  // The shape must NOT contain raw entry / body / asset data fields.
   expect(report.container.entries).toBeUndefined();
   expect(report.container.relations).toBeUndefined();
   expect(report.container.assets).toBeUndefined();
+
+  await popup.close();
 
   expect(errors, errors.join('\n')).toEqual([]);
 });
@@ -109,8 +99,6 @@ test('button does not appear without the debug flag', async ({ page }) => {
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
     timeout: 15_000,
   });
-  // No flag → no button. Use count() rather than expect.toBeHidden()
-  // because the element should not exist at all in the no-debug path.
   const reportBtn = page.locator('[data-pkc-region="debug-report-button"]');
   expect(await reportBtn.count()).toBe(0);
 });
