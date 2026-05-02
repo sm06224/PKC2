@@ -7,7 +7,7 @@
 
 policy の決定・根拠・A/B/C 比較は以下の canonical doc にある:
 
-- `docs/development/entry-autocomplete-v1.5-modifier-enter.md`
+- `docs/development/archived/entry-autocomplete/entry-autocomplete-v1.5-modifier-enter.md`
 
 本 doc は **機械的な mirror 適用の記録** であり、policy 自体の再議論ではない。
 
@@ -59,7 +59,7 @@ entry-ref v1.5 と行ごとに同じ構造。`return false` で popup が consum
 
 ## 6. 関連文書
 
-- `docs/development/entry-autocomplete-v1.5-modifier-enter.md` — canonical policy 決定
+- `docs/development/archived/entry-autocomplete/entry-autocomplete-v1.5-modifier-enter.md` — canonical policy 決定
 - `src/adapter/ui/asset-autocomplete.ts` — 本 PR の修正対象
 - `src/adapter/ui/entry-ref-autocomplete.ts` — 先行実装の参考
 

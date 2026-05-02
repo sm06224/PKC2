@@ -158,5 +158,5 @@
 - `docs/development/references-summary-clickable-v3.md` — jump 動線の現状（→ P2 候補の根拠）
 - `docs/development/search-ux-partial-reach.md` — search 基盤の現状（→ P4 候補の判断材料）
 - `docs/development/provenance-metadata-copy-export-v1.md` §9 / §11 — provenance wave の scope 外 + 後続候補（→ P5 候補の根拠）
-- `docs/development/entry-autocomplete-v1.3-recent-first.md` — recent "書き" 側の先行実装（→ P1 の自然な続き）
+- `docs/development/archived/entry-autocomplete/entry-autocomplete-v1.3-recent-first.md` — recent "書き" 側の先行実装（→ P1 の自然な続き）
 - `CLAUDE.md` §Invariants — "No premature abstraction"、本 memo の scope 判断の土台

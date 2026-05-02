@@ -521,7 +521,7 @@ reject が起きたとき、既存 overlay UI 流儀（boot-source-chooser.ts / 
 - data-model: `docs/spec/data-model.md`（§3 Entry / §5 Relation / §6 Revision）
 - C-1 branch restore contract: `docs/spec/revision-branch-restore-v1-behavior-contract.md`（共有 helper の流儀）
 - H-10 merge conflict overlay: `docs/spec/merge-conflict-ui-v1-behavior-contract.md`（overlay 流儀）
-- S-30 boot source chooser: `docs/development/boot-container-source-policy-revision.md`（overlay 実装の参考）
+- S-30 boot source chooser: `docs/development/archived/boot-container-source/boot-container-source-policy-revision.md`（overlay 実装の参考）
 
 ---
 
