@@ -22,6 +22,7 @@ import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refre
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
+import { mountDebugReportButton } from './adapter/ui/debug-report-button';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
   showIdbWarningBanner,
@@ -316,6 +317,13 @@ async function boot(): Promise<void> {
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
+
+  // 3b. Debug-via-URL-flag report button (reform-2026-05 stage α).
+  // No-op unless `?pkc-debug=<list>` or localStorage `pkc2.debug`
+  // selects at least one feature. Mounted on document.body — outside
+  // `#pkc-root` — so the renderer's full re-render cycle never
+  // disturbs it. See `docs/development/debug-via-url-flag-protocol.md`.
+  mountDebugReportButton(document.body, dispatcher);
 
   // 4. Event log (dev aid). Was a fixed-position UI tray in the
   // bottom-right corner; demoted to `console.log` per 2026-04-26
