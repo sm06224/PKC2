@@ -176,5 +176,5 @@ Zero hits outside the defining file + zero spec mention + zero docstring intent 
 - `docs/development/archived/boot-container-source/boot-container-source-policy-revision.md` — viewOnlySource + chooser policy
 - `docs/development/archived/boot-container-source/boot-container-source-policy-audit.md` — post-revision audit
 - `docs/development/idb-availability.md` — probe + runtime save failure banners
-- `docs/development/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` — inventory including the 10-step summary that motivated this doc
-- `docs/development/dead-path-decision-isUlid-updateLogEntry.md` — worked example of the dead-path-vs-order-sensitive distinction (category 4 retain vs category 6 delete)
+- `docs/development/archived/dead-path-cleanup/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` — inventory including the 10-step summary that motivated this doc
+- `docs/development/archived/dead-path-cleanup/dead-path-decision-isUlid-updateLogEntry.md` — worked example of the dead-path-vs-order-sensitive distinction (category 4 retain vs category 6 delete)

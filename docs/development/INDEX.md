@@ -127,7 +127,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 | 43 | `markdown-interactive-task-lists.md` | Interactive task list checkbox toggle | 2026-04-11 | TEXT/TEXTLOG の rendered markdown 内 `- [ ]`/`- [x]` を click で toggle。pure helper + QUICK_UPDATE_ENTRY。テスト 38 件。 |
 | 44 | `non-image-inline-preview.md` | Non-image inline preview (PDF/audio/video) | 2026-04-11 | TEXT/TEXTLOG body 内の非画像 asset chip を inline preview に展開。`populateInlineAssetPreviews()` + 既存 blob lifecycle 再利用。CSP fallback 対応。テスト 16 件。 |
 | 45 | `attachment-sandbox-phase5.md` | Container default sandbox policy | 2026-04-11 | `ContainerMeta.sandbox_policy` (strict/relaxed)。per-entry override 優先の fallback chain。meta pane に select UI。テスト 11 件。 |
-| 46 | `calendar-kanban-multi-select-phasing.md` | Calendar/Kanban multi-select (Phase 1 + 2-A/B/C/E + ghost) | 2026-04-11 | Phase 1: visual feedback。Phase 2-A: BULK_SET_STATUS。Phase 2-B: BULK_SET_DATE (set + clear)。Phase 2-C: multi-DnD (Kanban/Calendar/cross-view)。Phase 2-E: Escape clear。Drag ghost: N件バッジ。テスト 76 件追加。残: 2-D (表示順)。 |
+| 46 | `archived/multi-select/calendar-kanban-multi-select-phasing.md` | Calendar/Kanban multi-select (Phase 1 + 2-A/B/C/E + ghost) | 2026-04-11 | Phase 1: visual feedback。Phase 2-A: BULK_SET_STATUS。Phase 2-B: BULK_SET_DATE (set + clear)。Phase 2-C: multi-DnD (Kanban/Calendar/cross-view)。Phase 2-E: Escape clear。Drag ghost: N件バッジ。テスト 76 件追加。残: 2-D (表示順)。 |
 | 47 | `multi-dnd-drag-ghost-ux.md` | Multi-DnD drag ghost (N件バッジ) | 2026-04-11 | multi-drag 時に setDragImage で件数バッジ表示。Kanban/Calendar 共通。テスト 9 件。 |
 | 48 | `archived/keyboard-navigation/keyboard-navigation-phase1.md` | Keyboard navigation Phase 1 (Arrow Up/Down) | 2026-04-11 | Sidebar で Arrow Up/Down によるエントリ移動。SELECT_ENTRY 再利用。container lid 検証で stale DOM 防御。テスト 15 件。 |
 | 49 | `stale-listener-prevention.md` | Stale listener prevention (test infra) | 2026-04-11 | テスト間の dispatcher onState/onEvent リスナー漏れを auto-tracking wrapper で解消。本番コード変更なし。テスト 2 件追加。 |
@@ -189,7 +189,7 @@ All 42 historical docs passed strict close audit (2026-04-11).
 |---|------|-------|-----------|---------|
 | 91 | `unified-orphan-detection-v3-draft.md` | Unified Orphan Detection v3+ — design draft | 2026-04-20 | "fully unconnected" の定義候補の比較 + S1..S5 rollout 設計（docs-only）。contract に consumed |
 | 92 | `unified-orphan-detection-v3-contract.md` | Unified Orphan Detection v3 — behavior contract | 2026-04-20 | "any relation inbound/outbound + body ref 到達性" を fully unconnected 判定に。S3 / S4 実装の契約、S5 filter は Defer（§7.4） |
-| 93 | `connectedness-s3-v1.md` | Connectedness S3 — `buildConnectednessSets` | 2026-04-20 | pure helper。relation + body ref を横断的に連結成分として算出（S4 以降の基盤）。`isMarkdownEvaluatedArchetype` は後に inline 化（`dead-code-inventory-after-relations-wave.md §3.1` 参照） |
+| 93 | `connectedness-s3-v1.md` | Connectedness S3 — `buildConnectednessSets` | 2026-04-20 | pure helper。relation + body ref を横断的に連結成分として算出（S4 以降の基盤）。`isMarkdownEvaluatedArchetype` は後に inline 化（`archived/dead-path-cleanup/dead-code-inventory-after-relations-wave.md §3.1` 参照） |
 | 94 | `connectedness-s4-v1.md` | Connectedness S4 — sidebar fully-unconnected marker | 2026-04-20 | sidebar で fully-unconnected entry を marker 表示。S3 sets を消費、reducer 変更なし |
 | 95 | `orphan-detection-ui-v1.md` | Orphan detection UI v1 | 2026-04-20 | relations ベースの orphan 表示 UI v1（v3 の fully-unconnected marker とは別軸、両立） |
 
@@ -197,14 +197,14 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 | # | File | Topic | Completed | Summary |
 |---|------|-------|-----------|---------|
-| 96 | `dead-path-cleanup-inventory-01.md` | Dead-path cleanup round 1 | 2026-04-19 | 未使用 export / pseudo-API / spec-only シンボルの audit（core 寄り）。Resolution 表が正本 |
-| 97 | `dead-path-cleanup-inventory-02-adapter-ui.md` | Dead-path cleanup round 2（adapter/ui） | 2026-04-19 | adapter/ui 層の audit。A-class 不在、follow-up は intentional defer |
-| 98 | `dead-path-cleanup-inventory-03-features.md` | Dead-path cleanup round 3（features） | 2026-04-19 | features 層 audit。`isValidEntryRef` は仕様宣言のため保持、round 4 に継承 |
-| 99 | `dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | Dead-path cleanup round 4 | 2026-04-19 | platform / markdown / textlog / container 層 audit。PR #40（slugify 重複解消）/ PR #41（`updateLogEntry` 削除）を実施 |
-| 100 | `dead-path-cleanup-inventory-05-round5.md` | Dead-path cleanup round 5 | 2026-04-19 | round 5 audit。PR #44（features barrel 削除）/ PR #46（calendar month helper）/ PR #47（record:reject 整合）を実施 |
-| 101 | `dead-path-decision-features-barrel.md` | Decision — features barrel 削除 | 2026-04-19 | barrel 削除と `entryMatchesQuery` 保持を分離した決定ログ。PR #44 で執行済み |
-| 102 | `dead-path-decision-isUlid-updateLogEntry.md` | Decision — isUlid / updateLogEntry | 2026-04-19 | `isUlid` 保持 / `updateLogEntry` 削除の決定ログ。PR #41 で `updateLogEntry` 削除済み、`isUlid` は C（spec 宣言）として保持 |
-| 103 | `dead-code-inventory-after-relations-wave.md` | Dead-code inventory after relations wave | 2026-04-21 | relations wave 後の未使用 export 監査。Category A 2 件は同 PR 内で解消（`isMarkdownEvaluatedArchetype` inline 化 + 1 件削除）。Category B/C/D 空 |
+| 96 | `archived/dead-path-cleanup/dead-path-cleanup-inventory-01.md` | Dead-path cleanup round 1 | 2026-04-19 | 未使用 export / pseudo-API / spec-only シンボルの audit（core 寄り）。Resolution 表が正本 |
+| 97 | `archived/dead-path-cleanup/dead-path-cleanup-inventory-02-adapter-ui.md` | Dead-path cleanup round 2（adapter/ui） | 2026-04-19 | adapter/ui 層の audit。A-class 不在、follow-up は intentional defer |
+| 98 | `archived/dead-path-cleanup/dead-path-cleanup-inventory-03-features.md` | Dead-path cleanup round 3（features） | 2026-04-19 | features 層 audit。`isValidEntryRef` は仕様宣言のため保持、round 4 に継承 |
+| 99 | `archived/dead-path-cleanup/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | Dead-path cleanup round 4 | 2026-04-19 | platform / markdown / textlog / container 層 audit。PR #40（slugify 重複解消）/ PR #41（`updateLogEntry` 削除）を実施 |
+| 100 | `archived/dead-path-cleanup/dead-path-cleanup-inventory-05-round5.md` | Dead-path cleanup round 5 | 2026-04-19 | round 5 audit。PR #44（features barrel 削除）/ PR #46（calendar month helper）/ PR #47（record:reject 整合）を実施 |
+| 101 | `archived/dead-path-cleanup/dead-path-decision-features-barrel.md` | Decision — features barrel 削除 | 2026-04-19 | barrel 削除と `entryMatchesQuery` 保持を分離した決定ログ。PR #44 で執行済み |
+| 102 | `archived/dead-path-cleanup/dead-path-decision-isUlid-updateLogEntry.md` | Decision — isUlid / updateLogEntry | 2026-04-19 | `isUlid` 保持 / `updateLogEntry` 削除の決定ログ。PR #41 で `updateLogEntry` 削除済み、`isUlid` は C（spec 宣言）として保持 |
+| 103 | `archived/dead-path-cleanup/dead-code-inventory-after-relations-wave.md` | Dead-code inventory after relations wave | 2026-04-21 | relations wave 後の未使用 export 監査。Category A 2 件は同 PR 内で解消（`isMarkdownEvaluatedArchetype` inline 化 + 1 件削除）。Category B/C/D 空 |
 
 ### COMPLETED — P1–P5 wave（2026-04-21）
 

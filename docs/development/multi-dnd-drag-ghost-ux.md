@@ -3,7 +3,7 @@
 Status: COMPLETED
 Completed: 2026-04-11
 Created: 2026-04-11
-Parent: `calendar-kanban-multi-select-phasing.md`
+Parent: `archived/multi-select/calendar-kanban-multi-select-phasing.md`
 
 ---
 
