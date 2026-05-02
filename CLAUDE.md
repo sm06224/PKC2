@@ -114,6 +114,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 
 - `docs/development/completed/todo-view-consistency.md` — Selection state, click/dblclick, overdue/date/archived rules, empty states, status move, view switching behavior across Detail/Calendar/Kanban
 - `docs/development/markdown-render-scope.md` — どの archetype / field が markdown を render するか、`.pkc-md-rendered` を共通 selector とする contract、新 markdown 拡張の scope 規約
+- `docs/development/debug-privacy-philosophy.md` — debug 機能が user content をどう扱うかの 4 原則(Local-only / Privacy by default / Graduated opt-in / Schema versioning)。`debug-via-url-flag-protocol.md` の上位規約(reform-2026-05)
 - `docs/development/debug-via-url-flag-protocol.md` — `?pkc-debug=<feature>` で feature ごとの debug overlay / Report dump を出すユーザー報告導線の規約(reform-2026-05)
 - `docs/development/visual-state-parity-testing.md` — 描画と状態の一致を保証する parity test methodology(reform-2026-05)
 - `docs/development/pr-206-paused.md` — caret↔preview sync の保留判断と仕切り直し方針
