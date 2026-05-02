@@ -4054,10 +4054,26 @@ mark.pkc-search-mark {
   flex: 1;
 }
 
-.pkc-shell-menu-theme-btn[data-pkc-theme-active="true"] {
+.pkc-shell-menu-theme-btn[data-pkc-theme-active="true"],
+.pkc-shell-menu-theme-btn[data-pkc-debug-active="true"] {
   background: var(--c-accent);
   color: var(--c-accent-fg);
   border-color: var(--c-accent);
+}
+
+/* Debug "+ Contents" escalation — graduated opt-in (philosophy doc
+ * §4 原則 3). The button is visually distinct so users see the
+ * elevated mode is different from plain structural. Active state
+ * uses the warn palette instead of the accent palette to keep
+ * "I'm exposing my entry titles / bodies" obvious at a glance. */
+.pkc-shell-menu-theme-btn.pkc-shell-menu-debug-contents {
+  border-color: var(--c-warn, #b54708);
+  color: var(--c-warn, #b54708);
+}
+.pkc-shell-menu-theme-btn.pkc-shell-menu-debug-contents[data-pkc-debug-active="true"] {
+  background: var(--c-warn, #b54708);
+  color: #fff;
+  border-color: var(--c-warn, #b54708);
 }
 
 .pkc-shell-menu-version {

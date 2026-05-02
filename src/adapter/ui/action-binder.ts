@@ -2637,16 +2637,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         runDebugReportDump(dispatcher);
         break;
       }
-      case 'toggle-debug-restart': {
-        // Shell-menu convenience: flip ?pkc-debug=* on/off and reload.
-        // No dispatch — query-string flags are runtime-only and the
-        // feature gates read them on each call.
+      case 'set-debug-mode': {
+        // Shell-menu segmented control: 'off' | 'structural' | 'content'.
+        // Sets the URL flags and reloads. No dispatch — query-string
+        // flags are runtime-only and the feature gates read them on
+        // each call. See `docs/development/debug-privacy-philosophy.md`.
+        const mode = target.getAttribute('data-pkc-debug-mode');
         const url = new URL(window.location.href);
-        if (url.searchParams.has('pkc-debug')) {
+        if (mode === 'off') {
           url.searchParams.delete('pkc-debug');
           url.searchParams.delete('pkc-debug-contents');
-        } else {
+        } else if (mode === 'structural') {
           url.searchParams.set('pkc-debug', '*');
+          url.searchParams.delete('pkc-debug-contents');
+        } else if (mode === 'content') {
+          url.searchParams.set('pkc-debug', '*');
+          url.searchParams.set('pkc-debug-contents', '1');
+        } else {
+          break;
         }
         window.location.href = url.toString();
         break;
