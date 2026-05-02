@@ -181,7 +181,7 @@ Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
   ので OS との競合なし
 - desktop は keydown 経由で従来通り動作
 - 将来 iOS が preventDefault を尊重するようになったら、`beforeinput`
-  への再移行を検討(`docs/development/editor-key-helpers-pr198-findings.md`
+  への再移行を検討(`docs/development/archived/pr-findings/editor-key-helpers-pr198-findings.md`
   を更新)
 
 ### サイズ: 中
