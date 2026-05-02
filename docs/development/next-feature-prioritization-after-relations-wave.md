@@ -152,7 +152,7 @@
 
 ## 7. 関連文書
 
-- `docs/development/dead-code-inventory-after-relations-wave.md` — 直前の wave 閉幕 memo
+- `docs/development/archived/dead-path-cleanup/dead-code-inventory-after-relations-wave.md` — 直前の wave 閉幕 memo
 - `docs/development/unified-orphan-detection-v3-contract.md` — S4 成立 / S5 defer 根拠
 - `docs/development/connectedness-s4-v1.md` — orphan marker と対を考える出発点（→ P1 候補の根拠）
 - `docs/development/references-summary-clickable-v3.md` — jump 動線の現状（→ P2 候補の根拠）

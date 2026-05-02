@@ -167,14 +167,14 @@
 
 | 位置 | 内容 |
 |-----|-----|
-| `../development/dead-code-inventory-after-relations-wave.md` | relations wave 後の未使用 export 監査 + Category A 解消（audit + cleanup、2026-04-21） |
-| `../development/dead-path-cleanup-inventory-01.md` | round 1（2026-04-19） |
-| `../development/dead-path-cleanup-inventory-02-adapter-ui.md` | round 2（2026-04-19） |
-| `../development/dead-path-cleanup-inventory-03-features.md` | round 3（2026-04-19） |
-| `../development/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | round 4（2026-04-19、PR #40 / #41 解消含む） |
-| `../development/dead-path-cleanup-inventory-05-round5.md` | round 5（2026-04-19、PR #44 / #46 / #47 解消含む） |
-| `../development/dead-path-decision-features-barrel.md` | features barrel 削除 + `entryMatchesQuery` 保持の決定（2026-04-19） |
-| `../development/dead-path-decision-isUlid-updateLogEntry.md` | `isUlid` 保持 / `updateLogEntry` 削除の決定（2026-04-19） |
+| `../development/archived/dead-path-cleanup/dead-code-inventory-after-relations-wave.md` | relations wave 後の未使用 export 監査 + Category A 解消（audit + cleanup、2026-04-21） |
+| `../development/archived/dead-path-cleanup/dead-path-cleanup-inventory-01.md` | round 1（2026-04-19） |
+| `../development/archived/dead-path-cleanup/dead-path-cleanup-inventory-02-adapter-ui.md` | round 2（2026-04-19） |
+| `../development/archived/dead-path-cleanup/dead-path-cleanup-inventory-03-features.md` | round 3（2026-04-19） |
+| `../development/archived/dead-path-cleanup/dead-path-cleanup-inventory-04-platform-markdown-textlog-container.md` | round 4（2026-04-19、PR #40 / #41 解消含む） |
+| `../development/archived/dead-path-cleanup/dead-path-cleanup-inventory-05-round5.md` | round 5（2026-04-19、PR #44 / #46 / #47 解消含む） |
+| `../development/archived/dead-path-cleanup/dead-path-decision-features-barrel.md` | features barrel 削除 + `entryMatchesQuery` 保持の決定（2026-04-19） |
+| `../development/archived/dead-path-cleanup/dead-path-decision-isUlid-updateLogEntry.md` | `isUlid` 保持 / `updateLogEntry` 削除の決定（2026-04-19） |
 
 #### 2026-04-22 UI continuity wave（closure）
 

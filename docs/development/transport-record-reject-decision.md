@@ -102,4 +102,4 @@ bundle 影響: capability rule 1 行削除 + JSDoc は minify で消える。`ca
 - `docs/development/transport-record-accept-reject-consistency-review.md` (PR #45) — 本決定の前提となる review
 - `docs/planning/resolved/24_message_transport.md:84-92` — 初期 spec の "未実装表"
 - `docs/development/boot-initialization-order.md:62` — §9b record:reject 送信 step
-- `docs/development/dead-path-cleanup-inventory-05-round5.md:79` — round 5 で C 保留と分類した行 (本 PR で resolve)
+- `docs/development/archived/dead-path-cleanup/dead-path-cleanup-inventory-05-round5.md:79` — round 5 で C 保留と分類した行 (本 PR で resolve)
