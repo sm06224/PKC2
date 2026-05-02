@@ -3,7 +3,7 @@
 Status: ACCEPTED
 Created: 2026-04-16
 Category: B. Editor UX / Contracts
-Related: docs/development/text-replace-current-entry.md, docs/manual/05_日常操作.md §「本文の検索・置換」, src/features/text/text-replace.ts, src/adapter/ui/text-replace-dialog.ts
+Related: docs/development/archived/singletons/text-replace-current-entry.md, docs/manual/05_日常操作.md §「本文の検索・置換」, src/features/text/text-replace.ts, src/adapter/ui/text-replace-dialog.ts
 Supersedes: —
 Scope: current TEXT entry body に対する Find & Replace の v1.1 behavior contract を補助 spec として固定
 
@@ -361,7 +361,7 @@ v1.1 → v2 への跨ぎで壊れうる項目を事前に明示：
 
 | ドキュメント | 関係 |
 |------------|------|
-| `docs/development/text-replace-current-entry.md` | 実装寄りの dev doc（S-26 / S-27 の実装メモ）。本書は同 doc の behavior contract 側を昇格させたもの |
+| `docs/development/archived/singletons/text-replace-current-entry.md` | 実装寄りの dev doc（S-26 / S-27 の実装メモ）。本書は同 doc の behavior contract 側を昇格させたもの |
 | `docs/manual/05_日常操作.md` §「本文の検索・置換」 | ユーザ向け操作ガイド。本書の意図を non-contract な平易文で説明 |
 | `docs/manual/09_トラブルシューティングと用語集.md` | Find & Replace / Plain Search / Regex / Current Entry / Historical Revision 用語定義 |
 | `src/features/text/text-replace.ts` | `buildFindRegex` / `countMatches` / `replaceAll` / `countMatchesInRange` / `replaceAllInRange` の pure helper 実装 |

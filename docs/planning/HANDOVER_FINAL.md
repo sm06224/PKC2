@@ -1109,8 +1109,8 @@ manual** という review 駆動の順序を守って積み上げた。
   - `textlog-text-conversion-policy.md`（H-8 補完、TEXTLOG→TEXT 変換ポリシー）
   - `provenance-relation-profile.md`（H-8 補完、provenance Relation の v1 profile）
 - **dev doc**（`docs/development/`）:
-  - `html-paste-link-markdown.md`
-  - `text-replace-current-entry.md`
+  - `archived/singletons/html-paste-link-markdown.md`
+  - `archived/singletons/text-replace-current-entry.md`
   - `archived/textlog-replace/textlog-replace-current-log.md`
   - `archived/textlog-replace/textlog-replace-current-log-audit.md`（S-28 post-impl invariance audit、欠陥 0）
   - `archived/boot-container-source/boot-container-source-priority.md`
@@ -1284,7 +1284,7 @@ docs-first pipeline（minimum scope → contract → 実装 → audit → manual
 **新規 spec / dev doc**:
 - `docs/spec/entry-ordering-v1-minimum-scope.md`
 - `docs/spec/entry-ordering-v1-behavior-contract.md`
-- `docs/development/entry-ordering-v1-audit.md`
+- `docs/development/archived/v1-audits/entry-ordering-v1-audit.md`
 
 **manual 同期**: `docs/manual/05_日常操作.md`（Manual Order 節）/ `docs/manual/09_トラブルシューティングと用語集.md`（4 件 + Manual Order 用語）
 
@@ -1305,7 +1305,7 @@ docs-first pipeline（minimum scope → contract → 実装 → audit → manual
 **新規 spec / dev doc**:
 - `docs/spec/link-index-v1-minimum-scope.md`
 - `docs/spec/link-index-v1-behavior-contract.md`
-- `docs/development/link-index-v1-audit.md`
+- `docs/development/archived/v1-audits/link-index-v1-audit.md`
 
 **manual 同期**: `docs/manual/05_日常操作.md`（リンクインデックス節）/ `docs/manual/09_トラブルシューティングと用語集.md`（TS 4 件 + 用語 2 件）
 

@@ -117,6 +117,6 @@ v0 draft §6.5 の順序方針を踏襲:
 - `docs/development/sidebar-backlink-badge-v1.md` — sidebar count badge（relations-based）
 - `docs/development/backlink-badge-jump-v1.md` — badge click → scroll-to-region、graph defer
 - `docs/development/orphan-detection-ui-v1.md` — relations-based orphan
-- `docs/development/link-index-v1-audit.md` — link-index sections（markdown-reference）
+- `docs/development/archived/v1-audits/link-index-v1-audit.md` — link-index sections（markdown-reference）
 - `src/adapter/ui/renderer.ts` — References umbrella 実装本体
 - `src/styles/base.css` — umbrella CSS
