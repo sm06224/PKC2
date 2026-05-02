@@ -135,7 +135,7 @@ flow は現在 docs にしか記述されていない (test がない)。
 **修正提案**:
 - (a) `tests/smoke/README.md` に「PR #174 で削除した test の log」
   を追記
-- (b) `iphone-push-pop-pr173-changelog.md` の Backwards-compatibility
+- (b) `archived/pr-findings/iphone-push-pop-pr173-changelog.md` の Backwards-compatibility
   節に「削除した test と理由」を追記
 - (c) commit message のみで足りるとする (現状)
 

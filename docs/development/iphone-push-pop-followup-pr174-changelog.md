@@ -9,7 +9,7 @@ covering the touch / cleanup / focus-mode follow-ups the user reported
 in rapid succession after PR #173 was opened. Each section ends with
 the commit SHA so a future bisect lands on the right change.
 
-PR #173 (iPhone push/pop wave) は `iphone-push-pop-pr173-changelog.md`
+PR #173 (iPhone push/pop wave) は `archived/pr-findings/iphone-push-pop-pr173-changelog.md`
 で closes-out 済み。本 doc はその後の「2026-04-27 wave」のみを扱う。
 
 ## 1. Touch input / popup affordances
