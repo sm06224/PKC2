@@ -110,6 +110,21 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 |---|---|
 | [`idb-availability.md`](./idb-availability.md) | IndexedDB 可用性 probe + Storage capacity preflight 規約 |
 | [`boot-initialization-order.md`](./boot-initialization-order.md) | boot 時の初期化順序 + container source priority(`archived/boot-container-source/` の history record と並ぶ live spec) |
+| [`attachment-size-limits.md`](./attachment-size-limits.md) | 添付ファイル size threshold 定数(`src/adapter/ui/guardrails.ts` の運用基準) |
+
+### Active feature specs(active reference、追加開発予定あり / 補助 spec)
+
+| File | Topic |
+|---|---|
+| [`entry-transformation-and-embedded-preview.md`](./entry-transformation-and-embedded-preview.md) | 文書構造変換 + embed model 拡張の親 spec(5 slice design gate) |
+| [`embedded-preview-and-cycle-guard.md`](./embedded-preview-and-cycle-guard.md) | 上記 slice 2/3 の補助 spec(live pipeline 拡張予定) |
+| [`textlog-viewer-and-linkability-redesign.md`](./textlog-viewer-and-linkability-redesign.md) | TEXTLOG model / viewer / TOC / ref の P1 構造再設計親 spec(6 軸整理) |
+| [`textlog-markdown-density.md`](./textlog-markdown-density.md) | TEXTLOG prose density CSS override の稼働中 spec |
+| [`tree-hide-buckets-and-advanced-filters-v1.md`](./tree-hide-buckets-and-advanced-filters-v1.md) | sidebar disclosure + tree bucket hiding の active runtime spec(state action 定義 live) |
+| [`unreferenced-attachments-cleanup-v1.md`](./unreferenced-attachments-cleanup-v1.md) | 未参照 attachment filter lens の filter 定義 live spec |
+| [`selected-entry-export-and-reimport.md`](./selected-entry-export-and-reimport.md) | TEXT / TEXTLOG single entry export+import spec(active feature、tests 14 件 live) |
+| [`selected-entry-html-clone-export.md`](./selected-entry-html-clone-export.md) | subset container HTML export spec(features 層 純関数化) |
+| [`ui-singleton-state-audit.md`](./ui-singleton-state-audit.md) | UI singleton 分類 + 次実装提案の design methodology 記録 |
 
 ## CLOSED (42 docs)
 
