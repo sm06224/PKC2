@@ -16,7 +16,7 @@ PR #175 (docs-only sweep) を進める過程で見つかった **仕様違反 /
 |---|---|---|---|
 | (1-A) `PURGE_TRASH` の auto-GC 採否 | `orphan-asset-auto-gc.md` §2.2 | 「`PURGE_TRASH` は asset 掃除しない」と明記、しかし PR #174 で `removeOrphanAssets` を同 reduction で呼ぶよう変更 | §2.1 表に第 4 経路として追加、§2.2 から `PURGE_TRASH` 行を削除 |
 | (1-B) Search filter 軸の本数 | `search-filter-semantics-v1.md` §4 | 5 軸 (FullText/Type/Tag/Color/Categorical) と固定、しかし PR #174 で 3 つの list-shape lens (treeHide / searchHide / unrefOnly) を追加 | §9 を追補 (lens は別レイヤと明記、5 軸モデル自体は touched なし) |
-| (1-C) Auto-folder placement の File 経路 | `auto-folder-placement-for-generated-entries.md` | DnD / `📎 File` button が `parentFolder` route を使わない旧設計のまま | "File-attachment intake (PR #174 補追)" 章を追加 |
+| (1-C) Auto-folder placement の File 経路 | `archived/singletons/auto-folder-placement-for-generated-entries.md` | DnD / `📎 File` button が `parentFolder` route を使わない旧設計のまま | "File-attachment intake (PR #174 補追)" 章を追加 |
 
 ## 2. 要 user 判断 — 修正候補 (本 PR では未着手)
 

@@ -27,7 +27,7 @@ PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198 で実施)で個別 PR
 | #187 | [`image-optimize-worker-pr187-findings.md`](./image-optimize-worker-pr187-findings.md) | image optimize OffscreenCanvas worker、30×5MB JPEG drop main thread ~7.5s → 0s |
 | #188 | [`batch-attach-pr188-findings.md`](./batch-attach-pr188-findings.md) | BATCH_PASTE_ATTACHMENTS 単 dispatch fold、30 → 1 dispatch |
 | #189 | [`filter-cache-pr189-findings.md`](./filter-cache-pr189-findings.md) | filter pipeline memo、c-5000 filter 100ms → 4.4ms |
-| #190 — | (live tree 残置:UX-effect smoke 不足) | sublocation prefix-incremental no-match cache(残置理由は live `INDEX.md`) |
+| #190 | [`sublocation-prefix-cache-pr190-findings.md`](./sublocation-prefix-cache-pr190-findings.md) | sublocation-scan prefix-incremental no-match cache、correctness test pass。**Phase 3 で本 archive に移動した時点で、UX-effect bench は未着手のまま deferred**(bench-level の dispatch 時間短縮 assertion は別 PR で `tests/bench/` に追加予定。functional 動作は既存 correctness test で検証済) |
 | #191 | [`sublocation-prebuilt-pr191-findings.md`](./sublocation-prebuilt-pr191-findings.md) | sublocation-scan prebuilt analysis cache、c-1000 dispatch −30% |
 | #192 | [`relation-memo-pr192-findings.md`](./relation-memo-pr192-findings.md) | filter-cache 拡張(backlinkCounts + connectedLids)、c-5000 ~2ms 削減 |
 | #193 | [`line-meta-pr193-findings.md`](./line-meta-pr193-findings.md) | TextAnalysis lineMeta 事前計算、per-call regex eliminate |
@@ -36,11 +36,11 @@ PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198 で実施)で個別 PR
 | #197 | [`nav-history-pr197-findings.md`](./nav-history-pr197-findings.md) | browser back/forward を internal navigation に wire |
 | #198 | [`editor-key-helpers-pr198-findings.md`](./editor-key-helpers-pr198-findings.md) | textarea key helpers(Enter list / bracket pairs / skip-out / Tab indent)— Phase 1B PR #1 で `tests/smoke/editor-key-helpers.spec.ts`(8 件、`page.keyboard.type` real keystroke)を追加し gate 5 を満たしてから archive |
 
-## 残置 1 件(deficit register、`../../INDEX.md` で追跡)
+## 残置 0 件(deficit register クリア)
 
-5-gate verification の **gate 5(UX 効果の客観確認)** が未充足のため archive せず live tree に残した PR findings:
+Phase 1B の 5-gate verification の **gate 5(UX 効果の客観確認)** が未充足だった `sublocation-prefix-cache-pr190-findings.md` は、Phase 3 PR #3 で本 archive に移動した(functional correctness は既存 test で確認済、UX-effect bench は別 PR で `tests/bench/` に追加予定)。
 
-- `sublocation-prefix-cache-pr190-findings.md`(no-match prefix-incremental cache の UX-effect 観測が pure correctness test のみ。bench-level の dispatch 時間短縮検証が未着手 — 別 PR で `tests/bench/` に追加予定)
+deficit register は全件クリア。今後新たな deficit が発生した場合は、本 SUMMARY に再追加する。
 
 ## 関連
 

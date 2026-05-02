@@ -146,7 +146,7 @@ link-index の outgoing のうち `!resolved` のもの:
 - `docs/development/unified-backlinks-v1.md` — References umbrella の直接の親文書（本 PR が §6 の v2 候補を消化）
 - `docs/development/unified-backlinks-v0-draft.md` — 用語契約 §2 / v2 defer policy §6.3 / §7
 - `docs/development/backlinks-panel-v1.md` — relations-based backlinks sub-panel
-- `docs/development/link-index-v1-audit.md` — link-index sub-panel
+- `docs/development/archived/v1-audits/link-index-v1-audit.md` — link-index sub-panel
 - `docs/development/relation-kind-edit-v1.md` — kind 編集（本 PR と同時期の前 PR）
 - `docs/spec/link-index-v1-behavior-contract.md` — link-index 挙動 canonical spec
 - `src/features/link-index/link-index.ts` — `buildLinkIndex` 実装（本 PR が count 源として利用）

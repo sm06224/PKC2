@@ -64,7 +64,7 @@ INDEX.md の section 構成(L27-478):
 本 audit では一律に「**INDEX に追加するか / archive 行きにするか / 削除するか**」を決めない。orphan 個別の判断は実装履歴を読まないと分からないものが多く、数も 67 件と多いため、本 audit の scope を肥大化させない。
 
 orphan 例(全 67 件、`tests/dev-docs-orphan-list.txt` 仮称で C-1 PR の参考付録に list 化):
-- audit-of-audit 系(`addressbar-url-title-paste-v1-audit.md`、`attachment-foundation-fi04-v1-audit.md` 等の "v1 audit" suffix → 実装後に閉じた audit ノート)
+- audit-of-audit 系(`archived/v1-audits/addressbar-url-title-paste-v1-audit.md`、`archived/v1-audits/attachment-foundation-fi04-v1-audit.md` 等の "v1 audit" suffix → 実装後に閉じた audit ノート)
 - multi-select sub-slice doc(`archived/multi-select/calendar-kanban-multi-select-bulk-date.md` 等 5 件 → multi-select 親 doc に統合余地)
 - decision / revision / coordination doc(`card-asset-target-coordination-audit.md`、`archived/boot-container-source/boot-container-source-policy-revision.md` 等)
 - color slice 設計補助(`color-tag-filter-slice4-design.md`、`color-tag-ui-appstate-audit.md`)

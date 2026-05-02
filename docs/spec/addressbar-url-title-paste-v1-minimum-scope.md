@@ -238,7 +238,7 @@ text/html: <a href="https://example.com">Example</a>
 ## References
 
 - `docs/planning/file-issues/08_editor-address-bar-link-paste-markdown.md`
-- `docs/development/html-paste-link-markdown.md`（S-25 完了文書）
+- `docs/development/archived/singletons/html-paste-link-markdown.md`（S-25 完了文書）
 - `src/adapter/ui/html-paste-to-markdown.ts` — `htmlPasteToMarkdown` / `isSafeHref` / `walkNode`
 - `src/adapter/ui/action-binder.ts` — `maybeHandleHtmlLinkPaste` / `handlePaste`
 - `tests/adapter/html-paste-to-markdown.test.ts`（20 件）

@@ -220,7 +220,7 @@ if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return;
 ## References
 
 - Minimum scope: `docs/spec/addressbar-url-title-paste-v1-minimum-scope.md`
-- S-25 完了文書: `docs/development/html-paste-link-markdown.md`
+- S-25 完了文書: `docs/development/archived/singletons/html-paste-link-markdown.md`
 - `src/adapter/ui/html-paste-to-markdown.ts` — `htmlPasteToMarkdown` / `isSafeHref` / `walkNode`
 - `src/adapter/ui/action-binder.ts` — `maybeHandleHtmlLinkPaste` / `handlePaste`
 - `tests/adapter/html-paste-to-markdown.test.ts`（20 件）

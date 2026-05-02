@@ -32,7 +32,7 @@ Escape (soft keyboard return) で閉じる路に揃えた。
 |---|---|
 | `dfdb43d` (cherry-pick of `a8a28e3`) | `processFileAttachmentWithDedupe` を refactor: `parentFolder` + `ensureSubfolder` を CREATE_ENTRY に直接渡す atomic placement に。DnD sidebar / center drop zone + 上部 `📎 File` button の 3 surface 全てが ASSETS バケットを自動生成。+ optional `searchHideBuckets` (default true) state field + `TOGGLE_SEARCH_HIDE_BUCKETS` action — 検索結果から ASSETS / TODOS 直下のエントリを既定で除外、フィルタ active 時に「Show ASSETS / TODOS contents」トグルで戻せる |
 
-詳細: `./auto-folder-placement-for-generated-entries.md` の
+詳細: `./archived/singletons/auto-folder-placement-for-generated-entries.md` の
 "File-attachment intake (PR #174 補追)" 章。
 
 ## 3. Focus mode 復活 + Copy link 移設
@@ -41,7 +41,7 @@ Escape (soft keyboard return) で閉じる路に揃えた。
 |---|---|
 | `1cd7f63` (cherry-pick of `97ddcaf`) | Ctrl+Alt+\\ focus mode 復活 (Slice 6 single-pane handler が `altKey` を見ずに先食いしていた回帰) + ヘッダーに `▣` button (touch + マウス両対応) + センターペイン archetype badge を Copy link に置換 (右下 bar-info と内容重複していた) + More… 内 Copy link mirror 削除 (title-row が常時可視なので不要) — meta-pane の Copy link は据え置き |
 
-詳細: `./focus-mode-v1.md`。
+詳細: `./archived/singletons/focus-mode-v1.md`。
 
 ## 4. Docs (cumulative changelog for PR #173)
 
@@ -55,7 +55,7 @@ Escape (soft keyboard return) で閉じる路に揃えた。
 |---|---|
 | `0a472bf` (cherry-pick of `03bdf0a`) | sidebar click 時の auto-scroll 抑制 — action-binder 側で sidebar 内 click 由来の `SELECT_ENTRY` 時に `data-pkc-last-scrolled-lid` を pre-write し、renderer の `scrollSelectedSidebarNodeIntoView` を short-circuit。breadcrumb / recent / calendar / kanban / search-result からの jump は従来通り auto-scroll が効く |
 
-詳細: `./sidebar-click-no-autoscroll-v1.md`。
+詳細: `./archived/singletons/sidebar-click-no-autoscroll-v1.md`。
 
 ## 6. Empty-trash + unused-attachment cleanup
 
@@ -126,8 +126,8 @@ PR #175 (docs-only sweep) で見つかった spec / docs 上の整合性
    軸の記述なし — PR #175 で §9 追補 (完了)。
 3. `tree-hide-buckets-and-advanced-filters-v1.md` /
    `unreferenced-attachments-cleanup-v1.md` /
-   `focus-mode-v1.md` /
-   `sidebar-click-no-autoscroll-v1.md` — 新規作成 (PR #175 で完了)。
+   `archived/singletons/focus-mode-v1.md` /
+   `archived/singletons/sidebar-click-no-autoscroll-v1.md` — 新規作成 (PR #175 で完了)。
 
 詳細は PR #175 / `docs/development/pr175-spec-violations-audit.md`
 を参照。

@@ -462,7 +462,7 @@ clipboard:
 - Predecessor v1 minimum scope: `docs/spec/addressbar-url-title-paste-v1-minimum-scope.md`
 - Predecessor v1 behavior contract: `docs/spec/addressbar-url-title-paste-v1-behavior-contract.md`
 - Parent file issue: `docs/planning/file-issues/08_editor-address-bar-link-paste-markdown.md`
-- S-25 完了文書: `docs/development/html-paste-link-markdown.md`
+- S-25 完了文書: `docs/development/archived/singletons/html-paste-link-markdown.md`
 - `src/features/markdown/markdown-render.ts` — `linkify: true` / `SAFE_URL_RE` / `md.validateLink` / `link_open` rule
 - `src/adapter/ui/html-paste-to-markdown.ts` — FI-08 v1 paste pipeline（本 contract では変更しない）
 - `src/adapter/ui/action-binder.ts` — `PASTE_LINK_ALLOWED_FIELDS` / `maybeHandleHtmlLinkPaste`（本 contract では変更しない）
