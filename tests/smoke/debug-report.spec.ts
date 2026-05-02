@@ -55,9 +55,10 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   const bodyText = await popup.evaluate(() => document.body.innerText);
   const report = JSON.parse(bodyText);
 
-  expect(report.schema).toBe(2);
+  expect(report.schema).toBe(3);
   expect(typeof report.pkc.version).toBe('string');
   expect(report.pkc.version.length).toBeGreaterThan(0);
+  expect(typeof report.pkc.commit).toBe('string');
   expect(typeof report.ts).toBe('string');
   expect(report.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   expect(typeof report.url).toBe('string');
@@ -66,12 +67,19 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   expect(report.viewport.w).toBeGreaterThan(0);
   expect(report.viewport.h).toBeGreaterThan(0);
   expect(typeof report.pointer.coarse).toBe('boolean');
-  // Schema 2 additions (PR #211, stage β): structural defaults + ring
-  // buffer. The smoke test page hits ?pkc-debug=* (no contents flag),
-  // so level must be 'structural' and content must not be exposed.
+  // Schema 3 additions (PR #211 finalize): structural defaults + ring
+  // buffer + errors[] + truncatedCounts. Smoke hits ?pkc-debug=* (no
+  // contents flag), so level must be 'structural', no content / replay.
   expect(report.level).toBe('structural');
   expect(report.contentsIncluded).toBe(false);
   expect(Array.isArray(report.recent)).toBe(true);
+  expect(Array.isArray(report.errors)).toBe(true);
+  expect(report.replay).toBeUndefined();
+  expect(report.truncatedCounts).toMatchObject({
+    recent: expect.any(Number),
+    errors: expect.any(Number),
+    replayDropped: false,
+  });
   expect(report.phase).toBe('ready');
   expect(['detail', 'calendar', 'kanban']).toContain(report.view);
   expect(report).toHaveProperty('selectedLid');
@@ -84,6 +92,9 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   expect(typeof report.container.entryCount).toBe('number');
   expect(typeof report.container.relationCount).toBe('number');
   expect(Array.isArray(report.container.assetKeys)).toBe(true);
+  // Schema 3 fingerprint additions for shape-aware reproducibility.
+  expect(typeof report.container.schemaVersion).toBe('number');
+  expect(typeof report.container.archetypeCounts).toBe('object');
   expect(report.container.entries).toBeUndefined();
   expect(report.container.relations).toBeUndefined();
   expect(report.container.assets).toBeUndefined();

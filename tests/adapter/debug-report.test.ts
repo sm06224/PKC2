@@ -124,20 +124,27 @@ describe('buildDebugReportFromState', () => {
     expect(report.editingLid).toBe('e-42');
   });
 
-  it('emits schema 2 with structural defaults when no debug flag is set', () => {
+  it('emits schema 3 with structural defaults when no debug flag is set', () => {
     const report = buildDebugReportFromState(createInitialState());
-    expect(report.schema).toBe(2);
+    expect(report.schema).toBe(3);
     expect(report.level).toBe('structural');
     expect(report.contentsIncluded).toBe(false);
     expect(report.recent).toEqual([]);
+    expect(report.errors).toEqual([]);
+    expect(report.replay).toBeUndefined();
+    expect(report.truncatedCounts).toEqual({
+      recent: 0,
+      errors: 0,
+      replayDropped: false,
+    });
   });
 
   it('propagates the ring buffer into report.recent', () => {
     window.history.replaceState(null, '', '/?pkc-debug=sync');
-    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
+    recordDebugEvent({ kind: 'dispatch', seq: 1, ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
     const report = buildDebugReportFromState(createInitialState());
     expect(report.recent).toEqual([
-      { kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
+      { kind: 'dispatch', seq: 1, ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
     ]);
   });
 

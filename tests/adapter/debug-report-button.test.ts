@@ -56,7 +56,7 @@ describe('runDebugReportDump — new-tab happy path', () => {
     ).toBeNull();
   });
 
-  it('serializes a schema 2 report into the Blob payload', async () => {
+  it('serializes a schema 3 report into the Blob payload', async () => {
     setUrl('pkc-debug=*');
     vi.spyOn(window, 'open').mockReturnValue({} as Window);
 
@@ -75,7 +75,7 @@ describe('runDebugReportDump — new-tab happy path', () => {
 
     const text = await blobs[0]!.text();
     const parsed = JSON.parse(text);
-    expect(parsed.schema).toBe(2);
+    expect(parsed.schema).toBe(3);
     expect(parsed.phase).toBe('initializing');
     expect(parsed.level).toBe('structural');
   });

@@ -118,7 +118,7 @@ describe('buildDebugEnvironment', () => {
   it('returns the schema-versioned env slice with no app-state fields', () => {
     setUrl('pkc-debug=sync,kanban');
     const env = buildDebugEnvironment();
-    expect(env.schema).toBe(2);
+    expect(env.schema).toBe(3);
     expect(typeof env.pkc.version).toBe('string');
     expect(env.pkc.version.length).toBeGreaterThan(0);
     expect(typeof env.ts).toBe('string');
@@ -150,11 +150,11 @@ describe('buildDebugEnvironment', () => {
 
   it('reflects ring-buffer contents in env.recent', () => {
     setUrl('pkc-debug=sync');
-    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
-    recordDebugEvent({ kind: 'dispatch', ts: 't2', type: 'SET_VIEW_MODE' });
+    recordDebugEvent({ kind: 'dispatch', seq: 1, ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' });
+    recordDebugEvent({ kind: 'dispatch', seq: 2, ts: 't2', type: 'SET_VIEW_MODE' });
     expect(buildDebugEnvironment().recent).toEqual([
-      { kind: 'dispatch', ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
-      { kind: 'dispatch', ts: 't2', type: 'SET_VIEW_MODE' },
+      { kind: 'dispatch', seq: 1, ts: 't1', type: 'SELECT_ENTRY', lid: 'e-1' },
+      { kind: 'dispatch', seq: 2, ts: 't2', type: 'SET_VIEW_MODE' },
     ]);
   });
 
@@ -168,13 +168,14 @@ describe('buildDebugEnvironment', () => {
 
 describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
   const sample: DebugReport = {
-    schema: 2,
-    pkc: { version: '0.0.0-test' },
+    schema: 3,
+    pkc: { version: '0.0.0-test', commit: 'deadbeef' },
     ts: '2026-05-02T00:00:00.000Z',
     url: 'http://test/',
     ua: 'test-ua',
     viewport: { w: 100, h: 100, dpr: 1 },
     pointer: { coarse: false },
+    storage: null,
     phase: 'ready',
     view: 'detail',
     selectedLid: null,
@@ -184,6 +185,8 @@ describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
     level: 'structural',
     contentsIncluded: false,
     recent: [],
+    errors: [],
+    truncatedCounts: { recent: 0, errors: 0, replayDropped: false },
   };
 
   afterEach(() => {
@@ -317,19 +320,19 @@ describe('isContentModeEnabled — graduated opt-in', () => {
 
 describe('recordDebugEvent / readDebugEvents — ring buffer', () => {
   it('records events in dispatch order', () => {
-    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
-    recordDebugEvent({ kind: 'dispatch', ts: 't2', type: 'B', lid: 'e-1' });
-    recordDebugEvent({ kind: 'dispatch', ts: 't3', type: 'C' });
+    recordDebugEvent({ kind: 'dispatch', seq: 1, ts: 't1', type: 'A' });
+    recordDebugEvent({ kind: 'dispatch', seq: 2, ts: 't2', type: 'B', lid: 'e-1' });
+    recordDebugEvent({ kind: 'dispatch', seq: 3, ts: 't3', type: 'C' });
     expect(readDebugEvents()).toEqual([
-      { kind: 'dispatch', ts: 't1', type: 'A' },
-      { kind: 'dispatch', ts: 't2', type: 'B', lid: 'e-1' },
-      { kind: 'dispatch', ts: 't3', type: 'C' },
+      { kind: 'dispatch', seq: 1, ts: 't1', type: 'A' },
+      { kind: 'dispatch', seq: 2, ts: 't2', type: 'B', lid: 'e-1' },
+      { kind: 'dispatch', seq: 3, ts: 't3', type: 'C' },
     ]);
   });
 
   it('caps at 100 events with FIFO eviction (oldest dropped)', () => {
     for (let i = 0; i < 150; i++) {
-      recordDebugEvent({ kind: 'dispatch', ts: `t${i}`, type: `A${i}` });
+      recordDebugEvent({ kind: 'dispatch', seq: i + 1, ts: `t${i}`, type: `A${i}` });
     }
     const events = readDebugEvents();
     expect(events).toHaveLength(100);
@@ -339,14 +342,14 @@ describe('recordDebugEvent / readDebugEvents — ring buffer', () => {
   });
 
   it('readDebugEvents returns a snapshot (caller cannot mutate the buffer)', () => {
-    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
+    recordDebugEvent({ kind: 'dispatch', seq: 1, ts: 't1', type: 'A' });
     const snap = readDebugEvents();
-    snap.push({ kind: 'dispatch', ts: 't2', type: 'B' });
+    snap.push({ kind: 'dispatch', seq: 2, ts: 't2', type: 'B' });
     expect(readDebugEvents()).toHaveLength(1);
   });
 
   it('clearDebugEvents empties the buffer', () => {
-    recordDebugEvent({ kind: 'dispatch', ts: 't1', type: 'A' });
+    recordDebugEvent({ kind: 'dispatch', seq: 1, ts: 't1', type: 'A' });
     clearDebugEvents();
     expect(readDebugEvents()).toEqual([]);
   });
@@ -447,5 +450,121 @@ describe('snapshotActionForContent — eager clone + size cap', () => {
     };
     const snap = snapshotActionForContent(action);
     expect(snap).toEqual(action);
+  });
+});
+
+describe('applyMessagePrivacy — error message truncation', () => {
+  it('returns message verbatim in content mode', async () => {
+    const { applyMessagePrivacy } = await import('@runtime/debug-flags');
+    const long = 'X'.repeat(500);
+    expect(applyMessagePrivacy(long, true)).toBe(long);
+  });
+
+  it('truncates to 200 chars + marker in structural mode', async () => {
+    const { applyMessagePrivacy } = await import('@runtime/debug-flags');
+    const long = 'X'.repeat(500);
+    const out = applyMessagePrivacy(long, false);
+    expect(out.length).toBeLessThanOrEqual(220);
+    expect(out).toMatch(/\[truncated\]$/);
+  });
+
+  it('passes short messages through unchanged in either mode', async () => {
+    const { applyMessagePrivacy } = await import('@runtime/debug-flags');
+    expect(applyMessagePrivacy('hello', true)).toBe('hello');
+    expect(applyMessagePrivacy('hello', false)).toBe('hello');
+  });
+});
+
+describe('errors[] ring buffer — recordDebugError / readDebugErrors', () => {
+  it('records error events in order', async () => {
+    const { recordDebugError, readDebugErrors, clearDebugErrors } = await import(
+      '@runtime/debug-flags'
+    );
+    clearDebugErrors();
+    recordDebugError({ kind: 'error', ts: 't1', message: 'a', lastSeq: 1 });
+    recordDebugError({ kind: 'console-error', ts: 't2', message: 'b', lastSeq: 2 });
+    expect(readDebugErrors()).toEqual([
+      { kind: 'error', ts: 't1', message: 'a', lastSeq: 1 },
+      { kind: 'console-error', ts: 't2', message: 'b', lastSeq: 2 },
+    ]);
+  });
+
+  it('caps at 10 with FIFO eviction', async () => {
+    const { recordDebugError, readDebugErrors, clearDebugErrors } = await import(
+      '@runtime/debug-flags'
+    );
+    clearDebugErrors();
+    for (let i = 0; i < 15; i++) {
+      recordDebugError({ kind: 'error', ts: `t${i}`, message: `m${i}`, lastSeq: i });
+    }
+    const errors = readDebugErrors();
+    expect(errors).toHaveLength(10);
+    expect(errors[0]!.message).toBe('m5');
+    expect(errors[9]!.message).toBe('m14');
+  });
+});
+
+describe('applyTotalSizeCap — 1 MiB hard cap with priority truncation', () => {
+  function makeReport(
+    overrides: Partial<DebugReport> = {},
+  ): DebugReport {
+    return {
+      schema: 3,
+      pkc: { version: '0', commit: 'x' },
+      ts: 't',
+      url: '',
+      ua: '',
+      viewport: { w: 1, h: 1, dpr: 1 },
+      pointer: { coarse: false },
+      storage: null,
+      phase: 'ready',
+      view: 'detail',
+      selectedLid: null,
+      editingLid: null,
+      container: null,
+      flags: [],
+      level: 'structural',
+      contentsIncluded: false,
+      recent: [],
+      errors: [],
+      truncatedCounts: { recent: 0, errors: 0, replayDropped: false },
+      ...overrides,
+    };
+  }
+
+  it('passes through reports under the cap unchanged', async () => {
+    const { applyTotalSizeCap } = await import('@runtime/debug-flags');
+    const r = makeReport();
+    const out = applyTotalSizeCap(r);
+    expect(out).toEqual(r);
+  });
+
+  it('drops replay first when a content-mode report exceeds the cap', async () => {
+    const { applyTotalSizeCap, MAX_REPORT_BYTES } = await import('@runtime/debug-flags');
+    // Build a replay payload large enough to trigger truncation.
+    const huge = 'A'.repeat(MAX_REPORT_BYTES + 1024);
+    const r = makeReport({
+      level: 'content',
+      contentsIncluded: true,
+      replay: { initialContainer: { huge } },
+    });
+    const out = applyTotalSizeCap(r);
+    expect(out.replay).toBeUndefined();
+    expect(out.truncatedCounts.replayDropped).toBe(true);
+  });
+
+  it('then trims recent[] FIFO, then errors[] FIFO, surfacing counts', async () => {
+    const { applyTotalSizeCap, MAX_REPORT_BYTES } = await import('@runtime/debug-flags');
+    // Each event ~1 KiB → need ~1100 events to exceed 1 MiB.
+    const recent = Array.from({ length: 1200 }, (_, i) => ({
+      kind: 'dispatch' as const,
+      seq: i + 1,
+      ts: 't',
+      type: 'X'.repeat(900),
+    }));
+    const r = makeReport({ recent });
+    const out = applyTotalSizeCap(r);
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(MAX_REPORT_BYTES);
+    expect(out.truncatedCounts.recent).toBeGreaterThan(0);
   });
 });

@@ -20,7 +20,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import {
   clearDebugEvents,
+  clearInitialContainerForTests,
   readDebugEvents,
+  readInitialContainer,
   _resetContentsWarningForTests,
 } from '@runtime/debug-flags';
 import type { Container } from '@core/model/container';
@@ -48,6 +50,7 @@ beforeEach(() => {
   setUrl('');
   window.localStorage.clear();
   clearDebugEvents();
+  clearInitialContainerForTests();
   _resetContentsWarningForTests();
 });
 
@@ -76,7 +79,7 @@ describe('dispatcher × debug ring buffer — recording gate', () => {
 });
 
 describe('dispatcher × debug ring buffer — structural mode (default)', () => {
-  it('captures only { type, lid?, ts, kind } per event', () => {
+  it('captures only { type, lid?, ts, kind, seq, durMs } per event', () => {
     setUrl('pkc-debug=*');
     const d = createDispatcher();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
@@ -84,16 +87,34 @@ describe('dispatcher × debug ring buffer — structural mode (default)', () => 
     const events = readDebugEvents();
     expect(events[0]).toEqual({
       kind: 'dispatch',
+      seq: 1,
       ts: expect.any(String),
       type: 'SYS_INIT_COMPLETE',
+      durMs: expect.any(Number),
     });
     expect(events[1]).toEqual({
       kind: 'dispatch',
+      seq: 2,
       ts: expect.any(String),
       type: 'SELECT_ENTRY',
       lid: 'e-42',
+      durMs: expect.any(Number),
     });
     expect(events[1]!.content).toBeUndefined();
+    expect(events[1]!.durMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('seq is monotonic and survives FIFO eviction', () => {
+    setUrl('pkc-debug=*');
+    const d = createDispatcher();
+    for (let i = 0; i < 105; i++) {
+      d.dispatch({ type: 'SELECT_ENTRY', lid: `e-${i}` });
+    }
+    const events = readDebugEvents();
+    expect(events).toHaveLength(100);
+    // First retained event is the 6th dispatched (seq 6), oldest 5 evicted.
+    expect(events[0]!.seq).toBe(6);
+    expect(events[99]!.seq).toBe(105);
   });
 
   it('NEVER leaks entry body / title / asset bytes into the buffer', () => {
@@ -171,6 +192,21 @@ describe('dispatcher × debug ring buffer — content mode (opt-in)', () => {
     // User explicitly asked for content mode → these MUST appear.
     expect(json).toContain('OPT-IN-VISIBLE-TITLE');
     expect(json).toContain('OPT-IN-VISIBLE-BODY');
+  });
+
+  it('captures initialContainer for replay only on first SYS_INIT_COMPLETE', () => {
+    setUrl('pkc-debug=*&pkc-debug-contents=1');
+    const d = createDispatcher();
+    expect(readInitialContainer()).toBeNull();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(readInitialContainer()).toBe(mockContainer);
+  });
+
+  it('does NOT capture initialContainer in structural mode', () => {
+    setUrl('pkc-debug=*');
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    expect(readInitialContainer()).toBeNull();
   });
 
   it('truncates oversize payloads in content mode (Firefox allocation guard)', () => {

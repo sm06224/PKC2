@@ -95,7 +95,7 @@ test('🐞 button paints inside the header, right of ⚙, and is OS-clickable', 
   // (which would indicate the click triggered something else).
   const text = await popup.evaluate(() => document.body.innerText);
   const parsed = JSON.parse(text);
-  expect(parsed.schema).toBe(2);
+  expect(parsed.schema).toBe(3);
   expect(parsed.flags).toContain('*');
 
   await popup.close();

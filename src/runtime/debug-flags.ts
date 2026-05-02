@@ -138,30 +138,51 @@ export function isContentModeEnabled(): boolean {
  * RecentEvent: a single dispatch captured by the ring buffer.
  *
  * Fields:
- * - `kind`: discriminator for future event sources (e.g. `'render'`,
- *   `'event'` from `dispatcher.onEvent`). Currently `'dispatch'` only.
+ * - `kind`: discriminator for future event sources. Currently
+ *   `'dispatch'` only.
+ * - `seq`: monotonic dispatch counter (1-based). Survives FIFO
+ *   eviction so `errors[].lastSeq` can correlate to the right event
+ *   even after ~100 dispatches have rolled past.
  * - `ts`: ISO 8601 timestamp at capture.
  * - `type`: action.type literal (always safe — short ASCII enum).
  * - `lid`: present when the action carries a `lid: string` field.
  *   Cherry-picked by name; never spread, so a future action with a
- *   sensitive field (body / title / asset bytes) cannot leak through
- *   structural mode.
- * - `content`: present only when `level === 'content'`. The full
- *   action payload, verbatim.
- *
- * Schema 2 invariant: structural callers MUST NOT read `content`,
- * and content callers MUST treat `content` as opt-in user data.
+ *   sensitive field cannot leak through structural mode.
+ * - `durMs`: wall-clock duration of dispatch (reduce + listener
+ *   flush), rounded to 0.01 ms. Captured from `performance.now()`
+ *   inside the dispatcher hook — independent of the `?profile=1`
+ *   gate so debug always carries timings.
+ * - `content`: present only when `level === 'content'`. The
+ *   eagerly-cloned action payload, capped at MAX_CONTENT_BYTES.
  */
 export interface RecentEvent {
   kind: 'dispatch';
+  seq: number;
   ts: string;
   type: string;
   lid?: string;
+  durMs?: number;
   content?: unknown;
 }
 
 const RECENT_MAX = 100;
 const recentBuffer: RecentEvent[] = [];
+let dispatchSeq = 0;
+
+/**
+ * Allocate the next monotonic dispatch sequence number. The dispatcher
+ * calls this before recording so `errors[].lastSeq` can pin to a
+ * specific dispatch even after ring-buffer eviction.
+ */
+export function nextDispatchSeq(): number {
+  dispatchSeq += 1;
+  return dispatchSeq;
+}
+
+/** Read the current sequence (0 if no dispatches yet). */
+export function currentDispatchSeq(): number {
+  return dispatchSeq;
+}
 
 /**
  * Append an event to the ring buffer, dropping the oldest when the
@@ -181,9 +202,128 @@ export function readDebugEvents(): RecentEvent[] {
   return recentBuffer.slice();
 }
 
-/** Test helper: empty the ring buffer between cases. */
+/** Test helper: empty the ring buffer + reset sequence between cases. */
 export function clearDebugEvents(): void {
   recentBuffer.length = 0;
+  dispatchSeq = 0;
+}
+
+/**
+ * ErrorEvent: a single error / unhandled-rejection / console.error
+ * captured since boot.
+ *
+ * `lastSeq` pins the error to the dispatch that was most recently
+ * recorded when the error fired — developer can scan recent[] for
+ * the matching seq to see "right after this action, this error
+ * happened." Survives FIFO eviction by being a number, not an index.
+ *
+ * `message` policy:
+ *   structural mode → truncated to MAX_ERROR_MESSAGE_BYTES (200)
+ *   content mode    → full
+ * `stack` is structural information only (function names + file +
+ * line), so it stays full in both modes.
+ */
+export interface ErrorEvent {
+  kind: 'error' | 'unhandledrejection' | 'console-error';
+  ts: string;
+  message: string;
+  stack?: string;
+  source?: string;
+  line?: number;
+  col?: number;
+  lastSeq: number;
+}
+
+const MAX_ERROR_MESSAGE_BYTES = 200;
+const ERRORS_MAX = 10;
+const errorBuffer: ErrorEvent[] = [];
+
+export function recordDebugError(event: ErrorEvent): void {
+  errorBuffer.push(event);
+  while (errorBuffer.length > ERRORS_MAX) {
+    errorBuffer.shift();
+  }
+}
+
+export function readDebugErrors(): ErrorEvent[] {
+  return errorBuffer.slice();
+}
+
+/** Test helper: empty the error ring buffer between cases. */
+export function clearDebugErrors(): void {
+  errorBuffer.length = 0;
+}
+
+/**
+ * Truncate `message` to MAX_ERROR_MESSAGE_BYTES when not in content
+ * mode. Stack traces are emitted as-is regardless of mode because
+ * they are structural (no user content).
+ */
+export function applyMessagePrivacy(
+  message: string,
+  contentMode: boolean,
+): string {
+  if (contentMode) return message;
+  if (message.length <= MAX_ERROR_MESSAGE_BYTES) return message;
+  return message.slice(0, MAX_ERROR_MESSAGE_BYTES) + '… [truncated]';
+}
+
+/**
+ * Initial container snapshot for content-mode replay. Captured by the
+ * dispatcher when SYS_INIT_COMPLETE first fires; surfaced in the
+ * report only when the user has opted into content mode.
+ *
+ * The snapshot is held by reference. The Container in PKC2 is treated
+ * as immutable by the reducer (state is recreated, not mutated), so
+ * the reference stays valid for the page lifetime. JSON-stringify at
+ * report time materializes it once.
+ */
+let initialContainerSnapshot: unknown = null;
+
+export function recordInitialContainer(container: unknown): void {
+  initialContainerSnapshot = container;
+}
+
+export function readInitialContainer(): unknown {
+  return initialContainerSnapshot;
+}
+
+export function clearInitialContainerForTests(): void {
+  initialContainerSnapshot = null;
+}
+
+/**
+ * Storage estimate captured once at boot via `navigator.storage.estimate()`.
+ * One-shot snapshot rather than a live read so report builds are
+ * synchronous.
+ */
+let storageEstimate: { usageMB: number; quotaMB: number } | null = null;
+
+export async function refreshStorageEstimate(): Promise<void> {
+  if (typeof navigator === 'undefined') return;
+  const storage = (navigator as Navigator & {
+    storage?: { estimate?: () => Promise<{ usage?: number; quota?: number }> };
+  }).storage;
+  if (!storage?.estimate) return;
+  try {
+    const est = await storage.estimate();
+    if (typeof est.usage === 'number' && typeof est.quota === 'number') {
+      storageEstimate = {
+        usageMB: Math.round((est.usage / 1024 / 1024) * 100) / 100,
+        quotaMB: Math.round((est.quota / 1024 / 1024) * 100) / 100,
+      };
+    }
+  } catch {
+    /* permission denied / unsupported — stay null */
+  }
+}
+
+export function readStorageEstimate(): { usageMB: number; quotaMB: number } | null {
+  return storageEstimate;
+}
+
+export function clearStorageEstimateForTests(): void {
+  storageEstimate = null;
 }
 
 /**
@@ -278,33 +418,48 @@ function makeTruncated(
 }
 
 /**
- * DebugReport schema 2 — what gets dumped to clipboard when the user
- * clicks the Report button.
+ * DebugReport schema 3 — what gets dumped when the user clicks the
+ * 🐞 button.
  *
  * Schema evolution (additive only, per philosophy doc §4 原則 4):
  *  - schema 1 (PR #209, stage α): env + phase + view + selection +
  *    container counts.
- *  - schema 2 (PR #211, stage β): + level + contentsIncluded + recent.
+ *  - schema 2 (PR #211 first round, stage β): + level + contentsIncluded
+ *    + recent.
+ *  - schema 3 (PR #211 finalize, 2026-05-02): + pkc.commit + storage
+ *    + container.{schemaVersion, archetypeCounts} + recent[].seq +
+ *    recent[].durMs + errors[] + replay (content-mode only) +
+ *    truncatedCounts.
  *
- * Old consumers reading a v2 dump ignore the unknown fields. New
- * consumers MUST tolerate v1 dumps that lack the additive fields by
- * treating them as `level: 'structural'`, `contentsIncluded: false`,
- * `recent: []`.
+ * Forward compat: a v2 consumer reading a v3 dump must ignore unknown
+ * fields. A v3 consumer reading a v2 dump must tolerate the missing
+ * fields (treat as absent / null / empty).
  *
- * Privacy: structural callers continue to drop entry body / asset
- * bytes (philosophy doc §4 原則 2). Content mode is only triggered by
- * `?pkc-debug-contents=1` and is surfaced via the dedicated `level`
- * and `contentsIncluded` fields so the user can see what they are
- * about to paste before pasting.
+ * Every field justifies itself by the debugging workflow it enables
+ * (philosophy doc §5-4):
+ *   - pkc.commit       → exact source-tree git checkout
+ *   - storage          → quota-related bug category
+ *   - schemaVersion    → migration-class bug category
+ *   - archetypeCounts  → "only with N todos" repro shape
+ *   - recent[].durMs   → "X is slow / freezes" perf bug category
+ *   - errors[]         → crash-class bug category, with .lastSeq
+ *                        correlating each error to the dispatch
+ *                        sequence that preceded it
+ *   - replay           → deterministic local reproduction in content
+ *                        mode (reducer-purity contract underpins this;
+ *                        tests/core/replay-determinism.test.ts pins it)
+ *   - truncatedCounts  → transparency about what the 1 MiB total cap
+ *                        had to drop
  */
 export interface DebugReport {
-  schema: 2;
-  pkc: { version: string };
+  schema: 3;
+  pkc: { version: string; commit: string };
   ts: string;
   url: string;
   ua: string;
   viewport: { w: number; h: number; dpr: number };
   pointer: { coarse: boolean };
+  storage: { usageMB: number; quotaMB: number } | null;
   phase: string;
   view: string;
   selectedLid: string | null;
@@ -313,22 +468,74 @@ export interface DebugReport {
     entryCount: number;
     relationCount: number;
     assetKeys: string[];
+    schemaVersion: number;
+    archetypeCounts: Record<string, number>;
   } | null;
   flags: string[];
-  /** Indicates whether `recent[].content` is populated. */
   level: 'structural' | 'content';
-  /** Mirror of `level === 'content'`; redundant on purpose so a paste
-   * preview UI can flag content reports without parsing `level`. */
   contentsIncluded: boolean;
-  /** Dispatch ring buffer snapshot (max 100, oldest first). */
   recent: RecentEvent[];
+  errors: ErrorEvent[];
+  /** Present only in content mode. The container the dispatcher
+   * received in the first SYS_INIT_COMPLETE since boot — the seed for
+   * deterministic local replay over `recent[]`. */
+  replay?: { initialContainer: unknown };
+  /** What the 1 MiB total-size cap had to drop, by category. */
+  truncatedCounts: {
+    recent: number;
+    errors: number;
+    replayDropped: boolean;
+  };
+}
+
+/**
+ * Hard cap on the total stringified DebugReport. Above this, we
+ * truncate in priority order: replay → recent[] FIFO → errors[] FIFO.
+ * 1 MiB is a comfortable browser/clipboard/blob-URL handling target
+ * even on mobile; the per-content cap (64 KiB) keeps a single dispatch
+ * from monopolising the budget.
+ */
+export const MAX_REPORT_BYTES = 1024 * 1024;
+
+/**
+ * Reduce `report` so its serialized form fits MAX_REPORT_BYTES. Drops
+ * `replay` first (largest single payload), then trims `recent` and
+ * `errors` from the front (oldest first). Surfaces what was dropped
+ * via `truncatedCounts` for transparency.
+ */
+export function applyTotalSizeCap(report: DebugReport): DebugReport {
+  if (JSON.stringify(report).length <= MAX_REPORT_BYTES) return report;
+  const out: DebugReport = {
+    ...report,
+    truncatedCounts: { ...report.truncatedCounts },
+  };
+  if (out.replay !== undefined) {
+    delete out.replay;
+    out.truncatedCounts.replayDropped = true;
+    if (JSON.stringify(out).length <= MAX_REPORT_BYTES) return out;
+  }
+  while (out.recent.length > 0 && JSON.stringify(out).length > MAX_REPORT_BYTES) {
+    out.recent = out.recent.slice(1);
+    out.truncatedCounts.recent += 1;
+  }
+  while (out.errors.length > 0 && JSON.stringify(out).length > MAX_REPORT_BYTES) {
+    out.errors = out.errors.slice(1);
+    out.truncatedCounts.errors += 1;
+  }
+  return out;
 }
 
 /**
  * Build the runtime-environment slice of the Report. The state-aware
  * slice is filled in by `buildDebugReportFromState` in adapter/ui/.
+ *
+ * `commitFromMeta` is supplied by the adapter (which calls
+ * `readReleaseMeta()`); the runtime layer cannot read the DOM `<script>`
+ * slot directly without taking a layer dependency. When meta is
+ * unavailable (test fixtures, server-side rendering) we fall back to
+ * `'unknown'` rather than crashing.
  */
-export function buildDebugEnvironment(): Pick<
+export function buildDebugEnvironment(commitFromMeta?: string): Pick<
   DebugReport,
   | 'schema'
   | 'pkc'
@@ -337,17 +544,28 @@ export function buildDebugEnvironment(): Pick<
   | 'ua'
   | 'viewport'
   | 'pointer'
+  | 'storage'
   | 'flags'
   | 'level'
   | 'contentsIncluded'
   | 'recent'
+  | 'errors'
+  | 'truncatedCounts'
 > {
   const win = typeof window !== 'undefined' ? window : null;
   const nav = typeof navigator !== 'undefined' ? navigator : null;
   const contentMode = isContentModeEnabled();
+  const errors = readDebugErrors();
+  const events = readDebugEvents();
+  // Privacy: in structural mode, errors[].message must be truncated.
+  // (Stack/source/line/col are structural and emit as-is.)
+  const errorsForLevel = errors.map((e) => ({
+    ...e,
+    message: applyMessagePrivacy(e.message, contentMode),
+  }));
   return {
-    schema: 2,
-    pkc: { version: VERSION },
+    schema: 3,
+    pkc: { version: VERSION, commit: commitFromMeta ?? 'unknown' },
     ts: new Date().toISOString(),
     url: win?.location?.href ?? '',
     ua: nav?.userAgent ?? '',
@@ -359,10 +577,13 @@ export function buildDebugEnvironment(): Pick<
     pointer: {
       coarse: !!win?.matchMedia?.('(pointer: coarse)')?.matches,
     },
+    storage: readStorageEstimate(),
     flags: Array.from(debugFeatures()).sort(),
     level: contentMode ? 'content' : 'structural',
     contentsIncluded: contentMode,
-    recent: readDebugEvents(),
+    recent: events,
+    errors: errorsForLevel,
+    truncatedCounts: { recent: 0, errors: 0, replayDropped: false },
   };
 }
 
