@@ -687,40 +687,65 @@ export function buildDebugEnvironment(commitFromMeta?: string): Pick<
 }
 
 /**
- * Open the Report as a JSON document in a new browser tab via a Blob
- * URL. The user can review the contents and Ctrl+S / ⌘+S to save —
- * no clipboard permission, no auto-download into the system Downloads
- * folder. Returns the opened Window when successful, or `null` when
- * the host blocks `window.open` (popup blocker, sandboxed iframe) or
- * when the report itself is too large to stringify; the caller can
- * then surface a toast or modal to the user.
+ * Trigger a download of the Report as `pkc2-debug-<ISO-ts>.json`.
+ * Synthesized click on a hidden `<a download="...">` anchor — works
+ * reliably across Chromium / Firefox / WebKit and gives the file a
+ * clean human-readable name (the blob:// URL form left users with
+ * UUID filenames AND inconsistent Ctrl+S behaviour, which the user
+ * surfaced after live-testing the previous version).
  *
- * `URL.revokeObjectURL` is scheduled on a long delay so the tab has
- * a comfortable window to load. Modern browsers retain the loaded
- * resource in the tab past revocation; the timer is hygiene to free
- * the kept-alive blob if the user never opens the tab.
+ * Returns `true` when the click was synthesized successfully (the
+ * browser's download manager takes over after that), `false` when
+ * the report can't be stringified (engine allocation overflow on a
+ * pathologically large container — defense-in-depth even after
+ * applyTotalSizeCap and per-component caps) or the DOM/URL APIs
+ * aren't available (SSR / test harnesses without happy-dom).
  *
- * Defense: the `JSON.stringify` is wrapped in try/catch. The expected
- * failure mode is a Container so large that even after
- * `applyTotalSizeCap` truncation the serialized form blows the engine
- * string limit. Returning `null` lets the caller emit the same toast
- * as the popup-blocker path.
+ * The Blob URL is revoked on a long delay; once the browser has
+ * picked up the download, the resource is held in the download
+ * manager regardless.
  */
-export function dispatchDebugReport(report: DebugReport): Window | null {
-  if (typeof window === 'undefined' || typeof URL === 'undefined') return null;
-  let text: string;
+export function dispatchDebugReport(report: DebugReport): boolean {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') {
+    return false;
+  }
+  // Outermost try/catch so the public contract — "never throws" —
+  // holds even if createObjectURL / appendChild / click() fail
+  // (engine OOM, sandboxed iframe, mocking glitches in tests).
   try {
-    text = JSON.stringify(report, null, 2);
+    let text: string;
+    try {
+      text = JSON.stringify(report, null, 2);
+    } catch {
+      return false;
+    }
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `pkc2-debug-${filenameTimestamp()}.json`;
+    // Some engines require the anchor to be in the DOM for the
+    // click to actually trigger a navigation/download. Mount →
+    // click → remove — the anchor never paints because the click
+    // runs synchronously.
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return true;
   } catch {
-    return null;
+    return false;
   }
-  const blob = new Blob([text], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const opened = window.open(url, '_blank', 'noopener');
-  if (!opened) {
-    URL.revokeObjectURL(url);
-    return null;
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return opened;
+}
+
+/**
+ * Filesystem-safe ISO-ish timestamp for the download filename.
+ * `2026-05-02T07-58-00Z` — the colons in the canonical ISO form
+ * are forbidden on Windows so we replace them with hyphens, keep the
+ * `T` separator and trailing `Z` for sortability.
+ */
+function filenameTimestamp(): string {
+  const iso = new Date().toISOString();
+  // 2026-05-02T07:58:00.123Z → 2026-05-02T07-58-00Z
+  return iso.slice(0, 19).replace(/:/g, '-') + 'Z';
 }

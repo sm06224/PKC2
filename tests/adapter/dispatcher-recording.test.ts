@@ -297,13 +297,15 @@ describe('user stress repro — oversized container in content mode', () => {
     expect(JSON.stringify(stored)).not.toContain('AAAAAA');
 
     // The whole click path: build report → applyTotalSizeCap →
-    // JSON.stringify in dispatchDebugReport. None of these may throw.
+    // JSON.stringify in dispatchDebugReport → <a download> click.
+    // None of these may throw.
     const { buildDebugReportFromState } = await import(
       '@adapter/ui/debug-report'
     );
     const { dispatchDebugReport } = await import('@runtime/debug-flags');
-    const fakeWindow = {} as Window;
-    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL: () => 'blob:stress',
@@ -312,8 +314,9 @@ describe('user stress repro — oversized container in content mode', () => {
     expect(() => {
       const report = buildDebugReportFromState(d.getState());
       const result = dispatchDebugReport(report);
-      expect(result).toBe(fakeWindow);
+      expect(result).toBe(true);
     }).not.toThrow();
+    expect(clickSpy).toHaveBeenCalled();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });

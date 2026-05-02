@@ -1,27 +1,25 @@
 /**
- * Smoke — debug-via-URL-flag stage α + stage β UI placement.
+ * Smoke — debug-via-URL-flag stage β UI placement + download flow.
  *
  * Proves the round trip the user-report protocol promises:
  *
  *   1. `?pkc-debug=*` renders the 🐞 Report button next to the ⚙
- *      shell menu (stage β follow-up, 2026-05-02).
- *   2. Clicking it opens the DebugReport JSON in a new tab via a
- *      Blob URL — no clipboard permission needed; the user can
- *      Ctrl+S / ⌘+S to save.
- *   3. The new-tab page text parses as a well-formed JSON DebugReport
- *      with the expected schema / env / app-state slices and NO
- *      entry body or asset bytes leaking through structural mode.
+ *      shell menu.
+ *   2. Clicking it triggers a download of the JSON report — the
+ *      browser's download manager picks up `pkc2-debug-<ISO-ts>.json`.
+ *   3. The downloaded file parses as a well-formed schema-3
+ *      DebugReport with the expected env / app-state slices and
+ *      NO entry body or asset bytes leaking through structural mode.
  *
  * `locator.click()` is fine here because this is a structural smoke,
- * not a parity test (visual-state-parity-testing.md §1). Real-OS-event
- * verification of header button positioning belongs in the parity
- * tier introduced in stage γ.
+ * not a parity test. Real-OS-event verification of header button
+ * positioning lives in `debug-report-parity.spec.ts`.
  */
 
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
-test('debug flag renders 🐞 button and opens the report in a new tab', async ({
-  context,
+test('debug flag renders 🐞 button and downloads the report as a JSON file', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -32,8 +30,6 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
 
   await page.goto('/pkc2.html?pkc-debug=*', { waitUntil: 'load' });
 
-  // Boot must complete before the button is interactable; the renderer
-  // sets data-pkc-phase on #pkc-root once SYS_INIT_COMPLETE fires.
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
     timeout: 15_000,
@@ -43,17 +39,22 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   await expect(reportBtn).toBeVisible();
   await expect(reportBtn).toHaveAttribute('data-pkc-debug', 'true');
 
-  // Capture the new tab Playwright sees when window.open fires.
-  const popupPromise = context.waitForEvent('page');
+  // Capture the download Playwright sees when the <a download> click
+  // fires. The download manager fulfils it; we read the file off
+  // disk to verify the JSON contents.
+  const downloadPromise = page.waitForEvent('download');
   await reportBtn.click();
-  const popup = await popupPromise;
-  await popup.waitForLoadState('domcontentloaded');
+  const download = await downloadPromise;
 
-  // The new tab's URL is a blob: URL; its document body holds the
-  // pretty-printed JSON (browsers wrap it in <pre>). Read the visible
-  // text and parse it back.
-  const bodyText = await popup.evaluate(() => document.body.innerText);
-  const report = JSON.parse(bodyText);
+  // Filename must follow the human-readable pattern, not be a UUID.
+  expect(download.suggestedFilename()).toMatch(
+    /^pkc2-debug-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/,
+  );
+
+  const path = await download.path();
+  if (!path) throw new Error('download.path() returned null');
+  const text = await readFile(path, 'utf8');
+  const report = JSON.parse(text);
 
   expect(report.schema).toBe(3);
   expect(typeof report.pkc.version).toBe('string');
@@ -67,9 +68,9 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   expect(report.viewport.w).toBeGreaterThan(0);
   expect(report.viewport.h).toBeGreaterThan(0);
   expect(typeof report.pointer.coarse).toBe('boolean');
-  // Schema 3 additions (PR #211 finalize): structural defaults + ring
-  // buffer + errors[] + truncatedCounts. Smoke hits ?pkc-debug=* (no
-  // contents flag), so level must be 'structural', no content / replay.
+  // Schema 3 additions: structural defaults + ring buffer + errors[]
+  // + truncatedCounts. Smoke hits ?pkc-debug=* (no contents flag),
+  // so level must be 'structural', no content / replay.
   expect(report.level).toBe('structural');
   expect(report.contentsIncluded).toBe(false);
   expect(Array.isArray(report.recent)).toBe(true);
@@ -86,20 +87,17 @@ test('debug flag renders 🐞 button and opens the report in a new tab', async (
   expect(report).toHaveProperty('editingLid');
   expect(report.flags).toContain('*');
 
-  // Container summary, not contents — the privacy guarantee documented
+  // Container summary, not contents — privacy guarantee documented
   // in debug-via-url-flag-protocol.md §5.4.
   expect(report.container).not.toBeNull();
   expect(typeof report.container.entryCount).toBe('number');
   expect(typeof report.container.relationCount).toBe('number');
   expect(Array.isArray(report.container.assetKeys)).toBe(true);
-  // Schema 3 fingerprint additions for shape-aware reproducibility.
   expect(typeof report.container.schemaVersion).toBe('number');
   expect(typeof report.container.archetypeCounts).toBe('object');
   expect(report.container.entries).toBeUndefined();
   expect(report.container.relations).toBeUndefined();
   expect(report.container.assets).toBeUndefined();
-
-  await popup.close();
 
   expect(errors, errors.join('\n')).toEqual([]);
 });

@@ -166,7 +166,7 @@ describe('buildDebugEnvironment', () => {
   });
 });
 
-describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
+describe('dispatchDebugReport — synthesizes <a download> click for the JSON', () => {
   const sample: DebugReport = {
     schema: 3,
     pkc: { version: '0.0.0-test', commit: 'deadbeef' },
@@ -192,11 +192,10 @@ describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    document.body.innerHTML = '';
   });
 
-  it('creates a Blob URL with the JSON and opens it via window.open', () => {
-    const fakeWindow = {} as Window;
-    const open = vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+  it('creates a Blob URL and clicks an <a download="..."> with that URL', () => {
     const blobs: Blob[] = [];
     vi.stubGlobal('URL', {
       ...URL,
@@ -206,30 +205,43 @@ describe('dispatchDebugReport — opens JSON in a new tab via Blob URL', () => {
       },
       revokeObjectURL: () => undefined,
     });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click');
 
     const result = dispatchDebugReport(sample);
-    expect(result).toBe(fakeWindow);
-    expect(open).toHaveBeenCalledWith('blob:test-1', '_blank', 'noopener');
+    expect(result).toBe(true);
     expect(blobs).toHaveLength(1);
     expect(blobs[0]!.type).toBe('application/json');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const anchor = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
+    expect(anchor.href).toBe('blob:test-1');
+    expect(anchor.download).toMatch(
+      /^pkc2-debug-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/,
+    );
+    // Anchor must have been removed after the click — no DOM litter.
+    expect(document.body.querySelector('a[download]')).toBeNull();
   });
 
-  it('returns null and revokes the URL when window.open is blocked', () => {
-    vi.spyOn(window, 'open').mockReturnValue(null);
-    const revokeObjectURL = vi.fn();
+  it('returns false (no throw) when URL.createObjectURL fails', () => {
     vi.stubGlobal('URL', {
       ...URL,
-      createObjectURL: () => 'blob:test-2',
-      revokeObjectURL,
+      createObjectURL: () => {
+        throw new Error('out of memory');
+      },
+      revokeObjectURL: () => undefined,
     });
+    expect(() => dispatchDebugReport(sample)).not.toThrow();
+    expect(dispatchDebugReport(sample)).toBe(false);
+  });
 
-    const result = dispatchDebugReport(sample);
-    expect(result).toBeNull();
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-2');
+  it('returns false when document is unavailable (SSR / non-DOM env)', () => {
+    vi.stubGlobal('document', undefined);
+    expect(dispatchDebugReport(sample)).toBe(false);
   });
 
   it('emits pretty-printed JSON (round-trip + 2-space indent)', async () => {
-    vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
+      () => undefined,
+    );
     const blobs: Blob[] = [];
     vi.stubGlobal('URL', {
       ...URL,
@@ -689,21 +701,22 @@ describe('recordInitialContainer — replay seed bounded at storage time', () =>
 });
 
 describe('dispatchDebugReport — overflow guard at final stringify', () => {
-  it('returns null without throwing when JSON.stringify(report) throws', async () => {
+  it('returns false without throwing when JSON.stringify(report) throws', async () => {
     // The post-applyTotalSizeCap report should be safe, but defense-
     // in-depth: if a future schema addition slips an unserializable
     // value through, the click handler must still bail gracefully.
     const { dispatchDebugReport } = await import('@runtime/debug-flags');
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
-    const fakeWindow = {} as Window;
-    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
+      () => undefined,
+    );
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL: () => 'blob:test',
       revokeObjectURL: () => undefined,
     });
     const result = dispatchDebugReport(cyclic as never);
-    expect(result).toBeNull();
+    expect(result).toBe(false);
   });
 });

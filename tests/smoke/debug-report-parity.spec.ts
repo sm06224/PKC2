@@ -23,9 +23,9 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test('🐞 button paints inside the header, right of ⚙, and is OS-clickable', async ({
-  context,
   page,
 }) => {
   await page.goto('/pkc2.html?pkc-debug=*', { waitUntil: 'load' });
@@ -85,20 +85,24 @@ test('🐞 button paints inside the header, right of ⚙, and is OS-clickable', 
   );
   expect(topRegion).toBe('debug-report-button');
 
-  // 4. Real-OS click at the resolved center opens the new tab.
-  const popupPromise = context.waitForEvent('page');
+  // 4. Real-OS click at the resolved center triggers a JSON download.
+  const downloadPromise = page.waitForEvent('download');
   await page.mouse.click(centerX, centerY);
-  const popup = await popupPromise;
-  await popup.waitForLoadState('domcontentloaded');
+  const download = await downloadPromise;
 
-  // Sanity check: the new tab carries the JSON, not an HTML error
-  // (which would indicate the click triggered something else).
-  const text = await popup.evaluate(() => document.body.innerText);
+  // Filename must follow the human-readable pattern.
+  expect(download.suggestedFilename()).toMatch(
+    /^pkc2-debug-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/,
+  );
+  // Sanity check: the file carries the JSON we expect, proving the
+  // click reached the right code path (not some other clickable
+  // element painted at the same coordinates).
+  const path = await download.path();
+  if (!path) throw new Error('download.path() returned null');
+  const text = await readFile(path, 'utf8');
   const parsed = JSON.parse(text);
   expect(parsed.schema).toBe(3);
   expect(parsed.flags).toContain('*');
-
-  await popup.close();
 
   // 5. After the success path, no fallback overlay must be present in
   // the parent page. Specifically, the legacy modal regions/classes
