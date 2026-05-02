@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { runDebugReportDump } from '@adapter/ui/debug-report-button';
 
-const FALLBACK_SELECTOR = '[data-pkc-region="debug-report-fallback"]';
-
 function setUrl(query: string): void {
   window.history.replaceState(null, '', query.length > 0 ? `?${query}` : '/');
 }
@@ -26,18 +24,17 @@ describe('runDebugReportDump — new-tab happy path', () => {
   it('opens the JSON report in a new tab via a Blob URL', () => {
     setUrl('pkc-debug=*');
 
-    const fakeWindow = { document: { title: 'json' } } as Window;
+    const fakeWindow = {} as Window;
     const open = vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
     const createObjectURL = vi.fn().mockReturnValue('blob:fake-1');
-    const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL,
-      revokeObjectURL,
+      revokeObjectURL: () => undefined,
     });
 
     const dispatcher = createDispatcher();
-    runDebugReportDump(document.body, dispatcher);
+    runDebugReportDump(dispatcher);
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blobArg = createObjectURL.mock.calls[0]![0] as Blob;
@@ -47,14 +44,21 @@ describe('runDebugReportDump — new-tab happy path', () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledWith('blob:fake-1', '_blank', 'noopener');
 
-    // Fallback modal must NOT appear when the new tab opens.
-    expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
+    // No toast on the success path — the new tab is its own confirmation.
+    expect(
+      document.body.querySelector(
+        '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
+      ),
+    ).toBeNull();
+    // No modal overlay must be created — PKC2 forbids backdrop modals.
+    expect(
+      document.body.querySelector('[data-pkc-region="debug-report-fallback"]'),
+    ).toBeNull();
   });
 
   it('serializes a schema 2 report into the Blob payload', async () => {
     setUrl('pkc-debug=*');
-    const fakeWindow = {} as Window;
-    vi.spyOn(window, 'open').mockReturnValue(fakeWindow);
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
 
     const blobs: Blob[] = [];
     vi.stubGlobal('URL', {
@@ -67,7 +71,7 @@ describe('runDebugReportDump — new-tab happy path', () => {
     });
 
     const dispatcher = createDispatcher();
-    runDebugReportDump(document.body, dispatcher);
+    runDebugReportDump(dispatcher);
 
     const text = await blobs[0]!.text();
     const parsed = JSON.parse(text);
@@ -77,8 +81,8 @@ describe('runDebugReportDump — new-tab happy path', () => {
   });
 });
 
-describe('runDebugReportDump — popup blocked → fallback modal', () => {
-  it('opens the inline modal when window.open returns null', () => {
+describe('runDebugReportDump — popup blocked → toast (no modal)', () => {
+  it('emits a warn toast when window.open is blocked', () => {
     setUrl('pkc-debug=*');
     vi.spyOn(window, 'open').mockReturnValue(null);
     const revokeObjectURL = vi.fn();
@@ -89,41 +93,24 @@ describe('runDebugReportDump — popup blocked → fallback modal', () => {
     });
 
     const dispatcher = createDispatcher();
-    runDebugReportDump(document.body, dispatcher);
+    runDebugReportDump(dispatcher);
 
-    // Blocked popup → blob URL must be revoked promptly so we don't
-    // leak. The modal exposes the same JSON for manual copy.
+    // Blob URL must be released immediately when the open is blocked.
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake-3');
 
-    const modal = document.body.querySelector(FALLBACK_SELECTOR);
-    expect(modal).not.toBeNull();
-    const pre = modal!.querySelector<HTMLPreElement>(
-      '[data-pkc-field="debug-report-json"]',
+    // Toast surfaces the failure to the user; modal overlay forbidden.
+    const toast = document.body.querySelector(
+      '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
     );
-    expect(pre).not.toBeNull();
-    const parsed = JSON.parse(pre!.textContent ?? '');
-    expect(parsed.schema).toBe(2);
+    expect(toast).not.toBeNull();
+    expect(toast!.textContent).toMatch(/pop-up blocked/i);
 
-    const close = modal!.querySelector<HTMLButtonElement>(
-      '[data-pkc-action="dismiss-debug-report-fallback"]',
-    );
-    close!.click();
-    expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
-  });
-
-  it('replaces an existing modal when re-invoked (no stacking)', () => {
-    setUrl('pkc-debug=*');
-    vi.spyOn(window, 'open').mockReturnValue(null);
-    vi.stubGlobal('URL', {
-      ...URL,
-      createObjectURL: () => 'blob:fake-4',
-      revokeObjectURL: () => undefined,
-    });
-
-    const dispatcher = createDispatcher();
-    runDebugReportDump(document.body, dispatcher);
-    runDebugReportDump(document.body, dispatcher);
-
-    expect(document.body.querySelectorAll(FALLBACK_SELECTOR)).toHaveLength(1);
+    // The legacy modal regions and classes must NOT exist.
+    expect(
+      document.body.querySelector('[data-pkc-region="debug-report-fallback"]'),
+    ).toBeNull();
+    expect(
+      document.body.querySelector('.pkc-debug-report-fallback'),
+    ).toBeNull();
   });
 });

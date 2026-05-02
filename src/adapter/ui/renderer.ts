@@ -980,24 +980,19 @@ function renderHeader(state: AppState): HTMLElement {
   menuBtn.textContent = '⚙';
   toggles.appendChild(menuBtn);
 
-  // 🐞 Debug Report button — placed to the right of the shell menu so
-  // it's reachable while developers / supporters debug, but only when
-  // a `?pkc-debug=<feature>` flag is active. Click is wired through
-  // action-binder (`dump-debug-report`) which builds the report,
-  // copies to clipboard, and falls back to a modal on failure.
+  // 🐞 Debug Report button — placed to the right of the shell menu
+  // when `?pkc-debug=<feature>` is active. Click is wired through
+  // action-binder (`dump-debug-report`); the report opens in a new
+  // tab via Blob URL. Inherits all visual styling from
+  // `pkc-tray-toggle` so the button is indistinguishable from other
+  // header toolbar buttons.
   if (isRecordingEnabled()) {
-    const debugBtn = createElement(
-      'button',
-      'pkc-tray-toggle pkc-debug-report-button',
-    );
+    const debugBtn = createElement('button', 'pkc-tray-toggle');
     debugBtn.setAttribute('data-pkc-action', 'dump-debug-report');
     debugBtn.setAttribute('data-pkc-region', 'debug-report-button');
     debugBtn.setAttribute('data-pkc-debug', 'true');
-    debugBtn.setAttribute(
-      'aria-label',
-      'Copy debug report to clipboard',
-    );
-    debugBtn.setAttribute('title', 'Copy debug report (PKC2 debug)');
+    debugBtn.setAttribute('aria-label', 'Open debug report in a new tab');
+    debugBtn.setAttribute('title', 'Open debug report (PKC2 debug)');
     debugBtn.textContent = '🐞';
     toggles.appendChild(debugBtn);
   }
@@ -1396,6 +1391,30 @@ function renderShellMenu(
   toolsButtons.appendChild(normalizeBtn);
   toolsSection.appendChild(toolsButtons);
   card.appendChild(toolsSection);
+
+  // Debug toggle. Convenience link that flips `?pkc-debug=*` on or off
+  // and reloads — saves the user typing the flag by hand. Reform-2026-05
+  // stage β follow-up.
+  const debugSection = createElement('div', 'pkc-shell-menu-section');
+  const debugLabel = createElement('span', 'pkc-shell-menu-label');
+  debugLabel.textContent = 'Debug';
+  debugSection.appendChild(debugLabel);
+  const debugBtn = createElement(
+    'button',
+    'pkc-btn-small pkc-shell-menu-theme-btn',
+  );
+  debugBtn.setAttribute('data-pkc-action', 'toggle-debug-restart');
+  debugBtn.setAttribute('data-pkc-region', 'debug-restart-link');
+  if (isRecordingEnabled()) {
+    debugBtn.setAttribute('data-pkc-debug-active', 'true');
+    debugBtn.setAttribute('title', 'Reload without ?pkc-debug');
+    debugBtn.textContent = '🐞 Restart without debug';
+  } else {
+    debugBtn.setAttribute('title', 'Reload with ?pkc-debug=*');
+    debugBtn.textContent = '🐞 Restart with debug ON';
+  }
+  debugSection.appendChild(debugBtn);
+  card.appendChild(debugSection);
 
   // Version (clickable → About)
   const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');

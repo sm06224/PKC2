@@ -2632,17 +2632,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'dump-debug-report': {
         // Reform-2026-05 stage β: 🐞 button next to ⚙. Builds the
         // DebugReport from current state and opens it as JSON in a
-        // new tab via Blob URL; falls back to an inline modal when
-        // window.open is blocked. No dispatch — debug surfaces are
+        // new tab via Blob URL. No dispatch — debug surfaces are
         // runtime-only.
-        runDebugReportDump(document.body, dispatcher);
+        runDebugReportDump(dispatcher);
         break;
       }
-      case 'dismiss-debug-report-fallback': {
-        // Handled inline by the modal's own click listener; this
-        // case is a no-op fallback in case event delegation surfaces
-        // the action through the root binder before the modal handler
-        // resolves. Safe to drop.
+      case 'toggle-debug-restart': {
+        // Shell-menu convenience: flip ?pkc-debug=* on/off and reload.
+        // No dispatch — query-string flags are runtime-only and the
+        // feature gates read them on each call.
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('pkc-debug')) {
+          url.searchParams.delete('pkc-debug');
+          url.searchParams.delete('pkc-debug-contents');
+        } else {
+          url.searchParams.set('pkc-debug', '*');
+        }
+        window.location.href = url.toString();
         break;
       }
       // ── iPhone push/pop shell (2026-04-26) ──────────────────
