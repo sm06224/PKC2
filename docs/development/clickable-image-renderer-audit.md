@@ -26,7 +26,7 @@ Status: audit draft(2026-04-24)、PR #126 と同ブランチに commit 予定。
 - Harbor 設計原則: 2026-04-24 User instruction "[Design Philosophy Addendum]"
 - Scanner v1 の責務: `docs/spec/link-migration-tool-v1.md` §3 / §14
 - Internal Markdown Dialect canonical: `docs/spec/pkc-link-unification-v0.md` §5.7
-- 既存 audit: `docs/development/link-system-audit-2026-04-24.md`(Copy / Paste / Render / Receive 棚卸し)
+- 既存 audit: `docs/development/archived/audits-2026-04/link-system-audit-2026-04-24.md`(Copy / Paste / Render / Receive 棚卸し)
 
 ---
 
@@ -577,7 +577,7 @@ v1 と v2 で **API interface は揃える方向で設計**(`LinkMigrationCandid
 
 - `docs/spec/pkc-link-unification-v0.md` — Link 正本 spec(§5.7 Internal Markdown Dialect / §5.7.5 future dialect reservations / §10.1 `[card:<lid>]` 不採用 / §12 URI scheme allowlist)
 - `docs/spec/link-migration-tool-v1.md` — Migration scanner v1 spec(§3 candidates / §14 future dialect reservations)
-- `docs/development/link-system-audit-2026-04-24.md` — 直前の Copy / Paste / Render / Receive 棚卸し(G1-G7 gap list)
+- `docs/development/archived/audits-2026-04/link-system-audit-2026-04-24.md` — 直前の Copy / Paste / Render / Receive 棚卸し(G1-G7 gap list)
 - `src/features/markdown/markdown-render.ts` — `SAFE_URL_RE` / link_open rule / image rule(transclusion placeholder)
 - `src/features/markdown/asset-resolver.ts` — 2-pass preprocessor(image form / link form)
 - `src/adapter/ui/action-binder.ts` — `navigate-entry-ref` / `navigate-asset-ref` / `a[href^="#asset-"]` chip

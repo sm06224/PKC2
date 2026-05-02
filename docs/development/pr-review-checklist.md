@@ -130,7 +130,7 @@ PR を作る **前に** やっておくと audit 段階で issue が出にくい
 - `CLAUDE.md`: §PR Workflow / Review checklist(本 doc への cross-link)
 - `docs/development/INDEX.md`: 過去 PR の audit 履歴
 - `build/check-bundle-size.cjs`: budget 定義(現状 bundle.css 98 KB / bundle.js 1536 KB、PR #188 で 96 → 98 KB に bump、2026-04-25)
-- `docs/development/css-ui-debt-audit-2026-04-25.md`: CSS budget 棚卸し例
+- `docs/development/archived/audits-2026-04/css-ui-debt-audit-2026-04-25.md`: CSS budget 棚卸し例
 - `docs/development/card-widget-ui-v0-audit.md`: Slice 段階分け audit 例
 
 ---

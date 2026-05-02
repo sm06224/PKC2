@@ -12,7 +12,7 @@
 
 ## 1. Purpose / Status
 
-> **📋 2026-04-24 audit**: Link system は #138 / #141-#148 で連続して着地。現在地の棚卸しと次 PR の実装順序は `../development/link-system-audit-2026-04-24.md` を参照。本 spec は正本方針のみを持ち、surface 別詳細 / gap list / 実装順は audit doc 側に集約。
+> **📋 2026-04-24 audit**: Link system は #138 / #141-#148 で連続して着地。現在地の棚卸しと次 PR の実装順序は `../development/archived/audits-2026-04/link-system-audit-2026-04-24.md` を参照。本 spec は正本方針のみを持ち、surface 別詳細 / gap list / 実装順は audit doc 側に集約。
 
 PKC2 の「参照基盤」を 1 本の spec に正本化する **docs-first foundation**。W1 Tag wave 着地後の次の foundation layer として、**Tag / Color / UI の上流にある**「エントリ間・資産・コンテナ横断の参照」を先に固定する。
 

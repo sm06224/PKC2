@@ -25,7 +25,7 @@
 
 参照:
 
-- Link migration audit(先例): `./clickable-image-renderer-audit.md`, `./link-system-audit-2026-04-24.md`
+- Link migration audit(先例): `./clickable-image-renderer-audit.md`, `./archived/audits-2026-04/link-system-audit-2026-04-24.md`
 - v2.1.1 changelog: `../release/CHANGELOG_v2.1.1.md`
 - manual 運用ガイド: `../manual/07_保存と持ち出し.md`, `../manual/08_運用ガイド_export_import_rehydrate.md`
 
@@ -670,7 +670,7 @@ Import 時の必須ガード(実装 slice で詳細):
   - `./provenance-metadata-copy-export-v1.md`
 - **Link 系 audit**(先例):
   - `./clickable-image-renderer-audit.md`
-  - `./link-system-audit-2026-04-24.md`
+  - `./archived/audits-2026-04/link-system-audit-2026-04-24.md`
   - `../spec/link-migration-tool-v1.md`
   - `../spec/pkc-link-unification-v0.md`
 - **release**:
