@@ -70,6 +70,46 @@ Last updated (previous): 2026-04-25（Import / Export UI vocabulary cleanup — 
 | CLOSED (omnibus) | Multi-issue doc; all sub-issues complete. |
 | COMPLETED | Recently finished. Implementation verified, not yet historical. |
 | CANDIDATE | Under consideration for next implementation. |
+| LIVE | Active methodology / policy / planning doc. Not feature-completion-bound. |
+
+## LIVE — Methodology / Policy / Planning(reform-2026-05 含む)
+
+CLAUDE.md / src からは参照されているが、これまで本 INDEX に列挙されていなかった **active な methodology / policy / planning doc**。Phase 3 PR #2(2026-05-02 棚卸し)で明示登録。
+
+### reform-2026-05 核心(test-pass≠ship doctrine)
+
+| File | Topic |
+|---|---|
+| [`debug-privacy-philosophy.md`](./debug-privacy-philosophy.md) | debug 機能の 4 原則(Local-only / Privacy by default / Graduated opt-in / Schema versioning)。`debug-via-url-flag-protocol.md` の上位規約 |
+| [`debug-via-url-flag-protocol.md`](./debug-via-url-flag-protocol.md) | `?pkc-debug=<feature>` URL flag による feature 別 overlay + 🐞 Report ダウンロード規約 |
+| [`visual-state-parity-testing.md`](./visual-state-parity-testing.md) | 描画と状態の一致を保証する parity test methodology(real OS event + elementFromPoint 規約) |
+| [`pr-206-paused.md`](./pr-206-paused.md) | caret↔preview sync の保留判断と仕切り直し方針(reform-2026-05 起点) |
+| [`handover-2026-05-01.md`](./handover-2026-05-01.md) | reform-2026-05 session context snapshot(2026-05-01 引き継ぎ memo) |
+
+### Doc / build / test methodology
+
+| File | Topic |
+|---|---|
+| [`pr-review-checklist.md`](./pr-review-checklist.md) | PR 作成時 8 項目 self-audit ルール(2 名体制 + Gemini onboard 想定) |
+| [`markdown-render-scope.md`](./markdown-render-scope.md) | どの archetype / field が markdown を render するか、`.pkc-md-rendered` を共通 selector とする contract |
+| [`stale-listener-prevention.md`](./stale-listener-prevention.md) | dispatcher.onState / onEvent の subscription lifecycle 規約 |
+| [`versioning-policy.md`](./versioning-policy.md) | semver / schema / kind の triple version 規律 |
+| [`test-suite-memory-hardening.md`](./test-suite-memory-hardening.md) | vitest / Playwright のメモリ管理規約(test isolation) |
+| [`manual-build-integration-plan.md`](./manual-build-integration-plan.md) | `pkc2-manual.html` 生成 pipeline(Phase 1-4 complete、Phase 5 deferred) |
+
+### Requirements / planning
+
+| File | Topic |
+|---|---|
+| [`i18n-requirements.md`](./i18n-requirements.md) | i18n 要件(FI-Settings v2)— Locale setting 実装済 + 残課題 |
+| [`feature-requests-2026-04-28-roadmap.md`](./feature-requests-2026-04-28-roadmap.md) | 2026-04-28 user direction roadmap(複数 user request の優先度付け) |
+
+### Platform / runtime
+
+| File | Topic |
+|---|---|
+| [`idb-availability.md`](./idb-availability.md) | IndexedDB 可用性 probe + Storage capacity preflight 規約 |
+| [`boot-initialization-order.md`](./boot-initialization-order.md) | boot 時の初期化順序 + container source priority(`archived/boot-container-source/` の history record と並ぶ live spec) |
 
 ## CLOSED (42 docs)
 
