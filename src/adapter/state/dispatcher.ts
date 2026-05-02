@@ -3,6 +3,15 @@ import type { DomainEvent } from '../../core/action/domain-event';
 import { reduce, createInitialState } from './app-state';
 import type { AppState, ReduceResult } from './app-state';
 import { start } from '../../runtime/profile';
+import {
+  extractStructuralFromAction,
+  isContentModeEnabled,
+  isRecordingEnabled,
+  nextDispatchSeq,
+  recordDebugEvent,
+  recordInitialContainer,
+  snapshotActionForContent,
+} from '../../runtime/debug-flags';
 
 /**
  * EventListener: subscribes to domain events emitted after state transitions.
@@ -58,10 +67,32 @@ export function createDispatcher(): Dispatcher {
   function dispatch(action: Dispatchable): ReduceResult {
     const prev = state;
     // Profile gate (PR #176): the action's `type` is short ASCII so
-    // it doubles as the per-dispatch measure label. Reducer +
-    // listener flush together — listener cost is the dominant share
-    // for full-shell renders.
+    // it doubles as the per-dispatch measure label.
     const endDispatch = start(`dispatch:${action.type}`);
+
+    // Debug ring buffer (PR #211, stage β). Off when no debug feature
+    // is active. Pre-record housekeeping: allocate the monotonic seq
+    // before reduce so a content-mode snapshot can pin to it; capture
+    // wall-clock start so durMs reflects reduce + listener flush.
+    const recordingEnabled = isRecordingEnabled();
+    const debugSeq = recordingEnabled ? nextDispatchSeq() : 0;
+    const debugStart =
+      recordingEnabled && typeof performance !== 'undefined'
+        ? performance.now()
+        : 0;
+    // Replay seed: capture the first SYS_INIT_COMPLETE's container so
+    // content-mode reports can ship (initialContainer, recent[]) for
+    // local deterministic replay. Reducer-purity contract is pinned
+    // by tests/core/replay-determinism.test.ts.
+    if (
+      action.type === 'SYS_INIT_COMPLETE' &&
+      isContentModeEnabled()
+    ) {
+      recordInitialContainer(
+        (action as { container?: unknown }).container ?? null,
+      );
+    }
+
     const endReduce = start(`dispatch:${action.type}:reduce`);
     const result = reduce(state, action);
     endReduce();
@@ -82,6 +113,30 @@ export function createDispatcher(): Dispatcher {
     }
 
     endDispatch();
+
+    // Post-record: durMs measured across the whole dispatch span,
+    // attached to the buffer entry. Structural cherry-pick keeps
+    // privacy-by-construction; content mode adds the bounded snapshot.
+    if (recordingEnabled) {
+      const structural = extractStructuralFromAction(
+        action as { type: string } & Record<string, unknown>,
+      );
+      const durMs =
+        typeof performance !== 'undefined'
+          ? Math.round((performance.now() - debugStart) * 100) / 100
+          : 0;
+      recordDebugEvent({
+        kind: 'dispatch',
+        seq: debugSeq,
+        ts: new Date().toISOString(),
+        type: structural.type,
+        ...(structural.lid !== undefined ? { lid: structural.lid } : {}),
+        durMs,
+        ...(isContentModeEnabled()
+          ? { content: snapshotActionForContent(action) }
+          : {}),
+      });
+    }
     return result;
   }
 

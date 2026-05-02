@@ -1,6 +1,12 @@
 import './styles/base.css';
 import { SLOT } from './runtime/contract';
 import { start as profileStart, mark as profileMark } from './runtime/profile';
+import {
+  currentDispatchSeq,
+  isRecordingEnabled,
+  recordDebugError,
+  refreshStorageEstimate,
+} from './runtime/debug-flags';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
 import { computeRenderScope } from './adapter/ui/render-scope';
@@ -22,7 +28,6 @@ import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refre
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
-import { mountDebugReportButton } from './adapter/ui/debug-report-button';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
   showIdbWarningBanner,
@@ -98,6 +103,14 @@ async function boot(): Promise<void> {
   // boot:enter → boot:exit duration. Marks (vs measures) avoid
   // having to thread an `end()` thunk past every early return.
   profileMark('boot:enter');
+  // Reform-2026-05 stage β finalize: install error capture FIRST so
+  // boot-time crashes land in the debug ring buffer. Cheap when no
+  // ?pkc-debug flag is active (the recordDebugError ring buffer is
+  // module-scoped and the wrappers are no-ops in that case). Also
+  // kick off a one-shot navigator.storage.estimate() so the report
+  // can carry quota numbers without a Promise round-trip at click time.
+  installDebugErrorCapture();
+  void refreshStorageEstimate();
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
@@ -318,12 +331,11 @@ async function boot(): Promise<void> {
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
 
-  // 3b. Debug-via-URL-flag report button (reform-2026-05 stage α).
-  // No-op unless `?pkc-debug=<list>` or localStorage `pkc2.debug`
-  // selects at least one feature. Mounted on document.body — outside
-  // `#pkc-root` — so the renderer's full re-render cycle never
-  // disturbs it. See `docs/development/debug-via-url-flag-protocol.md`.
-  mountDebugReportButton(document.body, dispatcher);
+  // 3b. Debug-via-URL-flag report button has moved into the renderer
+  // header (next to the ⚙ shell menu) as of stage β follow-up
+  // (2026-05-02). The action-binder handles the click via the
+  // `dump-debug-report` action; the fallback modal sink lives on
+  // `document.body` and is created on demand. No mount call needed.
 
   // 4. Event log (dev aid). Was a fixed-position UI tray in the
   // bottom-right corner; demoted to `console.log` per 2026-04-26
@@ -1286,6 +1298,95 @@ function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): v
       alert('ローカルデータの削除に失敗しました。');
     }
   });
+}
+
+/**
+ * Install the debug error capture (window.onerror, unhandledrejection,
+ * console.error) so the ring buffer in `runtime/debug-flags.ts`
+ * collects crashes from boot onwards. The recording itself is
+ * unconditional — we always populate the buffer — but the data only
+ * leaves the page when the user clicks 🐞, which is gated on the
+ * `?pkc-debug=*` flag. The cost when no debug session is active is
+ * three event listener registrations + one console.error wrapper
+ * that branches on `isRecordingEnabled()` before doing any work.
+ *
+ * Privacy: structural mode truncates `message` to 200 chars at report
+ * time (philosophy doc §4 原則 2); content mode emits the full
+ * message. Stack traces are structural information and stay full.
+ *
+ * `lastSeq` correlates each error to the most recent dispatch the
+ * ring buffer had observed when the error fired, so the developer
+ * can scan recent[] for the matching seq.
+ */
+function installDebugErrorCapture(): void {
+  if (typeof window === 'undefined') return;
+
+  window.addEventListener('error', (ev: ErrorEvent) => {
+    if (!isRecordingEnabled()) return;
+    recordDebugError({
+      kind: 'error',
+      ts: new Date().toISOString(),
+      message: ev.message ?? '',
+      stack: ev.error instanceof Error ? ev.error.stack : undefined,
+      source: ev.filename,
+      line: ev.lineno,
+      col: ev.colno,
+      lastSeq: currentDispatchSeq(),
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
+    if (!isRecordingEnabled()) return;
+    const reason: unknown = ev.reason;
+    const message =
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === 'string'
+          ? reason
+          : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    recordDebugError({
+      kind: 'unhandledrejection',
+      ts: new Date().toISOString(),
+      message,
+      stack,
+      lastSeq: currentDispatchSeq(),
+    });
+  });
+
+  // console.error wrapper. Capture from boot so failures during the
+  // pre-dispatcher phase (presenter registration, IDB probe) are
+  // visible. The original implementation is preserved verbatim.
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    if (isRecordingEnabled()) {
+      const [first, ...rest] = args;
+      const message =
+        first instanceof Error
+          ? first.message
+          : typeof first === 'string'
+            ? first
+            : safeStringify(first);
+      const stack = first instanceof Error ? first.stack : undefined;
+      recordDebugError({
+        kind: 'console-error',
+        ts: new Date().toISOString(),
+        message:
+          rest.length > 0 ? `${message} ${rest.map(safeStringify).join(' ')}` : message,
+        stack,
+        lastSeq: currentDispatchSeq(),
+      });
+    }
+    originalConsoleError(...args);
+  };
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v);
+  } catch {
+    return '[unserializable]';
+  }
 }
 
 boot();

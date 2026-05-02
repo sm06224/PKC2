@@ -133,8 +133,9 @@ content を含めたい場合、**追加の URL flag を user が明示的に ty
 | schema | landing | 追加内容 |
 |---|---|---|
 | 1 | PR #209(段階 α) | env + phase + view + selection + container counts |
-| 2 | 段階 β(予定) | + level + contentsIncluded + recent[] |
-| 3 | 段階 γ 以降(予定) | + feature.* + screenshot + DOM snapshot(opt-in) |
+| 2 | PR #211 first round(段階 β) | + level + contentsIncluded + recent[] |
+| 3 | PR #211 finalize(段階 β) | + pkc.commit + storage + container.{schemaVersion, archetypeCounts} + recent[].seq + recent[].durMs + errors[] + replay(content-only) + truncatedCounts |
+| 4 | 段階 γ 以降(予定) | + feature.* + screenshot + DOM snapshot(opt-in) |
 
 ---
 
@@ -160,7 +161,7 @@ content を含めたい場合、**追加の URL flag を user が明示的に ty
 
 ```jsonc
 {
-  "schema": 2,
+  "schema": 3,
   "level": "structural",      // 'structural' | 'content'
   "contentsIncluded": false,  // boolean、structural=false / content=true
   ...
@@ -176,7 +177,40 @@ content を含めたい場合、**追加の URL flag を user が明示的に ty
 - Pro: PWA / 開発端末で毎回 typing しなくて済む
 - Con: 知らないうちに content mode のまま session が継続するリスク
 
-**判断**: 永続化は許可するが、**boot 時に `localStorage.pkc2.debug` から `contents` を読んだ場合は console.warn を必ず出す**。user 環境でなぜか content mode が続いていることを認知できるようにする。段階 γ 以降の preview modal でも視覚的に表示する。
+**判断**: 永続化は許可するが、**boot 時に `localStorage.pkc2.debug` から `contents` を読んだ場合は console.warn を必ず出す**。user environment でなぜか content mode が続いていることを認知できるようにする。段階 γ 以降の preview modal でも視覚的に表示する。
+
+### 5-4. Every field justifies itself by debugging workflow value
+
+PR #211 finalize(2026-05-02)で確立した **field 採否基準**:
+
+> **新フィールドの審査基準**: そのフィールドが**欠けていたら**、開発者が "I wish I had X" と思う bug カテゴリが具体的に存在するか?Yes なら入れる。No なら入れない。
+
+理由 — debug report は「**user が献身的に再現してくれた一回のクリック**」を「**開発者が actionable に fix できる情報**」へ変換する装置。fill rate(field の埋まる割合)や見栄え(完全感)は判断基準ではなく、**workflow 価値**だけが基準。
+
+具体的な適用例(PR #211 finalize 時):
+
+| 採否 | フィールド | 想定 bug カテゴリ |
+|---|---|---|
+| ✓ | `errors[]` + stack + `lastSeq` | crash 系 — stack なしでは原因到達不能 |
+| ✓ | `pkc.commit` | dev build identification — version だけだと曖昧 |
+| ✓ | `recent[].durMs` | "X が遅い / freeze" — duration なしでは perf bug 報告に手が出ない |
+| ✓ | `env.storage` | quota 系 — IDB local-first PKC では常連 |
+| ✓ | `container.schemaVersion` | migration 後にだけ起こるバグ |
+| ✓ | `container.archetypeCounts` | "todo N 件以上で再現" 型 — fixture 構築の指針 |
+| ✓ | `replay.initialContainer`(content mode) | 完全決定論 replay の seed |
+| ❌ | `container.titlesHash` | 複数 user 報告の相関機能 — PKC2 現 scale(2 名)ではペイしない |
+
+**判断手続き**: 新フィールド追加の PR では、対応する bug カテゴリ(可能なら過去報告 issue)を明記すること。「あったら役立つかも」は不採用理由となる。
+
+### 5-5. Replay opt-in:なぜ content mode に内包したか
+
+`replay.initialContainer` は content mode で**自動的に**有効化(別 flag を分けない)。理由:
+
+- `?pkc-debug-contents=1` を立てた user は「この container を見せて debug してほしい」と意思表示済 → 同じ container の initial snapshot を焼くのに**追加同意は不要**
+- replay flag を別に分けると "structural + replay-only" のような中間 mode が生まれ、graduated opt-in 構造が壊れる
+- replay の前提となる **reducer 純粋性** は contract-level で重要であり、`tests/core/replay-determinism.test.ts` で固定する。この test が破れた瞬間に replay の約束は嘘になるため、**test ファイルの存在自体が design 上の責任**
+
+サイズ上限: `applyTotalSizeCap`(1 MiB)で `replay` を**最初に**落とす truncation 順位。理由 — replay は便利だが unique な fix 必要情報ではない(代替手段あり)、対して errors[] / recent[] は欠けると価値が大きく落ちる。
 
 ---
 

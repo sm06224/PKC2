@@ -3,10 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
-import { mountDebugReportButton } from '@adapter/ui/debug-report-button';
-
-const BUTTON_SELECTOR = '[data-pkc-region="debug-report-button"]';
-const FALLBACK_SELECTOR = '[data-pkc-region="debug-report-fallback"]';
+import { runDebugReportDump } from '@adapter/ui/debug-report-button';
 
 function setUrl(query: string): void {
   window.history.replaceState(null, '', query.length > 0 ? `?${query}` : '/');
@@ -20,128 +17,100 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
-describe('mountDebugReportButton — gating', () => {
-  it('does NOT mount a button when no debug feature is active', () => {
-    const dispatcher = createDispatcher();
-    const unmount = mountDebugReportButton(document.body, dispatcher);
-    expect(document.body.querySelector(BUTTON_SELECTOR)).toBeNull();
-    unmount();
-  });
-
-  it('mounts the button when ?pkc-debug=sync is present', () => {
-    setUrl('pkc-debug=sync');
-    const dispatcher = createDispatcher();
-    mountDebugReportButton(document.body, dispatcher);
-    const btn = document.body.querySelector<HTMLButtonElement>(BUTTON_SELECTOR);
-    expect(btn).not.toBeNull();
-    expect(btn!.textContent).toContain('Report');
-    expect(btn!.getAttribute('data-pkc-debug')).toBe('true');
-  });
-
-  it('mounts the button when localStorage pkc2.debug is set', () => {
-    window.localStorage.setItem('pkc2.debug', 'kanban');
-    const dispatcher = createDispatcher();
-    mountDebugReportButton(document.body, dispatcher);
-    expect(document.body.querySelector(BUTTON_SELECTOR)).not.toBeNull();
-  });
-
-  it('is idempotent on repeat mount (single button only)', () => {
+describe('runDebugReportDump — download happy path', () => {
+  it('synthesizes a click on a hidden <a download> with a sortable filename', () => {
     setUrl('pkc-debug=*');
-    const dispatcher = createDispatcher();
-    mountDebugReportButton(document.body, dispatcher);
-    mountDebugReportButton(document.body, dispatcher);
-    expect(document.body.querySelectorAll(BUTTON_SELECTOR).length).toBe(1);
-  });
-});
-
-describe('mountDebugReportButton — click → clipboard → toast', () => {
-  it('writes JSON to clipboard and shows a confirmation toast', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
+    const createObjectURL = vi.fn().mockReturnValue('blob:fake-1');
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL: () => undefined,
     });
-    setUrl('pkc-debug=*');
+    // Spy on the anchor's click() so we can assert the synthetic
+    // navigation fires without the test harness actually downloading.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+
     const dispatcher = createDispatcher();
-    mountDebugReportButton(document.body, dispatcher);
+    runDebugReportDump(dispatcher);
 
-    const btn = document.body.querySelector<HTMLButtonElement>(BUTTON_SELECTOR)!;
-    btn.click();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blobArg = createObjectURL.mock.calls[0]![0] as Blob;
+    expect(blobArg.type).toBe('application/json');
+    expect(blobArg.size).toBeGreaterThan(0);
 
-    expect(writeText).toHaveBeenCalledTimes(1);
-    const payload = writeText.mock.calls[0]![0] as string;
-    const parsed = JSON.parse(payload);
-    expect(parsed.schema).toBe(1);
-    expect(typeof parsed.pkc.version).toBe('string');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const anchor = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
+    // Filesystem-safe filename: pkc2-debug-YYYY-MM-DDTHH-MM-SSZ.json
+    expect(anchor.download).toMatch(
+      /^pkc2-debug-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/,
+    );
+    expect(anchor.href).toBe('blob:fake-1');
+
+    // Anchor must be removed from the DOM after the click — no
+    // stray <a> elements littering the page across re-dumps.
+    expect(document.body.querySelector('a[download]')).toBeNull();
+
+    // No toast on success — the browser's download UI is the
+    // confirmation. Modal/overlay paths are gone entirely.
+    expect(
+      document.body.querySelector(
+        '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
+      ),
+    ).toBeNull();
+    expect(
+      document.body.querySelector('[data-pkc-region="debug-report-fallback"]'),
+    ).toBeNull();
+  });
+
+  it('serializes a schema 3 report into the Blob payload', async () => {
+    setUrl('pkc-debug=*');
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: (b: Blob) => {
+        blobs.push(b);
+        return 'blob:fake-2';
+      },
+      revokeObjectURL: () => undefined,
+    });
+
+    const dispatcher = createDispatcher();
+    runDebugReportDump(dispatcher);
+
+    const text = await blobs[0]!.text();
+    const parsed = JSON.parse(text);
+    expect(parsed.schema).toBe(3);
     expect(parsed.phase).toBe('initializing');
+    expect(parsed.level).toBe('structural');
+  });
+});
 
-    // Toast confirmation appears in the toast stack region.
+describe('runDebugReportDump — failure surfaces a toast', () => {
+  it('emits a warn toast (no throw) when URL.createObjectURL fails', () => {
+    setUrl('pkc-debug=*');
+    // Pathological surrogate for engine OOM: createObjectURL itself
+    // raises. The "never throw" contract on runDebugReportDump
+    // requires dispatchDebugReport to catch this and return false;
+    // runDebugReportDump then surfaces the toast.
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => {
+        throw new Error('out of memory');
+      },
+      revokeObjectURL: () => undefined,
+    });
+
+    const dispatcher = createDispatcher();
+    expect(() => runDebugReportDump(dispatcher)).not.toThrow();
+
     const toast = document.body.querySelector(
       '[data-pkc-region="toast-stack"] [data-pkc-region="toast"]',
     );
     expect(toast).not.toBeNull();
-    expect(toast!.textContent).toContain('clipboard');
-  });
-
-  it('shows the fallback modal when clipboard.writeText rejects', async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    setUrl('pkc-debug=*');
-    const dispatcher = createDispatcher();
-    mountDebugReportButton(document.body, dispatcher);
-
-    const btn = document.body.querySelector<HTMLButtonElement>(BUTTON_SELECTOR)!;
-    btn.click();
-    // Allow the rejected promise + dispatchDebugReport's catch to settle.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const modal = document.body.querySelector(FALLBACK_SELECTOR);
-    expect(modal).not.toBeNull();
-    const pre = modal!.querySelector<HTMLPreElement>(
-      '[data-pkc-field="debug-report-json"]',
-    );
-    expect(pre).not.toBeNull();
-    const parsed = JSON.parse(pre!.textContent ?? '');
-    expect(parsed.schema).toBe(1);
-
-    const close = modal!.querySelector<HTMLButtonElement>(
-      '[data-pkc-action="dismiss-debug-report-fallback"]',
-    );
-    close!.click();
-    expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
-  });
-});
-
-describe('mountDebugReportButton — unmount', () => {
-  it('removes the button and any open fallback modal', async () => {
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    setUrl('pkc-debug=*');
-    const dispatcher = createDispatcher();
-    const unmount = mountDebugReportButton(document.body, dispatcher);
-
-    document.body
-      .querySelector<HTMLButtonElement>(BUTTON_SELECTOR)!
-      .click();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(document.body.querySelector(FALLBACK_SELECTOR)).not.toBeNull();
-
-    unmount();
-    expect(document.body.querySelector(BUTTON_SELECTOR)).toBeNull();
-    expect(document.body.querySelector(FALLBACK_SELECTOR)).toBeNull();
+    expect(toast!.textContent).toMatch(/failed to generate debug report/i);
   });
 });

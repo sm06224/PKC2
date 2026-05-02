@@ -10,6 +10,7 @@ import { getRevisionsByBulkId } from '../../core/operations/container-ops';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
+import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
@@ -2626,6 +2627,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'close-shell-menu': {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
+        break;
+      }
+      case 'dump-debug-report': {
+        // Reform-2026-05 stage β: 🐞 button next to ⚙. Builds the
+        // DebugReport from current state and triggers a JSON
+        // download via a synthesized <a download> click. No
+        // dispatch — debug surfaces are runtime-only.
+        runDebugReportDump(dispatcher);
+        break;
+      }
+      case 'set-debug-mode': {
+        // Shell-menu segmented control: 'off' | 'structural' | 'content'.
+        // Sets the URL flags and reloads. No dispatch — query-string
+        // flags are runtime-only and the feature gates read them on
+        // each call. See `docs/development/debug-privacy-philosophy.md`.
+        const mode = target.getAttribute('data-pkc-debug-mode');
+        const url = new URL(window.location.href);
+        if (mode === 'off') {
+          url.searchParams.delete('pkc-debug');
+          url.searchParams.delete('pkc-debug-contents');
+        } else if (mode === 'structural') {
+          url.searchParams.set('pkc-debug', '*');
+          url.searchParams.delete('pkc-debug-contents');
+        } else if (mode === 'content') {
+          url.searchParams.set('pkc-debug', '*');
+          url.searchParams.set('pkc-debug-contents', '1');
+        } else {
+          break;
+        }
+        window.location.href = url.toString();
         break;
       }
       // ── iPhone push/pop shell (2026-04-26) ──────────────────

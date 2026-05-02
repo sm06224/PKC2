@@ -12,6 +12,7 @@ import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary } from '../../core/action/system-command';
 import { BUILD_FEATURES, VERSION } from '../../runtime/release-meta';
+import { isContentModeEnabled, isRecordingEnabled } from '../../runtime/debug-flags';
 import {
   getRevisionCount,
   getLatestRevision,
@@ -979,6 +980,23 @@ function renderHeader(state: AppState): HTMLElement {
   menuBtn.textContent = '⚙';
   toggles.appendChild(menuBtn);
 
+  // 🐞 Debug Report button — placed to the right of the shell menu
+  // when `?pkc-debug=<feature>` is active. Click is wired through
+  // action-binder (`dump-debug-report`); the report downloads as
+  // `pkc2-debug-<ISO-ts>.json`. Inherits all visual styling from
+  // `pkc-tray-toggle` so the button is indistinguishable from other
+  // header toolbar buttons.
+  if (isRecordingEnabled()) {
+    const debugBtn = createElement('button', 'pkc-tray-toggle');
+    debugBtn.setAttribute('data-pkc-action', 'dump-debug-report');
+    debugBtn.setAttribute('data-pkc-region', 'debug-report-button');
+    debugBtn.setAttribute('data-pkc-debug', 'true');
+    debugBtn.setAttribute('aria-label', 'Download debug report as JSON');
+    debugBtn.setAttribute('title', 'Download debug report (PKC2 debug)');
+    debugBtn.textContent = '🐞';
+    toggles.appendChild(debugBtn);
+  }
+
   header.appendChild(toggles);
 
   return header;
@@ -1373,6 +1391,63 @@ function renderShellMenu(
   toolsButtons.appendChild(normalizeBtn);
   toolsSection.appendChild(toolsButtons);
   card.appendChild(toolsSection);
+
+  // Debug toggle — three-state segmented control mirroring the Theme
+  // and Scanline rows above. Off / Structural / + Contents matches
+  // the philosophy-doc graduated opt-in: structural mode is privacy-
+  // by-default, content mode is the explicit user-selected escalation
+  // (philosophy doc §4 原則 3). The Contents button carries a warning
+  // class so the elevated mode is visually distinct.
+  const debugSection = createElement('div', 'pkc-shell-menu-section');
+  const debugLabel = createElement('span', 'pkc-shell-menu-label');
+  debugLabel.textContent = 'Debug';
+  debugSection.appendChild(debugLabel);
+  const debugButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const debugIsOn = isRecordingEnabled();
+  const debugIsContent = isContentModeEnabled();
+  const debugCurrent: 'off' | 'structural' | 'content' = debugIsContent
+    ? 'content'
+    : debugIsOn
+      ? 'structural'
+      : 'off';
+  const debugChoices: {
+    value: 'off' | 'structural' | 'content';
+    label: string;
+    title: string;
+    extraClass?: string;
+  }[] = [
+    { value: 'off', label: '○ Off', title: 'Reload without ?pkc-debug' },
+    {
+      value: 'structural',
+      label: '🐞 Structural',
+      title:
+        'Reload with ?pkc-debug=* (structural mode — actions / lids only)',
+    },
+    {
+      value: 'content',
+      label: '🐞 + Contents',
+      title:
+        'Reload with ?pkc-debug=*&pkc-debug-contents=1 (content mode — entry titles, bodies, asset bytes included in dispatch records)',
+      extraClass: 'pkc-shell-menu-debug-contents',
+    },
+  ];
+  for (const { value, label, title, extraClass } of debugChoices) {
+    const cls = extraClass
+      ? `pkc-btn-small pkc-shell-menu-theme-btn ${extraClass}`
+      : 'pkc-btn-small pkc-shell-menu-theme-btn';
+    const btn = createElement('button', cls);
+    btn.setAttribute('data-pkc-action', 'set-debug-mode');
+    btn.setAttribute('data-pkc-debug-mode', value);
+    btn.setAttribute('data-pkc-region', `debug-restart-${value}`);
+    btn.setAttribute('title', title);
+    if (debugCurrent === value) {
+      btn.setAttribute('data-pkc-debug-active', 'true');
+    }
+    btn.textContent = label;
+    debugButtons.appendChild(btn);
+  }
+  debugSection.appendChild(debugButtons);
+  card.appendChild(debugSection);
 
   // Version (clickable → About)
   const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');
