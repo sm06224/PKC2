@@ -101,7 +101,7 @@ orphan 例(全 67 件、`tests/dev-docs-orphan-list.txt` 仮称で C-1 PR の参
 | # | File | Topic | Landed | Slug |
 |---|------|-------|--------|------|
 | 1 | `card-widget-ui-v0-audit.md` | Card widget UI 4-stage chrome 計画 | 2026-04-25 | card-widget-ui-v0 |
-| 2 | `css-ui-debt-audit-2026-04-25.md` | 連続 wave 後の小掃除 6 観点 | 2026-04-25 | css-ui-debt |
+| 2 | `archived/audits-2026-04/css-ui-debt-audit-2026-04-25.md` | 連続 wave 後の小掃除 6 観点 | 2026-04-25 | css-ui-debt |
 | ... | ... | ... | ... | ... |
 
 ## カテゴリ索引(secondary)

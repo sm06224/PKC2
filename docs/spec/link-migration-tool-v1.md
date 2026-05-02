@@ -7,7 +7,7 @@
 - **docs-first、実装未着手**
 - **自動 rewrite はしない**:user が明示的に Tools → Normalize PKC links を開き、preview を確認し、approval した候補のみ apply される
 - **破壊的書き換えなし**:apply は immutable container update、changed entries は新 revision を記録(既存 revision policy を踏襲)
-- Phase 0 audit(`../development/link-system-audit-2026-04-24.md`)§10 の方針を **実装契約レベルまで詳述** した第 1 版
+- Phase 0 audit(`../development/archived/audits-2026-04/link-system-audit-2026-04-24.md`)§10 の方針を **実装契約レベルまで詳述** した第 1 版
 - link spec 本体(`pkc-link-unification-v0.md`)§11.6 に記されていた "Normalize PKC links" の予約を具体化する
 
 本 tool が解決する範囲:
@@ -25,7 +25,7 @@
 
 参照(先行 docs):
 
-- `../development/link-system-audit-2026-04-24.md` — 4 surface 棚卸し、gap list G1-G7、Migration policy §10
+- `../development/archived/audits-2026-04/link-system-audit-2026-04-24.md` — 4 surface 棚卸し、gap list G1-G7、Migration policy §10
 - `./pkc-link-unification-v0.md` — Link 正本 spec、§5.7 Internal Markdown Dialect、§11.6 Migration tool 方針予約
 - `./data-model.md` — Entry / Container schema、revision 契約
 - `./schema-migration-policy.md` — additive / breaking 変更の分類基準
@@ -757,7 +757,7 @@ Clickable-image を PKC 方言として受け入れる renderer / asset-resolver
 
 ## 関連
 
-- Link audit(現在地): `../development/link-system-audit-2026-04-24.md`
+- Link audit(現在地): `../development/archived/audits-2026-04/link-system-audit-2026-04-24.md`
 - Link spec 本体: `./pkc-link-unification-v0.md`(§5.7 Internal Markdown Dialect / §11.6 Migration policy 予約)
 - Phase 1 の実装履歴: INDEX #150-#153
 - Revision 機構: `./data-model.md` + revision-branch-restore 系 docs

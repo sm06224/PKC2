@@ -162,7 +162,7 @@ Slice 4 で以下を `docs/manual/` に反映済み:
 
 - **Link migration tool spec**: `docs/spec/link-migration-tool-v1.md`
 - **Clickable-image renderer audit**: `docs/development/clickable-image-renderer-audit.md`
-- **Link system audit(2026-04-24)**: `docs/development/link-system-audit-2026-04-24.md`
+- **Link system audit(2026-04-24)**: `docs/development/archived/audits-2026-04/link-system-audit-2026-04-24.md`
 - **Link spec(PKC Link Unification)**: `docs/spec/pkc-link-unification-v0.md`
 - **Versioning policy**: `docs/development/versioning-policy.md`
 - **v2.1.0 CHANGELOG**: `docs/release/CHANGELOG_v2.1.0.md`
