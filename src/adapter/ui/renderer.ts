@@ -100,6 +100,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   opaque: 'Opaque',
   'system-about': 'About',
   'system-settings': 'Settings',
+  'system-flags': 'Flags',
 };
 
 /** Archetype icons for visual distinction. */
@@ -114,6 +115,7 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   opaque: '🔒',
   'system-about': 'ℹ️',
   'system-settings': '⚙️',
+  'system-flags': '⚑',
 };
 
 function archetypeIcon(archetype: ArchetypeId): string {
