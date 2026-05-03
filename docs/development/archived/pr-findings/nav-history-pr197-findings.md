@@ -91,7 +91,7 @@ PKC2 の "ナビゲーション位置" の本質的単位は `selectedLid + view
 | ツールバー戻る進む | popstate | snapshot 復元 |
 | マウス button 4/5(X1/X2)| popstate(ブラウザ既定)| 同上 |
 | Alt+← / Alt+→(Win/Linux)| popstate(ブラウザ既定)| 同上 |
-| Cmd+[ / Cmd+](macOS)| popstate(ブラウザ既定)| 同上 |
+| `Cmd+[` / `Cmd+]`(macOS)| popstate(ブラウザ既定)| 同上 |
 | `SELECT_ENTRY` ディスパッチ | onState → pushState | 履歴に積む |
 | `SET_VIEW_MODE` ディスパッチ | onState → pushState | 履歴に積む |
 | `DESELECT_ENTRY` | onState → pushState(selectedLid=null)| 同上 |

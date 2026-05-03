@@ -43,6 +43,9 @@
     "bench": "npm run bench:fixtures && npm run build && npm run bench:run && npm run bench:summarise",
     "size-budget": "node build/check-bundle-size.cjs",
     "check:manual": "node build/check-manual-integrity.cjs",
+    "check:doc-orphans": "node build/check-doc-orphans.cjs",
+    "check:doc-deadlinks": "node build/check-doc-deadlinks.cjs",
+    "check:docs": "npm run check:doc-orphans && npm run check:doc-deadlinks",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "typecheck": "tsc --noEmit"

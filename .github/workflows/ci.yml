@@ -73,6 +73,15 @@ jobs:
         # して機能する。理由は docs/development/lint-baseline-realignment.md。
         run: npm run lint
 
+      - name: Doc orphans + dead-links
+        # Phase 5 (reform-2026-05): docs/development/INDEX.md を canonical
+        # truth source として、(1) docs/development 配下の md ファイルが
+        # INDEX に登録されているか(orphan check)、(2) docs 配下の md
+        # 内 relative link が壊れていないか(dead-link check)を blocking で
+        # 検証する。Phase 1-3 cleanup wave で達成した orphan 0 / 整合
+        # された cross-ref を継続的に維持するため。
+        run: npm run check:docs
+
       - name: Test
         # Bump V8 heap to 4GB. Node 20 default (~2GB) was insufficient
         # for the cumulative test surface (4228 tests / 165 files):
