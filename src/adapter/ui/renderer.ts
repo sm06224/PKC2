@@ -5963,15 +5963,19 @@ function renderColorFilterStrip(
   current: ReadonlySet<string>,
 ): HTMLElement | null {
   const inUse = new Set<string>();
+  const target = COLOR_TAG_IDS.length;
   for (const entry of allEntries) {
-    if (typeof entry.color_tag === 'string' && isColorTagId(entry.color_tag)) {
+    if (isColorTagId(entry.color_tag)) {
       inUse.add(entry.color_tag);
+      if (inUse.size === target) break;
     }
   }
   if (inUse.size === 0) return null;
 
   const strip = createElement('div', 'pkc-color-filter-strip');
   strip.setAttribute('data-pkc-region', 'color-filter-strip');
+  strip.setAttribute('role', 'group');
+  strip.setAttribute('aria-label', 'Color filter');
 
   for (const id of COLOR_TAG_IDS) {
     if (!inUse.has(id)) continue;

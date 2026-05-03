@@ -178,6 +178,14 @@ describe('Color tag filter strip', () => {
     expect(chip!.getAttribute('type')).toBe('button');
   });
 
+  it('strip is announced as a labeled group', () => {
+    const container = mkContainer([mkEntry('e1', { color_tag: 'red' })]);
+    render(mkState(container), root);
+    const strip = root.querySelector('[data-pkc-region="color-filter-strip"]');
+    expect(strip!.getAttribute('role')).toBe('group');
+    expect(strip!.getAttribute('aria-label')).toBe('Color filter');
+  });
+
   it('strip lives inside the ⚙ Filters disclosure (not at sidebar root)', () => {
     const container = mkContainer([mkEntry('e1', { color_tag: 'red' })]);
     render(mkState(container), root);
