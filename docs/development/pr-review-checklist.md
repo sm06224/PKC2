@@ -95,6 +95,18 @@ PR を作る **前に** やっておくと audit 段階で issue が出にくい
 - `npm run build:manual` は About / planning/18 / manual 07-09 を触ったときのみ
 - INDEX エントリ + Last updated は最後に書く(bundle size 等の確定値が出てから)
 
+### 3.1 Bug-driven regression rules R1〜R7(`test-strategy-audit-2026-05.md` §2.3 由来)
+
+該当する rule の確認結果を PR body に明示。スキップする場合は理由を書く。
+
+- **R1 CSS specificity**: 環境分岐(`@media (pointer: coarse)` / dark theme / RTL) style を追加 / 強化するなら、該当 selector の既存 override を grep + parity test で computed style 数値 assert
+- **R2 visualViewport vs window viewport**: mobile UI で position:fixed の座標計算をするなら `window.visualViewport?.offsetTop` 参照、iPhone smoke を追加 / 修正
+- **R3 Unbounded JSON.stringify**: container / 大 payload を string 化する箇所は try/catch + size pre-scan + stress test(synthetic 600 KiB asset 等)
+- **R4 Floating popover**: `position: fixed` + `getBoundingClientRect()` で trigger に追従、`<input type=color>` eyedropper 等の native picker mousedown を popover close handler から除外、parity test で boundingBox 配置確認
+- **R5 Pointer mode / phase 分岐**: click / hover / focus / scroll / tap を含む feature は **desktop + iPhone shell の両方** parity test 1 件ずつ。`state.phase` (`ready` / `editing`) 依存も同様
+- **R6 DOM/flex layout**: button bar / action menu の layout 変更は parity test で textContent + boundingBox の両方 assert、`justify-content` / `align-items` は default に依存せず明示
+- **R7 Spec drift / invariant**: invariant に触るなら core 層 invariant test を追加、半年ごと Phase 4-style spec audit を再走(reform-2026-05 で 49 spec 完走済)
+
 ## 4. 失敗パターン(過去事例から)
 
 ### 4.1 Stream idle / Request timeout
