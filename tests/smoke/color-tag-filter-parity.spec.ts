@@ -59,6 +59,15 @@ test('color filter chip toggles colorTagFilter on real mouse click', async ({
 }) => {
   await bootAndCreateRedEntry(page);
 
+  // Color chips live inside the ⚙ Filters disclosure. Open it first
+  // so the strip is paint-visible (a closed `<details>` clips its
+  // children, making boundingBox / elementFromPoint fail).
+  const filtersSummary = page.locator(
+    '[data-pkc-region="advanced-filters"] > summary[data-pkc-action="toggle-advanced-filters"]',
+  );
+  await expect(filtersSummary).toBeVisible();
+  await filtersSummary.click();
+
   // Strip must now exist with exactly the red chip in use.
   const strip = page.locator('[data-pkc-region="color-filter-strip"]');
   await expect(strip).toBeVisible();

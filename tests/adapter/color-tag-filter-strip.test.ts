@@ -178,6 +178,35 @@ describe('Color tag filter strip', () => {
     expect(chip!.getAttribute('type')).toBe('button');
   });
 
+  it('strip lives inside the ⚙ Filters disclosure (not at sidebar root)', () => {
+    const container = mkContainer([mkEntry('e1', { color_tag: 'red' })]);
+    render(mkState(container), root);
+    const disclosure = root.querySelector('[data-pkc-region="advanced-filters"]');
+    expect(disclosure).not.toBeNull();
+    const strip = disclosure!.querySelector('[data-pkc-region="color-filter-strip"]');
+    expect(strip).not.toBeNull();
+    // Strip must NOT be a direct child of the sidebar — only inside
+    // the disclosure. Walk up: the closest wrapping region must be
+    // advanced-filters, not the sidebar itself.
+    const wrapper = strip!.closest('[data-pkc-region]');
+    expect(wrapper).toBe(strip);
+    const parentRegion = strip!.parentElement?.closest('[data-pkc-region]');
+    expect(parentRegion?.getAttribute('data-pkc-region')).toBe('advanced-filters');
+  });
+
+  it('disclosure surfaces even when only colored entries exist (no other toggles)', () => {
+    // Pure TEXT entry with a color: archetype filter doesn't show
+    // any toggle, no archived todo, no attachment, no bucket folder.
+    // The disclosure should still appear because color chips are
+    // sufficient on their own.
+    const container = mkContainer([mkEntry('e1', { color_tag: 'green' })]);
+    render(mkState(container), root);
+    const disclosure = root.querySelector('[data-pkc-region="advanced-filters"]');
+    expect(disclosure).not.toBeNull();
+    const summary = disclosure!.querySelector('summary');
+    expect(summary?.textContent).toBe('⚙ Filters');
+  });
+
   it('strip is hidden when the container has no user entries', () => {
     // The whole search/filter region is gated on `allEntries.length`,
     // so an empty container drops everything (including the color

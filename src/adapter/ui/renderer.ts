@@ -2371,12 +2371,6 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     // Archetype filter bar
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
 
-    // Color tag filter strip — chips for palette IDs actually in use.
-    // Click toggles `state.colorTagFilter`. Renders nothing when no
-    // entry in the container carries a recognised color tag.
-    const colorStrip = renderColorFilterStrip(allEntries, state.colorTagFilter ?? new Set());
-    if (colorStrip) sidebar.appendChild(colorStrip);
-
     // Sort controls
     sidebar.appendChild(renderSortControls(state.sortKey, state.sortDirection));
   }
@@ -2430,8 +2424,10 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
         return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
       });
     })();
+  const colorStrip = renderColorFilterStrip(allEntries, state.colorTagFilter ?? new Set());
+  const hasColorsInUse = colorStrip !== null;
   const hasAnyToggle =
-    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults;
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
   if (hasAnyToggle) {
     const details = document.createElement('details');
     details.className = 'pkc-advanced-filters';
@@ -2444,6 +2440,12 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
     summary.textContent = '⚙ Filters';
     details.appendChild(summary);
+
+    if (colorStrip) {
+      // Color tag chip strip — first child so the visual filter axis
+      // is at the top of the disclosure, ahead of the toggle list.
+      details.appendChild(colorStrip);
+    }
 
     if (hasArchivedTodo) {
       const toggle = createElement('label', 'pkc-show-archived-toggle');
