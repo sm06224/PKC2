@@ -4,3 +4,5 @@ node_modules/
 # Playwright smoke baseline (Tier 3-2) — never commit test artifacts.
 test-results/
 playwright-report/
+# vitest --coverage output (audit-only, never committed).
+coverage/
