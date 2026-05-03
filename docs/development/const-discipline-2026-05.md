@@ -127,27 +127,27 @@ export function defineFlag<T extends number | string | boolean>(
 export function getRegisteredFlags(): readonly FlagDescriptor[]
 ```
 
-### 解決順(高優先 → 低優先)
+### 解決順(高優先 → 低優先、2026-05-03 user direction で 3 layer 縮約)
 
 ```
-1. URL parameter      ?pkc-flag=KEY=VALUE      (per-session, debug / dev)
-2. localStorage       'pkc-flags' JSON          (browser-wide, power user)
-3. __flags__ entry    Container.entries[lid='__flags__'].body.values  (per-container, sharable)
-4. defineFlag default                          (compile-time fallback)
+1. URL parameter      ?pkc-flag=KEY=VALUE              (per-session, debug / dev / share)
+2. __flags__ entry    Container.entries[lid='__flags__'].body.values  (per-container, sharable / exported)
+3. defineFlag default                                   (compile-time fallback)
 ```
 
-各 layer は **個別に書込可**:
-- URL: 読み取り専用(URL 編集で変更)
-- localStorage: flags inspector で edit → localStorage 書込
-- `__flags__` entry: SET_FLAG action で reducer 経由 → entry body 更新
+各 layer の挙動:
+- URL: 読み取り専用(URL 編集で変更)、ephemeral 維持(自動 Container 永続化なし、明示 「Save current URL flags to Container」 button 経由のみ)
+- `__flags__` entry: SET_FLAG action で reducer 経由 → entry body 更新、container ごとに永続
+
+**localStorage layer は v1 では持たない**(2026-05-03 user 指摘):PKC2 の canonical configuration storage は IDB / 将来 OPFS 経路、localStorage は transient UI state(`pane-prefs` / `saved-searches` 等)専用、configuration values には使わない方針。「browser-wide flag preference」が真に必要になれば IDB 上別 store を後付けできる設計余地を残す(YAGNI)。
 
 ### Tier 別読み書き許可
 
-| Tier | URL read | localStorage R/W | `__flags__` R/W | inspector 表示 |
-|---|---|---|---|---|
-| 0 | ✅ | ✅ | ✅ | ✅ 編集可 |
-| 1 | ✅(dev override) | ❌ | ❌ | ✅ 表示のみ(grayed) |
-| 2 | ❌ | ❌ | ❌ | ✅ 表示のみ(値固定明記) |
+| Tier | URL read | `__flags__` R/W | inspector 表示 |
+|---|---|---|---|
+| 0 | ✅ | ✅ | ✅ 編集可 |
+| 1 | ✅(dev override) | ❌ | ✅ 表示のみ(grayed) |
+| 2 | ❌ | ❌ | ✅ 表示のみ(値固定明記) |
 
 ## 5. `__flags__` system entry spec(別 doc で詳細化)
 
@@ -180,18 +180,25 @@ export function getRegisteredFlags(): readonly FlagDescriptor[]
 
 機能:
 - 全 registered flag を category 別に list
-- 各 flag: key / current value / default / source(URL / local / container / default)/ range・enum / description
-- 編集 UI(localStorage / `__flags__` 書込)
+- 各 flag: key / current value / default / source(URL / container / default)/ range・enum / description
+- 編集 UI(SET_FLAG action 経由 → `__flags__` 書込、URL 値は read-only)
+- URL 経由値が active なら「This value is overridden by URL parameter」ヒント表示
+- 「Save current URL flags to Container」button(URL で試した値を一括 `__flags__` に永続化、明示操作)
 - search box / filter(`tier 0 only` / `category=ui` 等)
 - "Reset to default" / "Export current as JSON" / "Import JSON" ボタン
+- footer に **Build Features (read-only)** section(BUILD_FEATURES + MESSAGE_CAPABILITIES、編集不可、build / wire-spec 固定の事実明示)
 
 ### 6.2 shell-menu link
 
-shell-menu(右上 ⚙ の隣の hamburger)に **「⚑ Flags」** link を追加(既存「🐞 Report」の隣)。click で `?pkc-flag=*` URL に遷移 → overlay 起動。
+shell-menu(右上 ⚙ の隣の hamburger)に **「⚑ Flags」** link を追加(既存「🐞 Report」の隣)。**常時可視**(全 user に常時表示、ℹ About と同 visibility policy)。click で `?pkc-flag=*` URL に遷移 → overlay 起動。
 
 ### 6.3 `__about__` 内の flags 状態 dump
 
-`__about__` entry の build info の隣に「Active Flags」section を追加(read-only、debug 用)。
+`__about__` entry に「Active Flags」section を追加(read-only):「Active flags: N (N differ from default)」表示、click で flags inspector 起動。個別 list は表示しない(About は概要のみ、詳細は inspector 担当)。
+
+### 6.4 settings dialog → flags inspector navigation
+
+settings dialog の最下部に **「Advanced ⚑ Open Flags…」** link 1 つ(中央寄せ、subtle 色)。click で settings dialog を閉じる + `?pkc-flag=*` で inspector 起動。**settings → flags の単方向 navigation**(flags inspector からは settings に link しない)。
 
 ## 7. const 追加 / 移行ルール(annotation 規約)
 
@@ -229,7 +236,9 @@ export const RECENT_ENTRIES_DEFAULT_LIMIT = defineFlag(
 | PR | 内容 | 規模 |
 |---|---|---|
 | **PR-α(本 PR)** | `const-discipline-2026-05.md`(本書、~360 行)+ `flags-protocol-v1-minimum-scope.md`(spec、~200 行) | docs-only |
-| **PR-β(機構実装)** | `src/runtime/flags.ts`(URL / localStorage layer + registry)+ `__flags__` system entry(`system-flags-payload.ts` 新設、reducer 3 case、boot inject、isolation filter)+ flags inspector overlay 最小版 | ~400 行 + tests |
+| **PR-β-0(spec patch)** | localStorage layer 削除(3 layer 縮約)+ shell-menu 常時可視 + about Active flags + settings → flags navigation を spec / audit doc に反映 | docs-only、~80 行 diff |
+| **PR-β-1(機構コア)** | `src/runtime/flags.ts`(URL layer + registry + Container resolver)+ `system-flags-payload.ts` + reducer 3 case + boot inject + isolation filter + tests | ~250 行 + tests |
+| **PR-β-2(inspector + UI 連携)** | flags inspector overlay + shell-menu「⚑ Flags」link + about「Active Flags」section + settings dialog 「Open Flags…」link + parity test 1 件 | ~200 行 + tests |
 | **PR-γ(段階移行 wave 1)** | Tier 0 候補 20 件のうち **5-7 件**(RECENT_ENTRIES_DEFAULT_LIMIT / INITIAL_RENDER_ARTICLE_COUNT / DEBOUNCE_MS / image config 2 件) | ~100 行 |
 | **PR-δ(残り wave 2)** | 残 Tier 0(15 件)を順次 defineFlag 化、約 3 sub-PR で分割 | ~200 行 / sub-PR |
 | **PR-ε(annotation 規約)** | Tier 1/2 既存 const に annotation 付与 + CI grep 検査追加 + checklist §2.10 追加 | ~150 行 |
@@ -239,15 +248,20 @@ export const RECENT_ENTRIES_DEFAULT_LIMIT = defineFlag(
 - **JIT inline 展開の影響**: 一般的に「数 % 以下」と想定するが、hot inner loop の bound(例 `MAX_ANCESTOR_DEPTH`)は Tier 2 で hard-code 維持して回避。実測 baseline は PR-β 着地後に bench 取得して差分 audit。
 - **flag 数の膨張**: 30 件の register が 100 件超に膨れると inspector UX が劣化。category filter + search box で吸収、但し 200 件超えたら sub-page 分割を検討。
 - **schema migration**: `defineFlag` の signature 変更(default 値変更 / range 変更)は既存 `__flags__` entry の値が範囲外になり得る。boot 時に out-of-range を warn + clamp + entry rewrite で吸収。
-- **localStorage と `__flags__` の同期問題**: 同一 key を local と container 両方に持つと混乱。inspector で「source」を明示 + 編集時に「どの layer に書く?」を明示確認 で対処。
 - **test isolation**: vitest 環境で `globalThis.__PKC_FLAGS__` を override するテスト helper を提供、test ごとに reset。
+- **browser-wide preference の不在**(2026-05-03 user direction による v1 縮約結果): 同一 user が複数 container を持つ場合、各 container の `__flags__` が独立。cross-container 共有は export/import で運ぶ(自動 sync なし)。真に必要になれば IDB 上の別 store(`pkc2-flags-browser`)を後付け、OPFS 対応も視野。
 
-## 10. user 判断が必要な点(本書 merge 前)
+## 10. 確定事項(2026-05-03 user direction で決定済み)
 
-- **PR-β 着地時の最小 flags inspector UI**: `?pkc-flag=*` overlay vs shell-menu link、どちらを v1 の minimum とするか?(私の推奨: shell-menu link 1 つ + overlay 内に list = minimum、URL flag 個別 override は最初から動く)
-- **localStorage layer の有無**: PR-β v1 で含めるか、PR-β v2 に分離するか?(私の推奨: v1 含める、cross-container 体験のため)
-- **既存 `BUILD_FEATURES` との UI 統合**: flags inspector に build features も「read-only displayed」で出すか、別画面にするか?(私の推奨: 同 inspector 内で「Build Features(read-only)」section 分離)
-- **PR-γ wave 1 で defineFlag 化する 5-7 件の優先**: 私の案 = RECENT_ENTRIES_DEFAULT_LIMIT / INITIAL_RENDER_ARTICLE_COUNT / LOOKAHEAD_ARTICLE_COUNT / DEBOUNCE_MS / DEFAULT_MAX_LONG_EDGE / DEFAULT_OPTIMIZATION_THRESHOLD / DEFAULT_MAX_PER_ENTRY。これで OK か?
+PR-α(#230)後の対話で以下が確定、本書 PR-β-0(spec patch)で反映済み:
+
+- **localStorage layer**: **不採用**。3 layer(URL > Container > default)に縮約。理由は §4 解決順 / §1 既知の制約参照
+- **flags inspector UI surface**: **shell-menu「⚑ Flags」link(常時可視)+ overlay 表示**。URL flag `?pkc-flag=*` でも起動可
+- **BUILD_FEATURES inspector 統合**: **同 inspector の footer に「Build Features (read-only)」section 分離**(BUILD_FEATURES + MESSAGE_CAPABILITIES の現値を read-only 表示)
+- **About「Active Flags」表示**: **Yes**、`__about__` entry に「Active flags: N (N differ from default)」追加、click で inspector 起動
+- **Settings → Flags navigation**: **Yes**、settings dialog 最下部に「Advanced ⚑ Open Flags…」link 1 つ(単方向 navigation)
+- **PR-γ wave 1 件**: 7 件確定 = RECENT_ENTRIES_DEFAULT_LIMIT / INITIAL_RENDER_ARTICLE_COUNT / LOOKAHEAD_ARTICLE_COUNT / DEBOUNCE_MS / DEFAULT_MAX_LONG_EDGE / DEFAULT_OPTIMIZATION_THRESHOLD / DEFAULT_MAX_PER_ENTRY
+- **PR-β 分割**: **PR-β-0(spec patch)→ PR-β-1(機構コア)→ PR-β-2(inspector + UI 連携)** の 3 段階に分割(review 範囲を狭めて landing 順次)
 
 ## 関連
 
