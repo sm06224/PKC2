@@ -24,7 +24,7 @@
  * `level` (indent depth) without having to reconstruct the hierarchy.
  */
 import type { Entry } from '../../core/model/record';
-import { buildTextlogDoc } from '../textlog/textlog-doc';
+import { buildTextlogDoc, type TextlogOrder } from '../textlog/textlog-doc';
 
 export type TocLevel = 1 | 2 | 3;
 
@@ -147,9 +147,13 @@ export function extractHeadingsFromMarkdown(markdown: string): TocHeading[] {
  *
  *   TEXT     → heading nodes derived from `entry.body`.
  *   TEXTLOG  → day / log / heading tree derived from
- *              `buildTextlogDoc(entry, { order: 'desc' })`. Day ordering
- *              matches the live viewer (newest first) so the TOC's top
- *              entry corresponds to the viewer's top entry.
+ *              `buildTextlogDoc(entry, { order })`. The `order`
+ *              parameter governs whether the top of the TOC is the
+ *              newest day (live viewer / sidebar default) or the
+ *              oldest day (rendered viewer / detached entry-window).
+ *              Pass the same order the caller uses for content so
+ *              the TOC's top entry corresponds to the visible top of
+ *              the rendered document.
  *   other    → empty.
  *
  * For TEXTLOG, the returned array is the pre-order traversal of the
@@ -162,7 +166,10 @@ export function extractHeadingsFromMarkdown(markdown: string): TocHeading[] {
  * Slug counters are reset per-log-entry for TEXTLOG so the emitted ids
  * match the renderer (each log article is a fresh slug scope).
  */
-export function extractTocFromEntry(entry: Entry): TocNode[] {
+export function extractTocFromEntry(
+  entry: Entry,
+  options: { order?: TextlogOrder } = {},
+): TocNode[] {
   if (entry.archetype === 'text' || entry.archetype === 'generic') {
     const headings = extractHeadingsFromMarkdown(entry.body);
     return headings.map((h) => ({
@@ -173,8 +180,13 @@ export function extractTocFromEntry(entry: Entry): TocNode[] {
     }));
   }
   if (entry.archetype === 'textlog') {
-    // Use desc so the TOC top entry matches the live viewer top entry.
-    const doc = buildTextlogDoc(entry, { order: 'desc' });
+    // Default 'desc' preserves the live viewer / sidebar pre-2026-05-03
+    // behavior. Callers that render content in chronological ascending
+    // order (rendered viewer, detached entry-window) MUST pass
+    // `{ order: 'asc' }` so the TOC matches their content. The bug
+    // before this parameter existed: TOC was always desc, which left
+    // the rendered viewer / entry-window with TOC-vs-content mismatch.
+    const doc = buildTextlogDoc(entry, { order: options.order ?? 'desc' });
     const out: TocNode[] = [];
     for (const section of doc.sections) {
       out.push({

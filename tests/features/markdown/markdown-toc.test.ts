@@ -258,6 +258,45 @@ describe('extractTocFromEntry — TEXTLOG (time-driven)', () => {
     expect(day.text).toBe('Undated');
     expect(day.targetId).toBe('day-undated');
   });
+
+  it('respects { order: "asc" } so callers can match TOC to ascending content', () => {
+    // The bug this guards: rendered viewer + detached entry-window
+    // render TEXTLOG content with order:'asc' but TOC was always
+    // forced to desc, leaving TOC top != content top. The fix lets
+    // the caller pass the same order to both.
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-a', text: '# A', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-b', text: '# B', createdAt: '2026-04-10T10:00:00Z', flags: [] },
+      ],
+    });
+    const desc = extractTocFromEntry(makeEntry('textlog', body));
+    const asc = extractTocFromEntry(makeEntry('textlog', body), { order: 'asc' });
+
+    const descLogIds = desc
+      .filter((n): n is Extract<TocNode, { kind: 'log' }> => n.kind === 'log')
+      .map((n) => n.logId);
+    const ascLogIds = asc
+      .filter((n): n is Extract<TocNode, { kind: 'log' }> => n.kind === 'log')
+      .map((n) => n.logId);
+
+    expect(descLogIds).toEqual(['log-b', 'log-a']);  // newest first
+    expect(ascLogIds).toEqual(['log-a', 'log-b']);   // oldest first
+  });
+
+  it('default order is desc (preserves pre-2026-05-03 sidebar / live viewer behavior)', () => {
+    const body = JSON.stringify({
+      entries: [
+        { id: 'log-x', text: 'plain', createdAt: '2026-04-09T10:00:00Z', flags: [] },
+        { id: 'log-y', text: 'plain', createdAt: '2026-04-10T10:00:00Z', flags: [] },
+      ],
+    });
+    const out = extractTocFromEntry(makeEntry('textlog', body));
+    const logIds = out
+      .filter((n): n is Extract<TocNode, { kind: 'log' }> => n.kind === 'log')
+      .map((n) => n.logId);
+    expect(logIds).toEqual(['log-y', 'log-x']);
+  });
 });
 
 // ── makeLogLabel ──

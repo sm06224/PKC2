@@ -918,7 +918,12 @@ function buildWindowHtml(
   // Static TOC HTML for TEXT / TEXTLOG — the extractor returns `[]`
   // for other archetypes so this is just `''` there. Every anchor
   // is a native `href="#id"` so scroll works without any JS.
-  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry as Entry));
+  // 2026-05-03: detached entry-window renders TEXTLOG content with
+  // `order: 'asc'` (line ~392); pass the same order to the TOC builder
+  // so the TOC top entry matches the visible top of the document.
+  const tocHtml = renderStaticTocHtml(
+    extractTocFromEntry(entry as Entry, { order: 'asc' }),
+  );
   const parentVars = getParentCssVars();
 
   // Generate archetype-specific editor body for structured types.

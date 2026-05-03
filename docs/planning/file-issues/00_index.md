@@ -1,10 +1,10 @@
 # File-based Issue Ledger（レビュー指摘の切り出し台帳）
 
-**Status**: 2026-04-17 初版。ユーザーから共有されたレビュー指摘一覧を、今後の minimum-scope → contract → implementation → audit → manual pipeline に載せやすいよう、**1 件 1 ファイル**の単位で切り出した。
+**Status**: 2026-04-17 初版、2026-05-03 第 1 回 archive sweep(7 件 → archived/)。ユーザーから共有されたレビュー指摘一覧を、今後の minimum-scope → contract → implementation → audit → manual pipeline に載せやすいよう、**1 件 1 ファイル**の単位で切り出した。
 
 **Source**: 2026-04-17 supervisor prompt 内に記載されたレビュー指摘一覧（色味 / ファイルエントリ / 表示 / 検索 / 編集 / その他の 6 群）。
 
-**Scope**: 本ディレクトリは「未着手の file-based issue」集合。docs-only、実装はしない。
+**Scope**: 本ディレクトリは「未解消の file-based issue」集合。docs-only、実装はしない。**RESOLVED な issue は `archived/` 配下に移動し、`archived/SUMMARY.md` で結果サマリ化**(2026-05-03 reform-2026-05 wave 拡張、`docs/development/doc-archival-discipline.md` 規約)。
 
 **上位導線**: `docs/planning/USER_REQUEST_LEDGER.md` の §3（待機候補）と並列で読む。昇格した時点で LEDGER §1 への移設と本ディレクトリからの退場を行う。
 
@@ -13,30 +13,27 @@
 1. **1 issue = 1 file**。小さく保ち、必要なら子ディレクトリに分割する
 2. 各ファイルは Title / Status / Priority / Problem / User value・risk / Scope boundary / Expected pipeline / Dependencies / Notes を含む
 3. **着手**は supervisor が本 index 上で 1 件選んで minimum scope 化を宣言することで始まる
-4. **完了**した issue は USER_REQUEST_LEDGER に移設し、本ファイルから removed / 本ディレクトリから退場
+4. **完了**した issue は: (a) USER_REQUEST_LEDGER §1 に移設、(b) **本 ディレクトリ → `archived/` に物理移動**、(c) `archived/SUMMARY.md` に 1 行サマリ追加。再燃 trigger(spec breaking change / invariant 違反 / user 同種要望再持込)で live に戻すまで触らない
 5. **優先順位の原則**:
    - P0: データ損失・上書き消失・誤保存・貼付先誤り
    - P1: 性能劣化・無言で遅くなる問題
    - P2: 日常作業の手数削減 / 検索・表示改善 / 入力操作自然化 / テーマ見た目
    - P3: 後段機能（拡張ランチャ等）
 
-## 一覧（推奨着手順）
+## live 一覧(計 6 件、推奨着手順)
 
 | ID | Title | Priority | Status | Depends on | 概要 |
 |----|-------|----------|--------|-----------|------|
-| [FI-01](01_dual-window-concurrent-edit-safety.md) | 別ウィンドウ / センターペイン 並行編集の安全性 | **P0** | proposed | — | Entry Window と本体の双方向反映・競合検知。サイレント上書き消失の防止 |
-| [FI-02](02_editor-safety-textlog-paste-target-and-folder-ctrl-s.md) | 編集安全性: TEXTLOG 貼付先ズレ / FOLDER Ctrl+S 不可 | **P0** | proposed | — | 中間セル貼付が先頭セルに飛ぶバグ + FOLDER description の Ctrl+S が効かないバグ |
-| [FI-03](03_perf-textlog-image-lazy-rendering.md) | 複数画像 TEXTLOG の表示 / 編集時の遅延解消 | **P1** | proposed | — | 画像多数含む TEXTLOG の lazy rendering |
-| [FI-04](04_attachment-foundation-multi-add-dedupe-persistent-dnd.md) | 添付基盤: まとめて追加 / 重複排除 / 常設 DnD | **P2** | proposed | FI-02 | 複数ファイル一括追加 + content-hash dedupe + 画面端固定 DnD |
-| [FI-05](05_editor-paste-attachment-auto-internal-link.md) | 編集中の添付経路を TEXTAREA 自動 internal link 貼付に揃える | **P2** | proposed | FI-02, FI-04 | DnD / ボタン添付も本文へ自動 link |
-| [FI-06](06_editor-input-assist-tab-and-indent-width.md) | 入力操作: TAB キー半角化 / markdown-it インデント幅設定 | **P2** | proposed | — | TAB → 半角スペース × N（デフォ 2）、インデント幅設定化 |
-| [FI-07](07_editor-textlog-alternative-edit-trigger.md) | TEXTLOG ログ編集トリガをダブルクリック以外に割当 | **P2** | proposed | — | OS 標準のワード / 段落選択を取り戻す |
-| [FI-08](08_editor-address-bar-link-paste-markdown.md) | アドレスバー URL + タイトルを Markdown リンクに整形 | **P2** | proposed | S-25（実装済み） | S-25 の補強 or 周知のみ |
-| [FI-09](09_search-entry-type-filter-multi-select.md) | 検索エントリ種別フィルタの複数選択 + TODO/FILE 既定非表示 | **P2** | proposed | — | 多選択化 + 常時非表示領域の導入 |
-| [FI-10](10_display-csv2table-code-block-lang-alias.md) | `csv2table` fenced block 表変換（B-1 alias 整備 or 周知） | **P3** | proposed | B-1（実装済み） | B-1 の確認 → alias 追加 or 周知のみ |
-| [FI-11](11_display-entry-window-responsive-tab-swap.md) | 別ウィンドウ編集 UI とセンターペインの UX 乖離解消 | **P2** | proposed | FI-01, A-2（完了） | 画面幅で tab ↔ 2-pane 切替 |
-| [FI-12](12_ui-theme-customizable-accent-scanline.md) | UI テーマ設定化: Kanban ハイライト / アクセントカラー / スキャンライン | **P2** | proposed | — | アクセント=ネオングリーン、スキャンライン=OFF をデフォに |
-| [FI-13](13_launcher-tab-customizable-for-extensions.md) | センターペイン タブとしての拡張ツールランチャ | **P3** | proposed | — | PKC2-Extensions 起動動線 |
+| [FI-02](02_editor-safety-textlog-paste-target-and-folder-ctrl-s.md) | 編集安全性: TEXTLOG 貼付先ズレ / FOLDER Ctrl+S 不可 | **P0** | PARTIAL | — | A 部分着地 / B 部分(FOLDER Ctrl+S)は実ブラウザ再現未確定 |
+| [FI-06](06_editor-input-assist-tab-and-indent-width.md) | 入力操作: TAB キー半角化 / markdown-it インデント幅設定 | **P2** | OPEN | — | TAB → 半角スペース × N（デフォ 2）、インデント幅設定化 |
+| [FI-07](07_editor-textlog-alternative-edit-trigger.md) | TEXTLOG ログ編集トリガをダブルクリック以外に割当 | **P2** | OPEN | — | OS 標準のワード / 段落選択を取り戻す |
+| [FI-10](10_display-csv2table-code-block-lang-alias.md) | `csv2table` fenced block 表変換（B-1 alias 整備 or 周知） | **P3** | OPEN | B-1（実装済み） | B-1 の確認 → alias 追加 or 周知のみ |
+| [FI-11](11_display-entry-window-responsive-tab-swap.md) | 別ウィンドウ編集 UI とセンターペインの UX 乖離解消 | **P2** | OPEN | FI-01(完了), A-2（完了） | 画面幅で tab ↔ 2-pane 切替 |
+| [FI-13](13_launcher-tab-customizable-for-extensions.md) | センターペイン タブとしての拡張ツールランチャ | **P3** | OPEN | — | PKC2-Extensions 起動動線、PKC-Message v2 ACL 完了後に再評価 |
+
+## archived(計 7 件、RESOLVED)
+
+詳細は [`archived/SUMMARY.md`](./archived/SUMMARY.md) を参照。FI-01 / FI-03 / FI-04 / FI-05 / FI-08 / FI-09 / FI-12 がすべて spec + src + audit 完了で archive 済み(2026-05-03 第 1 回 sweep)。
 
 ## 依存グラフ（ざっくり）
 
