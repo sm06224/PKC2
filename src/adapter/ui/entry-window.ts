@@ -582,8 +582,20 @@ export function openEntryWindow(
   }
   window.addEventListener('message', handleMessage);
 
-  // Cleanup on child close
+  // Cleanup on child close.
+  // 2026-05-03 (R2 / R3 防御): the interval is the only cleanup
+  // path for `openWindows` / `previewResolverContexts` / the
+  // message listener — if the host page (or a happy-dom test
+  // tear-down) disposes `window` before the popup closes, this
+  // callback used to throw `ReferenceError: window is not defined`
+  // on the next tick. Guard with a `typeof` check so the leak
+  // self-clears instead of crashing the CI worker after the test
+  // environment is gone.
   const pollClose = setInterval(() => {
+    if (typeof window === 'undefined') {
+      clearInterval(pollClose);
+      return;
+    }
     if (child!.closed) {
       clearInterval(pollClose);
       openWindows.delete(entry.lid);
