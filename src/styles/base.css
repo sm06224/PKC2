@@ -684,6 +684,57 @@
   box-shadow: var(--glow);
 }
 
+/* ── Color tag filter strip ── */
+.pkc-color-filter-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem 0.35rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pkc-color-filter-chip {
+  width: 1.4rem;
+  height: 1.4rem;
+  min-width: 1.4rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--pkc-color-tag-current, transparent);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.pkc-color-filter-chip:hover {
+  border-color: var(--c-muted);
+  transform: scale(1.08);
+}
+
+.pkc-color-filter-chip:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+[data-pkc-active="true"].pkc-color-filter-chip {
+  border-color: var(--c-accent);
+  box-shadow: var(--glow);
+}
+
+/* iPhone shell — meet the 44 px touch-target floor without
+   inflating the desktop chip. */
+@media (pointer: coarse) {
+  .pkc-color-filter-strip {
+    gap: 0.5rem;
+    padding: 0.5rem 0.5rem;
+  }
+  .pkc-color-filter-chip {
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
 /* ── Sort controls ── */
 .pkc-sort-controls {
   display: flex;

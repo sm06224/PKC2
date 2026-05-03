@@ -1,7 +1,7 @@
 import type { AppState } from '../state/app-state';
 import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
-import { isColorTagId } from '../../features/color/color-palette';
+import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
@@ -2424,8 +2424,10 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
         return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
       });
     })();
+  const colorStrip = renderColorFilterStrip(allEntries, state.colorTagFilter ?? new Set());
+  const hasColorsInUse = colorStrip !== null;
   const hasAnyToggle =
-    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults;
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
   if (hasAnyToggle) {
     const details = document.createElement('details');
     details.className = 'pkc-advanced-filters';
@@ -2438,6 +2440,12 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
     summary.textContent = '⚙ Filters';
     details.appendChild(summary);
+
+    if (colorStrip) {
+      // Color tag chip strip — first child so the visual filter axis
+      // is at the top of the disclosure, ahead of the toggle list.
+      details.appendChild(colorStrip);
+    }
 
     if (hasArchivedTodo) {
       const toggle = createElement('label', 'pkc-show-archived-toggle');
@@ -5935,6 +5943,58 @@ function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>): HTMLElement {
   bar.appendChild(group);
 
   return bar;
+}
+
+/**
+ * Color tag filter strip — chip-per-color quick filter UI.
+ *
+ * Renders a button for each palette ID that at least one entry in
+ * the container currently carries. Clicking a chip dispatches
+ * `TOGGLE_COLOR_TAG_FILTER` via the existing action-binder route, so
+ * the same handler powers both this strip and the active-filter
+ * indicator. Returns `null` when no entry has a recognised
+ * `color_tag` so the sidebar stays clean for users who don't tag.
+ *
+ * Order follows palette order (warm → cool → neutral) for layout
+ * stability regardless of insertion order.
+ */
+function renderColorFilterStrip(
+  allEntries: readonly Entry[],
+  current: ReadonlySet<string>,
+): HTMLElement | null {
+  const inUse = new Set<string>();
+  const target = COLOR_TAG_IDS.length;
+  for (const entry of allEntries) {
+    if (isColorTagId(entry.color_tag)) {
+      inUse.add(entry.color_tag);
+      if (inUse.size === target) break;
+    }
+  }
+  if (inUse.size === 0) return null;
+
+  const strip = createElement('div', 'pkc-color-filter-strip');
+  strip.setAttribute('data-pkc-region', 'color-filter-strip');
+  strip.setAttribute('role', 'group');
+  strip.setAttribute('aria-label', 'Color filter');
+
+  for (const id of COLOR_TAG_IDS) {
+    if (!inUse.has(id)) continue;
+    const btn = createElement('button', `pkc-color-filter-chip pkc-color-${id}`);
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('data-pkc-action', 'toggle-color-tag-filter');
+    btn.setAttribute('data-pkc-color', id);
+    btn.setAttribute('aria-label', `Filter by color: ${id}`);
+    btn.setAttribute('title', `Filter by color: ${id}`);
+    if (current.has(id)) {
+      btn.setAttribute('data-pkc-active', 'true');
+      btn.setAttribute('aria-pressed', 'true');
+    } else {
+      btn.setAttribute('aria-pressed', 'false');
+    }
+    strip.appendChild(btn);
+  }
+
+  return strip;
 }
 
 function renderSortControls(currentKey: SortKey, currentDirection: SortDirection): HTMLElement {
