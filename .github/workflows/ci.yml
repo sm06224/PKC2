@@ -82,16 +82,24 @@ jobs:
         # された cross-ref を継続的に維持するため。
         run: npm run check:docs
 
-      - name: Test
+      - name: Test (with coverage gate)
         # Bump V8 heap to 4GB. Node 20 default (~2GB) was insufficient
         # for the cumulative test surface (4228 tests / 165 files):
         # the threads pool shares one V8 isolate per worker and the
         # accumulated happy-dom DOM across files trips OOM mid-run on
         # the GitHub-hosted ubuntu runner. Raising the limit is the
         # least-invasive fix; vitest pool tuning would change behavior.
+        #
+        # Coverage gate (2026-05-03 / reform-2026-05): the repo-wide
+        # minimum thresholds in vitest.config.ts (80 stmt / 78 br /
+        # 85 fn / 80 ln) block PRs that drop more than ~5 pp from
+        # the 2026-05-03 baseline (84.95% statements). v8 provider
+        # is Node-builtin so the only added cost is the @vitest/
+        # coverage-v8 instrumentation harness (~+30-60 sec).
+        # Adoption rationale: docs/development/test-strategy-audit-2026-05.md §1.
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: npm test
+        run: npm run test:coverage
 
       - name: Build bundle
         run: npm run build:bundle

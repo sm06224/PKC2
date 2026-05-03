@@ -58,11 +58,6 @@ coverage: {
     branches: 78,
     functions: 85,
     lines: 80,
-    perFile: true,
-    // file-specific overrides
-    'src/runtime/profile.ts': { lines: 50 },
-    'src/runtime/meta-reader.ts': { lines: 50 },
-    'src/runtime/index.ts': { lines: 0 },
   },
   reporter: ['text-summary', 'json-summary'],
 }
@@ -73,10 +68,17 @@ coverage: {
 - name: Test with coverage
   env:
     NODE_OPTIONS: --max-old-space-size=4096
-  run: npx vitest run --coverage
+  run: npm run test:coverage
 ```
 
 `package.json` devDependency 追加: `@vitest/coverage-v8: ^3.0.0`(~10 MB)。CI 実行時間影響は instrumented build + report generate で **+30〜60 秒**(現 test step 130 秒 → 160-190 秒)。
+
+**Per-file mode について**: 当初は `perFile: true` + 個別 override を予定していたが、adoption PR(2026-05-03 着地)で実測したところ:
+- barrel `index.ts`(`src/core/index.ts` / `src/adapter/index.ts` / `src/runtime/index.ts`)は test が直接 path import するため 0%、enforcement 対象外
+- `src/runtime/profile.ts` / `meta-reader.ts` 等の environment-conditional fallback も unit test では到達不可
+- `src/adapter/ui/` の一部 modal / hydrator は branch coverage が局所的に閾値割れ
+
+これらを exemption list で個別緩和すると brittle(branch / hydrator は将来 test 拡張で改善見込み)。**adoption PR では per-file を OFF とし、repo-wide minimum のみ強制**。per-file 厳格化は別 wave(test 拡張で local coverage が押し上がった時点で再評価)。
 
 ### 1.4 既知の制約
 
