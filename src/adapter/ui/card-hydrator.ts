@@ -46,6 +46,7 @@ const ARCHETYPE_BADGE: Record<ArchetypeId, { icon: string; label: string }> = {
   opaque: { icon: '🔒', label: 'Opaque' },
   'system-about': { icon: 'ℹ️', label: 'About' },
   'system-settings': { icon: '⚙️', label: 'Settings' },
+  'system-flags': { icon: '⚑', label: 'Flags' },
 };
 
 const UNTITLED = 'Untitled';

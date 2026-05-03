@@ -2,6 +2,7 @@ import type { ArchetypeId } from '../model/record';
 import type { RelationKind } from '../model/relation';
 import type { BatchImportResultSummary } from './system-command';
 import type { SystemSettingsPayload } from '../model/system-settings-payload';
+import type { SystemFlagsPayload } from '../model/system-flags-payload';
 
 /**
  * DomainEvent: immutable facts about what happened.
@@ -70,6 +71,17 @@ export type DomainEvent =
    * are BOTH downstream of this event.
    */
   | { type: 'SETTINGS_CHANGED'; settings: SystemSettingsPayload }
+  /**
+   * FLAGS_CHANGED — Flags Protocol v1 (2026-05-03). Emitted after
+   * any reducer path that mutates the `__flags__` system entry
+   * (SET_FLAG / RESET_FLAG / RESET_ALL_FLAGS) so persistence can
+   * save the container and the runtime flag registry can refresh
+   * its container source.
+   *
+   * Carries the resolved payload verbatim so subscribers don't need
+   * to re-read state.
+   */
+  | { type: 'FLAGS_CHANGED'; flags: SystemFlagsPayload }
   /**
    * LINK_MIGRATION_APPLIED — Phase 2 Slice 3. Emitted after an
    * `APPLY_LINK_MIGRATION` run. Carries the outcome counts so

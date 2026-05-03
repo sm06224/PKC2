@@ -1,6 +1,15 @@
 import type { Container } from '../../core/model/container';
 import type { ArchetypeId, Entry } from '../../core/model/record';
-import { isReservedLid, SETTINGS_LID } from '../../core/model/record';
+import { isReservedLid, SETTINGS_LID, FLAGS_LID } from '../../core/model/record';
+import {
+  type SystemFlagsPayload,
+  resolveFlagsPayload,
+  serializeFlagsPayload,
+  setFlagValue,
+  removeFlagValue,
+  clearFlagValues,
+  FLAGS_DEFAULTS,
+} from '../../core/model/system-flags-payload';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { Dispatchable } from '../../core/action';
 import type { DomainEvent } from '../../core/action/domain-event';
@@ -844,6 +853,60 @@ function upsertSettingsEntry(
     updated_at: ts,
   };
   return { ...container, entries: [...container.entries, created] };
+}
+
+/**
+ * Flags Protocol v1 — read-modify-write helper for the reserved
+ * `__flags__` entry. Returns the updated container + the new payload,
+ * or null when the mutation produced no change (so the caller can
+ * skip emitting `FLAGS_CHANGED`).
+ *
+ * Inserts a fresh entry when `__flags__` is missing (boot inject is
+ * normally done at boot time, but defensive fallback keeps the
+ * reducer self-contained).
+ */
+function updateFlagsEntry(
+  container: Container,
+  mutate: (p: SystemFlagsPayload) => SystemFlagsPayload,
+): { container: Container; payload: SystemFlagsPayload } | null {
+  const ts = now();
+  const existingIdx = container.entries.findIndex((e) => e.lid === FLAGS_LID);
+  if (existingIdx >= 0) {
+    const existing = container.entries[existingIdx]!;
+    const current = resolveFlagsPayload(existing.body);
+    const next = mutate(current);
+    if (next === current) return null;
+    const body = serializeFlagsPayload(next);
+    if (existing.body === body && existing.archetype === 'system-flags') {
+      return null;
+    }
+    const updated: Entry = {
+      ...existing,
+      body,
+      archetype: 'system-flags',
+      title: existing.title || 'System Flags',
+      updated_at: ts,
+    };
+    const nextEntries = container.entries.slice();
+    nextEntries[existingIdx] = updated;
+    return {
+      container: { ...container, entries: nextEntries },
+      payload: next,
+    };
+  }
+  const next = mutate(FLAGS_DEFAULTS);
+  const created: Entry = {
+    lid: FLAGS_LID,
+    title: 'System Flags',
+    body: serializeFlagsPayload(next),
+    archetype: 'system-flags',
+    created_at: ts,
+    updated_at: ts,
+  };
+  return {
+    container: { ...container, entries: [...container.entries, created] },
+    payload: next,
+  };
 }
 
 /** Expand `#rgb` → `#rrggbb`; pass through 6-char input (already lowercase). */
@@ -2118,6 +2181,43 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         accentColor: next.theme.accentColor ?? undefined,
       };
       return { state: nextState, events: [] };
+    }
+    case 'SET_FLAG': {
+      // Flags Protocol v1 — gated mutation of `__flags__` system entry.
+      // I-FLAGS-7: side-effect-free configuration only; the action
+      // does NOT mutate any state field other than the entry itself.
+      // Tier 1 / Tier 2 guarding (I-FLAGS-4) is the caller's
+      // responsibility — the inspector UI surfaces only Tier 0 keys
+      // for edit. Range / enum gates live in defineFlag at read time.
+      if (!state.container) return { state, events: [] };
+      const updated = updateFlagsEntry(state.container, (p) =>
+        setFlagValue(p, action.key, action.value),
+      );
+      if (!updated) return { state, events: [] };
+      return {
+        state: { ...state, container: updated.container },
+        events: [{ type: 'FLAGS_CHANGED', flags: updated.payload }],
+      };
+    }
+    case 'RESET_FLAG': {
+      if (!state.container) return { state, events: [] };
+      const updated = updateFlagsEntry(state.container, (p) =>
+        removeFlagValue(p, action.key),
+      );
+      if (!updated) return { state, events: [] };
+      return {
+        state: { ...state, container: updated.container },
+        events: [{ type: 'FLAGS_CHANGED', flags: updated.payload }],
+      };
+    }
+    case 'RESET_ALL_FLAGS': {
+      if (!state.container) return { state, events: [] };
+      const updated = updateFlagsEntry(state.container, clearFlagValues);
+      if (!updated) return { state, events: [] };
+      return {
+        state: { ...state, container: updated.container },
+        events: [{ type: 'FLAGS_CHANGED', flags: updated.payload }],
+      };
     }
     case 'TOGGLE_MENU': {
       return { state: { ...state, menuOpen: !state.menuOpen }, events: [] };

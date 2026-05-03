@@ -14,10 +14,12 @@ export type ArchetypeId =
   | 'generic'
   | 'opaque'
   | 'system-about'
-  | 'system-settings';
+  | 'system-settings'
+  | 'system-flags';
 
 export const ABOUT_LID = '__about__';
 export const SETTINGS_LID = '__settings__';
+export const FLAGS_LID = '__flags__';
 
 export function isReservedLid(lid: string): boolean {
   return lid.startsWith('__') && lid.endsWith('__') && lid.length > 4;
