@@ -64,7 +64,10 @@ export function buildRenderedViewerHtml(
   const bodyHtml = buildBodyHtml(entry, container);
   // Static TOC HTML for TEXT / TEXTLOG. Empty string for other
   // archetypes. Native-anchor navigation — no JS needed.
-  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry));
+  // 2026-05-03: TEXTLOG content below uses `order: 'asc'` (chronological
+  // for printing); pass the same order to the TOC builder so the TOC
+  // top entry matches the visible top of the rendered document.
+  const tocHtml = renderStaticTocHtml(extractTocFromEntry(entry, { order: 'asc' }));
   const exportedAt = new Date().toISOString();
   const filename = buildDownloadFilename(entry, exportedAt);
 

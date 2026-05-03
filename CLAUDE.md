@@ -118,6 +118,20 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - `docs/development/debug-via-url-flag-protocol.md` — `?pkc-debug=<feature>` で feature ごとの debug overlay / Report dump を出すユーザー報告導線の規約(reform-2026-05)
 - `docs/development/visual-state-parity-testing.md` — 描画と状態の一致を保証する parity test methodology(reform-2026-05)
 - `docs/development/pr-206-paused.md` — caret↔preview sync の保留判断と仕切り直し方針
+- `docs/development/doc-archival-discipline.md` — RESOLVED な実装 / 設計 / 計画 doc を archive folder に移動して live 件数を継続削減する discipline(Phase 6 / 2026-05-03)
+
+## Doc lifecycle 自己 binding(2026-05-03 reform-2026-05 Phase 6)
+
+「次の選択肢を提示する前」「PR 着地後の followup を提案する前」「autonomously に進む前」の **すべての分岐点** で、以下を必ず実施:
+
+1. `docs/development/feature-requests-2026-04-28-roadmap.md`(8 領域の現状)を grep
+2. `docs/planning/USER_REQUEST_LEDGER.md` §3.6(deferred items + 再評価 trigger)を grep
+3. INDEX LIVE Active feature specs(進行中 spec)を grep
+4. 直近 PR で archive 候補となった doc を確認
+
+grep 結果を要約してから選択肢を提示する。**grep を skip した提示は禁止**。「目立たないところに記録があるかも」が常に成立するため、roadmap re-read 無しの提案は手抜きと見なす(2026-05-03 user 指摘)。
+
+PR 着地時には `docs/development/doc-archival-discipline.md` §6.1 に従い、触った feature の lifecycle を 1 cycle 進める(完了なら archive、部分なら roadmap 追記)。
 
 ## PR Workflow / Review Checklist
 

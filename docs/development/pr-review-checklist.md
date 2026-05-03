@@ -83,6 +83,19 @@ CSS / JS が増減する PR では:
 
 を最終メッセージで明示。Merge そのものは User が GitHub UI で実行する(branch protection を尊重 + 誤 merge による main 破壊回避)。
 
+### 2.9 Roadmap 同期 + archive 検討(2026-05-03 追加)
+
+`docs/development/doc-archival-discipline.md` の Phase 6 discipline。本 PR の対象 feature が:
+
+- (a) 対応する **file-issue / planning doc / development doc** を持つか確認(grep:「該当 feature 名」「該当 spec 名」)
+- (b) 該当 doc が **完了**(spec + src + tests + audit すべて存在)と判定されたら、**同 PR 内で archive sweep**:
+  - `git mv <doc>.md <parent>/archived/<doc>.md`
+  - `<parent>/archived/SUMMARY.md` に 1 行追加
+  - 親 `00_index.md` / 親 INDEX cross-link 更新
+- (c) **未着手 / 部分着地** なら roadmap doc に follow-up を追記、ledger §3.6 deferred items の trigger 状態 update
+
+「実装して PR 出して終わり」ではなく、**触った feature の doc lifecycle を 1 cycle 進める** ことを毎 PR で実施。これを skip した PR は roadmap 同期の負債を生む。
+
 ## 3. PR 作成前のセルフチェック(参考)
 
 PR を作る **前に** やっておくと audit 段階で issue が出にくい:
