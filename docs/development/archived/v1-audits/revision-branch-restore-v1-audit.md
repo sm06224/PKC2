@@ -3,7 +3,7 @@
 Status: FINAL
 Audited: 2026-04-17
 Scope: pure slice + reducer/state slice + UI picker slice（post-UI）
-Contract: [`docs/spec/revision-branch-restore-v1-behavior-contract.md`](../spec/revision-branch-restore-v1-behavior-contract.md)
+Contract: [`docs/spec/revision-branch-restore-v1-behavior-contract.md`](../../../spec/revision-branch-restore-v1-behavior-contract.md)
 
 ---
 
