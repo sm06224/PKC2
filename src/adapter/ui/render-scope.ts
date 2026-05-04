@@ -87,6 +87,7 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
   if (state.storageProfileOpen !== prev.storageProfileOpen) return 'full';
   if (state.shortcutHelpOpen !== prev.shortcutHelpOpen) return 'full';
+  if (state.flagsInspectorOpen !== prev.flagsInspectorOpen) return 'full';
   if (state.todoAddPopover !== prev.todoAddPopover) return 'full';
   if (state.recentEntryRefLids !== prev.recentEntryRefLids) return 'full';
   if (state.textlogSelection !== prev.textlogSelection) return 'full';

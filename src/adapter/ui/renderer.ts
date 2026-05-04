@@ -4,7 +4,7 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFlagsInspector } from './flags-inspector';
-import { getActiveFlagCount as getActiveFlagCountForAbout } from '../../runtime/flags';
+import { getActiveFlagCount as getActiveFlagCountForAbout } from '../flags';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import type { Container } from '../../core/model/container';

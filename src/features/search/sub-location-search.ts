@@ -32,6 +32,7 @@
 import type { Entry } from '../../core/model/record';
 import { makeSlugCounter } from '../markdown/markdown-toc';
 import { parseTextlogBody } from '../textlog/textlog-body';
+import { defineFlag } from '../../core/flags';
 
 /** A single sub-location match inside one entry. */
 export interface SubLocationHit {
@@ -57,7 +58,16 @@ export interface SubLocationHit {
 }
 
 /** Max hits reported per entry. Keeps the sidebar from exploding on high-frequency terms. */
-const DEFAULT_MAX_PER_ENTRY = 5;
+const DEFAULT_MAX_PER_ENTRY = defineFlag<number>(
+  'search.max_results_per_entry',
+  5,
+  {
+    range: [1, 50],
+    category: 'ui',
+    description: '検索 sub-location hit を 1 entry あたり何件まで表示するか',
+    tier: 0,
+  },
+);
 
 const SNIPPET_WIDTH = 80;
 const LABEL_WIDTH = 40;

@@ -6,7 +6,7 @@ import {
   setContainerFlagSource,
   __resetRegistry,
   __resetUrlCache,
-} from '@runtime/flags';
+} from '@adapter/flags';
 
 declare global {
   // eslint-disable-next-line no-var

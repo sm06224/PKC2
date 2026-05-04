@@ -1,6 +1,6 @@
 import type { ArchetypeId } from '../../core/model/record';
 import { ABOUT_LID } from '../../core/model/record';
-import { getRegisteredFlags as getRegisteredFlagsExternal } from '../../runtime/flags';
+import { getRegisteredFlags as getRegisteredFlagsExternal } from '../flags';
 import type { RelationKind } from '../../core/model/relation';
 import { serializeProvenanceMetadataCanonical } from '../../features/provenance';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';

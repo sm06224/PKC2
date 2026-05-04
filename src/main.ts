@@ -88,7 +88,7 @@ import { mergeSystemEntries } from './core/model/container';
 import { SETTINGS_LID } from './core/model/record';
 import { resolveSettingsPayload } from './core/model/system-settings-payload';
 import { resolveFlagsPayload } from './core/model/system-flags-payload';
-import { setContainerFlagSource } from './runtime/flags';
+import { setContainerFlagSource } from './adapter/flags';
 
 /**
  * PKC2 bootstrap.

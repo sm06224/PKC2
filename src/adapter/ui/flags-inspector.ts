@@ -25,7 +25,7 @@
  * `data-pkc-action` event delegation in `action-binder.ts`.
  */
 
-import { getRegisteredFlags, type FlagDescriptor } from '../../runtime/flags';
+import { getRegisteredFlags, type FlagDescriptor } from '../flags';
 import { BUILD_FEATURES } from '../../runtime/release-meta';
 import { MESSAGE_CAPABILITIES } from '../transport/capability';
 
@@ -62,6 +62,10 @@ function badgeForSource(
       return { text: 'CONT', cssClass: 'pkc-flag-source-container' };
     case 'default':
       return { text: 'DEF', cssClass: 'pkc-flag-source-default' };
+    default:
+      // FlagSource is now an open string union (extra providers can
+      // register custom names); fall back to a generic chip.
+      return { text: source.toUpperCase(), cssClass: 'pkc-flag-source-default' };
   }
 }
 
