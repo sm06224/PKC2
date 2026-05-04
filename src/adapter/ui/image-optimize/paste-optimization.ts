@@ -18,8 +18,8 @@
 
 import { classifyIntakeCandidate } from '@features/image-optimize/classifier';
 import {
-  DEFAULT_MAX_LONG_EDGE,
-  DEFAULT_OPTIMIZATION_THRESHOLD,
+  imageMaxLongEdge,
+  imageOptimizeThresholdBytes,
   DEFAULT_OUTPUT_MIME,
   DEFAULT_WEBP_QUALITY,
 } from '@features/image-optimize/config';
@@ -108,8 +108,8 @@ export async function prepareOptimizedIntake(
   options: IntakeOptimizeOptions = {},
 ): Promise<IntakePayload> {
   const quality = options.quality ?? DEFAULT_WEBP_QUALITY;
-  const maxLongEdge = options.maxLongEdge ?? DEFAULT_MAX_LONG_EDGE;
-  const threshold = options.threshold ?? DEFAULT_OPTIMIZATION_THRESHOLD;
+  const maxLongEdge = options.maxLongEdge ?? imageMaxLongEdge();
+  const threshold = options.threshold ?? imageOptimizeThresholdBytes();
   const outputMime = options.outputMime ?? DEFAULT_OUTPUT_MIME;
   const optimizerFn = options.optimizerImpl ?? optimizeImage;
   const alphaFn = options.alphaCheckImpl ?? hasAlphaChannel;

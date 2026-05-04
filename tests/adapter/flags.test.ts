@@ -23,9 +23,9 @@ describe('runtime/flags', () => {
 
   describe('defineFlag', () => {
     it('returns the default when no override is set', () => {
-      expect(defineFlag('test.numeric', 10)).toBe(10);
-      expect(defineFlag('test.bool', false)).toBe(false);
-      expect(defineFlag('test.string', 'auto')).toBe('auto');
+      expect(defineFlag('test.numeric', 10)()).toBe(10);
+      expect(defineFlag('test.bool', false)()).toBe(false);
+      expect(defineFlag('test.string', 'auto')()).toBe('auto');
     });
 
     it('throws on duplicate registration', () => {
@@ -37,13 +37,13 @@ describe('runtime/flags', () => {
       (globalThis as { __PKC_FLAGS_URL__?: Record<string, string> })
         .__PKC_FLAGS_URL__ = { 'test.numeric': '42', 'test.bool': 'true' };
       __resetUrlCache();
-      expect(defineFlag('test.numeric', 10)).toBe(42);
-      expect(defineFlag('test.bool', false)).toBe(true);
+      expect(defineFlag('test.numeric', 10)()).toBe(42);
+      expect(defineFlag('test.bool', false)()).toBe(true);
     });
 
     it('reads container override via setContainerFlagSource', () => {
       setContainerFlagSource({ 'test.numeric': 99 });
-      expect(defineFlag('test.numeric', 10)).toBe(99);
+      expect(defineFlag('test.numeric', 10)()).toBe(99);
     });
 
     it('URL takes precedence over container', () => {
@@ -51,48 +51,59 @@ describe('runtime/flags', () => {
         .__PKC_FLAGS_URL__ = { 'test.numeric': '7' };
       __resetUrlCache();
       setContainerFlagSource({ 'test.numeric': 99 });
-      expect(defineFlag('test.numeric', 10)).toBe(7);
+      expect(defineFlag('test.numeric', 10)()).toBe(7);
     });
 
     it('falls back to default when type mismatches', () => {
       (globalThis as { __PKC_FLAGS_URL__?: Record<string, string> })
         .__PKC_FLAGS_URL__ = { 'test.numeric': 'not-a-number' };
       __resetUrlCache();
-      expect(defineFlag('test.numeric', 10)).toBe(10);
+      expect(defineFlag('test.numeric', 10)()).toBe(10);
     });
 
     it('falls back to default when value out of range', () => {
       setContainerFlagSource({ 'test.bounded': 999 });
-      expect(defineFlag('test.bounded', 10, { range: [1, 100] })).toBe(10);
+      expect(defineFlag('test.bounded', 10, { range: [1, 100] })()).toBe(10);
     });
 
     it('falls back to default when value not in enum', () => {
       setContainerFlagSource({ 'test.enum': 'unknown' });
       expect(
-        defineFlag('test.enum', 'a', { enum: ['a', 'b', 'c'] }),
+        defineFlag('test.enum', 'a', { enum: ['a', 'b', 'c'] })(),
       ).toBe('a');
     });
 
     it('accepts in-range numeric override', () => {
       setContainerFlagSource({ 'test.bounded': 50 });
-      expect(defineFlag('test.bounded', 10, { range: [1, 100] })).toBe(50);
+      expect(defineFlag('test.bounded', 10, { range: [1, 100] })()).toBe(50);
     });
 
     it('accepts enum-listed string override', () => {
       setContainerFlagSource({ 'test.enum': 'b' });
       expect(
-        defineFlag('test.enum', 'a', { enum: ['a', 'b', 'c'] }),
+        defineFlag('test.enum', 'a', { enum: ['a', 'b', 'c'] })(),
       ).toBe('b');
+    });
+
+    it('returned getter is LIVE — sees container source mutations after registration', () => {
+      const get = defineFlag<number>('live.x', 10, { range: [1, 100] });
+      expect(get()).toBe(10);
+      setContainerFlagSource({ 'live.x': 42 });
+      expect(get()).toBe(42);
+      setContainerFlagSource({ 'live.x': 99 });
+      expect(get()).toBe(99);
+      setContainerFlagSource({}); // remove
+      expect(get()).toBe(10);
     });
 
     it('coerces URL string to boolean (true / false / 1 / 0)', () => {
       (globalThis as { __PKC_FLAGS_URL__?: Record<string, string> })
         .__PKC_FLAGS_URL__ = { f1: '1', f2: '0', f3: 'true', f4: 'false' };
       __resetUrlCache();
-      expect(defineFlag('f1', false)).toBe(true);
-      expect(defineFlag('f2', true)).toBe(false);
-      expect(defineFlag('f3', false)).toBe(true);
-      expect(defineFlag('f4', true)).toBe(false);
+      expect(defineFlag('f1', false)()).toBe(true);
+      expect(defineFlag('f2', true)()).toBe(false);
+      expect(defineFlag('f3', false)()).toBe(true);
+      expect(defineFlag('f4', true)()).toBe(false);
     });
   });
 

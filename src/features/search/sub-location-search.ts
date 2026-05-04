@@ -57,8 +57,11 @@ export interface SubLocationHit {
   snippet: string;
 }
 
-/** Max hits reported per entry. Keeps the sidebar from exploding on high-frequency terms. */
-const DEFAULT_MAX_PER_ENTRY = defineFlag<number>(
+/**
+ * Live getter — max hits reported per entry. Keeps the sidebar
+ * from exploding on high-frequency terms. Runtime-configurable.
+ */
+const searchMaxResultsPerEntry = defineFlag<number>(
   'search.max_results_per_entry',
   5,
   {
@@ -90,7 +93,7 @@ const LABEL_WIDTH = 40;
 export function findSubLocationHits(
   entry: Entry,
   query: string,
-  maxPerEntry = DEFAULT_MAX_PER_ENTRY,
+  maxPerEntry = searchMaxResultsPerEntry(),
 ): SubLocationHit[] {
   const trimmed = query.trim();
   if (trimmed === '') return [];

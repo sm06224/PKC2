@@ -18,7 +18,16 @@ import type { Entry } from '../../core/model/record';
 import { isUserEntry } from '../../core/model/record';
 import { defineFlag } from '../../core/flags';
 
-export const RECENT_ENTRIES_DEFAULT_LIMIT = defineFlag<number>(
+/**
+ * Live getter for the Recent pane's default limit. Returns the
+ * current resolved value (URL > Container > default = 10) on every
+ * call, so inspector edits + SET_FLAG dispatches take effect
+ * immediately — no page reload required.
+ *
+ * Exported as a function (not a constant). Call sites destructure
+ * the value at use time: `selectRecentEntries(entries, recentEntriesDefaultLimit())`.
+ */
+export const recentEntriesDefaultLimit = defineFlag<number>(
   'recent.default_limit',
   10,
   {
@@ -28,10 +37,12 @@ export const RECENT_ENTRIES_DEFAULT_LIMIT = defineFlag<number>(
     tier: 0,
   },
 );
+/** @deprecated 2026-05-04: use `recentEntriesDefaultLimit()` for runtime mutability. */
+export const RECENT_ENTRIES_DEFAULT_LIMIT = 10;
 
 export function selectRecentEntries(
   entries: readonly Entry[],
-  limit: number = RECENT_ENTRIES_DEFAULT_LIMIT,
+  limit: number = recentEntriesDefaultLimit(),
 ): Entry[] {
   if (limit <= 0) return [];
   const users = entries.filter(isUserEntry);

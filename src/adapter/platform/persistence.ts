@@ -66,11 +66,13 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
 ]);
 
 /**
- * Persistence debounce interval. Lower values reduce data-loss
- * window after edits at the cost of more frequent IDB writes.
- * Tunable via Flags for PoC / A/B testing.
+ * Live getter — persistence debounce interval. Lower values reduce
+ * data-loss window after edits at the cost of more frequent IDB
+ * writes. Tunable via Flags for PoC / A/B testing. Read fresh on
+ * each scheduleSave so SET_FLAG takes effect from the next save
+ * cycle without a reload.
  */
-const DEBOUNCE_MS = defineFlag<number>('persistence.debounce_ms', 300, {
+const persistenceDebounceMs = defineFlag<number>('persistence.debounce_ms', 300, {
   range: [0, 5000],
   category: 'perf',
   description: '永続化 debounce (ms)。低いほど data-loss window が短いが IDB 書込頻度↑',
@@ -109,7 +111,7 @@ export function mountPersistence(
   dispatcher: Dispatcher,
   options: PersistenceOptions,
 ): PersistenceHandle {
-  const { store, debounceMs = DEBOUNCE_MS, onError } = options;
+  const { store, debounceMs = persistenceDebounceMs(), onError } = options;
   const unloadTarget = options.unloadTarget === undefined
     ? (typeof window !== 'undefined' ? window : null)
     : options.unloadTarget;

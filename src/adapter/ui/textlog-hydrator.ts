@@ -4,11 +4,13 @@ import { isLogSelected } from './textlog-selection';
 import { defineFlag } from '../flags';
 
 /**
- * Number of log articles rendered eagerly on initial mount before
- * the IntersectionObserver kicks in. 8 is the historical default
- * (FI-03 textlog-image-perf v1). Tunable via Flags.
+ * Live getter — number of log articles rendered eagerly on initial
+ * mount before the IntersectionObserver kicks in. 8 is the
+ * historical default (FI-03 textlog-image-perf v1). Tunable via
+ * Flags; called fresh each time the renderer assembles a textlog
+ * doc so SET_FLAG / URL override take effect without a reload.
  */
-export const INITIAL_RENDER_ARTICLE_COUNT = defineFlag<number>(
+export const initialRenderArticleCount = defineFlag<number>(
   'textlog.staged_render.initial_count',
   8,
   {
@@ -21,12 +23,11 @@ export const INITIAL_RENDER_ARTICLE_COUNT = defineFlag<number>(
 );
 
 /**
- * Number of articles to keep "ready" beyond the visible window so a
- * fast scroll lands on already-hydrated content. 4 is the historical
- * default; raising the value reduces flash-of-placeholder at the
- * cost of memory.
+ * Live getter — number of articles to keep "ready" beyond the
+ * visible window so a fast scroll lands on already-hydrated
+ * content. 4 is the historical default.
  */
-export const LOOKAHEAD_ARTICLE_COUNT = defineFlag<number>(
+export const lookaheadArticleCount = defineFlag<number>(
   'textlog.staged_render.lookahead',
   4,
   {
@@ -37,6 +38,11 @@ export const LOOKAHEAD_ARTICLE_COUNT = defineFlag<number>(
     tier: 0,
   },
 );
+
+/** @deprecated 2026-05-04: use `initialRenderArticleCount()` for runtime mutability. */
+export const INITIAL_RENDER_ARTICLE_COUNT = 8;
+/** @deprecated 2026-05-04: use `lookaheadArticleCount()` for runtime mutability. */
+export const LOOKAHEAD_ARTICLE_COUNT = 4;
 
 const PLACEHOLDER_MIN_HEIGHT = 160;
 const IO_ROOT_MARGIN = '400px 0px';
@@ -230,7 +236,7 @@ export function attachHydrator(
       const remaining = docEl.querySelectorAll<HTMLElement>(
         '[data-pkc-hydrated="false"]',
       );
-      if (i >= LOOKAHEAD_ARTICLE_COUNT || remaining.length === 0) return;
+      if (i >= lookaheadArticleCount() || remaining.length === 0) return;
       const ph = remaining[0]!;
       const logId = ph.getAttribute('data-pkc-log-id');
       const ctx = logId ? ctxMap.get(logId) : undefined;

@@ -152,15 +152,28 @@ function resolveValue<T extends FlagPrimitive>(
 }
 
 /**
- * Module-level flag declaration. Returns the resolved value at
- * import time; later mutations of the underlying source require a
- * page reload (documented; UI surfaces `requiresReload` per flag).
+ * Module-level flag declaration. Returns a **live getter** `() => T`
+ * so consumers see the current resolved value at every call —
+ * inspector edits / SET_FLAG dispatches take effect immediately
+ * without a page reload.
+ *
+ * The getter shape is the price of runtime mutability: capturing
+ * the value once at module-import time(`const X = defineFlag(...)`)
+ * looks ergonomic but breaks the contract because the ship spec
+ * promises `requiresReload: false` by default. With a getter,
+ * callers express "I want the live value at THIS moment"
+ * structurally, and the inspector's edit affordance becomes
+ * meaningful for any flag.
+ *
+ * Cost per call: two Map lookups + one validate call (range / enum).
+ * Negligible vs. the dispatch / render path; profile if a hot loop
+ * reads a flag many thousand times per dispatch.
  */
 export function defineFlag<T extends FlagPrimitive>(
   key: string,
   defaultValue: T,
   options: DefineFlagOptions<T> = {},
-): T {
+): () => T {
   if (registry.has(key)) {
     throw new Error(`[PKC2] defineFlag: duplicate registration for key "${key}"`);
   }
@@ -169,8 +182,7 @@ export function defineFlag<T extends FlagPrimitive>(
     defaultValue,
     options: options as DefineFlagOptions<FlagPrimitive>,
   });
-  const { value } = resolveValue(key, defaultValue, options);
-  return value;
+  return () => resolveValue(key, defaultValue, options).value;
 }
 
 /**
