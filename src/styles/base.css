@@ -4052,29 +4052,104 @@ mark.pkc-search-mark {
   transform: scale(0.9);
 }
 
-/* ── Shell Menu (dialog) ── */
-.pkc-shell-menu-overlay {
+/* ─────────────────────────────────────────────────────────────────
+ * Phase 2a (CSS architecture redesign wave, 2026-05-04):
+ * Shared modal-overlay + panel rules.
+ *
+ * The codebase has 7 overlay components that all need a fixed-
+ * position centered-flex container, and they fall into 2 stylistic
+ * families:
+ *
+ *   - Family A (PKC2 accent panel): hostile rgba(0,0,0,0.6) backdrop
+ *     + blur(2px), --c-surface bg, --c-accent border, green glow.
+ *     Used for: shell menu / shortcut help / storage profile /
+ *     flags inspector.
+ *
+ *   - Family B (neutral panel): light rgba(0,0,0,0.35-.4) backdrop,
+ *     --c-bg surface, --c-border outline, drop-shadow.
+ *     Used for: textlog preview / text-to-textlog modal /
+ *     text-replace dialog.
+ *
+ * Below: declarations shared across each family are extracted into
+ * single selector-list rules. Per-component rules keep only the
+ * unique bits (z-index tier, max-width, max-height, etc.).
+ *
+ * See docs/development/css-architecture-audit-2026-05.md §6 Phase 2a.
+ * ───────────────────────────────────────────────────────────────── */
+
+/* Centered fixed-position overlay container — all 7 modals. */
+.pkc-shell-menu-overlay,
+.pkc-flags-inspector-overlay,
+.pkc-shortcut-overlay,
+.pkc-storage-profile-overlay,
+.pkc-textlog-preview-overlay,
+.pkc-text-to-textlog-overlay,
+.pkc-text-replace-overlay {
   position: fixed;
   inset: 0;
-  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.6);
+}
+
+/* Family A backdrop — opaque + blurred, on the overlay container itself
+ * (flags-inspector exception: backdrop is a separate child element so
+ * its own .pkc-flags-inspector-backdrop carries the bg/blur). */
+.pkc-shell-menu-overlay,
+.pkc-shortcut-overlay,
+.pkc-storage-profile-overlay {
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(2px);
+}
+
+/* Family B backdrop — light dimming, no blur. */
+.pkc-textlog-preview-overlay,
+.pkc-text-to-textlog-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+.pkc-text-replace-overlay {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Family A panel — accent surface + green glow. */
+.pkc-shell-menu-card,
+.pkc-flags-inspector-panel,
+.pkc-shortcut-card,
+.pkc-storage-profile-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51, 255, 102, 0.1);
+}
+
+/* Family B panel — neutral surface + drop shadow. */
+.pkc-textlog-preview-panel,
+.pkc-text-to-textlog-panel,
+.pkc-text-replace-card {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Shell Menu (dialog) ── */
+.pkc-shell-menu-overlay {
+  z-index: 20000;
 }
 
 /* ── Flags Inspector overlay (PR-β-2) ──
    Reuses the shell-menu modal pattern for consistency. Sits at a
    higher z-index than the shell menu so a flags-link click that
-   reaches into the shell menu still surfaces above. */
+   reaches into the shell menu still surfaces above.
+   Common position/inset/flex centering hoisted to the shared
+   selector list above (Phase 2a). */
 .pkc-flags-inspector-overlay {
-  position: fixed;
-  inset: 0;
   z-index: 21000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .pkc-flags-inspector-backdrop {
   position: absolute;
@@ -4085,10 +4160,8 @@ mark.pkc-search-mark {
 }
 .pkc-flags-inspector-panel {
   position: relative;
-  background: var(--c-surface);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  /* Family A surface (bg / border / radius / glow shadow) is hoisted
+     to the shared selector list above (Phase 2a). */
   padding: var(--space-5);
   max-width: 720px;
   width: 92%;
@@ -4295,10 +4368,7 @@ mark.pkc-search-mark {
 .pkc-about-flags-summary:hover { color: var(--c-fg); }
 
 .pkc-shell-menu-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  /* Family A surface hoisted to shared list (Phase 2a). */
   padding: 1.5rem;
   max-width: 360px;
   width: 90%;
@@ -4468,21 +4538,11 @@ mark.pkc-search-mark {
 
 /* ── Shortcut Help Overlay ── */
 .pkc-shortcut-overlay {
-  position: fixed;
-  inset: 0;
   z-index: 20000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(2px);
 }
 
 .pkc-shortcut-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  /* Family A surface hoisted to shared list (Phase 2a). */
   padding: 1.5rem;
   max-width: 400px;
   width: 90%;
@@ -4538,21 +4598,11 @@ mark.pkc-search-mark {
 
 /* ── Storage Profile Dialog ── */
 .pkc-storage-profile-overlay {
-  position: fixed;
-  inset: 0;
   z-index: 20010;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(2px);
 }
 
 .pkc-storage-profile-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  /* Family A surface hoisted to shared list (Phase 2a). */
   padding: 1.5rem;
   max-width: 520px;
   width: 92%;
@@ -5915,28 +5965,14 @@ mark.pkc-search-mark {
 /* Preview modal for TEXTLOG → TEXT. */
 
 .pkc-textlog-preview-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   /* Overlay tier — above attachment sandbox previews (10000). */
   z-index: 20000;
 }
 
 .pkc-textlog-preview-panel {
-  background: var(--c-bg);
-  color: var(--c-fg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius);
-  padding: var(--space-5);
+  /* Family B surface hoisted to shared list (Phase 2a). */
   width: min(48rem, 92vw);
   max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
 }
 
 .pkc-textlog-preview-heading {
@@ -5983,28 +6019,14 @@ mark.pkc-search-mark {
 /* Slice 5: Preview modal for TEXT → TEXTLOG. */
 
 .pkc-text-to-textlog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   /* Overlay tier — above attachment sandbox previews (10000). */
   z-index: 20000;
 }
 
 .pkc-text-to-textlog-panel {
-  background: var(--c-bg);
-  color: var(--c-fg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius);
-  padding: var(--space-5);
+  /* Family B surface hoisted to shared list (Phase 2a). */
   width: min(48rem, 92vw);
   max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
 }
 
 .pkc-text-to-textlog-heading {
@@ -6251,26 +6273,12 @@ mark.pkc-search-mark {
  * Mirrors the overlay/card tier used by .pkc-text-to-textlog-*.
  */
 .pkc-text-replace-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 20000;
 }
 
 .pkc-text-replace-card {
-  background: var(--c-bg);
-  color: var(--c-fg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius);
-  padding: var(--space-5);
+  /* Family B surface hoisted to shared list (Phase 2a). */
   width: min(28rem, 92vw);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
 }
 
 .pkc-text-replace-title {
