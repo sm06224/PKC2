@@ -4046,7 +4046,7 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       editBtn.textContent = '✏️ Edit';
       bar.appendChild(editBtn);
 
-      const deleteBtn = createElement('button', 'pkc-btn-danger');
+      const deleteBtn = createElement('button', 'pkc-btn pkc-btn-danger');
       deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
       deleteBtn.setAttribute('data-pkc-lid', entry.lid);
       deleteBtn.setAttribute('title', 'Delete this entry permanently');
@@ -5518,7 +5518,7 @@ function renderImportConfirmation(
 
   const actions = createElement('div', 'pkc-import-actions');
 
-  const confirmBtn = createElement('button', 'pkc-btn-danger');
+  const confirmBtn = createElement('button', 'pkc-btn pkc-btn-danger');
   if (mode === 'merge') {
     confirmBtn.setAttribute('data-pkc-action', 'confirm-merge-import');
     confirmBtn.textContent = 'Merge & Import';
