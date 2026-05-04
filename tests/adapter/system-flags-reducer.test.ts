@@ -207,8 +207,8 @@ describe('system-flags reducer', () => {
     });
   });
 
-  describe('I-FLAGS-2: direct UPDATE_ENTRY on __flags__ rejected', () => {
-    it('UPDATE_ENTRY on FLAGS_LID is blocked by reserved-lid gate', () => {
+  describe('I-FLAGS-2: direct user edit on __flags__ rejected', () => {
+    it('BEGIN_EDIT on FLAGS_LID is blocked by reserved-lid gate', () => {
       const flagsEntry = mkEntry(FLAGS_LID, {
         archetype: 'system-flags',
         body: JSON.stringify({
@@ -218,20 +218,39 @@ describe('system-flags reducer', () => {
         }),
       });
       const initial = stateWith(mkContainer([flagsEntry]));
-      // Attempt direct edit via UPDATE_ENTRY — should be rejected
-      // by the existing isReservedLid gate (matches __settings__).
+      // Attempt to start editing __flags__ directly. The existing
+      // isReservedLid gate (matches __settings__ / __about__) rejects
+      // BEGIN_EDIT before the editor can mutate the body. SET_FLAG
+      // is the only sanctioned write path for __flags__ contents.
       const { state } = reduce(initial, {
-        type: 'UPDATE_ENTRY',
+        type: 'BEGIN_EDIT',
         lid: FLAGS_LID,
-        title: 'Hacked',
-        body: 'malicious',
       });
+      // Phase did not transition into 'editing' (gate blocked).
+      expect(state.phase).toBe('ready');
+      expect(state.editingLid).toBeNull();
+      // Body still intact.
       const stillThere = state.container!.entries.find(
         (e) => e.lid === FLAGS_LID,
       )!;
-      // Body unchanged (UPDATE_ENTRY rejected)
       expect(stillThere.body).toBe(flagsEntry.body);
-      expect(stillThere.title).not.toBe('Hacked');
+    });
+
+    it('DELETE_ENTRY on FLAGS_LID is blocked by reserved-lid gate', () => {
+      const flagsEntry = mkEntry(FLAGS_LID, {
+        archetype: 'system-flags',
+        body: '{}',
+      });
+      const initial = stateWith(mkContainer([flagsEntry, mkEntry('e1')]));
+      const { state } = reduce(initial, {
+        type: 'DELETE_ENTRY',
+        lid: FLAGS_LID,
+      });
+      // Entry must still exist (delete blocked).
+      const stillThere = state.container!.entries.find(
+        (e) => e.lid === FLAGS_LID,
+      );
+      expect(stillThere).toBeDefined();
     });
   });
 });
