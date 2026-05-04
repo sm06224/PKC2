@@ -2780,32 +2780,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
         break;
       }
-      case 'set-flag-boolean': {
-        const key = target.getAttribute('data-pkc-key');
-        if (!key || !(target instanceof HTMLInputElement)) break;
-        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.checked });
-        break;
-      }
-      case 'set-flag-numeric': {
-        const key = target.getAttribute('data-pkc-key');
-        if (!key || !(target instanceof HTMLInputElement)) break;
-        const n = Number(target.value);
-        if (!Number.isFinite(n)) break;
-        dispatcher.dispatch({ type: 'SET_FLAG', key, value: n });
-        break;
-      }
-      case 'set-flag-string': {
-        const key = target.getAttribute('data-pkc-key');
-        if (!key || !(target instanceof HTMLInputElement)) break;
-        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
-        break;
-      }
-      case 'set-flag-enum': {
-        const key = target.getAttribute('data-pkc-key');
-        if (!key || !(target instanceof HTMLSelectElement)) break;
-        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
-        break;
-      }
+      // set-flag-boolean / -numeric / -string / -enum live in
+      // handleChange (input / select fire `change` on commit, not
+      // `click`). Click-handled paths kept here are only the
+      // mutation actions that don't depend on the input's typed
+      // value (reset / reset-all).
       case 'reset-flag': {
         const key = target.getAttribute('data-pkc-key');
         if (!key) break;
@@ -4407,6 +4386,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Bulk move via select dropdown
     const action = target.getAttribute('data-pkc-action');
+
+    // Flags Protocol v1 (PR-β-2): inspector edit affordances fire
+    // `change` (checkbox toggle, select pick, input commit) — not
+    // `click`. Reads the typed value from the target and dispatches
+    // SET_FLAG with the key carried by `data-pkc-key`.
+    if (action === 'set-flag-boolean') {
+      const key = target.getAttribute('data-pkc-key');
+      if (key && target instanceof HTMLInputElement) {
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.checked });
+      }
+      return;
+    }
+    if (action === 'set-flag-numeric') {
+      const key = target.getAttribute('data-pkc-key');
+      if (key && target instanceof HTMLInputElement) {
+        const n = Number(target.value);
+        if (Number.isFinite(n)) {
+          dispatcher.dispatch({ type: 'SET_FLAG', key, value: n });
+        }
+      }
+      return;
+    }
+    if (action === 'set-flag-string') {
+      const key = target.getAttribute('data-pkc-key');
+      if (key && target instanceof HTMLInputElement) {
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
+      }
+      return;
+    }
+    if (action === 'set-flag-enum') {
+      const key = target.getAttribute('data-pkc-key');
+      if (key && target instanceof HTMLSelectElement) {
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
+      }
+      return;
+    }
 
     // v1 relation-kind inline edit. The <select> carries the relation id
     // on itself; dispatch UPDATE_RELATION_KIND on change. Reducer blocks
