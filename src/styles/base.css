@@ -247,7 +247,7 @@
 .pkc-idb-warning-dismiss {
   all: unset;
   cursor: pointer;
-  padding: 0.var(--space-5) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: 1.1rem;
   line-height: 1;
   border-radius: var(--radius-sm);
@@ -270,7 +270,7 @@
 .pkc-idb-warning-action {
   all: unset;
   cursor: pointer;
-  padding: 0.var(--space-5) 0.55rem;
+  padding: var(--space-1) 0.55rem;
   font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.2;
@@ -384,7 +384,7 @@
 .pkc-toast-action {
   all: unset;
   cursor: pointer;
-  padding: 0.var(--space-5) 0.55rem;
+  padding: var(--space-1) 0.55rem;
   font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.2;
@@ -459,7 +459,7 @@
 
 .pkc-btn-create {
   font-size: 0.7rem;
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
 }
 
 /* ── Readonly badge ── */
@@ -673,7 +673,7 @@
 .pkc-archetype-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.var(--space-5);
+  gap: var(--space-1);
   padding: var(--space-1-5) var(--space-2-5);
   border-bottom: 1px solid var(--c-border);
 }
@@ -769,7 +769,7 @@
 .pkc-sort-select {
   flex: 1;
   font-size: 0.65rem;
-  padding: 0.var(--space-5) var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -911,7 +911,7 @@
 
 .pkc-entry-tag-input {
   font-size: 0.7rem;
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -1281,13 +1281,13 @@
   font-weight: 600;
   color: var(--c-accent-fg);
   background: var(--c-accent);
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
   border-radius: var(--radius);
 }
 
 .pkc-multi-action-move {
   font-size: 0.65rem;
-  padding: 0.var(--space-5) var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -1297,7 +1297,7 @@
 
 .pkc-multi-action-date {
   font-size: 0.65rem;
-  padding: 0.var(--space-5) var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -2367,7 +2367,7 @@ mark.pkc-search-mark {
   display: block;
   width: 100%;
   cursor: pointer;
-  padding: 0.var(--space-5) var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
   font-size: 0.75rem;
   color: var(--c-text, inherit);
   text-align: left;
@@ -2430,9 +2430,9 @@ mark.pkc-search-mark {
 .pkc-tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.var(--space-5);
+  gap: var(--space-1);
   padding: 0.05rem var(--space-2-5);
-  margin: 0.var(--space-5) 0.05rem;
+  margin: var(--space-1) 0.05rem;
   border-radius: var(--radius);
   background: var(--c-border);
   border: 1px solid var(--c-border);
@@ -2461,7 +2461,7 @@ mark.pkc-search-mark {
   cursor: pointer;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0 0.var(--space-5);
+  padding: 0 var(--space-1);
 }
 
 .pkc-tag-remove:hover {
@@ -2477,7 +2477,7 @@ mark.pkc-search-mark {
 
 .pkc-tag-select {
   font-size: 0.7rem;
-  padding: 0.var(--space-5) var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -2520,7 +2520,7 @@ mark.pkc-search-mark {
   font-size: 0.7rem;
   color: var(--c-muted);
   margin-bottom: var(--space-2-5);
-  padding-left: 0.var(--space-5);
+  padding-left: var(--space-1);
 }
 
 .pkc-references-summary-sep {
@@ -2687,8 +2687,8 @@ mark.pkc-search-mark {
 .pkc-provenance-metadata-list {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.var(--space-5) var(--space-3);
-  margin: var(--space-2) 0 0.var(--space-5) var(--space-5);
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 var(--space-1) var(--space-5);
   padding: var(--space-2) var(--space-2-5);
   font-size: 0.7rem;
   background: var(--c-surface);
@@ -2715,7 +2715,7 @@ mark.pkc-search-mark {
  * [data-pkc-copy-status="copied"]. See
  * docs/development/provenance-metadata-copy-export-v1.md. */
 .pkc-provenance-metadata-copy-row {
-  margin: var(--space-2-5) 0 0.var(--space-5) var(--space-5);
+  margin: var(--space-2-5) 0 var(--space-1) var(--space-5);
   display: flex;
   justify-content: flex-end;
 }
@@ -2727,7 +2727,7 @@ mark.pkc-search-mark {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
   cursor: pointer;
   line-height: 1.2;
 }
@@ -3183,7 +3183,7 @@ mark.pkc-search-mark {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.var(--space-5);
+  gap: var(--space-1);
   font-size: 0.75rem;
   color: var(--c-muted);
   margin-bottom: var(--space-3);
@@ -3491,7 +3491,7 @@ mark.pkc-search-mark {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
-  padding: 0.var(--space-5) 0;
+  padding: var(--space-1) 0;
   cursor: pointer;
   font-size: 0.7rem;
 }
@@ -3532,7 +3532,7 @@ mark.pkc-search-mark {
   color: var(--c-fg);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
   font-size: 0.7rem;
   font-family: var(--font-mono);
 }
@@ -5015,7 +5015,7 @@ mark.pkc-search-mark {
 .pkc-calendar-add-popover {
   display: flex;
   flex-direction: column;
-  gap: 0.var(--space-5);
+  gap: var(--space-1);
   margin-top: var(--space-1-5);
   padding: var(--space-2) var(--space-2-5);
   border: 1px solid var(--c-border);
@@ -5052,7 +5052,7 @@ mark.pkc-search-mark {
 .pkc-calendar-todo-item {
   font-size: 0.65rem;
   font-family: var(--font-sans);
-  padding: 0.var(--space-5) var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
   border-radius: 2px;
   background: rgba(51,255,102,0.08);
   color: var(--c-fg);
@@ -5202,7 +5202,7 @@ mark.pkc-search-mark {
   color: var(--c-fg);
   border: none;
   outline: none;
-  padding: 0.var(--space-5) 0;
+  padding: var(--space-1) 0;
 }
 .pkc-kanban-add-hint {
   font-family: var(--font-mono);
@@ -5782,7 +5782,7 @@ mark.pkc-search-mark {
   font-size: 0.75rem;
   font-family: var(--font-mono);
   white-space: nowrap;
-  padding-top: 0.var(--space-5);
+  padding-top: var(--space-1);
   cursor: help;
 }
 
@@ -6126,7 +6126,7 @@ mark.pkc-search-mark {
 
 .pkc-textlog-delete-btn {
   font-size: 0.7rem;
-  padding: 0.var(--space-5) var(--space-2-5);
+  padding: var(--space-1) var(--space-2-5);
   color: var(--c-danger, #ff4444);
 }
 
