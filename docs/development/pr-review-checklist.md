@@ -106,6 +106,47 @@ CSS / JS が増減する PR では:
 
 CHANGELOG 更新を skip した PR は About entry に反映されないため、user / 別 Claude が release context を失う。Phase 6 doc archival discipline と同列の継続活動として扱う。
 
+### 2.11 順序性テスト(2026-05-04 追加、Phase 8 / runtime mutability の bug 学習)
+
+**動的機構**(flag / setting / event 連携 / dispatch + 副作用 など、**state 変化が consumer の挙動を変える** すべての種類の機能)を含む PR では、**state mutation → consumer behavior change** の **end-to-end 順序性 parity test** を必須化する。
+
+#### 必要となる状況
+
+PR が以下に該当する場合は確認:
+- 新しい `defineFlag` を導入 / consumer を flag 化
+- `__settings__` / `__about__` / `__flags__` 等 system entry の reducer 経由 mutation を扱う
+- AppState field を新規追加し、それを consumer (renderer / action-binder / persistence)が読む
+- subscribe / event emit pattern を新設(dispatcher.onState / onEvent)
+- URL flag / localStorage 等の boot-time state 注入経路を追加
+
+#### 必須 verify 項目
+
+1. **State mutation が成立**:reducer / persister / boot 経路で state field が変わる(これは既存の DOM attribute parity test で確認済の「source flips」レベル)
+2. **Consumer が新値を観測**:再 render / next dispatch / next save サイクルで consumer が新値を読む(**これが従来抜けていた**)
+3. **End-to-end 観測点が user-visible**:DOM 数値 / 表示要素数 / 副作用(IDB write / file download)等、**user が実機で見て分かる観測点** で assert
+4. **Reload なしで効果が出る**(`requiresReload: false` 既定の場合):flag 変更 → consumer 挙動変化が **同 page session 内** で確認できる
+
+#### 例(参考実装)
+
+`tests/smoke/flags-runtime-effect-parity.spec.ts`(2026-05-04 着地、defineFlag live getter bug fix の regression guard):
+- URL `?pkc-flag=recent.default_limit=5` boot で Recent pane が **5 行表示**(URL → consumer)
+- inspector で flag を 3 に変更 → reload なしで Recent pane が **3 行に更新**(inspector edit → consumer)
+
+旧 parity test(`flags-inspector-parity.spec.ts`)は `data-pkc-source` 属性遷移のみ verify していて consumer 挙動を見ていなかったため、import-time-capture bug を検知できなかった。これが本 doctrine の起源。
+
+#### 言い換え:user 実機テスト省略の前提
+
+> 今後は実機テストを省略するので、完璧なテストは君が保証してください(2026-05-04 user direction)
+
+Claude 側で **boot → action → consumer 観測の鎖を全件 covered** であることを保証する。このルールを skip した PR は user direction 違反扱い。
+
+#### Reform-2026-05 doctrine との整合
+
+- §6 visual-state-parity-testing(reform-2026-05): pixel が見えるか(描画と状態の一致)
+- §2.11 順序性テスト(本節): 値が consumer を通じて user-visible 観測点に到達するか(動的機構の鎖)
+
+**両者を AND で必須化**する。
+
 ## 3. PR 作成前のセルフチェック(参考)
 
 PR を作る **前に** やっておくと audit 段階で issue が出にくい:
