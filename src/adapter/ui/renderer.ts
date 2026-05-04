@@ -6347,11 +6347,25 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   // Release summary(v2.1.0+、additive):highlights + known
   // limitations を About に表示して、配布 HTML だけでも「この
   // バージョンで何が入っていて、何が未実装か」が分かるようにする。
-  // 詳細は CHANGELOG_v<ver>.md に誘導。about payload に release
-  // block が無い(旧 export / dev build で RELEASE_SUMMARY 未登録)
-  // 場合は section 自体を省略する。
-  const releaseBlock = renderAboutRelease(payload.release);
-  if (releaseBlock) container.appendChild(releaseBlock);
+  // v2.2.0+ は payload.releases (newest-first 最新 3 generations、
+  // CHANGELOG パーサが populate) を優先表示。旧 export(v2.1.x まで)
+  // は payload.releases が無く payload.release(単一)のみ持つので
+  // backward-compat で 1 件 array に正規化。
+  const releaseEntries: Array<{
+    version?: string;
+    highlights: string[];
+    knownLimitations: string[];
+    changelog?: string;
+  }> =
+    payload.releases && payload.releases.length > 0
+      ? payload.releases
+      : payload.release
+        ? [payload.release]
+        : [];
+  for (const r of releaseEntries) {
+    const releaseBlock = renderAboutRelease(r);
+    if (releaseBlock) container.appendChild(releaseBlock);
+  }
 
   container.appendChild(renderAboutCredits(
     { name: payload.author.name, role: payload.author.role, url: payload.author.url },
@@ -6380,7 +6394,12 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
  * between tagged versions) so the caller can skip the whole section.
  */
 function renderAboutRelease(
-  release: { highlights: string[]; knownLimitations: string[]; changelog?: string } | undefined,
+  release: {
+    version?: string;
+    highlights: string[];
+    knownLimitations: string[];
+    changelog?: string;
+  } | undefined,
 ): HTMLElement | null {
   if (!release) return null;
   if (release.highlights.length === 0 && release.knownLimitations.length === 0) {
@@ -6388,9 +6407,15 @@ function renderAboutRelease(
   }
   const section = createElement('section', 'pkc-about-release');
   section.setAttribute('data-pkc-region', 'about-release');
+  if (release.version) {
+    section.setAttribute('data-pkc-release-version', release.version);
+  }
 
   const heading = createElement('h2', 'pkc-about-section-heading');
-  heading.textContent = 'Release';
+  // v2.2.0+ — annotate the section heading with the version so the
+  // 3-generation stack is self-labelling. Falls back to the bare
+  // 'Release' string for legacy exports without a version.
+  heading.textContent = release.version ? `Release v${release.version}` : 'Release';
   section.appendChild(heading);
 
   if (release.highlights.length > 0) {

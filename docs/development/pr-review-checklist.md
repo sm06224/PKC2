@@ -96,6 +96,16 @@ CSS / JS が増減する PR では:
 
 「実装して PR 出して終わり」ではなく、**触った feature の doc lifecycle を 1 cycle 進める** ことを毎 PR で実施。これを skip した PR は roadmap 同期の負債を生む。
 
+### 2.10 CHANGELOG 更新(2026-05-04 追加、v2.2.0+)
+
+`docs/release/CHANGELOG_v<current>.md` は About entry の自動取込元(build 時に parse、最新 3 generations を表示)。**feature PR / fix PR の着地時に必ず該当 generation の CHANGELOG に 1 行追記**:
+
+- (a) 既存の `CHANGELOG_v<current>.md` がある場合 → 該当 section(Highlights / Known Limitations / etc)に bullet 1 行追記
+- (b) **新リリースの初手**(version bump 時) → `CHANGELOG_v<new>.md` を新規起こし。`docs/release/CHANGELOG_v2.2.0.md` を canonical example として模倣
+- (c) `package.json` の `version` を semver で bump(additive feature → minor、bug fix → patch、breaking → major)
+
+CHANGELOG 更新を skip した PR は About entry に反映されないため、user / 別 Claude が release context を失う。Phase 6 doc archival discipline と同列の継続活動として扱う。
+
 ## 3. PR 作成前のセルフチェック(参考)
 
 PR を作る **前に** やっておくと audit 段階で issue が出にくい:
