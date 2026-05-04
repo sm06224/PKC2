@@ -4,7 +4,11 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFlagsInspector } from './flags-inspector';
-import { getActiveFlagCount as getActiveFlagCountForAbout } from '../flags';
+import {
+  getActiveFlagCount as getActiveFlagCountForAbout,
+  setContainerFlagSource as setFlagsInspectorContainerSource,
+} from '../flags';
+import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import type { Container } from '../../core/model/container';
@@ -408,6 +412,19 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // boot / error). Shell-menu link, settings dialog, and URL flag
   // `?pkc-flag=*` all dispatch OPEN_FLAGS_INSPECTOR.
   if (state.flagsInspectorOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
+    // Prime the runtime flag registry's container source from the
+    // current `__flags__` entry before mounting. dispatcher.onState
+    // (which drives this render path) fires BEFORE dispatcher.onEvent
+    // (where main.ts normally pushes FLAGS_CHANGED into the
+    // registry), so the first render after SET_FLAG / RESET_FLAG
+    // would otherwise see a stale containerSource and surface
+    // source='default' for a value that's actually persisted in the
+    // entry. Re-priming here closes that race without the renderer
+    // needing to wait for the event loop.
+    const flagsEntry = state.container?.entries.find(
+      (e) => e.lid === '__flags__' && e.archetype === 'system-flags',
+    );
+    setFlagsInspectorContainerSource(resolveFlagsPayload(flagsEntry?.body).values);
     root.appendChild(renderFlagsInspector());
   }
 
