@@ -289,7 +289,18 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - bundle.css raw 113.26 → 116.08 KB(+2.82 KB、binary 1024)/ gzip 17.74 → 17.96 KB(+0.22 KB)。実測 +2884 bytes は予測値(`var(--space-X)` 14 chars - `0.5rem` 6 chars = +8 chars × 306 occurrence + `--space-*` 8 行宣言 ~440 bytes ≈ +2.88 KB)とほぼ一致。重複削減は Phase 2(overlay base + button utility-first)で吸収予定
   - 旧 `tests/styles/textlog-viewer.test.ts` の 2 件 hardcoded match を `var(--space-3)` に追従
   - `0.35rem` (75) / `0.4rem` (69) / `0.3rem` (52) / `0.2rem` (41) / `0.15rem` (41) などの outlier は scale に乗らない → Phase 1a-tail で別 PR にて round + clean-up
-- **Phase 1b**:`--font-size-{xs,sm,base,md,lg,xl}` を導入、6 段階に丸め。inline font-size を migrate
+- **Phase 1a-tail ✅(2026-05-04 着地、PR #243、stacked on #242)**:half-step token 2 つを追加して outlier 5 値を migrate:
+  - **新規 token**:`--space-1-5: 0.1875rem` (3px) / `--space-2-5: 0.375rem` (6px)
+  - `0.15rem` → `var(--space-1-5)`(2.4 → 3px、+0.6px)
+  - `0.2rem` → `var(--space-1-5)`(3.2 → 3px、-0.2px)
+  - `0.3rem` → `var(--space-2-5)`(4.8 → 6px、+1.2px、最大 shift)
+  - `0.35rem` → `var(--space-2-5)`(5.6 → 6px、+0.4px)
+  - `0.4rem` → `var(--space-2-5)`(6.4 → 6px、-0.4px)
+  - 計 272 occurrence migrate(255 行 Python script + 1 multi-property single-line manual = 256 行変更)
+  - 残 6 occurrence は font-size: 0.35rem 等の非 spacing context、token 化対象外で正常
+  - bundle.css raw 116.08 → 118.98 KB(+2.91 KB、binary 1024)、累計 main からは +5.72 KB
+  - **budget headroom 警告**:bundle.css 99.2% / 120 KB、Phase 1b(font-size scale ~+1.9 KB 想定)を入れる前に **Phase 2(overlay base + button utility-first)で重複削減** して budget 回復が必要
+- **Phase 1b**:`--font-size-{xs,sm,base,md,lg,xl}` を導入、6 段階に丸め。inline font-size を migrate(**Phase 2 完了後に着手**、budget 回復前提)
 - **Phase 1c**:`--radius-{sm,md,lg,pill,circle}` に拡張、3 → 5 段階に整理
 
 各 sub-PR の test plan:
