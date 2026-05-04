@@ -125,9 +125,17 @@ describe('TOC light-mode readability', () => {
     // ends at the next `{` before reaching for the body. We still
     // pin the canonical `#9ab37e` against any `:root`-rooted block
     // that holds `--c-toc-secondary`.
-    const rootBlock = baseCss.match(/:root[^{]*\{[\s\S]*?\n\}/);
-    expect(rootBlock).not.toBeNull();
-    expect(rootBlock![0]).toMatch(/--c-toc-secondary:\s*#9ab37e/);
+    //
+    // Phase 3a (2026-05-04): a new `:root { font-size: calc(...) }`
+    // block was added at the top of base.css for the runtime UI
+    // scale multiplier. The non-greedy regex previously matched
+    // that first block and missed the dark-theme block. Now we
+    // match all `:root`-rooted blocks and assert that AT LEAST ONE
+    // carries the canonical color.
+    const rootBlocks = baseCss.match(/:root[^{]*\{[\s\S]*?\n\}/g);
+    expect(rootBlocks).not.toBeNull();
+    const concatenated = (rootBlocks ?? []).join('\n');
+    expect(concatenated).toMatch(/--c-toc-secondary:\s*#9ab37e/);
   });
 
   it('manual dark theme (#pkc-root[data-pkc-theme="dark"]) defines --c-toc-secondary: #9ab37e', () => {

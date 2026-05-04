@@ -345,8 +345,19 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
 
 ### Phase 3 — Runtime adaptive axes(2 PR)
 
-- **Phase 3a**: `theme.spacing_scale` / `theme.font_scale` / `theme.radius_scale` を defineFlag に追加(Tier 0)、boot + FLAGS_CHANGED で `--theme-*-multiplier` を `:root` に cascade。CSS rules を `calc(var(--space-X) * var(--theme-spacing-multiplier))` に切り替え
-- **Phase 3b**: `pointer:coarse` / `(max-width)` で `--theme-*-multiplier` の default を device-class 別に override(mobile では 0.9、desktop では 1.0 など)
+- **Phase 3a ✅(2026-05-04 着地、PR #250)**:scale flag → CSS var multiplier pipeline。
+  - **新規 flag**:`theme.scale`(Tier 0、range 0.5〜2.0、default 1.0、category ui)
+  - **新規 module**:`src/adapter/ui/theme-scale.ts` — defineFlag + `applyThemeScale()` function
+  - **CSS pipeline**:`:root { font-size: calc(16px * var(--theme-scale, 1)) }` を base.css 先頭に追加。`var()` の fallback `1` で JS init 前の resting state も保証
+  - **wiring**:(1) renderer.ts `applySystemSettings` で applyThemeScale を呼出(全 render path)、(2) main.ts FLAGS_CHANGED handler に追加(setContainerFlagSource の直後で priming race を回避)、(3) main.ts boot path の setContainerFlagSource 直後にも追加(初回 render の one-frame flash 防止)
+  - **影響範囲**:rem-based 全 token(`--space-*` / `--fs-*` 計 21 token)が連動 scale。radius scale (px-based) は対象外、Phase 3b で別 flag (`theme.radius_scale`) 検討
+  - **Phase 8 順序性 parity test**:`tests/smoke/theme-scale-parity.spec.ts`(NEW)で end-to-end 確認 — inspector で theme.scale=1.5 編集 → root font-size 16px → 24px、panel padding 16px → 24px、reset で 16px に snap back
+  - **inspector parity test 更新**:flag count 20 → 21、numeric flag bulk-edit test に「halve 結果が currentVal と同じなら +1」fallback 追加(theme.scale default=1.0 で halving が no-op になる edge case)
+  - bundle.css 122,087 → 122,138 bytes(+51 bytes)、bundle.js +0.4 KB(theme-scale.ts module)、計 ~+0.45 KB
+  - **累計 main 起点 +6.41 KB**
+  - unit 6259 / 6259、smoke 40 / 40 pass
+
+- **Phase 3b**:`pointer:coarse` / `(max-width)` で `--theme-scale` の default を device-class 別に override(mobile では 0.9、desktop では 1.0 など)+ `theme.radius_scale` の追加検討
 
 ### Phase 4 — Per-archetype palette(オプション、要 user 議論)
 

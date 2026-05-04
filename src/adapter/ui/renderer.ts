@@ -4,6 +4,7 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFlagsInspector } from './flags-inspector';
+import { applyThemeScale } from './theme-scale';
 import {
   getActiveFlagCount as getActiveFlagCountForAbout,
   setContainerFlagSource as setFlagsInspectorContainerSource,
@@ -231,6 +232,12 @@ function applySystemSettings(
       document.documentElement.setAttribute('lang', 'ja');
     }
   }
+
+  // Phase 3a — runtime UI scale multiplier. Pushes `theme.scale`
+  // flag value into `--theme-scale` CSS variable on <html>, which
+  // base.css `:root { font-size: calc(16px * var(--theme-scale, 1)) }`
+  // multiplies into all rem-based tokens (--space-*, --fs-*).
+  applyThemeScale();
 }
 
 function archetypeLabel(archetype: ArchetypeId): string {

@@ -36,7 +36,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   const panel = overlay.locator('[data-pkc-region="flags-inspector-panel"]');
   await expect(panel).toBeVisible();
 
-  // 20 Tier 0 defineFlag entries after PR-γ wave 2 migration:
+  // 21 Tier 0 defineFlag entries:
   //   wave 1 (7): recent.default_limit / textlog.staged_render.{initial_count,lookahead}
   //               / persistence.debounce_ms / image.{max_long_edge,optimize_threshold_bytes}
   //               / search.max_results_per_entry
@@ -44,8 +44,9 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //               / card.excerpt.max_chars / storage.{warn_low_bytes,warn_critical_bytes}
   //               / touch.tap_threshold_px / textlog.placeholder.min_height_px
   //               / attachment.{warn_soft_bytes,warn_heavy_bytes,reject_hard_bytes}
+  //   Phase 3a (1): theme.scale (runtime UI multiplier)
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(20, { timeout: 5_000 });
+  await expect(rows).toHaveCount(21, { timeout: 5_000 });
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -283,7 +284,7 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  expect(snap.rowCount).toBe(20);
+  expect(snap.rowCount).toBe(21);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);
@@ -349,7 +350,15 @@ test('every Tier 0 numeric flag edits via real keyboard input → __flags__ sour
     // browser's input handling.
     await input.click({ clickCount: 3 });
     const currentVal = await input.inputValue();
-    const newVal = String(Math.max(1, Math.floor(Number(currentVal) / 2)));
+    // Choose a new value that's GUARANTEED to differ from the current
+    // value, so the SET_FLAG dispatch actually fires and the source
+    // flips. Halving works for most numeric flags, but breaks down at
+    // currentVal=1 (Math.floor(1/2)=0, Math.max(1,0)=1 → same as
+    // current, no change). Phase 3a's `theme.scale` defaults to 1.0
+    // and exposed this case. Fallback: when halving yields the same
+    // value, bump by +1 instead.
+    let newVal = String(Math.max(1, Math.floor(Number(currentVal) / 2)));
+    if (newVal === currentVal) newVal = String(Number(currentVal) + 1);
     await page.keyboard.type(newVal);
     await page.keyboard.press('Tab'); // commit + blur so `change` fires
     await expect(row, `${key} did not flip to source=container`).toHaveAttribute(

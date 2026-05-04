@@ -1,5 +1,24 @@
 /* PKC2 base styles — Fallout/PIP-Boy inspired dark theme with punk warmth */
 
+/* ── Phase 3a (CSS architecture redesign wave, 2026-05-04):
+ *    Runtime UI scale multiplier ──
+ *
+ * Couples `theme.scale` Tier 0 defineFlag (default 1.0, range 0.5-2.0)
+ * to the root font-size, so every rem-based design token (`--space-*`,
+ * `--fs-*`) scales automatically when the user / device-class probe
+ * adjusts the multiplier. The `var(--theme-scale, 1)` fallback keeps
+ * the resting state correct even before JS init runs (one-frame
+ * window between paint and `applyThemeScale()`).
+ *
+ * `applyThemeScale()` in src/adapter/ui/theme-scale.ts pushes the
+ * resolved flag value into `--theme-scale` on every render. Phase 3b
+ * will add device-class media-query overrides (e.g. mobile defaults
+ * to ~0.9). Spec: docs/development/css-architecture-audit-2026-05.md
+ * §5.2 / §6 Phase 3a. */
+:root {
+  font-size: calc(16px * var(--theme-scale, 1));
+}
+
 /* ── Dark theme (default): Fallout terminal / PIP-Boy ──
  *
  * The `#pkc-root[data-pkc-theme="dark"]` selector shares this rule
