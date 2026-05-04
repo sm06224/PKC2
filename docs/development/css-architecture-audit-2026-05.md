@@ -286,7 +286,7 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - `1rem` → `var(--space-5)`(54 occurrence)
   - 計 306 occurrence migrate、279 行変更
   - migration scope は `padding/margin/gap/inset/top/right/bottom/left/border-spacing` 系プロパティ行のみ(font-size 等の同値は触らず)
-  - bundle.css 115.66 KB → 116.08 KB(+0.4 KB、各 `var(--space-X)` が 6 → 14 chars / 重複削減は Phase 2 で吸収)
+  - bundle.css raw 113.26 → 116.08 KB(+2.82 KB、binary 1024)/ gzip 17.74 → 17.96 KB(+0.22 KB)。実測 +2884 bytes は予測値(`var(--space-X)` 14 chars - `0.5rem` 6 chars = +8 chars × 306 occurrence + `--space-*` 8 行宣言 ~440 bytes ≈ +2.88 KB)とほぼ一致。重複削減は Phase 2(overlay base + button utility-first)で吸収予定
   - 旧 `tests/styles/textlog-viewer.test.ts` の 2 件 hardcoded match を `var(--space-3)` に追従
   - `0.35rem` (75) / `0.4rem` (69) / `0.3rem` (52) / `0.2rem` (41) / `0.15rem` (41) などの outlier は scale に乗らない → Phase 1a-tail で別 PR にて round + clean-up
 - **Phase 1b**:`--font-size-{xs,sm,base,md,lg,xl}` を導入、6 段階に丸め。inline font-size を migrate
