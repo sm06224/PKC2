@@ -1,6 +1,6 @@
 import type { ArchetypeId } from '../../core/model/record';
 import { ABOUT_LID } from '../../core/model/record';
-import { getRegisteredFlags as getRegisteredFlagsExternal } from '../flags';
+import { getRegisteredFlags as getRegisteredFlagsExternal, defineFlag } from '../flags';
 import type { RelationKind } from '../../core/model/relation';
 import { serializeProvenanceMetadataCanonical } from '../../features/provenance';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
@@ -19,7 +19,7 @@ import {
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
 import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
-import { isFileTooLarge, fileSizeWarningMessage, SIZE_WARN_HEAVY } from './guardrails';
+import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
 import {
@@ -185,6 +185,24 @@ import { isUserEntry } from '../../core/model/record';
  * - Decide action validity (Reducer does that)
  * - Handle DomainEvents (EventLog does that)
  */
+
+/**
+ * Live getter — tap-vs-drag threshold (CSS px). Below this distance
+ * a press-drag-release gesture is treated as a tap and falls back
+ * to plain click-toggle. 6 px matches Chromium / Safari OS-level
+ * drag detection and tolerates finger jitter without misreading
+ * a true drag.
+ */
+const touchTapThresholdPx = defineFlag<number>(
+  'touch.tap_threshold_px',
+  6,
+  {
+    range: [1, 64],
+    category: 'ui',
+    description: 'Tap vs drag を判定する移動量 threshold (CSS px)',
+    tier: 0,
+  },
+);
 
 export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
   // Wire the slash-menu /asset command through to the asset picker.
@@ -499,12 +517,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
    * collapse and must use the press-drag-release sequence
    * (`page.mouse.down` → move → `page.mouse.up`) instead.
    */
-  // Threshold (in CSS px) below which a mouse / touch gesture is
-  // treated as a "tap, no drag" and the press-drag-release flow
-  // falls back to plain click-toggle. 6 px matches the OS-level
-  // drag detection on Chromium / Safari and is wide enough to
-  // tolerate finger jitter without misreading a true drag.
-  const PDR_TAP_THRESHOLD_PX = 6;
+  // tap-vs-drag threshold: read live at comparison time via
+  // `touchTapThresholdPx()` (module-level getter) so an inspector
+  // edit takes effect on the next gesture without a reload.
   let pdrColorPickerOrigin: { x: number; y: number } | null = null;
   let pdrColorPickerMoved = false;
   let pdrColorPickerWasOpenBeforeGesture = false;
@@ -513,7 +528,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!pdrColorPickerOrigin) return;
     const dx = ev.clientX - pdrColorPickerOrigin.x;
     const dy = ev.clientY - pdrColorPickerOrigin.y;
-    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+    const t = touchTapThresholdPx();
+    if (dx * dx + dy * dy > t * t) {
       pdrColorPickerMoved = true;
     }
   }
@@ -763,7 +779,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!pdrMenuOrigin) return;
     const dx = ev.clientX - pdrMenuOrigin.x;
     const dy = ev.clientY - pdrMenuOrigin.y;
-    if (dx * dx + dy * dy > PDR_TAP_THRESHOLD_PX * PDR_TAP_THRESHOLD_PX) {
+    const t = touchTapThresholdPx();
+    if (dx * dx + dy * dy > t * t) {
       pdrMenuMoved = true;
     }
   }
@@ -7387,7 +7404,7 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
  *     the user retries with the same file.
  */
 function preflightStorageWarn(file: File, dispatcher: Dispatcher): void {
-  if (file.size < SIZE_WARN_HEAVY) return;
+  if (file.size < attachmentWarnHeavyBytes()) return;
   void estimateStorage().then((result) => {
     const msg = attachmentWarningMessage(result, file.size);
     if (!msg) return;

@@ -32,9 +32,19 @@ import type { Entry, ArchetypeId } from '@core/model/record';
 import type { ParsedEntryRef } from '@features/entry-ref/entry-ref';
 import { parseTodoBody } from '@features/todo/todo-body';
 import { parseTextlogBody, type TextlogEntry } from '@features/textlog/textlog-body';
+import { defineFlag } from '@core/flags';
 
-/** Hard ceiling on the excerpt length. Trailing ellipsis is added on overflow. */
-const MAX_LEN = 160;
+/** Live getter — hard ceiling on the excerpt length. Trailing ellipsis is added on overflow. */
+const cardExcerptMaxChars = defineFlag<number>(
+  'card.excerpt.max_chars',
+  160,
+  {
+    range: [16, 1024],
+    category: 'ui',
+    description: 'Card widget の excerpt 最大文字数(超過時は末尾に … 付与)',
+    tier: 0,
+  },
+);
 const ELLIPSIS = '…';
 
 /**
@@ -79,10 +89,11 @@ function finalize(raw: string): string | null {
   // chrome space" surprises.
   const collapsed = raw.replace(/\s+/g, ' ').trim();
   if (collapsed.length === 0) return null;
-  if (collapsed.length <= MAX_LEN) return collapsed;
-  // Slice on grapheme-safe boundary by simply cutting at MAX_LEN -
+  const maxLen = cardExcerptMaxChars();
+  if (collapsed.length <= maxLen) return collapsed;
+  // Slice on grapheme-safe boundary by simply cutting at maxLen -
   // 1 and appending ellipsis. Good enough for the chrome line.
-  return collapsed.slice(0, MAX_LEN - 1) + ELLIPSIS;
+  return collapsed.slice(0, maxLen - 1) + ELLIPSIS;
 }
 
 /**

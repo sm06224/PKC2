@@ -1,8 +1,31 @@
 import type { Container } from '../../core/model/container';
+import { defineFlag } from '../flags';
 
 // --- Thresholds (bytes) ---
-export const SIZE_WARN_SOFT = 1 * 1024 * 1024;  // 1 MB
-export const SIZE_WARN_HEAVY = 5 * 1024 * 1024;  // 5 MB
+//
+// Live getters for runtime mutability. Default values match the
+// pre-flag spec (1 MB / 5 MB / 250 MB) and the audit in
+// docs/development/attachment-size-limits.md.
+export const attachmentWarnSoftBytes = defineFlag<number>(
+  'attachment.warn_soft_bytes',
+  1 * 1024 * 1024,
+  {
+    range: [1024, 100 * 1024 * 1024],
+    category: 'storage',
+    description: 'Attachment soft warning threshold (bytes)',
+    tier: 0,
+  },
+);
+export const attachmentWarnHeavyBytes = defineFlag<number>(
+  'attachment.warn_heavy_bytes',
+  5 * 1024 * 1024,
+  {
+    range: [1024, 500 * 1024 * 1024],
+    category: 'storage',
+    description: 'Attachment heavy warning threshold (bytes)',
+    tier: 0,
+  },
+);
 /**
  * Hard reject threshold. Above this size the attachment pipeline
  * refuses to accept the file because:
@@ -19,8 +42,27 @@ export const SIZE_WARN_HEAVY = 5 * 1024 * 1024;  // 5 MB
  *     materialised in one shot and can silently hit per-origin
  *     quotas on some browsers.
  * See docs/development/attachment-size-limits.md for the full audit.
+ *
+ * NOTE: this is OOM-safety. Inspector edits should not push the
+ * value above ~1 GB on typical desktops; the range cap reflects that.
  */
-export const SIZE_REJECT_HARD = 250 * 1024 * 1024;  // 250 MB
+const attachmentRejectHardBytes = defineFlag<number>(
+  'attachment.reject_hard_bytes',
+  250 * 1024 * 1024,
+  {
+    range: [1024 * 1024, 1024 * 1024 * 1024],
+    category: 'storage',
+    description: 'Attachment hard reject threshold (bytes)',
+    tier: 0,
+  },
+);
+
+/** @deprecated 2026-05-04: use `attachmentWarnSoftBytes()` for runtime mutability. */
+export const SIZE_WARN_SOFT = 1 * 1024 * 1024;
+/** @deprecated 2026-05-04: use `attachmentWarnHeavyBytes()` for runtime mutability. */
+export const SIZE_WARN_HEAVY = 5 * 1024 * 1024;
+/** @deprecated 2026-05-04: use `attachmentRejectHardBytes()` for runtime mutability. */
+export const SIZE_REJECT_HARD = 250 * 1024 * 1024;
 
 export type SizeWarningLevel = 'none' | 'soft' | 'heavy' | 'reject';
 
@@ -29,9 +71,9 @@ export type SizeWarningLevel = 'none' | 'soft' | 'heavy' | 'reject';
  * attachment pipeline MUST refuse the file — see SIZE_REJECT_HARD.
  */
 export function classifyFileSize(bytes: number): SizeWarningLevel {
-  if (bytes >= SIZE_REJECT_HARD) return 'reject';
-  if (bytes >= SIZE_WARN_HEAVY) return 'heavy';
-  if (bytes >= SIZE_WARN_SOFT) return 'soft';
+  if (bytes >= attachmentRejectHardBytes()) return 'reject';
+  if (bytes >= attachmentWarnHeavyBytes()) return 'heavy';
+  if (bytes >= attachmentWarnSoftBytes()) return 'soft';
   return 'none';
 }
 
@@ -43,7 +85,7 @@ export function fileSizeWarningMessage(bytes: number): string | null {
   const level = classifyFileSize(bytes);
   const sizeStr = formatSizeForWarning(bytes);
   if (level === 'reject') {
-    return `⛔ File is ${sizeStr}. PKC2 cannot attach files over ${formatSizeForWarning(SIZE_REJECT_HARD)} because the single-HTML embedding would exceed browser memory limits. Store the file externally and link to it instead.`;
+    return `⛔ File is ${sizeStr}. PKC2 cannot attach files over ${formatSizeForWarning(attachmentRejectHardBytes())} because the single-HTML embedding would exceed browser memory limits. Store the file externally and link to it instead.`;
   }
   if (level === 'heavy') {
     return `⚠ File is ${sizeStr}. Large files significantly increase export size and may slow down operations. Consider using external storage.`;
@@ -60,7 +102,7 @@ export function fileSizeWarningMessage(bytes: number): string | null {
  * do not have to re-classify the level themselves.
  */
 export function isFileTooLarge(bytes: number): boolean {
-  return bytes >= SIZE_REJECT_HARD;
+  return bytes >= attachmentRejectHardBytes();
 }
 
 // --- Export guardrails ---
@@ -154,7 +196,7 @@ export function fullExportEstimation(container: Container): string | null {
  */
 export function zipRecommendation(container: Container): string | null {
   const total = totalAssetBytes(container);
-  if (total < SIZE_WARN_SOFT) return null;
+  if (total < attachmentWarnSoftBytes()) return null;
   return `Container has ${formatSizeForWarning(total)} of attachments. Backup ZIP export preserves files as raw binary and is recommended for large data.`;
 }
 

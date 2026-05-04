@@ -44,7 +44,21 @@ export const INITIAL_RENDER_ARTICLE_COUNT = 8;
 /** @deprecated 2026-05-04: use `lookaheadArticleCount()` for runtime mutability. */
 export const LOOKAHEAD_ARTICLE_COUNT = 4;
 
-const PLACEHOLDER_MIN_HEIGHT = 160;
+/**
+ * Live getter — TEXTLOG placeholder min-height (CSS px). Sets a
+ * conservative space reserve for unhydrated articles so the page
+ * keeps its scroll height while staged hydration progresses.
+ */
+const placeholderMinHeightPx = defineFlag<number>(
+  'textlog.placeholder.min_height_px',
+  160,
+  {
+    range: [16, 1024],
+    category: 'perf',
+    description: 'TEXTLOG placeholder の最小高さ (CSS px)',
+    tier: 0,
+  },
+);
 const IO_ROOT_MARGIN = '400px 0px';
 
 export interface HydratorContext {
@@ -141,7 +155,7 @@ export function renderLogArticlePlaceholder(
 
   const textEl = document.createElement('div');
   textEl.className = 'pkc-textlog-text pkc-textlog-text-pending';
-  textEl.style.minHeight = `${PLACEHOLDER_MIN_HEIGHT}px`;
+  textEl.style.minHeight = `${placeholderMinHeightPx()}px`;
   article.appendChild(textEl);
 
   return article;

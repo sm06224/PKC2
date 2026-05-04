@@ -25,6 +25,7 @@ import { importTextBundleFromBuffer, type ImportedTextAttachment } from './text-
 import { importTextlogBundleFromBuffer, type ImportedAttachment } from './textlog-bundle';
 import { parseTextlogCsv } from '../../features/textlog/textlog-csv';
 import { classifyFolderRestore } from '../../features/batch-import/import-planner';
+import { defineFlag } from '../flags';
 import type { PlannerFolderInfo } from '../../features/batch-import/import-planner';
 import type { BatchImportPreviewEntry, BatchImportPreviewInfo } from '../../core/action/system-command';
 
@@ -435,12 +436,39 @@ function resolveArchetype(
   }
 }
 
-/** Max chars for a TEXT body snippet. */
-const BODY_SNIPPET_LIMIT = 200;
-/** Max log entries to include in TEXTLOG snippets. */
-const LOG_SNIPPET_COUNT = 3;
-/** Max chars per individual log snippet line. */
-const LOG_LINE_LIMIT = 80;
+/** Live getter — max chars for a TEXT body snippet in import preview. */
+const importPreviewBodyChars = defineFlag<number>(
+  'import.preview.body_chars',
+  200,
+  {
+    range: [20, 4000],
+    category: 'ui',
+    description: 'Import preview の TEXT body snippet 最大文字数',
+    tier: 0,
+  },
+);
+/** Live getter — max log entries to include per TEXTLOG snippet. */
+const importPreviewLogCount = defineFlag<number>(
+  'import.preview.log_count',
+  3,
+  {
+    range: [1, 50],
+    category: 'ui',
+    description: 'Import preview の TEXTLOG snippet で表示する log 件数',
+    tier: 0,
+  },
+);
+/** Live getter — max chars per individual log snippet line. */
+const importPreviewLogLineChars = defineFlag<number>(
+  'import.preview.log_line_chars',
+  80,
+  {
+    range: [10, 1000],
+    category: 'ui',
+    description: 'Import preview の log snippet 1 行あたりの最大文字数',
+    tier: 0,
+  },
+);
 
 /**
  * Peek into a nested bundle ZIP to extract lightweight deep preview
@@ -479,8 +507,9 @@ function peekNestedBundle(nestedData: Uint8Array, previewEntry: BatchImportPrevi
     const bodyFile = innerEntries.find((e) => e.name === 'body.md');
     if (bodyFile) {
       const fullBody = bytesToText(bodyFile.data);
-      previewEntry.bodySnippet = fullBody.length > BODY_SNIPPET_LIMIT
-        ? fullBody.slice(0, BODY_SNIPPET_LIMIT) + '…'
+      const bodyLimit = importPreviewBodyChars();
+      previewEntry.bodySnippet = fullBody.length > bodyLimit
+        ? fullBody.slice(0, bodyLimit) + '…'
         : fullBody;
     }
   } else if (previewEntry.archetype === 'textlog') {
@@ -492,11 +521,13 @@ function peekNestedBundle(nestedData: Uint8Array, previewEntry: BatchImportPrevi
       try {
         const parsed = parseTextlogCsv(bytesToText(csvFile.data));
         const snippets: string[] = [];
-        for (let j = 0; j < Math.min(LOG_SNIPPET_COUNT, parsed.entries.length); j++) {
+        const logSnippetCount = importPreviewLogCount();
+        const lineLimit = importPreviewLogLineChars();
+        for (let j = 0; j < Math.min(logSnippetCount, parsed.entries.length); j++) {
           const text = parsed.entries[j]!.text ?? '';
           snippets.push(
-            text.length > LOG_LINE_LIMIT
-              ? text.slice(0, LOG_LINE_LIMIT) + '…'
+            text.length > lineLimit
+              ? text.slice(0, lineLimit) + '…'
               : text,
           );
         }
