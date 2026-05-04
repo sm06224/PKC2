@@ -21,7 +21,7 @@ import {
 } from '../core/flags';
 
 // Re-export the pure surface so adapter / main.ts callers do not need
-// to know about the `core/runtime/` split.
+// to know about the core/adapter split.
 export {
   defineFlag,
   getRegisteredFlags,
@@ -90,22 +90,6 @@ export function setContainerFlagSource(values: Record<string, FlagPrimitive>): v
   containerSource = { ...values };
 }
 
-function coerceUrlValue<T extends FlagPrimitive>(
-  raw: string,
-  hintFromDefault: T,
-): FlagPrimitive | undefined {
-  if (typeof hintFromDefault === 'number') {
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  if (typeof hintFromDefault === 'boolean') {
-    if (raw === 'true' || raw === '1') return true;
-    if (raw === 'false' || raw === '0') return false;
-    return undefined;
-  }
-  return raw;
-}
-
 function urlLookup(key: string): FlagPrimitive | undefined {
   const url = getUrlSource();
   if (!(key in url)) return undefined;
@@ -128,9 +112,3 @@ function registerProviders(): void {
 
 // Wire providers eagerly so the very first defineFlag call sees them.
 registerProviders();
-
-// Re-export so existing test imports keep working.
-// (Tests still call `__resetUrlCache()` / `__resetRegistry()`.)
-// `coerceUrlValue` is exported for unit testing of the boolean / number
-// coercion path — not part of the public surface.
-export { coerceUrlValue as __coerceUrlValueForTests };
