@@ -87,6 +87,8 @@ import type { Container } from './core/model/container';
 import { mergeSystemEntries } from './core/model/container';
 import { SETTINGS_LID } from './core/model/record';
 import { resolveSettingsPayload } from './core/model/system-settings-payload';
+import { resolveFlagsPayload } from './core/model/system-flags-payload';
+import { setContainerFlagSource } from './runtime/flags';
 
 /**
  * PKC2 bootstrap.
@@ -551,6 +553,16 @@ async function boot(): Promise<void> {
       // the registry entry so the Map does not grow unbounded.
       clearReplyWindowForOffer(event.offer_id);
     }
+    if (event.type === 'FLAGS_CHANGED') {
+      // Flags Protocol v1 (2026-05-03): refresh the runtime flag
+      // registry's container snapshot so subsequent
+      // `getRegisteredFlags()` calls reflect the new payload.
+      // defineFlag-captured values are still bound at module-import
+      // time (live-update would require reload) but the inspector UI
+      // re-resolves on each render and will surface the new source
+      // immediately.
+      setContainerFlagSource(event.flags.values);
+    }
   });
 
   // 10. Embed detection
@@ -620,6 +632,7 @@ async function boot(): Promise<void> {
           viewOnlySource: chosen.viewOnlySource,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        primeFlagsFromContainer(container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -641,6 +654,7 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        primeFlagsFromContainer(container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -656,6 +670,7 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
         });
         restoreSettingsFromContainer(dispatcher, container);
+        primeFlagsFromContainer(container);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -690,6 +705,29 @@ function restoreSettingsFromContainer(
   );
   const settings = resolveSettingsPayload(entry?.body);
   dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings });
+}
+
+/**
+ * Flags Protocol v1 (2026-05-03): after SYS_INIT_COMPLETE, resolve
+ * the reserved `__flags__` entry from the booted container and prime
+ * the runtime flag registry's container source. Missing / malformed /
+ * wrong-archetype entry falls back to FLAGS_DEFAULTS (empty values).
+ *
+ * Unlike Settings, Flags has no AppState mirror — defineFlag values
+ * are resolved at module-import time directly from the registry's
+ * sources (URL > containerSource > default), so we just feed the
+ * payload's `values` map into setContainerFlagSource and let the
+ * registry handle the rest. No reducer dispatch required.
+ *
+ * Called again whenever FLAGS_CHANGED fires so the registry's
+ * snapshot stays in sync with subsequent SET_FLAG mutations.
+ */
+function primeFlagsFromContainer(container: Container): void {
+  const entry = container.entries.find(
+    (e) => e.lid === '__flags__' && e.archetype === 'system-flags',
+  );
+  const flags = resolveFlagsPayload(entry?.body);
+  setContainerFlagSource(flags.values);
 }
 
 /**

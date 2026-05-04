@@ -234,6 +234,20 @@ export type UserAction =
   | { type: 'SET_TIMEZONE'; timezone: string }
   | { type: 'RESET_TIMEZONE' }
   | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
+  /**
+   * Flags Protocol v1 — gated mutation of `__flags__` system entry.
+   * `SET_FLAG` / `RESET_FLAG` write to the entry body; values resolve
+   * back through `defineFlag` (range / enum gates). `RESET_ALL_FLAGS`
+   * clears the entry's values map.
+   *
+   * Direct UPDATE_ENTRY on `__flags__` is rejected by the reducer
+   * (I-FLAGS-2). Tier 1 / Tier 2 flag keys are also rejected
+   * (I-FLAGS-4); the API caller is responsible for not surfacing
+   * those keys in the inspector edit UI.
+   */
+  | { type: 'SET_FLAG'; key: string; value: number | string | boolean }
+  | { type: 'RESET_FLAG'; key: string }
+  | { type: 'RESET_ALL_FLAGS' }
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
   /**
