@@ -1,6 +1,7 @@
 import type { Dispatcher } from '../state/dispatcher';
 import type { ContainerStore } from './idb-store';
 import type { DomainEvent, DomainEventType } from '../../core/action/domain-event';
+import { defineFlag } from '../flags';
 
 /**
  * Persistence: wires DomainEvent → ContainerStore.save().
@@ -64,7 +65,17 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'SETTINGS_CHANGED',
 ]);
 
-const DEBOUNCE_MS = 300;
+/**
+ * Persistence debounce interval. Lower values reduce data-loss
+ * window after edits at the cost of more frequent IDB writes.
+ * Tunable via Flags for PoC / A/B testing.
+ */
+const DEBOUNCE_MS = defineFlag<number>('persistence.debounce_ms', 300, {
+  range: [0, 5000],
+  category: 'perf',
+  description: '永続化 debounce (ms)。低いほど data-loss window が短いが IDB 書込頻度↑',
+  tier: 0,
+});
 
 export interface PersistenceOptions {
   store: ContainerStore;

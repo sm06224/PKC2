@@ -88,7 +88,7 @@ import { mergeSystemEntries } from './core/model/container';
 import { SETTINGS_LID } from './core/model/record';
 import { resolveSettingsPayload } from './core/model/system-settings-payload';
 import { resolveFlagsPayload } from './core/model/system-flags-payload';
-import { setContainerFlagSource } from './runtime/flags';
+import { setContainerFlagSource } from './adapter/flags';
 
 /**
  * PKC2 bootstrap.
@@ -633,6 +633,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
+        maybeOpenFlagsInspectorFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -655,6 +656,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
+        maybeOpenFlagsInspectorFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -671,6 +673,7 @@ async function boot(): Promise<void> {
         });
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
+        maybeOpenFlagsInspectorFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -728,6 +731,22 @@ function primeFlagsFromContainer(container: Container): void {
   );
   const flags = resolveFlagsPayload(entry?.body);
   setContainerFlagSource(flags.values);
+}
+
+/**
+ * Flags Protocol v1 (PR-β-2): URL `?pkc-flag=*` boot-time inspector
+ * launch. The wildcard form is the spec-defined trigger to surface
+ * the inspector overlay automatically (parallel to the existing
+ * `?pkc-debug=*` overlay launch). Specific values like
+ * `?pkc-flag=foo.bar=1` apply value overrides without auto-opening
+ * the inspector — only `*` opens the UI.
+ */
+function maybeOpenFlagsInspectorFromUrl(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.getAll('pkc-flag').includes('*')) {
+    dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+  }
 }
 
 /**

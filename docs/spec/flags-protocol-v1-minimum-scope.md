@@ -47,7 +47,7 @@ PKC2 の single-HTML / self-describing / self-configuring container 哲学に整
 
 ### 1-1. v1 Goal
 
-- `defineFlag(key, default, options?)` API を `src/runtime/flags.ts` に新設(本 spec の §2)
+- `defineFlag(key, default, options?)` API を `src/core/flags.ts` に新設、URL / Container provider 等の wiring は `src/adapter/flags.ts`(本 spec の §2)。pure registry は core / browser-deps wiring は adapter という 5-layer 規律に整合
 - 全 registered flag 値を `__flags__` system entry の body JSON に永続化(本 spec の §4)
 - **3 layer** の resolution order(URL > Container > default)を確立(本 spec の §3)
 - flags inspector overlay の最小実装(`?pkc-flag=*` で起動、shell-menu「⚑ Flags」からも到達可、shell-menu link は **常時可視**)
@@ -76,7 +76,8 @@ PKC2 の single-HTML / self-describing / self-configuring container 哲学に整
 ### 2-1. signature
 
 ```typescript
-// src/runtime/flags.ts (NEW、本 spec で normative 化)
+// 配置:src/core/flags.ts(pure registry)+ src/adapter/flags.ts(URL / Container provider 等の wiring)
+// 公開 surface:
 
 export type FlagPrimitive = number | string | boolean;
 

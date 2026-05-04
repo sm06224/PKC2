@@ -16,8 +16,18 @@
 
 import type { Entry } from '../../core/model/record';
 import { isUserEntry } from '../../core/model/record';
+import { defineFlag } from '../../core/flags';
 
-export const RECENT_ENTRIES_DEFAULT_LIMIT = 10;
+export const RECENT_ENTRIES_DEFAULT_LIMIT = defineFlag<number>(
+  'recent.default_limit',
+  10,
+  {
+    range: [1, 100],
+    category: 'ui',
+    description: 'Recent pane に表示する entry 件数',
+    tier: 0,
+  },
+);
 
 export function selectRecentEntries(
   entries: readonly Entry[],

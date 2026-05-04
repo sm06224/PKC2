@@ -1,5 +1,6 @@
 import type { ArchetypeId } from '../../core/model/record';
 import { ABOUT_LID } from '../../core/model/record';
+import { getRegisteredFlags as getRegisteredFlagsExternal } from '../flags';
 import type { RelationKind } from '../../core/model/relation';
 import { serializeProvenanceMetadataCanonical } from '../../features/provenance';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
@@ -2765,6 +2766,69 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_SHORTCUT_HELP' });
         break;
       }
+      case 'open-flags-inspector': {
+        // Flags Protocol v1 (PR-β-2). Opens the inspector overlay
+        // and dismisses the shell-menu in the same dispatch cycle so
+        // the overlay stack stays tidy when the user triggered this
+        // from inside the shell menu (mirrors OPEN_SHORTCUT_HELP +
+        // CLOSE_MENU pattern above).
+        dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+        break;
+      }
+      case 'close-flags-inspector': {
+        // Reached from × button, ESC handler, and backdrop click.
+        dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
+        break;
+      }
+      case 'set-flag-boolean': {
+        const key = target.getAttribute('data-pkc-key');
+        if (!key || !(target instanceof HTMLInputElement)) break;
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.checked });
+        break;
+      }
+      case 'set-flag-numeric': {
+        const key = target.getAttribute('data-pkc-key');
+        if (!key || !(target instanceof HTMLInputElement)) break;
+        const n = Number(target.value);
+        if (!Number.isFinite(n)) break;
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: n });
+        break;
+      }
+      case 'set-flag-string': {
+        const key = target.getAttribute('data-pkc-key');
+        if (!key || !(target instanceof HTMLInputElement)) break;
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
+        break;
+      }
+      case 'set-flag-enum': {
+        const key = target.getAttribute('data-pkc-key');
+        if (!key || !(target instanceof HTMLSelectElement)) break;
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
+        break;
+      }
+      case 'reset-flag': {
+        const key = target.getAttribute('data-pkc-key');
+        if (!key) break;
+        dispatcher.dispatch({ type: 'RESET_FLAG', key });
+        break;
+      }
+      case 'reset-all-flags': {
+        if (!confirm('Reset all flags to default? This affects only the current Container.')) break;
+        dispatcher.dispatch({ type: 'RESET_ALL_FLAGS' });
+        break;
+      }
+      case 'save-url-flags-to-container': {
+        // Promote URL-overridden flags into the Container's __flags__
+        // entry. URL stays as-is (user may share the link), but
+        // subsequent reloads won't need the URL parameter.
+        const all = getRegisteredFlagsExternal();
+        for (const f of all) {
+          if (f.source === 'url') {
+            dispatcher.dispatch({ type: 'SET_FLAG', key: f.key, value: f.currentValue });
+          }
+        }
+        break;
+      }
       case 'show-storage-profile': {
         // Open the Storage Profile dialog via state. The renderer
         // rebuilds the overlay from the live container on each render
@@ -3726,6 +3790,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // instead of mutating DOM directly).
       if (state.shortcutHelpOpen) {
         dispatcher.dispatch({ type: 'CLOSE_SHORTCUT_HELP' });
+        return;
+      }
+      // Flags inspector — close before shell menu (visual stack:
+      // inspector floats over the shell menu when both could be
+      // open via URL flag at boot).
+      if (state.flagsInspectorOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
         return;
       }
       // Close shell menu if open

@@ -249,6 +249,15 @@ export interface AppState {
   /** Shell menu open/close state. Runtime-only, not persisted. */
   menuOpen?: boolean;
   /**
+   * Flags Protocol v1 — inspector overlay open/close state.
+   * Runtime-only, not persisted. Set true by:
+   *  - shell-menu「⚑ Flags」link click
+   *  - settings dialog「Open Flags…」link click
+   *  - boot-time URL parameter `?pkc-flag=*` (main.ts hooks)
+   * Reset by × button / ESC / outside-click → CLOSE_FLAGS_INSPECTOR.
+   */
+  flagsInspectorOpen?: boolean;
+  /**
    * "Normalize PKC links" preview dialog open/close state
    * (Phase 2 Slice 2). Runtime-only, not persisted. When `true` the
    * renderer mounts the preview overlay via
@@ -2218,6 +2227,20 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: { ...state, container: updated.container },
         events: [{ type: 'FLAGS_CHANGED', flags: updated.payload }],
       };
+    }
+    case 'OPEN_FLAGS_INSPECTOR': {
+      if (state.flagsInspectorOpen === true) return { state, events: [] };
+      // Closing the shell menu at the same time keeps the overlay
+      // stack tidy when the user triggered this from inside the menu
+      // (mirrors OPEN_LINK_MIGRATION_DIALOG behavior).
+      return {
+        state: { ...state, flagsInspectorOpen: true, menuOpen: false },
+        events: [],
+      };
+    }
+    case 'CLOSE_FLAGS_INSPECTOR': {
+      if (state.flagsInspectorOpen !== true) return { state, events: [] };
+      return { state: { ...state, flagsInspectorOpen: false }, events: [] };
     }
     case 'TOGGLE_MENU': {
       return { state: { ...state, menuOpen: !state.menuOpen }, events: [] };

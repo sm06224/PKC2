@@ -1,9 +1,42 @@
 import type { Entry } from '../../core/model/record';
 import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { isLogSelected } from './textlog-selection';
+import { defineFlag } from '../flags';
 
-export const INITIAL_RENDER_ARTICLE_COUNT = 8;
-export const LOOKAHEAD_ARTICLE_COUNT = 4;
+/**
+ * Number of log articles rendered eagerly on initial mount before
+ * the IntersectionObserver kicks in. 8 is the historical default
+ * (FI-03 textlog-image-perf v1). Tunable via Flags.
+ */
+export const INITIAL_RENDER_ARTICLE_COUNT = defineFlag<number>(
+  'textlog.staged_render.initial_count',
+  8,
+  {
+    range: [1, 64],
+    category: 'perf',
+    description:
+      'TEXTLOG initial-render の eager article 数。大きいほど初期 paint コストが上がるが scroll-trigger の遅延が減る',
+    tier: 0,
+  },
+);
+
+/**
+ * Number of articles to keep "ready" beyond the visible window so a
+ * fast scroll lands on already-hydrated content. 4 is the historical
+ * default; raising the value reduces flash-of-placeholder at the
+ * cost of memory.
+ */
+export const LOOKAHEAD_ARTICLE_COUNT = defineFlag<number>(
+  'textlog.staged_render.lookahead',
+  4,
+  {
+    range: [0, 32],
+    category: 'perf',
+    description:
+      'TEXTLOG staged render の先読み件数。viewport 外で hydrate を進める数',
+    tier: 0,
+  },
+);
 
 const PLACEHOLDER_MIN_HEIGHT = 160;
 const IO_ROOT_MARGIN = '400px 0px';
