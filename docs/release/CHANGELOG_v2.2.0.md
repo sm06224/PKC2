@@ -157,6 +157,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### PoC bench Application(2026-05-04)
+
+- **PoC 提案 A — `textlog.staged_render.initial_count` flag sweep 実行**:Phase 8 順序性テスト doctrine の最初の application として、Flags 機構を経由した bench sweep を実走。同一 `dist/pkc2.html` バンドルに対し URL flag のみ変えて 6 値(1 / 4 / 8 / 16 / 32 / 64)を測定 — リビルドゼロで実機 A/B 取得可能であることを実証。結果:
+  - hydrated 件数は flag 値に正確に追従(1 → 5 / 4 → 5 / 8 → 9 / 16 → 17 / 32 → 33 / 64 → 65、内 lookahead 4 + IO 1 の上乗せ)
+  - 「click→first hydrated」latency は N=8 で 372.5ms、N=16〜64 では 170〜190ms と低下傾向(N=1 の 433.9ms は warmup ノイズ)
+  - 現行 default N=8 は first-paint 視認件数と latency の中庸点だが、device-class ごとに inspector / URL で個別 tuning 可能
+- **bench file の `__default__` pointer seed 修正**:`tests/bench/textlog-staged-render-flag-sweep.bench.ts` の `seedIDB` で `__default__` pointer 不足により reload 後に embedded pkc-data fallback してしまう不具合を修正(`flags-runtime-effect-parity.spec.ts` で先に発見した同種 bug)
+- **bench-results 出力**:`bench-results/textlog-staged-render-flag-sweep.md` を新規追加(時点付き snapshot)。今後の PoC は同 template に沿って boot variant via URL flag → 測定 → md 1 行の形で蓄積
+
 ## Known Limitations
 
 - **Flags inspector のキーボード操作**:Tab / Enter / Space で flag 編集は OS 標準挙動に依存、専用 hotkey は未実装(power user 向け、別 wave で検討)
@@ -164,7 +173,7 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
 - **領域 9 CSS architecture redesign**:CSS 流用最適化 / 透過構造化 / 実行時自動生成は別 wave に課題化(`feature-requests-2026-04-28-roadmap.md` §領域 9)、Flags 全容着地後の独立 wave
 - **TEXTLOG drag-to-reorder**:USER_REQUEST_LEDGER §3.6 deferred items の trigger 解消(2026-05-03)、別 wave で着手予定
 - **PKC-Message v2 spec doc 起こし**:OQ decisions は固定済み、v2 spec normative 化は別 wave(v2.3 候補)
-- **PoC 提案 A**(`INITIAL_RENDER_ARTICLE_COUNT` bench sweep):flags 機構の実証として user request あり、別 PR で着手予定
+- **PoC 提案 A**(`INITIAL_RENDER_ARTICLE_COUNT` bench sweep):**実行済み(2026-05-04 post-release fix wave、上記「PoC bench Application」参照)** — Flags 機構の実証として 6 値 sweep 完了、bench-results/textlog-staged-render-flag-sweep.md に snapshot
 - **Cross-container resolver / P2P**:未実装(v2.1.0 / v2.1.1 から継承)
 - **OS protocol handler for `pkc://`**:未実装(同)
 - **Full container footprint(body + relations + revisions)**:未実装、Storage Profile は asset-only(同)

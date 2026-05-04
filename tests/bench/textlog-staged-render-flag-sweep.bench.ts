@@ -103,6 +103,11 @@ async function seedIDB(
         tx.objectStore('containers').clear();
         tx.objectStore('assets').clear();
         tx.objectStore('containers').put(cont, cont.meta.container_id);
+        // The IDB store keys by `__default__` → container_id pointer.
+        // Without this, `loadDefault()` returns null and boot falls
+        // back to the embedded pkc-data (empty container) — the
+        // textlog never appears and each sweep test times out.
+        tx.objectStore('containers').put(cont.meta.container_id, '__default__');
         tx.oncomplete = (): void => {
           db.close();
           resolveOpen();
