@@ -357,7 +357,15 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - **累計 main 起点 +6.41 KB**
   - unit 6259 / 6259、smoke 40 / 40 pass
 
-- **Phase 3b**:`pointer:coarse` / `(max-width)` で `--theme-scale` の default を device-class 別に override(mobile では 0.9、desktop では 1.0 など)+ `theme.radius_scale` の追加検討
+- **Phase 3b ✅(2026-05-04 着地、PR #251)**:device-class adaptive media query で `--theme-scale-default` を override。
+  - **2 層 cascade 設計**:`--theme-scale-default`(device-class、media query で設定)+ `--theme-scale`(user override、JS で設定)。`:root { font-size: calc(16px * var(--theme-scale, var(--theme-scale-default, 1))) }` で fallback chain
+  - **device class breakpoints**:`pointer:coarse and max-width:640px` → 0.9(mobile)、`pointer:coarse and 641px-1024px` → 0.95(tablet)、それ以外 → 1.0(desktop)
+  - **applyThemeScale 改修**:flag source = `default` (1.0、URL/Container 上書きなし) なら `--theme-scale` を removeProperty して device default に委譲。source が `url` / `container` なら setProperty で user override を効かせる。`getRegisteredFlags()` から source を取得して分岐
+  - **invariant**:explicit user input は device default に勝つ。mobile 端末で user が `theme.scale=1.0` を明示設定すると、device default 0.9 を上書きして 1.0 になる(opt-out 経路)
+  - **Phase 8 順序性 parity test 拡張**:`tests/smoke/theme-scale-parity.spec.ts` に test 2 件目を追加 — mobile viewport (375×812 + pointer:coarse) で baseline `--theme-scale-default=0.9 / root=14.4px` を確認、explicit `theme.scale=1.0` edit 後に root=16px(device default 0.9 を override)を確認
+  - bundle.css 122,138 → 122,368 bytes(+230 bytes)、media query 2 ブロック分
+  - **累計 main 起点 +6.66 KB**(bundle.js 含む)
+  - unit 6259 / 6259、smoke 41 / 41 pass
 
 ### Phase 4 — Per-archetype palette(オプション、要 user 議論)
 

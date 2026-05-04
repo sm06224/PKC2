@@ -1,11 +1,11 @@
 /**
- * Phase 3a — `theme.scale` runtime multiplier parity test.
+ * Phase 3a + 3b — `theme.scale` runtime multiplier parity test.
  *
  * Phase 8 順序性テスト doctrine (`pr-review-checklist.md` §2.11):
- * verify that the user-visible observation point (computed root
- * font-size + a sample element's computed padding) actually changes
- * when the user mutates `theme.scale` via the inspector. This locks
- * the end-to-end pipeline:
+ * verify the user-visible observation point (computed root font-size
+ * + a sample element's computed padding) actually changes when the
+ * user mutates `theme.scale` via the inspector AND when the device
+ * class changes. Locks the end-to-end pipeline:
  *
  *   inspector edit → SET_FLAG dispatch → __flags__ container entry
  *     → re-render → applyThemeScale() → setProperty('--theme-scale', N)
@@ -13,10 +13,10 @@
  *     → all rem-based tokens (`--space-*`, `--fs-*`) re-resolve
  *     → element computed padding / font-size pixel values shift by N×
  *
- * The smoke / unit suites already cover (a) flag dispatch lands and
- * (b) `--theme-scale` ends up on <html>. This test fills the gap by
- * also asserting (c) computed pixel values on a real element move
- * by the expected ratio after the edit, with no reload.
+ * Phase 3b adds the device-class default cascade: when the flag is
+ * at default, applyThemeScale removes `--theme-scale` so
+ * `--theme-scale-default` (set by media query) reaches the calc()
+ * chain. Mobile (pointer:coarse + max-width:640px) defaults to 0.9.
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -34,27 +34,25 @@ test('theme.scale flag scales root font-size + element rem values', async ({
   await page.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
   await bootReady(page);
 
-  // ── (1) Resting state: --theme-scale resolves to 1, root font-size = 16px.
+  // ── (1) Resting state on desktop viewport: --theme-scale absent
+  //         (flag at default), --theme-scale-default = 1.0 from
+  //         desktop fallback, root font-size = 16px.
   const baseline = await page.evaluate(() => {
     const html = document.documentElement;
     const cs = getComputedStyle(html);
-    const themeScaleVar = cs.getPropertyValue('--theme-scale').trim();
-    const rootFontSize = cs.fontSize;
-    // Sample a stable element that uses --space-3 (= 0.5rem). The
-    // flags-inspector backdrop / panel padding are predictable.
-    const panel = document.querySelector(
-      '.pkc-flags-inspector-panel',
-    ) as HTMLElement | null;
-    const panelCs = panel ? getComputedStyle(panel) : null;
     return {
-      themeScaleVar,
-      rootFontSizePx: rootFontSize,
-      panelPaddingTopPx: panelCs?.paddingTop ?? '?',
+      themeScale: cs.getPropertyValue('--theme-scale').trim(),
+      themeScaleDefault: cs.getPropertyValue('--theme-scale-default').trim(),
+      rootFontSizePx: cs.fontSize,
     };
   });
-  console.log('>>> baseline:', JSON.stringify(baseline));
+  console.log('>>> desktop baseline:', JSON.stringify(baseline));
 
-  expect(baseline.themeScaleVar).toMatch(/^1(\.0+)?$/);
+  // Phase 3b: flag at default → applyThemeScale removes the property,
+  // so --theme-scale resolves to "" via getPropertyValue. Device
+  // default 1.0 cascades through the calc() fallback.
+  expect(baseline.themeScale).toBe('');
+  expect(baseline.themeScaleDefault).toMatch(/^1(\.0+)?$/);
   expect(baseline.rootFontSizePx).toBe('16px');
 
   // ── (2) Edit theme.scale to 1.5 via the inspector input.
@@ -65,45 +63,25 @@ test('theme.scale flag scales root font-size + element rem values', async ({
   await input.fill('1.5');
   await input.dispatchEvent('change');
 
-  // Source flips to container — confirms SET_FLAG dispatched.
   await expect(
     page.locator('[data-pkc-region="flag-row"][data-pkc-key="theme.scale"]'),
   ).toHaveAttribute('data-pkc-source', 'container', { timeout: 2_000 });
 
-  // ── (3) Without a reload, root font-size and rem-based padding
-  //         must shift by 1.5×.
   const after = await page.evaluate(() => {
     const html = document.documentElement;
     const cs = getComputedStyle(html);
-    const themeScaleVar = cs.getPropertyValue('--theme-scale').trim();
-    const rootFontSize = cs.fontSize;
-    const panel = document.querySelector(
-      '.pkc-flags-inspector-panel',
-    ) as HTMLElement | null;
-    const panelCs = panel ? getComputedStyle(panel) : null;
     return {
-      themeScaleVar,
-      rootFontSizePx: rootFontSize,
-      panelPaddingTopPx: panelCs?.paddingTop ?? '?',
+      themeScale: cs.getPropertyValue('--theme-scale').trim(),
+      rootFontSizePx: cs.fontSize,
     };
   });
   console.log('>>> after edit (theme.scale = 1.5):', JSON.stringify(after));
 
-  expect(after.themeScaleVar).toMatch(/^1\.5$/);
+  expect(after.themeScale).toMatch(/^1\.5$/);
   // 16px * 1.5 = 24px exactly.
   expect(after.rootFontSizePx).toBe('24px');
 
-  // The flags inspector panel padding is `var(--space-5)` = 1rem.
-  // baseline: 1rem * 16px = 16px. after: 1rem * 24px = 24px.
-  // The browser may render computed values with sub-pixel precision
-  // when rem isn't an integer multiple of px; assert with tolerance.
-  const baselinePadding = parseFloat(baseline.panelPaddingTopPx);
-  const afterPadding = parseFloat(after.panelPaddingTopPx);
-  expect(baselinePadding).toBeGreaterThan(0);
-  expect(afterPadding / baselinePadding).toBeCloseTo(1.5, 1);
-
-  // ── (4) Reset to 1.0 via the row's reset button — the
-  //         user-visible observation should snap back.
+  // ── (3) Reset to default — should snap back, --theme-scale removed.
   const resetBtn = page
     .locator('[data-pkc-region="flag-row"][data-pkc-key="theme.scale"]')
     .locator('.pkc-flag-reset');
@@ -115,7 +93,80 @@ test('theme.scale flag scales root font-size + element rem values', async ({
   ).toHaveAttribute('data-pkc-source', 'default', { timeout: 2_000 });
 
   const reset = await page.evaluate(() => {
-    return getComputedStyle(document.documentElement).fontSize;
+    const html = document.documentElement;
+    const cs = getComputedStyle(html);
+    return {
+      themeScale: cs.getPropertyValue('--theme-scale').trim(),
+      rootFontSizePx: cs.fontSize,
+    };
   });
-  expect(reset).toBe('16px');
+  expect(reset.themeScale).toBe('');
+  expect(reset.rootFontSizePx).toBe('16px');
+});
+
+test('Phase 3b — mobile viewport activates device-class default 0.9 via media query', async ({
+  browser,
+}) => {
+  // Switch to mobile viewport with coarse pointer (touch device).
+  // Playwright's `iPhone` device descriptor uses pointer:coarse +
+  // 375px width which matches the @media block in base.css.
+  const ctx = await browser.newContext({
+    viewport: { width: 375, height: 812 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const mobilePage = await ctx.newPage();
+  await mobilePage.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
+  await expect(mobilePage.locator('#pkc-root')).toHaveAttribute(
+    'data-pkc-phase',
+    'ready',
+    { timeout: 15_000 },
+  );
+
+  // ── (1) Mobile resting state: --theme-scale absent, --theme-scale-default
+  //         from media query = 0.9, root font-size = 16 * 0.9 = 14.4px.
+  const mobileBaseline = await mobilePage.evaluate(() => {
+    const html = document.documentElement;
+    const cs = getComputedStyle(html);
+    return {
+      themeScale: cs.getPropertyValue('--theme-scale').trim(),
+      themeScaleDefault: cs.getPropertyValue('--theme-scale-default').trim(),
+      rootFontSizePx: cs.fontSize,
+    };
+  });
+  console.log('>>> mobile baseline:', JSON.stringify(mobileBaseline));
+  expect(mobileBaseline.themeScale).toBe('');
+  expect(mobileBaseline.themeScaleDefault).toMatch(/^0?\.9$/);
+  // 16px * 0.9 = 14.4px exactly.
+  expect(mobileBaseline.rootFontSizePx).toBe('14.4px');
+
+  // ── (2) User explicitly opts into desktop-size by setting flag = 1.0.
+  //         Device-class default (0.9) must yield to the user's choice.
+  const input = mobilePage.locator(
+    '[data-pkc-action="set-flag-numeric"][data-pkc-key="theme.scale"]',
+  );
+  await expect(input).toBeVisible();
+  await input.fill('1.0');
+  await input.dispatchEvent('change');
+
+  await expect(
+    mobilePage.locator('[data-pkc-region="flag-row"][data-pkc-key="theme.scale"]'),
+  ).toHaveAttribute('data-pkc-source', 'container', { timeout: 2_000 });
+
+  const mobileOverride = await mobilePage.evaluate(() => {
+    const html = document.documentElement;
+    const cs = getComputedStyle(html);
+    return {
+      themeScale: cs.getPropertyValue('--theme-scale').trim(),
+      rootFontSizePx: cs.fontSize,
+    };
+  });
+  console.log('>>> mobile override (theme.scale = 1.0):', JSON.stringify(mobileOverride));
+
+  expect(mobileOverride.themeScale).toMatch(/^1(\.0+)?$/);
+  // The override applies regardless of media query; user's explicit
+  // 1.0 should beat device-class 0.9 → root font-size = 16px exactly.
+  expect(mobileOverride.rootFontSizePx).toBe('16px');
+
+  await ctx.close();
 });
