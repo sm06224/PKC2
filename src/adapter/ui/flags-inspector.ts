@@ -192,16 +192,21 @@ function renderFlagRow(flag: FlagDescriptor): HTMLElement {
 }
 
 function renderBuildFeaturesSection(): HTMLElement {
-  const section = createElement('section', 'pkc-flags-build-features');
-  section.setAttribute('data-pkc-region', 'flags-build-features');
-  const heading = createElement('h3', 'pkc-flags-section-heading');
-  heading.textContent = 'Build Features (read-only)';
-  section.appendChild(heading);
+  // Collapsed-by-default <details> so the seven Tier 0 flag rows
+  // are the inspector's primary content without being pushed below
+  // the body's visible area by the read-only build info card.
+  const details = document.createElement('details');
+  details.className = 'pkc-flags-build-features';
+  details.setAttribute('data-pkc-region', 'flags-build-features');
+  const sum = document.createElement('summary');
+  sum.className = 'pkc-flags-section-heading';
+  sum.textContent = 'Build Features (read-only)';
+  details.appendChild(sum);
   const note = createElement('p', 'pkc-flags-build-features-note');
   note.textContent =
     'Build-time / wire-spec values surfaced for self-service debugging. ' +
     'Not editable; change via release-meta / wire-spec PR.';
-  section.appendChild(note);
+  details.appendChild(note);
 
   const list = createElement('ul', 'pkc-flags-build-features-list');
   const items: Array<[string, string]> = [
@@ -218,8 +223,8 @@ function renderBuildFeaturesSection(): HTMLElement {
     li.appendChild(valEl);
     list.appendChild(li);
   }
-  section.appendChild(list);
-  return section;
+  details.appendChild(list);
+  return details;
 }
 
 /**
@@ -313,7 +318,18 @@ export function renderFlagsInspector(): HTMLElement {
 
   panel.appendChild(toolbar);
 
-  // Body — categories with flag rows
+  // Body — categories with flag rows + (at the end) the Build
+  // Features read-only card. Build Features used to live in the
+  // footer, but on the default 1280×720 viewport the footer
+  // (summary + Build Features) ate ~150px and pushed the body's
+  // visible area down to ~385px. The c-100 fixture's seven Tier 0
+  // flags need ~600px, so the bottom two flags (`recent.default_limit`
+  // / `search.max_results_per_entry`) ended up scrolled off-screen
+  // while the macOS-default-hidden scrollbar gave no affordance —
+  // users reported "the inspector isn't working" because they
+  // couldn't see those two rows. Moving Build Features into the
+  // body makes everything share one scrollable viewport, and the
+  // footer shrinks to just the summary line.
   const body = createElement('div', 'pkc-flags-inspector-body');
   if (flags.length === 0) {
     const empty = createElement('div', 'pkc-flags-inspector-empty');
@@ -330,9 +346,14 @@ export function renderFlagsInspector(): HTMLElement {
       body.appendChild(catBlock);
     }
   }
+  // Build Features card sits at the end of the body unconditionally
+  // — present even when no flags are registered (matches the
+  // pre-PR-#239 contract that the inspector always exposes the
+  // build-time read-only inventory).
+  body.appendChild(renderBuildFeaturesSection());
   panel.appendChild(body);
 
-  // Footer — counts + Build Features
+  // Footer — single-line summary (Tier counts + active count).
   const footer = createElement('footer', 'pkc-flags-inspector-footer');
   const summary = createElement('div', 'pkc-flags-inspector-summary');
   const tierCounts: Record<string, number> = { '0': 0, '1': 0, '2': 0 };
@@ -347,7 +368,6 @@ export function renderFlagsInspector(): HTMLElement {
     `Tier 0: ${tierCounts[0]}, Tier 1: ${tierCounts[1]}, Tier 2: ${tierCounts[2]} — ` +
     `Active (≠ default): ${activeCount}`;
   footer.appendChild(summary);
-  footer.appendChild(renderBuildFeaturesSection());
   panel.appendChild(footer);
 
   overlay.appendChild(panel);

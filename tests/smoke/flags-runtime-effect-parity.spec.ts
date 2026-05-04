@@ -138,3 +138,47 @@ test('inspector-edit takes effect immediately — no reload (regression: import-
   );
   await expect(rows).toHaveCount(3, { timeout: 3_000 });
 });
+
+test('URL flag honors textlog.staged_render.initial_count on a 15-article textlog', async ({
+  page,
+}) => {
+  // Second consumer path (different from `recent.default_limit`) —
+  // exercises the textlog presenter's `initialRenderArticleCount()`
+  // live read inside the article hydration loop. The c-100 fixture's
+  // first textlog (`tl-0`) has 15 articles; default initial=8 means
+  // 8 articles are marked `data-pkc-hydrated="true"` on first paint.
+  // With initial_count=3 the immediate-paint count drops to 3.
+  //
+  // We can't tightly assert the post-paint total because the
+  // IntersectionObserver-driven hydrator + lookahead loop will
+  // promote additional placeholders to hydrated as soon as they
+  // intersect the viewport / idle ticks fire. The reliable signal
+  // is: "is initial paint < default 8?" — proves the flag is read
+  // live at render time. The buggy import-time-capture build always
+  // hydrated 8 on first paint regardless of URL flag.
+  await page.goto(
+    '/pkc2.html?pkc-flag=textlog.staged_render.initial_count=3',
+  );
+  await bootReady(page);
+  await seedFixture(page);
+  await page.reload();
+  await bootReady(page);
+
+  // Snapshot the initial-paint hydrated count BEFORE the click
+  // returns control — page.evaluate runs synchronously inside the
+  // page so we read the DOM right after the renderer has appended
+  // it but before idle / IO callbacks promote more.
+  const initialHydratedCount: number = await page.evaluate(async () => {
+    const item = document.querySelector(
+      '[data-pkc-action="select-entry"][data-pkc-lid="tl-0"]',
+    ) as HTMLElement | null;
+    if (!item) throw new Error('tl-0 not found');
+    item.click();
+    // Force a microtask flush; the renderer is sync.
+    await Promise.resolve();
+    return document.querySelectorAll(
+      '[data-pkc-region="textlog-document"] [data-pkc-hydrated="true"]',
+    ).length;
+  });
+  expect(initialHydratedCount).toBe(3);
+});

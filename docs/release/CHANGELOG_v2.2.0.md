@@ -143,6 +143,18 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
 
 ---
 
+### Post-release fix(2026-05-04)
+
+- **`persistence.debounce_ms` runtime mutability bug 修正**:`mountPersistence` で `const { debounceMs = persistenceDebounceMs() } = options;` の destructure-at-call により flag 値が mount 時に 1 回のみ resolve されていた問題を修正。`scheduleSave` 呼び出し毎に live で再 resolve するよう変更し、SET_FLAG / inspector edit が次回 save から即時反映されるように。Phase 8 順序性テスト doctrine の継続適用で発見。
+- **flags-runtime-effect-parity smoke 拡充**:`textlog.staged_render.initial_count` を URL flag で URL→Container→default の 3 layer 解決経路の visible 副作用として assert する 3 個目の parity test を追加。`recent.default_limit`(URL boot + inspector edit)+ textlog initial_count = 7 件中 3 件を実機ブラウザで確認する形に。残 4 件(image.* / search.* / persistence.debounce_ms / lookahead)は unit test side で live-read を assert。
+- **Inspector visible-paint bug 修正(critical UX)**:default 1280×720 viewport で 7 Tier 0 flag rows のうち下 2 件 (`recent.default_limit` / `search.max_results_per_entry`) が body の clip rect 下に押し出され、macOS 既定の auto-overlay scrollbar が常時非可視のため「flag が出てこない/動作していない」と認識されていた現象を修正。
+  - `Build Features` section を footer から body 末尾の collapsed `<details>` に移動(footer は summary 1 行に縮減)
+  - `.pkc-flags-inspector-body` に `min-height: 0` を追加(flexbox child overflow が parent max-height を効かせる canonical fix)
+  - `.pkc-flags-inspector-body` を `overflow-y: scroll` + `scrollbar-width: thin` + visible thumb で常時可視 scrollbar 化
+  - panel `max-height: 85vh → 95vh`、row padding / gap / description font 縮減で 7 件全部が初回 paint 時に input まで visible
+  - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
+  - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
+
 ## Known Limitations
 
 - **Flags inspector のキーボード操作**:Tab / Enter / Space で flag 編集は OS 標準挙動に依存、専用 hotkey は未実装(power user 向け、別 wave で検討)

@@ -150,3 +150,175 @@ test('changing a Tier 0 flag persists to __flags__ entry', async ({ page }) => {
   // longer the compile-time default.
   await expect(row.locator('.pkc-flag-reset')).toBeVisible();
 });
+
+/**
+ * EVERY Tier 0 flag's edit input is fully inside the inspector
+ * body's visible viewport BEFORE any scroll — i.e., a real user
+ * who opened the inspector can see all flags without scrolling
+ * (or, when scroll is unavoidable, the body has a visible
+ * scrollbar so the affordance is obvious).
+ *
+ * Why this matters: `expect(rows).toHaveCount(7)` (the previous
+ * assertion) only checked DOM presence. Playwright's `fill()`
+ * autoscrolls into view, so an "edit-the-flag" assertion ALSO
+ * passes for off-screen rows. A real user, however, sees only
+ * what's painted within the body's clip rect — and on macOS
+ * the `auto` scrollbar is invisible at rest, so off-screen
+ * rows look "missing" entirely.
+ *
+ * Failure mode this test reproduces (PR #239): the body had
+ * `overflow-y: auto` but `min-height: auto` (flexbox default)
+ * which made overflow a no-op when the body's content exceeded
+ * the panel's max-height. Combined with a tall footer holding
+ * Build Features, two of seven Tier 0 rows were positioned
+ * below the body's clip rect and the scrollbar was hidden.
+ */
+test('every Tier 0 flag row is fully inside the inspector body without scrolling', async ({
+  page,
+}) => {
+  await page.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
+  await bootReady(page);
+
+  await expect(
+    page.locator('[data-pkc-region="flags-inspector-overlay"]'),
+  ).toBeVisible();
+
+  // Snapshot body visible rect + every flag row's rect from a
+  // single page.evaluate so they're all measured at the same
+  // time, before any Playwright auto-scroll could fire.
+  type Snapshot = {
+    bodyTop: number;
+    bodyBottom: number;
+    bodyScrollTop: number;
+    bodyScrollH: number;
+    bodyClientH: number;
+    bodyScrollbarVisible: boolean;
+    rows: Array<{
+      key: string;
+      headerTop: number;
+      inputBottom: number;
+      headerVisible: boolean;
+      inputVisible: boolean;
+    }>;
+  };
+  const snap = await page.evaluate<Snapshot>(() => {
+    const body = document.querySelector(
+      '.pkc-flags-inspector-body',
+    ) as HTMLElement;
+    const bodyRect = body.getBoundingClientRect();
+    const cs = getComputedStyle(body);
+    const rows: Snapshot['rows'] = [];
+    document.querySelectorAll('[data-pkc-region="flag-row"]').forEach((el) => {
+      const r = el as HTMLElement;
+      const headerEl = r.querySelector('.pkc-flag-meta') as HTMLElement;
+      const inputEl = r.querySelector(
+        'input,select',
+      ) as HTMLInputElement | HTMLSelectElement | null;
+      const headerRect = headerEl.getBoundingClientRect();
+      const inputRect = inputEl?.getBoundingClientRect();
+      const inBody = (top: number, bottom: number): boolean =>
+        top >= bodyRect.top - 1 && bottom <= bodyRect.bottom + 1;
+      rows.push({
+        key: r.getAttribute('data-pkc-key') ?? '?',
+        headerTop: Math.round(headerRect.top),
+        inputBottom: Math.round(inputRect?.bottom ?? -1),
+        headerVisible: inBody(headerRect.top, headerRect.bottom),
+        inputVisible: inputRect ? inBody(inputRect.top, inputRect.bottom) : false,
+      });
+    });
+    return {
+      bodyTop: Math.round(bodyRect.top),
+      bodyBottom: Math.round(bodyRect.bottom),
+      bodyScrollTop: body.scrollTop,
+      bodyScrollH: body.scrollHeight,
+      bodyClientH: body.clientHeight,
+      // `overflow-y: scroll` reserves scrollbar space, so the
+      // "scrollbar is visible" predicate is "computed style is
+      // scroll" + "content overflows OR equal".
+      bodyScrollbarVisible: cs.overflowY === 'scroll',
+      rows,
+    };
+  });
+
+  expect(snap.rows).toHaveLength(7);
+
+  // EVERY flag row's header AND input must paint inside the body's
+  // visible clip rect at initial paint, without any user scroll.
+  // If this fails, the inspector is broken for a real user — they
+  // would see only the rows above the fold.
+  for (const r of snap.rows) {
+    expect(
+      r.headerVisible,
+      `flag row "${r.key}" header is below the body fold ` +
+        `(headerTop=${r.headerTop}, body=${snap.bodyTop}-${snap.bodyBottom})`,
+    ).toBe(true);
+    expect(
+      r.inputVisible,
+      `flag row "${r.key}" input is below the body fold ` +
+        `(inputBottom=${r.inputBottom}, body=${snap.bodyTop}-${snap.bodyBottom})`,
+    ).toBe(true);
+  }
+
+  // Body must be at scrollTop=0 at initial paint (no auto-scroll).
+  expect(snap.bodyScrollTop).toBe(0);
+
+  // Body uses `overflow-y: scroll` so the scrollbar is visible
+  // even when content fits — gives macOS users a clear scroll
+  // affordance when the panel is shorter than content (e.g.
+  // future flag additions push beyond the visible area).
+  expect(snap.bodyScrollbarVisible).toBe(true);
+});
+
+/**
+ * Real-OS-event flag edit: keyboard-driven value change on every
+ * Tier 0 numeric flag updates `__flags__` entry source = container.
+ * This is the inspector's primary user surface, so it must work
+ * for ALL surfaced flags, not just the one I happened to test.
+ */
+test('every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips', async ({
+  page,
+}) => {
+  await page.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
+  await bootReady(page);
+  await expect(
+    page.locator('[data-pkc-region="flags-inspector-overlay"]'),
+  ).toBeVisible();
+
+  // Discover keys from the rendered DOM so the test stays in sync
+  // with whatever's registered (drift-tolerant).
+  const keys: string[] = await page.evaluate(() => {
+    const out: string[] = [];
+    document
+      .querySelectorAll(
+        '[data-pkc-region="flag-row"] [data-pkc-action="set-flag-numeric"]',
+      )
+      .forEach((el) => {
+        const k = (el as HTMLElement)
+          .closest('[data-pkc-region="flag-row"]')
+          ?.getAttribute('data-pkc-key');
+        if (k) out.push(k);
+      });
+    return out;
+  });
+  expect(keys.length).toBeGreaterThanOrEqual(7);
+
+  for (const key of keys) {
+    const row = page.locator(
+      `[data-pkc-region="flag-row"][data-pkc-key="${key}"]`,
+    );
+    const input = row.locator('[data-pkc-action="set-flag-numeric"]');
+    // Use real keyboard input — `triple-click` + type — instead of
+    // `fill()` which is a synthetic value-set that bypasses the
+    // browser's input handling.
+    await input.click({ clickCount: 3 });
+    const currentVal = await input.inputValue();
+    const newVal = String(Math.max(1, Math.floor(Number(currentVal) / 2)));
+    await page.keyboard.type(newVal);
+    await page.keyboard.press('Tab'); // commit + blur so `change` fires
+    await expect(row, `${key} did not flip to source=container`).toHaveAttribute(
+      'data-pkc-source',
+      'container',
+      { timeout: 2_000 },
+    );
+  }
+});
