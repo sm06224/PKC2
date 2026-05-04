@@ -39,6 +39,17 @@
   /* Slice A: small radius for inline code / fenced code / asset chip pills.
      Previously referenced by `.pkc-md-rendered` selectors but undefined. */
   --radius-sm: 1px;
+  /* Phase 1c (CSS architecture redesign wave, 2026-05-04): radius scale
+   * extension to 5 tokens. Adds:
+   *   --radius-md     (3px) — between sm and lg, closes the inline 3px gap
+   *   --radius-pill   (999px) — fully-rounded pill chips
+   *   --radius-circle (50%) — circular avatars / dots / status pips
+   * Outlier inline values (5px, 6px, 8px, 12px — 4 sites total) stay
+   * inline for now; future PR may add a single --radius-xl if those
+   * cluster around a common value. */
+  --radius-md: 3px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
   /* Phase 1a (CSS architecture redesign wave, 2026-05-04): spacing
    * scale tokens. 8 steps in a roughly geometric progression matching
    * the existing dense-terminal aesthetic. The scale is theme-axis-
@@ -722,7 +733,7 @@
   min-width: 1.4rem;
   padding: 0;
   border: 2px solid transparent;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--pkc-color-tag-current, transparent);
   cursor: pointer;
   box-sizing: border-box;
@@ -1178,7 +1189,7 @@
   height: 1.6rem;
   padding: 0;
   border: 1px solid var(--c-border);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--c-bg-2, transparent);
   cursor: pointer;
   margin-left: var(--space-2-5);
@@ -1192,7 +1203,7 @@
 .pkc-color-picker-trigger-dot {
   width: 0.7rem;
   height: 0.7rem;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--pkc-color-tag-current, transparent);
   border: 1px solid var(--c-border);
 }
@@ -1221,7 +1232,7 @@
   height: 1.4rem;
   padding: 0;
   border: 2px solid transparent;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   cursor: pointer;
   background: var(--pkc-color-tag-current, transparent);
 }
@@ -1234,7 +1245,7 @@
   height: 1.4rem;
   padding: 0;
   border: 2px solid var(--c-border);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   cursor: pointer;
   background: transparent;
   font-size: var(--fs-lg);
@@ -2026,7 +2037,7 @@ mark.pkc-search-mark {
   padding: 0.1em 0.55em;
   margin: 0 0.15em;
   border: 1px solid var(--c-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--c-bg);
   color: var(--c-text);
   text-decoration: none;
@@ -2148,7 +2159,7 @@ mark.pkc-search-mark {
   width: 6px;
   cursor: col-resize;
   background: var(--c-border);
-  border-radius: 3px;
+  border-radius: var(--radius-md);
   transition: background var(--transition-fast);
 }
 .pkc-text-split-resize-handle:hover,
@@ -7311,7 +7322,7 @@ mark.pkc-search-mark {
     height: 28px;
     padding: 0;
     border: 1px solid var(--c-accent-dim);
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: var(--c-surface);
     color: var(--c-text);
     font-size: var(--fs-lg);
@@ -7459,7 +7470,7 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   background: var(--c-surface);
   border: 1px solid var(--c-accent-dim);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -7561,7 +7572,7 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   opacity: 0;
   pointer-events: auto;
@@ -7621,7 +7632,7 @@ mark.pkc-search-mark {
   color: var(--c-text);
   background: var(--c-surface);
   border: 1px solid var(--c-accent-dim);
-  border-radius: 3px;
+  border-radius: var(--radius-md);
   box-sizing: border-box;
 }
 .pkc-md-rendered .pkc-md-table-filter-input:focus {

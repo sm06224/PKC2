@@ -309,7 +309,15 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - **累計 main 起点 +5.74 KB**(token 化総和 vs dedup)。Phase 1c は軽量、Phase 3 は CSS var pipeline で同等 byte 維持予定
   - `tests/styles/textlog-viewer.test.ts` の 1 件 hardcoded `0.95rem` matcher を `var(--fs-2xl)` に追従、`src/adapter/ui/entry-window.ts` の inline font-size は別 string で migrate scope 外、test 不変
   - unit 6259 / 6259、smoke 39 / 39 pass
-- **Phase 1c**:`--radius-{sm,md,lg,pill,circle}` に拡張、3 → 5 段階に整理(headroom 1 KB、軽量で fit 想定)
+- **Phase 1c ✅(2026-05-04 着地、PR #249)**:radius scale 拡張 3 → 5 token。
+  - **新規 token**:`--radius-md: 3px` / `--radius-pill: 999px` / `--radius-circle: 50%`
+  - 既存 `--radius-sm/--radius/--radius-lg` は不変
+  - **安全な regex** で migrate(Phase 1a の word-boundary bug reflection、Phase 1b と同 anchor pattern):`border-radius:\s*VALUE\s*[;}!]`
+  - 計 **11 occurrence migrate** — 3px (3) → `var(--radius-md)`、999px (1) → `var(--radius-pill)`、50% (7) → `var(--radius-circle)`
+  - bundle.css 121,857 → 122,087 bytes(**+230 bytes / +0.22 KB**、binary 119.00 → 119.23 KB / 120 KB、99.2% → 99.4%)
+  - **outlier inline 値** 5px (1) / 6px (1) / 8px (2) / 12px (1) は本 PR では touch せず、将来 PR で `--radius-xl` の検討余地として残置(計 5 sites)
+  - **累計 main 起点 +5.96 KB**
+  - unit 6259 / 6259、smoke 39 / 39 pass、visual regression なし
 
 各 sub-PR の test plan:
 - Visual regression(main / dark / scanline 3 theme で screenshot 比較、Playwright)
