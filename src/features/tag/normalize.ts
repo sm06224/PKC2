@@ -14,10 +14,31 @@
  * random IDs, no time.
  */
 
-/** Maximum UTF-16 code-unit length per single Tag value (Slice B §3.2). */
-export const TAG_MAX_LENGTH = 64;
+import { defineFlag } from '../../core/flags';
 
-/** Maximum number of Tag values per entry (Slice B §3.2). */
+/** Live getter — maximum UTF-16 code-unit length per single Tag (Slice B §3.2). */
+export const tagMaxLength = defineFlag<number>('tag.max_length', 64, {
+  range: [1, 4096],
+  category: 'ui',
+  description: 'Tag 1 件の最大文字数(UTF-16 code units)',
+  tier: 0,
+});
+
+/** Live getter — maximum number of Tag values per entry (Slice B §3.2). */
+export const tagMaxCountPerEntry = defineFlag<number>(
+  'tag.max_count_per_entry',
+  32,
+  {
+    range: [1, 1024],
+    category: 'ui',
+    description: 'Entry 1 件あたりの最大 Tag 数',
+    tier: 0,
+  },
+);
+
+/** @deprecated 2026-05-04: use `tagMaxLength()` for runtime mutability. */
+export const TAG_MAX_LENGTH = 64;
+/** @deprecated 2026-05-04: use `tagMaxCountPerEntry()` for runtime mutability. */
 export const TAG_MAX_COUNT = 32;
 
 /**
@@ -70,7 +91,7 @@ export function normalizeTagInput(
   // cap-reached error for anything they try to add when full, not
   // a more detailed R2/R3/R4 error that would be pointless if the
   // entry can't accept more tags anyway.
-  if (existingTags.length >= TAG_MAX_COUNT) {
+  if (existingTags.length >= tagMaxCountPerEntry()) {
     return { ok: false, reason: 'cap-reached' };
   }
 
@@ -86,7 +107,7 @@ export function normalizeTagInput(
   }
 
   // R3: max-length (UTF-16 code units, matching `string.length`).
-  if (trimmed.length > TAG_MAX_LENGTH) {
+  if (trimmed.length > tagMaxLength()) {
     return { ok: false, reason: 'too-long' };
   }
 

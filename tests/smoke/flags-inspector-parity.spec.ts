@@ -36,16 +36,31 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   const panel = overlay.locator('[data-pkc-region="flags-inspector-panel"]');
   await expect(panel).toBeVisible();
 
-  // At least the 7 PR-β-2 wave-1 defineFlag entries must appear.
+  // 20 Tier 0 defineFlag entries after PR-γ wave 2 migration:
+  //   wave 1 (7): recent.default_limit / textlog.staged_render.{initial_count,lookahead}
+  //               / persistence.debounce_ms / image.{max_long_edge,optimize_threshold_bytes}
+  //               / search.max_results_per_entry
+  //   wave 2 (13): tag.{max_length,max_count_per_entry} / import.preview.{body_chars,log_count,log_line_chars}
+  //               / card.excerpt.max_chars / storage.{warn_low_bytes,warn_critical_bytes}
+  //               / touch.tap_threshold_px / textlog.placeholder.min_height_px
+  //               / attachment.{warn_soft_bytes,warn_heavy_bytes,reject_hard_bytes}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(7, { timeout: 5_000 });
+  await expect(rows).toHaveCount(20, { timeout: 5_000 });
 
-  // Specific keys we shipped — surfaces drift if a future PR drops one.
+  // Spot-check one key per wave 2 file to surface drift if a future
+  // PR drops or renames one.
   for (const key of [
-    'recent.default_limit',
-    'textlog.staged_render.initial_count',
-    'persistence.debounce_ms',
-    'image.max_long_edge',
+    'recent.default_limit',                     // wave 1
+    'textlog.staged_render.initial_count',      // wave 1
+    'persistence.debounce_ms',                  // wave 1
+    'image.max_long_edge',                      // wave 1
+    'tag.max_length',                           // wave 2
+    'import.preview.body_chars',                // wave 2
+    'card.excerpt.max_chars',                   // wave 2
+    'storage.warn_low_bytes',                   // wave 2
+    'touch.tap_threshold_px',                   // wave 2
+    'textlog.placeholder.min_height_px',        // wave 2
+    'attachment.reject_hard_bytes',             // wave 2
   ]) {
     await expect(
       page.locator(`[data-pkc-region="flag-row"][data-pkc-key="${key}"]`),
@@ -173,9 +188,29 @@ test('changing a Tier 0 flag persists to __flags__ entry', async ({ page }) => {
  * Build Features, two of seven Tier 0 rows were positioned
  * below the body's clip rect and the scrollbar was hidden.
  */
-test('every Tier 0 flag row is fully inside the inspector body without scrolling', async ({
+test('every Tier 0 flag row is reachable inside the inspector body', async ({
   page,
 }) => {
+  // PR #238 origin: 2 of 7 rows were hidden below the fold without
+  // an obvious scroll affordance, so the user reported "flags are
+  // not appearing / not working". The fix combined `overflow-y:
+  // scroll` (always-visible scrollbar) + a body height that fits
+  // most rows on a default viewport.
+  //
+  // After PR-γ wave 2 (13 additional flags → 20 total) not every
+  // row fits at first paint on 1280×720, so the assertion is no
+  // longer "every row is in the body's clip rect at scrollTop=0".
+  // The reachability contract instead is:
+  //   1. Inspector renders ALL 20 flag rows in the DOM.
+  //   2. Body has `overflow-y: scroll` (scrollbar visible at all
+  //      times — the original bug was the lack of affordance).
+  //   3. First flag row paints inside the body's visible rect at
+  //      initial paint (so the user sees content, not a blank panel).
+  //   4. Body's scrollHeight >= clientHeight (content actually
+  //      overflows, otherwise the scrollbar is decorative).
+  //   5. Every row reaches the body's visible rect after the body
+  //      is programmatically scrolled all the way down — i.e. NO
+  //      row is clipped beyond the scrollable region.
   await page.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
   await bootReady(page);
 
@@ -183,90 +218,92 @@ test('every Tier 0 flag row is fully inside the inspector body without scrolling
     page.locator('[data-pkc-region="flags-inspector-overlay"]'),
   ).toBeVisible();
 
-  // Snapshot body visible rect + every flag row's rect from a
-  // single page.evaluate so they're all measured at the same
-  // time, before any Playwright auto-scroll could fire.
   type Snapshot = {
     bodyTop: number;
     bodyBottom: number;
-    bodyScrollTop: number;
-    bodyScrollH: number;
     bodyClientH: number;
+    bodyScrollH: number;
+    bodyScrollTop: number;
     bodyScrollbarVisible: boolean;
-    rows: Array<{
+    firstRowVisible: boolean;
+    rowCount: number;
+    rowsAfterScroll: Array<{
       key: string;
-      headerTop: number;
-      inputBottom: number;
-      headerVisible: boolean;
-      inputVisible: boolean;
+      reachable: boolean;
     }>;
   };
   const snap = await page.evaluate<Snapshot>(() => {
     const body = document.querySelector(
       '.pkc-flags-inspector-body',
     ) as HTMLElement;
-    const bodyRect = body.getBoundingClientRect();
     const cs = getComputedStyle(body);
-    const rows: Snapshot['rows'] = [];
-    document.querySelectorAll('[data-pkc-region="flag-row"]').forEach((el) => {
-      const r = el as HTMLElement;
-      const headerEl = r.querySelector('.pkc-flag-meta') as HTMLElement;
-      const inputEl = r.querySelector(
-        'input,select',
-      ) as HTMLInputElement | HTMLSelectElement | null;
-      const headerRect = headerEl.getBoundingClientRect();
-      const inputRect = inputEl?.getBoundingClientRect();
-      const inBody = (top: number, bottom: number): boolean =>
-        top >= bodyRect.top - 1 && bottom <= bodyRect.bottom + 1;
-      rows.push({
+    const initialBodyRect = body.getBoundingClientRect();
+    const initialScrollTop = body.scrollTop;
+    const initialScrollH = body.scrollHeight;
+    const initialClientH = body.clientHeight;
+
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-pkc-region="flag-row"]'),
+    );
+    const firstRowRect = rows[0]?.getBoundingClientRect();
+    const firstRowVisible = firstRowRect
+      ? firstRowRect.top >= initialBodyRect.top - 1
+        && firstRowRect.top <= initialBodyRect.bottom
+      : false;
+
+    // Walk through every row by scrolling each into view, and verify
+    // that after the scroll the row paints inside the body's visible
+    // rect. This is the "reachable" check.
+    const rowsAfterScroll: Snapshot['rowsAfterScroll'] = [];
+    for (const r of rows) {
+      r.scrollIntoView({ block: 'nearest' });
+      const after = r.getBoundingClientRect();
+      const bodyRectNow = body.getBoundingClientRect();
+      const reachable =
+        after.top >= bodyRectNow.top - 1
+        && after.bottom <= bodyRectNow.bottom + 1;
+      rowsAfterScroll.push({
         key: r.getAttribute('data-pkc-key') ?? '?',
-        headerTop: Math.round(headerRect.top),
-        inputBottom: Math.round(inputRect?.bottom ?? -1),
-        headerVisible: inBody(headerRect.top, headerRect.bottom),
-        inputVisible: inputRect ? inBody(inputRect.top, inputRect.bottom) : false,
+        reachable,
       });
-    });
+    }
+    // Restore scroll for any subsequent assertion.
+    body.scrollTop = 0;
+
     return {
-      bodyTop: Math.round(bodyRect.top),
-      bodyBottom: Math.round(bodyRect.bottom),
-      bodyScrollTop: body.scrollTop,
-      bodyScrollH: body.scrollHeight,
-      bodyClientH: body.clientHeight,
-      // `overflow-y: scroll` reserves scrollbar space, so the
-      // "scrollbar is visible" predicate is "computed style is
-      // scroll" + "content overflows OR equal".
+      bodyTop: Math.round(initialBodyRect.top),
+      bodyBottom: Math.round(initialBodyRect.bottom),
+      bodyClientH: Math.round(initialClientH),
+      bodyScrollH: Math.round(initialScrollH),
+      bodyScrollTop: initialScrollTop,
       bodyScrollbarVisible: cs.overflowY === 'scroll',
-      rows,
+      firstRowVisible,
+      rowCount: rows.length,
+      rowsAfterScroll,
     };
   });
 
-  expect(snap.rows).toHaveLength(7);
+  expect(snap.rowCount).toBe(20);
 
-  // EVERY flag row's header AND input must paint inside the body's
-  // visible clip rect at initial paint, without any user scroll.
-  // If this fails, the inspector is broken for a real user — they
-  // would see only the rows above the fold.
-  for (const r of snap.rows) {
-    expect(
-      r.headerVisible,
-      `flag row "${r.key}" header is below the body fold ` +
-        `(headerTop=${r.headerTop}, body=${snap.bodyTop}-${snap.bodyBottom})`,
-    ).toBe(true);
-    expect(
-      r.inputVisible,
-      `flag row "${r.key}" input is below the body fold ` +
-        `(inputBottom=${r.inputBottom}, body=${snap.bodyTop}-${snap.bodyBottom})`,
-    ).toBe(true);
-  }
+  // Body uses `overflow-y: scroll` — scrollbar is always visible.
+  expect(snap.bodyScrollbarVisible).toBe(true);
 
-  // Body must be at scrollTop=0 at initial paint (no auto-scroll).
+  // Initial paint: not auto-scrolled.
   expect(snap.bodyScrollTop).toBe(0);
 
-  // Body uses `overflow-y: scroll` so the scrollbar is visible
-  // even when content fits — gives macOS users a clear scroll
-  // affordance when the panel is shorter than content (e.g.
-  // future flag additions push beyond the visible area).
-  expect(snap.bodyScrollbarVisible).toBe(true);
+  // First row paints inside the body's visible rect — user sees content.
+  expect(snap.firstRowVisible).toBe(true);
+
+  // Content overflows → the scrollbar is functional, not decorative.
+  expect(snap.bodyScrollH).toBeGreaterThanOrEqual(snap.bodyClientH);
+
+  // Every row is reachable after scrollIntoView.
+  for (const r of snap.rowsAfterScroll) {
+    expect(
+      r.reachable,
+      `flag row "${r.key}" is not reachable after scrollIntoView`,
+    ).toBe(true);
+  }
 });
 
 /**

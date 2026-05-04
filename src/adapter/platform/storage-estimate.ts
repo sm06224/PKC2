@@ -31,6 +31,8 @@
  * environmental-warning design.
  */
 
+import { defineFlag } from '../flags';
+
 /**
  * Result shape for `estimateStorage()`. `available: false` means
  * the API is unreachable or threw — callers should stay silent in
@@ -60,8 +62,36 @@ export type PreflightVerdict = 'ok' | 'tight' | 'risky';
  *   - low:      `< 500 MB` — plenty for day-to-day edits, but the
  *     250 MB hard-reject band of `guardrails.ts` is within reach
  *     and an export-now hint is warranted.
+ *
+ * `defineFlag` getters for runtime mutability — used in the verdict
+ * classifier below. Range bounds are sane minimums (1 MB) and a
+ * roomy maximum (32 GB) that cover today's quota envelopes without
+ * letting an inspector edit shadow the threshold to a useless value.
  */
+const storageWarnLowBytes = defineFlag<number>(
+  'storage.warn_low_bytes',
+  500 * 1024 * 1024,
+  {
+    range: [1024 * 1024, 32 * 1024 * 1024 * 1024],
+    category: 'storage',
+    description: 'Storage 残量「低」警告 threshold (bytes)',
+    tier: 0,
+  },
+);
+const storageWarnCriticalBytes = defineFlag<number>(
+  'storage.warn_critical_bytes',
+  50 * 1024 * 1024,
+  {
+    range: [1024 * 1024, 32 * 1024 * 1024 * 1024],
+    category: 'storage',
+    description: 'Storage 残量「危険」警告 threshold (bytes)',
+    tier: 0,
+  },
+);
+
+/** @deprecated 2026-05-04: use `storageWarnLowBytes()` for runtime mutability. */
 export const LOW_FREE_THRESHOLD_BYTES = 500 * 1024 * 1024;
+/** @deprecated 2026-05-04: use `storageWarnCriticalBytes()` for runtime mutability. */
 export const CRITICAL_FREE_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
 /**
@@ -119,8 +149,8 @@ export async function estimateStorage(): Promise<StorageEstimateResult> {
  * banner.
  */
 export function classifyFreeSpace(freeBytes: number): FreeSpaceVerdict {
-  if (freeBytes < CRITICAL_FREE_THRESHOLD_BYTES) return 'critical';
-  if (freeBytes < LOW_FREE_THRESHOLD_BYTES) return 'low';
+  if (freeBytes < storageWarnCriticalBytes()) return 'critical';
+  if (freeBytes < storageWarnLowBytes()) return 'low';
   return 'ok';
 }
 
