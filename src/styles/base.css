@@ -62,6 +62,25 @@
    * step. Max visual delta is +1.2px (0.3rem → 6px). */
   --space-1-5: 0.1875rem;
   --space-2-5: 0.375rem;
+  /* Phase 1b (CSS architecture redesign wave, 2026-05-04): font-size
+   * scale tokens. 9 steps spanning the existing terminal-aesthetic
+   * range (0.6rem – 1rem). Short prefix `--fs-*` keeps the bundle
+   * cost low: each `var(--fs-base)` is 14 chars vs `0.75rem` 7 chars,
+   * net +7 chars / occurrence × 265 migrated occurrences ≈ +2.1 KB,
+   * comfortably inside the 3 KB headroom recovered by Phase 2a + 2b.
+   * Naming follows the Tailwind-style pattern (xs / sm / base / md
+   * / lg / xl / 2xl / etc.) for semantic readability. Phase 3a will
+   * wrap these in a runtime multiplier (`theme.font_scale` flag →
+   * `--theme-font-size-multiplier` → calc()-based cascade). */
+  --fs-2xs: 0.6rem;
+  --fs-xs: 0.65rem;
+  --fs-sm: 0.7rem;
+  --fs-base: 0.75rem;
+  --fs-md: 0.8rem;
+  --fs-lg: 0.85rem;
+  --fs-xl: 0.9rem;
+  --fs-2xl: 0.95rem;
+  --fs-3xl: 1rem;
   /* Slice A: text color aliases used by markdown rendered HTML (blockquote,
      asset chip body). Previously referenced but undefined, causing silent
      inheritance fallbacks. */
@@ -231,7 +250,7 @@
   padding: var(--space-2-5) var(--space-4);
   background: var(--c-warn);
   color: var(--c-warn-fg);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-family: var(--font-sans);
   display: flex;
   align-items: center;
@@ -271,7 +290,7 @@
   all: unset;
   cursor: pointer;
   padding: var(--space-1) 0.55rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   line-height: 1.2;
   border-radius: var(--radius-sm);
@@ -333,7 +352,7 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-family: var(--font-sans);
   line-height: 1.35;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
@@ -385,7 +404,7 @@
   all: unset;
   cursor: pointer;
   padding: var(--space-1) 0.55rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   line-height: 1.2;
   border-radius: var(--radius-sm);
@@ -422,7 +441,7 @@
 
 .pkc-header-title {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   white-space: nowrap;
   color: var(--c-accent);
   text-shadow: 0 0 8px rgba(51,255,102,0.3);
@@ -430,7 +449,7 @@
 }
 
 .pkc-phase-badge {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-border);
@@ -458,13 +477,13 @@
 }
 
 .pkc-btn-create {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-2-5);
 }
 
 /* ── Readonly badge ── */
 .pkc-readonly-badge {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-warn);
@@ -473,7 +492,7 @@
 }
 
 .pkc-export-badge {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-warn);
@@ -482,7 +501,7 @@
 }
 
 .pkc-light-badge {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-info);
@@ -491,7 +510,7 @@
 }
 
 .pkc-light-notice {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-2-5) var(--space-3);
   margin-bottom: var(--space-3);
   border-radius: var(--radius);
@@ -634,7 +653,7 @@
 
 .pkc-search-input {
   flex: 1;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -660,7 +679,7 @@
 }
 
 .pkc-filter-btn {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0.05rem var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -749,7 +768,7 @@
 
 .pkc-sort-select {
   flex: 1;
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -766,7 +785,7 @@
   padding: var(--space-2-5) var(--space-3);
   background: rgba(51,255,102,0.05);
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
 }
 
 .pkc-tag-filter-label {
@@ -792,7 +811,7 @@
   border-radius: var(--radius-lg);
   background: var(--c-surface);
   color: var(--c-fg);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   max-width: 100%;
 }
@@ -802,7 +821,7 @@
 .pkc-entry-tag-filter-chip {
   border-color: var(--c-accent-dim);
   background: color-mix(in srgb, var(--c-accent) 10%, transparent);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
 }
 
 /* Active-filter marker on an entry chip. */
@@ -819,7 +838,7 @@
   gap: var(--space-1-5);
   padding: var(--space-2-5) var(--space-3);
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 
 .pkc-entry-tag-filter-label,
@@ -829,8 +848,8 @@
   font-weight: 500;
 }
 
-.pkc-entry-tags-label { font-size: 0.7rem; font-weight: 600; margin-right: var(--space-1-5); }
-.pkc-saved-search-tags-label { font-size: 0.65rem; }
+.pkc-entry-tags-label { font-size: var(--fs-sm); font-weight: 600; margin-right: var(--space-1-5); }
+.pkc-saved-search-tags-label { font-size: var(--fs-xs); }
 
 /* Entry meta Tag section container. */
 .pkc-entry-tags {
@@ -864,7 +883,7 @@
   color: var(--c-muted);
   cursor: pointer;
   padding: 0 var(--space-1-5);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   line-height: 1;
   border-radius: var(--radius);
   transition: color var(--transition-fast), background var(--transition-fast);
@@ -891,7 +910,7 @@
 }
 
 .pkc-entry-tag-input {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -920,7 +939,7 @@
   border-radius: var(--radius-lg);
   background: var(--c-surface);
   color: var(--c-muted);
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   line-height: 1.4;
   max-width: 6rem;
   overflow: hidden;
@@ -931,7 +950,7 @@
 
 /* ── Result count ── */
 .pkc-result-count {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   padding: var(--space-1-5) var(--space-3);
   border-bottom: 1px solid var(--c-border);
@@ -944,7 +963,7 @@
 }
 
 .pkc-saved-searches-summary {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-muted);
   padding: var(--space-2) var(--space-3);
@@ -966,7 +985,7 @@
   gap: var(--space-2);
   padding: var(--space-1-5) var(--space-3);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   transition: background var(--transition-fast);
 }
 
@@ -989,7 +1008,7 @@
   color: var(--c-muted);
   cursor: pointer;
   padding: 0 var(--space-2);
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   line-height: 1;
   border-radius: var(--radius);
   transition: color var(--transition-fast), background var(--transition-fast);
@@ -1008,7 +1027,7 @@
 }
 
 .pkc-recent-summary {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-muted);
   padding: var(--space-2) var(--space-3);
@@ -1030,7 +1049,7 @@
   gap: var(--space-2);
   padding: var(--space-1-5) var(--space-3);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   transition: background var(--transition-fast);
 }
 
@@ -1065,7 +1084,7 @@
   padding: var(--space-1-5) var(--space-2-5);
   cursor: pointer;
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
   position: relative;
 
@@ -1218,7 +1237,7 @@
   border-radius: 50%;
   cursor: pointer;
   background: transparent;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   color: var(--c-fg);
 }
@@ -1258,7 +1277,7 @@
 }
 
 .pkc-multi-action-info {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-accent-fg);
   background: var(--c-accent);
@@ -1267,7 +1286,7 @@
 }
 
 .pkc-multi-action-move {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -1277,7 +1296,7 @@
 }
 
 .pkc-multi-action-date {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -1310,7 +1329,7 @@
 }
 
 .pkc-archetype-badge {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-border);
@@ -1327,7 +1346,7 @@
 
 /* ── Todo status in sidebar ── */
 .pkc-todo-status-badge {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-family: var(--font-mono);
   color: var(--c-muted);
 }
@@ -1337,7 +1356,7 @@
 }
 
 .pkc-revision-badge {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   white-space: nowrap;
 }
@@ -1355,7 +1374,7 @@
   border: none;
   padding: 0;
   font: inherit;
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   white-space: nowrap;
   cursor: pointer;
@@ -1374,7 +1393,7 @@
  * `from` nor `to`). Information-only; no interaction. See
  * docs/development/orphan-detection-ui-v1.md. */
 .pkc-orphan-marker {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   opacity: 0.6;
   white-space: nowrap;
@@ -1390,7 +1409,7 @@
  * orphan `○`. Muted, no warning color per contract §4.2. See
  * docs/development/unified-orphan-detection-v3-contract.md §4.4. */
 .pkc-unconnected-marker {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   opacity: 0.7;
   margin-left: var(--space-1-5);
@@ -1404,7 +1423,7 @@
 
 /* ── Task completion badge ── */
 .pkc-task-badge {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   white-space: nowrap;
 }
@@ -1423,7 +1442,7 @@
 }
 
 .pkc-view-title-row .pkc-task-badge {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 
 /* ── Restore candidates (collapsible) ── */
@@ -1432,7 +1451,7 @@
 }
 
 .pkc-restore-heading {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--c-muted);
   padding: var(--space-2) var(--space-3);
@@ -1472,12 +1491,12 @@
 }
 
 .pkc-restore-title {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 500;
 }
 
 .pkc-restore-timestamp {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
 }
 
@@ -1504,19 +1523,19 @@
   overflow-y: auto;
   padding: var(--space-3);
   flex-shrink: 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-meta-header {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--c-border);
   margin-bottom: var(--space-2-5);
 }
 
 .pkc-meta-timestamps {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   padding-bottom: var(--space-2-5);
   border-bottom: 1px solid var(--c-border);
@@ -1541,7 +1560,7 @@
 
 .pkc-action-bar-info {
   margin-left: auto;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
 }
 
@@ -1554,7 +1573,7 @@
   cursor: pointer;
   list-style: none;
   user-select: none;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
 }
 .pkc-action-bar-more-summary::-webkit-details-marker { display: none; }
 
@@ -1583,7 +1602,7 @@
   color: var(--c-muted);
   padding: 1.5rem;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 
 /* ── View mode ── */
@@ -1603,7 +1622,7 @@
 }
 
 .pkc-archetype-label {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-border);
@@ -1614,7 +1633,7 @@
 
 .pkc-view-body {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   white-space: pre-wrap;
   word-wrap: break-word;
   background: var(--c-surface);
@@ -1654,7 +1673,7 @@
   right: var(--space-2);
   z-index: 2;
   padding: var(--space-1-5) var(--space-2-5);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   line-height: 1;
   background: var(--c-bg-elevated, rgba(20, 20, 30, 0.85));
   color: var(--c-fg, #eaeaea);
@@ -1685,7 +1704,7 @@
   .pkc-md-block > .pkc-md-copy-btn {
     opacity: 0.85;
     padding: var(--space-2-5) 0.55rem;
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
   }
 }
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
@@ -1720,7 +1739,7 @@
 .pkc-md-rendered pre code {
   background: none;
   padding: 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .pkc-md-rendered blockquote {
   border-left: 3px solid var(--c-accent);
@@ -2067,7 +2086,7 @@ mark.pkc-search-mark {
 
 .pkc-editor-title {
   flex: 1;
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   font-family: var(--font-sans);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--c-border);
@@ -2086,7 +2105,7 @@ mark.pkc-search-mark {
   display: block;
   width: 100%;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -2144,7 +2163,7 @@ mark.pkc-search-mark {
   overflow-y: auto;
   background: var(--c-surface);
   color: var(--c-fg);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   line-height: 1.5;
   min-height: 200px;
 }
@@ -2186,7 +2205,7 @@ mark.pkc-search-mark {
 /* Default-size button — adds horizontal padding, larger font, nowrap. */
 .pkc-btn {
   padding: var(--space-1-5) var(--space-3);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   white-space: nowrap;
   /* default-size buttons additionally transition border-color so the
    * danger variant's red border swap animates cleanly. */
@@ -2216,7 +2235,7 @@ mark.pkc-search-mark {
 
 /* Small-size button — used in dialogs, action bars, chip strips. */
 .pkc-btn-small {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2);
 }
 
@@ -2267,7 +2286,7 @@ mark.pkc-search-mark {
 .pkc-btn-clear {
   background: none;
   border: none;
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   color: var(--c-muted);
   cursor: pointer;
   padding: 0 var(--space-2);
@@ -2291,7 +2310,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-toc-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   /* Use the TOC-scoped secondary token (darker ink in light mode) so the
      "Contents" label passes WCAG AA against the warm-beige sidebar. The
@@ -2358,7 +2377,7 @@ mark.pkc-search-mark {
   width: 100%;
   cursor: pointer;
   padding: var(--space-1) var(--space-1-5);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-text, inherit);
   text-align: left;
   white-space: nowrap;
@@ -2410,7 +2429,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-tags-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-muted);
   display: block;
@@ -2426,7 +2445,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-border);
   border: 1px solid var(--c-border);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-accent);
   transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -2449,7 +2468,7 @@ mark.pkc-search-mark {
   border: none;
   color: var(--c-accent);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   padding: 0 var(--space-1);
 }
@@ -2466,7 +2485,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-tag-select {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -2482,7 +2501,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-references-heading {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--c-muted);
   letter-spacing: 0.05em;
@@ -2507,7 +2526,7 @@ mark.pkc-search-mark {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2-5);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   margin-bottom: var(--space-2-5);
   padding-left: var(--space-1);
@@ -2560,7 +2579,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-relation-heading {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-muted);
   margin-bottom: var(--space-2);
@@ -2576,7 +2595,7 @@ mark.pkc-search-mark {
   align-items: center;
   gap: var(--space-2-5);
   padding: var(--space-1-5) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-relation-peer {
@@ -2591,7 +2610,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-relation-kind {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0.05rem var(--space-2);
   border-radius: var(--radius);
   background: var(--c-surface);
@@ -2621,7 +2640,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-relation-empty {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   padding-left: var(--space-3);
   font-style: italic;
@@ -2634,7 +2653,7 @@ mark.pkc-search-mark {
   border: none;
   color: var(--c-muted);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   padding: 0 var(--space-1-5);
   margin-left: auto;
@@ -2656,7 +2675,7 @@ mark.pkc-search-mark {
   cursor: pointer;
   list-style: none;
   color: var(--c-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   padding: 0 var(--space-1-5);
   user-select: none;
@@ -2680,7 +2699,7 @@ mark.pkc-search-mark {
   gap: var(--space-1) var(--space-3);
   margin: var(--space-2) 0 var(--space-1) var(--space-5);
   padding: var(--space-2) var(--space-2-5);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -2712,7 +2731,7 @@ mark.pkc-search-mark {
 
 .pkc-provenance-metadata-copy {
   font: inherit;
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -2751,7 +2770,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-relation-create-heading {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-muted);
   margin-bottom: var(--space-2);
@@ -2765,7 +2784,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-relation-select {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -2790,7 +2809,7 @@ mark.pkc-search-mark {
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--c-border);
   margin-bottom: var(--space-2-5);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 
 .pkc-revision-heading {
@@ -2808,12 +2827,12 @@ mark.pkc-search-mark {
 }
 
 .pkc-revision-latest-label {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
 }
 
 .pkc-revision-preview {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-fg);
   font-style: italic;
 }
@@ -2831,7 +2850,7 @@ mark.pkc-search-mark {
   border: 2px solid var(--c-border);
   border-radius: var(--radius);
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   padding: var(--space-1-5) var(--space-2);
   cursor: pointer;
   color: var(--c-muted);
@@ -2867,7 +2886,7 @@ mark.pkc-search-mark {
 
 .pkc-todo-date {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
 }
 
@@ -2877,7 +2896,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-todo-description {
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2893,7 +2912,7 @@ mark.pkc-search-mark {
 .pkc-todo-status-select {
   width: auto;
   max-width: 120px;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: var(--space-2) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -2909,7 +2928,7 @@ mark.pkc-search-mark {
 
 .pkc-todo-archived-badge {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   background: rgba(128,128,128,0.12);
   border: 1px solid var(--c-border);
@@ -2919,7 +2938,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-todo-archived-sidebar {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   background: rgba(128,128,128,0.12);
   border: 1px solid var(--c-border);
@@ -2937,7 +2956,7 @@ mark.pkc-search-mark {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   color: var(--c-muted);
   cursor: pointer;
 }
@@ -2950,7 +2969,7 @@ mark.pkc-search-mark {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   padding: var(--space-2) var(--space-2-5);
   cursor: pointer;
@@ -2968,7 +2987,7 @@ mark.pkc-search-mark {
 
 .pkc-advanced-filters-summary {
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   padding: var(--space-2) var(--space-2-5);
   user-select: none;
@@ -2993,7 +3012,7 @@ mark.pkc-search-mark {
 .pkc-todo-date-input {
   width: auto;
   max-width: 180px;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-family: var(--font-mono);
   padding: var(--space-2-5) var(--space-2-5);
   border: 1px solid var(--c-border);
@@ -3010,7 +3029,7 @@ mark.pkc-search-mark {
 
 .pkc-todo-description-input {
   width: 100%;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-family: var(--font-mono);
   padding: var(--space-3) 0.6rem;
   border: 1px solid var(--c-border);
@@ -3036,12 +3055,12 @@ mark.pkc-search-mark {
   align-items: baseline;
   gap: var(--space-2-5);
   padding: var(--space-2) 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   border-bottom: 1px solid var(--c-border);
 }
 
 .pkc-form-field strong {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   min-width: 70px;
   flex-shrink: 0;
@@ -3060,7 +3079,7 @@ mark.pkc-search-mark {
 
 .pkc-form-name-input {
   width: 100%;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   padding: var(--space-2-5) 0.6rem;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -3075,7 +3094,7 @@ mark.pkc-search-mark {
 
 .pkc-form-note-input {
   width: 100%;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-family: var(--font-mono);
   padding: var(--space-3) 0.6rem;
   border: 1px solid var(--c-border);
@@ -3095,7 +3114,7 @@ mark.pkc-search-mark {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   cursor: pointer;
 }
 
@@ -3112,7 +3131,7 @@ mark.pkc-search-mark {
 
 .pkc-folder-empty {
   color: var(--c-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   padding: var(--space-4) var(--space-5);
   background: var(--c-surface);
   border: 1px dashed var(--c-border);
@@ -3125,7 +3144,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-folder-contents-heading {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-muted);
   margin-bottom: var(--space-2-5);
@@ -3135,7 +3154,7 @@ mark.pkc-search-mark {
 
 .pkc-folder-contents-empty {
   color: var(--c-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   padding: var(--space-4) var(--space-5);
   background: var(--c-surface);
   border: 1px dashed var(--c-border);
@@ -3153,7 +3172,7 @@ mark.pkc-search-mark {
   gap: var(--space-2-5);
   padding: var(--space-2-5) var(--space-3);
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 
 .pkc-folder-contents-link {
@@ -3174,7 +3193,7 @@ mark.pkc-search-mark {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-1);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   margin-bottom: var(--space-3);
 }
@@ -3219,23 +3238,23 @@ mark.pkc-search-mark {
   margin-top: var(--space-4);
   padding-top: 0.6rem;
   border-top: 1px solid var(--c-border);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-move-label {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-muted);
 }
 
 .pkc-move-current {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-style: italic;
 }
 
 .pkc-move-select {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -3246,7 +3265,7 @@ mark.pkc-search-mark {
 
 /* ── Create context indicator ── */
 .pkc-create-context {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-accent);
   font-weight: 500;
   white-space: nowrap;
@@ -3254,7 +3273,7 @@ mark.pkc-search-mark {
 
 /* ── Sidebar tree folder indicator ── */
 .pkc-folder-count {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   white-space: nowrap;
 }
@@ -3274,7 +3293,7 @@ mark.pkc-search-mark {
   background: transparent;
   border: none;
   color: var(--c-muted);
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   line-height: 1;
   cursor: pointer;
   border-radius: 2px;
@@ -3301,7 +3320,7 @@ mark.pkc-search-mark {
 
 .pkc-attachment-empty {
   color: var(--c-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   padding: var(--space-5);
   text-align: center;
   background: var(--c-surface);
@@ -3330,7 +3349,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-filename {
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   word-break: break-all;
   flex: 1;
@@ -3353,7 +3372,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-mime-badge {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-border);
@@ -3362,7 +3381,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-size-badge {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-accent-dim);
@@ -3370,7 +3389,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-preview-mode {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-hover);
@@ -3378,7 +3397,7 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
 }
 .pkc-attachment-stripped {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-warn);
   font-style: italic;
 }
@@ -3388,7 +3407,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-no-preview {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   padding: var(--space-3) var(--space-4);
   margin-top: var(--space-3);
@@ -3405,7 +3424,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-preview-placeholder {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   padding: var(--space-3);
 }
@@ -3460,7 +3479,7 @@ mark.pkc-search-mark {
   z-index: 10000;
 }
 .pkc-attachment-sandbox-note {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-style: italic;
   margin-top: var(--space-1-5);
@@ -3472,7 +3491,7 @@ mark.pkc-search-mark {
   border-top: 1px solid var(--c-border);
 }
 .pkc-sandbox-heading {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-fg);
   margin-bottom: var(--space-2);
@@ -3483,7 +3502,7 @@ mark.pkc-search-mark {
   gap: var(--space-2-5);
   padding: var(--space-1) 0;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 .pkc-sandbox-checkbox {
   accent-color: var(--c-accent);
@@ -3497,11 +3516,11 @@ mark.pkc-search-mark {
 .pkc-sandbox-label {
   color: var(--c-fg);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 .pkc-sandbox-desc {
   color: var(--c-muted);
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   font-style: italic;
 }
 .pkc-sandbox-default-row {
@@ -3511,7 +3530,7 @@ mark.pkc-search-mark {
   margin-bottom: var(--space-2-5);
   padding-bottom: var(--space-2-5);
   border-bottom: 1px solid var(--c-border);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 .pkc-sandbox-default-label {
   color: var(--c-fg);
@@ -3523,7 +3542,7 @@ mark.pkc-search-mark {
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   padding: var(--space-1) var(--space-2-5);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-family: var(--font-mono);
 }
 
@@ -3539,7 +3558,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-attachment-current {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   padding: var(--space-2-5) var(--space-3);
   background: var(--c-surface);
@@ -3565,7 +3584,7 @@ mark.pkc-search-mark {
   border: 0;
 }
 .pkc-attachment-file-button {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   min-height: 36px;
   cursor: pointer;
 }
@@ -3578,7 +3597,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-import-warning {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--c-warn);
   margin-bottom: var(--space-3);
@@ -3592,7 +3611,7 @@ mark.pkc-search-mark {
   display: flex;
   gap: var(--space-3);
   padding: var(--space-1-5) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-import-label {
@@ -3618,7 +3637,7 @@ mark.pkc-search-mark {
   padding: var(--space-3) var(--space-4);
   background: rgba(51,255,102,0.08);
   border-bottom: 2px solid var(--c-accent);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 
 /* ── Pending offers ── */
@@ -3629,7 +3648,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-pending-label {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--c-accent);
   margin-right: var(--space-3);
@@ -3640,7 +3659,7 @@ mark.pkc-search-mark {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-pending-title {
@@ -3652,7 +3671,7 @@ mark.pkc-search-mark {
   margin-top: var(--space-1-5);
   padding: var(--space-1-5) var(--space-2-5);
   border-radius: var(--radius);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 
 .pkc-guardrail-soft {
@@ -3701,7 +3720,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-root-drop-zone {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   text-align: center;
   padding: var(--space-2-5) var(--space-3);
@@ -3759,7 +3778,7 @@ mark.pkc-search-mark {
   background: none;
   border: none;
   padding: var(--space-2-5) 0.6rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-family: var(--font-sans);
   color: var(--c-fg);
   cursor: pointer;
@@ -3784,7 +3803,7 @@ mark.pkc-search-mark {
 
 .pkc-context-menu-label {
   padding: var(--space-2) 0.6rem;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-weight: 600;
   text-transform: uppercase;
@@ -3792,7 +3811,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-context-menu-folder-item {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
 }
 
 /* ── Persistent File Drop Zone ── */
@@ -3821,12 +3840,12 @@ mark.pkc-search-mark {
 }
 
 .pkc-drop-zone-large .pkc-drop-zone-label {
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
   font-weight: 500;
 }
 
 .pkc-drop-zone-hint {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   margin-top: var(--space-3);
 }
@@ -3838,11 +3857,11 @@ mark.pkc-search-mark {
   gap: var(--space-2-5);
   padding: var(--space-2-5) var(--space-3);
   margin-top: var(--space-3);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
 }
 
 .pkc-drop-zone-context {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-accent);
   font-weight: 500;
 }
@@ -3862,7 +3881,7 @@ mark.pkc-search-mark {
 .pkc-drop-zone-sidebar {
   margin: var(--space-2-5) var(--space-3);
   padding: var(--space-2-5) var(--space-4);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   justify-content: flex-start;
 }
@@ -3924,13 +3943,13 @@ mark.pkc-search-mark {
 }
 
 .pkc-detached-icon {
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   flex-shrink: 0;
 }
 
 .pkc-detached-title {
   flex: 1;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3979,7 +3998,7 @@ mark.pkc-search-mark {
 
 /* Detached attachment specifics */
 .pkc-detached-attachment-info {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   margin-bottom: var(--space-3);
   word-break: break-all;
@@ -4025,7 +4044,7 @@ mark.pkc-search-mark {
   border: none;
   color: var(--c-muted);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: var(--space-1-5) var(--space-2);
   font-family: var(--font-sans);
   line-height: 1;
@@ -4172,13 +4191,13 @@ mark.pkc-search-mark {
   border-bottom: 1px solid var(--c-border);
   padding-bottom: var(--space-2-5);
 }
-.pkc-flags-inspector-title { margin: 0; font-size: 0.95rem; }
+.pkc-flags-inspector-title { margin: 0; font-size: var(--fs-2xl); }
 .pkc-flags-inspector-close {
   background: transparent;
   border: none;
   color: var(--c-fg);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   padding: var(--space-1-5) var(--space-3);
 }
 .pkc-flags-inspector-toolbar {
@@ -4190,7 +4209,7 @@ mark.pkc-search-mark {
 .pkc-flags-inspector-search,
 .pkc-flags-inspector-category {
   flex: 1 1 120px;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   background: var(--c-bg);
   color: var(--c-fg);
@@ -4232,11 +4251,11 @@ mark.pkc-search-mark {
   padding: var(--space-5);
   text-align: center;
   color: var(--c-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .pkc-flags-section-heading {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   color: var(--c-muted);
   letter-spacing: 0.05em;
@@ -4258,11 +4277,11 @@ mark.pkc-search-mark {
 }
 .pkc-flag-key {
   font-family: monospace;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-fg);
 }
 .pkc-flag-tier {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0 var(--space-2-5);
   border-radius: var(--radius);
   border: 1px solid var(--c-border);
@@ -4270,7 +4289,7 @@ mark.pkc-search-mark {
 }
 .pkc-flag-tier-0 { color: var(--c-accent); border-color: var(--c-accent); }
 .pkc-flag-source {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0 var(--space-2-5);
   border-radius: var(--radius);
 }
@@ -4278,7 +4297,7 @@ mark.pkc-search-mark {
 .pkc-flag-source-container{ background: var(--c-muted); color: var(--c-bg); }
 .pkc-flag-source-default  { color: var(--c-muted); border: 1px solid var(--c-border); }
 .pkc-flag-description {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   line-height: 1.3;
   color: var(--c-muted);
 }
@@ -4291,7 +4310,7 @@ mark.pkc-search-mark {
 .pkc-flag-editor-text,
 .pkc-flag-editor-enum {
   flex: 1 1 80px;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   background: var(--c-surface);
   color: var(--c-fg);
@@ -4299,7 +4318,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
 }
 .pkc-flag-reset {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: 0 var(--space-2-5);
   background: transparent;
   color: var(--c-muted);
@@ -4309,7 +4328,7 @@ mark.pkc-search-mark {
 }
 .pkc-flag-reset:hover { color: var(--c-accent); border-color: var(--c-accent); }
 .pkc-flag-url-note {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
 }
 .pkc-flags-inspector-footer {
@@ -4320,12 +4339,12 @@ mark.pkc-search-mark {
   gap: var(--space-2-5);
 }
 .pkc-flags-inspector-summary {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
 }
 .pkc-flags-build-features-note {
   margin: 0;
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
 }
 .pkc-flags-build-features-list {
@@ -4339,7 +4358,7 @@ mark.pkc-search-mark {
 .pkc-flags-build-features-list li {
   display: flex;
   gap: var(--space-3);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 .pkc-flag-build-value {
   color: var(--c-fg);
@@ -4384,7 +4403,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-shell-menu-heading {
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   color: var(--c-accent);
   margin: 0 0 var(--space-3) 0;
   font-weight: 600;
@@ -4403,7 +4422,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-shell-menu-label {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -4441,7 +4460,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-shell-menu-version {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   text-align: center;
   background: none;
@@ -4459,7 +4478,7 @@ mark.pkc-search-mark {
 .pkc-shell-menu-help-list {
   margin: 0;
   padding: 0 0 0 var(--space-5);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-fg);
   line-height: 1.6;
   list-style: disc;
@@ -4471,7 +4490,7 @@ mark.pkc-search-mark {
 
 .pkc-shell-menu-font-input {
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -4482,13 +4501,13 @@ mark.pkc-search-mark {
 }
 .pkc-shell-menu-font-input::placeholder {
   color: var(--c-muted);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
 }
 
 .pkc-shell-menu-wcag {
   display: flex;
   gap: var(--space-4);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
 }
 .pkc-wcag-line {
   display: flex;
@@ -4499,7 +4518,7 @@ mark.pkc-search-mark {
   display: inline-block;
   padding: 0 var(--space-2-5);
   border-radius: var(--radius);
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   font-weight: bold;
 }
 .pkc-wcag-badge[data-pkc-wcag="AAA"] {
@@ -4516,7 +4535,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-shell-menu-notice-text {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   font-style: italic;
 }
@@ -4539,7 +4558,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-shortcut-heading {
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   color: var(--c-accent);
   margin-bottom: var(--space-4);
   font-weight: 600;
@@ -4567,18 +4586,18 @@ mark.pkc-search-mark {
   background: var(--c-bg);
   color: var(--c-accent);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   text-align: center;
 }
 
 .pkc-shortcut-desc {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-fg);
 }
 
 .pkc-shortcut-group {
   grid-column: 1 / -1;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-accent);
   padding-top: var(--space-3);
@@ -4604,14 +4623,14 @@ mark.pkc-search-mark {
 }
 
 .pkc-storage-profile-heading {
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   color: var(--c-accent);
   margin: 0 0 var(--space-2) 0;
   font-weight: 600;
 }
 
 .pkc-storage-profile-note {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   line-height: 1.4;
 }
@@ -4641,7 +4660,7 @@ mark.pkc-search-mark {
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
 }
 
 .pkc-storage-profile-summary-key {
@@ -4711,24 +4730,24 @@ mark.pkc-search-mark {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-fg);
 }
 
 .pkc-storage-profile-row-size {
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-accent);
 }
 
 .pkc-storage-profile-row-detail {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
 }
 
 .pkc-storage-profile-empty {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   padding: var(--space-2-5) 0;
 }
@@ -4784,7 +4803,7 @@ mark.pkc-search-mark {
   background: var(--c-surface);
   cursor: pointer;
   writing-mode: vertical-rl;
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   letter-spacing: 0.05em;
   user-select: none;
@@ -4811,7 +4830,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-interaction-hints {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   text-align: center;
   padding: var(--space-2-5) var(--space-3);
@@ -4831,7 +4850,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-action-bar-status {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--c-accent);
   margin-right: var(--space-2);
@@ -4850,7 +4869,7 @@ mark.pkc-search-mark {
 
 .pkc-view-mode-btn {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   padding: var(--space-1-5) 0.6rem;
   background: none;
   border: 1px solid var(--c-border);
@@ -4909,13 +4928,13 @@ mark.pkc-search-mark {
 }
 
 .pkc-calendar-nav-btn {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: var(--space-1-5) var(--space-2-5);
 }
 
 .pkc-calendar-title {
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--c-fg);
   min-width: 150px;
@@ -4930,7 +4949,7 @@ mark.pkc-search-mark {
 
 .pkc-calendar-dow {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   text-align: center;
   padding: var(--space-2) 0;
   color: var(--c-muted);
@@ -4965,7 +4984,7 @@ mark.pkc-search-mark {
 
 .pkc-calendar-day {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   text-align: right;
   padding-bottom: var(--space-1-5);
@@ -4983,7 +5002,7 @@ mark.pkc-search-mark {
 }
 .pkc-calendar-day-add {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   background: transparent;
   border: 1px dashed var(--c-border);
@@ -5014,7 +5033,7 @@ mark.pkc-search-mark {
 }
 .pkc-calendar-add-input {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   background: transparent;
   color: var(--c-fg);
   border: none;
@@ -5023,7 +5042,7 @@ mark.pkc-search-mark {
 }
 .pkc-calendar-add-hint {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
 }
 
@@ -5040,7 +5059,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-calendar-todo-item {
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   font-family: var(--font-sans);
   padding: var(--space-1) var(--space-1-5);
   border-radius: 2px;
@@ -5076,7 +5095,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-calendar-todo-more {
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   color: var(--c-muted);
   text-align: center;
   padding: 0.05rem;
@@ -5084,7 +5103,7 @@ mark.pkc-search-mark {
 
 .pkc-calendar-empty {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   text-align: center;
   padding: var(--space-5) var(--space-3);
@@ -5142,14 +5161,14 @@ mark.pkc-search-mark {
 
 .pkc-kanban-column-label {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--c-fg);
 }
 
 .pkc-kanban-column-count {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   background: rgba(51,255,102,0.08);
   padding: 0.05rem var(--space-2-5);
@@ -5161,7 +5180,7 @@ mark.pkc-search-mark {
  * docs/development/todo-editor-in-continuous-edit-wave.md §4. */
 .pkc-kanban-column-add {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   background: transparent;
   border: 1px dashed var(--c-border);
@@ -5187,7 +5206,7 @@ mark.pkc-search-mark {
 }
 .pkc-kanban-add-input {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   background: transparent;
   color: var(--c-fg);
   border: none;
@@ -5196,7 +5215,7 @@ mark.pkc-search-mark {
 }
 .pkc-kanban-add-hint {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
 }
 
@@ -5264,7 +5283,7 @@ mark.pkc-search-mark {
 
 .pkc-kanban-card-title {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-fg);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5273,7 +5292,7 @@ mark.pkc-search-mark {
 
 .pkc-kanban-card-desc {
   font-family: var(--font-sans);
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   margin-top: var(--space-1-5);
   overflow: hidden;
@@ -5283,14 +5302,14 @@ mark.pkc-search-mark {
 
 .pkc-kanban-card-date {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   margin-top: var(--space-1-5);
 }
 
 .pkc-kanban-empty {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--c-muted);
   text-align: center;
   padding: var(--space-5) var(--space-3);
@@ -5302,7 +5321,7 @@ mark.pkc-search-mark {
   margin-top: var(--space-2-5);
   padding: var(--space-1-5) var(--space-2-5);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   color: var(--c-muted);
   background: none;
   border: 1px solid var(--c-border);
@@ -5342,7 +5361,7 @@ mark.pkc-search-mark {
   max-height: 240px;
   overflow-y: auto;
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-slash-menu-item {
@@ -5378,14 +5397,14 @@ mark.pkc-search-mark {
   max-height: 280px;
   overflow-y: auto;
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-asset-picker-heading {
   padding: var(--space-2-5) var(--space-4);
   color: var(--c-muted);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 1px solid var(--c-border);
@@ -5422,7 +5441,7 @@ mark.pkc-search-mark {
 
 .pkc-asset-picker-mime {
   flex: 0 0 auto;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-family: var(--font-mono, monospace);
 }
@@ -5450,14 +5469,14 @@ mark.pkc-search-mark {
   max-height: 240px;
   overflow-y: auto;
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-asset-autocomplete-heading {
   padding: var(--space-2-5) var(--space-4);
   color: var(--c-muted);
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 1px solid var(--c-border);
@@ -5495,7 +5514,7 @@ mark.pkc-search-mark {
 
 .pkc-asset-autocomplete-key {
   flex: 0 0 auto;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-family: var(--font-mono, monospace);
 }
@@ -5523,14 +5542,14 @@ mark.pkc-search-mark {
   max-height: 240px;
   overflow-y: auto;
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .pkc-entry-ref-autocomplete-heading {
   padding: var(--space-2-5) var(--space-4);
   color: var(--c-muted);
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 1px solid var(--c-border);
@@ -5568,7 +5587,7 @@ mark.pkc-search-mark {
 
 .pkc-entry-ref-autocomplete-lid {
   flex: 0 0 auto;
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-family: var(--font-mono, monospace);
 }
@@ -5587,7 +5606,7 @@ mark.pkc-search-mark {
 /* v1.4 fragment kind badge (log / day) */
 .pkc-entry-ref-autocomplete-fragment-kind {
   flex: 0 0 auto;
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   padding: 0.05rem var(--space-2-5);
   border-radius: var(--radius);
   background: var(--c-surface);
@@ -5655,7 +5674,7 @@ mark.pkc-search-mark {
    tone — no card, no icon, no background tint. */
 .pkc-textlog-day-title {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   color: var(--c-fg);
   font-family: var(--font-mono);
@@ -5677,7 +5696,7 @@ mark.pkc-search-mark {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-3) 0.6rem;
   border-left: 3px solid var(--c-border);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   transition: background-color 0.15s ease;
 }
 
@@ -5712,7 +5731,7 @@ mark.pkc-search-mark {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   padding: 0;
   line-height: 1;
   color: var(--c-muted);
@@ -5727,7 +5746,7 @@ mark.pkc-search-mark {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: 0 var(--space-1-5);
   line-height: 1;
   color: var(--c-muted);
@@ -5751,7 +5770,7 @@ mark.pkc-search-mark {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   padding: 0 var(--space-1-5);
   line-height: 1;
   color: var(--c-muted);
@@ -5769,7 +5788,7 @@ mark.pkc-search-mark {
 
 .pkc-textlog-timestamp {
   color: var(--c-muted);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-family: var(--font-mono);
   white-space: nowrap;
   padding-top: var(--space-1);
@@ -5879,12 +5898,12 @@ mark.pkc-search-mark {
 
 .pkc-textlog-empty-title {
   font-style: italic;
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   margin-bottom: var(--space-2);
 }
 
 .pkc-textlog-empty-hint {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   opacity: 0.75;
 }
 
@@ -5904,7 +5923,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   padding: var(--space-2-5);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   resize: vertical;
   min-height: 6rem;
   tab-size: 4;
@@ -5937,7 +5956,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-textlog-select-count {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   opacity: 0.8;
   flex: 1;
 }
@@ -5971,7 +5990,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-textlog-preview-summary {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   opacity: 0.8;
 }
 
@@ -5982,7 +6001,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-surface);
   color: var(--c-fg);
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
 }
 
 .pkc-textlog-preview-body {
@@ -5996,7 +6015,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-surface);
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   white-space: pre-wrap;
 }
 
@@ -6025,14 +6044,14 @@ mark.pkc-search-mark {
 }
 
 .pkc-text-to-textlog-summary {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   opacity: 0.8;
 }
 
 .pkc-text-to-textlog-mode {
   display: flex;
   gap: var(--space-5);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 
 .pkc-text-to-textlog-mode-option {
@@ -6046,7 +6065,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-surface);
   color: var(--c-fg);
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
 }
 
 .pkc-text-to-textlog-list {
@@ -6059,7 +6078,7 @@ mark.pkc-search-mark {
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-surface);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 
 .pkc-text-to-textlog-log {
@@ -6109,13 +6128,13 @@ mark.pkc-search-mark {
 }
 
 .pkc-textlog-flag-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .pkc-textlog-delete-btn {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-2-5);
   color: var(--c-danger, #ff4444);
 }
@@ -6128,7 +6147,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   padding: var(--space-2-5);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   resize: vertical;
   /* Defense-in-depth against the `rows=2` regression — even if JS sizing
      is bypassed the textarea must remain usable. */
@@ -6155,7 +6174,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-transclusion-header {
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   margin-bottom: var(--space-2-5);
   padding-bottom: var(--space-1-5);
@@ -6280,7 +6299,7 @@ mark.pkc-search-mark {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
 }
 
 .pkc-text-replace-row > label {
@@ -6312,7 +6331,7 @@ mark.pkc-search-mark {
 }
 
 .pkc-text-replace-status {
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   min-height: 1.2em;
   opacity: 0.85;
 }
@@ -6339,7 +6358,7 @@ mark.pkc-search-mark {
 }
 .pkc-boot-chooser-explain {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   color: var(--c-muted, var(--c-fg));
   line-height: 1.45;
 }
@@ -6350,7 +6369,7 @@ mark.pkc-search-mark {
 }
 .pkc-boot-chooser-label {
   margin: 0 0 var(--space-2-5);
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
 }
 .pkc-boot-chooser-info {
@@ -6358,7 +6377,7 @@ mark.pkc-search-mark {
   grid-template-columns: max-content 1fr;
   gap: 0.125rem var(--space-4);
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
 }
 .pkc-boot-chooser-info dt {
   color: var(--c-muted, var(--c-fg));
@@ -6369,7 +6388,7 @@ mark.pkc-search-mark {
 }
 .pkc-boot-chooser-missing {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   color: var(--c-muted, var(--c-fg));
   font-style: italic;
 }
@@ -6403,20 +6422,20 @@ mark.pkc-search-mark {
 }
 .pkc-about-tagline {
   margin: var(--space-2-5) 0 0;
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   color: var(--c-muted);
   letter-spacing: 0.02em;
 }
 .pkc-about-version {
   margin-top: var(--space-3);
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   font-weight: 600;
   color: var(--c-accent);
   letter-spacing: 0.05em;
 }
 .pkc-about-description {
   margin: 0 0 1.5rem;
-  font-size: 0.95rem;
+  font-size: var(--fs-2xl);
   color: var(--c-fg);
   white-space: pre-wrap;
 }
@@ -6438,7 +6457,7 @@ mark.pkc-search-mark {
   text-transform: uppercase;
 }
 .pkc-about-i18n-note {
-  font-size: 0.7rem;
+  font-size: var(--fs-sm);
   color: var(--c-muted);
   font-style: italic;
   margin: var(--space-3) 0 var(--space-5);
@@ -6458,7 +6477,7 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   align-self: center;
 }
 .pkc-about-meta dd {
@@ -6500,7 +6519,7 @@ mark.pkc-search-mark {
   gap: var(--space-2);
 }
 .pkc-about-credit {
-  font-size: 0.9rem;
+  font-size: var(--fs-xl);
   line-height: 1.5;
 }
 .pkc-about-credit-name {
@@ -6525,7 +6544,7 @@ mark.pkc-search-mark {
   margin: 0;
   padding-top: 0.6rem;
   border-top: 1px dashed var(--c-border);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   color: var(--c-muted);
   line-height: 1.55;
   font-style: italic;
@@ -6543,7 +6562,7 @@ mark.pkc-search-mark {
 }
 .pkc-about-section-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fs-3xl);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--c-fg);
@@ -6557,7 +6576,7 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-surface);
   color: var(--c-accent);
-  font-size: 0.75rem;
+  font-size: var(--fs-base);
   font-weight: 700;
   text-align: center;
 }
@@ -6573,7 +6592,7 @@ mark.pkc-search-mark {
 .pkc-about-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--fs-lg);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -6797,7 +6816,7 @@ mark.pkc-search-mark {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
     color: var(--c-fg);
   }
 
@@ -6818,7 +6837,7 @@ mark.pkc-search-mark {
     border: 1px solid transparent;
     border-radius: var(--radius);
     color: var(--c-fg);
-    font-size: 1rem;
+    font-size: var(--fs-3xl);
     font-weight: 500;
     cursor: pointer;
     line-height: 1;
@@ -6924,7 +6943,7 @@ mark.pkc-search-mark {
     gap: var(--space-2-5);
   }
   #pkc-root[data-pkc-mobile-page="list"] .pkc-search-input {
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
     padding: 0.55rem 0.7rem;
     min-height: 40px;
     border-radius: 8px;
@@ -6940,7 +6959,7 @@ mark.pkc-search-mark {
    * preview line is present). */
   #pkc-root[data-pkc-mobile-page="list"] .pkc-entry-item {
     padding: 0.7rem 0.8rem;
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
     min-height: 48px;
     gap: var(--space-3);
     /* Capture horizontal touch input for the swipe-to-delete
@@ -6983,7 +7002,7 @@ mark.pkc-search-mark {
     background-image: none;
   }
   #pkc-root[data-pkc-mobile-page="list"] .pkc-entry-title {
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
     line-height: 1.35;
   }
 
@@ -7087,7 +7106,7 @@ mark.pkc-search-mark {
    * `!important` is required here — without it, more-specific class
    * rules win on the cascade. Real example caught by Phase 1B parity
    * test (`tests/smoke/iphone-zoom-suppress.spec.ts`):
-   *   `.pkc-editor-body { font-size: 0.8rem; }` (specificity 0,1,0)
+   *   `.pkc-editor-body { font-size: var(--fs-md); }` (specificity 0,1,0)
    * was beating the bare `textarea` selector (specificity 0,0,1)
    * inside this @media block, so the body editor textarea ended up
    * at 12.8 px and would auto-zoom if Apple ever disables
@@ -7178,7 +7197,7 @@ mark.pkc-search-mark {
     gap: var(--space-2-5);
   }
   .pkc-mobile-drawer-section-label {
-    font-size: 0.65rem;
+    font-size: var(--fs-xs);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--c-muted);
@@ -7193,7 +7212,7 @@ mark.pkc-search-mark {
     border: 1px solid var(--c-border);
     border-radius: var(--radius);
     color: var(--c-fg);
-    font-size: 0.9rem;
+    font-size: var(--fs-xl);
     text-align: left;
     cursor: pointer;
     min-height: 44px;
@@ -7209,7 +7228,7 @@ mark.pkc-search-mark {
     border: none;
     border-top: 1px solid var(--c-border);
     color: var(--c-muted);
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     cursor: pointer;
     min-height: 44px;
   }
@@ -7295,7 +7314,7 @@ mark.pkc-search-mark {
     border-radius: 50%;
     background: var(--c-surface);
     color: var(--c-text);
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     font-weight: 600;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     touch-action: manipulation;
@@ -7336,7 +7355,7 @@ mark.pkc-search-mark {
     height: 32px;
     padding: 0 6px;
     font-family: var(--font-mono, monospace);
-    font-size: 0.95rem;
+    font-size: var(--fs-2xl);
     font-weight: 600;
     color: var(--c-text);
     background: transparent;
