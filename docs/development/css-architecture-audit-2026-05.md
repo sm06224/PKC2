@@ -279,7 +279,16 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
 
 ### Phase 1 — Token introduction(2-3 PR)
 
-- **Phase 1a**:`--space-{0,1,2,3,4,5,6,7}` を `:root` に宣言、最頻出 5 値(`0.5rem` / `0.25rem` / `0.75rem` / `0.35rem` / `1rem`)を最初に migrate(~250 occurrence、bundle.css ±0 想定:variable 経由でも byte 数は同等)
+- **Phase 1a ✅(2026-05-04 着地、PR #242)**:`--space-{0..7}` 8 段階を `:root` に宣言、最頻出 4 値を spacing context 限定で migrate:
+  - `0.25rem` → `var(--space-2)`(79 occurrence)
+  - `0.5rem` → `var(--space-3)`(125 occurrence)
+  - `0.75rem` → `var(--space-4)`(48 occurrence)
+  - `1rem` → `var(--space-5)`(54 occurrence)
+  - 計 306 occurrence migrate、279 行変更
+  - migration scope は `padding/margin/gap/inset/top/right/bottom/left/border-spacing` 系プロパティ行のみ(font-size 等の同値は触らず)
+  - bundle.css 115.66 KB → 116.08 KB(+0.4 KB、各 `var(--space-X)` が 6 → 14 chars / 重複削減は Phase 2 で吸収)
+  - 旧 `tests/styles/textlog-viewer.test.ts` の 2 件 hardcoded match を `var(--space-3)` に追従
+  - `0.35rem` (75) / `0.4rem` (69) / `0.3rem` (52) / `0.2rem` (41) / `0.15rem` (41) などの outlier は scale に乗らない → Phase 1a-tail で別 PR にて round + clean-up
 - **Phase 1b**:`--font-size-{xs,sm,base,md,lg,xl}` を導入、6 段階に丸め。inline font-size を migrate
 - **Phase 1c**:`--radius-{sm,md,lg,pill,circle}` に拡張、3 → 5 段階に整理
 
