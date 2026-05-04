@@ -650,25 +650,6 @@
   box-shadow: 0 0 0 1px var(--c-accent), var(--glow);
 }
 
-.pkc-btn-clear {
-  background: none;
-  border: none;
-  font-size: 1rem;
-  color: var(--c-muted);
-  cursor: pointer;
-  padding: 0 var(--space-2);
-  line-height: 1;
-  transition: color var(--transition-fast), transform var(--transition-fast);
-}
-
-.pkc-btn-clear:hover {
-  color: var(--c-danger);
-}
-
-.pkc-btn-clear:active {
-  transform: scale(0.85);
-}
-
 /* ── Archetype filter ── */
 .pkc-archetype-filter {
   display: flex;
@@ -2168,97 +2149,31 @@ mark.pkc-search-mark {
   min-height: 200px;
 }
 
-/* ── Buttons ── */
-.pkc-btn {
-  padding: var(--space-1-5) var(--space-3);
-  font-size: 0.75rem;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius);
-  background: var(--c-bg);
-  color: var(--c-fg);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  white-space: nowrap;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
-}
+/* ── Buttons ──
+ *
+ * Phase 2b (CSS architecture redesign wave, 2026-05-04):
+ * Re-organized so that declarations shared between variants are
+ * hoisted into selector lists. Each variant's rule now holds only
+ * its differential properties (border / background / color / shadow
+ * for primary/danger; size for small).
+ *
+ * `.pkc-btn` (default) and `.pkc-btn-small` are the two SIZE
+ * variants. `.pkc-btn-primary` / `.pkc-btn-danger` are SEMANTIC
+ * variants layered on top of `.pkc-btn` (in JS the elements get
+ * `class="pkc-btn pkc-btn-primary"`).
+ *
+ * Note: `.pkc-btn-small` is sometimes used standalone (e.g.
+ * delete buttons in the textlog presenter) and sometimes combined
+ * with `.pkc-btn-danger` (e.g. `class="pkc-btn-small pkc-btn-danger"`).
+ * The selector lists below cover both cases without DOM changes.
+ *
+ * `.pkc-btn-clear` is an icon-style button (no surface, no border)
+ * and stays in its own block — sharing the base would only confuse.
+ */
 
-.pkc-btn:hover {
-  background: var(--c-hover);
-  box-shadow: var(--glow);
-}
-
-.pkc-btn:active {
-  transform: scale(0.96);
-}
-
-.pkc-btn:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
-}
-
-.pkc-btn-primary {
-  padding: var(--space-1-5) var(--space-3);
-  font-size: 0.75rem;
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius);
-  background: var(--c-accent);
-  color: var(--c-accent-fg);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.pkc-btn-primary {
-  box-shadow: var(--glow);
-  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
-}
-
-.pkc-btn-primary:hover {
-  opacity: 0.9;
-  box-shadow: 0 0 10px rgba(51,255,102,0.3);
-}
-
-.pkc-btn-primary:active {
-  transform: scale(0.96);
-}
-
-.pkc-btn-primary:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
-}
-
-.pkc-btn-danger {
-  padding: var(--space-1-5) var(--space-3);
-  font-size: 0.75rem;
-  border: 1px solid var(--c-danger);
-  border-radius: var(--radius);
-  background: var(--c-bg);
-  color: var(--c-danger);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  white-space: nowrap;
-  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
-}
-
-.pkc-btn-danger:hover {
-  background: var(--c-danger);
-  color: #fff;
-  box-shadow: 0 0 8px rgba(255,68,68,0.3);
-}
-
-.pkc-btn-danger:active {
-  transform: scale(0.96);
-}
-
-.pkc-btn-danger:focus-visible {
-  outline: 2px solid var(--c-danger);
-  outline-offset: 1px;
-}
-
+/* Common chrome across all surface buttons (excluding -clear). */
+.pkc-btn,
 .pkc-btn-small {
-  font-size: 0.65rem;
-  padding: 0.05rem var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
@@ -2268,29 +2183,104 @@ mark.pkc-search-mark {
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
+/* Default-size button — adds horizontal padding, larger font, nowrap. */
+.pkc-btn {
+  padding: var(--space-1-5) var(--space-3);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  /* default-size buttons additionally transition border-color so the
+   * danger variant's red border swap animates cleanly. */
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+/* Hover / active / focus shared between -btn and -btn-small. */
+.pkc-btn:hover,
 .pkc-btn-small:hover {
   background: var(--c-hover);
   box-shadow: var(--glow);
+}
+
+.pkc-btn:focus-visible,
+.pkc-btn-small:focus-visible {
+  /* `.pkc-btn-small` is used as the primary small-button across every
+   * overlay (shell menu close, shortcut help close, Storage Profile
+   * export/close, Data Maintenance buttons, theme toggles). Hoisted
+   * here so keyboard users see the same ring on both sizes. */
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
+.pkc-btn:active {
+  transform: scale(0.96);
+}
+
+/* Small-size button — used in dialogs, action bars, chip strips. */
+.pkc-btn-small {
+  font-size: 0.65rem;
+  padding: 0.05rem var(--space-2);
 }
 
 .pkc-btn-small:active {
   transform: scale(0.95);
 }
 
-/*
- * Overlay / dialog focus-visible convergence.
- *
- * `.pkc-btn-small` is used as the primary small-button across every
- * overlay (shell menu close, shortcut help close, Storage Profile
- * export/close, Data Maintenance buttons, theme toggles, etc.). Before
- * this rule the small variant silently inherited *no* focus-visible
- * ring — keyboard users could land on any of these buttons without a
- * visible signal. Match the canonical `.pkc-btn` pattern so the ring
- * reads identically in light and dark modes via `--c-accent`.
- */
-.pkc-btn-small:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
+/* Primary semantic variant — accent surface + glow. Layered on .pkc-btn
+ * (HTML uses `class="pkc-btn pkc-btn-primary"`), so the size / family /
+ * cursor inherit; this rule overrides border / surface / color / shadow
+ * + adds opacity to the transition list. */
+.pkc-btn-primary {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+  font-weight: 600;
+  box-shadow: var(--glow);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.pkc-btn-primary:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 10px rgba(51,255,102,0.3);
+}
+
+/* Danger semantic variant — red border + red text. Used standalone
+ * (e.g. confirmation buttons) and combined with .pkc-btn-small
+ * (e.g. delete buttons in textlog rows). The selector list above
+ * provides the surface chrome; this rule swaps to danger color and
+ * defines the hover-fill behavior. */
+.pkc-btn-danger {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
+.pkc-btn-danger:hover {
+  background: var(--c-danger);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(255,68,68,0.3);
+}
+
+.pkc-btn-danger:focus-visible {
+  outline-color: var(--c-danger);
+}
+
+/* Clear variant — icon-style button (no surface, no border). Distinct
+ * from the surface family above; kept in its own self-contained block. */
+.pkc-btn-clear {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--c-muted);
+  cursor: pointer;
+  padding: 0 var(--space-2);
+  line-height: 1;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.pkc-btn-clear:hover {
+  color: var(--c-danger);
+}
+
+.pkc-btn-clear:active {
+  transform: scale(0.85);
 }
 
 /* ── Table of Contents (right-pane TOC, A-3) ── */

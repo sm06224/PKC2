@@ -34,13 +34,23 @@ const baseCss = readFileSync(
 // so that minor whitespace / property-order tweaks don't trigger false
 // failures — the invariant is the triple (class, accent outline,
 // small positive offset), not the exact formatting.
+//
+// Phase 2b (2026-05-04) hoisted the .pkc-btn / .pkc-btn-small focus
+// rings into a shared selector list, so the regex below matches the
+// selector either standalone (`.pkc-btn:focus-visible { ... }`) or
+// inside a comma-separated selector list (`.pkc-btn:focus-visible,
+// .pkc-btn-small:focus-visible { ... }`).
 function ringOf(selector: string, expectedOffset: RegExp): RegExp {
   // Escape regex metacharacters in the selector literal.
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Match the selector at the start of a rule OR inside a comma-list.
+  // The block body (between `{` and `}`) is then asserted to contain
+  // both the accent outline and the expected offset.
   return new RegExp(
-    `${escaped}:focus-visible\\s*\\{[^}]*outline:\\s*2px\\s+solid\\s+var\\(--c-accent\\)[^}]*outline-offset:\\s*${
+    `(^|[,\\s])${escaped}:focus-visible[\\s,][^{}]*\\{[^}]*outline:\\s*2px\\s+solid\\s+var\\(--c-accent\\)[^}]*outline-offset:\\s*${
       expectedOffset.source
     }`,
+    'm',
   );
 }
 
@@ -73,8 +83,17 @@ describe('Overlay focus-visible convergence', () => {
     // The small variant inherits accent; the danger variant must keep
     // its own --c-danger ring so destructive actions stay visually
     // distinct even under keyboard focus.
+    //
+    // Phase 2b (2026-05-04): the danger ring is now expressed as a
+    // cascade override — the parent `.pkc-btn:focus-visible` (or
+    // `.pkc-btn-small:focus-visible`) sets `outline: 2px solid
+    // var(--c-accent)`, then `.pkc-btn-danger:focus-visible` flips
+    // only `outline-color` to var(--c-danger). Both forms are accepted
+    // here so the visual contract (red ring on danger focus) holds
+    // regardless of whether the override is full-shorthand or
+    // longhand-color.
     expect(baseCss).toMatch(
-      /\.pkc-btn-danger:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--c-danger\)/,
+      /\.pkc-btn-danger:focus-visible\s*\{[^}]*outline(-color)?:\s*[^;}]*var\(--c-danger\)/,
     );
   });
 

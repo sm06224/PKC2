@@ -317,7 +317,15 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - bundle.css 121838 → 120794 bytes(**-1044 bytes / -1.02 KB raw**、binary 118.98 → 117.96 KB / 120 KB(99.2% → 98.3%、headroom +1 KB 回復))
   - **net positive**:Phase 1a + 1a-tail + 2a 累計で +5.72 - 1.02 = +4.7 KB(token 化の overhead が dedup で部分的に吸収)。Phase 2b(button utility-first)で更に削減予定
   - unit 6259 / 6259、smoke 39 / 39 pass、visual regression なし(theme switching / flags inspector / iPhone shell すべて green)
-- **Phase 2b**:`.pkc-btn` を utility-first に再構成、`-primary` / `-danger` / `-clear` を background+border のみの variant に縮小(推定 ~80 行削減)
+- **Phase 2b ✅(2026-05-04 着地、PR #246)**:`.pkc-btn` family を utility-first に再構成。
+  - **共通 chrome**(border / radius / bg / color / cursor / font-family / base transition)を `.pkc-btn, .pkc-btn-small` selector list に hoist
+  - **default-size のみの property**(padding / font-size / white-space / border-color transition)は `.pkc-btn` に分離
+  - **shared interaction**(`:hover` / `:focus-visible`)を共通 selector list に hoist
+  - **semantic variants**(`.pkc-btn-primary` / `.pkc-btn-danger`)を「diff のみ」rule に縮小:primary は border / bg / color / font-weight / shadow / transition、danger は border-color / color のみ + hover の fill 動作 + focus-visible の color override
+  - **`.pkc-btn-clear`** は icon-style で family と意味的に異なるため独立 block 維持(別箇所に重複していた rule を統合 → 1 箇所のみに)
+  - bundle.css 120,766 → 119,861 bytes(**-905 bytes / -0.88 KB**)、binary 117.94 → 117.05 KB(98.3% → 97.5%、headroom +1 KB 回復)
+  - `tests/styles/overlay-focus-visible.test.ts` の 2 件 regex を「selector list 内」「shorthand or longhand color override」も許容するよう更新(visual contract 不変、形式柔軟化)
+  - unit 6259 / 6259、smoke 39 / 39 pass
 
 ### Phase 3 — Runtime adaptive axes(2 PR)
 
