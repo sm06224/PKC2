@@ -133,6 +133,8 @@ grep 結果を要約してから選択肢を提示する。**grep を skip し�
 
 PR 着地時には `docs/development/doc-archival-discipline.md` §6.1 に従い、触った feature の lifecycle を 1 cycle 進める(完了なら archive、部分なら roadmap 追記)。
 
+**CHANGELOG 更新も同時必須**(2026-05-04 reform-2026-05 Phase 7):feature / fix PR は `docs/release/CHANGELOG_v<current>.md` の該当 section に 1 行追記、新 minor / major bump 時は新規 `CHANGELOG_v<new>.md` を `docs/release/CHANGELOG_v2.2.0.md` を範として起こす。About entry が build 時に CHANGELOG を parse して最新 3 generations を表示するため、CHANGELOG 更新を skip した PR は About に反映されず release context が失われる。詳細は `pr-review-checklist.md` §2.10。
+
 ## PR Workflow / Review Checklist
 
 PKC2 は 2026-04-25 以降 **User + Claude の 2 名体制**(ChatGPT 統括役は外れ、Gemini 等が将来加わる可能性あり)で運用されている。Claude が implementer + auditor を兼任するため、**PR 作成時に必ず 8 項目の自己監査を行う**。

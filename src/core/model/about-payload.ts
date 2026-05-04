@@ -32,11 +32,28 @@ export interface AboutPayload {
    *
    * Keep entries user-facing and short; full detail lives in
    * `docs/release/CHANGELOG_v<version>.md`.
+   *
+   * Since v2.2.0 the canonical surface is `releases` (plural,
+   * newest first, up to 3 generations parsed from CHANGELOG files
+   * at build time). `release` (singular) remains populated with
+   * `releases[0]` for backward-compat with v2.1.x readers.
    */
   release?: AboutRelease;
+  /**
+   * v2.2.0+ — last 3 generations of CHANGELOG entries, newest
+   * first. Each carries its own `version` so the renderer can show
+   * a `v<version>` header per generation. Parsed at build time
+   * from `docs/release/CHANGELOG_v*.md` files.
+   */
+  releases?: AboutRelease[];
 }
 
 export interface AboutRelease {
+  /**
+   * Semver of this generation. Empty string allowed for legacy
+   * readers; v2.2.0+ build always populates.
+   */
+  version?: string;
   highlights: string[];
   knownLimitations: string[];
   /**
@@ -129,6 +146,16 @@ export function isValidAboutPayload(p: unknown): p is AboutPayload {
   // must be a well-formed shape; callers that need the narrowed
   // content should use `filterValidRelease` afterwards.
   if (o.release !== undefined && !isValidRelease(o.release)) return false;
+  // `releases` (plural, v2.2.0+) is optional. When present it must
+  // be an array of well-formed releases (entries that fail
+  // validation are tolerated by `filterValidRelease` at read time
+  // rather than rejecting the whole payload).
+  if (o.releases !== undefined) {
+    if (!Array.isArray(o.releases)) return false;
+    for (const r of o.releases) {
+      if (!isValidRelease(r)) return false;
+    }
+  }
 
   return true;
 }
@@ -139,6 +166,7 @@ function isValidRelease(r: unknown): r is AboutRelease {
   if (!Array.isArray(o.highlights)) return false;
   if (!Array.isArray(o.knownLimitations)) return false;
   if (o.changelog !== undefined && typeof o.changelog !== 'string') return false;
+  if (o.version !== undefined && typeof o.version !== 'string') return false;
   return true;
 }
 
@@ -150,6 +178,9 @@ function isValidRelease(r: unknown): r is AboutRelease {
  */
 export function filterValidRelease(r: AboutRelease): AboutRelease {
   return {
+    ...(typeof r.version === 'string' && r.version.length > 0
+      ? { version: r.version }
+      : {}),
     highlights: r.highlights.filter((h): h is string => typeof h === 'string' && h.length > 0),
     knownLimitations: r.knownLimitations.filter(
       (h): h is string => typeof h === 'string' && h.length > 0,
@@ -182,6 +213,9 @@ export function resolveAboutPayload(body: string | undefined): AboutPayload {
       devDependencies: filterValidModules(parsed.devDependencies),
       contributors: filterValidContributors(parsed.contributors),
       ...(parsed.release ? { release: filterValidRelease(parsed.release) } : {}),
+      ...(Array.isArray(parsed.releases)
+        ? { releases: parsed.releases.map((r: AboutRelease) => filterValidRelease(r)) }
+        : {}),
     };
   } catch {
     console.warn('[PKC2] About entry parse failed');

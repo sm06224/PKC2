@@ -5,9 +5,17 @@
  * injected into pkc-data. Source of truth: package.json fields
  * (dependencies + devDependencies) with license resolved from each
  * module's node_modules/<name>/package.json.
+ *
+ * v2.2.0+ release-summary path: hardcoded `RELEASE_SUMMARY` table is
+ * replaced by `loadRecentReleases()` which parses
+ * `docs/release/CHANGELOG_v*.md` files at build time and surfaces
+ * the latest 3 generations into `releases` (newest first).
+ * `release` (singular) keeps the legacy backward-compat populated
+ * with `releases[0]`.
  */
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
+import { loadRecentReleases, type ParsedRelease } from './scripts/parse-changelog';
 
 const ABOUT_LID = '__about__';
 
@@ -121,83 +129,50 @@ function resolveModules(deps: Record<string, string> | undefined): AboutModule[]
 }
 
 /**
- * Release summary for the current user-visible version.
- *
- * Source of truth for the About view's highlights / known-limitations
- * block(v2.1.0+). Kept as a build-time constant so a stale dist/
- * HTML can still surface the summary offline without network or
- * runtime fetch. Full detail lives in
- * `docs/release/CHANGELOG_v<version>.md`; keep bullets short and
- * user-facing here.
- *
- * When bumping the semver, update this block together with the
- * CHANGELOG doc — `docs/development/versioning-policy.md` §3 codifies
- * the rule that About summary and changelog must stay in sync.
+ * Repo-relative path of the CHANGELOG directory. The build script
+ * runs from the repo root via tsx, so a fixed relative path works
+ * for both vite build and direct invocation paths.
  */
-const RELEASE_SUMMARY = {
-  '2.1.0': {
-    highlights: [
-      'Link system: Copy link / paste conversion / External Permalink receive',
-      'Tags: entry tags, Tag filter, Saved Search tag persistence, `tag:` parser',
-      'Storage Profile: asset bytes + body bytes breakdown',
-      'UI continuity: scroll / focus / caret restore, folder collapse persistence',
-      'Data correctness: orphan asset cleanup persistence, IDB asset delete diff',
-      'Relation / tree safety: structural cycle display rescue + reducer guard',
-    ],
-    knownLimitations: [
-      'Link migration tool is designed (spec v1) but not implemented',
-      'Card / embed presentation is not implemented yet',
-      'Color tag is spec-only — implementation deferred to a future wave',
-      'Cross-container resolver / P2P is not implemented',
-      'OS protocol handler for `pkc://` is not implemented',
-      'Full container footprint (body + relations + revisions) is not implemented — Storage Profile is asset-only',
-    ],
-    changelog: 'docs/release/CHANGELOG_v2.1.0.md',
-  },
-  '2.1.1': {
-    highlights: [
-      'Link migration tool v1: Tools → Normalize PKC links preview + Apply all safe',
-      'Revision-backed normalization: every applied migration is recorded as a revision (bulk_id grouped, restore-capable)',
-      'Stale-candidate safety: source text changed between preview and apply is skipped instead of overwritten',
-      'Harbor-safe dialect gate: Candidate D (legacy asset image embed) removed from scanner v1; clickable-image reserved as future dialect',
-      'Manual sync: Normalize PKC links is documented in daily operations, troubleshooting, and glossary',
-    ],
-    knownLimitations: [
-      'Per-candidate checkbox selection is not implemented — v1 Apply is all-safe only',
-      'Clickable-image renderer support (`[![alt](url)](url)`) is not implemented — reserved as future dialect',
-      'Card widget thumbnail + advanced variants (`compact` / `wide` / `timeline`) are still future work — Slice 1-4 (2026-04-25) shipped the parser, renderer placeholder, and click + keyboard wiring; Slice 5.0 (2026-04-25) hydrates the placeholder into a minimal chrome (archetype badge + entry title + missing / cross-container / malformed states) via `adapter/ui/card-hydrator.ts`; Slice 5.1 (2026-04-25) adds an XSS-safe plain-text excerpt below the title for TEXT / TEXTLOG / TODO / FORM / FOLDER bodies via `features/card/excerpt-builder.ts`. Thumbnail (Slice 5.2) and per-variant layout (Slice 6) are deferred. Embed presentation beyond `![](entry:...)` transclusion is unchanged',
-      'Color tag per-container theme override and full CVD-simulation tooling (protanopia / deuteranopia / tritanopia matrices) are still future work — Slice 1-4 (2026-04-25) shipped the palette, picker, sidebar marker, Entry schema, `color:<id>` query parser, filter axis, and Saved Search round-trip; Slice 5.0 (2026-04-25) split `--pkc-color-tag-*` tokens for dark / light themes so the 3px sidebar bar now meets the WCAG 1.4.11 non-text 3:1 contrast floor on both themes, with a new `tests/features/color/color-tag-contrast.test.ts` regression guard. `prefers-contrast: high` / `forced-colors` are deferred to Slice 5.1+',
-      'Cross-container resolver / P2P is not implemented',
-      'OS protocol handler for `pkc://` is not implemented',
-      'External Permalink body residue rendering is not implemented — a `<base>#pkc?...` string left inside body text is rendered as a plain external anchor; only boot-time receive resolves it',
-      'Full container footprint (body + relations + revisions) is not implemented — Storage Profile is asset-only',
-    ],
-    changelog: 'docs/release/CHANGELOG_v2.1.1.md',
-  },
-} as const;
+const CHANGELOG_DIR = resolve(process.cwd(), 'docs/release');
 
 /**
- * Look up the `release` block for a given semver. Falls back to an
- * empty summary when the version is not in `RELEASE_SUMMARY` (typical
- * for dev builds between tagged releases). We still emit the field
- * so consumers can count on the shape.
+ * Maximum number of CHANGELOG generations to surface in About.
+ * 3 is the user-direction default (2026-05-04) — keeps the About
+ * scroll length sane while showing enough context for debug.
  */
-function resolveRelease(version: string): {
+const ABOUT_RELEASE_GENERATIONS = 3;
+
+function shapeRelease(parsed: ParsedRelease): {
+  version: string;
+  highlights: string[];
+  knownLimitations: string[];
+  changelog: string;
+} {
+  return {
+    version: parsed.version,
+    highlights: [...parsed.highlights],
+    knownLimitations: [...parsed.knownLimitations],
+    changelog: parsed.changelogPath,
+  };
+}
+
+/**
+ * Pick the release block for a given semver from the CHANGELOG
+ * snapshot. Returns an empty summary when the version is not in the
+ * parsed set (typical for dev builds between tagged releases).
+ */
+function resolveRelease(
+  releases: ParsedRelease[],
+  version: string,
+): {
+  version?: string;
   highlights: string[];
   knownLimitations: string[];
   changelog?: string;
 } {
-  const hit = (RELEASE_SUMMARY as Record<string, {
-    highlights: readonly string[];
-    knownLimitations: readonly string[];
-    changelog: string;
-  } | undefined>)[version];
+  const hit = releases.find((r) => r.version === version);
   if (!hit) return { highlights: [], knownLimitations: [] };
-  return {
-    highlights: [...hit.highlights],
-    knownLimitations: [...hit.knownLimitations],
-    ...(hit.changelog ? { changelog: hit.changelog } : {}),
-  };
+  return shapeRelease(hit);
 }
 
 export function buildAboutEntry(
@@ -209,7 +184,13 @@ export function buildAboutEntry(
   const dependencies = resolveModules(pkg.dependencies);
   const devDependencies = resolveModules(pkg.devDependencies);
   const contributors = resolveContributors(pkg);
-  const release = resolveRelease(pkg.version);
+  // v2.2.0+: parse all CHANGELOG_v*.md files at build time and pick
+  // the latest 3 generations for the About entry's `releases` array.
+  // The current-version `release` (singular) is also populated for
+  // backward-compat with v2.1.x About readers.
+  const recentReleases = loadRecentReleases(CHANGELOG_DIR, ABOUT_RELEASE_GENERATIONS);
+  const releases = recentReleases.map(shapeRelease);
+  const release = resolveRelease(recentReleases, pkg.version);
 
   const payload = {
     type: 'pkc2-about' as const,
@@ -239,6 +220,7 @@ export function buildAboutEntry(
     devDependencies,
     contributors,
     release,
+    releases,
   };
 
   return {
