@@ -111,19 +111,26 @@ export function mountPersistence(
   dispatcher: Dispatcher,
   options: PersistenceOptions,
 ): PersistenceHandle {
-  const { store, debounceMs = persistenceDebounceMs(), onError } = options;
+  const { store, debounceMs: debounceOverride, onError } = options;
   const unloadTarget = options.unloadTarget === undefined
     ? (typeof window !== 'undefined' ? window : null)
     : options.unloadTarget;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let saving = false;
 
+  // Resolve debounce on every scheduleSave call so SET_FLAG /
+  // inspector-edited persistence.debounce_ms takes effect immediately.
+  // Test override (debounceOverride) wins when explicitly passed.
+  function resolveDebounceMs(): number {
+    return debounceOverride ?? persistenceDebounceMs();
+  }
+
   function scheduleSave(): void {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       void doSave();
-    }, debounceMs);
+    }, resolveDebounceMs());
   }
 
   async function doSave(): Promise<void> {

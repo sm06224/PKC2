@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { createMemoryStore } from '@adapter/platform/idb-store';
 import { mountPersistence, loadFromStore } from '@adapter/platform/persistence';
+import { setContainerFlagSource } from '@adapter/flags';
 import type { Container } from '@core/model/container';
 
 const T = '2026-04-06T00:00:00Z';
@@ -349,6 +350,66 @@ describe('mountPersistence', () => {
     dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'Post import' });
     await vi.advanceTimersByTimeAsync(100);
     expect(saveSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // ── persistence.debounce_ms flag — live read on each scheduleSave ──
+  // Regression: the original implementation destructured
+  //   const { debounceMs = persistenceDebounceMs() } = options;
+  // which captured the flag's value ONCE at mountPersistence time.
+  // Subsequent SET_FLAG dispatches changed the runtime registry but
+  // not the captured local, so the user-visible save timing did not
+  // budge. The fix reads `persistenceDebounceMs()` afresh inside
+  // `scheduleSave` so each new schedule honors the current flag.
+  //
+  // This test exercises the live-read path: drive saves at one flag
+  // value, change the flag mid-session, and confirm the next
+  // scheduleSave honors the new value.
+  it('persistence.debounce_ms flag is read live on each scheduleSave (no import-time capture)', async () => {
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    setContainerFlagSource({ 'persistence.debounce_ms': 50 });
+    // No `debounceMs` override in options → must resolve via flag.
+    mountPersistence(dispatcher, { store, unloadTarget: null });
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+
+    // CONTAINER_LOADED triggers a save scheduled with debounce=50.
+    await vi.advanceTimersByTimeAsync(40);
+    expect(saveSpy).toHaveBeenCalledTimes(0);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    // Change the flag mid-session.
+    setContainerFlagSource({ 'persistence.debounce_ms': 500 });
+
+    // New mutation → next scheduleSave must use 500, not the
+    // mount-time value of 50.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'B' });
+    await vi.advanceTimersByTimeAsync(100);
+    // If the flag were captured at mount, this would already fire.
+    // With live read the timer is still pending.
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(450);
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+
+    setContainerFlagSource({});
+  });
+
+  it('explicit options.debounceMs overrides the flag (test override stays sticky)', async () => {
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const dispatcher = createDispatcher();
+
+    // Flag says 5000 but caller pins debounceMs=50 — caller wins.
+    setContainerFlagSource({ 'persistence.debounce_ms': 5000 });
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    setContainerFlagSource({});
   });
 
   it('normal (viewOnlySource=false) boot still saves on CONTAINER_LOADED', async () => {

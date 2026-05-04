@@ -143,6 +143,11 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
 
 ---
 
+### Post-release fix(2026-05-04)
+
+- **`persistence.debounce_ms` runtime mutability bug 修正**:`mountPersistence` で `const { debounceMs = persistenceDebounceMs() } = options;` の destructure-at-call により flag 値が mount 時に 1 回のみ resolve されていた問題を修正。`scheduleSave` 呼び出し毎に live で再 resolve するよう変更し、SET_FLAG / inspector edit が次回 save から即時反映されるように。Phase 8 順序性テスト doctrine の継続適用で発見。
+- **flags-runtime-effect-parity smoke 拡充**:`textlog.staged_render.initial_count` を URL flag で URL→Container→default の 3 layer 解決経路の visible 副作用として assert する 3 個目の parity test を追加。`recent.default_limit`(URL boot + inspector edit)+ textlog initial_count = 7 件中 3 件を実機ブラウザで確認する形に。残 4 件(image.* / search.* / persistence.debounce_ms / lookahead)は unit test side で live-read を assert。
+
 ## Known Limitations
 
 - **Flags inspector のキーボード操作**:Tab / Enter / Space で flag 編集は OS 標準挙動に依存、専用 hotkey は未実装(power user 向け、別 wave で検討)
