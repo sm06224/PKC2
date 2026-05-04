@@ -309,8 +309,15 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
 
 ### Phase 2 — Pattern abstraction(2 PR)
 
-- **Phase 2a**: `.pkc-overlay-base` + `.pkc-panel-base` を抽出。11 個の overlay/panel に共通宣言を寄せる(11 × ~13 行 → 1 × 13 行 + 11 × 0-3 行 override = 推定 ~110 行削減)
-- **Phase 2b**: `.pkc-btn` を utility-first に再構成、`-primary` / `-danger` / `-clear` を background+border のみの variant に縮小(推定 ~80 行削減)
+- **Phase 2a ✅(2026-05-04 着地、PR #244)**:overlay backdrop + panel pattern を 2 family に分離して dedup:
+  - **Family A**(accent panel + hostile blur backdrop):shell menu / shortcut help / storage profile / flags inspector — 4 panel が `bg/border/radius/glow shadow` の同じ 4 declaration を持っていたものを 1 selector list に hoist。3 overlay (shell-menu / shortcut / storage-profile) の hostile backdrop (`rgba(0,0,0,.6) + blur(2px)`) も同様に hoist
+  - **Family B**(neutral panel + light backdrop):textlog-preview / text-to-textlog / text-replace — 3 panel が 9 declaration をフルコピーしていたものを 1 selector list に hoist。light backdrop も別 list で dedup
+  - 7 overlay の共通 5 declaration(`position: fixed; inset: 0; display: flex; align-items: center; justify-content: center`)を 1 selector list に hoist
+  - 各 per-class rule は z-index / max-width / max-height / padding 等の固有部分のみに縮小
+  - bundle.css 121838 → 120794 bytes(**-1044 bytes / -1.02 KB raw**、binary 118.98 → 117.96 KB / 120 KB(99.2% → 98.3%、headroom +1 KB 回復))
+  - **net positive**:Phase 1a + 1a-tail + 2a 累計で +5.72 - 1.02 = +4.7 KB(token 化の overhead が dedup で部分的に吸収)。Phase 2b(button utility-first)で更に削減予定
+  - unit 6259 / 6259、smoke 39 / 39 pass、visual regression なし(theme switching / flags inspector / iPhone shell すべて green)
+- **Phase 2b**:`.pkc-btn` を utility-first に再構成、`-primary` / `-danger` / `-clear` を background+border のみの variant に縮小(推定 ~80 行削減)
 
 ### Phase 3 — Runtime adaptive axes(2 PR)
 
