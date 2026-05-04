@@ -56,9 +56,9 @@ describe('TEXTLOG viewer — day heading legibility (base.css)', () => {
 });
 
 describe('TEXTLOG viewer — chapter break between days (base.css)', () => {
-  it('.pkc-textlog-day + .pkc-textlog-day has margin-top for chapter break', () => {
+  it('.pkc-textlog-day + .pkc-textlog-day has margin-top for chapter break (--space-3 = 0.5rem)', () => {
     expect(baseCss).toMatch(
-      /\.pkc-textlog-day\s*\+\s*\.pkc-textlog-day\s*\{[^}]*margin-top:\s*0\.5rem/,
+      /\.pkc-textlog-day\s*\+\s*\.pkc-textlog-day\s*\{[^}]*margin-top:\s*var\(--space-3\)/,
     );
   });
 
@@ -67,11 +67,11 @@ describe('TEXTLOG viewer — chapter break between days (base.css)', () => {
     expect(rule).toMatch(/gap:\s*1\.25rem/);
   });
 
-  it('.pkc-textlog-day inner gap is 0.5rem (header→first log breathing room)', () => {
+  it('.pkc-textlog-day inner gap is --space-3 = 0.5rem (header→first log breathing room)', () => {
     // Target the element rule (not combinator rule) by pinning the
     // display: flex declaration we know only the element rule has.
     const rule = baseCss.match(/\.pkc-textlog-day\s*\{[^}]*display:\s*flex[^}]*\}/)?.[0] ?? '';
-    expect(rule).toMatch(/gap:\s*0\.5rem/);
+    expect(rule).toMatch(/gap:\s*var\(--space-3\)/);
   });
 });
 
