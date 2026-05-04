@@ -300,8 +300,16 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - 残 6 occurrence は font-size: 0.35rem 等の非 spacing context、token 化対象外で正常
   - bundle.css raw 116.08 → 118.98 KB(+2.91 KB、binary 1024)、累計 main からは +5.72 KB
   - **budget headroom 警告**:bundle.css 99.2% / 120 KB、Phase 1b(font-size scale ~+1.9 KB 想定)を入れる前に **Phase 2(overlay base + button utility-first)で重複削減** して budget 回復が必要
-- **Phase 1b**:`--font-size-{xs,sm,base,md,lg,xl}` を導入、6 段階に丸め。inline font-size を migrate(**Phase 2 完了後に着手**、budget 回復前提)
-- **Phase 1c**:`--radius-{sm,md,lg,pill,circle}` に拡張、3 → 5 段階に整理
+- **Phase 1b ✅(2026-05-04 着地、PR #248)**:font-size scale 軸導入。
+  - **9-token scale**:`--fs-{2xs, xs, sm, base, md, lg, xl, 2xl, 3xl}` を `:root` 宣言、0.6rem〜1rem 範囲をカバー
+  - **短 prefix `--fs-*`** を採用(audit 当初の `--font-size-*` から budget 制約で変更):`var(--fs-base)` 14 chars vs `0.75rem` 7 chars
+  - **安全な regex** で migrate(Phase 1a の word-boundary bug reflection):`font-size:\s*VALUE\s*[;}!]` anchor で value boundary 厳密化、partial match 不能
+  - 計 **265 occurrence migrate** — 0.6rem(21)/ 0.65rem(29)/ 0.7rem(53)/ 0.75rem(45)/ 0.8rem(42)/ 0.85rem(40)/ 0.9rem(14)/ 0.95rem(14)/ 1rem(7)
+  - bundle.css 119,861 → 121,857 bytes(**+1,996 bytes / +1.95 KB**、binary 117.05 → 119.00 KB / 120 KB、97.5% → 99.2%)
+  - **累計 main 起点 +5.74 KB**(token 化総和 vs dedup)。Phase 1c は軽量、Phase 3 は CSS var pipeline で同等 byte 維持予定
+  - `tests/styles/textlog-viewer.test.ts` の 1 件 hardcoded `0.95rem` matcher を `var(--fs-2xl)` に追従、`src/adapter/ui/entry-window.ts` の inline font-size は別 string で migrate scope 外、test 不変
+  - unit 6259 / 6259、smoke 39 / 39 pass
+- **Phase 1c**:`--radius-{sm,md,lg,pill,circle}` に拡張、3 → 5 段階に整理(headroom 1 KB、軽量で fit 想定)
 
 各 sub-PR の test plan:
 - Visual regression(main / dark / scanline 3 theme で screenshot 比較、Playwright)

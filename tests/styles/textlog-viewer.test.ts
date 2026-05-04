@@ -35,9 +35,12 @@ const renderedViewer = readFileSync(
 );
 
 describe('TEXTLOG viewer — day heading legibility (base.css)', () => {
-  it('.pkc-textlog-day-title uses 0.95rem font-size', () => {
+  it('.pkc-textlog-day-title uses --fs-2xl (= 0.95rem) font-size', () => {
+    // Phase 1b (2026-05-04): inline 0.95rem migrated to var(--fs-2xl)
+    // for the font-size scale axis. The token resolves to 0.95rem so
+    // visual contract is unchanged.
     const rule = baseCss.match(/\.pkc-textlog-day-title\s*\{[^}]*\}/)?.[0] ?? '';
-    expect(rule).toMatch(/font-size:\s*0\.95rem/);
+    expect(rule).toMatch(/font-size:\s*var\(--fs-2xl\)/);
   });
 
   it('.pkc-textlog-day-title uses --c-fg (promoted from --c-muted)', () => {
