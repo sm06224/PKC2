@@ -19,6 +19,7 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 - **CHANGELOG → About 自動連携(NEW)**:本リリースから About の Highlights / Known Limitations は本書をはじめとする `docs/release/CHANGELOG_v*.md` を build 時 parse して最新 3 generations を表示。RELEASE_SUMMARY ハードコード廃止、CHANGELOG が単一 source of truth
 - **Flags critical bug fix(2026-05-04)**:`defineFlag` を live getter `() => T` に変更、7 consumer を関数呼出形式に更新、新規 `flags-runtime-effect-parity.spec.ts` で state mutation → consumer behavior change を end-to-end 検証(import-time-capture bug の regression guard)
 - **Phase 8 順序性テスト doctrine(2026-05-04)**:user direction「今後は実機テストを省略するので、完璧なテストは君が保証」を canonical 化。動的機構(flag / setting / event)は consumer behavior 変化までを user-visible 観測点で verify する parity test を必須(`pr-review-checklist.md` §2.11、reform-2026-05 §6 visual parity と AND 適用)
+- **PoC 提案 A: textlog staged-render flag sweep bench(2026-05-04)**:Flags Protocol v1 機構の実証として `textlog.staged_render.initial_count` を URL flag で sweep する bench を `tests/bench/textlog-staged-render-flag-sweep.bench.ts` に整備。条件揃え(6 N × 3 logCount × 2 warmup + 12 measured = 216 iterations)+ median ± IQR 統計 + 環境記録(CPU / OS / browser version)で再現可能な PoC record。結果は `bench-results/textlog-staged-render-flag-sweep.md`、bundle 不変で flag だけ変えて挙動が変わることを 216 measurement で確認(機構 end-to-end validation)
 
 詳細は以下のセクション:
 
