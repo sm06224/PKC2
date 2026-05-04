@@ -4041,6 +4041,207 @@ mark.pkc-search-mark {
   backdrop-filter: blur(2px);
 }
 
+/* ── Flags Inspector overlay (PR-β-2) ──
+   Reuses the shell-menu modal pattern for consistency. Sits at a
+   higher z-index than the shell menu so a flags-link click that
+   reaches into the shell menu still surfaces above. */
+.pkc-flags-inspector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pkc-flags-inspector-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.pkc-flags-inspector-panel {
+  position: relative;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51,255,102,0.1);
+  padding: 1rem;
+  max-width: 720px;
+  width: 92%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+.pkc-flags-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 0.4rem;
+}
+.pkc-flags-inspector-title { margin: 0; font-size: 0.95rem; }
+.pkc-flags-inspector-close {
+  background: transparent;
+  border: none;
+  color: var(--c-fg);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.2rem 0.5rem;
+}
+.pkc-flags-inspector-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.pkc-flags-inspector-search,
+.pkc-flags-inspector-category {
+  flex: 1 1 120px;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+.pkc-flags-inspector-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pkc-flags-inspector-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--c-muted);
+  font-size: 0.8rem;
+}
+.pkc-flags-section-heading {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  letter-spacing: 0.05em;
+}
+.pkc-flag-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+.pkc-flag-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.pkc-flag-key {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--c-fg);
+}
+.pkc-flag-tier {
+  font-size: 0.6rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  color: var(--c-muted);
+}
+.pkc-flag-tier-0 { color: var(--c-accent); border-color: var(--c-accent); }
+.pkc-flag-source {
+  font-size: 0.6rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius);
+}
+.pkc-flag-source-url      { background: var(--c-accent); color: var(--c-accent-fg); }
+.pkc-flag-source-container{ background: var(--c-muted); color: var(--c-bg); }
+.pkc-flag-source-default  { color: var(--c-muted); border: 1px solid var(--c-border); }
+.pkc-flag-description {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+}
+.pkc-flag-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.pkc-flag-editor-text,
+.pkc-flag-editor-enum {
+  flex: 1 1 80px;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.35rem;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+.pkc-flag-reset {
+  font-size: 0.7rem;
+  padding: 0 0.4rem;
+  background: transparent;
+  color: var(--c-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.pkc-flag-reset:hover { color: var(--c-accent); border-color: var(--c-accent); }
+.pkc-flag-url-note {
+  font-size: 0.65rem;
+  color: var(--c-muted);
+}
+.pkc-flags-inspector-footer {
+  border-top: 1px solid var(--c-border);
+  padding-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pkc-flags-inspector-summary {
+  font-size: 0.7rem;
+  color: var(--c-muted);
+}
+.pkc-flags-build-features-note {
+  margin: 0;
+  font-size: 0.65rem;
+  color: var(--c-muted);
+}
+.pkc-flags-build-features-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pkc-flags-build-features-list li {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+}
+.pkc-flag-build-value {
+  color: var(--c-fg);
+  font-family: monospace;
+}
+.pkc-about-flags-summary {
+  background: transparent;
+  border: none;
+  color: var(--c-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  font: inherit;
+  padding: 0;
+}
+.pkc-about-flags-summary:hover { color: var(--c-fg); }
+
 .pkc-shell-menu-card {
   background: var(--c-surface);
   border: 1px solid var(--c-accent);

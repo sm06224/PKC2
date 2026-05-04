@@ -248,6 +248,13 @@ export type UserAction =
   | { type: 'SET_FLAG'; key: string; value: number | string | boolean }
   | { type: 'RESET_FLAG'; key: string }
   | { type: 'RESET_ALL_FLAGS' }
+  /**
+   * Flags Protocol v1 — inspector overlay open/close. Runtime-only
+   * UI flip; no domain event, no entry mutation. ESC / × button /
+   * outside-click backdrop click all dispatch CLOSE_FLAGS_INSPECTOR.
+   */
+  | { type: 'OPEN_FLAGS_INSPECTOR' }
+  | { type: 'CLOSE_FLAGS_INSPECTOR' }
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
   /**

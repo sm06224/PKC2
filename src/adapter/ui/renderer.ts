@@ -3,6 +3,8 @@ import type { Entry } from '../../core/model/record';
 import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/record';
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
+import { renderFlagsInspector } from './flags-inspector';
+import { getActiveFlagCount as getActiveFlagCountForAbout } from '../../runtime/flags';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import type { Container } from '../../core/model/container';
@@ -399,6 +401,14 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // dispatches `CLOSE_SHORTCUT_HELP`.
   if (state.shortcutHelpOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
     root.appendChild(renderShortcutHelp());
+  }
+
+  // Flags Protocol v1 (PR-β-2): inspector overlay. Mounted in any
+  // phase that has a working app surface (avoids appearing during
+  // boot / error). Shell-menu link, settings dialog, and URL flag
+  // `?pkc-flag=*` all dispatch OPEN_FLAGS_INSPECTOR.
+  if (state.flagsInspectorOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
+    root.appendChild(renderFlagsInspector());
   }
 
   // Restore the sidebar / center scroll positions captured before
@@ -1321,6 +1331,16 @@ function renderShellMenu(
   aboutBtn.setAttribute('data-pkc-action', 'select-about');
   aboutBtn.textContent = 'ℹ About PKC2';
   shortcutSection.appendChild(aboutBtn);
+
+  // Flags Protocol v1 (PR-β-2): inspector launcher next to About,
+  // always visible (no debug-mode gate, parallel to About). Clicking
+  // opens the inspector overlay; the spec defines the URL parameter
+  // `?pkc-flag=*` as an alternate launch path (handled at boot).
+  const flagsBtn = createElement('button', 'pkc-btn-small');
+  flagsBtn.setAttribute('data-pkc-action', 'open-flags-inspector');
+  flagsBtn.textContent = '⚑ Flags';
+  flagsBtn.setAttribute('title', 'Open the Flags Inspector');
+  shortcutSection.appendChild(flagsBtn);
   card.appendChild(shortcutSection);
 
   // Data Maintenance — manual orphan asset cleanup + workspace reset.
@@ -6274,6 +6294,27 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
     a.rel = 'noopener noreferrer';
     a.textContent = payload.homepage;
     metaRows.push(['Homepage', a]);
+  }
+
+  // Flags Protocol v1 (PR-β-2): Active Flags row. Surfaces the
+  // count of flags whose current value differs from default so
+  // power users can confirm runtime overrides without opening the
+  // inspector. The number itself is a button → opens inspector
+  // (single-click discovery from About).
+  {
+    const { total, active } = getActiveFlagCountForAbout();
+    const summary = createElement('button', 'pkc-about-flags-summary pkc-btn-link');
+    summary.setAttribute('type', 'button');
+    summary.setAttribute('data-pkc-action', 'open-flags-inspector');
+    summary.setAttribute(
+      'title',
+      'Open the Flags Inspector to inspect / edit runtime configuration',
+    );
+    summary.textContent =
+      total === 0
+        ? 'No flags registered'
+        : `${active} of ${total} differ from default — open inspector`;
+    metaRows.push(['Active flags', summary]);
   }
 
   for (const [label, value] of metaRows) {

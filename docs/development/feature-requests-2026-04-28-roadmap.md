@@ -478,8 +478,45 @@ B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**�
 - 領域 6 は markdown 構文の互換性議論が要。GFM / CommonMark / PKC1
   との照合を spec doc で議論してから実装に進む
 
+## 領域 9: CSS 流用最適化 / 透過構造化 / 実行時自動生成(2026-05-03 追加)
+
+**Status**: 未着手 / 別 PR で audit 起こし予定(2026-05-03 user direction)
+
+### 要望(原文)
+
+> 別件ですが、css は流用最適化できないんですか?
+> 透過的な css 運用ができているかは別 PR で実施願います
+> 透過的、構造的な CSS ができるなら、実行時にデータタイプや画面タイプに合わせて
+> 自動生成するのも視野に入れて大胆な改革を検討してください
+
+### 解釈
+
+3 段階の問い:
+1. **重複削減 / 流用最適化**: bundle.css 内に同パターン繰り返しが無いか棚卸し(例: shell-menu / flags-inspector overlay は backdrop + panel の同 layout を持つ — variable / mixin 化余地)
+2. **透過(直交)構造化**: CSS class が「データタイプ × 画面タイプ × 状態」の直交する 3 軸で組み立てられるか。例えば `.pkc-card-widget.archetype-text.viewport-mobile.state-selected` のように属性で組み合わせる設計
+3. **実行時自動生成**: 上記直交構造が確立できれば、defineFlag / `__flags__` で「palette / spacing / radius」等を per-container 切替、CSS variable で実行時 cascade を更新
+
+### 着手前の audit 内容(別 PR で実施予定)
+
+- 現 `src/styles/base.css` の class 一覧を category 別に分類(layout / overlay / chip / button / typography / theme / archetype-specific)
+- 重複・近似 pattern の検出(例 5+ overlay の構造類似性、shell-menu / flags-inspector / shortcut-help)
+- CSS variable の現使用度棚卸し(`--c-*` / `--pkc-color-tag-*` など)、未活用の axis(spacing / radius / font-size scale 等)を特定
+- 実行時自動生成の可能性評価:CSS-in-JS は禁止(single-HTML 哲学)、`document.styleSheets[0].insertRule` 経由で動的 rule 追加の cost を試算
+- defineFlag との結合:`theme.spacing_scale = 1.0`(数値 flag)を `--pkc-spacing-unit: calc(0.5rem * var(--pkc-spacing-scale))` に流す、等の design
+
+### 大規模性に関する所感
+
+「大胆な改革を検討」の意図に沿う場合、**CSS architecture redesign wave** として独立 wave 化すべき(spec → audit → migration の段階で wave 内 5+ PR、~2-3 ヶ月)。Flags wave のような methodology 確立 + 段階移行 pattern を踏襲できる。
+
+着手前提:Flags wave(PR-β-2 / PR-γ / PR-δ / PR-ε)着地後 = 動的 toggle 基盤が完成してから。defineFlag を CSS variable 経由で消費する pipeline が前提。
+
+### サイズ: 大(独立 wave、5+ PR、~2-3 ヶ月想定)
+
+---
+
 ## 参照
 
 - 直近の perf wave 振り返り: `docs/development/archived/singletons/perf-wave-pr176-pr193-retrospective.md`
 - 過去 wave の優先度議論: `docs/development/next-feature-prioritization-after-relations-wave.md`
 - iPhone shell 既存実装: `tests/smoke/iphone-push-pop.spec.ts` 参照
+- Flags wave(領域 9 の前提となる動的 toggle 基盤): `docs/development/const-discipline-2026-05.md` + `docs/spec/flags-protocol-v1-minimum-scope.md`

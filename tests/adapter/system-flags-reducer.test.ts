@@ -253,4 +253,44 @@ describe('system-flags reducer', () => {
       expect(stillThere).toBeDefined();
     });
   });
+
+  describe('OPEN_FLAGS_INSPECTOR / CLOSE_FLAGS_INSPECTOR', () => {
+    it('OPEN_FLAGS_INSPECTOR sets the visibility flag and closes shell menu', () => {
+      const initial = {
+        ...stateWith(mkContainer([])),
+        menuOpen: true,
+      };
+      const { state, events } = reduce(initial, { type: 'OPEN_FLAGS_INSPECTOR' });
+      expect(state.flagsInspectorOpen).toBe(true);
+      expect(state.menuOpen).toBe(false);
+      expect(events).toEqual([]);
+    });
+
+    it('OPEN_FLAGS_INSPECTOR is a no-op when already open', () => {
+      const initial = {
+        ...stateWith(mkContainer([])),
+        flagsInspectorOpen: true,
+      };
+      const { state } = reduce(initial, { type: 'OPEN_FLAGS_INSPECTOR' });
+      expect(state).toBe(initial);
+    });
+
+    it('CLOSE_FLAGS_INSPECTOR clears the visibility flag', () => {
+      const initial = {
+        ...stateWith(mkContainer([])),
+        flagsInspectorOpen: true,
+      };
+      const { state, events } = reduce(initial, {
+        type: 'CLOSE_FLAGS_INSPECTOR',
+      });
+      expect(state.flagsInspectorOpen).toBe(false);
+      expect(events).toEqual([]);
+    });
+
+    it('CLOSE_FLAGS_INSPECTOR is a no-op when already closed', () => {
+      const initial = stateWith(mkContainer([]));
+      const { state } = reduce(initial, { type: 'CLOSE_FLAGS_INSPECTOR' });
+      expect(state).toBe(initial);
+    });
+  });
 });
