@@ -89,6 +89,7 @@ import { SETTINGS_LID } from './core/model/record';
 import { resolveSettingsPayload } from './core/model/system-settings-payload';
 import { resolveFlagsPayload } from './core/model/system-flags-payload';
 import { setContainerFlagSource } from './adapter/flags';
+import { applyThemeScale } from './adapter/ui/theme-scale';
 
 /**
  * PKC2 bootstrap.
@@ -562,6 +563,11 @@ async function boot(): Promise<void> {
       // re-resolves on each render and will surface the new source
       // immediately.
       setContainerFlagSource(event.flags.values);
+      // Phase 3a (2026-05-04): re-apply runtime UI scale multiplier
+      // immediately after the flag registry is primed, so a flag
+      // edit reflects in `--theme-scale` (and the rem cascade) on
+      // the same dispatch tick — no waiting for the next render.
+      applyThemeScale();
     }
   });
 
@@ -731,6 +737,11 @@ function primeFlagsFromContainer(container: Container): void {
   );
   const flags = resolveFlagsPayload(entry?.body);
   setContainerFlagSource(flags.values);
+  // Phase 3a — sync `theme.scale` to the `--theme-scale` CSS var
+  // at boot, before the first render. This avoids a one-frame
+  // flash where the rem cascade falls back to `var(--theme-scale, 1)`
+  // (= 1.0) before applyThemeScale runs from applySystemSettings.
+  applyThemeScale();
 }
 
 /**
