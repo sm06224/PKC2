@@ -20,7 +20,7 @@ import {
   getSelectionSize,
 } from './textlog-selection';
 import {
-  INITIAL_RENDER_ARTICLE_COUNT,
+  initialRenderArticleCount,
   renderLogArticlePlaceholder,
   attachHydrator,
   type HydratorContext,
@@ -165,7 +165,7 @@ export const textlogPresenter: DetailPresenter = {
       sectionEl.appendChild(sHeader);
 
       for (const log of section.logs) {
-        if (hydratedCount < INITIAL_RENDER_ARTICLE_COUNT) {
+        if (hydratedCount < initialRenderArticleCount()) {
           const articleEl = renderLogArticle(
             entry.lid, log, assets, mimeByKey, nameByKey, entries, selecting, currentContainerId,
           );

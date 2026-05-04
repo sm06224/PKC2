@@ -10,7 +10,8 @@ import { defineFlag } from '../../core/flags';
 
 export const DEFAULT_WEBP_QUALITY = 0.85;
 
-export const DEFAULT_MAX_LONG_EDGE = defineFlag<number>(
+/** Live getter — see `defineFlag` for runtime mutability semantics. */
+export const imageMaxLongEdge = defineFlag<number>(
   'image.max_long_edge',
   2560,
   {
@@ -21,7 +22,8 @@ export const DEFAULT_MAX_LONG_EDGE = defineFlag<number>(
   },
 );
 
-export const DEFAULT_OPTIMIZATION_THRESHOLD = defineFlag<number>(
+/** Live getter. */
+export const imageOptimizeThresholdBytes = defineFlag<number>(
   'image.optimize_threshold_bytes',
   512 * 1024,
   {
@@ -31,5 +33,10 @@ export const DEFAULT_OPTIMIZATION_THRESHOLD = defineFlag<number>(
     tier: 0,
   },
 );
+
+/** @deprecated 2026-05-04: use `imageMaxLongEdge()` for runtime mutability. */
+export const DEFAULT_MAX_LONG_EDGE = 2560;
+/** @deprecated 2026-05-04: use `imageOptimizeThresholdBytes()` for runtime mutability. */
+export const DEFAULT_OPTIMIZATION_THRESHOLD = 512 * 1024;
 
 export const DEFAULT_OUTPUT_MIME = 'image/webp';
