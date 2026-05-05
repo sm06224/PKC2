@@ -78,6 +78,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
+import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { buildLinkIndex } from '../../features/link-index/link-index';
@@ -4803,6 +4804,13 @@ function renderMetaPaneImpl(
   meta.appendChild(timestamps);
 
   // Table of Contents (TEXT / TEXTLOG with h1–h3 headings).
+  // 領域 10-6 ζ'' Phase 2a — Frontmatter property table.
+  // Body-leading `---\n…\n---\n` YAML produces a small key/value list
+  // here so book / youtube / paper / film / album metadata is visible
+  // in the meta pane without rendering it inside the markdown.
+  const frontmatterSection = renderFrontmatterSection(entry);
+  if (frontmatterSection) meta.appendChild(frontmatterSection);
+
   // Hidden entirely when the body produces zero headings, per spec §4.
   const tocSection = renderTocSection(entry);
   if (tocSection) meta.appendChild(tocSection);
@@ -5448,6 +5456,49 @@ function renderLinkRefsSection(
  * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
  * - `data-pkc-log-id`        — owning article for headings / logs
  */
+function renderFrontmatterSection(entry: Entry): HTMLElement | null {
+  // Only TEXT bodies are markdown-rendered; other archetypes either
+  // serialize body as JSON / CSV / opaque blob, where a leading
+  // `---` is not a frontmatter fence.
+  if (entry.archetype !== 'text') return null;
+  const { meta, found } = parseFrontmatter(entry.body ?? '');
+  if (!found) return null;
+  const keys = Object.keys(meta);
+  if (keys.length === 0) return null;
+
+  const section = createElement('section', 'pkc-frontmatter');
+  section.setAttribute('data-pkc-region', 'frontmatter');
+
+  const heading = createElement('div', 'pkc-frontmatter-heading');
+  heading.textContent = 'Properties';
+  section.appendChild(heading);
+
+  const dl = document.createElement('dl');
+  dl.className = 'pkc-frontmatter-list';
+  for (const key of keys) {
+    const dt = document.createElement('dt');
+    dt.className = 'pkc-frontmatter-key';
+    dt.textContent = key;
+    dl.appendChild(dt);
+    const dd = document.createElement('dd');
+    dd.className = 'pkc-frontmatter-value';
+    dd.setAttribute('data-pkc-frontmatter-key', key);
+    dd.textContent = formatFrontmatterValue(meta[key]);
+    dl.appendChild(dd);
+  }
+  section.appendChild(dl);
+  return section;
+}
+
+function formatFrontmatterValue(v: unknown): string {
+  if (v === null) return '—';
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map((item) => formatFrontmatterValue(item)).join(', ');
+  return String(v);
+}
+
 function renderTocSection(entry: Entry): HTMLElement | null {
   if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return null;
   const nodes: TocNode[] = extractTocFromEntry(entry);
