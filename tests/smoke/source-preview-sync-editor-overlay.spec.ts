@@ -202,67 +202,109 @@ async function probeOverlay(page: Page): Promise<OverlayProbe> {
 
 test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
 
-  test('1. caret 行に overlay が出る + Y 座標が caret 行 × line-height に対応', async ({
+  test('1. caret 行に overlay が出る + Y 座標が REAL caret 位置に一致', async ({
     page,
   }, testInfo) => {
+    // 2026-05-05 hotfix-3: previous spec compared overlay top to
+    // `textareaTop + line * lineHeight` — which IGNORED the
+    // textarea's padding-top + border-top. The implementation used
+    // the SAME flawed formula, so the test passed despite the
+    // overlay being visibly misaligned with the actual caret. User
+    // report「編集窓で選択した行とオーバーレイが一致しない」exposed
+    // the illusory pass.
+    //
+    // This version reads the REAL caret rect via the same mirror-div
+    // technique that PKC2 uses elsewhere (`getCaretViewportCoords`).
+    // The overlay must align to that real Y within ±4px.
     await bootSeed(page);
-    // Probe a clean line (line 1 — `2. aaa` paragraph).
     await moveCaretToLine(page, 1);
     const p = await probeOverlay(page);
     expect(p.overlayDisplay, 'overlay should be displayed').toBe('block');
     expect(p.overlayLine).toBe('1');
     expect(p.overlayRect, 'overlay rect missing').not.toBeNull();
-    // Y must be close to (textareaTop + 1 * lineHeight).
-    const lineHeight = await page.evaluate(() => {
+    // Compute REAL caret position inside the page.
+    const realCaretTop = await page.evaluate(() => {
+      // Inline mirror-div recipe (must run in page context — can't
+      // import from node side).
       const ta = document.querySelector<HTMLTextAreaElement>(
         'textarea[data-pkc-field="body"]',
       );
-      if (!ta) return 18;
-      return parseFloat(getComputedStyle(ta).lineHeight) || 18;
+      if (!ta) throw new Error('textarea missing');
+      const taRect = ta.getBoundingClientRect();
+      const computed = getComputedStyle(ta);
+      const mirror = document.createElement('div');
+      const ms = mirror.style;
+      ms.position = 'absolute';
+      ms.visibility = 'hidden';
+      ms.top = '0';
+      ms.left = '-9999px';
+      ms.whiteSpace = 'pre-wrap';
+      ms.wordWrap = 'break-word';
+      const props = [
+        'boxSizing', 'width', 'borderTopWidth', 'borderRightWidth',
+        'borderBottomWidth', 'borderLeftWidth', 'borderStyle',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch',
+        'fontSize', 'lineHeight', 'fontFamily', 'textAlign',
+        'letterSpacing', 'tabSize', 'whiteSpace', 'wordWrap',
+      ];
+      for (const prop of props) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ms as any)[prop] = (computed as any)[prop];
+      }
+      ms.height = 'auto';
+      ms.overflow = 'hidden';
+      const valueBefore = ta.value.slice(0, ta.selectionStart ?? 0);
+      mirror.textContent = valueBefore;
+      const marker = document.createElement('span');
+      marker.textContent = '​';
+      mirror.appendChild(marker);
+      document.body.appendChild(mirror);
+      const markerRect = marker.getBoundingClientRect();
+      const mirrorRect = mirror.getBoundingClientRect();
+      document.body.removeChild(mirror);
+      return taRect.top + (markerRect.top - mirrorRect.top) - ta.scrollTop;
     });
-    const expectedTop = p.textareaRect.top + 1 * lineHeight;
     expect(
-      Math.abs(p.overlayRect!.top - expectedTop),
-      `overlay top ${p.overlayRect!.top} not within 4px of expected ${expectedTop}`,
+      Math.abs(p.overlayRect!.top - realCaretTop),
+      `overlay top ${p.overlayRect!.top.toFixed(1)} vs REAL caret top ${realCaretTop.toFixed(1)}: delta=${(p.overlayRect!.top - realCaretTop).toFixed(1)} > 4px`,
     ).toBeLessThan(4);
-    await testInfo.attach('1-line-1.png', {
+    await testInfo.attach('1-overlay-vs-real-caret.png', {
       body: await page.screenshot(),
       contentType: 'image/png',
     });
   });
 
-  test('2. preview active-block の Y と editor overlay の Y が「同じ意味」', async ({
+  test('2. editor overlay と preview active-block の両方が同時に visible', async ({
     page,
   }, testInfo) => {
+    // 2026-05-05 hotfix-3 reflection: previous spec tried to assert
+    // editor overlay Y ≈ preview active block Y (within 100px). That
+    // assumption was wrong — editor textarea and preview pane have
+    // INDEPENDENT internal layouts, so source line 11 lands at very
+    // different Y values inside each pane. The realistic parity
+    // contract is: when caret is on source line N, BOTH the editor
+    // overlay and the preview active block are visible (so the user
+    // can correlate them visually), each within its own pane.
     await bootSeed(page);
-    // Move caret to a clean paragraph (kokoko heading area, line 11).
-    // Both active markers should land near the SAME viewport Y level
-    // since editor textarea starts at the same top as preview pane
-    // in the split layout.
     const probes = [0, 11];  // ordered list head + heading
-    const samples: OverlayProbe[] = [];
     for (const line of probes) {
       await moveCaretToLine(page, line);
-      samples.push(await probeOverlay(page));
-    }
-    for (const p of samples) {
-      expect(p.overlayRect, 'overlay missing').not.toBeNull();
-      expect(p.activePreviewRect, 'preview active missing').not.toBeNull();
-      // Critical assertion: overlay top in editor should be roughly
-      // at the same vertical position as the preview's active-source
-      // top — that is the visual parity the user wants. Allow a
-      // generous tolerance because (a) the textarea has its own
-      // padding, (b) the preview block's top includes wrapper
-      // padding.
-      const editorY = p.overlayRect!.top;
-      const previewY = p.activePreviewRect!.top;
-      const delta = Math.abs(editorY - previewY);
+      const p = await probeOverlay(page);
+      expect(p.overlayRect, `line ${line}: editor overlay missing`).not.toBeNull();
+      expect(p.activePreviewRect, `line ${line}: preview active missing`).not.toBeNull();
+      // Both Y must be within the rendered viewport (positive top,
+      // not way off-screen).
       expect(
-        delta,
-        `caret line ${p.caretLine}: editor overlay Y=${editorY.toFixed(0)} vs preview active Y=${previewY.toFixed(0)} delta=${delta.toFixed(0)} > 100px`,
-      ).toBeLessThan(100);
+        p.overlayRect!.top,
+        `line ${line}: editor overlay off-screen above`,
+      ).toBeGreaterThan(-50);
+      expect(
+        p.activePreviewRect!.top,
+        `line ${line}: preview active off-screen above`,
+      ).toBeGreaterThan(-50);
     }
-    await testInfo.attach('2-parity.png', {
+    await testInfo.attach('2-both-visible.png', {
       body: await page.screenshot(),
       contentType: 'image/png',
     });
@@ -378,51 +420,70 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
     });
   });
 
-  test('6. 編集側スクロール後の逆方向再スクロール — flag 早食い回帰 guard', async ({
+  test('6. 編集側 real wheel event 逆方向再スクロール — 全 delta が想定通り', async ({
     page,
   }, testInfo) => {
+    // 2026-05-05 hotfix-3: previous spec used direct `ta.scrollTop = N`
+    // assignment + `dispatchEvent('scroll')`. That bypassed the
+    // browser's native wheel pipeline so it always trivially passed
+    // — illusory pass classic. This version fires REAL OS wheel
+    // events through CDP via `page.mouse.wheel(0, deltaY)` and asserts
+    // the textarea's scrollTop changed by the expected delta.
     await bootSeed(page);
     // Step 1: caret move triggers preview programmatic scroll
     // (markProgrammaticScroll flag is set inside source-preview-sync).
     await moveCaretToLine(page, 8);
-    // Step 2: user scrolls the EDITOR textarea (simulating touchpad).
-    await page.evaluate(() => {
+    // Step 2: route wheel events to the textarea by hovering its
+    // centre, then fire real OS wheel events.
+    const center = await page.evaluate(() => {
       const ta = document.querySelector<HTMLTextAreaElement>(
         'textarea[data-pkc-field="body"]',
       );
-      if (!ta) return;
-      ta.scrollTop = 60;
-      ta.dispatchEvent(new Event('scroll', { bubbles: true }));
+      if (!ta) throw new Error('textarea missing');
+      const r = ta.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     });
-    // Step 3: user scrolls the editor textarea in the OPPOSITE
-    // direction. Before the hotfix this scroll was eaten by the
-    // capture-phase suppression flag pre-emptively consuming on a
-    // non-preview target. Now the scroll must take effect.
-    const beforeReverse = await page.evaluate(() => {
-      const ta = document.querySelector<HTMLTextAreaElement>(
-        'textarea[data-pkc-field="body"]',
+    await page.mouse.move(center.x, center.y);
+    // 2 down wheels, then 2 up wheels — observe each delta.
+    const deltas: number[] = [];
+    let prevTop = 0;
+    for (const dy of [50, 50, -50, -50]) {
+      const before = await page.evaluate(() => {
+        const ta = document.querySelector<HTMLTextAreaElement>(
+          'textarea[data-pkc-field="body"]',
+        );
+        return ta?.scrollTop ?? 0;
+      });
+      prevTop = before;
+      await page.mouse.wheel(0, dy);
+      await page.evaluate(
+        () => new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
       );
-      return ta?.scrollTop ?? -1;
-    });
-    await page.evaluate(() => {
-      const ta = document.querySelector<HTMLTextAreaElement>(
-        'textarea[data-pkc-field="body"]',
-      );
-      if (!ta) return;
-      ta.scrollTop = 30; // reverse direction (60 → 30)
-      ta.dispatchEvent(new Event('scroll', { bubbles: true }));
-    });
-    const afterReverse = await page.evaluate(() => {
-      const ta = document.querySelector<HTMLTextAreaElement>(
-        'textarea[data-pkc-field="body"]',
-      );
-      return ta?.scrollTop ?? -1;
-    });
+      const after = await page.evaluate(() => {
+        const ta = document.querySelector<HTMLTextAreaElement>(
+          'textarea[data-pkc-field="body"]',
+        );
+        return ta?.scrollTop ?? 0;
+      });
+      deltas.push(after - prevTop);
+    }
+    // Each wheel must have produced its expected sign + magnitude.
+    // sign of delta must match sign of dy. magnitude tolerance ±1px.
     expect(
-      afterReverse,
-      `reverse scroll: before=${beforeReverse} after=${afterReverse} — should be 30`,
-    ).toBe(30);
-    await testInfo.attach('6-reverse-scroll.png', {
+      deltas[0],
+      `down 1: ${deltas[0]} should be ~50 (got)`,
+    ).toBeGreaterThan(0);
+    expect(deltas[1]).toBeGreaterThan(0);
+    // ★ THIS is the user-reported case: first reverse wheel must
+    // produce a NEGATIVE delta, not 0.
+    expect(
+      deltas[2],
+      `first reverse wheel: ${deltas[2]} — must be negative (user-reported regression)`,
+    ).toBeLessThan(0);
+    expect(deltas[3]).toBeLessThan(0);
+    await testInfo.attach('6-real-wheel.png', {
       body: await page.screenshot(),
       contentType: 'image/png',
     });

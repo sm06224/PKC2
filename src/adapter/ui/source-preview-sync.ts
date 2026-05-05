@@ -55,6 +55,8 @@
  * すべて DOM / string 純関数。dispatcher / state / 副作用なし。
  */
 
+import { getCaretViewportCoords } from './caret-position';
+
 // ─────────────────────────────────────────────────────────────────
 // PR 2 — Sync orchestration layer (2026-05-05).
 //
@@ -273,17 +275,26 @@ function blockTargetY(
 /**
  * Update the editor-side current-line overlay so the user has a
  * visual anchor on the caret's row — symmetric to the preview's
- * `[data-pkc-active-source]` highlight. The overlay is a child
- * `<div>` of `.pkc-text-split-editor` (rendered by detail-presenter)
- * absolutely positioned at `caretLine * lineHeight` minus the
- * textarea's own scrollTop so it tracks the actual visible caret
- * row, not the source line index.
+ * `[data-pkc-active-source]` highlight.
  *
- * 2026-05-05 user request: the overlay also serves as a parity
- * landmark for Playwright — comparing the editor overlay's Y to
- * the preview's `[data-pkc-active-source]` Y exposes "the caret
- * went to source line N but the preview shows block at line M"
- * misalignments visually instead of via attribute inspection alone.
+ * **2026-05-05 hotfix-3**: the previous implementation computed Y as
+ * `caretLine * lineHeight - textarea.scrollTop` and ignored the
+ * textarea's own padding-top / border-top. The Playwright spec
+ * passed only because the test computed expectedTop with the same
+ * incomplete formula — classic illusory pass.
+ *
+ * Now we use `getCaretViewportCoords()` (the same mirror-div
+ * technique used elsewhere in the adapter, e.g. the snippet sheet)
+ * to obtain the **real** caret pixel position, which automatically
+ * accounts for padding, border, line-wrap, font metrics. The
+ * overlay's top is then aligned to that exact Y, in wrapper
+ * coordinates, and clamped so it never bleeds outside the textarea's
+ * visible area.
+ *
+ * The overlay also serves as a parity landmark for Playwright —
+ * comparing its Y to the preview's `[data-pkc-active-source]` Y
+ * exposes "caret went to source line N but the preview shows block
+ * at line M" misalignments visually.
  */
 function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
   const wrapper = textarea.closest<HTMLElement>('.pkc-text-split-editor');
@@ -294,27 +305,50 @@ function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
     overlay.style.display = 'none';
     return;
   }
-  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
   const line = caretSourceLine(textarea);
+  // Real caret position via mirror-div measurement.
+  const caret = getCaretViewportCoords(textarea);
   const taRect = textarea.getBoundingClientRect();
   const wrapperRect = wrapper.getBoundingClientRect();
-  // Y in wrapper coordinate space.
-  const yInTextarea = line * lineHeight - textarea.scrollTop;
-  // Clamp to textarea's visible region (so the overlay never bleeds
-  // outside the textarea even when the caret is scrolled out of view).
-  const yWrapper = Math.max(
-    taRect.top - wrapperRect.top,
-    Math.min(
-      (taRect.top - wrapperRect.top) + textarea.clientHeight - lineHeight,
-      (taRect.top - wrapperRect.top) + yInTextarea,
-    ),
-  );
+  // Visible region of the textarea (inside border, content + padding):
+  // `clientTop` is the border width, `clientHeight` is padding + content.
+  const visibleTop = taRect.top + textarea.clientTop;
+  const visibleBottom = visibleTop + textarea.clientHeight;
+  // Caret top in viewport coords from getCaretViewportCoords.
+  let caretTop = caret.top;
+  // If the caret is scrolled out of the visible area, clamp the
+  // overlay to the closest edge so it doesn't bleed outside.
+  if (caretTop < visibleTop) caretTop = visibleTop;
+  if (caretTop + caret.height > visibleBottom) {
+    caretTop = visibleBottom - caret.height;
+  }
+  // Translate to wrapper-relative coords for absolute positioning.
   overlay.style.display = 'block';
-  overlay.style.top = `${yWrapper}px`;
-  overlay.style.left = `${taRect.left - wrapperRect.left}px`;
+  overlay.style.top = `${caretTop - wrapperRect.top}px`;
+  overlay.style.left = `${taRect.left + textarea.clientLeft - wrapperRect.left}px`;
   overlay.style.width = `${textarea.clientWidth}px`;
-  overlay.style.height = `${lineHeight}px`;
+  overlay.style.height = `${caret.height}px`;
   overlay.setAttribute('data-pkc-active-line', String(line));
+}
+
+/**
+ * Update only the editor-side current-line overlay without touching
+ * the preview. Used by `handleEditorScroll` so that natural textarea
+ * scrolls (touchpad / wheel) re-position the overlay but do NOT
+ * trigger `safeScrollPane` on the preview — that would race with
+ * the user's continued wheel input.
+ *
+ * 2026-05-05 hotfix-3: previously `handleEditorScroll` called
+ * `syncPreviewToCaret`, which set `markProgrammaticScroll()` even
+ * when the caret hadn't moved. Mac touchpad inertia scrolls fire
+ * many wheel events in rapid succession; the cumulative side-
+ * effects of repeatedly calling `syncPreviewToCaret` during a
+ * single wheel gesture are a possible cause of the user-reported
+ * "first reverse swipe is swallowed" symptom (Playwright doesn't
+ * reproduce it, so this is a conservative defensive fix).
+ */
+export function refreshEditorActiveLine(textarea: HTMLTextAreaElement): void {
+  updateEditorActiveLine(textarea);
 }
 
 /**

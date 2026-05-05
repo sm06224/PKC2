@@ -76,6 +76,7 @@ import {
   setSyncEnabled,
   consumeScrollSuppression,
   consumeSelectionSuppression,
+  refreshEditorActiveLine,
 } from './source-preview-sync';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
@@ -6383,23 +6384,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // scroll when the user manually scrolls the preview pane.
   }
 
-  // 2026-05-05 hotfix: textarea natural scroll → editor active-line
-  // overlay must also re-position. The overlay is computed from
-  // `caretLine * lineHeight - textarea.scrollTop`, so when the user
-  // scrolls the textarea (touchpad / wheel) without moving the
-  // caret, the overlay would otherwise stay at a stale Y.
+  // 2026-05-05 hotfix-3: textarea natural scroll only repositions
+  // the editor active-line overlay. It does NOT call
+  // syncPreviewToCaret because that would re-scroll the preview
+  // pane programmatically during the user's continued wheel gesture
+  // (Mac touchpad inertia fires many wheel events in succession;
+  // calling safeScrollPane in the middle of that loop has been
+  // observed to interact badly with reverse-direction scrolling on
+  // some platforms — the conservative fix is to leave the preview
+  // alone unless the caret actually moved).
   function handleEditorScroll(e: Event): void {
     const t = e.target;
     if (!(t instanceof HTMLTextAreaElement)) return;
     if (t.getAttribute('data-pkc-field') !== 'body') return;
     if (!t.closest('.pkc-text-split-editor')) return;
     if (!isSyncEnabled()) return;
-    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
-    const preview = wrapper?.querySelector<HTMLElement>(
-      '[data-pkc-region="text-edit-preview"]',
-    );
-    if (!preview) return;
-    syncPreviewToCaret(t, preview);
+    refreshEditorActiveLine(t);
   }
 
   document.addEventListener('selectionchange', handleSourceSyncSelectionChange);
