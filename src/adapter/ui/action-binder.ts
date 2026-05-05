@@ -6364,19 +6364,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Suppress the preview-pane scroll → editor follow loop. Currently
   // the preview is the receiver only (editor → preview drives it),
   // so we just consume any flagged programmatic scroll.
+  //
+  // 2026-05-05 hotfix: filter MUST come BEFORE consumeScrollSuppression.
+  // Capture-phase root listener fires for editor textarea scroll AND
+  // preview pane scroll; if we consume the flag eagerly we steal it
+  // from the preview's actual programmatic scroll event, breaking the
+  // feedback-loop guard. Worse, on touchpad reverse-direction scrolls
+  // user reported "first reverse swipe is swallowed" — that's the
+  // editor scroll event eating the flag set by a recent
+  // syncPreviewToCaret-driven preview scroll, then leaking into
+  // unintended dispatcher logic on the *next* scroll tick.
   function handlePreviewScroll(e: Event): void {
-    if (consumeScrollSuppression()) return;
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (t.getAttribute('data-pkc-region') !== 'text-edit-preview') return;
+    if (consumeScrollSuppression()) return;
     // No-op: future enhancement could sync editor scroll to preview
     // scroll when the user manually scrolls the preview pane.
+  }
+
+  // 2026-05-05 hotfix: textarea natural scroll → editor active-line
+  // overlay must also re-position. The overlay is computed from
+  // `caretLine * lineHeight - textarea.scrollTop`, so when the user
+  // scrolls the textarea (touchpad / wheel) without moving the
+  // caret, the overlay would otherwise stay at a stale Y.
+  function handleEditorScroll(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof HTMLTextAreaElement)) return;
+    if (t.getAttribute('data-pkc-field') !== 'body') return;
+    if (!t.closest('.pkc-text-split-editor')) return;
+    if (!isSyncEnabled()) return;
+    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
+    const preview = wrapper?.querySelector<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (!preview) return;
+    syncPreviewToCaret(t, preview);
   }
 
   document.addEventListener('selectionchange', handleSourceSyncSelectionChange);
   root.addEventListener('focusin', handleSourceSyncFocus);
   root.addEventListener('click', handleSourceSyncPreviewClick, true);
   root.addEventListener('scroll', handlePreviewScroll, true);
+  root.addEventListener('scroll', handleEditorScroll, true);
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6541,6 +6571,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('focusin', handleSourceSyncFocus);
     root.removeEventListener('click', handleSourceSyncPreviewClick, true);
     root.removeEventListener('scroll', handlePreviewScroll, true);
+    root.removeEventListener('scroll', handleEditorScroll, true);
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);

@@ -127,6 +127,11 @@ export function setSyncEnabled(enabled: boolean): void {
       for (const el of document.querySelectorAll('[' + ACTIVE_ATTR + ']')) {
         el.removeAttribute(ACTIVE_ATTR);
       }
+      for (const el of document.querySelectorAll<HTMLElement>(
+        '.pkc-editor-active-line',
+      )) {
+        el.style.display = 'none';
+      }
     }
   }
   // Reflect on every toggle button.
@@ -266,15 +271,67 @@ function blockTargetY(
 }
 
 /**
+ * Update the editor-side current-line overlay so the user has a
+ * visual anchor on the caret's row — symmetric to the preview's
+ * `[data-pkc-active-source]` highlight. The overlay is a child
+ * `<div>` of `.pkc-text-split-editor` (rendered by detail-presenter)
+ * absolutely positioned at `caretLine * lineHeight` minus the
+ * textarea's own scrollTop so it tracks the actual visible caret
+ * row, not the source line index.
+ *
+ * 2026-05-05 user request: the overlay also serves as a parity
+ * landmark for Playwright — comparing the editor overlay's Y to
+ * the preview's `[data-pkc-active-source]` Y exposes "the caret
+ * went to source line N but the preview shows block at line M"
+ * misalignments visually instead of via attribute inspection alone.
+ */
+function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
+  const wrapper = textarea.closest<HTMLElement>('.pkc-text-split-editor');
+  if (!wrapper) return;
+  const overlay = wrapper.querySelector<HTMLElement>('.pkc-editor-active-line');
+  if (!overlay) return;
+  if (!syncEnabled) {
+    overlay.style.display = 'none';
+    return;
+  }
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
+  const line = caretSourceLine(textarea);
+  const taRect = textarea.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
+  // Y in wrapper coordinate space.
+  const yInTextarea = line * lineHeight - textarea.scrollTop;
+  // Clamp to textarea's visible region (so the overlay never bleeds
+  // outside the textarea even when the caret is scrolled out of view).
+  const yWrapper = Math.max(
+    taRect.top - wrapperRect.top,
+    Math.min(
+      (taRect.top - wrapperRect.top) + textarea.clientHeight - lineHeight,
+      (taRect.top - wrapperRect.top) + yInTextarea,
+    ),
+  );
+  overlay.style.display = 'block';
+  overlay.style.top = `${yWrapper}px`;
+  overlay.style.left = `${taRect.left - wrapperRect.left}px`;
+  overlay.style.width = `${textarea.clientWidth}px`;
+  overlay.style.height = `${lineHeight}px`;
+  overlay.setAttribute('data-pkc-active-line', String(line));
+}
+
+/**
  * Editor → Preview sync. Find the preview element matching the
  * caret's source line, mark it active, and scroll if needed.
+ * Also updates the editor's current-line overlay for visual parity.
  * No-op when sync is disabled or the preview has no anchors.
  */
 export function syncPreviewToCaret(
   textarea: HTMLTextAreaElement,
   preview: Element,
 ): void {
-  if (!syncEnabled) return;
+  if (!syncEnabled) {
+    updateEditorActiveLine(textarea);
+    return;
+  }
+  updateEditorActiveLine(textarea);
   const line = caretSourceLine(textarea);
   const target = findPreviewElementForLine(preview, line);
   if (!target) {

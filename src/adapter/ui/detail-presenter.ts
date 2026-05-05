@@ -130,6 +130,19 @@ const textPresenter: DetailPresenter = {
     bodyArea.rows = Math.max(15, lineCount + 3);
     wrapper.appendChild(bodyArea);
 
+    // 領域 10-1 PR 2 hotfix (2026-05-05): editor-side current-line
+    // overlay. Symmetric to the preview's [data-pkc-active-source]
+    // highlight — gives the user a visual anchor for "where my caret
+    // is in the editor" so any sync drift becomes obvious. The
+    // overlay is positioned + shown by source-preview-sync.ts; here
+    // we just create the empty element. position: absolute makes the
+    // wrapper position: relative (set in CSS) the containing block.
+    const activeLine = document.createElement('div');
+    activeLine.className = 'pkc-editor-active-line';
+    activeLine.setAttribute('aria-hidden', 'true');
+    activeLine.style.display = 'none';
+    wrapper.appendChild(activeLine);
+
     // Resize handle between editor and preview, with the source/preview
     // sync toggle (⇄) anchored on it. The toggle's data-pkc-action is
     // intercepted before the split-resize mousedown so clicking it
