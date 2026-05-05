@@ -163,6 +163,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`selected-entry-export-and-reimport.md`](./selected-entry-export-and-reimport.md) | TEXT / TEXTLOG single entry export+import spec(active feature、tests 14 件 live) |
 | [`selected-entry-html-clone-export.md`](./selected-entry-html-clone-export.md) | subset container HTML export spec(features 層 純関数化) |
 | [`ui-singleton-state-audit.md`](./ui-singleton-state-audit.md) | UI singleton 分類 + 次実装提案の design methodology 記録 |
+| [`filer-view-explorer-subset-spec.md`](./filer-view-explorer-subset-spec.md) | 領域 10-6 ζ'' wave **Phase 1 spec**(filer view 第 4 view-mode + explorer subset、folder.display_profile additive optional、~2-3 PR)。state mutation + reducer + tab UI + table render + parity / 順序性 test 構成 |
 
 ## CLOSED (42 docs)
 

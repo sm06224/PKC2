@@ -567,11 +567,22 @@ PKC-Message v2(`docs/development/pkc-message-v2-open-questions-decisions-2026-05
 
 サイズ: 大(PKC-Message v2.1 / v2.2 で段階的、~4 PR)。前提: 10-3 IR が安定してから。
 
-### 10-6: アルバムエントリ + コンタクトシート表示
+### 10-6: Filer view + book/youtube/album subset(発展版、**ζ'' 確定 2026-05-05**)
 
-特殊な folder = album。中身が画像 attachment 主体の folder であることを archetype として認識し、表示表現として **コンタクトシート**(grid サムネイル + キャプション)を提供。folder archetype の subtype として実装するか、別 archetype として定義するかは spec audit で決定。
+原案「アルバムエントリ + コンタクトシート」を発展させ、**center pane の第 4 view-mode `filer`** を新設、subset profile(explorer / contact-sheet / book-base / youtube-base / graph)で多様な「カード型コレクション」を統一的に扱う wave。詳細は [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md)(PR #258 で landing)。
 
-サイズ: 中(spec → reducer subtype → presenter、~3 PR)。前提: image 系 attachment 機能(既存)+ folder navigation(既存)。
+**確定形 ζ''**: TEXT atom(archetype 増設禁止)+ Hybrid Z data model(frontmatter / tag / relation の責務 3 分離)+ vanilla TS graph view(PKC1 force config 流用)+ 入力負担減 sub-wave(ISBN/oEmbed auto-fill で book 追加 ~90% 短縮)。
+
+サイズ: 大 wave、~12 PR / ~3 ヶ月、5 phase 構成:
+1. filer view 第 4 view-mode + explorer subset(中、~2 PR)
+2a. YAML mini frontmatter parser + 表示(小、~1 PR)
+2b. graph view(vanilla TS、PKC1 config 流用、~5-8 KB)(中、~2 PR)
+3a. subset profile via frontmatter+tag query(book-base / youtube-base / contact-sheet)(中、~2 PR)
+3b. 入力負担減: ISBN/DOI/oEmbed auto-fill + smart paste(中、~2 PR)
+4. folder ZIP export 拡張(subgraph reachability、archetype filter 撤廃、manifest v2)(中、~1 PR)
+5. inventory query UI(Bases 風 filter / sort / group)(中、~2 PR)
+
+PKC2 invariants 6/6 整合、dep ゼロ、bundle.js +0.5%、archetype / schema 不変。前提: 既存 W1 Tag / Relation kind / build-subset.ts / image-optimize-worker(全完了済)。
 
 ### 10-7: アプリランチャー
 
