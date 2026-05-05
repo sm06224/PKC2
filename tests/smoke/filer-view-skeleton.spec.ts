@@ -69,12 +69,12 @@ test('Filer tab click switches viewMode and paints filer-view region', async ({ 
   const cx = regionBox.x + regionBox.width / 2;
   const cy = regionBox.y + regionBox.height / 2;
   const isInside = await page.evaluate(
-    ([x, y]) => {
+    ({ x, y }) => {
       const target = document.elementFromPoint(x, y);
       if (!target) return false;
       return !!target.closest('[data-pkc-region="filer-view"]');
     },
-    [cx, cy],
+    { x: cx, y: cy },
   );
   expect(isInside).toBe(true);
 });

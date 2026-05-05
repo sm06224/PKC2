@@ -136,7 +136,7 @@ describe('SET_DISPLAY_PROFILE', () => {
       updated_at: '2026-01-01T00:00:00Z',
     });
     const state = readyState({ container: mkContainer([folder]) });
-    const before = state.container.meta.updated_at;
+    const before = state.container!.meta.updated_at;
     const r = reduce(state, {
       type: 'SET_DISPLAY_PROFILE',
       lid: 'f1',
