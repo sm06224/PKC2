@@ -238,6 +238,7 @@ spec / policy として記録して「将来具体的な pain / 要求が出た�
 | Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能、設計負債だが実害小 | range select の頻度が増えた user 報告 / Ctrl+click 限界の体感不満 |
 | Sidebar multi-DnD | structural relation の cycle detection 複雑化、BULK_MOVE で代替 | cycle detection 設計の breakthrough / BULK_MOVE の UX 限界報告 |
 | TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突、設計変更議論が先 | **trigger 解消(2026-05-03)**:textlog-viewer-and-linkability-redesign の Stage 3(Loop 風 drag-to-reorder)wave 起こし時、storage 不変条件の見直し議論を含めて再活性化 |
+| 領域 9 Phase 4 — Per-archetype palette(`insertRule` 経路) | 元 user direction「**実行時にデータタイプや画面タイプに合わせて自動生成**」の「データタイプ」軸が未定義のまま、私(Claude)が「archetype palette 切替 via `insertRule`」と勝手に具体化していたものを 2026-05-05 user 確認で寝かせ判定。Phase 1+2+3 で user 要望は実質充足、Phase 4 は YAGNI 認定 | 以下のいずれか具体要件が出現した時に再 open(`docs/development/css-architecture-audit-2026-05.md` §6 Phase 4 deferred section に詳細記載):(a) container ごとに独立 palette + export 同伴で共有、(b) PKC-extension(領域 10-5)から palette を programmatic 注入、(c) archetype ごとに selector 構造そのものを差し替え、(d) user / device 単位で複数 theme 並走(work / personal / accessibility)、(e) palette を spec として export / import |
 
 ### 3.7 §3 全体の合計
 

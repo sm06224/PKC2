@@ -367,9 +367,64 @@ CSS-in-JS なしでも、**spacing / radius / font-size を multiplier 軸に変
   - **累計 main 起点 +6.66 KB**(bundle.js 含む)
   - unit 6259 / 6259、smoke 41 / 41 pass
 
-### Phase 4 — Per-archetype palette(オプション、要 user 議論)
+### Phase 4 — Per-archetype palette(⏸ deferred、2026-05-05 user 議論で寝かせ判定)
 
-定型 chip / badge を `[data-archetype="X"]` 単位で背景色軸を切り替えるなど。`document.styleSheets[0].insertRule` 経路の試金石。
+**Status**: deferred(将来 use case が出現した時に再 open)
+**Decision date**: 2026-05-05
+**Decision context**:user 確認で「**Phase 4 の use case は私が拡大解釈したもの**」と認定。元 user direction 「**実行時にデータタイプや画面タイプに合わせて自動生成**」は概念として「データタイプ」軸を含むものの、具体的な意味は user が定義しておらず、私(Claude)が「archetype ごとの palette 切替 via `insertRule`」と勝手に具体化した経緯。Phase 1+2+3 で user 要望は実質充足、Phase 4 は YAGNI と判断して寝かせる方針確定。
+
+#### 当初構想(参考、再 open 時の起点)
+
+定型 chip / badge を `[data-archetype="X"]` 単位で背景色軸を切り替えるなど。`document.styleSheets[0].insertRule` 経路の試金石(audit §5.1 経路 B)。
+
+```ts
+// 例:archetype 別 chip 背景を runtime に切替(参考実装、未実装)
+function applyArchetypePalette(palette: Record<ArchetypeId, string>): void {
+  const sheet = document.styleSheets[0];
+  for (const [archetype, bg] of Object.entries(palette)) {
+    sheet.insertRule(
+      `.pkc-archetype-badge[data-pkc-archetype="${archetype}"] { background: ${bg}; }`,
+      sheet.cssRules.length,
+    );
+  }
+}
+```
+
+#### Use case 例(再 open trigger)
+
+以下のいずれかの **具体要件が user から提示された場合**、本 Phase を再 open する:
+
+1. **container ごとに独立 palette を持たせて export 同伴で共有したい**
+   - 例:Container A は「terminal green」、Container B は「sepia warm」など、複数の theme を文書ごとに保持
+   - 既存 `--c-accent` の単純切替では足りず、archetype 単位の selector 構造を差し替えたい場合
+2. **PKC-extension(将来構想、領域 10-5)から palette を programmatic 注入したい**
+   - extension が Word / PPT export 時に「target アプリの palette」を JS API 経由で push、PKC2 内 view も同期させる
+3. **archetype ごとに selector 構造そのものを差し替えたい**
+   - 例:`textlog` archetype だけ「margin / border-radius / shadow が default と異なる layout」を runtime 適用
+   - CSS variable では表現困難な struct-level の差分を扱う場合
+4. **user / device 単位で複数 theme を並走させたい**
+   - 例:work / personal で異なる palette、accessibility profile(高コントラスト / 色覚多様性対応)で別 palette
+5. **spec として palette を export / import したい**
+   - 「palette spec doc を 1 ファイルとして書き出して、別 PKC instance に import」のような workflow
+
+これらが具体化されたら、本 audit doc を再 open し、Phase 4 を spec audit から起こす(YAGNI 原則:具体要件なしには着手しない)。
+
+#### 寝かせる理由(2026-05-05 確定)
+
+1. **元 user direction の主旨は Phase 1+2+3 で充足済み**(token / dedup / runtime adaptive すべて完了)
+2. **「データタイプに合わせて自動生成」の具体定義が未定義** → 必要性証明が先、実装は後
+3. **既存 `--pkc-color-tag-*`(8 colors × 4 modulation)+ `--c-*` semantic tokens** で archetype-specific 色変更は 80% カバー可能。残 20% は use case 出現次第で `--pkc-archetype-{X}-bg` 等の追加 CSS variable で対応可
+4. **`insertRule` 経路の複雑度 vs ROI が悪い**:
+   - source の grep 可能性低下(rule が JS 内に存在)
+   - theme switching との cascade priority 整理が必要
+   - test contract(`tests/styles/*.test.ts` の base.css grep)が壊れる
+   - bundle 影響 + Phase 8 順序性 parity test の追加実装
+
+#### 再 open 時の参照点
+
+- 本 audit doc §5.1 経路 B + §6 Phase 4(本節)
+- `tests/smoke/theme-scale-parity.spec.ts` の Phase 8 parity 構造を踏襲
+- `docs/planning/USER_REQUEST_LEDGER.md` §3.6 deferred items 表(2026-05-05 追加予定)
 
 ### 各 Phase 完了条件
 
