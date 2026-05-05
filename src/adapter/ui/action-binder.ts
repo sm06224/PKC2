@@ -1137,6 +1137,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
             stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
           }
+          if (!stayInFiler && currentState.viewMode === 'filer') {
+            // Phase 4 follow-up nav memory: snapshot the filer scope
+            // before we leave, so a later Filer tab / back button
+            // restores the same folder.
+            const sel = currentState.selectedLid;
+            const cur = sel && currentState.container
+              ? currentState.container.entries.find((e) => e.lid === sel)
+              : null;
+            let scopeLid: string | null = null;
+            if (cur && cur.archetype === 'folder') {
+              scopeLid = cur.lid;
+            } else if (cur && currentState.container) {
+              const ancestors = (currentState.container.relations ?? [])
+                .filter((r) => r.kind === 'structural' && r.to === cur.lid)
+                .map((r) => r.from);
+              const parent = ancestors[0];
+              if (parent) {
+                const p = currentState.container.entries.find((e) => e.lid === parent);
+                if (p && p.archetype === 'folder') scopeLid = p.lid;
+              }
+            }
+            dispatcher.dispatch({ type: 'SET_LAST_FILER_SCOPE', lid: scopeLid });
+          }
           if (!stayInFiler && currentState.viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
@@ -4534,6 +4557,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // The `<select>` lives in the meta pane and carries the folder lid on
     // itself; dispatch SET_DISPLAY_PROFILE on change. Phase 1 only knows
     // the `'explorer'` kind; future kinds widen this switch.
+    if (action === 'rename-folder') {
+      // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder 名 input。
+      // change イベント = blur or Enter commit。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLInputElement) {
+        const v = target.value;
+        if (typeof v === 'string') {
+          dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid, title: v });
+        }
+      }
+      return;
+    }
+    if (action === 'set-folder-description') {
+      // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder description
+      // textarea(folder.body は description として使用)。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLTextAreaElement) {
+        const body = target.value;
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
+      }
+      return;
+    }
     if (action === 'set-display-profile') {
       const lid = target.getAttribute('data-pkc-lid');
       if (lid && target instanceof HTMLSelectElement) {

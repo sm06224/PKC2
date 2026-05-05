@@ -5364,6 +5364,89 @@ mark.pkc-search-mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* ── Filer folder rename / description editor (Phase 4 follow-up) ── */
+
+.pkc-filer-folder-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin: var(--space-2, 0.5rem) 0;
+  width: 100%;
+}
+
+.pkc-filer-folder-rename {
+  font-weight: 600;
+  font-size: var(--fs-base, 1rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg, transparent);
+}
+
+.pkc-filer-folder-description {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 2px);
+  resize: vertical;
+  min-height: 3.5em;
+  background: var(--c-bg, transparent);
+}
+
+/* ── Sidebar filer-mode (Phase 4 follow-up `sidebar.mode = 'filer'`) ── */
+
+.pkc-sidebar-filer-mode {
+  padding: var(--space-2, 0.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  overflow-y: auto;
+}
+
+.pkc-sidebar-filer-header {
+  font-weight: 600;
+  font-size: var(--fs-sm, 0.875rem);
+  opacity: 0.85;
+  padding-bottom: var(--space-1, 0.25rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+}
+
+.pkc-sidebar-filer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-sidebar-filer-item {
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm, 0.875rem);
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-sidebar-filer-item:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-sidebar-filer-item[data-pkc-active="true"] {
+  background: var(--c-bg-active, rgba(0, 0, 0, 0.08));
+  font-weight: 600;
+}
+
+.pkc-sidebar-filer-nav-up {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.pkc-sidebar-filer-empty {
+  font-style: italic;
+  opacity: 0.6;
+  padding: var(--space-2, 0.5rem);
+}
+
 /* ── Filer Navigation rows / cards (`.` / `..`、Phase 2b follow-up) ── */
 
 .pkc-filer-row-nav {

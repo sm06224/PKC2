@@ -13,6 +13,7 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
+import { sidebarMode } from './sidebar-flags';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
@@ -2386,10 +2387,70 @@ function renderRecentEntriesPane(
 function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
   const endProfile = profileStart('render:sidebar');
   try {
+    // 領域 10-6 ζ'' Phase 4 follow-up: `sidebar.mode = 'filer'` で
+    // 左ペインを compact filer-explorer に差し替え。tree (default) は
+    // 既存実装を流用。
+    if (sidebarMode() === 'filer') {
+      return renderSidebarAsFiler(state);
+    }
     return renderSidebarImpl(state, sharedLinkIndex);
   } finally {
     endProfile();
   }
+}
+
+/**
+ * Compact filer surface used inside the left pane when
+ * `sidebar.mode = 'filer'`. Mirrors the explorer subset structure
+ * of the center filer view but at narrower width: only the name +
+ * archetype icon column, no breadcrumb header (it's pinned to the
+ * current folder via selectedLid).
+ */
+function renderSidebarAsFiler(state: AppState): HTMLElement {
+  const sidebar = createElement('aside', 'pkc-sidebar pkc-sidebar-filer-mode');
+  sidebar.setAttribute('data-pkc-region', 'sidebar');
+  sidebar.setAttribute('data-pkc-sidebar-mode', 'filer');
+
+  const scope = resolveFilerScope(state);
+  const header = createElement('div', 'pkc-sidebar-filer-header');
+  const label = createElement('span', 'pkc-sidebar-filer-label');
+  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
+  header.appendChild(label);
+  sidebar.appendChild(header);
+
+  const children = scope
+    ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
+    : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
+  const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+
+  const nav = resolveFilerNavigation(state);
+  const list = createElement('ul', 'pkc-sidebar-filer-list');
+  if (nav.parent) {
+    const li = createElement('li', 'pkc-sidebar-filer-item pkc-sidebar-filer-nav-up');
+    li.setAttribute('data-pkc-action', 'select-entry');
+    li.setAttribute('data-pkc-lid', nav.parent.lid);
+    li.setAttribute('data-pkc-archetype', 'folder');
+    li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
+    list.appendChild(li);
+  }
+  for (const child of visibleChildren) {
+    const li = createElement('li', 'pkc-sidebar-filer-item');
+    li.setAttribute('data-pkc-action', 'select-entry');
+    li.setAttribute('data-pkc-lid', child.lid);
+    li.setAttribute('data-pkc-archetype', child.archetype);
+    if (child.lid === state.selectedLid) li.setAttribute('data-pkc-active', 'true');
+    li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
+    list.appendChild(li);
+  }
+  if (visibleChildren.length === 0 && !nav.parent) {
+    const empty = createElement('div', 'pkc-sidebar-filer-empty');
+    empty.textContent = '(empty)';
+    sidebar.appendChild(empty);
+  } else {
+    sidebar.appendChild(list);
+  }
+
+  return sidebar;
 }
 
 function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
@@ -4144,6 +4205,34 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
     trashBtn.textContent = '🗑️ ゴミ箱';
     toolbar.appendChild(trashBtn);
     header.appendChild(toolbar);
+  }
+
+  // Folder rename + description editor — Phase 4 follow-up.
+  // Only rendered when filer scope IS the selected folder so changes
+  // map unambiguously to the current entry.
+  if (canEdit && scope && state.selectedLid === scope.lid) {
+    const folderInfo = createElement('div', 'pkc-filer-folder-info');
+    folderInfo.setAttribute('data-pkc-region', 'filer-folder-info');
+
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.className = 'pkc-filer-folder-rename';
+    renameInput.setAttribute('data-pkc-action', 'rename-folder');
+    renameInput.setAttribute('data-pkc-lid', scope.lid);
+    renameInput.setAttribute('placeholder', 'フォルダ名');
+    renameInput.value = scope.title ?? '';
+    folderInfo.appendChild(renameInput);
+
+    const descInput = document.createElement('textarea');
+    descInput.className = 'pkc-filer-folder-description';
+    descInput.setAttribute('data-pkc-action', 'set-folder-description');
+    descInput.setAttribute('data-pkc-lid', scope.lid);
+    descInput.setAttribute('placeholder', 'このフォルダの説明…');
+    descInput.rows = 2;
+    descInput.value = scope.body ?? '';
+    folderInfo.appendChild(descInput);
+
+    header.appendChild(folderInfo);
   }
 
   const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');

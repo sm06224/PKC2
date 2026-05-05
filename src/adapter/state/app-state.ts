@@ -331,6 +331,21 @@ export interface AppState {
    * Runtime-only.
    */
   filerScope?: 'auto' | 'trash';
+  /**
+   * Last folder lid that hosted the filer view before user clicked
+   * a non-folder entry (which switched view-mode to detail). When the
+   * user later returns to filer (Filer tab / nav back), the scope is
+   * restored to this lid so the breadcrumb / table reflect the same
+   * place.
+   *
+   * Cleared when:
+   *   - viewMode returns to 'filer' AND selectedLid resolves to a
+   *     folder ancestor that matches this lid (already in scope).
+   *   - explicit Trash scope toggle.
+   *
+   * Runtime-only, not persisted.
+   */
+  lastFilerScopeLid?: string | null;
   /** Calendar navigation: year. Runtime-only. */
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */
@@ -2574,6 +2589,27 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       );
       return result;
     }
+    // RENAME_ENTRY_TITLE: title-only update, body preserved.
+    // 領域 10-6 ζ'' Phase 4 follow-up — filer 内のフォルダ rename
+    // input が dispatch する。folder 以外の archetype にも一般化。
+    case 'RENAME_ENTRY_TITLE': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const trimmed = action.title.trim();
+      if (trimmed === entry.title) return { state, events: [] };
+      const ts = now();
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      const container = updateEntry(snapshotted, action.lid, trimmed, entry.body, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
     // QUICK_UPDATE_ENTRY: body-only update, title preserved.
     // See user-action.ts for full contract documentation.
     case 'QUICK_UPDATE_ENTRY': {
@@ -2766,7 +2802,30 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {
-      const next: AppState = { ...state, viewMode: action.mode };
+      let next: AppState = { ...state, viewMode: action.mode };
+      // 領域 10-6 ζ'' Phase 4 follow-up nav memory:
+      // when switching back to filer and a remembered scope lid is
+      // available, set selectedLid to that folder so resolveFilerScope
+      // resolves to the prior place.
+      if (
+        action.mode === 'filer'
+        && typeof state.lastFilerScopeLid === 'string'
+        && state.lastFilerScopeLid.length > 0
+        && state.container
+        && state.container.entries.some(
+          (e) => e.lid === state.lastFilerScopeLid && e.archetype === 'folder',
+        )
+      ) {
+        next = { ...next, selectedLid: state.lastFilerScopeLid };
+      }
+      return { state: next, events: [] };
+    }
+    case 'SET_LAST_FILER_SCOPE': {
+      if (action.lid === null) {
+        const { lastFilerScopeLid: _drop, ...rest } = state;
+        return { state: rest as AppState, events: [] };
+      }
+      const next: AppState = { ...state, lastFilerScopeLid: action.lid };
       return { state: next, events: [] };
     }
     case 'SET_DISPLAY_PROFILE': {
