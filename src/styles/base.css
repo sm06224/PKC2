@@ -5324,6 +5324,46 @@ mark.pkc-search-mark {
   white-space: nowrap;
 }
 
+/* ── Attachment image viewer (Phase 3c-D 特化、画像 attachment detail) ── */
+
+.pkc-attachment-image-viewer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--space-3, 0.75rem);
+  padding: var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border-radius: var(--radius-md, 4px);
+  min-height: 240px;
+}
+
+.pkc-attachment-image-viewer-img {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm, 2px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Frontmatter URL + fragment badge (Phase 3c-C UI wiring) ── */
+
+.pkc-frontmatter-url {
+  word-break: break-all;
+  text-decoration: underline dotted;
+}
+
+.pkc-frontmatter-fragment-badge,
+.pkc-filer-card-fragment-badge {
+  display: inline-block;
+  padding: 0 var(--space-1, 0.25rem);
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-on-accent, #fff);
+  font-size: var(--fs-2xs, 0.75rem);
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* ── Filer Navigation rows / cards (`.` / `..`、Phase 2b follow-up) ── */
 
 .pkc-filer-row-nav {

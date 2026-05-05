@@ -87,6 +87,7 @@ import {
   classifyFrontmatterUrl,
   type UrlClassification,
 } from '../../features/classification/url-host';
+import { parseFragment, buildFragmentUri } from '../../features/fragment/registry';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { buildLinkIndex } from '../../features/link-index/link-index';
@@ -4509,6 +4510,21 @@ function renderFilerCardGrid(
     card.appendChild(titleEl);
 
     if (matches) {
+      // Fragment badge — when the URL carries a recognised fragment
+      // (YouTube ?t= / PDF #page= / 小説 episode path / W3C #:~:text=…)
+      // expose its locator label as a small chip on the card. Phase
+      // 3c-C wiring of the canonical fragment IR.
+      if (classification?.url) {
+        const fragment = parseFragment(classification.url);
+        if (fragment?.label) {
+          const fragBadge = createElement('span', 'pkc-filer-card-fragment-badge');
+          fragBadge.setAttribute('data-pkc-card-field', 'fragment');
+          fragBadge.setAttribute('data-pkc-fragment-kind', fragment.locator_kind);
+          fragBadge.textContent = fragment.label;
+          card.appendChild(fragBadge);
+        }
+      }
+
       const meta = createElement('div', 'pkc-filer-card-meta');
       const fields: string[] = (() => {
         switch (expectedKind) {
@@ -4581,40 +4597,60 @@ function classifyEntryForCardGrid(
 export { classifyUrl };
 
 /**
- * Find an image asset to use as a card thumbnail. Looks for:
- *   1. attachment archetype — body is JSON with `asset_key`. Pull the
- *      data URL from container.assets and accept it iff it's an image.
- *   2. A markdown `asset:KEY` reference inside the body (text /
- *      textlog entries that reference an image).
- *   3. The first child attachment of the entry (folder thumbnail).
+ * Find an image asset to use as a card thumbnail.
  *
- * Returns the data: URL or null.
+ * `container.assets[K]` stores **raw base64**(no `data:` prefix);
+ * the MIME comes from the attachment body. We therefore reconstruct
+ * a data URL on the fly when the MIME indicates an image. Lookups:
+ *   1. attachment archetype — body JSON has `{ asset_key, mime }`.
+ *      If MIME starts with `image/`, build `data:<mime>;base64,<b64>`.
+ *   2. body markdown `asset:KEY` reference. We can't see a MIME for
+ *      this path, so accept any asset byte stream — the consumer
+ *      `<img>` will reject non-image data with a broken-image icon
+ *      (acceptable failure mode at the filer thumbnail layer).
+ *   3. folder archetype — first attachment child that resolves to
+ *      an image asset (folder cover thumbnail).
+ *
+ * Returns a `data:` URL or null.
  */
 function pickImageAssetForEntry(
   entry: Entry,
   assets: Record<string, string>,
   container: Container | null = null,
 ): string | null {
-  // 1. attachment archetype — body JSON `asset_key`.
+  // 1. attachment archetype.
   if (entry.archetype === 'attachment' && entry.body) {
     try {
-      const parsed = JSON.parse(entry.body) as { asset_key?: unknown };
-      if (typeof parsed.asset_key === 'string' && parsed.asset_key.length > 0) {
-        const url = assets[parsed.asset_key];
-        if (url && url.startsWith('data:image/')) return url;
+      const parsed = JSON.parse(entry.body) as { asset_key?: unknown; mime?: unknown };
+      const key = typeof parsed.asset_key === 'string' ? parsed.asset_key : null;
+      const mime = typeof parsed.mime === 'string' ? parsed.mime : null;
+      if (key && mime && mime.startsWith('image/')) {
+        const b64 = assets[key];
+        if (b64) {
+          // assets[K] may be raw base64 (new format) OR a full data
+          // URL (legacy / generated paths) — handle both.
+          if (b64.startsWith('data:')) return b64;
+          return `data:${mime};base64,${b64}`;
+        }
       }
     } catch {
-      // Legacy / non-JSON attachment body → fall through to other paths.
+      /* fall through */
     }
   }
-  // 2. Markdown body asset:KEY references.
+  // 2. Markdown body asset:KEY (TEXT body referencing an image).
   const m = (entry.body ?? '').match(/asset:([A-Za-z0-9_-]+)/);
   if (m) {
-    const url = assets[m[1]!];
-    if (url && url.startsWith('data:image/')) return url;
+    const b64 = assets[m[1]!];
+    if (b64) {
+      if (b64.startsWith('data:image/')) return b64;
+      // We don't know the MIME here; assume image/png if the asset
+      // looks like base64 PNG (starts with iVBORw0K). Otherwise skip.
+      if (b64.startsWith('iVBORw')) return `data:image/png;base64,${b64}`;
+      if (b64.startsWith('/9j/')) return `data:image/jpeg;base64,${b64}`;
+      if (b64.startsWith('R0lGOD')) return `data:image/gif;base64,${b64}`;
+    }
   }
-  // 3. Folder thumbnail: first attachment child whose own body resolves
-  //    to an image asset.
+  // 3. Folder thumbnail.
   if (container && entry.archetype === 'folder') {
     const children = getStructuralChildren(container.relations, container.entries, entry.lid);
     for (const child of children) {
@@ -5965,12 +6001,38 @@ function renderFrontmatterSection(entry: Entry): HTMLElement | null {
     const dd = document.createElement('dd');
     dd.className = 'pkc-frontmatter-value';
     dd.setAttribute('data-pkc-frontmatter-key', key);
-    dd.textContent = formatFrontmatterValue(meta[key]);
+    // URL fields render as <a> with optional fragment label.
+    // Phase 3c-C: parseFragment surfaces locator labels (p. 245 /
+    // 2:13 / 第28話) inline so the meta pane stays a useful overview.
+    if (key === 'url' && typeof meta[key] === 'string') {
+      const url = String(meta[key]);
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'pkc-frontmatter-url';
+      link.textContent = url;
+      dd.appendChild(link);
+      const fragment = parseFragment(url);
+      if (fragment?.label) {
+        const badge = createElement('span', 'pkc-frontmatter-fragment-badge');
+        badge.setAttribute('data-pkc-fragment-kind', fragment.locator_kind);
+        badge.textContent = fragment.label;
+        dd.appendChild(document.createTextNode(' '));
+        dd.appendChild(badge);
+      }
+    } else {
+      dd.textContent = formatFrontmatterValue(meta[key]);
+    }
     dl.appendChild(dd);
   }
   section.appendChild(dl);
   return section;
 }
+
+// Re-export so callers (extensions, debug overlays) can reach the
+// fragment IR without reaching into features layer directly.
+export { parseFragment, buildFragmentUri };
 
 function formatFrontmatterValue(v: unknown): string {
   if (v === null) return '—';
