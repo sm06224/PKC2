@@ -4512,6 +4512,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const kind = target.value;
         if (kind === 'explorer') {
           dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'explorer' } });
+        } else if (kind === 'contact-sheet') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'contact-sheet' } });
+        } else if (kind === 'book-base') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'book-base' } });
+        } else if (kind === 'youtube-base') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'youtube-base' } });
+        } else if (kind === 'graph') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'graph' } });
         } else if (kind === '') {
           dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: undefined });
         }

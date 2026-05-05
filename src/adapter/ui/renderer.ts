@@ -3913,7 +3913,28 @@ function renderFilerView(state: AppState): HTMLElement {
     return filer;
   }
 
-  filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
+  // Subset render dispatch — 領域 10-6 ζ'' Phase 3a.
+  switch (profile.kind) {
+    case 'contact-sheet':
+      filer.appendChild(renderFilerContactSheet(state, visibleChildren, profile));
+      break;
+    case 'book-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'book'));
+      break;
+    case 'youtube-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'youtube'));
+      break;
+    case 'graph':
+      // Phase 2b lands the actual graph layout; for now, fall back to
+      // the explorer table so users with a 'graph' profile saved still
+      // see something sensible.
+      filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
+      break;
+    case 'explorer':
+    default:
+      filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
+      break;
+  }
   return filer;
 }
 
@@ -4160,6 +4181,14 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
   switch (kind) {
     case 'explorer':
       return 'Explorer';
+    case 'contact-sheet':
+      return 'Contact sheet';
+    case 'book-base':
+      return 'Book base';
+    case 'youtube-base':
+      return 'YouTube base';
+    case 'graph':
+      return 'Graph';
   }
 }
 
@@ -4243,6 +4272,164 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   table.appendChild(tbody);
   wrapper.appendChild(table);
   return wrapper;
+}
+
+/**
+ * Contact-sheet subset (領域 10-6 ζ'' Phase 3a).
+ * Image-attachment-leading folders (album/scrap/portfolio) become a
+ * grid of thumbnails with caption underneath. Non-image children fall
+ * back to a small icon card so a mixed folder still renders cleanly.
+ */
+function renderFilerContactSheet(
+  state: AppState,
+  children: readonly Entry[],
+  profile: { kind: 'contact-sheet'; cell_size?: 'sm' | 'md' | 'lg' },
+): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const grid = createElement('div', 'pkc-filer-grid pkc-filer-grid-contact-sheet');
+  grid.setAttribute('data-pkc-region', 'filer-grid');
+  grid.setAttribute('data-pkc-cell-size', profile.cell_size ?? 'md');
+
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
+  const assets = state.container?.assets ?? {};
+  for (const child of children) {
+    const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
+    card.setAttribute('data-pkc-action', 'select-entry');
+    card.setAttribute('data-pkc-lid', child.lid);
+    card.setAttribute('data-pkc-archetype', child.archetype);
+    if (canEditDnd) {
+      (card as HTMLElement).draggable = true;
+      card.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') card.setAttribute('data-pkc-drop-target', 'folder');
+    }
+    if (child.lid === state.selectedLid) card.setAttribute('data-pkc-active', 'true');
+
+    const thumb = createElement('div', 'pkc-filer-card-thumb');
+    const dataUrl = pickImageAssetForEntry(child, assets);
+    if (dataUrl) {
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = child.title || child.lid;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+    } else {
+      thumb.classList.add('pkc-filer-card-thumb-fallback');
+      thumb.textContent = archetypeIcon(child.archetype);
+    }
+    card.appendChild(thumb);
+
+    const caption = createElement('div', 'pkc-filer-card-caption');
+    caption.textContent = child.title || child.lid;
+    card.appendChild(caption);
+
+    grid.appendChild(card);
+  }
+  wrapper.appendChild(grid);
+  return wrapper;
+}
+
+/**
+ * Card grid for book-base / youtube-base subsets (領域 10-6 ζ'' Phase 3a).
+ * Reads frontmatter `kind` to filter or annotate cards. When a child's
+ * frontmatter doesn't match the expected kind, render with graceful
+ * degrade(small icon + title only) — the philosophy is overview, not
+ * strict schema enforcement.
+ */
+function renderFilerCardGrid(
+  state: AppState,
+  children: readonly Entry[],
+  expectedKind: 'book' | 'youtube',
+): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const grid = createElement('div', `pkc-filer-grid pkc-filer-grid-${expectedKind}-base`);
+  grid.setAttribute('data-pkc-region', 'filer-grid');
+  grid.setAttribute('data-pkc-card-kind', expectedKind);
+
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
+  const assets = state.container?.assets ?? {};
+  for (const child of children) {
+    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
+    const matches = (fm.meta['kind'] === expectedKind);
+
+    const card = createElement('div', `pkc-filer-card pkc-filer-card-${expectedKind}`);
+    card.setAttribute('data-pkc-action', 'select-entry');
+    card.setAttribute('data-pkc-lid', child.lid);
+    card.setAttribute('data-pkc-archetype', child.archetype);
+    if (matches) card.setAttribute('data-pkc-card-kind-match', 'true');
+    if (canEditDnd) {
+      (card as HTMLElement).draggable = true;
+      card.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') card.setAttribute('data-pkc-drop-target', 'folder');
+    }
+    if (child.lid === state.selectedLid) card.setAttribute('data-pkc-active', 'true');
+
+    // Cover / thumbnail: prefer the first image asset structurally
+    // related to this entry, fall back to archetype icon.
+    const thumb = createElement('div', 'pkc-filer-card-thumb');
+    const dataUrl = pickImageAssetForEntry(child, assets);
+    if (dataUrl) {
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = child.title || child.lid;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+    } else {
+      thumb.classList.add('pkc-filer-card-thumb-fallback');
+      thumb.textContent = archetypeIcon(child.archetype);
+    }
+    card.appendChild(thumb);
+
+    const titleEl = createElement('div', 'pkc-filer-card-title');
+    titleEl.textContent = child.title || child.lid;
+    card.appendChild(titleEl);
+
+    if (matches) {
+      const meta = createElement('div', 'pkc-filer-card-meta');
+      const fields: string[] = expectedKind === 'book'
+        ? ['author', 'year', 'rating']
+        : ['channel', 'duration', 'language'];
+      for (const f of fields) {
+        const v = fm.meta[f];
+        if (v === undefined || v === null || v === '') continue;
+        const span = createElement('span', `pkc-filer-card-field pkc-filer-card-field-${f}`);
+        span.setAttribute('data-pkc-frontmatter-key', f);
+        span.textContent = String(v);
+        meta.appendChild(span);
+      }
+      if (meta.children.length > 0) card.appendChild(meta);
+    }
+
+    grid.appendChild(card);
+  }
+  wrapper.appendChild(grid);
+  return wrapper;
+}
+
+/**
+ * Find an image asset to use as a card thumbnail. Looks for:
+ *   1. A markdown `asset:KEY` reference in the body, where KEY's MIME
+ *      starts with `image/`.
+ *   2. The entry's own asset_key field (attachment archetype).
+ * Returns the data: URL or null.
+ */
+function pickImageAssetForEntry(entry: Entry, assets: Record<string, string>): string | null {
+  // Markdown body asset:KEY references.
+  const m = (entry.body ?? '').match(/asset:([A-Za-z0-9_-]+)/);
+  if (m) {
+    const url = assets[m[1]!];
+    if (url && url.startsWith('data:image/')) return url;
+  }
+  // attachment archetype carries asset_key on the entry itself.
+  const attachKey = (entry as unknown as { asset_key?: string }).asset_key;
+  if (attachKey) {
+    const url = assets[attachKey];
+    if (url && url.startsWith('data:image/')) return url;
+  }
+  return null;
 }
 
 function renderKanbanView(state: AppState): HTMLElement {
@@ -5036,8 +5223,10 @@ function renderMetaPaneImpl(
 
     const opts: { value: string; label: string }[] = [
       { value: 'explorer', label: 'Explorer (table)' },
+      { value: 'contact-sheet', label: 'Contact sheet (album)' },
+      { value: 'book-base', label: 'Book base' },
+      { value: 'youtube-base', label: 'YouTube base' },
       // Phase 2b: { value: 'graph', label: 'Graph' },
-      // Phase 3a: contact-sheet / book-base / youtube-base
     ];
     const current = entry.display_profile?.kind ?? 'explorer';
     for (const opt of opts) {

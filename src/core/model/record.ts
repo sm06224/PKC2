@@ -111,11 +111,23 @@ export interface Entry {
 /**
  * Filer view subset profile — discriminated union.
  *
- * Phase 1 only `'explorer'`. Future kinds added additively:
- *   - 'graph' (Phase 2b)
- *   - 'contact-sheet' | 'book-base' | 'youtube-base' (Phase 3a)
+ * Each kind defines how the children of a folder are presented in
+ * filer view:
+ *   - 'explorer'      : table (Phase 1)
+ *   - 'contact-sheet' : grid of image attachments (Phase 3a)
+ *   - 'book-base'     : grid of card-style book entries (Phase 3a)
+ *   - 'youtube-base'  : grid of card-style YouTube notes (Phase 3a)
+ *   - 'graph'         : force-directed network of TEXT + relations
+ *                       (Phase 2b — reserved kind)
+ *
+ * Backward compat: undefined treated as `'explorer'`. Old reader
+ * ignores the field; old writer never sets it.
  */
 export type FilerProfile =
-  | { kind: 'explorer'; columns?: FilerColumnId[] };
+  | { kind: 'explorer'; columns?: FilerColumnId[] }
+  | { kind: 'contact-sheet'; cell_size?: 'sm' | 'md' | 'lg' }
+  | { kind: 'book-base' }
+  | { kind: 'youtube-base' }
+  | { kind: 'graph' };
 
 export type FilerColumnId = 'name' | 'archetype' | 'updated_at' | 'tags';

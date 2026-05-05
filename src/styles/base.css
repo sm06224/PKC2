@@ -5324,6 +5324,108 @@ mark.pkc-search-mark {
   white-space: nowrap;
 }
 
+/* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
+
+.pkc-filer-grid {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) 0;
+}
+
+.pkc-filer-grid-contact-sheet[data-pkc-cell-size="sm"] {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.pkc-filer-grid-contact-sheet[data-pkc-cell-size="md"] {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.pkc-filer-grid-contact-sheet[data-pkc-cell-size="lg"] {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.pkc-filer-grid-book-base,
+.pkc-filer-grid-youtube-base {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.pkc-filer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-md, 4px);
+  background: var(--c-bg, transparent);
+  cursor: pointer;
+}
+
+.pkc-filer-card:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-filer-card[data-pkc-active="true"] {
+  outline: 2px solid var(--c-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.pkc-filer-card-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.05));
+}
+
+.pkc-filer-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pkc-filer-card-thumb-fallback {
+  font-size: var(--fs-2xl, 2rem);
+  opacity: 0.5;
+}
+
+.pkc-filer-card-caption,
+.pkc-filer-card-title {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-filer-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 0.25rem);
+  font-size: var(--fs-2xs, 0.75rem);
+  opacity: 0.75;
+}
+
+.pkc-filer-card-field::after {
+  content: '';
+}
+
+.pkc-filer-card[data-pkc-card-kind-match="true"] {
+  border-color: var(--c-accent, #3b82f6);
+}
+
+/* Mobile contact-sheet: tighter columns */
+@media (pointer: coarse) and (max-width: 640px) {
+  .pkc-filer-grid-contact-sheet[data-pkc-cell-size="md"] {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  .pkc-filer-grid-book-base,
+  .pkc-filer-grid-youtube-base {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
 .pkc-filer-profile-editor {
   display: flex;
   flex-direction: column;
