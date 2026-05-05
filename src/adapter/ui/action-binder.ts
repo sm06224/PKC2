@@ -4510,16 +4510,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const lid = target.getAttribute('data-pkc-lid');
       if (lid && target instanceof HTMLSelectElement) {
         const kind = target.value;
-        if (kind === 'explorer') {
-          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'explorer' } });
-        } else if (kind === 'contact-sheet') {
-          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'contact-sheet' } });
-        } else if (kind === 'book-base') {
-          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'book-base' } });
-        } else if (kind === 'youtube-base') {
-          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'youtube-base' } });
-        } else if (kind === 'graph') {
-          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'graph' } });
+        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'graph'> = [
+          'explorer',
+          'contact-sheet',
+          'book-base',
+          'video-base',
+          'novel-base',
+          'graph',
+        ];
+        if (valid.includes(kind as typeof valid[number])) {
+          dispatcher.dispatch({
+            type: 'SET_DISPLAY_PROFILE',
+            lid,
+            profile: { kind: kind as typeof valid[number] },
+          });
         } else if (kind === '') {
           dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: undefined });
         }

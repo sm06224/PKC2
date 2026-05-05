@@ -127,7 +127,8 @@ export type FilerProfile =
   | { kind: 'explorer'; columns?: FilerColumnId[] }
   | { kind: 'contact-sheet'; cell_size?: 'sm' | 'md' | 'lg' }
   | { kind: 'book-base' }
-  | { kind: 'youtube-base' }
+  | { kind: 'video-base' }
+  | { kind: 'novel-base' }
   | { kind: 'graph' };
 
 export type FilerColumnId = 'name' | 'archetype' | 'updated_at' | 'tags';

@@ -81,6 +81,12 @@ import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
 import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
+import {
+  classifyUrl,
+  classifyFirstUrlInBody,
+  classifyFrontmatterUrl,
+  type UrlClassification,
+} from '../../features/classification/url-host';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { buildLinkIndex } from '../../features/link-index/link-index';
@@ -3918,8 +3924,11 @@ function renderFilerView(state: AppState): HTMLElement {
     case 'book-base':
       filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'book'));
       break;
-    case 'youtube-base':
-      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'youtube'));
+    case 'video-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'video'));
+      break;
+    case 'novel-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'novel'));
       break;
     case 'graph':
       filer.appendChild(renderFilerGraph(state, visibleChildren));
@@ -4187,8 +4196,10 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
       return 'Contact sheet';
     case 'book-base':
       return 'Book base';
-    case 'youtube-base':
-      return 'YouTube base';
+    case 'video-base':
+      return 'Video base';
+    case 'novel-base':
+      return 'Novel base';
     case 'graph':
       return 'Graph';
   }
@@ -4439,7 +4450,7 @@ function renderFilerContactSheet(
 function renderFilerCardGrid(
   state: AppState,
   children: readonly Entry[],
-  expectedKind: 'book' | 'youtube',
+  expectedKind: 'book' | 'video' | 'novel',
 ): HTMLElement {
   const wrapper = createElement('div', 'pkc-filer-table-wrapper');
   wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
@@ -4457,13 +4468,19 @@ function renderFilerCardGrid(
 
   for (const child of children) {
     const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
-    const matches = (fm.meta['kind'] === expectedKind);
+    const classification = classifyEntryForCardGrid(child, fm.meta);
+    const matches = classification?.kind === expectedKind;
 
     const card = createElement('div', `pkc-filer-card pkc-filer-card-${expectedKind}`);
     card.setAttribute('data-pkc-action', 'select-entry');
     card.setAttribute('data-pkc-lid', child.lid);
     card.setAttribute('data-pkc-archetype', child.archetype);
-    if (matches) card.setAttribute('data-pkc-card-kind-match', 'true');
+    if (matches) {
+      card.setAttribute('data-pkc-card-kind-match', 'true');
+      if (classification?.provider) {
+        card.setAttribute('data-pkc-provider', classification.provider);
+      }
+    }
     if (canEditDnd) {
       (card as HTMLElement).draggable = true;
       card.setAttribute('data-pkc-draggable', 'true');
@@ -4493,9 +4510,20 @@ function renderFilerCardGrid(
 
     if (matches) {
       const meta = createElement('div', 'pkc-filer-card-meta');
-      const fields: string[] = expectedKind === 'book'
-        ? ['author', 'year', 'rating']
-        : ['channel', 'duration', 'language'];
+      const fields: string[] = (() => {
+        switch (expectedKind) {
+          case 'book': return ['author', 'year', 'publisher', 'rating'];
+          case 'video': return ['channel', 'duration', 'published_at'];
+          case 'novel': return ['author', 'site', 'updated_at'];
+          default: return [];
+        }
+      })();
+      if (classification?.provider && classification.provider !== 'unknown') {
+        const provSpan = createElement('span', 'pkc-filer-card-field pkc-filer-card-field-provider');
+        provSpan.setAttribute('data-pkc-card-field', 'provider');
+        provSpan.textContent = classification.provider;
+        meta.appendChild(provSpan);
+      }
       for (const f of fields) {
         const v = fm.meta[f];
         if (v === undefined || v === null || v === '') continue;
@@ -4512,6 +4540,45 @@ function renderFilerCardGrid(
   wrapper.appendChild(grid);
   return wrapper;
 }
+
+/**
+ * Classify an entry for inclusion in a book / video / novel card grid.
+ *
+ * Resolution order (most specific first):
+ *   1. frontmatter `kind` field — if set to a known string, use it
+ *      directly (legacy + explicit override).
+ *   2. frontmatter `url` field — classify via URL host map.
+ *   3. first http(s) URL in body — classify via URL host map.
+ *
+ * Returns a `UrlClassification`-like shape so the caller can read
+ * both `kind` and `provider`. Returns null for unclassifiable entries.
+ */
+function classifyEntryForCardGrid(
+  entry: Entry,
+  meta: Record<string, unknown>,
+): UrlClassification | null {
+  const explicitKind = meta['kind'];
+  if (typeof explicitKind === 'string' && explicitKind.length > 0) {
+    // Treat explicit `kind: book/video/novel` as authoritative even
+    // without a URL. Provider blank when no URL is present.
+    const fmUrl = classifyFrontmatterUrl(meta);
+    if (fmUrl && fmUrl.kind === explicitKind) return fmUrl;
+    return {
+      url: fmUrl?.url ?? '',
+      host: fmUrl?.host ?? '',
+      kind: (explicitKind as UrlClassification['kind']) ?? 'unknown',
+      provider: fmUrl?.provider ?? '',
+    };
+  }
+  const fmUrl = classifyFrontmatterUrl(meta);
+  if (fmUrl && fmUrl.kind !== 'unknown') return fmUrl;
+  const bodyUrl = classifyFirstUrlInBody(entry.body ?? '');
+  if (bodyUrl && bodyUrl.kind !== 'unknown') return bodyUrl;
+  return null;
+}
+
+// Re-export for tests / consumers that want raw URL classification.
+export { classifyUrl };
 
 /**
  * Find an image asset to use as a card thumbnail. Looks for:
@@ -5449,8 +5516,9 @@ function renderMetaPaneImpl(
     const opts: { value: string; label: string }[] = [
       { value: 'explorer', label: 'Explorer (table)' },
       { value: 'contact-sheet', label: 'Contact sheet (album)' },
-      { value: 'book-base', label: 'Book base' },
-      { value: 'youtube-base', label: 'YouTube base' },
+      { value: 'book-base', label: 'Book base (Amazon / 楽天 / 蔵書)' },
+      { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
+      { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
       { value: 'graph', label: 'Graph (relations)' },
     ];
     const current = entry.display_profile?.kind ?? 'explorer';

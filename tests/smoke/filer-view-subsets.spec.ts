@@ -41,15 +41,17 @@ async function bootFilerWithFolder(page: Page): Promise<string> {
   return folderLid;
 }
 
-test('meta pane editor lists 4 subset kinds', async ({ page }) => {
+test('meta pane editor lists subset kinds (explorer / contact-sheet / book-base / video-base / novel-base / graph)', async ({ page }) => {
   await bootFilerWithFolder(page);
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
   await expect(select).toBeVisible();
   const options = await select.locator('option').allTextContents();
-  expect(options).toContain('Explorer (table)');
-  expect(options).toContain('Contact sheet (album)');
-  expect(options).toContain('Book base');
-  expect(options).toContain('YouTube base');
+  expect(options.some((t) => t.startsWith('Explorer'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Contact sheet'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Book base'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Video base'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Novel base'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Graph'))).toBe(true);
 });
 
 test('順序性: setting display_profile to contact-sheet renders grid', async ({ page }) => {
@@ -72,12 +74,22 @@ test('順序性: setting display_profile to book-base renders grid', async ({ pa
   );
 });
 
-test('順序性: setting display_profile to youtube-base renders grid', async ({ page }) => {
+test('順序性: setting display_profile to video-base renders grid', async ({ page }) => {
   await bootFilerWithFolder(page);
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
-  await select.selectOption('youtube-base');
+  await select.selectOption('video-base');
   await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
     'data-pkc-subset',
-    'youtube-base',
+    'video-base',
+  );
+});
+
+test('順序性: setting display_profile to novel-base renders grid', async ({ page }) => {
+  await bootFilerWithFolder(page);
+  const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
+  await select.selectOption('novel-base');
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
+    'data-pkc-subset',
+    'novel-base',
   );
 });

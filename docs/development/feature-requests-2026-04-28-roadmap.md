@@ -573,6 +573,15 @@ PKC-Message v2(`docs/development/pkc-message-v2-open-questions-decisions-2026-05
 
 **確定形 ζ''**: TEXT atom(archetype 増設禁止)+ Hybrid Z data model(frontmatter / tag / relation の責務 3 分離)+ vanilla TS graph view(PKC1 force config 流用)+ 入力負担減 sub-wave(ISBN/oEmbed auto-fill で book 追加 ~90% 短縮)。
 
+2026-05-05 user direction(Phase 3a-r1 リファクタ):**book/youtube 個別の subset 設計から URL + filetype 分類による generic な classifier**にリファクタ。Amazon / 楽天 / niconico / 小説家になろう / カクヨム / 青空文庫 等の主要サイトに対応した URL host map を `src/features/classification/url-host.ts` に追加、attachment は MIME / 拡張子で分類(`filetype.ts`)。現状の subset:`book-base` / `video-base`(旧 youtube-base、リネーム)/ `novel-base`(新規)。
+
+**Bookmarklet 計画(2026-05-05、deferred)**:閲覧中のサイト(Amazon 商品 / niconico 動画 / 小説 1 話など)を **スナップショット的に PKC2 へ取り込む** ためのブックマークレットを将来的に実装。設計案:
+  - URL + ページタイトル + 選択テキスト or 全文を JSON で encode
+  - PKC2 を別タブで開く / クリップボード経由で取り込み
+  - frontmatter に kind + url + provider + captured_at を auto-fill
+  - 大規模なページは抜粋のみ + 元 URL 参照 / 小規模は full-snapshot
+  - Amazon の場合は商品メタ(著者 / 価格 / レビュー)も抽出予定
+
 サイズ: 大 wave、~12 PR / ~3 ヶ月、5 phase 構成:
 1. filer view 第 4 view-mode + explorer subset(中、~2 PR)
 2a. YAML mini frontmatter parser + 表示(小、~1 PR)
