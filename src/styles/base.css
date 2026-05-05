@@ -5250,6 +5250,47 @@ mark.pkc-search-mark {
   background: var(--c-bg-tag, rgba(0, 0, 0, 0.06));
 }
 
+.pkc-filer-toolbar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-filer-create-btn,
+.pkc-filer-trash-btn {
+  font-size: var(--fs-xs, 0.8125rem);
+}
+
+.pkc-filer-trash-btn {
+  margin-left: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-row[data-pkc-drag-over="true"] {
+  outline: 2px dashed var(--c-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.pkc-filer-row[data-pkc-dragging="true"] {
+  opacity: 0.4;
+}
+
+.pkc-filer-trash-purge {
+  margin-left: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-breadcrumb-trash {
+  font-weight: 600;
+}
+
+.pkc-filer-row-trash {
+  cursor: default;
+}
+
+.pkc-filer-cell-actions {
+  white-space: nowrap;
+}
+
 .pkc-filer-profile-editor {
   display: flex;
   flex-direction: column;

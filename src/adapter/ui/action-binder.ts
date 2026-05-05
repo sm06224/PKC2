@@ -1124,7 +1124,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
-          if (dispatcher.getState().viewMode !== 'detail') {
+          // Filer view (領域 10-6 ζ'' Phase 1) — keep folder navigation
+          // inside the filer. When the user opens a folder while in
+          // filer mode, the new selectedLid moves the filer scope; we
+          // do NOT switch to detail. Non-folder entries still flip to
+          // detail because the filer is not the right surface for
+          // reading a single text/textlog body.
+          const currentState = dispatcher.getState();
+          let stayInFiler = false;
+          if (currentState.viewMode === 'filer' && currentState.container) {
+            const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
+            stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
+          }
+          if (!stayInFiler && currentState.viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
           suppressAutoScroll(lid);
@@ -2944,6 +2956,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           | 'kanban'
           | 'filer';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'filer-scope-trash': {
+        // 領域 10-6 ζ'' Phase 1 PR-2 — open trash listing inside filer.
+        // SET_VIEW_MODE 'filer' guarantees we land in the filer even if
+        // the user clicked it from another view.
+        if (dispatcher.getState().viewMode !== 'filer') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+        }
+        dispatcher.dispatch({ type: 'SET_FILER_SCOPE', scope: 'trash' });
+        break;
+      }
+      case 'filer-scope-folder': {
+        // Return from trash back to the auto-resolved folder scope.
+        dispatcher.dispatch({ type: 'SET_FILER_SCOPE', scope: 'auto' });
         break;
       }
       case 'calendar-prev': {

@@ -81,6 +81,25 @@ describe('SET_VIEW_MODE accepts filer', () => {
   });
 });
 
+describe('SET_FILER_SCOPE', () => {
+  it('sets filerScope to trash', () => {
+    const state = readyState({ container: mkContainer([mkEntry('a')]) });
+    const r = reduce(state, { type: 'SET_FILER_SCOPE', scope: 'trash' });
+    expect(r.state.filerScope).toBe('trash');
+  });
+
+  it('clears filerScope key when scope is auto (canonical JSON shape)', () => {
+    const state = readyState({
+      container: mkContainer([mkEntry('a')]),
+      filerScope: 'trash',
+    });
+    expect(state.filerScope).toBe('trash');
+    const r = reduce(state, { type: 'SET_FILER_SCOPE', scope: 'auto' });
+    expect(r.state.filerScope).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r.state, 'filerScope')).toBe(false);
+  });
+});
+
 describe('SET_DISPLAY_PROFILE', () => {
   it('sets display_profile on a folder entry', () => {
     const folder = mkEntry('f1', { archetype: 'folder' });

@@ -14,6 +14,7 @@ import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
+import type { Revision } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
 import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
@@ -3876,6 +3877,18 @@ function renderFilerView(state: AppState): HTMLElement {
   const filer = createElement('div', 'pkc-filer');
   filer.setAttribute('data-pkc-region', 'filer-view');
 
+  // Trash mode short-circuits the normal folder-scope render. The
+  // toolbar's "Trash" toggle dispatches SET_FILER_SCOPE 'trash' and
+  // restoration / purge use the same actions as the sidebar trash
+  // pane (RESTORE_ENTRY / PURGE_TRASH).
+  if (state.filerScope === 'trash') {
+    filer.setAttribute('data-pkc-subset', 'trash');
+    filer.setAttribute('data-pkc-filer-scope', 'trash');
+    filer.appendChild(renderFilerTrashHeader(state));
+    filer.appendChild(renderFilerTrashTable(state));
+    return filer;
+  }
+
   const scope = resolveFilerScope(state);
   const profile = resolveFilerSubsetForScope(state, scope);
   filer.setAttribute('data-pkc-subset', profile.kind);
@@ -3901,6 +3914,128 @@ function renderFilerView(state: AppState): HTMLElement {
 
   filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
   return filer;
+}
+
+function renderFilerTrashHeader(state: AppState): HTMLElement {
+  const header = createElement('header', 'pkc-filer-header');
+  header.setAttribute('data-pkc-region', 'filer-header');
+
+  const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
+  breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
+  const back = createElement('button', 'pkc-filer-breadcrumb-segment');
+  back.setAttribute('data-pkc-action', 'filer-scope-folder');
+  back.setAttribute('data-pkc-filer-breadcrumb', 'back-from-trash');
+  back.textContent = '← フォルダ';
+  breadcrumb.appendChild(back);
+  const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
+  sep.textContent = ' / ';
+  breadcrumb.appendChild(sep);
+  const trashSeg = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-trash');
+  trashSeg.setAttribute('data-pkc-filer-breadcrumb', 'trash');
+  trashSeg.textContent = '🗑️ ゴミ箱';
+  breadcrumb.appendChild(trashSeg);
+  header.appendChild(breadcrumb);
+
+  const subset = createElement('span', 'pkc-filer-subset-label');
+  subset.setAttribute('data-pkc-filer-subset-label', 'trash');
+  subset.textContent = 'Trash';
+  header.appendChild(subset);
+
+  // Empty-trash button (only when there's something to purge).
+  if (state.container && state.phase === 'ready' && !state.readonly) {
+    const visibleCandidates = getTrashCandidatesForFiler(state);
+    if (visibleCandidates.length > 0) {
+      const purge = createElement('button', 'pkc-btn-small pkc-filer-trash-purge');
+      purge.setAttribute('data-pkc-action', 'purge-trash');
+      purge.setAttribute('title', 'ゴミ箱を空にする(取り消し不可)');
+      purge.textContent = 'ゴミ箱を空にする';
+      header.appendChild(purge);
+    }
+  }
+  return header;
+}
+
+function getTrashCandidatesForFiler(state: AppState): Revision[] {
+  if (!state.container) return [];
+  const all = getRestoreCandidates(state.container);
+  return all.filter((rev) => {
+    if (isReservedLid(rev.entry_lid)) return false;
+    const parsed = parseRevisionSnapshot(rev);
+    if (parsed && isSystemArchetype(parsed.archetype)) return false;
+    return true;
+  });
+}
+
+function renderFilerTrashTable(state: AppState): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const candidates = getTrashCandidatesForFiler(state);
+
+  if (candidates.length === 0) {
+    const empty = createElement('div', 'pkc-filer-empty');
+    empty.setAttribute('data-pkc-region', 'filer-empty');
+    empty.textContent = 'ゴミ箱は空です。';
+    wrapper.appendChild(empty);
+    return wrapper;
+  }
+
+  const table = createElement('table', 'pkc-filer-table');
+  table.setAttribute('data-pkc-region', 'filer-table');
+
+  const thead = createElement('thead', 'pkc-filer-thead');
+  const headRow = createElement('tr', 'pkc-filer-head-row');
+  for (const label of ['名前', '種類', '削除日時', '操作']) {
+    const th = createElement('th', 'pkc-filer-th');
+    th.textContent = label;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const canEdit = state.phase === 'ready' && !state.readonly;
+  const tbody = createElement('tbody', 'pkc-filer-tbody');
+  for (const rev of candidates) {
+    const parsed = parseRevisionSnapshot(rev);
+    const tr = createElement('tr', 'pkc-filer-row pkc-filer-row-trash');
+    tr.setAttribute('data-pkc-revision-id', rev.id);
+    tr.setAttribute('data-pkc-lid', rev.entry_lid);
+
+    const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
+    if (parsed) {
+      const icon = createElement('span', 'pkc-filer-row-icon');
+      icon.textContent = archetypeIcon(parsed.archetype);
+      nameTd.appendChild(icon);
+    }
+    const titleSpan = createElement('span', 'pkc-filer-row-title');
+    titleSpan.textContent = (parsed?.title ?? rev.entry_lid).trim() || rev.entry_lid;
+    nameTd.appendChild(titleSpan);
+    tr.appendChild(nameTd);
+
+    const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
+    archTd.textContent = parsed ? archetypeLabel(parsed.archetype) : '—';
+    tr.appendChild(archTd);
+
+    const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
+    updTd.textContent = formatTimestamp(rev.created_at);
+    tr.appendChild(updTd);
+
+    const actTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-actions');
+    if (canEdit) {
+      const restore = createElement('button', 'pkc-btn-small');
+      restore.setAttribute('data-pkc-action', 'restore-entry');
+      restore.setAttribute('data-pkc-lid', rev.entry_lid);
+      restore.setAttribute('data-pkc-revision-id', rev.id);
+      restore.textContent = '復元';
+      actTd.appendChild(restore);
+    }
+    tr.appendChild(actTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  return wrapper;
 }
 
 /**
@@ -3939,6 +4074,41 @@ function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): Filer
 function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerProfile): HTMLElement {
   const header = createElement('header', 'pkc-filer-header');
   header.setAttribute('data-pkc-region', 'filer-header');
+
+  // Create-entry toolbar: same `create-entry` action used by the main
+  // header. resolveContextFolder() picks up the filer scope folder as
+  // parent automatically because we set selectedLid = scope.lid when
+  // scope changes (so newly-created entries land inside the visible
+  // folder, matching the user's mental model of "create here").
+  const canEdit = state.phase === 'ready' && !state.readonly;
+  if (canEdit) {
+    const toolbar = createElement('div', 'pkc-filer-toolbar');
+    toolbar.setAttribute('data-pkc-region', 'filer-toolbar');
+    const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
+      { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder here' },
+      { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry here' },
+      { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry here' },
+      { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry here' },
+      { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment here' },
+    ];
+    for (const { arch, label, tip } of archetypeButtons) {
+      const btn = createElement('button', 'pkc-btn-small pkc-filer-create-btn');
+      btn.setAttribute('data-pkc-action', 'create-entry');
+      btn.setAttribute('data-pkc-archetype', arch);
+      btn.setAttribute('title', tip);
+      btn.textContent = label;
+      toolbar.appendChild(btn);
+    }
+    // Trash toggle — opens the deleted-entries listing inside the
+    // filer. Click again (via the breadcrumb back link) returns to
+    // folder scope.
+    const trashBtn = createElement('button', 'pkc-btn-small pkc-filer-trash-btn');
+    trashBtn.setAttribute('data-pkc-action', 'filer-scope-trash');
+    trashBtn.setAttribute('title', 'ゴミ箱を開く(削除済みエントリ一覧)');
+    trashBtn.textContent = '🗑️ ゴミ箱';
+    toolbar.appendChild(trashBtn);
+    header.appendChild(toolbar);
+  }
 
   const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
   breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
@@ -4017,11 +4187,22 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   table.appendChild(thead);
 
   const tbody = createElement('tbody', 'pkc-filer-tbody');
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
   for (const child of children) {
     const tr = createElement('tr', 'pkc-filer-row');
     tr.setAttribute('data-pkc-action', 'select-entry');
     tr.setAttribute('data-pkc-lid', child.lid);
     tr.setAttribute('data-pkc-archetype', child.archetype);
+    // DnD: filer row is draggable (move-by-DnD reuses the existing
+    // sidebar handler in action-binder via `data-pkc-draggable`).
+    // Folder rows are also drop targets (drop another row → move into).
+    if (canEditDnd) {
+      (tr as HTMLTableRowElement).draggable = true;
+      tr.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') {
+        tr.setAttribute('data-pkc-drop-target', 'folder');
+      }
+    }
     if (child.lid === state.selectedLid) {
       tr.setAttribute('data-pkc-active', 'true');
     }

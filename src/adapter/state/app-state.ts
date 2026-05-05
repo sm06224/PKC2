@@ -320,6 +320,17 @@ export interface AppState {
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
   viewMode: 'detail' | 'calendar' | 'kanban' | 'filer';
+  /**
+   * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
+   * - `'auto'` (default): the filer scope is resolved from `selectedLid`
+   *   (current folder or the entry's first folder ancestor; null = root).
+   * - `'trash'`: the filer renders restore candidates instead of folder
+   *   children (deleted entries with revisions). Toggled from the filer
+   *   toolbar; not persisted.
+   *
+   * Runtime-only.
+   */
+  filerScope?: 'auto' | 'trash';
   /** Calendar navigation: year. Runtime-only. */
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */
@@ -2781,6 +2792,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           meta: { ...state.container.meta, updated_at: ts },
         },
       };
+      return { state: next, events: [] };
+    }
+    case 'SET_FILER_SCOPE': {
+      if (action.scope === 'auto') {
+        const { filerScope: _drop, ...rest } = state;
+        return { state: rest as AppState, events: [] };
+      }
+      const next: AppState = { ...state, filerScope: action.scope };
       return { state: next, events: [] };
     }
     case 'SET_CALENDAR_MONTH': {

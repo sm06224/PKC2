@@ -468,6 +468,7 @@ export type UserAction =
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' }
   | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
+  | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }
   /**
