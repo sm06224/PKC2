@@ -13,7 +13,7 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
-import { sidebarMode } from './sidebar-flags';
+import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
@@ -3678,8 +3678,24 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
-  // Detail view (existing behavior)
+  // Detail view (existing behavior).
+  // Phase 4 follow-up 3: when the selected entry is a folder, fold the
+  // detail surface into the filer view so the "folder detail" is the
+  // filer's overview (user direction:「フォルダの detail はファイラー
+  // 表示にして、フォルダの detail を実質の廃止にしましょう」).
+  // viewMode itself stays 'detail' so the user can return via the
+  // dedicated Filer tab without losing context.
   const selected = findSelectedEntry(state);
+  if (
+    folderDetailAsFiler()
+    && selected
+    && selected.archetype === 'folder'
+    && state.phase === 'ready'
+    && state.editingLid !== selected.lid
+  ) {
+    center.appendChild(renderFilerView(state));
+    return center;
+  }
   const canEdit = state.phase === 'ready' && !state.readonly;
 
   // Show About when: explicitly selected OR no user entries exist

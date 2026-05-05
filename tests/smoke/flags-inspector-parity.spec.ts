@@ -36,7 +36,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   const panel = overlay.locator('[data-pkc-region="flags-inspector-panel"]');
   await expect(panel).toBeVisible();
 
-  // 34 Tier 0 defineFlag entries (Phase 4 follow-up sidebar.mode):
+  // 35 Tier 0 defineFlag entries (Phase 4 follow-up + folder.detail_as_filer):
   //   wave 1 (7): recent.default_limit / textlog.staged_render.{initial_count,lookahead}
   //               / persistence.debounce_ms / image.{max_long_edge,optimize_threshold_bytes}
   //               / search.max_results_per_entry
@@ -51,7 +51,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //                              charge, collide_radius, center_strength,
   //                              damping, max_speed, iterations}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(34, { timeout: 5_000 });
+  await expect(rows).toHaveCount(35, { timeout: 5_000 });
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -292,7 +292,7 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  expect(snap.rowCount).toBe(34);
+  expect(snap.rowCount).toBe(35);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);

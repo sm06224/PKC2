@@ -21,3 +21,20 @@ export const sidebarMode = defineFlag<string>(
     tier: 0,
   },
 );
+
+/**
+ * `folder.detail_as_filer = true` で folder を select した detail
+ * 表示を filer view に差し替える(2026-05-05 user direction:「フォルダ
+ * の detail はファイラー表示にして、フォルダの detail を実質の廃止に
+ * しましょう」)。デフォルト false で既存挙動を保持し、user が opt-in
+ * で実験できる段階移行。
+ */
+export const folderDetailAsFiler = defineFlag<boolean>(
+  'folder.detail_as_filer',
+  false,
+  {
+    category: 'folder',
+    description: 'フォルダ選択時の detail 表示を filer view に差し替える(opt-in)',
+    tier: 0,
+  },
+);
