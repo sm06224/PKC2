@@ -502,6 +502,60 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
  */
 export interface RenderMarkdownOptions {
   readonly currentContainerId?: string;
+  /**
+   * 領域 10-1 Split View 同期スクロール(2026-05-05、PR #206 reform 後再実装)
+   * — stamp `data-pkc-source-line="<n>"` on every block-level token's
+   * rendered output so the caret-sync adapter can match preview
+   * elements to editor source lines (and vice versa).
+   *
+   * Each tagged element also gets `data-pkc-source-end="<m>"` (zero-
+   * indexed inclusive end of the source range) so a long fence /
+   * table / list spanning multiple source lines can compute internal
+   * progress (caret on line K within [S, E] → preview offset
+   * (K - S) / (E - S) of the rendered block height).
+   *
+   * Opt-in — view-only call sites (detail / todo / folder / textlog
+   * presenters) leave this off and emit clean HTML. Only the split
+   * editor preview turns it on. */
+  readonly sourceLineAnchors?: boolean;
+}
+
+/**
+ * Block-level token types whose rendered HTML should carry the
+ * `data-pkc-source-line` / `data-pkc-source-end` attributes when
+ * `sourceLineAnchors` is opt-in. Top-level blocks the user can
+ * point at in the live preview.
+ */
+const SOURCE_LINE_TOKEN_TYPES: ReadonlySet<string> = new Set([
+  'heading_open',
+  'paragraph_open',
+  'blockquote_open',
+  'bullet_list_open',
+  'ordered_list_open',
+  'list_item_open',
+  'fence',
+  'code_block',
+  'table_open',
+  'hr',
+  'html_block',
+]);
+
+function tagSourceLines(tokens: Token[]): void {
+  for (const token of tokens) {
+    if (token.map && SOURCE_LINE_TOKEN_TYPES.has(token.type)) {
+      // `token.map` = [startLine, endLineExclusive]. Store both so
+      // a preview block spanning many source lines can compute
+      // internal progress (PR #206 v12 design).
+      token.attrSet('data-pkc-source-line', String(token.map[0]));
+      token.attrSet(
+        'data-pkc-source-end',
+        String(Math.max(token.map[0], token.map[1] - 1)),
+      );
+    }
+    if (token.children && token.children.length > 0) {
+      tagSourceLines(token.children);
+    }
+  }
 }
 
 /**
@@ -518,7 +572,13 @@ export function renderMarkdown(
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
-  return md.render(text, env);
+  if (!opts.sourceLineAnchors) {
+    return md.render(text, env);
+  }
+  // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
+  const tokens = md.parse(text, env);
+  tagSourceLines(tokens);
+  return md.renderer.render(tokens, md.options, env);
 }
 
 /**
