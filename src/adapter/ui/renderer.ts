@@ -12,6 +12,7 @@ import {
 import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import { renderImagePreviewModal } from './image-preview';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
@@ -748,6 +749,7 @@ function renderShell(state: AppState): HTMLElement {
   // the user can read it without surrounding chrome. Hidden until
   // the action binder opens it via `openMediaViewer(source)`.
   shell.appendChild(renderMediaViewer());
+  shell.appendChild(renderImagePreviewModal());
   return shell;
 }
 
@@ -4407,7 +4409,24 @@ function renderFilerContactSheet(
 
   for (const child of children) {
     const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
-    card.setAttribute('data-pkc-action', 'select-entry');
+    // Image attachments dispatch a dedicated preview-open action so
+    // clicking from the filer opens an in-window viewer instead of
+    // switching to the detail pane (2026-05-05 user direction).
+    const isImageAttachment =
+      child.archetype === 'attachment'
+      && (() => {
+        try {
+          const meta = JSON.parse(child.body) as { mime?: unknown };
+          return typeof meta.mime === 'string' && meta.mime.startsWith('image/');
+        } catch {
+          return false;
+        }
+      })();
+    if (isImageAttachment) {
+      card.setAttribute('data-pkc-action', 'open-image-preview-from-filer');
+    } else {
+      card.setAttribute('data-pkc-action', 'select-entry');
+    }
     card.setAttribute('data-pkc-lid', child.lid);
     card.setAttribute('data-pkc-archetype', child.archetype);
     if (canEditDnd) {

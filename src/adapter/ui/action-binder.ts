@@ -34,6 +34,7 @@ import {
   closeMediaViewer,
   isMediaViewerOpen,
 } from './media-viewer';
+import { openImagePreview } from './image-preview';
 import {
   enhanceTable,
   sortColumn,
@@ -2956,6 +2957,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           | 'kanban'
           | 'filer';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'open-image-preview-from-filer': {
+        // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
+        // attachment in the filer opens a Document PiP / fallback
+        // modal viewer instead of switching to detail.
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((x) => x.lid === lid);
+        if (!ent) break;
+        try {
+          const meta = JSON.parse(ent.body) as { name?: unknown; mime?: unknown; asset_key?: unknown };
+          const mime = typeof meta.mime === 'string' ? meta.mime : '';
+          const key = typeof meta.asset_key === 'string' ? meta.asset_key : '';
+          const name = typeof meta.name === 'string' ? meta.name : ent.title;
+          if (!mime.startsWith('image/') || !key) break;
+          const b64 = st.container?.assets?.[key];
+          if (!b64) break;
+          const dataUrl = b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`;
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+          // Lazy import via dynamic require pattern would split the
+          // bundle; we use the static import added to action-binder.
+          openImagePreview({ src: dataUrl, label: name, permalink: `entry:${lid}` })
+            .catch((e) => { console.warn('[image-preview] open failed', e); });
+        } catch (e) {
+          console.warn('[image-preview] body parse failed', e);
+        }
         break;
       }
       case 'filer-scope-trash': {
