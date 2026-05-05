@@ -3905,15 +3905,10 @@ function renderFilerView(state: AppState): HTMLElement {
   // System entries should never surface in the filer.
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
-  if (visibleChildren.length === 0) {
-    const empty = createElement('div', 'pkc-filer-empty');
-    empty.setAttribute('data-pkc-region', 'filer-empty');
-    empty.textContent = scope
-      ? 'このフォルダには項目がありません。'
-      : '表示できるエントリがありません。';
-    filer.appendChild(empty);
-    return filer;
-  }
+  // Even an empty folder still renders the subset surface so the
+  // "." and ".." navigation affordances stay reachable. The empty
+  // message becomes a peer node when there are no real children.
+  const isEmptyChildren = visibleChildren.length === 0;
 
   // Subset render dispatch — 領域 10-6 ζ'' Phase 3a.
   switch (profile.kind) {
@@ -3933,6 +3928,14 @@ function renderFilerView(state: AppState): HTMLElement {
     default:
       filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
       break;
+  }
+  if (isEmptyChildren) {
+    const empty = createElement('div', 'pkc-filer-empty');
+    empty.setAttribute('data-pkc-region', 'filer-empty');
+    empty.textContent = scope
+      ? 'このフォルダには項目がありません。'
+      : '表示できるエントリがありません。';
+    filer.appendChild(empty);
   }
   return filer;
 }
@@ -4191,6 +4194,87 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
   }
 }
 
+/**
+ * Resolve "." (current folder) and ".." (parent folder) navigation
+ * affordances for the filer view. At root scope, "." returns null
+ * (no folder entry to represent) and ".." returns null per
+ * 2026-05-05 user direction:「rootにいる場合は .. の表示は無し」.
+ */
+function resolveFilerNavigation(state: AppState): {
+  current: Entry | null;
+  parent: Entry | null;
+} {
+  const scope = resolveFilerScope(state);
+  if (!scope) return { current: null, parent: null };
+  if (!state.container) return { current: scope, parent: null };
+  const parent = getStructuralParent(state.container.relations, state.container.entries, scope.lid);
+  return { current: scope, parent: parent ?? null };
+}
+
+function buildFilerNavCard(
+  kind: 'current' | 'parent',
+  target: Entry,
+  label: string,
+): HTMLElement {
+  const card = createElement(
+    'div',
+    `pkc-filer-card pkc-filer-card-nav pkc-filer-card-nav-${kind}`,
+  );
+  card.setAttribute('data-pkc-action', 'select-entry');
+  card.setAttribute('data-pkc-lid', target.lid);
+  card.setAttribute('data-pkc-archetype', 'folder');
+  card.setAttribute('data-pkc-filer-nav', kind);
+  if (kind === 'parent') card.setAttribute('data-pkc-drop-target', 'folder');
+
+  const thumb = createElement('div', 'pkc-filer-card-thumb pkc-filer-card-thumb-fallback');
+  thumb.textContent = label;
+  card.appendChild(thumb);
+
+  const titleEl = createElement('div', 'pkc-filer-card-title');
+  titleEl.textContent = target.title || target.lid;
+  card.appendChild(titleEl);
+  return card;
+}
+
+function buildFilerNavRow(
+  kind: 'current' | 'parent',
+  target: Entry,
+  label: string,
+): HTMLTableRowElement {
+  const tr = createElement('tr', `pkc-filer-row pkc-filer-row-nav pkc-filer-row-nav-${kind}`) as HTMLTableRowElement;
+  tr.setAttribute('data-pkc-action', 'select-entry');
+  tr.setAttribute('data-pkc-lid', target.lid);
+  tr.setAttribute('data-pkc-archetype', 'folder');
+  tr.setAttribute('data-pkc-filer-nav', kind);
+  // ".." rows are drop targets so user can drag-drop into the parent
+  // folder. "." is not a drop target (would be a no-op).
+  if (kind === 'parent') {
+    tr.setAttribute('data-pkc-drop-target', 'folder');
+  }
+
+  const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
+  const icon = createElement('span', 'pkc-filer-row-icon');
+  icon.textContent = '📁';
+  nameTd.appendChild(icon);
+  const titleSpan = createElement('span', 'pkc-filer-row-title');
+  titleSpan.textContent = `${label}    (${target.title || target.lid})`;
+  nameTd.appendChild(titleSpan);
+  tr.appendChild(nameTd);
+
+  const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
+  archTd.textContent = kind === 'current' ? 'カレント' : '親フォルダ';
+  tr.appendChild(archTd);
+
+  const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
+  updTd.textContent = '';
+  tr.appendChild(updTd);
+
+  const tagsTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-tags');
+  tagsTd.textContent = '';
+  tr.appendChild(tagsTd);
+  return tr;
+}
+
 function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): HTMLElement {
   const wrapper = createElement('div', 'pkc-filer-table-wrapper');
   wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
@@ -4217,6 +4301,17 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
 
   const tbody = createElement('tbody', 'pkc-filer-tbody');
   const canEditDnd = state.phase === 'ready' && !state.readonly;
+
+  // "." and ".." navigation rows.「カレントフォルダ」+「1 階層上」を
+  // 先頭に出す。root では ".." を省略(2026-05-05 user direction)。
+  const nav = resolveFilerNavigation(state);
+  if (nav.current) {
+    tbody.appendChild(buildFilerNavRow('current', nav.current, '.'));
+  }
+  if (nav.parent) {
+    tbody.appendChild(buildFilerNavRow('parent', nav.parent, '..'));
+  }
+
   for (const child of children) {
     const tr = createElement('tr', 'pkc-filer-row');
     tr.setAttribute('data-pkc-action', 'select-entry');
@@ -4293,6 +4388,11 @@ function renderFilerContactSheet(
 
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
+
+  const nav = resolveFilerNavigation(state);
+  if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
+  if (nav.parent) grid.appendChild(buildFilerNavCard('parent', nav.parent, '..'));
+
   for (const child of children) {
     const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
     card.setAttribute('data-pkc-action', 'select-entry');
@@ -4306,7 +4406,7 @@ function renderFilerContactSheet(
     if (child.lid === state.selectedLid) card.setAttribute('data-pkc-active', 'true');
 
     const thumb = createElement('div', 'pkc-filer-card-thumb');
-    const dataUrl = pickImageAssetForEntry(child, assets);
+    const dataUrl = pickImageAssetForEntry(child, assets, state.container);
     if (dataUrl) {
       const img = document.createElement('img');
       img.src = dataUrl;
@@ -4350,6 +4450,11 @@ function renderFilerCardGrid(
 
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
+
+  const nav = resolveFilerNavigation(state);
+  if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
+  if (nav.parent) grid.appendChild(buildFilerNavCard('parent', nav.parent, '..'));
+
   for (const child of children) {
     const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
     const matches = (fm.meta['kind'] === expectedKind);
@@ -4369,7 +4474,7 @@ function renderFilerCardGrid(
     // Cover / thumbnail: prefer the first image asset structurally
     // related to this entry, fall back to archetype icon.
     const thumb = createElement('div', 'pkc-filer-card-thumb');
-    const dataUrl = pickImageAssetForEntry(child, assets);
+    const dataUrl = pickImageAssetForEntry(child, assets, state.container);
     if (dataUrl) {
       const img = document.createElement('img');
       img.src = dataUrl;
@@ -4410,23 +4515,46 @@ function renderFilerCardGrid(
 
 /**
  * Find an image asset to use as a card thumbnail. Looks for:
- *   1. A markdown `asset:KEY` reference in the body, where KEY's MIME
- *      starts with `image/`.
- *   2. The entry's own asset_key field (attachment archetype).
+ *   1. attachment archetype — body is JSON with `asset_key`. Pull the
+ *      data URL from container.assets and accept it iff it's an image.
+ *   2. A markdown `asset:KEY` reference inside the body (text /
+ *      textlog entries that reference an image).
+ *   3. The first child attachment of the entry (folder thumbnail).
+ *
  * Returns the data: URL or null.
  */
-function pickImageAssetForEntry(entry: Entry, assets: Record<string, string>): string | null {
-  // Markdown body asset:KEY references.
+function pickImageAssetForEntry(
+  entry: Entry,
+  assets: Record<string, string>,
+  container: Container | null = null,
+): string | null {
+  // 1. attachment archetype — body JSON `asset_key`.
+  if (entry.archetype === 'attachment' && entry.body) {
+    try {
+      const parsed = JSON.parse(entry.body) as { asset_key?: unknown };
+      if (typeof parsed.asset_key === 'string' && parsed.asset_key.length > 0) {
+        const url = assets[parsed.asset_key];
+        if (url && url.startsWith('data:image/')) return url;
+      }
+    } catch {
+      // Legacy / non-JSON attachment body → fall through to other paths.
+    }
+  }
+  // 2. Markdown body asset:KEY references.
   const m = (entry.body ?? '').match(/asset:([A-Za-z0-9_-]+)/);
   if (m) {
     const url = assets[m[1]!];
     if (url && url.startsWith('data:image/')) return url;
   }
-  // attachment archetype carries asset_key on the entry itself.
-  const attachKey = (entry as unknown as { asset_key?: string }).asset_key;
-  if (attachKey) {
-    const url = assets[attachKey];
-    if (url && url.startsWith('data:image/')) return url;
+  // 3. Folder thumbnail: first attachment child whose own body resolves
+  //    to an image asset.
+  if (container && entry.archetype === 'folder') {
+    const children = getStructuralChildren(container.relations, container.entries, entry.lid);
+    for (const child of children) {
+      if (child.archetype !== 'attachment') continue;
+      const inner = pickImageAssetForEntry(child, assets, null);
+      if (inner) return inner;
+    }
   }
   return null;
 }

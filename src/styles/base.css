@@ -5324,6 +5324,29 @@ mark.pkc-search-mark {
   white-space: nowrap;
 }
 
+/* ── Filer Navigation rows / cards (`.` / `..`、Phase 2b follow-up) ── */
+
+.pkc-filer-row-nav {
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  font-style: italic;
+}
+
+.pkc-filer-row-nav .pkc-filer-cell-archetype {
+  opacity: 0.6;
+  font-size: var(--fs-2xs, 0.75rem);
+}
+
+.pkc-filer-card-nav {
+  border-style: dashed;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.03));
+}
+
+.pkc-filer-card-nav .pkc-filer-card-thumb {
+  font-size: var(--fs-2xl, 2rem);
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* ── Filer Graph (Phase 2b) ── */
 
 .pkc-filer-graph {

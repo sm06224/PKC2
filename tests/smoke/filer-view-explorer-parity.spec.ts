@@ -42,17 +42,24 @@ async function bootAndSwitchToFiler(page: Page): Promise<void> {
   await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
 }
 
-test('explorer subset: empty folder shows empty state at folder scope', async ({ page }) => {
+test('explorer subset: empty folder shows empty message + nav rows', async ({ page }) => {
   await bootAndSwitchToFiler(page);
 
   // The seeded folder is selected by default; filer scope = that folder.
-  // Folder is empty so the empty state must render.
+  // Folder is empty: empty message renders alongside the table whose
+  // only rows are the "." current-folder nav row (".." absent because
+  // the seeded folder is at root scope).
   await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
     'data-pkc-subset',
     'explorer',
   );
   await expect(page.locator('[data-pkc-region="filer-empty"]')).toBeVisible();
-  await expect(page.locator('[data-pkc-region="filer-table"]')).toHaveCount(0);
+  await expect(page.locator('[data-pkc-region="filer-table"]')).toBeVisible();
+  // Only the "." nav row exists (no ".." at root, no real children).
+  const navRows = page.locator('[data-pkc-filer-nav]');
+  await expect(navRows).toHaveCount(1);
+  await expect(page.locator('[data-pkc-filer-nav="current"]')).toBeVisible();
+  await expect(page.locator('[data-pkc-filer-nav="parent"]')).toHaveCount(0);
 });
 
 test('順序性: SET_DISPLAY_PROFILE updates data-pkc-subset on filer-view', async ({ page }) => {
