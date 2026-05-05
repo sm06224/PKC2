@@ -567,7 +567,10 @@ PKC-Message v2(`docs/development/pkc-message-v2-open-questions-decisions-2026-05
 
 サイズ: 大(PKC-Message v2.1 / v2.2 で段階的、~4 PR)。前提: 10-3 IR が安定してから。
 
-### 10-6: Filer view + book/youtube/album subset(発展版、**ζ'' 確定 2026-05-05**)
+### 10-6: Filer view + book/youtube/album subset(発展版、**ζ'' wave 完成 2026-05-05**)
+
+**Status: 16 stacked PR(#260〜#275)で wave 完成**(2026-05-05、PR #258 audit doc 起こし → 同日中に Phase 1〜5 + Phase 3c-A〜E 全部実装)。Manual 章 `docs/manual/10_filer_と_graph_と_inventory.md` + 11 枚 screenshot 取込済(`docs/manual/images/M01〜M08*.png`)、PKC-extension manual に統合済。残課題は `wave-10-6-ux-evaluation-2026-05.md` 参照(U1〜U8、~70 LOC で潰せる磨き込み + folder-default-as-filer 切替の別 wave 議論)。
+
 
 原案「アルバムエントリ + コンタクトシート」を発展させ、**center pane の第 4 view-mode `filer`** を新設、subset profile(explorer / contact-sheet / book-base / youtube-base / graph)で多様な「カード型コレクション」を統一的に扱う wave。詳細は [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md)(PR #258 で landing)。
 

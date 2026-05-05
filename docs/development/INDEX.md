@@ -166,6 +166,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`filer-view-explorer-subset-spec.md`](./filer-view-explorer-subset-spec.md) | 領域 10-6 ζ'' wave **Phase 1 spec**(filer view 第 4 view-mode + explorer subset、folder.display_profile additive optional、~2-3 PR)。state mutation + reducer + tab UI + table render + parity / 順序性 test 構成 |
 | [`fragment-reference-ir-spec-2026-05.md`](./fragment-reference-ir-spec-2026-05.md) | 領域 10-6 ζ'' wave **Phase 3c 探索 spec**。URL/asset への fragment 参照(YouTube 時間 / PDF page / 小説 episode / W3C text-fragment / 内部 `#log/`)を canonical IR で統一、user converter / bookmarklet / viewer extension(PKC-extension 責務、領域 10-5 連携)の整備計画を整理 |
 | [`bookmarklet-snapshot-recipes-2026-05.md`](./bookmarklet-snapshot-recipes-2026-05.md) | 領域 10-6 ζ'' Phase 3c-E。`?pkc-snapshot=<base64>` URL 経由で外部サイトから PKC2 へ snapshot を取込む受入仕様 + 5 種の sample bookmarklet(汎用 / YouTube 時間 / Amazon ASIN / 小説家になろう / W3C text-fragment) |
+| [`wave-10-6-ux-evaluation-2026-05.md`](./wave-10-6-ux-evaluation-2026-05.md) | 領域 10-6 ζ'' wave 完成後 UX 評価メモ(11 screenshot 撮影 + 8 件 UX 課題 U1〜U8 + 哲学守破離 + 修正提案サマリ)。完成 PR の改善トラッカ用、修正完了したら archive |
 
 ## CLOSED (42 docs)
 
