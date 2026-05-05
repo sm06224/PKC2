@@ -26,6 +26,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { attachShot } from './_fixtures/visual-attach';
 
 const LONG_CONTENT = (() => {
   const lines: string[] = [];
@@ -244,10 +245,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     }
     const afterDown = await observe(page);
     dump('J1 after down burst', afterDown);
-    await testInfo.attach('J1-after-down-burst.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J1-after-down-burst.png', await page.screenshot());
     // Reverse burst
     const reverse = [-14.2, -19.6, -23.4, -20.1, -16.5, -10.7, -6.3, -3.2, -1.4];
     for (const dy of reverse) {
@@ -256,10 +254,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     }
     const afterUp = await observe(page);
     dump('J1 after up burst', afterUp);
-    await testInfo.attach('J1-after-up-burst.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J1-after-up-burst.png', await page.screenshot());
   });
 
   test('J2-assert. caret out-of-view → overlay は HIDDEN になる(hotfix-4 contract)', async ({
@@ -285,10 +280,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     const initial = await observe(page);
     expect(initial.caretInView, 'caret on line 0 should be in view').toBe(true);
     expect(initial.overlayDisplay, 'overlay should be visible at start').toBe('block');
-    await testInfo.attach('J2a-caret-visible.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2a-caret-visible.png', await page.screenshot());
     // Scroll far down — caret line 0 falls off the top of the textarea.
     for (let i = 0; i < 30; i++) {
       await fireWheel(page, 25);
@@ -303,10 +295,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
       scrolled.overlayDisplay,
       `overlay must be HIDDEN when caret is out of view (was clamped to top edge before hotfix-4). actual: ${scrolled.overlayDisplay}, top=${scrolled.overlayTop}`,
     ).toBe('none');
-    await testInfo.attach('J2a-caret-out-overlay-hidden.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2a-caret-out-overlay-hidden.png', await page.screenshot());
     // Scroll back so caret comes into view — overlay must reappear.
     for (let i = 0; i < 30; i++) {
       await fireWheel(page, -25);
@@ -318,10 +307,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
       back.overlayDisplay,
       'overlay must reappear when caret returns to view',
     ).toBe('block');
-    await testInfo.attach('J2a-caret-back-overlay-visible.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2a-caret-back-overlay-visible.png', await page.screenshot());
   });
 
   test('J2-badges. editor overlay と preview active-block の line 番号 badge が同期', async ({
@@ -367,10 +353,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     console.log(`J2-badges: caret line=${s.caretLine} overlay line=${s.overlayLine} preview active=${s.previewActiveLine}`);
     expect(s.overlayLine, 'editor overlay must label line 4').toBe('4');
     expect(s.previewActiveLine, 'preview active block must be at line 4').toBe(4);
-    await testInfo.attach('J2-badges-line-4-synced.png', {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2-badges-line-4-synced.png', await page.screenshot({ fullPage: false }));
   });
 
   test('J2. caret out-of-view: scroll で caret が見えなくなった時の overlay state', async ({
@@ -392,10 +375,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     await page.waitForTimeout(150);
     const s0 = await observe(page);
     dump('J2 caret line 0 (initial)', s0);
-    await testInfo.attach('J2-step0-caret-at-top.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2-step0-caret-at-top.png', await page.screenshot());
     // Scroll way down so caret line 0 is well outside the viewport.
     for (let i = 0; i < 30; i++) {
       await fireWheel(page, 25);
@@ -403,10 +383,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     }
     const sScrolled = await observe(page);
     dump('J2 after scroll 750px (caret should be far above)', sScrolled);
-    await testInfo.attach('J2-step1-scrolled-far-down.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2-step1-scrolled-far-down.png', await page.screenshot());
     // Now scroll back up partially — caret may come back into view.
     for (let i = 0; i < 10; i++) {
       await fireWheel(page, -25);
@@ -414,10 +391,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     }
     const sBack = await observe(page);
     dump('J2 after scroll back -250px (caret state?)', sBack);
-    await testInfo.attach('J2-step2-scrolled-back.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J2-step2-scrolled-back.png', await page.screenshot());
   });
 
   test('J3. caret 移動 + 即時 wheel 反転 (suppression window 衝突)', async ({
@@ -458,10 +432,7 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
     }
     const sUp = await observe(page);
     dump('J3 after up burst (within sup window)', sUp);
-    await testInfo.attach('J3-suppression-collision.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'J3-suppression-collision.png', await page.screenshot());
   });
 
   test('J4. 30 step scroll loop: 各 step で overlay top と caret top を log + 5 step ごとに screenshot', async ({
@@ -503,10 +474,11 @@ test.describe('jitter diagnostic — touchpad-like wheel patterns + overlay stat
         `J4 step=${i.toString().padStart(2, '0')} dy=${pattern[i]?.toFixed(1).padStart(6)} | scroll=${s.taScrollTop.toFixed(0).padStart(4)} caret=${s.caretTop?.toFixed(0).padStart(4)} inView=${s.caretInView ? 'Y' : 'N'} overlay=${s.overlayDisplay === 'block' ? `top=${s.overlayTop?.toFixed(0).padStart(4)}` : 'HIDDEN'}`,
       );
       if (i % 6 === 5) {
-        await testInfo.attach(`J4-step${i.toString().padStart(2, '0')}.png`, {
-          body: await page.screenshot(),
-          contentType: 'image/png',
-        });
+        await attachShot(
+          testInfo,
+          `J4-step${i.toString().padStart(2, '0')}.png`,
+          await page.screenshot(),
+        );
       }
     }
   });

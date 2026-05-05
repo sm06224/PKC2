@@ -29,6 +29,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { attachShot } from './_fixtures/visual-attach';
 
 const REAL_CONTENT = `1. item-a
 2. item-b
@@ -275,10 +276,7 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
       Math.abs(p.overlayRect!.top - realCaretTop),
       `overlay top ${p.overlayRect!.top.toFixed(1)} vs REAL caret top ${realCaretTop.toFixed(1)}: delta=${(p.overlayRect!.top - realCaretTop).toFixed(1)} > 4px`,
     ).toBeLessThan(4);
-    await testInfo.attach('1-overlay-vs-real-caret.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '1-overlay-vs-real-caret.png', await page.screenshot());
   });
 
   test('2. editor overlay と preview active-block の両方が同時に visible', async ({
@@ -310,10 +308,7 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
         `line ${line}: preview active off-screen above`,
       ).toBeGreaterThan(-50);
     }
-    await testInfo.attach('2-both-visible.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '2-both-visible.png', await page.screenshot());
   });
 
   test('3. ⇄ OFF: overlay は hidden', async ({ page }, testInfo) => {
@@ -341,10 +336,7 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
       return overlay ? getComputedStyle(overlay).display : 'missing';
     });
     expect(after, 'overlay must be hidden when sync is OFF').toBe('none');
-    await testInfo.attach('3-toggle-off.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '3-toggle-off.png', await page.screenshot());
   });
 
   test('4. preview copy button は edit mode で hidden', async ({
@@ -380,10 +372,7 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
       copyBtnVisible,
       'copy buttons must NOT be visible in edit mode preview, even on hover',
     ).toBe(false);
-    await testInfo.attach('4-hover-no-copy.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '4-hover-no-copy.png', await page.screenshot());
   });
 
   test('5. textarea scroll → overlay 追従(タッチパッド scroll での座標補正)', async ({
@@ -420,10 +409,7 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
       movedUp || clampedToTop,
       `overlay didn't track scroll: before=${before.overlayRect!.top.toFixed(0)} after=${after.overlayRect!.top.toFixed(0)}`,
     ).toBe(true);
-    await testInfo.attach('5-scroll-tracking.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '5-scroll-tracking.png', await page.screenshot());
   });
 
   test('6. 編集側 real wheel event 逆方向再スクロール — 全 delta が想定通り', async ({
@@ -489,9 +475,6 @@ test.describe('editor active-line overlay parity(2026-05-05 hotfix-2)', () => {
       `first reverse wheel: ${deltas[2]} — must be negative (user-reported regression)`,
     ).toBeLessThan(0);
     expect(deltas[3]).toBeLessThan(0);
-    await testInfo.attach('6-real-wheel.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, '6-real-wheel.png', await page.screenshot());
   });
 });

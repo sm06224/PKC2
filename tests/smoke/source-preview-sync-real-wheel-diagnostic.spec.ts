@@ -26,6 +26,7 @@
  */
 
 import { test, type Page } from '@playwright/test';
+import { attachShot } from './_fixtures/visual-attach';
 
 const LONG_CONTENT = (() => {
   // 300 行の textarea content。textarea が確実に overflow するよう。
@@ -154,10 +155,7 @@ test.describe('real OS wheel event scroll diagnostic(hotfix-3)', () => {
     }
     console.log(`A. 連続 5 回 down wheel deltas: [${deltas.join(', ')}]`);
     /* eslint-enable no-console */
-    await testInfo.attach('A-after-5-wheels.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'A-after-5-wheels.png', await page.screenshot());
   });
 
   test('B. 逆方向 1 回: down → up が真に効くか(user 報告の核心)', async ({
@@ -186,10 +184,7 @@ test.describe('real OS wheel event scroll diagnostic(hotfix-3)', () => {
     // ★ User report: "逆方向 scroll が一度だけ効かない" → upDeltas[0]
     //   が 0 もしくは異常に小さい値になっているか観察。
     /* eslint-enable no-console */
-    await testInfo.attach('B-down-then-up.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'B-down-then-up.png', await page.screenshot());
   });
 
   test('C. caret 移動を伴う wheel: type → caret line 5 → up → down', async ({
@@ -229,10 +224,7 @@ test.describe('real OS wheel event scroll diagnostic(hotfix-3)', () => {
     const u2 = await wheelOnEditor(page, -80);
     console.log(`C. after caret-move: down=[${d1}, ${d2}] up=[${u1}, ${u2}]`);
     /* eslint-enable no-console */
-    await testInfo.attach('C-caret-then-wheel.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'C-caret-then-wheel.png', await page.screenshot());
   });
 
   test('D. 即時連続反転(within 80ms): markProgrammaticScroll window 内', async ({
@@ -265,9 +257,6 @@ test.describe('real OS wheel event scroll diagnostic(hotfix-3)', () => {
     const u = await wheelOnEditor(page, -50);
     console.log(`D. tight-window: down=${d} up=${u}`);
     /* eslint-enable no-console */
-    await testInfo.attach('D-tight-window.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'D-tight-window.png', await page.screenshot());
   });
 });

@@ -1,26 +1,33 @@
 /**
- * Visual verification harness — generic synthetic markdown fixture
- * (2026-05-05 hotfix-7 follow-up-4: removed personal content per
- * user direction「テスト用のマークダウンは確実に削除してください」).
+ * Visual verification harness — generic synthetic markdown fixture.
  *
  * Constrained 1280×720 viewport so editor + preview both overflow
- * and the auto-scroll behaviour is observable in the screenshot.
+ * and the auto-scroll behaviour is observable.
  *
- * Scenarios produce screenshots under
- * `test-results/visual-check/V<n>-*.png`. **No assertions** — this
- * is a deliberate eyes-on artefact harness.
+ * **2026-05-05 privacy policy** (user direction):
+ *   「GitHub に間違ってもテストデータそのものやプライベートデータ
+ *    が含まれる可能性があるスクショをアップしないでください」
+ *
+ * → Screenshots are **only written when `PKC_VISUAL=1` is set AND
+ *    `CI` is unset** (= local dev mode). On CI runs the writes are
+ *    skipped entirely, so no PNG can leak through the failure-
+ *    artifact upload path. The smoke workflow also stopped
+ *    uploading `test-results` (see `.github/workflows/smoke.yml`).
  */
 
 import { test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { SPLIT_VIEW_FIXTURE } from './_fixtures/split-view-sample';
 
+const VISUAL_ENABLED =
+  !!process.env.PKC_VISUAL && !process.env.CI;
 const OUT_DIR = 'test-results/visual-check';
-mkdirSync(OUT_DIR, { recursive: true });
+if (VISUAL_ENABLED) mkdirSync(OUT_DIR, { recursive: true });
 
 test.use({ viewport: { width: 1280, height: 720 } });
 
 async function shot(page: Page, name: string): Promise<void> {
+  if (!VISUAL_ENABLED) return;
   await page.screenshot({ path: `${OUT_DIR}/${name}.png`, fullPage: false });
 }
 

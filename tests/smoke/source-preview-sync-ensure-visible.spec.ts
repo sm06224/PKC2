@@ -21,6 +21,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { attachShot } from './_fixtures/visual-attach';
 
 const LONG_BODY = (() => {
   // Many heading blocks so editor/preview overflow + many anchored
@@ -190,10 +191,7 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
       `preview already showed the block; scroll should not change (before=${before}, after=${after})`,
     ).toBe(before);
     expect(await activeBlockInPreviewView(page)).toBe(true);
-    await testInfo.attach('E1-target-in-view-no-scroll.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'E1-target-in-view-no-scroll.png', await page.screenshot());
   });
 
   test('E2. editor → preview: target out of view → preview scrolls minimum amount, block becomes visible', async ({
@@ -212,10 +210,7 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
     ).toBeGreaterThan(before);
     // Block must now be in view
     expect(await activeBlockInPreviewView(page)).toBe(true);
-    await testInfo.attach('E2-out-of-view-scrolled-in.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'E2-out-of-view-scrolled-in.png', await page.screenshot());
   });
 
   test('E3. preview → editor: caret already in view → editor scrollTop unchanged', async ({
@@ -244,10 +239,7 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
       `editor caret already visible; scroll should not change (before=${before}, after=${after})`,
     ).toBe(before);
     expect(await caretInEditorView(page)).toBe(true);
-    await testInfo.attach('E3-caret-in-view-no-scroll.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'E3-caret-in-view-no-scroll.png', await page.screenshot());
   });
 
   test('E4. preview → editor: caret out of view → editor scrolls minimum amount, caret becomes visible', async ({
@@ -277,10 +269,7 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
       `editor should have scrolled to bring caret in view (before=${before}, after=${after})`,
     ).toBeGreaterThan(before);
     expect(await caretInEditorView(page)).toBe(true);
-    await testInfo.attach('E4-out-of-view-scrolled-in.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'E4-out-of-view-scrolled-in.png', await page.screenshot());
   });
 
   test('E5. preview chrome leak: edit-mode preview の table を click しても modal が開かない', async ({
@@ -336,9 +325,6 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
       modalVisible,
       'edit-mode preview table click should NOT open media-viewer modal',
     ).toBe(false);
-    await testInfo.attach('E5-no-modal.png', {
-      body: await page.screenshot(),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, 'E5-no-modal.png', await page.screenshot());
   });
 });

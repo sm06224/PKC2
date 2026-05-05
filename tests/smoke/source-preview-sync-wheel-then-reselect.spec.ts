@@ -17,12 +17,21 @@
  *   3. preview の active block が comfort-band [20%, 55%] 内に戻る
  */
 
-/* eslint-disable no-irregular-whitespace -- user fixture */
-import { test, expect, type Page } from '@playwright/test';
+/* eslint-disable no-irregular-whitespace -- generic fixture */
+import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
+// 2026-05-05 user privacy policy: never upload screenshots to GitHub.
+// CI runs skip all attach calls; local dev keeps them when
+// `PKC_VISUAL=1` is set.
+const VISUAL_ENABLED = !!process.env.PKC_VISUAL && !process.env.CI;
 const OUT = 'test-results/visual-check';
-mkdirSync(OUT, { recursive: true });
+if (VISUAL_ENABLED) mkdirSync(OUT, { recursive: true });
+
+async function attachShot(testInfo: TestInfo, name: string, body: Buffer): Promise<void> {
+  if (!VISUAL_ENABLED) return;
+  await testInfo.attach(name, { body, contentType: 'image/png' });
+}
 
 test.use({ viewport: { width: 1280, height: 720 } });
 
@@ -119,7 +128,7 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
     // eslint-disable-next-line no-console
     console.log(`R1 step1 (caret 5): bandTop=${before.bandTop.toFixed(0)} activeTop=${before.activeTop.toFixed(0)} inBand=${before.inBand}`);
     expect(before.inBand, 'step1: active should land in band').toBe(true);
-    await testInfo.attach('R1-step1-caret-5.png', { body: await page.screenshot(), contentType: 'image/png' });
+    await attachShot(testInfo, 'R1-step1-caret-5.png', await page.screenshot());
 
     // Step 2: real OS wheel で preview を down scroll (user gesture)
     const previewCenter = await page.evaluate(() => {
@@ -137,7 +146,7 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
     const afterWheel = await activeBlockRectInBand(page);
     // eslint-disable-next-line no-console
     console.log(`R1 step2 (wheel down ~640px): activeTop=${afterWheel.activeTop.toFixed(0)} bandTop=${afterWheel.bandTop.toFixed(0)} inBand=${afterWheel.inBand}`);
-    await testInfo.attach('R1-step2-after-wheel.png', { body: await page.screenshot(), contentType: 'image/png' });
+    await attachShot(testInfo, 'R1-step2-after-wheel.png', await page.screenshot());
     // The wheel pushed preview far enough that the active block is no
     // longer in band. (If it still happens to be in band — content
     // shorter than expected — skip the inBand=false assertion.)
@@ -147,7 +156,7 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
     const afterReselect = await activeBlockRectInBand(page);
     // eslint-disable-next-line no-console
     console.log(`R1 step3 (caret 10 reselect): activeTop=${afterReselect.activeTop.toFixed(0)} bandTop=${afterReselect.bandTop.toFixed(0)} inBand=${afterReselect.inBand}`);
-    await testInfo.attach('R1-step3-after-reselect.png', { body: await page.screenshot(), contentType: 'image/png' });
+    await attachShot(testInfo, 'R1-step3-after-reselect.png', await page.screenshot());
     expect(
       afterReselect.inBand,
       `step3: caret reselect should bring active block back into band (activeTop=${afterReselect.activeTop.toFixed(0)}, band=[${afterReselect.bandTop.toFixed(0)}, ${afterReselect.bandBottom.toFixed(0)}])`,
@@ -174,14 +183,14 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
       await page.mouse.wheel(0, 80);
       await page.waitForTimeout(40);
     }
-    await testInfo.attach('R2-after-wheel.png', { body: await page.screenshot(), contentType: 'image/png' });
+    await attachShot(testInfo, 'R2-after-wheel.png', await page.screenshot());
 
     // Re-trigger selectionchange at same caret position.
     await caretToLine(page, 5);
     const after = await activeBlockRectInBand(page);
     // eslint-disable-next-line no-console
     console.log(`R2 same-line reselect: activeTop=${after.activeTop.toFixed(0)} band=[${after.bandTop.toFixed(0)}, ${after.bandBottom.toFixed(0)}] inBand=${after.inBand}`);
-    await testInfo.attach('R2-after-reselect-same-line.png', { body: await page.screenshot(), contentType: 'image/png' });
+    await attachShot(testInfo, 'R2-after-reselect-same-line.png', await page.screenshot());
     expect(after.inBand, 'same-line reselect after wheel: should still bring band back').toBe(true);
   });
 });

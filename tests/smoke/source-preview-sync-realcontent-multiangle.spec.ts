@@ -41,6 +41,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { attachShot } from './_fixtures/visual-attach';
 
 const REAL_CONTENT = `1. item-a
 2. item-b
@@ -298,10 +299,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
       expect(s.activeStart, `line ${line}: active block missing`).not.toBeNull();
       expect(s.hitInsideActive, `line ${line}: active block not hit-testable`).toBe(true);
     }
-    await testInfo.attach(`scenario1-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario1-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('2. preview→editor: candidate-list 5 行 real OS click → 異なる line', async ({
@@ -345,10 +343,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     }
     // 5 distinct lines confirms tr-level anchor + click landing.
     expect(new Set(lines).size, `lines = ${lines.join(',')}`).toBe(5);
-    await testInfo.attach(`scenario2-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario2-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('3. スクロール反復: 上→下→上→下 で active line が往復', async ({
@@ -375,10 +370,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     // landed on different blocks (trail[0]=line 0 returns twice).
     const distinct = new Set(observed.map((o) => o.activeStart));
     expect(distinct.size).toBeGreaterThanOrEqual(4);
-    await testInfo.attach(`scenario3-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario3-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('4. 上端到達 → 少し戻し: 上端付近に張り付き → 戻し時に追従', async ({
@@ -408,10 +400,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
       `少し戻し: scrollTop ${back.previewScrollTop} should be > top ${top.previewScrollTop}`,
     ).toBeGreaterThan(top.previewScrollTop);
     expect(back.activeStart).toBe(4);
-    await testInfo.attach(`scenario4-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario4-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('5. 下端到達 → 少し戻し: max scroll で頭打ち & 戻し追従', async ({
@@ -434,10 +423,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
       bottom.previewScrollTop,
     );
     expect(back.activeStart).toBe(4);
-    await testInfo.attach(`scenario5-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario5-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('6. CSV fence 内 caret 5→9→13: 全 caret で fence wrapper が active', async ({
@@ -463,10 +449,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
       expect(snap.activeStart!).toBe(4);
       expect(snap.activeEnd!).toBe(13);
     }
-    await testInfo.attach(`scenario6-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario6-final.png`, await page.screenshot({ fullPage: false }));
   });
 
   test('7. ⇄ OFF 中はスクロールしても active marker 出ない', async ({
@@ -522,9 +505,6 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
         ) === null,
     );
     expect(noActive, '⇄ OFF: 全 caret 移動で active marker が出てはいけない').toBe(true);
-    await testInfo.attach(`scenario7-final.png`, {
-      body: await page.screenshot({ fullPage: false }),
-      contentType: 'image/png',
-    });
+    await attachShot(testInfo, `scenario7-final.png`, await page.screenshot({ fullPage: false }));
   });
 });

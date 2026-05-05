@@ -72,12 +72,11 @@ jobs:
       - name: Run smoke baseline
         run: npm run test:smoke
 
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-smoke-failure
-          path: |
-            test-results
-            playwright-report
-          retention-days: 7
+      # 2026-05-05 user direction:
+      #   「GitHub に間違ってもテストデータそのものやプライベートデータが
+      #    含まれる可能性があるスクショをアップしないでください」
+      #
+      # Artifact upload of test-results / playwright-report is REMOVED
+      # to guarantee no screenshot or trace.zip ever lands on GitHub.
+      # Failure diagnosis stays inside the CI run logs and the
+      # developer's local environment.
