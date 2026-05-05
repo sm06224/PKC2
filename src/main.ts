@@ -18,6 +18,8 @@ import {
   restoreRenderContinuity,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
+import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
+import { isSnapshot } from './features/snapshot/types';
 import {
   bindActions,
   populateAttachmentPreviews,
@@ -648,6 +650,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -671,6 +674,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -688,6 +692,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -765,6 +770,45 @@ function maybeOpenFlagsInspectorFromUrl(dispatcher: Dispatcher): void {
   const params = new URLSearchParams(window.location.search);
   if (params.getAll('pkc-flag').includes('*')) {
     dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+  }
+}
+
+/**
+ * 領域 10-6 ζ'' Phase 3c-E — bookmarklet snapshot intake.
+ * If the URL carries `?pkc-snapshot=<base64-or-json>`, decode and
+ * create a TEXT entry from it. **No modal in main shell** (2026-05-05
+ * user direction); the new entry simply appears as the freshly-
+ * selected entry and the URL param is stripped to prevent re-import
+ * on refresh.
+ */
+function maybeIngestSnapshotFromUrl(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('pkc-snapshot');
+  if (!raw) return;
+  const decoded = decodeSnapshotParam(raw);
+  if (!isSnapshot(decoded)) return;
+  const draft = snapshotToEntryDraft(decoded);
+  dispatcher.dispatch({
+    type: 'CREATE_ENTRY',
+    archetype: 'text',
+    title: draft.title,
+  });
+  // The reducer puts us into editing mode for the new entry; commit
+  // immediately with the snapshot body so the user lands on a saved
+  // entry. No modal interactions required.
+  const lid = dispatcher.getState().editingLid;
+  if (lid) {
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title: draft.title, body: draft.body });
+  }
+  // Strip the param so reload / share doesn't re-create the entry.
+  try {
+    params.delete('pkc-snapshot');
+    const newSearch = params.toString();
+    const url = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, url);
+  } catch {
+    /* ignore */
   }
 }
 
