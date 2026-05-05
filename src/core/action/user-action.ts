@@ -466,7 +466,9 @@ export type UserAction =
   | { type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' }
   | { type: 'TOGGLE_TREE_HIDE_BUCKETS' }
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
-  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' }
+  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' }
+  | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' }
+  | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
   | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
   | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
   | { type: 'SET_LAST_FILER_SCOPE'; lid: string | null }

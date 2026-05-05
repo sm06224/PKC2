@@ -83,6 +83,8 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.linkMigrationLastApplyResult !== prev.linkMigrationLastApplyResult) return 'full';
   if (state.viewMode !== prev.viewMode) return 'full';
   if (state.filerScope !== prev.filerScope) return 'full';
+  if (state.graphMode !== prev.graphMode) return 'full';
+  if (state.graphFocusLid !== prev.graphFocusLid) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
   if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';

@@ -5470,6 +5470,42 @@ mark.pkc-search-mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* ── Center Graph view (Phase 4 follow-up 4 — independent view-mode) ── */
+
+.pkc-center-graph-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pkc-center-graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-graph-mode-select {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+.pkc-graph-focus-label {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.06));
+  padding: 0 var(--space-2, 0.5rem);
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-center-graph-svg {
+  flex: 1;
+  min-height: 480px;
+}
+
 /* ── Filer Graph (Phase 2b) ── */
 
 .pkc-filer-graph {

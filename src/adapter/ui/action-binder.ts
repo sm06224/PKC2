@@ -2978,10 +2978,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           | 'detail'
           | 'calendar'
           | 'kanban'
-          | 'filer';
+          | 'filer'
+          | 'graph';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
+      case 'open-graph-for-entry': {
+        // Open graph view focused on this entry. Used from filer cards,
+        // detail headers, sidebar context menus — anywhere entry lid is
+        // available.
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid });
+        break;
+      }
+      case 'open-graph-full': {
+        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid: null });
+        break;
+      }
+      // set-graph-mode: handled in handleChange (select element).
       case 'open-image-preview-from-filer': {
         // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
         // attachment in the filer opens a Document PiP / fallback
@@ -4557,6 +4571,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // The `<select>` lives in the meta pane and carries the folder lid on
     // itself; dispatch SET_DISPLAY_PROFILE on change. Phase 1 only knows
     // the `'explorer'` kind; future kinds widen this switch.
+    if (action === 'set-graph-mode') {
+      // 領域 10-6 ζ'' Phase 4 follow-up 4 — center pane Graph view の
+      // mode 切替 select。
+      if (target instanceof HTMLSelectElement) {
+        const v = target.value as 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy';
+        const valid: typeof v[] = ['relations', 'color-tags', 'tag-groups', 'folder-hierarchy'];
+        if (valid.includes(v)) {
+          dispatcher.dispatch({ type: 'SET_GRAPH_MODE', mode: v });
+        }
+      }
+      return;
+    }
     if (action === 'rename-folder') {
       // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder 名 input。
       // change イベント = blur or Enter commit。

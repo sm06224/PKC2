@@ -319,7 +319,25 @@ export interface AppState {
    */
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph';
+  /**
+   * Graph view edge / coloring mode (Phase 4 follow-up 4):
+   *   - 'relations' (default) — structural + semantic relations as edges,
+   *     archetype-based node color (legacy filer-graph subset behaviour)
+   *   - 'color-tags'           — group by entry.color_tag
+   *   - 'tag-groups'           — group by tag prefix or shared tag
+   *   - 'folder-hierarchy'     — only structural relations, color by depth
+   *
+   * Runtime-only.
+   */
+  graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy';
+  /**
+   * Optional focus lid for graph view. When set, the graph centers on
+   * this entry and includes its 1-hop neighbourhood. When unset, the
+   * graph shows the full container.
+   * Runtime-only.
+   */
+  graphFocusLid?: string | null;
   /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
@@ -2799,6 +2817,22 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           },
         },
       };
+      return { state: next, events: [] };
+    }
+    case 'SET_GRAPH_MODE': {
+      const next: AppState = { ...state, graphMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'OPEN_GRAPH_FOR_ENTRY': {
+      // Set focus lid + flip viewMode to 'graph' atomically. lid===null
+      // = full container graph (no focus center).
+      let next: AppState = { ...state, viewMode: 'graph' };
+      if (action.lid === null) {
+        const { graphFocusLid: _drop, ...rest } = next;
+        next = rest as AppState;
+      } else {
+        next = { ...next, graphFocusLid: action.lid };
+      }
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {

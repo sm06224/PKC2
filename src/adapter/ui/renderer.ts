@@ -3678,6 +3678,14 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
+  // Graph view (領域 10-6 ζ'' Phase 4 follow-up 4): independent center
+  // pane tab. modes: relations / color-tags / tag-groups / folder-
+  // hierarchy. graphFocusLid optionally narrows to 1-hop neighbours.
+  if (state.viewMode === 'graph') {
+    center.appendChild(renderCenterGraphView(state));
+    return center;
+  }
+
   // Detail view (existing behavior).
   // Phase 4 follow-up 3: when the selected entry is a folder, fold the
   // detail surface into the filer view so the "folder detail" is the
@@ -3771,7 +3779,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
@@ -3780,6 +3788,7 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'file
     { key: 'calendar', label: 'Calendar' },
     { key: 'kanban', label: 'Kanban' },
     { key: 'filer', label: 'Filer' },
+    { key: 'graph', label: 'Graph' },
   ];
 
   for (const { key, label } of modes) {
@@ -4882,6 +4891,299 @@ function renderFilerGraph(state: AppState, children: readonly Entry[]): HTMLElem
 
   wrapper.appendChild(svg);
   return wrapper;
+}
+
+/**
+ * Center-pane graph view (領域 10-6 ζ'' Phase 4 follow-up 4).
+ * Distinct from `renderFilerGraph` (filer subset): this surface is a
+ * dedicated tab with its own toolbar(mode selector + focus controls)
+ * and supports 4 coloring / edge schemes.
+ */
+function renderCenterGraphView(state: AppState): HTMLElement {
+  const wrap = createElement('div', 'pkc-center-graph-view');
+  wrap.setAttribute('data-pkc-region', 'graph-view');
+
+  const mode = state.graphMode ?? 'relations';
+  wrap.setAttribute('data-pkc-graph-mode', mode);
+  if (state.graphFocusLid) wrap.setAttribute('data-pkc-graph-focus-lid', state.graphFocusLid);
+
+  // Toolbar: mode selector + focus indicator + clear-focus button.
+  const toolbar = createElement('div', 'pkc-center-graph-toolbar');
+  toolbar.setAttribute('data-pkc-region', 'graph-toolbar');
+  const select = document.createElement('select');
+  select.className = 'pkc-graph-mode-select';
+  select.setAttribute('data-pkc-action', 'set-graph-mode');
+  for (const m of [
+    { v: 'relations', label: 'Relations(structural + semantic)' },
+    { v: 'color-tags', label: 'Color tags' },
+    { v: 'tag-groups', label: 'Tag groups' },
+    { v: 'folder-hierarchy', label: 'Folder hierarchy' },
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = m.v;
+    opt.textContent = m.label;
+    if (m.v === mode) opt.selected = true;
+    select.appendChild(opt);
+  }
+  // Annotate with current selection so the change handler reads
+  // data-pkc-graph-mode unambiguously.
+  select.addEventListener('change', () => {
+    select.setAttribute('data-pkc-graph-mode', select.value);
+  });
+  select.setAttribute('data-pkc-graph-mode', mode);
+  toolbar.appendChild(select);
+
+  if (state.graphFocusLid && state.container) {
+    const focus = state.container.entries.find((e) => e.lid === state.graphFocusLid);
+    const label = createElement('span', 'pkc-graph-focus-label');
+    label.textContent = `🎯 ${focus?.title || state.graphFocusLid}`;
+    toolbar.appendChild(label);
+    const clear = createElement('button', 'pkc-btn-small');
+    clear.setAttribute('data-pkc-action', 'open-graph-full');
+    clear.textContent = '全体に戻る';
+    toolbar.appendChild(clear);
+  }
+  wrap.appendChild(toolbar);
+
+  // SVG body
+  const width = 960;
+  const height = 600;
+
+  const allEntries = (state.container?.entries ?? []).filter(
+    (e) => !isSystemArchetype(e.archetype),
+  );
+  const allRels = state.container?.relations ?? [];
+
+  const { nodes, links } = buildGraphForMode(allEntries, allRels, mode, state.graphFocusLid ?? null);
+
+  const params = getGraphForceParams(width, height);
+  const sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
+  const iter = graphIterations();
+  for (let i = 0; i < iter; i++) stepSimulation(sim, links, params);
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
+  svg.classList.add('pkc-filer-graph', 'pkc-center-graph-svg');
+  svg.setAttribute('data-pkc-region', 'graph-svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+
+  const idx = new Map<string, { x: number; y: number }>();
+  for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
+
+  const edgeLayer = document.createElementNS(svgNS, 'g');
+  edgeLayer.setAttribute('class', 'pkc-filer-graph-edges');
+  for (const link of links) {
+    const a = idx.get(link.from);
+    const b = idx.get(link.to);
+    if (!a || !b) continue;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', String(a.x));
+    line.setAttribute('y1', String(a.y));
+    line.setAttribute('x2', String(b.x));
+    line.setAttribute('y2', String(b.y));
+    line.setAttribute('class', 'pkc-filer-graph-edge');
+    edgeLayer.appendChild(line);
+  }
+  svg.appendChild(edgeLayer);
+
+  const nodeLayer = document.createElementNS(svgNS, 'g');
+  nodeLayer.setAttribute('class', 'pkc-filer-graph-nodes');
+  for (const n of sim) {
+    const node = nodes.find((x) => x.id === n.id);
+    if (!node) continue;
+    const group = document.createElementNS(svgNS, 'g');
+    group.setAttribute('class', 'pkc-filer-graph-node');
+    group.setAttribute('data-pkc-action', 'select-entry');
+    group.setAttribute('data-pkc-lid', node.id);
+    group.setAttribute('data-pkc-archetype', node.archetype);
+    group.setAttribute('transform', `translate(${n.x}, ${n.y})`);
+    if (node.id === state.selectedLid) group.setAttribute('data-pkc-active', 'true');
+
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('r', String(params.collideRadius * 0.6));
+    if (node.cssColor) circle.setAttribute('style', `fill: ${node.cssColor}`);
+    circle.setAttribute('class', `pkc-filer-graph-circle pkc-filer-graph-circle-${node.archetype}`);
+    if (node.colorClass) circle.classList.add(node.colorClass);
+    group.appendChild(circle);
+
+    const label = document.createElementNS(svgNS, 'text');
+    label.setAttribute('class', 'pkc-filer-graph-label');
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('y', String(params.collideRadius * 0.6 + 12));
+    label.textContent = truncate(node.label, 18);
+    group.appendChild(label);
+
+    nodeLayer.appendChild(group);
+  }
+  svg.appendChild(nodeLayer);
+
+  wrap.appendChild(svg);
+  return wrap;
+}
+
+interface GraphNodeView {
+  id: string;
+  label: string;
+  archetype: string;
+  /** Optional inline fill (color-tags / hierarchy depth). */
+  cssColor?: string;
+  /** Optional class hint for tag-group coloring. */
+  colorClass?: string;
+}
+
+function buildGraphForMode(
+  entries: readonly Entry[],
+  relations: readonly { kind: string; from: string; to: string }[],
+  mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy',
+  focusLid: string | null,
+): { nodes: GraphNodeView[]; links: { from: string; to: string }[] } {
+  // Restrict scope when focusLid is set to 1-hop neighbourhood.
+  let nodeIds = new Set<string>(entries.map((e) => e.lid));
+  if (focusLid && entries.some((e) => e.lid === focusLid)) {
+    nodeIds = new Set<string>([focusLid]);
+    for (const r of relations) {
+      if (r.from === focusLid) nodeIds.add(r.to);
+      if (r.to === focusLid) nodeIds.add(r.from);
+    }
+  }
+
+  const inScope = (id: string): boolean => nodeIds.has(id);
+  const filteredEntries = entries.filter((e) => inScope(e.lid));
+  const linksRaw = relations.filter((r) => inScope(r.from) && inScope(r.to));
+
+  let links: { from: string; to: string }[] = [];
+  switch (mode) {
+    case 'relations':
+      links = linksRaw
+        .filter((r) => r.kind === 'structural' || r.kind === 'semantic')
+        .map((r) => ({ from: r.from, to: r.to }));
+      break;
+    case 'folder-hierarchy':
+      links = linksRaw.filter((r) => r.kind === 'structural').map((r) => ({ from: r.from, to: r.to }));
+      break;
+    case 'color-tags': {
+      // Edges between entries that share the same color_tag.
+      const byColor = new Map<string, string[]>();
+      for (const e of filteredEntries) {
+        const c = (e as Entry).color_tag;
+        if (!c) continue;
+        const arr = byColor.get(c) ?? [];
+        arr.push(e.lid);
+        byColor.set(c, arr);
+      }
+      for (const arr of byColor.values()) {
+        // chain pattern keeps O(N) edges per group.
+        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]! });
+      }
+      break;
+    }
+    case 'tag-groups': {
+      // Edges between entries sharing at least one tag.
+      const byTag = new Map<string, string[]>();
+      for (const e of filteredEntries) {
+        for (const t of (e as Entry).tags ?? []) {
+          const arr = byTag.get(t) ?? [];
+          arr.push(e.lid);
+          byTag.set(t, arr);
+        }
+      }
+      for (const arr of byTag.values()) {
+        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]! });
+      }
+      break;
+    }
+  }
+
+  // Folder-hierarchy color assignment via BFS depth.
+  const depthMap = new Map<string, number>();
+  if (mode === 'folder-hierarchy') {
+    const childrenOf = new Map<string, string[]>();
+    for (const r of linksRaw) {
+      if (r.kind !== 'structural') continue;
+      const arr = childrenOf.get(r.from) ?? [];
+      arr.push(r.to);
+      childrenOf.set(r.from, arr);
+    }
+    const hasParent = new Set<string>();
+    for (const r of linksRaw) {
+      if (r.kind === 'structural') hasParent.add(r.to);
+    }
+    const queue: { id: string; d: number }[] = filteredEntries
+      .filter((e) => !hasParent.has(e.lid))
+      .map((e) => ({ id: e.lid, d: 0 }));
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (visited.has(cur.id)) continue;
+      visited.add(cur.id);
+      depthMap.set(cur.id, cur.d);
+      for (const c of childrenOf.get(cur.id) ?? []) queue.push({ id: c, d: cur.d + 1 });
+    }
+  }
+
+  const colorTagPalette = (id: string): string => {
+    // Map our internal color tag id (e.g. 'red'/'blue') to a CSS-safe value.
+    const map: Record<string, string> = {
+      red: '#ef4444',
+      orange: '#f97316',
+      yellow: '#eab308',
+      green: '#22c55e',
+      blue: '#3b82f6',
+      indigo: '#6366f1',
+      purple: '#a855f7',
+      pink: '#ec4899',
+      gray: '#6b7280',
+    };
+    return map[id] ?? '#9ca3af';
+  };
+
+  const tagGroupPalette = (() => {
+    const cache = new Map<string, string>();
+    let idx = 0;
+    const palette = ['#3b82f6', '#22c55e', '#a855f7', '#f97316', '#ec4899', '#0891b2', '#eab308'];
+    return (tag: string): string => {
+      const cached = cache.get(tag);
+      if (cached) return cached;
+      const c = palette[idx % palette.length]!;
+      idx += 1;
+      cache.set(tag, c);
+      return c;
+    };
+  })();
+
+  const nodes: GraphNodeView[] = filteredEntries.map((e) => {
+    let cssColor: string | undefined;
+    switch (mode) {
+      case 'color-tags':
+        if ((e as Entry).color_tag) cssColor = colorTagPalette(String((e as Entry).color_tag));
+        break;
+      case 'tag-groups': {
+        const t = (e as Entry).tags?.[0];
+        if (t) cssColor = tagGroupPalette(t);
+        break;
+      }
+      case 'folder-hierarchy': {
+        const d = depthMap.get(e.lid) ?? 0;
+        // Lighten by depth: hue green→cyan→blue progression.
+        const palette = ['#22c55e', '#10b981', '#0891b2', '#3b82f6', '#6366f1', '#a855f7', '#ec4899'];
+        cssColor = palette[Math.min(d, palette.length - 1)];
+        break;
+      }
+      default:
+        break;
+    }
+    return {
+      id: e.lid,
+      label: e.title || e.lid,
+      archetype: e.archetype,
+      ...(cssColor ? { cssColor } : {}),
+    };
+  });
+
+  return { nodes, links };
 }
 
 function renderKanbanView(state: AppState): HTMLElement {
