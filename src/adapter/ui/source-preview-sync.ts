@@ -553,6 +553,14 @@ export function syncPreviewToCaret(
     updateDebugPanel(textarea, preview);
     return;
   }
+  // 2026-05-05 hotfix-7 follow-up-4: pre-flush any leftover scroll
+  // suppress flag from a prior programmatic scroll. Otherwise, after
+  // the user wheel-scrolls the preview and then re-selects, the
+  // preview scroll triggered by ensureRectInBand could be swallowed
+  // by a stale flag and the band-return would not happen on the
+  // user's actual machine. Playwright doesn't reproduce this exact
+  // race but the cost of clearing the flag here is zero.
+  consumeScrollSuppression();
   // 2026-05-05 hotfix-5 user direction: when we highlight a block,
   // the editor's caret-row overlay must also be on screen — otherwise
   // the highlight refers to a position the user can't see, and the

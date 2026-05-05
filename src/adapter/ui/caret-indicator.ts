@@ -24,8 +24,50 @@
  */
 
 import { getCaretViewportCoords } from './caret-position';
+import { defineFlag } from '../flags';
 
 const INDICATOR_ID = 'pkc-global-caret-indicator';
+
+/**
+ * Flags Protocol v1 — caret-indicator runtime configuration
+ * (2026-05-05 hotfix-7 follow-up-4).
+ *
+ * The indicator's visibility and visual loudness are user preference,
+ * not invariants. Expose them via Tier 0 flags so the user can adjust
+ * `?pkc-flag=caret_indicator.tint_pct=40` etc. without rebuild and
+ * persist to `__flags__` Container entry across sessions.
+ *
+ * Live getters per the post-2026-05-04 import-time-capture fix.
+ */
+const indicatorEnabled = defineFlag<boolean>('caret_indicator.enabled', true, {
+  category: 'ui',
+  description: 'Show the global caret-row indicator on all textareas. OFF disables the marker entirely.',
+  tier: 0,
+});
+const indicatorTintPct = defineFlag<number>('caret_indicator.tint_pct', 25, {
+  range: [0, 100],
+  category: 'ui',
+  description: 'Caret indicator background tint opacity (% of currentColor).',
+  tier: 0,
+});
+const indicatorBorderAlphaPct = defineFlag<number>(
+  'caret_indicator.border_alpha_pct', 90,
+  {
+    range: [0, 100],
+    category: 'ui',
+    description: 'Caret indicator left border opacity (% of currentColor).',
+    tier: 0,
+  },
+);
+const indicatorBorderWidthPx = defineFlag<number>(
+  'caret_indicator.border_width_px', 3,
+  {
+    range: [0, 12],
+    category: 'ui',
+    description: 'Caret indicator left border width in pixels (0 = no border).',
+    tier: 0,
+  },
+);
 
 let indicatorEl: HTMLDivElement | null = null;
 let activeTextarea: HTMLTextAreaElement | null = null;
@@ -35,25 +77,28 @@ function ensureIndicator(): HTMLDivElement {
   const el = document.createElement('div');
   el.id = INDICATOR_ID;
   el.setAttribute('aria-hidden', 'true');
-  // 2026-05-05 hotfix-7 follow-up-3: explicit `color: var(--c-fg)`
-  // because `currentColor` resolves to `#000` when the indicator is
-  // a direct child of `<body>` (color isn't inherited from any
-  // theme-aware ancestor). Without this, dark theme rendered the
-  // indicator as black-on-dark = invisible. Tint strength bumped
-  // (12% / 50%) so the marker actually stands out at a glance.
   el.style.cssText = [
     'position:fixed',
     'pointer-events:none',
     'z-index:5',
     'display:none',
     'color:var(--c-fg, #000)',
-    'background:color-mix(in srgb, currentColor 12%, transparent)',
-    'border-left:2px solid color-mix(in srgb, currentColor 50%, transparent)',
     'transition:top 80ms linear',
   ].join(';');
   document.body.appendChild(el);
   indicatorEl = el;
   return el;
+}
+
+/** Apply current flag values to the indicator element's style. */
+function applyFlagStyle(el: HTMLDivElement): void {
+  const tint = Math.max(0, Math.min(100, indicatorTintPct()));
+  const borderAlpha = Math.max(0, Math.min(100, indicatorBorderAlphaPct()));
+  const borderWidth = Math.max(0, Math.min(12, indicatorBorderWidthPx()));
+  el.style.background = `color-mix(in srgb, currentColor ${tint}%, transparent)`;
+  el.style.borderLeft = borderWidth > 0
+    ? `${borderWidth}px solid color-mix(in srgb, currentColor ${borderAlpha}%, transparent)`
+    : 'none';
 }
 
 function isEligibleTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
@@ -62,6 +107,11 @@ function isEligibleTextarea(el: EventTarget | null): el is HTMLTextAreaElement {
 
 function paint(textarea: HTMLTextAreaElement): void {
   const indicator = ensureIndicator();
+  if (!indicatorEnabled()) {
+    indicator.style.display = 'none';
+    return;
+  }
+  applyFlagStyle(indicator);
   const caret = getCaretViewportCoords(textarea);
   const taRect = textarea.getBoundingClientRect();
   const visibleTop = taRect.top + textarea.clientTop;

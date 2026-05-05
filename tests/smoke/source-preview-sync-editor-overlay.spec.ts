@@ -30,36 +30,36 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-const REAL_CONTENT = `1. ddd
-2. aaa
-3. ddd
+const REAL_CONTENT = `1. item-a
+2. item-b
+3. item-c
 
 \`\`\`csv
-緯度,経度,店名,紹介文,住所,電話番号,営業時間,テイクアウト営業時間,ジャンル,価格帯,支払い方法
-33.483795,135.783559,M's cafe,カレー,和歌山県東牟婁郡串本町,0735-67-7190,11:00-16:00,イタリアン,400-1200円,現金
-33.484055,135.789384,Sea side bal,ピザとパスタ,和歌山東牟婁郡串本町くじの川,0735-67-7744,11:30-21:00,イタリアン,1000円,現金
-33.475598,135.783387,タイヨウのカフェ,ケバブライス,和歌山県東牟婁郡串本町,070-3317-4075,10:00-19:00,ブックカフェ,800円,現金
+lat,lng,name,description,address,phone,hours,category,price,payment
+0.000001,0.000001,Sample Place A,sample,Sample Address 1,000-000-0001,11:00-16:00,sample-a,400-1200,cash
+0.000002,0.000002,Sample Place B,sample,Sample Address 2,000-000-0002,11:30-21:00,sample-b,1000,cash
+0.000003,0.000003,Sample Place C,sample,Sample Address 3,000-000-0003,10:00-19:00,sample-c,800,cash
 \`\`\`
 
-# kokoko
+# heading-1
 
-ベースになっているHTMLは PKC2 のリードオンリーなエクスポートビューア。
+Plain paragraph text used as a fixture for split-view testing.
 
-## 設計空間を切る3軸
+## design-axis sample
 
-| 軸 | 選択肢 |
+| axis | choices |
 |---|---|
-| **AIとの結合度** | L0 / L1 / L2 |
-| **状態の住処** | S1 / S2 / S3 |
-| **使い方の比喩** | M1 / M2 / M3 |
+| **integration-degree** | A / B / C |
+| **state-location** | S1 / S2 / S3 |
+| **usage-metaphor** | M1 / M2 / M3 |
 
-## 候補5案
+## candidate-list
 
-| # | 名前 | 結合 | 状態 |
+| # | name | i | s |
 |---|---|---|---|
-| 1 | Self-Saving Log | L0 | S1 |
-| 2 | Snapshot Workbench | L0/L1 | S1+S2 |
-| 3 | Schema Sheet | L1 | S2 |
+| 1 | candidate-a | A | S1 |
+| 2 | candidate-b | A/B | S1+S2 |
+| 3 | candidate-c | B | S2 |
 `;
 
 async function bootSeed(page: Page): Promise<void> {

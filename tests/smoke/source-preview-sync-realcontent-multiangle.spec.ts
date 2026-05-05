@@ -25,8 +25,8 @@
  *   - 8 行 CSV fence(B-1 機能で `<table>` rendering、長い行)
  *   - 連続空行 21 行(空白許容)
  *   - heading + plain paragraph
- *   - 設計空間 table(3 row、wrapping cells)
- *   - 候補5案 table(5 row、wrapping cells)
+ *   - design-axis table(3 row、wrapping cells)
+ *   - candidate-list table(5 row、wrapping cells)
  *
  * Scenario:
  *   1. Editor → Preview: 4 caret 位置 で active block + 可視性
@@ -42,19 +42,19 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-const REAL_CONTENT = `1. ddd
-2. aaa
-3. ddd
+const REAL_CONTENT = `1. item-a
+2. item-b
+3. item-c
 
 \`\`\`csv
-緯度,経度,店名,紹介文,住所,電話番号,営業時間,テイクアウト営業時間,ジャンル,価格帯,支払い方法,Instagram,Twitter,公式サイト
-33.483795,135.783559,M's cafe & dining,チキンカレーとお弁当販売しております。　お電話でご予約くださいませ。,和歌山県東牟婁郡串本町サンゴ台1107-10,0735-67-7190,11:00 - 16:00,, イタリアン、創作居酒屋、cafe,400円〜4000円, 現金、PayPay,mscafeanddining,,
-33.484055,135.789384,Sea side bal Nansea's,当店人気のピザとパスタなどがテクアウト可能です。,和歌山東牟婁郡串本町くじの川1293-7,0735-67-7744,11:30 - 21:00,11:30 - 21:00,イタリアン,1000～,現金、各種カード、paypay可,nanseas_kushimoto,,
-33.475598,135.783387,タイヨウのカフェ,ケバブライス　トルコのピザ「ピデ」も人気です。,和歌山県東牟婁郡串本町2079-2,070 3317 4075,10:00 - 19:00 ,10:00-19:00,ブックカフェ,800-1000,現金、エアペイ,taiyocafe,nazar_kcr,
-33.484538,135.790345,ビーチハウス・ラパン,お弁当500円　配達も致します。,和歌山県東牟婁郡串本町くじの川1597,090-3356-8305,9:00 - 17:00,前日予約,お弁当,500円～800円,現金/PayPay,,,
-33.484878,135.790012,焼肉 蓮,焼肉連のお肉がお弁当になりました。,和歌山県東牟婁郡串本町くじの川1294-2,0735-62-5084,11:30 - 21:30,,焼肉店,1100-1500円,現金のみ,mkplanningco,,
-33.469669,135.778833,手作り弁当　銀座屋,いつも日替わりでお弁当販売しております。,和歌山県東牟婁郡串本町串本８９１-3,080-1509-4667,9:00 - 15:00,9:00-15:00,お弁当,550円〜,現金,,,
-33.518221,135.826801,弁当たちばな,お弁当500円　オードブルもご予約可能です。,和歌山県東牟婁郡串本町古座113,090-9881-3960,10:00 - 15:00,前日予約,お弁当,弁当500円,現金,,,
+lat,lng,name,description,address,phone,hours,takeout_hours,category,price_band,payment,instagram,twitter,site
+0.000001,0.000001,Sample Place A,Sample short description for testing layout wrap behaviour. Reservation requested.,Sample Address Line 1 City Code AAA-001,000-000-0001,09:00 - 17:00 / 18:00 - 22:00 (limited reservation availability),, sample-category-a,low to mid range,cash credit pay-app,sample_ig_a,sample_tw_a,
+0.000002,0.000002,Sample Place B,Sample item B description with takeout availability.  Order ahead encouraged.　,Sample Address Line 2 District B AAA-002,000-000-0002,11:30 - 21:00 (last order 30min before close),11:30 - 21:00 (last order 30min before close),sample-category-b,from 1000,cash various-cards pay-app,sample_ig_b,,
+0.000003,0.000003,Sample Place C,Sample item C wrap test description.  Order options available.,Sample Address Line 3 Area C AAA-003,000-000-0003,10:00 - 19:00 ,10:00-19:00,sample-category-c,800-1000,cash card-machine,sample_ig_c,sample_tw_c,https://example.invalid/c/
+0.000004,0.000004,Sample Place D,Sample short pickup description.  Day-before reservation.,Sample Address Line 4 Block D AAA-004,000-000-0004,9:00 - 17:00,day-before reservation,sample-d,500-800,cash pay-app,,,https://example.invalid/d/
+0.000005,0.000005,Sample Place E,Sample item E, takeout-friendly variant.,Sample Address Line 5 Lot E AAA-005,000-000-0005,11:30 - 21:30 (last order 30min before close),,sample-e-category,1100-1500,cash only,sample_ig_e,,
+0.000006,0.000006,Sample Place F,Sample item F, regular daily availability.  Open mornings.,Sample Address Line 6 Sector F AAA-006,000-000-0006 (reservation required),9:00 - 15:00,9:00-15:00,sample-f-category,from 550,cash,,,
+0.000007,0.000007,Sample Place G,Sample item G, pre-order accepted.  Call ahead.,Sample Address Line 7 Zone G AAA-007,000-000-0007 (reservation required),10:00 - 15:00,day-before reservation,sample-g-category,500/3000,cash,,,
 \`\`\`
 
 
@@ -80,28 +80,27 @@ const REAL_CONTENT = `1. ddd
 
 
 
+# heading-1
+intro-line
+Plain paragraph text used as a fixture for split-view testing. Its exact wording is irrelevant; only line position and structural shape matter.
 
-# kokoko
-sdsdf
-ベースになっているHTMLは PKC2 のリードオンリーなエクスポートビューア。これを「書き込める協業コンテナ」へ反転させるのが今回のテーマ、と読んだ。
+## design-axis sample
 
-## 設計空間を切る3軸
-
-| 軸 | 選択肢 |
+| axis | choices |
 |---|---|
-| **AIとの結合度** | L0 / L1 / L2 |
-| **状態の住処** | S1 / S2 / S3 |
-| **使い方の比喩** | M1 / M2 / M3 / M4 / M5 |
+| **integration-degree** | A: copy / B: api / C: tool |
+| **state-location** | S1: file / S2: localstorage / S3: external |
+| **usage-metaphor** | M1: journal / M2: workbench / M3: schema / M4: doc / M5: self-edit |
 
-## 候補5案
+## candidate-list
 
-| # | 名前 | 結合 | 状態 | 比喩 | エッジ |
-|---|---|---|---|---|---|
-| 1 | Self-Saving Log | L0 | S1 | M1 | コピペで対話を継ぎ足し |
-| 2 | Snapshot Workbench | L0/L1 | S1+S2 | M2 | 観測対象ごとに snapshot |
-| 3 | Schema Sheet | L1 | S2 | M3 | JSON Schema 駆動 |
-| 4 | Living Doc | L1 | S1 | M4 | 段落を選択→AIに改稿 |
-| 5 | Self-Editing HTML | L1 | S1 | M5 | HTMLを自分で書き換え |
+| # | name | i | s | m | edge | risk |
+|---|---|---|---|---|---|---|
+| 1 | **candidate-a** | A | S1 | M1 | sample edge text for row 1 | sample risk text 1 |
+| 2 | **candidate-b** | A/B | S1+S2 | M2 | sample edge text for row 2 | sample risk text 2 |
+| 3 | **candidate-c** | B | S2 | M3 | sample edge text for row 3 | sample risk text 3 |
+| 4 | **candidate-d** | B | S1 | M4 | sample edge text for row 4 | sample risk text 4 |
+| 5 | **candidate-e** | B | S1 | M5 | sample edge text for row 5 | sample risk text 5 |
 `;
 
 async function bootSeedAndConstrain(page: Page): Promise<void> {
@@ -292,7 +291,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
 
   test('1. editor→preview: 4 caret 位置で active 可視性', async ({ page }, testInfo) => {
     await bootSeedAndConstrain(page);
-    const probes = [0, 9, 48, 56]; // list / CSV mid / 設計空間 row / 候補5案 row
+    const probes = [0, 9, 48, 56]; // list / CSV mid / design-axis row / candidate-list row
     for (const line of probes) {
       await moveCaretToLine(page, line);
       const s = await snapshot(page);
@@ -305,7 +304,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     });
   });
 
-  test('2. preview→editor: 候補5案 5 行 real OS click → 異なる line', async ({
+  test('2. preview→editor: candidate-list 5 行 real OS click → 異なる line', async ({
     page,
   }, testInfo) => {
     await bootSeedAndConstrain(page);
@@ -317,8 +316,8 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
             '[data-pkc-region="text-edit-preview"] h2',
           ),
         );
-        const h = headings.find((el) => el.textContent?.includes('候補5案'));
-        if (!h) throw new Error('候補5案 heading missing');
+        const h = headings.find((el) => el.textContent?.includes('candidate-list'));
+        if (!h) throw new Error('candidate-list heading missing');
         let cursor: Element | null = h;
         let table: HTMLTableElement | null = null;
         while (cursor) {
@@ -419,7 +418,7 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     page,
   }, testInfo) => {
     await bootSeedAndConstrain(page);
-    // Jump to last source-line block (候補5案 last row, line ~59).
+    // Jump to last source-line block (candidate-list last row, line ~59).
     await moveCaretToLine(page, 59);
     const bottom = await snapshot(page);
     // scrollTop should be near max (within tolerance — comfort zone

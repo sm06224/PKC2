@@ -21,19 +21,19 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-const REAL_CONTENT = `1. ddd
-2. aaa
-3. ddd
+const REAL_CONTENT = `1. item-a
+2. item-b
+3. item-c
 
 \`\`\`csv
-緯度,経度,店名,紹介文,住所,電話番号,営業時間,テイクアウト営業時間,ジャンル,価格帯,支払い方法,Instagram,Twitter,公式サイト
-33.483795,135.783559,M's cafe & dining,チキンカレーとお弁当販売しております。　お電話でご予約くださいませ。,和歌山県東牟婁郡串本町サンゴ台1107-10,0735-67-7190,11:00 - 16:00  /  11:00 - 14:00 / 18:30 - (現在はコロナ収束まで予約のみの営業),, イタリアン、創作居酒屋、cafe,"昼 400円〜1,200円  夜 1,000円〜4,000円", 現金、クレジットカード、PayPay,mscafeanddining,,
-33.484055,135.789384,Sea side bal Nansea's,当店人気のピザとパスタなどがテクアウト可能です。是非おこしくださいませ。　,和歌山東牟婁郡串本町くじの川1293-7,0735-67-7744,11:30 - 14:00 / 17:00 - 21:00 (ラストオーダーは30分前まで),11:30 - 14:00 / 17:00 - 21:00 (ラストオーダーは30分前まで),イタリアン,1000～,現金、各種カード、paypay可,nanseas_kushimoto,,
-33.475598,135.783387,タイヨウのカフェ,ケバブライス　トルコのピザ「ピデ」も人気です。　オードブルもご予約可能です。,和歌山県東牟婁郡串本町2079-2,070 3317 4075,10:00 - 19:00 ,10:00-19:00,ブックカフェ,800-1000,現金、エアペイ取扱い各種,taiyocafe,nazar_kcr,http://kcrjp.com/taiyocafe/
-33.484538,135.790345,ビーチハウス・ラパン,お弁当500円　配達も致します。　前日までにご予約くださいませ。,和歌山県東牟婁郡串本町くじの川1597,090-3356-8305,9:00 - 17:00,前日予約　,お弁当,500円～800円,現金/PayPay,,,http://cafe-lapin-2014.sakura.ne.jp/
-33.484878,135.790012,焼肉 蓮,焼肉連のお肉がお弁当になりました。　,和歌山県東牟婁郡串本町くじの川1294-2,0735-62-5084,11:30 - 14:00 17:00 - 21:30 （ラストオーダーは30分前まで）,,焼肉店,昼1100円〜1500円,現金のみ,mkplanningco,,
-33.469669,135.778833,手作り弁当　銀座屋,いつも日替わりでお弁当販売しております。　朝から,和歌山県東牟婁郡串本町串本８９１-3,080-1509-4667　（要予約）,9:00 - 15:00,9:00-15:00,お弁当　お惣菜,550円～,現金,,,
-33.518221,135.826801,弁当たちばな,お弁当500円　オードブルもご予約可能です。　お電話で予約してくださいね。,和歌山県東牟婁郡串本町古座113,090-9881-3960　（要予約）,10:00 - 15:00,前日予約,お弁当　オードブル,弁当500円　　オードブル3000円～,現金,,,
+lat,lng,name,description,address,phone,hours,takeout_hours,category,price_band,payment,instagram,twitter,site
+0.000001,0.000001,Sample Place A,Sample short description for testing layout wrap behaviour. Reservation requested.,Sample Address Line 1 City Code AAA-001,000-000-0001,09:00 - 17:00 / 18:00 - 22:00 (limited reservation availability),, sample-category-a,low to mid range,cash credit pay-app,sample_ig_a,sample_tw_a,
+0.000002,0.000002,Sample Place B,Sample item B description with takeout availability.  Order ahead encouraged.　,Sample Address Line 2 District B AAA-002,000-000-0002,11:30 - 21:00 (last order 30min before close),11:30 - 21:00 (last order 30min before close),sample-category-b,from 1000,cash various-cards pay-app,sample_ig_b,,
+0.000003,0.000003,Sample Place C,Sample item C wrap test description.  Order options available.,Sample Address Line 3 Area C AAA-003,000-000-0003,10:00 - 19:00 ,10:00-19:00,sample-category-c,800-1000,cash card-machine,sample_ig_c,sample_tw_c,https://example.invalid/c/
+0.000004,0.000004,Sample Place D,Sample short pickup description.  Day-before reservation.,Sample Address Line 4 Block D AAA-004,000-000-0004,9:00 - 17:00,day-before reservation,sample-d,500-800,cash pay-app,,,https://example.invalid/d/
+0.000005,0.000005,Sample Place E,Sample item E, takeout-friendly variant.,Sample Address Line 5 Lot E AAA-005,000-000-0005,11:30 - 21:30 (last order 30min before close),,sample-e-category,1100-1500,cash only,sample_ig_e,,
+0.000006,0.000006,Sample Place F,Sample item F, regular daily availability.  Open mornings.,Sample Address Line 6 Sector F AAA-006,000-000-0006 (reservation required),9:00 - 15:00,9:00-15:00,sample-f-category,from 550,cash,,,
+0.000007,0.000007,Sample Place G,Sample item G, pre-order accepted.  Call ahead.,Sample Address Line 7 Zone G AAA-007,000-000-0007 (reservation required),10:00 - 15:00,day-before reservation,sample-g-category,500/3000,cash,,,
 \`\`\`
 
 
@@ -59,28 +59,27 @@ const REAL_CONTENT = `1. ddd
 
 
 
+# heading-1
+intro-line
+Plain paragraph text used as a fixture for split-view testing. Its exact wording is irrelevant; only line position and structural shape matter.
 
-# kokoko
-sdsdf
-ベースになっているHTMLは PKC2 のリードオンリーなエクスポートビューア。これを **「書き込める協業コンテナ」へ反転させる** のが今回のテーマ、と読んだ。自由発想で空間を広げてから推し案を主張する。
+## design-axis sample
 
-## 設計空間を切る3軸
-
-| 軸 | 選択肢 |
+| axis | choices |
 |---|---|
-| **AIとの結合度** | L0: コピペ往復 / L1: API直叩き(artifact内 \`window.claude\` 等)/ L2: MCP・Tool連携 |
-| **状態の住処** | S1: HTMLファイル自身に内蔵(Save Asで自己更新)/ S2: localStorage・IndexedDB / S3: 外部JSONをimport/export |
-| **使い方の比喩** | M1: ジャーナル(時系列追記)/ M2: ワークベンチ(対象別snapshot)/ M3: スキーマシート(JSON Schema駆動フォーム)/ M4: 協業ドキュメント(本文+AI注釈)/ M5: 自己改変HTML(AIがHTML自体を書き換え) |
+| **integration-degree** | A: copy / B: api / C: tool |
+| **state-location** | S1: file / S2: localstorage / S3: external |
+| **usage-metaphor** | M1: journal / M2: workbench / M3: schema / M4: doc / M5: self-edit |
 
-## 候補5案
+## candidate-list
 
-| # | 名前 | 結合 | 状態 | 比喩 | エッジ | リスク |
+| # | name | i | s | m | edge | risk |
 |---|---|---|---|---|---|---|
-| 1 | **Self-Saving Log** | L0 | S1 | M1 | このエクスポートの「動く版」。コピペで対話を継ぎ足し、Save Asで自分を更新 | PKC本体と機能被り |
-| 2 | **Snapshot Workbench** | L0/L1 | S1+S2 | M2 | Stock-Extension案の単一HTML版。観測対象ごとにsnapshot生成→AI応答パース→履歴蓄積 | スキーマ設計が重い |
-| 3 | **Schema Sheet** | L1 | S2 | M3 | JSON Schema駆動の構造化フォーム。AI出力を必ずschemaに矯正 | API前提でオフライン弱い |
-| 4 | **Living Doc** | L1 | S1 | M4 | 段落を選択→「AIに改稿/批評/補足」→注釈orリビジョンとして本文に書き戻し | 衝突解決UIが厄介 |
-| 5 | **Self-Editing HTML** | L1 | S1 | M5 | AIに「このHTMLにこういうセクション追加して」と指示、diffを取り込んで自分自身を書き換える | 構文壊れリスク、git diffが暴れる |
+| 1 | **candidate-a** | A | S1 | M1 | sample edge text for row 1 | sample risk text 1 |
+| 2 | **candidate-b** | A/B | S1+S2 | M2 | sample edge text for row 2 | sample risk text 2 |
+| 3 | **candidate-c** | B | S2 | M3 | sample edge text for row 3 | sample risk text 3 |
+| 4 | **candidate-d** | B | S1 | M4 | sample edge text for row 4 | sample risk text 4 |
+| 5 | **candidate-e** | B | S1 | M5 | sample edge text for row 5 | sample risk text 5 |
 `;
 
 async function bootAndOpenTextEditor(page: Page): Promise<void> {
@@ -119,7 +118,7 @@ async function seedRealContent(page: Page): Promise<void> {
         '[data-pkc-region="text-edit-preview"]',
       );
       if (!preview) return false;
-      // The "## 候補5案" table starts around line 60+ of the source.
+      // The "## candidate-list" table starts around line 60+ of the source.
       // Check that we have anchors past line 50.
       const anchors = preview.querySelectorAll('[data-pkc-source-line]');
       let maxLine = -1;
@@ -249,7 +248,7 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
     //   - line 1   : ordered list item
     //   - line 5-12: long CSV fence(rendered height >> source height)
     //   - line 14-32 : 連続空行(no content, empty line paragraphs?)
-    //   - line 36+ : 見出し / paragraph / 候補5案 table
+    //   - line 36+ : 見出し / paragraph / candidate-list table
     const probeLines = [
       0,    // first list item
       1,    // second list item
@@ -260,12 +259,12 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
       13,   // closing ```
       14,   // empty line
       32,   // deep in empty line stretch
-      34,   // # kokoko
-      37,   // ## 設計空間を切る3軸
-      40,   // table row in 設計空間 table
-      45,   // empty line before 候補5案
-      48,   // 候補5案 table row 1
-      51,   // 候補5案 table row 4
+      34,   // # heading-1
+      37,   // ## design-axisを切る3軸
+      40,   // table row in design-axis table
+      45,   // empty line before candidate-list
+      48,   // candidate-list table row 1
+      51,   // candidate-list table row 4
     ];
 
     const captured: Array<{ line: number; snap: Snapshot }> = [];
@@ -315,21 +314,21 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
     }
   });
 
-  test('診断: 候補5案 table の各行を click → caret jump が行ごとに違うべき', async ({
+  test('診断: candidate-list table の各行を click → caret jump が行ごとに違うべき', async ({
     page,
   }) => {
     await bootAndOpenTextEditor(page);
     await seedRealContent(page);
 
-    // The "候補5案" table has 5 data rows. Click each row's center
+    // The "candidate-list" table has 5 data rows. Click each row's center
     // and read where the caret landed. EXPECTATION: each row click
     // jumps to a DIFFERENT source line. CURRENT BUG (predicted):
     // all clicks land on table_open's source line because tr_open
     // is not in SOURCE_LINE_TOKEN_TYPES — so the closest anchored
     // ancestor is the table wrapper, not the row.
     // CSV fence(B-1 機能)も `<table>` として render されるので、
-    // preview 内 `table` の DOM 順は CSV / 設計空間 / 候補5案 の 3 個。
-    // `## 候補5案` heading を起点に、その後ろにある最初の table の
+    // preview 内 `table` の DOM 順は CSV / design-axis / candidate-list の 3 個。
+    // `## candidate-list` heading を起点に、その後ろにある最初の table の
     // tbody tr の数を確認。
     const rowCount = await page.evaluate(() => {
       const headings = Array.from(
@@ -337,8 +336,8 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
           '[data-pkc-region="text-edit-preview"] h2',
         ),
       );
-      const heading = headings.find((h) => h.textContent?.includes('候補5案'));
-      if (!heading) throw new Error('候補5案 heading not found');
+      const heading = headings.find((h) => h.textContent?.includes('candidate-list'));
+      if (!heading) throw new Error('candidate-list heading not found');
       let cursor: Element | null = heading;
       let table: HTMLTableElement | null = null;
       while (cursor) {
@@ -353,7 +352,7 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
           break;
         }
       }
-      if (!table) throw new Error('table after 候補5案 heading not found');
+      if (!table) throw new Error('table after candidate-list heading not found');
       const rows = table.querySelectorAll<HTMLTableRowElement>('tbody tr');
       return rows.length;
     });
@@ -382,8 +381,8 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
             '[data-pkc-region="text-edit-preview"] h2',
           ),
         );
-        const heading = headings.find((h) => h.textContent?.includes('候補5案'));
-        if (!heading) throw new Error('候補5案 heading not found');
+        const heading = headings.find((h) => h.textContent?.includes('candidate-list'));
+        if (!heading) throw new Error('candidate-list heading not found');
         let cursor: Element | null = heading;
         let table: HTMLTableElement | null = null;
         while (cursor) {
@@ -395,7 +394,7 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
               : cursor.querySelector?.('table') ?? null;
           if (inner) { table = inner; break; }
         }
-        if (!table) throw new Error('table after 候補5案 heading not found');
+        if (!table) throw new Error('table after candidate-list heading not found');
         const rows = Array.from(
           table.querySelectorAll<HTMLTableRowElement>('tbody tr'),
         );
@@ -423,7 +422,7 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
     }
 
     /* eslint-disable no-console */
-    console.log('=== 候補5案 table row click → caret line ===');
+    console.log('=== candidate-list table row click → caret line ===');
     for (let i = 0; i < captured.length; i++) {
       console.log(`row ${i + 1} → caret line ${captured[i]}`);
     }
