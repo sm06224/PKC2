@@ -14,6 +14,7 @@ import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
+import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
@@ -701,7 +702,17 @@ function renderShell(state: AppState): HTMLElement {
   // Right pane: meta information (tags, relations, history, move)
   // System-about entries are view-only hidden entries, so the meta
   // pane (which exposes tags/relations/history/delete) is skipped.
-  const selected = findSelectedEntry(state);
+  let selected = findSelectedEntry(state);
+  // 2026-05-06 user direction:「ファイラ表示では、必ず右ペインは
+  // 開いているフォルダのものを表示すること。現状はフォルダ以外
+  // エントリを開いてから戻ると、開いたエントリのメタデータが
+  // 表示されている」。
+  // viewMode === 'filer' の時は filer scope folder を meta に固定。
+  // selectedLid は filer 内 row highlight にのみ使う。
+  if (state.viewMode === 'filer' && state.container) {
+    const scope = resolveFilerScope(state);
+    if (scope) selected = scope;
+  }
   const hasMetaPane = !!selected && selected.archetype !== 'system-about';
   if (hasMetaPane) {
     // Resize handle: center ↔ meta
@@ -4019,6 +4030,9 @@ function renderFilerView(state: AppState): HTMLElement {
     case 'novel-base':
       filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'novel'));
       break;
+    case 'audio-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'audio'));
+      break;
     case 'graph':
       filer.appendChild(renderFilerGraph(state, visibleChildren));
       break;
@@ -4229,43 +4243,20 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
     // folder scope.
     const trashBtn = createElement('button', 'pkc-btn-small pkc-filer-trash-btn');
     trashBtn.setAttribute('data-pkc-action', 'filer-scope-trash');
-    trashBtn.setAttribute('title', 'ゴミ箱を開く(削除済みエントリ一覧)');
+    trashBtn.setAttribute('title', 'ゴミ箱を開く(削除済みエントリ一覧)・ここに DnD で削除');
+    // 2026-05-06 G13: filer 内の row / card を drop すると削除する
+    // drop target にする(ゴミ箱への DnD)。
+    trashBtn.setAttribute('data-pkc-drop-target', 'trash');
     trashBtn.textContent = '🗑️ ゴミ箱';
     toolbar.appendChild(trashBtn);
     header.appendChild(toolbar);
   }
 
-  // Folder rename + description editor — Phase 4 follow-up.
-  // Only rendered when filer scope IS the selected folder so changes
-  // map unambiguously to the current entry.
-  if (canEdit && scope && state.selectedLid === scope.lid) {
-    const folderInfo = createElement('div', 'pkc-filer-folder-info');
-    folderInfo.setAttribute('data-pkc-region', 'filer-folder-info');
-
-    const renameInput = document.createElement('input');
-    renameInput.type = 'text';
-    renameInput.className = 'pkc-filer-folder-rename';
-    renameInput.setAttribute('data-pkc-action', 'rename-folder');
-    renameInput.setAttribute('data-pkc-lid', scope.lid);
-    renameInput.setAttribute('placeholder', 'フォルダ名');
-    renameInput.value = scope.title ?? '';
-    folderInfo.appendChild(renameInput);
-
-    const descInput = document.createElement('textarea');
-    descInput.className = 'pkc-filer-folder-description';
-    descInput.setAttribute('data-pkc-action', 'set-folder-description');
-    descInput.setAttribute('data-pkc-lid', scope.lid);
-    descInput.setAttribute('placeholder', 'このフォルダの説明…');
-    descInput.rows = 2;
-    descInput.value = scope.body ?? '';
-    folderInfo.appendChild(descInput);
-
-    header.appendChild(folderInfo);
-  }
-
   const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
   breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
-  const trail: { label: string; lid: string | null }[] = [{ label: 'Root', lid: null }];
+  const trail: { label: string; lid: string | null; isCurrent?: boolean }[] = [
+    { label: 'Root', lid: null },
+  ];
   if (scope && state.container) {
     const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
     // ancestors are nearest-first; reverse to get root-to-current order.
@@ -4273,7 +4264,7 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
       const a = state.container.entries.find((e) => e.lid === aLid);
       if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
     }
-    trail.push({ label: scope.title || scope.lid, lid: scope.lid });
+    trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
   }
   for (let i = 0; i < trail.length; i++) {
     const seg = trail[i]!;
@@ -4283,12 +4274,29 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
       breadcrumb.appendChild(sep);
     }
     if (seg.lid === null) {
-      // Root segment is non-actionable in Phase 1 — clicking root
-      // would require an UNSELECT action that isn't part of this PR.
-      const span = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-root');
-      span.setAttribute('data-pkc-filer-breadcrumb', 'root');
-      span.textContent = seg.label;
-      breadcrumb.appendChild(span);
+      // Root segment is clickable — DESELECT_ENTRY moves the filer
+      // scope to the container root so user can browse top-level
+      // entries(2026-05-06 user direction:「Root フォルダを開けない。
+      // Root は開けなくてはならない」)。
+      const link = createElement('button', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-root');
+      link.setAttribute('data-pkc-action', 'filer-scope-root');
+      link.setAttribute('data-pkc-filer-breadcrumb', 'root');
+      link.textContent = seg.label;
+      breadcrumb.appendChild(link);
+    } else if (seg.isCurrent && canEdit) {
+      // Current folder breadcrumb segment is editable inline
+      // (GitHub 風、2026-05-06 user direction)。Edit on input → blur
+      // dispatches RENAME_ENTRY_TITLE。
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-current';
+      input.setAttribute('data-pkc-action', 'rename-folder');
+      input.setAttribute('data-pkc-lid', seg.lid);
+      input.setAttribute('data-pkc-filer-breadcrumb', 'current');
+      input.value = seg.label;
+      // Auto-size to content via attribute size estimate.
+      input.size = Math.max(8, Math.min(40, seg.label.length + 2));
+      breadcrumb.appendChild(input);
     } else {
       const link = createElement('button', 'pkc-filer-breadcrumb-segment');
       link.setAttribute('data-pkc-action', 'select-entry');
@@ -4320,6 +4328,8 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
       return 'Video base';
     case 'novel-base':
       return 'Novel base';
+    case 'audio-base':
+      return 'Audio base';
     case 'graph':
       return 'Graph';
     case 'inventory':
@@ -4395,8 +4405,12 @@ function buildFilerNavRow(
   tr.appendChild(nameTd);
 
   const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
-  archTd.textContent = kind === 'current' ? 'カレント' : '親フォルダ';
+  archTd.textContent = kind === 'current' ? '自身' : '親フォルダ';
   tr.appendChild(archTd);
+
+  const createdTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-created');
+  createdTd.textContent = '';
+  tr.appendChild(createdTd);
 
   const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
   updTd.textContent = '';
@@ -4417,16 +4431,40 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
 
   const thead = createElement('thead', 'pkc-filer-thead');
   const headRow = createElement('tr', 'pkc-filer-head-row');
-  const cols: { key: 'name' | 'archetype' | 'updated_at' | 'tags'; label: string }[] = [
+  const cols: { key: 'name' | 'archetype' | 'created_at' | 'updated_at' | 'tags'; label: string }[] = [
     { key: 'name', label: '名前' },
     { key: 'archetype', label: '種類' },
+    { key: 'created_at', label: '作成' },
     { key: 'updated_at', label: '更新' },
     { key: 'tags', label: 'タグ' },
   ];
+  const sortState = state.filerExplorerSort ?? {};
+  const sortBy = sortState.sortBy ?? null;
+  const sortDir = sortState.sortDir ?? 'asc';
+  const colValue = (e: Entry, key: string): string => {
+    if (key === 'name') return e.title || e.lid;
+    if (key === 'archetype') return e.archetype;
+    if (key === 'created_at') return e.created_at;
+    if (key === 'updated_at') return e.updated_at;
+    if (key === 'tags') return (e.tags ?? []).join(', ');
+    return '';
+  };
+  let sortedChildren: Entry[] = children.slice();
+  if (sortBy) {
+    sortedChildren = sortedChildren.sort((a, b) => {
+      const va = colValue(a, sortBy);
+      const vb = colValue(b, sortBy);
+      const cmp = va.localeCompare(vb);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }
   for (const c of cols) {
     const th = createElement('th', `pkc-filer-th pkc-filer-th-${c.key}`);
     th.setAttribute('data-pkc-filer-column', c.key);
-    th.textContent = c.label;
+    th.setAttribute('data-pkc-action', 'set-filer-explorer-sort');
+    th.setAttribute('data-pkc-sort-key', c.key);
+    const arrow = sortBy === c.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    th.textContent = `${c.label}${arrow}`;
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
@@ -4445,7 +4483,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     tbody.appendChild(buildFilerNavRow('parent', nav.parent, '..'));
   }
 
-  for (const child of children) {
+  for (const child of sortedChildren) {
     const tr = createElement('tr', 'pkc-filer-row');
     tr.setAttribute('data-pkc-action', 'select-entry');
     tr.setAttribute('data-pkc-lid', child.lid);
@@ -4476,6 +4514,10 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
     archTd.textContent = archetypeLabel(child.archetype);
     tr.appendChild(archTd);
+
+    const createdTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-created');
+    createdTd.textContent = formatTimestamp(child.created_at);
+    tr.appendChild(createdTd);
 
     const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
     updTd.textContent = formatTimestamp(child.updated_at);
@@ -4518,6 +4560,8 @@ function renderFilerContactSheet(
   const grid = createElement('div', 'pkc-filer-grid pkc-filer-grid-contact-sheet');
   grid.setAttribute('data-pkc-region', 'filer-grid');
   grid.setAttribute('data-pkc-cell-size', profile.cell_size ?? 'md');
+  // Per-subset thumbnail size flag(2026-05-06 user direction G10)。
+  grid.style.setProperty('--filer-thumb-px', `${getFilerThumbPx('album')}px`);
 
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
@@ -4567,11 +4611,11 @@ function renderFilerContactSheet(
       thumb.classList.add('pkc-filer-card-thumb-fallback');
       thumb.textContent = archetypeIcon(child.archetype);
     }
-    card.appendChild(thumb);
-
+    // Caption は thumb の右下に overlay(2026-05-06 user direction G12)。
     const caption = createElement('div', 'pkc-filer-card-caption');
     caption.textContent = child.title || child.lid;
-    card.appendChild(caption);
+    thumb.appendChild(caption);
+    card.appendChild(thumb);
 
     grid.appendChild(card);
   }
@@ -4589,7 +4633,7 @@ function renderFilerContactSheet(
 function renderFilerCardGrid(
   state: AppState,
   children: readonly Entry[],
-  expectedKind: 'book' | 'video' | 'novel',
+  expectedKind: 'book' | 'video' | 'novel' | 'audio',
 ): HTMLElement {
   const wrapper = createElement('div', 'pkc-filer-table-wrapper');
   wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
@@ -4597,6 +4641,7 @@ function renderFilerCardGrid(
   const grid = createElement('div', `pkc-filer-grid pkc-filer-grid-${expectedKind}-base`);
   grid.setAttribute('data-pkc-region', 'filer-grid');
   grid.setAttribute('data-pkc-card-kind', expectedKind);
+  grid.style.setProperty('--filer-thumb-px', `${getFilerThumbPx(expectedKind)}px`);
 
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
@@ -6148,6 +6193,25 @@ function renderMetaPaneImpl(
   // Phase 1 only ships `'explorer'`; Phase 2b/3a will add `'graph'` /
   // `'contact-sheet'` / `'book-base'` / `'youtube-base'` to the option list.
   if (entry.archetype === 'folder' && canEdit) {
+    // Description editor — 2026-05-06 user direction:「フォルダの説明
+    // は右ペインから編集できるようにして、ファイラー UI を阻害しない」。
+    // Folder body は description として運用、QUICK_UPDATE_ENTRY 経由。
+    const descSection = createElement('div', 'pkc-folder-description-editor');
+    descSection.setAttribute('data-pkc-region', 'folder-description-editor');
+    descSection.setAttribute('data-pkc-lid', entry.lid);
+    const descLabel = createElement('span', 'pkc-folder-description-label');
+    descLabel.textContent = 'フォルダ説明';
+    descSection.appendChild(descLabel);
+    const descInput = document.createElement('textarea');
+    descInput.className = 'pkc-folder-description-input';
+    descInput.setAttribute('data-pkc-action', 'set-folder-description');
+    descInput.setAttribute('data-pkc-lid', entry.lid);
+    descInput.setAttribute('placeholder', 'このフォルダの説明…');
+    descInput.rows = 3;
+    descInput.value = entry.body ?? '';
+    descSection.appendChild(descInput);
+    meta.appendChild(descSection);
+
     const profileSection = createElement('div', 'pkc-filer-profile-editor');
     profileSection.setAttribute('data-pkc-region', 'filer-display-profile-editor');
     profileSection.setAttribute('data-pkc-lid', entry.lid);
@@ -6167,6 +6231,7 @@ function renderMetaPaneImpl(
       { value: 'book-base', label: 'Book base (Amazon / 楽天 / 蔵書)' },
       { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
       { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
+      { value: 'audio-base', label: 'Audio base (Spotify / 録音 / podcast)' },
       { value: 'graph', label: 'Graph (relations)' },
       { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
     ];
@@ -8165,12 +8230,25 @@ function findSelectedEntry(state: AppState): Entry | null {
  * Shows date and time in a compact human-readable form.
  */
 function formatTimestamp(iso: string): string {
+  // 2026-05-06 user direction:「日時関連のロケール解決がされていない
+  // 表示があるため、ファイラの日時もエントリごとの右ペインの日時表示
+  // もロケールに合わせて表示してください」。Intl.DateTimeFormat で
+  // 表示ロケールを尊重(navigator.language fallback)。
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const date = d.toISOString().slice(0, 10); // YYYY-MM-DD
-    const time = d.toISOString().slice(11, 16); // HH:MM
-    return `${date} ${time}`;
+    const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
+    const fmt = new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
+      // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
+      hour12: false,
+    });
+    return fmt.format(d);
   } catch {
     return iso;
   }

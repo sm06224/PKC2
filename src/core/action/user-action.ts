@@ -473,6 +473,7 @@ export type UserAction =
   | { type: 'SET_INVENTORY_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_INVENTORY_GROUP_BY'; groupBy: string | null }
   | { type: 'CLEAR_INVENTORY_QUERY' }
+  | { type: 'SET_FILER_EXPLORER_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
   | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
   | { type: 'SET_LAST_FILER_SCOPE'; lid: string | null }

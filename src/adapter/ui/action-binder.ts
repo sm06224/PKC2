@@ -2983,6 +2983,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
+      case 'set-filer-explorer-sort': {
+        // 2026-05-06 user direction:「ファイラには列ごとに並べ替えを
+        // 可能にすること」。toggle: asc → desc → off → asc。
+        const key = target.getAttribute('data-pkc-sort-key');
+        if (!key) break;
+        const cur = dispatcher.getState().filerExplorerSort ?? {};
+        let nextSortBy: string | null;
+        let nextDir: 'asc' | 'desc';
+        if (cur.sortBy !== key) {
+          nextSortBy = key;
+          nextDir = 'asc';
+        } else if (cur.sortDir === 'asc') {
+          nextSortBy = key;
+          nextDir = 'desc';
+        } else {
+          nextSortBy = null;
+          nextDir = 'asc';
+        }
+        dispatcher.dispatch({ type: 'SET_FILER_EXPLORER_SORT', sortBy: nextSortBy, sortDir: nextDir });
+        break;
+      }
       case 'set-inventory-sort': {
         // Phase 5 — toggle sort: asc → desc → off → asc …
         const key = target.getAttribute('data-pkc-inventory-key');
@@ -3060,6 +3081,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'filer-scope-folder': {
         // Return from trash back to the auto-resolved folder scope.
         dispatcher.dispatch({ type: 'SET_FILER_SCOPE', scope: 'auto' });
+        break;
+      }
+      case 'filer-scope-root': {
+        // 2026-05-06 user direction:「Root フォルダを開けない。Root は
+        // 開けなくてはならない」。breadcrumb の "Root" をクリックした
+        // ら DESELECT_ENTRY で selectedLid を null にする → filer の
+        // resolveFilerScope が null を返し、root entries が一覧される。
+        dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         break;
       }
       case 'calendar-prev': {
@@ -4648,12 +4677,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const lid = target.getAttribute('data-pkc-lid');
       if (lid && target instanceof HTMLSelectElement) {
         const kind = target.value;
-        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'graph' | 'inventory'> = [
+        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'audio-base' | 'graph' | 'inventory'> = [
           'explorer',
           'contact-sheet',
           'book-base',
           'video-base',
           'novel-base',
+          'audio-base',
           'graph',
           'inventory',
         ];
@@ -4828,7 +4858,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!state.container) return;
 
     const folderLid = dropTarget.getAttribute('data-pkc-lid');
-    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const dropKind = dropTarget.getAttribute('data-pkc-drop-target');
+    const isRoot = dropKind === 'root';
+    const isTrash = dropKind === 'trash';
+
+    // Trash は cycle / self check 無視で常に accept(削除のみ)。
+    if (isTrash) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      dropTarget.setAttribute('data-pkc-drag-over', 'true');
+      return;
+    }
 
     // Prevent dropping on self
     if (folderLid === draggedLid) return;
@@ -4863,7 +4903,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const state = dispatcher.getState();
     if (!state.container || state.phase !== 'ready' || state.readonly) return;
 
-    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const dropKind = dropTarget.getAttribute('data-pkc-drop-target');
+    const isRoot = dropKind === 'root';
+    const isTrash = dropKind === 'trash';
+
+    // 2026-05-06 G13: filer の 🗑️ ゴミ箱 ボタンへの DnD で entry 削除。
+    if (isTrash) {
+      dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: draggedLid });
+      draggedLid = null;
+      if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
+      return;
+    }
+
     const folderLid = isRoot ? null : dropTarget.getAttribute('data-pkc-lid');
 
     // Don't drop on self

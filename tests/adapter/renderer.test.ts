@@ -1525,7 +1525,12 @@ describe('Renderer', () => {
 
     const latestRegion = root.querySelector('[data-pkc-region="revision-latest"]');
     expect(latestRegion).not.toBeNull();
-    expect(latestRegion!.textContent).toContain('2026-03-15 14:30');
+    // Locale-aware Intl.DateTimeFormat output (year+month+day+hour+minute,
+    // separators vary). Verify the canonical date parts are present.
+    expect(latestRegion!.textContent).toMatch(/2026/);
+    expect(latestRegion!.textContent).toMatch(/03/);
+    expect(latestRegion!.textContent).toMatch(/15/);
+    expect(latestRegion!.textContent).toMatch(/14:30/);
 
     const preview = root.querySelector('[data-pkc-region="revision-preview"]');
     expect(preview).not.toBeNull();
@@ -1553,7 +1558,11 @@ describe('Renderer', () => {
     render(state, root);
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
-    expect(section!.textContent).toContain('2026-04-01 09:15');
+    // Locale-aware Intl.DateTimeFormat output (separators vary).
+    expect(section!.textContent).toMatch(/2026/);
+    expect(section!.textContent).toMatch(/04/);
+    expect(section!.textContent).toMatch(/01/);
+    expect(section!.textContent).toMatch(/09:15/);
     expect(section!.textContent).toContain('Todo'); // archetype label
   });
 

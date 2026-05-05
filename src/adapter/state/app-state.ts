@@ -349,6 +349,15 @@ export interface AppState {
     groupBy?: string | null;
   };
   /**
+   * Per-column sort state for the filer explorer subset.
+   * Runtime-only. 2026-05-06 user direction:「ファイラには列ごとに
+   * 並べ替えを可能にすること、作成と更新日時も表示すること」。
+   */
+  filerExplorerSort?: {
+    sortBy?: string | null;
+    sortDir?: 'asc' | 'desc';
+  };
+  /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
    *   (current folder or the entry's first folder ancestor; null = root).
@@ -2860,6 +2869,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CLEAR_INVENTORY_QUERY': {
       const { inventoryQuery: _drop, ...rest } = state;
       return { state: rest as AppState, events: [] };
+    }
+    case 'SET_FILER_EXPLORER_SORT': {
+      const cur = state.filerExplorerSort ?? {};
+      const next: AppState = {
+        ...state,
+        filerExplorerSort: {
+          ...cur,
+          sortBy: action.sortBy,
+          sortDir: action.sortDir ?? cur.sortDir ?? 'asc',
+        },
+      };
+      return { state: next, events: [] };
     }
     case 'SET_GRAPH_MODE': {
       const next: AppState = { ...state, graphMode: action.mode };
