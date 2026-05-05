@@ -140,7 +140,11 @@ export function previewBatchBundleFromBuffer(
     if (!format || !ACCEPTED_FORMATS.has(format)) {
       return { ok: false, error: `Unsupported batch format: "${String(format)}"` };
     }
-    if (manifest.version !== 1) {
+    // 領域 10-6 ζ'' Phase 4: folder-export bundle gained version 2
+    // (carries non-text/textlog entries via per-entry bundles); this
+    // importer reads text/textlog the same way for both versions and
+    // skips other-archetype bundles, so it accepts v1 + v2.
+    if (manifest.version !== 1 && manifest.version !== 2) {
       return { ok: false, error: `Unsupported batch version: ${String(manifest.version)}` };
     }
 
@@ -162,13 +166,16 @@ export function previewBatchBundleFromBuffer(
       if (arch === 'text') textCount++;
       else if (arch === 'textlog') textlogCount++;
       missingAssetCount += (me.missing_asset_count ?? 0);
-      if (arch) {
+      if (arch === 'text' || arch === 'textlog') {
         previewEntries.push({
           index: i,
           title: me.title ?? me.filename ?? `Entry ${i + 1}`,
           archetype: arch,
         });
       }
+      // 'other' (Phase 4) entries are present in the bundle but not
+      // shown in the preview list since the importer does not yet
+      // round-trip them.
     }
 
     // Deep preview: peek into each nested bundle for body snippets
@@ -299,7 +306,7 @@ export function importBatchBundleFromBuffer(
         error: `Unsupported batch format: "${String(format)}"`,
       };
     }
-    if (manifest.version !== 1) {
+    if (manifest.version !== 1 && manifest.version !== 2) {
       return {
         ok: false,
         error: `Unsupported batch version: ${String(manifest.version)}`,
@@ -364,6 +371,13 @@ export function importBatchBundleFromBuffer(
           attachments: result.attachments,
           parentFolderLid: me.parent_folder_lid,
         });
+      } else if (archetype === 'other') {
+        // 領域 10-6 ζ'' Phase 4 — entry-bundle (attachment / todo /
+        // form / generic). One-way export support landed first; the
+        // matching import path is queued behind round-trip parity
+        // tests. Skip the bundle gracefully so the rest of the
+        // folder still imports.
+        continue;
       } else {
         const result = importTextlogBundleFromBuffer(nestedBuf, me.filename);
         if (!result.ok) {
@@ -420,13 +434,23 @@ export function importBatchBundleFromBuffer(
 function resolveArchetype(
   format: string,
   entry: { archetype?: string },
-): 'text' | 'textlog' | null {
+): 'text' | 'textlog' | 'other' | null {
   switch (format) {
     case 'pkc2-textlogs-container-bundle':
       return 'textlog';
     case 'pkc2-texts-container-bundle':
       return 'text';
     case 'pkc2-folder-export-bundle':
+      if (entry.archetype === 'text') return 'text';
+      if (entry.archetype === 'textlog') return 'textlog';
+      // 領域 10-6 ζ'' Phase 4 — accept any non-text/textlog archetype
+      // as 'other'; the caller skips the body of these bundles for
+      // now. Restricted to folder-export-bundle so the strict mixed
+      // container bundle still rejects unknown archetypes.
+      if (typeof entry.archetype === 'string' && entry.archetype.length > 0) {
+        return 'other';
+      }
+      return null;
     case 'pkc2-mixed-container-bundle':
       if (entry.archetype === 'text') return 'text';
       if (entry.archetype === 'textlog') return 'textlog';

@@ -340,35 +340,8 @@ export const attachmentPresenter: DetailPresenter = {
 
     root.appendChild(card);
 
-    // Preview area. For image attachments (Phase 3c-D follow-up:
-    // 「画像系のアセットの場合は detail の表示を画像ビューワーとして
-    // 特化したい」), bypass the deferred-load path and render the
-    // image inline immediately so the user gets an actual viewer
-    // experience instead of a "Loading preview…" placeholder that
-    // sometimes never resolves. Other preview types keep the
-    // deferred path.
-    if (previewType === 'image' && dataAvailable && !dataStripped) {
-      const previewContainer = document.createElement('div');
-      previewContainer.className = 'pkc-attachment-preview pkc-attachment-image-viewer';
-      previewContainer.setAttribute('data-pkc-region', 'attachment-preview');
-      previewContainer.setAttribute('data-pkc-lid', entry.lid);
-      previewContainer.setAttribute('data-pkc-preview-type', 'image');
-      const dataUrl = resolveImageDataUrl(att, assets);
-      if (dataUrl) {
-        const img = document.createElement('img');
-        img.src = dataUrl;
-        img.alt = att.name;
-        img.className = 'pkc-attachment-image-viewer-img';
-        img.loading = 'lazy';
-        previewContainer.appendChild(img);
-      } else {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'pkc-attachment-preview-placeholder';
-        placeholder.textContent = 'Loading preview…';
-        previewContainer.appendChild(placeholder);
-      }
-      root.appendChild(previewContainer);
-    } else if (previewType !== 'none' && dataAvailable && !dataStripped) {
+    // Preview area (deferred — action-binder populates with actual data)
+    if (previewType !== 'none' && dataAvailable && !dataStripped) {
       const previewContainer = document.createElement('div');
       previewContainer.className = 'pkc-attachment-preview';
       previewContainer.setAttribute('data-pkc-region', 'attachment-preview');
