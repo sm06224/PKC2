@@ -1,6 +1,30 @@
 /**
- * Source ↔ Preview synchronization — pure DOM helpers
- * (領域 10-1 Split View 同期スクロール、2026-05-05 reform 後再実装).
+ * Source ↔ Preview **block-level correspondence highlight**
+ * (領域 10-1, 2026-05-05 hotfix-5 で「同期スクロール」呼称を撤回).
+ *
+ * **What this is and isn't**:
+ *
+ * This module provides a *block-level* correspondence indicator:
+ * given the textarea caret position, find the rendered block in the
+ * preview that contains the caret's source line, mark it active,
+ * and pull both panes' scroll into a comfortable position so the
+ * user can see "I am editing this block; in the preview it looks
+ * like this".
+ *
+ * It is **not** a line-level synchronized scroll. The relationship
+ * between markdown source lines and rendered HTML lines is
+ * fundamentally N:M (table cells wrap, headings have variable
+ * heights, blank lines collapse, fences differ in font metrics from
+ * surrounding paragraphs). Earlier hotfix attempts to interpolate
+ * caret-row pixel position inside long blocks produced more
+ * confusion than they cured. Per user direction (2026-05-05) we
+ * stop pretending and stay at block granularity.
+ *
+ * Line-level sync, if revisited, is expected to live on top of the
+ * future Intermediate Representation (領域 10-3) which can carry
+ * stable inline markers across renderer paths. See
+ * `docs/development/intermediate-representation-audit.md` for the
+ * planned migration shape.
  *
  * **PR 1 scope** — pure DOM helpers only. UI integration (caret
  * tracking, click handlers, scroll behaviour, ⇄ toggle button,
@@ -145,7 +169,9 @@ export function setSyncEnabled(enabled: boolean): void {
       btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
       btn.setAttribute(
         'title',
-        enabled ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+        enabled
+          ? 'block 対応ハイライト ON(クリックで OFF)'
+          : 'block 対応ハイライト OFF(クリックで ON)',
       );
     }
   }
@@ -218,39 +244,26 @@ function safeScrollPane(scrollContainer: HTMLElement, targetY: number): void {
 }
 
 /**
- * Compute target Y (in pane scroll-space) for a caret line within an
- * anchored block whose source range is `[start, end]` (inclusive).
+ * Compute target Y for the active block, in scroll-container space.
  *
- * Two regimes:
- * - **Block fits in viewport**: target the block's vertical centre
- *   so the whole block stays comfortably in view as the caret moves
- *   within it (avoids jitter from re-scrolling for every caret tick).
- * - **Block overflows viewport** (long fence, big CSV table, deep
- *   nested list): target the **rendered centre of the caret-row**
- *   inside the block, computed as `blockTop + (lineIndex + 0.5) *
- *   (blockHeight / lineCount)`. This is the fix for the PR #206 trap
- *   and the 2026-05-05 user report: with proportional offset alone,
- *   when the block was much taller than the viewport, the caret-row
- *   could end up at any random spot on screen — including off-screen
- *   above the viewport top.
+ * 2026-05-05 hotfix-5 simplification:
+ * Previous versions tried to compute the caret-row centre inside long
+ * blocks via `blockTop + (lineIndex + 0.5) * (blockHeight / lineCount)`.
+ * That implicitly assumed source-line ↔ rendered-line was 1:1, which
+ * **is fundamentally not true** in markdown (table cell wrap, heading
+ * height variance, list indent — N:M relationship). The user direction
+ * (2026-05-05) is to **stop pretending line-level sync works** and
+ * make this purely a "which block contains the caret" indicator.
  *
- * For `.pkc-md-block` wrappers (fence / table chrome with copy /
- * expand buttons + padding), the inner `<pre>` / `<table>` rect is
- * used so the alignment lands on user-visible content, not the
- * wrapper's padded outer edge.
+ * Therefore we always target the **block's vertical centre**, full
+ * stop. For tall blocks the centre might still be off-screen; the
+ * `safeScrollPane` comfort zone still applies (no scroll if already
+ * acceptable, otherwise position centre at ~35% from top).
  */
 function blockTargetY(
   scrollContainer: HTMLElement,
   block: HTMLElement,
-  caretLine: number,
 ): number {
-  const startStr = block.getAttribute('data-pkc-source-line');
-  const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
-  const start = startStr !== null ? parseInt(startStr, 10) : 0;
-  const end = endStr !== null ? parseInt(endStr, 10) : start;
-  // Inclusive line count: a single-line block has lineCount=1.
-  const lineCount = Math.max(1, end - start + 1);
-  const lineIndex = Math.max(0, Math.min(lineCount - 1, caretLine - start));
   const containerRect = scrollContainer.getBoundingClientRect();
   let measureRect = block.getBoundingClientRect();
   if (block.classList.contains('pkc-md-block')) {
@@ -259,17 +272,7 @@ function blockTargetY(
   }
   const blockTopInScroll =
     scrollContainer.scrollTop + (measureRect.top - containerRect.top);
-  const paneH = scrollContainer.clientHeight;
-  if (measureRect.height <= paneH) {
-    // Whole block fits — aim for its centre.
-    return blockTopInScroll + measureRect.height * 0.5;
-  }
-  // Block too tall — locate the caret-row centre within the block.
-  // `linePxHeight` is an approximation; markdown-it doesn't guarantee
-  // 1:1 source line ↔ rendered line, but for fences / lists / tables
-  // each source line maps to roughly one rendered row.
-  const linePxHeight = measureRect.height / lineCount;
-  return blockTopInScroll + (lineIndex + 0.5) * linePxHeight;
+  return blockTopInScroll + measureRect.height * 0.5;
 }
 
 /**
@@ -444,6 +447,12 @@ export function syncPreviewToCaret(
     updateDebugPanel(textarea, preview);
     return;
   }
+  // 2026-05-05 hotfix-5 user direction: when we highlight a block,
+  // the editor's caret-row overlay must also be on screen — otherwise
+  // the highlight refers to a position the user can't see, and the
+  // visual correspondence breaks. Auto-scroll the editor first so the
+  // caret is in view, THEN compute / paint the overlay + preview.
+  ensureCaretVisibleInEditor(textarea);
   updateEditorActiveLine(textarea);
   const line = caretSourceLine(textarea);
   const target = findPreviewElementForLine(preview, line);
@@ -454,10 +463,42 @@ export function syncPreviewToCaret(
   }
   setActive(preview, target);
   if (preview instanceof HTMLElement) {
-    const targetY = blockTargetY(preview, target, line);
+    const targetY = blockTargetY(preview, target);
     safeScrollPane(preview, targetY);
   }
   updateDebugPanel(textarea, preview);
+}
+
+/**
+ * Auto-scroll the textarea so the caret row is in view. Called by
+ * `syncPreviewToCaret` (= every caret-driven sync) so the overlay
+ * never refers to a row the user can't see.
+ *
+ * No-op when the caret is already visible. Pads the destination by
+ * `lineHeight` so the caret lands inside the visible area, not glued
+ * to the edge. Marks the resulting scroll as programmatic so the
+ * editor scroll listener doesn't bounce a redundant overlay update.
+ *
+ * NOT called from `refreshEditorActiveLine` (= textarea natural
+ * scroll) — that path is the user actively scrolling, and forcing
+ * the caret back into view would fight their input.
+ */
+function ensureCaretVisibleInEditor(textarea: HTMLTextAreaElement): void {
+  const caret = getCaretViewportCoords(textarea);
+  const taRect = textarea.getBoundingClientRect();
+  const visibleTop = taRect.top + textarea.clientTop;
+  const visibleBottom = visibleTop + textarea.clientHeight;
+  const padding = caret.height; // one extra line of breathing room
+  if (caret.top < visibleTop + padding) {
+    const delta = (visibleTop + padding) - caret.top;
+    textarea.scrollTop = Math.max(0, textarea.scrollTop - delta);
+  } else if (caret.top + caret.height > visibleBottom - padding) {
+    const delta = (caret.top + caret.height) - (visibleBottom - padding);
+    textarea.scrollTop = Math.min(
+      textarea.scrollHeight - textarea.clientHeight,
+      textarea.scrollTop + delta,
+    );
+  }
 }
 
 /**

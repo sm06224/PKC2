@@ -160,7 +160,9 @@ const textPresenter: DetailPresenter = {
     syncToggle.setAttribute('aria-pressed', initiallyOn ? 'true' : 'false');
     syncToggle.setAttribute(
       'title',
-      initiallyOn ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+      initiallyOn
+        ? 'block 対応ハイライト ON(クリックで OFF)'
+        : 'block 対応ハイライト OFF(クリックで ON)',
     );
     resizeHandle.appendChild(syncToggle);
     wrapper.appendChild(resizeHandle);

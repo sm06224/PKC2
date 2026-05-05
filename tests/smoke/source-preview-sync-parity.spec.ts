@@ -298,14 +298,18 @@ test.describe('源 ↔ プレビュー 同期(領域 10-1, parity)', () => {
     expect(snap!.hitMatchesActive, 'active block must be hit-testable at its rect').toBe(true);
   });
 
-  test('2. 長い fence: caret 中段 → 同 fence が active 維持 + 視認可能', async ({
+  test('2. 長い fence: caret が fence 内のどこにあっても same fence が active', async ({
     page,
   }) => {
+    // 2026-05-05 hotfix-5 reset: this spec previously asserted
+    // "scrollTop monotonically increases as caret deepens" — that was
+    // line-level sync behaviour we no longer claim. The new contract
+    // is block-level only: caret line 21 and caret line 35 both fall
+    // inside source range [20, 40] of the same fence, so both produce
+    // the same active marker. Whether the preview rescrolls or not is
+    // unspecified at the source-preview-sync layer.
     await bootAndOpenTextEditor(page);
     await seedFixtureBody(page);
-    // Constrain the preview pane to a smaller height than the content
-    // so block-internal progress is OBSERVABLE. Without this the pane
-    // grows to fit content and scrollTop stays 0 regardless of caret.
     await page.evaluate(() => {
       const preview = document.querySelector<HTMLElement>(
         '[data-pkc-region="text-edit-preview"]',
@@ -315,30 +319,14 @@ test.describe('源 ↔ プレビュー 同期(領域 10-1, parity)', () => {
         preview.style.maxHeight = '300px';
       }
     });
-    // Read scroll baseline at top of fence.
     await moveCaretToLine(page, 21);
     const top = await readActive(page);
     expect(top!.startLine).toBe(20);
-    expect(
-      top!.previewScrollHeight,
-      'preview must overflow for scroll to be observable',
-    ).toBeGreaterThan(top!.previewClientHeight);
-
-    // Now jump deep into the fence (line 35 of 40).
+    expect(top!.endLine).toBe(40);
     await moveCaretToLine(page, 35);
     const deep = await readActive(page);
     expect(deep!.startLine).toBe(20);
     expect(deep!.endLine).toBe(40);
-
-    // Consumer behaviour: preview scrollTop advanced as the caret
-    // moved deeper into the fence (block-internal progress maps
-    // caret depth to proportional offset). safeScrollPane only fires
-    // when target is outside the comfort zone, so the deep caret
-    // pushes scrollTop forward.
-    expect(
-      deep!.previewScrollTop,
-      `preview should scroll when caret deepens within long fence (top=${top!.previewScrollTop}, deep=${deep!.previewScrollTop})`,
-    ).toBeGreaterThan(top!.previewScrollTop);
   });
 
   test('3. 見出し: caret line 0 → h1 が active', async ({ page }) => {

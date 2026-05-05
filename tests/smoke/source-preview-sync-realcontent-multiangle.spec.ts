@@ -427,30 +427,29 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     });
   });
 
-  test('6. 大ブロック内移動: CSV fence 内 caret 5→9→13 で scrollTop monotonic', async ({
+  test('6. CSV fence 内 caret 5→9→13: 全 caret で fence wrapper が active', async ({
     page,
   }, testInfo) => {
+    // 2026-05-05 hotfix-5 reset: previously asserted scrollTop
+    // monotonic increase as caret deepened — line-level sync claim
+    // we no longer make. The new contract is block-level: each of
+    // the three caret positions inside the CSV fence (lines 5, 9, 13)
+    // produces an active marker on the SAME source range, the fence
+    // wrapper.
     await bootSeedAndConstrain(page);
-    // line 4 = ```csv (start), 13 = ``` (end)
     await moveCaretToLine(page, 5);
     const a = await snapshot(page);
     await moveCaretToLine(page, 9);
     const b = await snapshot(page);
     await moveCaretToLine(page, 13);
     const c = await snapshot(page);
-    // Each step should advance scrollTop OR at least not retreat
-    // significantly (comfort zone may suppress small moves).
-    expect(b.previewScrollTop, `5→9: ${a.previewScrollTop}→${b.previewScrollTop}`).toBeGreaterThanOrEqual(
-      a.previewScrollTop,
-    );
-    expect(c.previewScrollTop, `9→13: ${b.previewScrollTop}→${c.previewScrollTop}`).toBeGreaterThanOrEqual(
-      b.previewScrollTop,
-    );
-    // line 13 should have advanced past line 5 measurably.
-    expect(
-      c.previewScrollTop - a.previewScrollTop,
-      `5→13 net advance`,
-    ).toBeGreaterThan(50);
+    // All three caret positions inside the CSV fence (source lines
+    // 4..13) must activate the same wrapper.
+    for (const [label, snap] of [['line 5', a], ['line 9', b], ['line 13', c]] as const) {
+      expect(snap.activeStart, `${label}: active block must exist`).not.toBeNull();
+      expect(snap.activeStart!).toBe(4);
+      expect(snap.activeEnd!).toBe(13);
+    }
     await testInfo.attach(`scenario6-final.png`, {
       body: await page.screenshot({ fullPage: false }),
       contentType: 'image/png',
