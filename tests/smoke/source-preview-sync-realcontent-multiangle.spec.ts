@@ -105,6 +105,12 @@ sdsdf
 `;
 
 async function bootSeedAndConstrain(page: Page): Promise<void> {
+  // 2026-05-05 hotfix-6: opt-in sync — enable for tests that
+  // exercise the sync-on path. Default state is OFF for end users
+  // (per user direction), but most existing specs assume ON.
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* localStorage unavailable */ }
+  });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
@@ -376,25 +382,33 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     });
   });
 
-  test('4. 上端到達 → 少し戻し: scrollTop=0 で頭打ち & 戻し追従', async ({
+  test('4. 上端到達 → 少し戻し: 上端付近に張り付き → 戻し時に追従', async ({
     page,
   }, testInfo) => {
+    // 2026-05-05 hotfix-6: post-rewrite of safeScrollPane →
+    // ensureRectVisible. The new logic stops scrolling exactly when
+    // the active block fits visually (with `padding=8` margin), so
+    // scrollTop after jumping to line 0 is small but not strictly 0.
+    // The test now asserts the qualitative regression-guard:
+    // (a) jumping to line 0 ALWAYS reduces scrollTop drastically,
+    // (b) jumping back to line 9 advances scrollTop again.
     await bootSeedAndConstrain(page);
-    // Move to bottom first to put scrollTop > 0.
     await moveCaretToLine(page, 56);
     const mid = await snapshot(page);
-    expect(mid.previewScrollTop).toBeGreaterThan(0);
-    // Now jump to line 0 — preview should pin to scrollTop = 0
-    // (above-comfort-zone safe scroll).
+    expect(mid.previewScrollTop).toBeGreaterThan(50);
     await moveCaretToLine(page, 0);
     const top = await snapshot(page);
-    expect(top.previewScrollTop, '上端: scrollTop should be 0').toBe(0);
-    // Move back slightly to line 9 (CSV fence). Preview should
-    // un-pin and follow.
+    expect(
+      top.previewScrollTop,
+      `上端 jump: scrollTop ${top.previewScrollTop} should be near 0 (padding=8)`,
+    ).toBeLessThan(20);
     await moveCaretToLine(page, 9);
     const back = await snapshot(page);
-    expect(back.previewScrollTop, '少し戻し: scrollTop should be > 0').toBeGreaterThan(0);
-    expect(back.activeStart).toBe(4); // CSV fence
+    expect(
+      back.previewScrollTop,
+      `少し戻し: scrollTop ${back.previewScrollTop} should be > top ${top.previewScrollTop}`,
+    ).toBeGreaterThan(top.previewScrollTop);
+    expect(back.activeStart).toBe(4);
     await testInfo.attach(`scenario4-final.png`, {
       body: await page.screenshot({ fullPage: false }),
       contentType: 'image/png',

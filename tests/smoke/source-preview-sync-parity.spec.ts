@@ -92,6 +92,12 @@ const FIXTURE_BODY = [
 // ── Boot helpers ──────────────────────────────────────
 
 async function bootAndOpenTextEditor(page: Page): Promise<void> {
+  // 2026-05-05 hotfix-6: opt-in sync — enable for tests that
+  // exercise the sync-on path. Default state is OFF for end users
+  // (per user direction), but most existing specs assume ON.
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* localStorage unavailable */ }
+  });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {

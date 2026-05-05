@@ -2299,13 +2299,25 @@ mark.pkc-search-mark {
 }
 
 /* 2026-05-05 hotfix: editing-mode preview suppresses interactive
-   overlays(copy / sort / media-viewer hover etc.). The user has
-   the source on the left; clicking those chrome buttons during
-   active editing was unwanted noise. View-mode preview keeps the
-   buttons normally — the rule is scoped to `.pkc-text-edit-preview`. */
+   overlays(copy / sort / filter / media-viewer hover etc.). The
+   user has the source on the left; clicking those chrome elements
+   during active editing was unwanted noise. View-mode preview keeps
+   the chrome — the rule is scoped to `.pkc-text-edit-preview`.
+
+   2026-05-05 hotfix-6: extended to table sort / filter chrome. The
+   sort buttons are added by `enhanceMdTable` via MutationObserver
+   and would otherwise appear inside the live preview the moment a
+   table renders. */
 .pkc-text-edit-preview .pkc-md-copy-btn { display: none !important; }
 .pkc-text-edit-preview .pkc-md-block:hover > .pkc-md-copy-btn,
 .pkc-text-edit-preview .pkc-md-block:focus-within > .pkc-md-copy-btn { display: none !important; }
+.pkc-text-edit-preview [data-pkc-action="md-table-sort"],
+.pkc-text-edit-preview [data-pkc-action="md-table-filter-toggle"],
+.pkc-text-edit-preview .pkc-md-table-filter-row,
+.pkc-text-edit-preview .pkc-md-table-filter-input { display: none !important; }
+/* Hover-tint on .pkc-md-block (block hover halo from view mode) is
+   noise during editing — neutralize. */
+.pkc-text-edit-preview .pkc-md-block:hover { background: inherit; }
 
 /* 2026-05-05 hotfix: editor-side current-line overlay (PKC-symmetric
    to the preview's [data-pkc-active-source] highlight). Positioned

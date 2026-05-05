@@ -110,29 +110,27 @@ const SYNC_ENABLED_KEY = 'pkc2.split-sync-enabled';
 const SYNC_DEBUG_KEY = 'pkc2.split-sync-debug';
 
 /**
- * Default-on for desktop / wide tablets, default-off for portrait
- * mobile (the small viewport doesn't have room for both panes
- * comfortably + iPhone keyboard pushes the editor out of view).
+ * 2026-05-05 hotfix-6 user direction「ブロック同期動作自体はボタン
+ * 押下時に有効化してオプトイン設計にして」.
+ *
+ * **Opt-in design**: the block-correspondence highlight stays OFF
+ * until the user explicitly clicks the ⇄ toggle button. Once turned
+ * on, the choice is persisted to localStorage so subsequent sessions
+ * remember the preference. Removing the localStorage entry (or first
+ * use ever) brings the user back to the off state.
+ *
+ * Rationale: previous default-on behaviour (with mobile-only off
+ * heuristic) surprised users who weren't aware the feature existed —
+ * the highlight + auto-scroll fired the moment they opened a split
+ * editor. Making it opt-in keeps the editor's default behaviour
+ * minimal; the ⇄ button is always present for users who want it.
  */
-function defaultSyncEnabled(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return true;
-  }
-  if (window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches) {
-    return false;
-  }
-  return true;
-}
-
 let syncEnabled: boolean = (() => {
   try {
-    const raw = window.localStorage?.getItem(SYNC_ENABLED_KEY);
-    if (raw === 'true') return true;
-    if (raw === 'false') return false;
+    return window.localStorage?.getItem(SYNC_ENABLED_KEY) === 'true';
   } catch {
-    /* localStorage unavailable */
+    return false;
   }
-  return defaultSyncEnabled();
 })();
 
 export function isSyncEnabled(): boolean {
@@ -228,51 +226,83 @@ function setActive(preview: Element, el: HTMLElement | null): void {
 }
 
 /**
- * Safe-scroll: only scroll when target is outside the comfort zone
- * (middle 50% of the pane). Lands target at ~35% from the top —
- * high enough to read context, not glued to the edge.
+ * Scroll `scrollContainer` by the **minimum amount** required so the
+ * given viewport-coordinate rect lies inside the container's visible
+ * area, padded by `padding` on both edges. No-op when the rect is
+ * already inside the visible area.
+ *
+ * 2026-05-05 hotfix-6 user direction:
+ *   「ハイライト時に該当ブロックが可視エリア外なら必要量スクロール
+ *    して可視エリアに持ってくる」(both directions)
+ *
+ * This replaces the previous `safeScrollPane`'s "comfort zone middle
+ * 50% / aim at 35% from top" behaviour, which would yank the user's
+ * scroll even when the target was already comfortably visible. Now:
+ *   - target rect inside [visTop+padding, visBottom-padding] → no-op
+ *   - rect top above visible top → scroll up by exact delta
+ *   - rect bottom below visible bottom → scroll down by exact delta
+ *
+ * The `padding` argument keeps the rect from sticking flush to the
+ * edge after the scroll (one extra line of breathing room is plenty).
+ *
+ * For tall blocks (block height > visible height) the rect cannot
+ * fit entirely inside the visible area; the algorithm prefers
+ * aligning the rect's TOP to the visible top — that puts the block's
+ * start (the line the caret is on, in editor source order) on screen
+ * rather than its middle / bottom.
  */
-function safeScrollPane(scrollContainer: HTMLElement, targetY: number): void {
-  const paneH = scrollContainer.clientHeight;
-  const safeTop = scrollContainer.scrollTop + paneH * 0.25;
-  const safeBottom = scrollContainer.scrollTop + paneH * 0.75;
-  if (targetY >= safeTop && targetY <= safeBottom) return;
-  const max = scrollContainer.scrollHeight - paneH;
-  const desired = Math.max(0, Math.min(max, targetY - paneH * 0.35));
-  markProgrammaticScroll();
-  scrollContainer.scrollTop = desired;
+function ensureRectVisible(
+  scrollContainer: HTMLElement,
+  rect: { top: number; bottom: number },
+  padding: number,
+): void {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const visTop = containerRect.top + scrollContainer.clientTop;
+  const visBottom = visTop + scrollContainer.clientHeight;
+  const maxScroll = Math.max(
+    0,
+    scrollContainer.scrollHeight - scrollContainer.clientHeight,
+  );
+  if (rect.top < visTop + padding) {
+    const delta = (visTop + padding) - rect.top;
+    const next = Math.max(0, scrollContainer.scrollTop - delta);
+    if (next !== scrollContainer.scrollTop) {
+      markProgrammaticScroll();
+      scrollContainer.scrollTop = next;
+    }
+    return;
+  }
+  if (rect.bottom > visBottom - padding) {
+    const delta = rect.bottom - (visBottom - padding);
+    const next = Math.min(maxScroll, scrollContainer.scrollTop + delta);
+    if (next !== scrollContainer.scrollTop) {
+      markProgrammaticScroll();
+      scrollContainer.scrollTop = next;
+    }
+    return;
+  }
+  // Already in view — no-op.
 }
 
 /**
- * Compute target Y for the active block, in scroll-container space.
+ * Return the viewport-coordinate rect of the active block's
+ * **content-bearing inner element** (for `pkc-md-block` wrappers
+ * the inner `<pre>` / `<table>` rect, otherwise the block itself).
+ * Used by `ensureRectVisible` so the auto-scroll lands on the
+ * user-visible content, not on the wrapper's padded outer edge.
  *
- * 2026-05-05 hotfix-5 simplification:
- * Previous versions tried to compute the caret-row centre inside long
- * blocks via `blockTop + (lineIndex + 0.5) * (blockHeight / lineCount)`.
- * That implicitly assumed source-line ↔ rendered-line was 1:1, which
- * **is fundamentally not true** in markdown (table cell wrap, heading
- * height variance, list indent — N:M relationship). The user direction
- * (2026-05-05) is to **stop pretending line-level sync works** and
- * make this purely a "which block contains the caret" indicator.
- *
- * Therefore we always target the **block's vertical centre**, full
- * stop. For tall blocks the centre might still be off-screen; the
- * `safeScrollPane` comfort zone still applies (no scroll if already
- * acceptable, otherwise position centre at ~35% from top).
+ * 2026-05-05 hotfix-6: replaces the old `blockTargetY` (single Y
+ * coordinate, comfort-zone scroll). The new contract is "minimum-
+ * amount scroll only when out of view", and that needs the rect
+ * (top + bottom) — a single Y can't tell whether the rect already
+ * straddles the visible area.
  */
-function blockTargetY(
-  scrollContainer: HTMLElement,
-  block: HTMLElement,
-): number {
-  const containerRect = scrollContainer.getBoundingClientRect();
-  let measureRect = block.getBoundingClientRect();
+function blockMeasureRect(block: HTMLElement): DOMRect {
   if (block.classList.contains('pkc-md-block')) {
     const inner = block.querySelector<HTMLElement>('pre, table');
-    if (inner) measureRect = inner.getBoundingClientRect();
+    if (inner) return inner.getBoundingClientRect();
   }
-  const blockTopInScroll =
-    scrollContainer.scrollTop + (measureRect.top - containerRect.top);
-  return blockTopInScroll + measureRect.height * 0.5;
+  return block.getBoundingClientRect();
 }
 
 /**
@@ -463,8 +493,13 @@ export function syncPreviewToCaret(
   }
   setActive(preview, target);
   if (preview instanceof HTMLElement) {
-    const targetY = blockTargetY(preview, target);
-    safeScrollPane(preview, targetY);
+    const rect = blockMeasureRect(target);
+    // 2026-05-05 hotfix-6: minimum-amount scroll. If the active
+    // block is already entirely inside the preview's visible area,
+    // do nothing. If it's out of view, scroll by exactly the delta
+    // needed to bring it back in. Padding = 8px (~one line of
+    // breathing room — matches editor side).
+    ensureRectVisible(preview, { top: rect.top, bottom: rect.bottom }, 8);
   }
   updateDebugPanel(textarea, preview);
 }
@@ -485,27 +520,25 @@ export function syncPreviewToCaret(
  */
 function ensureCaretVisibleInEditor(textarea: HTMLTextAreaElement): void {
   const caret = getCaretViewportCoords(textarea);
-  const taRect = textarea.getBoundingClientRect();
-  const visibleTop = taRect.top + textarea.clientTop;
-  const visibleBottom = visibleTop + textarea.clientHeight;
-  const padding = caret.height; // one extra line of breathing room
-  if (caret.top < visibleTop + padding) {
-    const delta = (visibleTop + padding) - caret.top;
-    textarea.scrollTop = Math.max(0, textarea.scrollTop - delta);
-  } else if (caret.top + caret.height > visibleBottom - padding) {
-    const delta = (caret.top + caret.height) - (visibleBottom - padding);
-    textarea.scrollTop = Math.min(
-      textarea.scrollHeight - textarea.clientHeight,
-      textarea.scrollTop + delta,
-    );
-  }
+  ensureRectVisible(
+    textarea,
+    { top: caret.top, bottom: caret.top + caret.height },
+    caret.height, // one extra line of breathing room
+  );
 }
 
 /**
  * Preview → Editor sync. Take a click coordinate inside the
  * preview, find the source line of the clicked block (or fallback
  * via point lookup), and place the textarea caret at the start of
- * that line. The textarea is scrolled so the caret is visible.
+ * that line.
+ *
+ * 2026-05-05 hotfix-6: editor-side scroll is delegated to
+ * `ensureCaretVisibleInEditor` so both sync directions share the
+ * same "in view → no-op, out of view → minimum-amount scroll"
+ * contract (per user direction). Previous implementation always
+ * tried to land the caret at 35% from the top, which yanked the
+ * editor scroll even when the caret was already visible.
  */
 export function syncCaretToPreview(
   textarea: HTMLTextAreaElement,
@@ -524,16 +557,8 @@ export function syncCaretToPreview(
   textarea.focus({ preventScroll: true });
   textarea.selectionStart = offset;
   textarea.selectionEnd = offset;
-  // Scroll textarea so caret is visible (browser handles via blur+focus).
-  // Best-effort: set scrollTop based on line index × line height.
-  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
-  const desiredScrollTop = Math.max(
-    0,
-    line * lineHeight - textarea.clientHeight * 0.35,
-  );
-  if (Math.abs(textarea.scrollTop - desiredScrollTop) > lineHeight) {
-    textarea.scrollTop = desiredScrollTop;
-  }
+  ensureCaretVisibleInEditor(textarea);
+  updateEditorActiveLine(textarea);
   setActive(preview, clickedEl.closest<HTMLElement>('[data-pkc-source-line]'));
   return true;
 }

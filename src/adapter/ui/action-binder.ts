@@ -5136,6 +5136,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = e.target as Element | null;
     if (!target) return;
 
+    // 2026-05-05 hotfix-6: edit-mode preview suppresses chrome
+    // interactions. The user is editing — clicking a table or fence
+    // here should jump the caret to the corresponding source line
+    // (handled by source-preview-sync), not pop a media-viewer modal.
+    if (target.closest('.pkc-text-edit-preview')) return;
+
     // Don't hijack clicks the user wanted on something else inside.
     if (
       target.closest('a')
@@ -5225,6 +5231,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleTableSortClick(e: MouseEvent): void {
     const target = e.target as Element | null;
     if (!target) return;
+    // 2026-05-05 hotfix-6: skip in edit-mode preview (sort UI is for
+    // view-mode only — editing the underlying source is the right
+    // affordance during edit).
+    if (target.closest('.pkc-text-edit-preview')) return;
     const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-sort"]');
     if (!btn) return;
     const table = btn.closest<HTMLTableElement>('table');
@@ -5243,6 +5253,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleTableFilterToggle(e: MouseEvent): void {
     const target = e.target as Element | null;
     if (!target) return;
+    if (target.closest('.pkc-text-edit-preview')) return;
     const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-filter-toggle"]');
     if (!btn) return;
     const table = btn.closest<HTMLTableElement>('table');
@@ -5256,6 +5267,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = e.target as Element | null;
     if (!target) return;
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.closest('.pkc-text-edit-preview')) return;
     if (!target.classList.contains('pkc-md-table-filter-input')) return;
     const table = target.closest<HTMLTableElement>('table');
     if (!table) return;

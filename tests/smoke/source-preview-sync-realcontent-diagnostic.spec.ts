@@ -84,6 +84,12 @@ sdsdf
 `;
 
 async function bootAndOpenTextEditor(page: Page): Promise<void> {
+  // 2026-05-05 hotfix-6: opt-in sync — enable for tests that
+  // exercise the sync-on path. Default state is OFF for end users
+  // (per user direction), but most existing specs assume ON.
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* localStorage unavailable */ }
+  });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
@@ -460,27 +466,13 @@ test.describe('実ユーザーコンテンツの sync 診断(red→green)', () =
     );
     /* eslint-enable no-console */
 
-    // The fence MUST be active. The opening ```csv is on source line 4
-    // (after 1.ddd / 2.aaa / 3.ddd / blank), so anchor start = 4.
+    // 2026-05-05 hotfix-5/6 reset: line-level "caret-row centre"
+    // interpolation was retired. The new contract is block-level
+    // only — the active fence is the block containing the caret,
+    // and `ensureRectVisible` keeps the block at least partially
+    // in view by minimum-amount scroll. We assert that and stop
+    // making line-level claims.
     expect(snap.activeStart).toBe(4);
-    // The fence MUST be at least partially visible.
     expect(snap.visiblePortion).toBeGreaterThan(0);
-    // ★ The active block top should be no more than (block height *
-    // 0.7) ABOVE the preview top — meaning when caret is at ~middle
-    // of source, the rendered block's top should be near the top of
-    // the visible region (block-internal progress put us there).
-    // If the block is 1000px tall and only 300px is visible, we
-    // expect the top to be at ~ -500px relative to preview top
-    // (mid of block aligned with mid of viewport). PR #206 trap:
-    // the top was at -1500px (block off-screen above), violating
-    // the user's mental model.
-    const blockTopRelative = snap.activeRectTop - snap.previewTop;
-    const acceptableTopMin = -snap.activeRectHeight * 0.7;
-    const acceptableTopMax = snap.previewClientHeight * 0.5;
-    expect(
-      blockTopRelative,
-      `CSV fence top should be in [${acceptableTopMin.toFixed(0)}, ${acceptableTopMax.toFixed(0)}] relative to preview top, got ${blockTopRelative.toFixed(0)}`,
-    ).toBeGreaterThanOrEqual(acceptableTopMin);
-    expect(blockTopRelative).toBeLessThanOrEqual(acceptableTopMax);
   });
 });

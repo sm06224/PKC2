@@ -37,6 +37,12 @@ const LONG_CONTENT = (() => {
 })();
 
 async function bootSeed(page: Page): Promise<void> {
+  // 2026-05-05 hotfix-6: opt-in sync — enable for tests that
+  // exercise the sync-on path. Default state is OFF for end users
+  // (per user direction), but most existing specs assume ON.
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* localStorage unavailable */ }
+  });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 15_000 });
   await page
