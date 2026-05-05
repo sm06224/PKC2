@@ -143,6 +143,13 @@ const textPresenter: DetailPresenter = {
     activeLine.style.display = 'none';
     wrapper.appendChild(activeLine);
 
+    // 2026-05-05 hotfix-7 follow-up-2 (user request: 「caret 位置の
+    // 視覚効果は PKC 全体で入力中部分で適用」): the caret-row
+    // indicator is now a GLOBAL `position: fixed` element managed
+    // by `caret-indicator.ts` (installed once at boot), so it
+    // applies uniformly to every textarea — title input, body,
+    // search field, log row inputs, etc. Nothing local to add here.
+
     // Resize handle between editor and preview, with the source/preview
     // sync toggle (⇄) anchored on it. The toggle's data-pkc-action is
     // intercepted before the split-resize mousedown so clicking it

@@ -308,14 +308,6 @@ function ensureRectVisible(
  * Return the viewport-coordinate rect of the active block's
  * **content-bearing inner element** (for `pkc-md-block` wrappers
  * the inner `<pre>` / `<table>` rect, otherwise the block itself).
- * Used by `ensureRectVisible` so the auto-scroll lands on the
- * user-visible content, not on the wrapper's padded outer edge.
- *
- * 2026-05-05 hotfix-6: replaces the old `blockTargetY` (single Y
- * coordinate, comfort-zone scroll). The new contract is "minimum-
- * amount scroll only when out of view", and that needs the rect
- * (top + bottom) — a single Y can't tell whether the rect already
- * straddles the visible area.
  */
 function blockMeasureRect(block: HTMLElement): DOMRect {
   if (block.classList.contains('pkc-md-block')) {
@@ -323,6 +315,43 @@ function blockMeasureRect(block: HTMLElement): DOMRect {
     if (inner) return inner.getBoundingClientRect();
   }
   return block.getBoundingClientRect();
+}
+
+/**
+ * Compute a **caret-row sub-rect** inside the active block — used as
+ * the scroll target so caret movement WITHIN a tall block produces
+ * proportional preview scroll, instead of staying still until the
+ * caret crosses a block boundary.
+ *
+ * 2026-05-05 hotfix-7 follow-up-2 (user report:「中途半端に飛んだり
+ *  飛ばなかったり」):
+ * Earlier hotfix-5 simplified to "block centre only" because line-
+ * level 1:1 sync is impossible for markdown (N:M relationship).
+ * That made scroll DISCRETE — preview only moved when the caret
+ * crossed a block boundary, and the user perceived that as "飛んだり
+ * 飛ばなかったり". The fix is a **middle path**: still acknowledge
+ * the N:M imprecision, but use the proportional position INSIDE the
+ * block as the scroll target so movement within a long block scrolls
+ * the preview smoothly.
+ *
+ * `ensureRectVisible` then keeps the in-view-no-op contract intact,
+ * so this only affects scroll when the caret-row IS off-screen.
+ */
+function caretRowRectInBlock(
+  block: HTMLElement,
+  caretLine: number,
+): { top: number; bottom: number } {
+  const startStr = block.getAttribute('data-pkc-source-line');
+  const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
+  const start = startStr !== null ? parseInt(startStr, 10) : 0;
+  const end = endStr !== null ? parseInt(endStr, 10) : start;
+  const lineCount = Math.max(1, end - start + 1);
+  const lineIndex = Math.max(0, Math.min(lineCount - 1, caretLine - start));
+  const measureRect = blockMeasureRect(block);
+  const linePxHeight = measureRect.height / lineCount;
+  const rowTop = measureRect.top + lineIndex * linePxHeight;
+  const rowBottom = rowTop + linePxHeight;
+  return { top: rowTop, bottom: rowBottom };
 }
 
 /**
@@ -551,13 +580,13 @@ export function syncPreviewToCaret(
   updateEditorActiveLine(textarea, Number.isFinite(labelLine) ? labelLine : line);
   setActive(preview, rawTarget);
   if (preview instanceof HTMLElement) {
-    const rect = blockMeasureRect(rawTarget);
-    // 2026-05-05 hotfix-6: minimum-amount scroll. If the active
-    // block is already entirely inside the preview's visible area,
-    // do nothing. If it's out of view, scroll by exactly the delta
-    // needed to bring it back in. Padding = 8px (~one line of
-    // breathing room — matches editor side).
-    ensureRectVisible(preview, { top: rect.top, bottom: rect.bottom }, 8);
+    // 2026-05-05 hotfix-7 follow-up-2: target the **caret-row rect**
+    // (proportional position within the block) instead of the whole
+    // block rect. This re-introduces continuity within tall blocks
+    // (long fence, big table) so scroll follows caret depth, while
+    // still respecting "in-view → no-op" via ensureRectVisible.
+    const rowRect = caretRowRectInBlock(rawTarget, line);
+    ensureRectVisible(preview, rowRect, 8);
   }
   updateDebugPanel(textarea, preview);
 }

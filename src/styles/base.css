@@ -2348,6 +2348,13 @@ mark.pkc-search-mark {
   z-index: 0;
   transition: top 80ms linear;
 }
+
+/* 2026-05-05 hotfix-7 follow-up-2: caret-row indicator went
+   GLOBAL — see `src/adapter/ui/caret-indicator.ts`. The element is
+   created at boot as a `position: fixed` overlay parented to
+   <body>, so it works on every textarea in PKC2 (title, body,
+   search, log rows, …) without per-component wiring. Visual
+   styling lives inline in that module. */
 .pkc-editor-active-line::after {
   /* 2026-05-05 hotfix-7 follow-up: badge stays inside the overlay
      at top-right. The overlay's width = textarea.clientWidth so the
