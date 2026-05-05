@@ -2983,6 +2983,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
+      case 'set-inventory-sort': {
+        // Phase 5 — toggle sort: asc → desc → off → asc …
+        const key = target.getAttribute('data-pkc-inventory-key');
+        if (!key) break;
+        const cur = dispatcher.getState().inventoryQuery ?? {};
+        let nextSortBy: string | null;
+        let nextDir: 'asc' | 'desc';
+        if (cur.sortBy !== key) {
+          nextSortBy = key;
+          nextDir = 'asc';
+        } else if (cur.sortDir === 'asc') {
+          nextSortBy = key;
+          nextDir = 'desc';
+        } else {
+          nextSortBy = null;
+          nextDir = 'asc';
+        }
+        dispatcher.dispatch({ type: 'SET_INVENTORY_SORT', sortBy: nextSortBy, sortDir: nextDir });
+        break;
+      }
+      case 'clear-inventory-query': {
+        dispatcher.dispatch({ type: 'CLEAR_INVENTORY_QUERY' });
+        break;
+      }
       case 'open-graph-for-entry': {
         // Open graph view focused on this entry. Used from filer cards,
         // detail headers, sidebar context menus — anywhere entry lid is
@@ -4571,6 +4595,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // The `<select>` lives in the meta pane and carries the folder lid on
     // itself; dispatch SET_DISPLAY_PROFILE on change. Phase 1 only knows
     // the `'explorer'` kind; future kinds widen this switch.
+    if (action === 'set-inventory-filter') {
+      // Phase 5 — typed substring filter per column.
+      const key = target.getAttribute('data-pkc-inventory-key');
+      if (key && target instanceof HTMLInputElement) {
+        dispatcher.dispatch({ type: 'SET_INVENTORY_FILTER', key, value: target.value });
+      }
+      return;
+    }
+    if (action === 'set-inventory-group-by') {
+      if (target instanceof HTMLSelectElement) {
+        const v = target.value || null;
+        dispatcher.dispatch({ type: 'SET_INVENTORY_GROUP_BY', groupBy: v });
+      }
+      return;
+    }
     if (action === 'set-graph-mode') {
       // 領域 10-6 ζ'' Phase 4 follow-up 4 — center pane Graph view の
       // mode 切替 select。
@@ -4609,13 +4648,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const lid = target.getAttribute('data-pkc-lid');
       if (lid && target instanceof HTMLSelectElement) {
         const kind = target.value;
-        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'graph'> = [
+        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'graph' | 'inventory'> = [
           'explorer',
           'contact-sheet',
           'book-base',
           'video-base',
           'novel-base',
           'graph',
+          'inventory',
         ];
         if (valid.includes(kind as typeof valid[number])) {
           dispatcher.dispatch({

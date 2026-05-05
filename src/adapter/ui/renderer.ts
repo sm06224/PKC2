@@ -4022,6 +4022,9 @@ function renderFilerView(state: AppState): HTMLElement {
     case 'graph':
       filer.appendChild(renderFilerGraph(state, visibleChildren));
       break;
+    case 'inventory':
+      filer.appendChild(renderFilerInventory(state, visibleChildren));
+      break;
     case 'explorer':
     default:
       filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
@@ -4319,6 +4322,8 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
       return 'Novel base';
     case 'graph':
       return 'Graph';
+    case 'inventory':
+      return 'Inventory';
   }
 }
 
@@ -4890,6 +4895,187 @@ function renderFilerGraph(state: AppState, children: readonly Entry[]): HTMLElem
   svg.appendChild(nodeLayer);
 
   wrapper.appendChild(svg);
+  return wrapper;
+}
+
+/**
+ * Inventory subset (Phase 5) — Bases 風 query view over folder
+ * children. Columns are derived from the union of frontmatter keys
+ * across visible children + a built-in `__name` / `__archetype` /
+ * `__tags` fixed columns. Each column has:
+ *   - filter input (substring match, case-insensitive)
+ *   - header click → sort toggle (asc → desc → off)
+ * A toolbar provides:
+ *   - "Group by" select
+ *   - "Clear" button
+ */
+function renderFilerInventory(state: AppState, children: readonly Entry[]): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper pkc-filer-inventory-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  // 1. Parse frontmatter for every child and gather column keys.
+  const childrenWithMeta = children.map((c) => ({
+    entry: c,
+    meta: c.archetype === 'text' ? parseFrontmatter(c.body ?? '').meta : ({} as Record<string, unknown>),
+  }));
+  const fmKeys = new Set<string>();
+  for (const { meta } of childrenWithMeta) for (const k of Object.keys(meta)) fmKeys.add(k);
+  const columns: { key: string; label: string; isBuiltin: boolean }[] = [
+    { key: '__name', label: '名前', isBuiltin: true },
+    { key: '__archetype', label: '種類', isBuiltin: true },
+    ...Array.from(fmKeys).sort().map((k) => ({ key: k, label: k, isBuiltin: false })),
+    { key: '__tags', label: 'タグ', isBuiltin: true },
+  ];
+
+  const query = state.inventoryQuery ?? {};
+  const filter = query.filter ?? {};
+  const sortBy = query.sortBy ?? null;
+  const sortDir = query.sortDir ?? 'asc';
+  const groupBy = query.groupBy ?? null;
+
+  // Toolbar
+  const toolbar = createElement('div', 'pkc-filer-inventory-toolbar');
+  toolbar.setAttribute('data-pkc-region', 'filer-inventory-toolbar');
+  const groupSelect = document.createElement('select');
+  groupSelect.className = 'pkc-filer-inventory-group-select';
+  groupSelect.setAttribute('data-pkc-action', 'set-inventory-group-by');
+  const noneOpt = document.createElement('option');
+  noneOpt.value = '';
+  noneOpt.textContent = '(no group)';
+  if (groupBy === null) noneOpt.selected = true;
+  groupSelect.appendChild(noneOpt);
+  for (const col of columns) {
+    const opt = document.createElement('option');
+    opt.value = col.key;
+    opt.textContent = `Group by: ${col.label}`;
+    if (col.key === groupBy) opt.selected = true;
+    groupSelect.appendChild(opt);
+  }
+  toolbar.appendChild(groupSelect);
+
+  const clearBtn = createElement('button', 'pkc-btn-small');
+  clearBtn.setAttribute('data-pkc-action', 'clear-inventory-query');
+  clearBtn.textContent = 'クエリ Clear';
+  toolbar.appendChild(clearBtn);
+
+  wrapper.appendChild(toolbar);
+
+  // Helpers to read column value from entry+meta.
+  const readCol = (row: { entry: Entry; meta: Record<string, unknown> }, key: string): string => {
+    if (key === '__name') return row.entry.title || row.entry.lid;
+    if (key === '__archetype') return row.entry.archetype;
+    if (key === '__tags') return (row.entry.tags ?? []).join(', ');
+    const v = row.meta[key];
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map((x) => String(x)).join(', ');
+    return String(v);
+  };
+
+  // 2. Filter
+  let filtered = childrenWithMeta.filter((row) => {
+    for (const col of columns) {
+      const f = filter[col.key];
+      if (!f) continue;
+      const v = readCol(row, col.key).toLowerCase();
+      if (!v.includes(f.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  // 3. Sort
+  if (sortBy) {
+    filtered = filtered.slice().sort((a, b) => {
+      const va = readCol(a, sortBy);
+      const vb = readCol(b, sortBy);
+      // Try numeric compare when both look numeric.
+      const na = Number(va);
+      const nb = Number(vb);
+      let cmp: number;
+      if (Number.isFinite(na) && Number.isFinite(nb) && va !== '' && vb !== '') cmp = na - nb;
+      else cmp = va.localeCompare(vb);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }
+
+  // 4. Optionally group
+  const renderTable = (rows: typeof filtered): HTMLTableElement => {
+    const table = createElement('table', 'pkc-filer-table pkc-filer-inventory-table') as HTMLTableElement;
+    table.setAttribute('data-pkc-region', 'filer-inventory-table');
+
+    const thead = createElement('thead', 'pkc-filer-thead');
+    const headRow = createElement('tr', 'pkc-filer-head-row');
+    for (const col of columns) {
+      const th = createElement('th', 'pkc-filer-th pkc-filer-inventory-th');
+      th.setAttribute('data-pkc-filer-column', col.key);
+      th.setAttribute('data-pkc-action', 'set-inventory-sort');
+      th.setAttribute('data-pkc-inventory-key', col.key);
+      const arrow = sortBy === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      th.textContent = `${col.label}${arrow}`;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+
+    // Filter row
+    const filterRow = createElement('tr', 'pkc-filer-inventory-filter-row');
+    for (const col of columns) {
+      const cell = createElement('th', 'pkc-filer-inventory-filter-cell');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'pkc-filer-inventory-filter-input';
+      input.setAttribute('data-pkc-action', 'set-inventory-filter');
+      input.setAttribute('data-pkc-inventory-key', col.key);
+      input.placeholder = '…';
+      input.value = filter[col.key] ?? '';
+      cell.appendChild(input);
+      filterRow.appendChild(cell);
+    }
+    thead.appendChild(filterRow);
+    table.appendChild(thead);
+
+    const tbody = createElement('tbody', 'pkc-filer-tbody');
+    for (const row of rows) {
+      const tr = createElement('tr', 'pkc-filer-row pkc-filer-inventory-row');
+      tr.setAttribute('data-pkc-action', 'select-entry');
+      tr.setAttribute('data-pkc-lid', row.entry.lid);
+      tr.setAttribute('data-pkc-archetype', row.entry.archetype);
+      if (row.entry.lid === state.selectedLid) tr.setAttribute('data-pkc-active', 'true');
+      for (const col of columns) {
+        const td = createElement('td', 'pkc-filer-cell');
+        td.setAttribute('data-pkc-inventory-key', col.key);
+        td.textContent = readCol(row, col.key);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+  };
+
+  if (groupBy) {
+    const groups = new Map<string, typeof filtered>();
+    for (const row of filtered) {
+      const v = readCol(row, groupBy) || '(none)';
+      const arr = groups.get(v) ?? [];
+      arr.push(row);
+      groups.set(v, arr);
+    }
+    const sortedGroupKeys = Array.from(groups.keys()).sort();
+    for (const key of sortedGroupKeys) {
+      const detail = document.createElement('details');
+      detail.className = 'pkc-filer-inventory-group';
+      detail.setAttribute('data-pkc-inventory-group', key);
+      detail.open = true;
+      const summary = document.createElement('summary');
+      summary.className = 'pkc-filer-inventory-group-summary';
+      summary.textContent = `${key} (${groups.get(key)!.length})`;
+      detail.appendChild(summary);
+      detail.appendChild(renderTable(groups.get(key)!));
+      wrapper.appendChild(detail);
+    }
+  } else {
+    wrapper.appendChild(renderTable(filtered));
+  }
+
   return wrapper;
 }
 
@@ -5982,6 +6168,7 @@ function renderMetaPaneImpl(
       { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
       { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
       { value: 'graph', label: 'Graph (relations)' },
+      { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
     ];
     const current = entry.display_profile?.kind ?? 'explorer';
     for (const opt of opts) {

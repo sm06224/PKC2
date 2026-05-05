@@ -339,6 +339,16 @@ export interface AppState {
    */
   graphFocusLid?: string | null;
   /**
+   * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
+   * Runtime-only, scoped to the current filer scope folder.
+   */
+  inventoryQuery?: {
+    filter?: Record<string, string>;
+    sortBy?: string | null;
+    sortDir?: 'asc' | 'desc';
+    groupBy?: string | null;
+  };
+  /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
    *   (current folder or the entry's first folder ancestor; null = root).
@@ -2818,6 +2828,38 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         },
       };
       return { state: next, events: [] };
+    }
+    case 'SET_INVENTORY_FILTER': {
+      const cur = state.inventoryQuery ?? {};
+      const filter: Record<string, string> = { ...(cur.filter ?? {}) };
+      if (action.value === '') delete filter[action.key];
+      else filter[action.key] = action.value;
+      const next: AppState = { ...state, inventoryQuery: { ...cur, filter } };
+      return { state: next, events: [] };
+    }
+    case 'SET_INVENTORY_SORT': {
+      const cur = state.inventoryQuery ?? {};
+      const next: AppState = {
+        ...state,
+        inventoryQuery: {
+          ...cur,
+          sortBy: action.sortBy,
+          sortDir: action.sortDir ?? cur.sortDir ?? 'asc',
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_INVENTORY_GROUP_BY': {
+      const cur = state.inventoryQuery ?? {};
+      const next: AppState = {
+        ...state,
+        inventoryQuery: { ...cur, groupBy: action.groupBy },
+      };
+      return { state: next, events: [] };
+    }
+    case 'CLEAR_INVENTORY_QUERY': {
+      const { inventoryQuery: _drop, ...rest } = state;
+      return { state: rest as AppState, events: [] };
     }
     case 'SET_GRAPH_MODE': {
       const next: AppState = { ...state, graphMode: action.mode };

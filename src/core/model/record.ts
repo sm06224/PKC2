@@ -129,6 +129,7 @@ export type FilerProfile =
   | { kind: 'book-base' }
   | { kind: 'video-base' }
   | { kind: 'novel-base' }
-  | { kind: 'graph' };
+  | { kind: 'graph' }
+  | { kind: 'inventory' };
 
 export type FilerColumnId = 'name' | 'archetype' | 'updated_at' | 'tags';

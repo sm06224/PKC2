@@ -5470,6 +5470,67 @@ mark.pkc-search-mark {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* ── Filer Inventory subset (Phase 5 — Bases 風 query view) ── */
+
+.pkc-filer-inventory-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pkc-filer-inventory-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) 0;
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-filer-inventory-group-select {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+.pkc-filer-inventory-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.pkc-filer-inventory-th:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-filer-inventory-filter-row > th {
+  padding: var(--space-1, 0.25rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-filer-inventory-filter-input {
+  width: 100%;
+  font-size: var(--fs-2xs, 0.75rem);
+  padding: 1px var(--space-1, 0.25rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg, transparent);
+}
+
+.pkc-filer-inventory-group-summary {
+  font-weight: 600;
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  cursor: pointer;
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-filer-inventory-table {
+  width: 100%;
+}
+
 /* ── Center Graph view (Phase 4 follow-up 4 — independent view-mode) ── */
 
 .pkc-center-graph-view {
