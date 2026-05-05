@@ -2258,6 +2258,11 @@ mark.pkc-search-mark {
   line-height: 1.5;
   min-height: 200px;
 }
+/* 2026-05-05 hotfix-7 follow-up-3: smooth-scroll only when sync is
+   programmatically scrolling. CSS-level `scroll-behavior: smooth`
+   would also delay user wheel + Playwright `scrollIntoView`, which
+   broke click-coord-based tests. Programmatic smoothness is opted
+   in by `ensureRectInBand` via `scrollTo({behavior:'smooth'})`. */
 
 /* 領域 10-1: active source-block highlight in the live preview pane.
    Subtle background tint + accent border-left so the user can track

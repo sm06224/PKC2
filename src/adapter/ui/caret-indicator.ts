@@ -35,13 +35,20 @@ function ensureIndicator(): HTMLDivElement {
   const el = document.createElement('div');
   el.id = INDICATOR_ID;
   el.setAttribute('aria-hidden', 'true');
+  // 2026-05-05 hotfix-7 follow-up-3: explicit `color: var(--c-fg)`
+  // because `currentColor` resolves to `#000` when the indicator is
+  // a direct child of `<body>` (color isn't inherited from any
+  // theme-aware ancestor). Without this, dark theme rendered the
+  // indicator as black-on-dark = invisible. Tint strength bumped
+  // (12% / 50%) so the marker actually stands out at a glance.
   el.style.cssText = [
     'position:fixed',
     'pointer-events:none',
     'z-index:5',
     'display:none',
-    'background:color-mix(in srgb, currentColor 6%, transparent)',
-    'border-left:2px solid color-mix(in srgb, currentColor 35%, transparent)',
+    'color:var(--c-fg, #000)',
+    'background:color-mix(in srgb, currentColor 12%, transparent)',
+    'border-left:2px solid color-mix(in srgb, currentColor 50%, transparent)',
     'transition:top 80ms linear',
   ].join(';');
   document.body.appendChild(el);

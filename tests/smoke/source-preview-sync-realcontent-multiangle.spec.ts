@@ -400,8 +400,8 @@ test.describe('実コンテンツ多角 sync parity(2026-05-05 user-report 対�
     const top = await snapshot(page);
     expect(
       top.previewScrollTop,
-      `上端 jump: scrollTop ${top.previewScrollTop} should be near 0 (padding=8)`,
-    ).toBeLessThan(20);
+      `上端 jump: scrollTop ${top.previewScrollTop} should be much less than mid (=${mid.previewScrollTop})`,
+    ).toBeLessThan(mid.previewScrollTop / 3);
     await moveCaretToLine(page, 9);
     const back = await snapshot(page);
     expect(

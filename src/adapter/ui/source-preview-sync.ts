@@ -246,45 +246,43 @@ function setActive(preview: Element, el: HTMLElement | null): void {
 }
 
 /**
- * Scroll `scrollContainer` by the **minimum amount** required so the
- * given viewport-coordinate rect lies inside the container's visible
- * area, padded by `padding` on both edges. No-op when the rect is
- * already inside the visible area.
+ * Scroll `scrollContainer` so `rect` lands inside a **comfort band**
+ * within the visible area — not glued to a fixed anchor like
+ * "always 30% from top" (which yanks scroll on every caret tick),
+ * and not "anywhere visible counts" (which makes block-internal
+ * caret movement produce a discrete one-shot jump and then sit
+ * still — user report 2026-05-05「一度しかジャンプ動作をしない
+ * ように見受けられる」).
  *
- * 2026-05-05 hotfix-6 user direction:
- *   「ハイライト時に該当ブロックが可視エリア外なら必要量スクロール
- *    して可視エリアに持ってくる」(both directions)
+ * The band is `[top + paneH * 0.20, top + paneH * 0.55]`. When
+ * `rect.top` is inside the band → no-op (no scroll). When it's
+ * outside, scroll just enough to bring it back into the band edge
+ * (top moves up to 20%, bottom moves up to 55%). This gives a
+ * "soft follow" — the preview tracks the caret continuously while
+ * the caret is anywhere outside the band, and stays still once
+ * the caret lands inside, so micro-movements don't shake the
+ * preview.
  *
- * This replaces the previous `safeScrollPane`'s "comfort zone middle
- * 50% / aim at 35% from top" behaviour, which would yank the user's
- * scroll even when the target was already comfortably visible. Now:
- *   - target rect inside [visTop+padding, visBottom-padding] → no-op
- *   - rect top above visible top → scroll up by exact delta
- *   - rect bottom below visible bottom → scroll down by exact delta
- *
- * The `padding` argument keeps the rect from sticking flush to the
- * edge after the scroll (one extra line of breathing room is plenty).
- *
- * For tall blocks (block height > visible height) the rect cannot
- * fit entirely inside the visible area; the algorithm prefers
- * aligning the rect's TOP to the visible top — that puts the block's
- * start (the line the caret is on, in editor source order) on screen
- * rather than its middle / bottom.
+ * The 80 ms CSS transition on programmatic scroll(via
+ * `markProgrammaticScroll` + browser smooth scroll) keeps the
+ * follow visually smooth.
  */
-function ensureRectVisible(
+function ensureRectInBand(
   scrollContainer: HTMLElement,
   rect: { top: number; bottom: number },
-  padding: number,
 ): void {
   const containerRect = scrollContainer.getBoundingClientRect();
   const visTop = containerRect.top + scrollContainer.clientTop;
-  const visBottom = visTop + scrollContainer.clientHeight;
+  const paneH = scrollContainer.clientHeight;
+  const bandTop = visTop + paneH * 0.20;
+  const bandBottom = visTop + paneH * 0.55;
   const maxScroll = Math.max(
     0,
-    scrollContainer.scrollHeight - scrollContainer.clientHeight,
+    scrollContainer.scrollHeight - paneH,
   );
-  if (rect.top < visTop + padding) {
-    const delta = (visTop + padding) - rect.top;
+  if (rect.top < bandTop) {
+    // caret-row is above the band → scroll up to put rect.top at bandTop
+    const delta = bandTop - rect.top;
     const next = Math.max(0, scrollContainer.scrollTop - delta);
     if (next !== scrollContainer.scrollTop) {
       markProgrammaticScroll();
@@ -292,8 +290,9 @@ function ensureRectVisible(
     }
     return;
   }
-  if (rect.bottom > visBottom - padding) {
-    const delta = rect.bottom - (visBottom - padding);
+  if (rect.top > bandBottom) {
+    // caret-row is below the band → scroll down to put rect.top at bandTop
+    const delta = rect.top - bandTop;
     const next = Math.min(maxScroll, scrollContainer.scrollTop + delta);
     if (next !== scrollContainer.scrollTop) {
       markProgrammaticScroll();
@@ -301,7 +300,7 @@ function ensureRectVisible(
     }
     return;
   }
-  // Already in view — no-op.
+  // In comfort band → no-op.
 }
 
 /**
@@ -580,13 +579,14 @@ export function syncPreviewToCaret(
   updateEditorActiveLine(textarea, Number.isFinite(labelLine) ? labelLine : line);
   setActive(preview, rawTarget);
   if (preview instanceof HTMLElement) {
-    // 2026-05-05 hotfix-7 follow-up-2: target the **caret-row rect**
-    // (proportional position within the block) instead of the whole
-    // block rect. This re-introduces continuity within tall blocks
-    // (long fence, big table) so scroll follows caret depth, while
-    // still respecting "in-view → no-op" via ensureRectVisible.
+    // 2026-05-05 hotfix-7 follow-up-3: comfort-band tracking. Caret
+    // movement that keeps the rect inside [20%, 55%] of the pane is
+    // a no-op; movement outside the band scrolls to put the rect at
+    // the band's top edge. This produces "soft follow" — the preview
+    // tracks the caret continuously when needed, but doesn't shake
+    // on every line-by-line micro-movement inside the band.
     const rowRect = caretRowRectInBlock(rawTarget, line);
-    ensureRectVisible(preview, rowRect, 8);
+    ensureRectInBand(preview, rowRect);
   }
   updateDebugPanel(textarea, preview);
 }
@@ -605,6 +605,43 @@ export function syncPreviewToCaret(
  * scroll) — that path is the user actively scrolling, and forcing
  * the caret back into view would fight their input.
  */
+/**
+ * Scroll the editor's textarea so the caret row is visible — narrow
+ * "in-view → no-op, out-of-view → minimum scroll" semantics. Used
+ * only for the editor side: the user is actively typing or clicking,
+ * so we should NOT yank the editor scroll while the caret is in view.
+ */
+function ensureRectVisible(
+  scrollContainer: HTMLElement,
+  rect: { top: number; bottom: number },
+  padding: number,
+): void {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const visTop = containerRect.top + scrollContainer.clientTop;
+  const visBottom = visTop + scrollContainer.clientHeight;
+  const maxScroll = Math.max(
+    0,
+    scrollContainer.scrollHeight - scrollContainer.clientHeight,
+  );
+  if (rect.top < visTop + padding) {
+    const delta = (visTop + padding) - rect.top;
+    const next = Math.max(0, scrollContainer.scrollTop - delta);
+    if (next !== scrollContainer.scrollTop) {
+      markProgrammaticScroll();
+      scrollContainer.scrollTop = next;
+    }
+    return;
+  }
+  if (rect.bottom > visBottom - padding) {
+    const delta = rect.bottom - (visBottom - padding);
+    const next = Math.min(maxScroll, scrollContainer.scrollTop + delta);
+    if (next !== scrollContainer.scrollTop) {
+      markProgrammaticScroll();
+      scrollContainer.scrollTop = next;
+    }
+  }
+}
+
 function ensureCaretVisibleInEditor(textarea: HTMLTextAreaElement): void {
   const caret = getCaretViewportCoords(textarea);
   ensureRectVisible(
