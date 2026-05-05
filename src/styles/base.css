@@ -2212,11 +2212,40 @@ mark.pkc-search-mark {
   background: var(--c-border);
   border-radius: var(--radius-md);
   transition: background var(--transition-fast);
+  position: relative;
 }
 .pkc-text-split-resize-handle:hover,
 .pkc-text-split-resize-handle[data-pkc-resizing="true"] {
   background: var(--c-accent);
 }
+
+/* 領域 10-1: ⇄ source/preview-sync toggle anchored on the resize handle.
+   Absolute-positioned so it overlays without affecting the 6px handle
+   column width. data-pkc-sync-state reflects the persisted flag. */
+.pkc-btn-toggle-sync {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-circle);
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+.pkc-btn-toggle-sync:hover,
+.pkc-btn-toggle-sync[data-pkc-sync-state="on"] {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #fff;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="off"] { opacity: 0.6; }
 
 .pkc-text-edit-preview {
   border: 1px solid var(--c-border);
@@ -2228,6 +2257,15 @@ mark.pkc-search-mark {
   font-size: var(--fs-lg);
   line-height: 1.5;
   min-height: 200px;
+}
+
+/* 領域 10-1: active source-block highlight in the live preview pane.
+   Subtle background tint + accent border-left — visible enough for
+   the user to track the caret without fighting with code / table
+   chrome. Applied via [data-pkc-active-source] by source-preview-sync. */
+.pkc-text-edit-preview [data-pkc-active-source] {
+  background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+  border-left: 3px solid var(--c-accent);
 }
 
 /* ── Buttons ──

@@ -3,6 +3,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+import { isSyncEnabled } from './source-preview-sync';
 
 /**
  * DetailPresenter: archetype-specific rendering for the detail view.
@@ -129,20 +130,38 @@ const textPresenter: DetailPresenter = {
     bodyArea.rows = Math.max(15, lineCount + 3);
     wrapper.appendChild(bodyArea);
 
-    // Resize handle between editor and preview
+    // Resize handle between editor and preview, with the source/preview
+    // sync toggle (⇄) anchored on it. The toggle's data-pkc-action is
+    // intercepted before the split-resize mousedown so clicking it
+    // never starts a drag.
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'pkc-text-split-resize-handle';
     resizeHandle.setAttribute('data-pkc-split-resize', 'true');
+    const syncToggle = document.createElement('button');
+    syncToggle.type = 'button';
+    syncToggle.className = 'pkc-btn-toggle-sync';
+    syncToggle.textContent = '⇄';
+    syncToggle.setAttribute('data-pkc-action', 'toggle-source-preview-sync');
+    const initiallyOn = isSyncEnabled();
+    syncToggle.setAttribute('data-pkc-sync-state', initiallyOn ? 'on' : 'off');
+    syncToggle.setAttribute('aria-pressed', initiallyOn ? 'true' : 'false');
+    syncToggle.setAttribute(
+      'title',
+      initiallyOn ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+    );
+    resizeHandle.appendChild(syncToggle);
     wrapper.appendChild(resizeHandle);
 
     // Right: live preview pane
     const preview = document.createElement('div');
     preview.className = 'pkc-text-edit-preview pkc-md-rendered';
     preview.setAttribute('data-pkc-region', 'text-edit-preview');
-    // Initial preview
+    // Initial preview. 領域 10-1: opt-in source-line anchors so the
+    // caret-sync layer (action-binder + source-preview-sync.ts) can
+    // match preview blocks to editor source lines (and vice versa).
     const initialSource = entry.body;
     if (initialSource && hasMarkdownSyntax(initialSource)) {
-      preview.innerHTML = renderMarkdown(initialSource);
+      preview.innerHTML = renderMarkdown(initialSource, { sourceLineAnchors: true });
     } else if (initialSource) {
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';

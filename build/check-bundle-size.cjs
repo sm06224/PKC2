@@ -157,7 +157,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 120 * 1024 },  // 120 KB (Flags Inspector overlay PR-β-2, 2026-05-03; previous 112 KB)
+  { file: 'dist/bundle.css', maxBytes: 122 * 1024 },  // 122 KB (領域 10-1 PR 2 split-sync chrome: ⇄ toggle button + active-source highlight, 2026-05-05; previous 120 KB / Flags Inspector overlay PR-β-2 2026-05-03 / 112 KB pre-2026-05)
 ];
 
 function formatKB(bytes) {

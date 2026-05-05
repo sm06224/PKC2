@@ -520,11 +520,13 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 > 以前に実装を保留した Split View の同期スクロール、マークダウン方言拡張、今後を見据えた内部中間表現の導入による word, ppt 向け組版と HTML レンダリングの同一内部表現からのサポート前段作業と実装、スプレッドシートエントリ、PKC-message の拡張と内部中間表現を実際の word, ppt レンダリングを担当する PKC-extension に渡す仕組みと実装、特殊なフォルダであるアルバムエントリとその表示表現としてのコンタクトシート、アプリランチャー、sandbox iframe 用ワークスペースコントローラまたはマルチウィンドウコントローラの実装
 
-### 10-1: Split View の同期スクロール(再開、保留解除)
+### 10-1: Split View の同期スクロール(再開、保留解除)— **着地**
 
 過去の Split View 機能で同期スクロールが保留されていたものを再開。Editor / Preview pane の caret 位置 vs scroll 位置の対応取りが論点。`docs/development/pr-206-paused.md` で paused 状態の caret↔preview sync 議論と関係する可能性あり。
 
 サイズ: 中(~3 PR 想定)。前提: 同期 scroll 設計レビュー → 実装 → parity test。
+
+**Status(2026-05-05)**: PR 1(foundation:source-line anchor renderer + sync helpers)+ PR 2(orchestration + Playwright parity test 10 件)で center pane split editor は着地。`data-pkc-source-line` / `data-pkc-source-end` 属性で markdown block と source line を対応付け、`page.mouse.click(x, y)` real OS event + `elementFromPoint` + scrollTop 観測で PR #206 の illusory pass 罠を回避。残:entry-window split editor は別 document context のため follow-up に分離。
 
 ### 10-2: マークダウン方言拡張(領域 6 と統合)
 

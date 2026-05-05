@@ -55,6 +55,277 @@
  * すべて DOM / string 純関数。dispatcher / state / 副作用なし。
  */
 
+// ─────────────────────────────────────────────────────────────────
+// PR 2 — Sync orchestration layer (2026-05-05).
+//
+// Beyond the pure helpers above, the integration layer needs:
+//   - syncEnabled state (toggle ON/OFF, persisted to localStorage)
+//   - feedback-loop suppression flags (programmatic scroll / caret
+//     events shouldn't re-trigger the opposite-direction sync)
+//   - active-block highlight via [data-pkc-active-source] attr
+//   - safe-scroll comfort zone (don't yank the user's scroll if
+//     target is already in the viewport's middle)
+//   - block-internal progress (long fence: caret depth maps to
+//     proportional offset within the rendered block)
+//   - debug overlay opt-in via `?pkc-debug=split-sync` URL flag
+//     OR `localStorage.pkc2.split-sync-debug=true`
+//
+// Public surface (used by action-binder + detail-presenter):
+//   - isSyncEnabled() / setSyncEnabled(flag)
+//   - syncPreviewToCaret(textarea, preview)
+//   - syncCaretToPreview(textarea, preview, viewportY)
+//   - markProgrammaticScroll() / consumeScrollSuppression()
+//   - markProgrammaticCaretMove() / consumeSelectionSuppression()
+//   - isSplitSyncDebugMode()
+// ─────────────────────────────────────────────────────────────────
+
+const ACTIVE_ATTR = 'data-pkc-active-source';
+const SYNC_ENABLED_KEY = 'pkc2.split-sync-enabled';
+const SYNC_DEBUG_KEY = 'pkc2.split-sync-debug';
+
+/**
+ * Default-on for desktop / wide tablets, default-off for portrait
+ * mobile (the small viewport doesn't have room for both panes
+ * comfortably + iPhone keyboard pushes the editor out of view).
+ */
+function defaultSyncEnabled(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true;
+  }
+  if (window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches) {
+    return false;
+  }
+  return true;
+}
+
+let syncEnabled: boolean = (() => {
+  try {
+    const raw = window.localStorage?.getItem(SYNC_ENABLED_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return defaultSyncEnabled();
+})();
+
+export function isSyncEnabled(): boolean {
+  return syncEnabled;
+}
+
+export function setSyncEnabled(enabled: boolean): void {
+  syncEnabled = enabled;
+  try {
+    window.localStorage?.setItem(SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
+  } catch {
+    /* localStorage unavailable */
+  }
+  if (!enabled) {
+    // Tear down all visual indicators when sync is turned off so the
+    // disabled state looks fully clean.
+    if (typeof document !== 'undefined') {
+      for (const el of document.querySelectorAll('[' + ACTIVE_ATTR + ']')) {
+        el.removeAttribute(ACTIVE_ATTR);
+      }
+    }
+  }
+  // Reflect on every toggle button.
+  if (typeof document !== 'undefined') {
+    for (const btn of document.querySelectorAll<HTMLElement>(
+      '[data-pkc-action="toggle-source-preview-sync"]',
+    )) {
+      btn.setAttribute('data-pkc-sync-state', enabled ? 'on' : 'off');
+      btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      btn.setAttribute(
+        'title',
+        enabled ? '同期 ON(クリックで OFF)' : '同期 OFF(クリックで ON)',
+      );
+    }
+  }
+}
+
+/**
+ * Single-shot suppression flags. When the sync layer scrolls the
+ * preview programmatically or moves the caret, the resulting event
+ * would otherwise feed back into the reverse-sync handler and form
+ * a loop. Each flag is set just before the programmatic action and
+ * consumed by the next matching event handler.
+ */
+let suppressNextScrollEvent = false;
+let suppressNextSelectionChange = false;
+
+export function markProgrammaticScroll(): void {
+  suppressNextScrollEvent = true;
+  setTimeout(() => {
+    suppressNextScrollEvent = false;
+  }, 80);
+}
+export function consumeScrollSuppression(): boolean {
+  if (suppressNextScrollEvent) {
+    suppressNextScrollEvent = false;
+    return true;
+  }
+  return false;
+}
+export function markProgrammaticCaretMove(): void {
+  suppressNextSelectionChange = true;
+  setTimeout(() => {
+    suppressNextSelectionChange = false;
+  }, 80);
+}
+export function consumeSelectionSuppression(): boolean {
+  if (suppressNextSelectionChange) {
+    suppressNextSelectionChange = false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Mark `el` as the active source anchor and clear the previous
+ * active marker (if any) within `preview`. CSS uses
+ * `[data-pkc-active-source]` to apply a subtle border / background
+ * tint.
+ */
+function setActive(preview: Element, el: HTMLElement | null): void {
+  for (const p of preview.querySelectorAll<HTMLElement>('[' + ACTIVE_ATTR + ']')) {
+    p.removeAttribute(ACTIVE_ATTR);
+  }
+  if (el) el.setAttribute(ACTIVE_ATTR, '');
+}
+
+/**
+ * Safe-scroll: only scroll when target is outside the comfort zone
+ * (middle 50% of the pane). Lands target at ~35% from the top —
+ * high enough to read context, not glued to the edge.
+ */
+function safeScrollPane(scrollContainer: HTMLElement, targetY: number): void {
+  const paneH = scrollContainer.clientHeight;
+  const safeTop = scrollContainer.scrollTop + paneH * 0.25;
+  const safeBottom = scrollContainer.scrollTop + paneH * 0.75;
+  if (targetY >= safeTop && targetY <= safeBottom) return;
+  const max = scrollContainer.scrollHeight - paneH;
+  const desired = Math.max(0, Math.min(max, targetY - paneH * 0.35));
+  markProgrammaticScroll();
+  scrollContainer.scrollTop = desired;
+}
+
+/**
+ * Compute target Y (in pane scroll-space) for a caret line within
+ * an anchored block whose source range is [start, end]. The caret's
+ * relative depth in the source range maps to the same relative
+ * offset within the rendered block's height — so a long fence
+ * tracks the caret as the user types deeper, instead of glueing
+ * to the block's top edge.
+ *
+ * For `.pkc-md-block` wrappers (fence / table chrome with copy /
+ * expand buttons + padding), the inner `<pre>` / `<table>` rect is
+ * used so caret alignment lands on user-visible content, not the
+ * wrapper's padded outer edge.
+ */
+function blockTargetY(
+  scrollContainer: HTMLElement,
+  block: HTMLElement,
+  caretLine: number,
+): number {
+  const startStr = block.getAttribute('data-pkc-source-line');
+  const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
+  const start = startStr !== null ? parseInt(startStr, 10) : 0;
+  const end = endStr !== null ? parseInt(endStr, 10) : start;
+  const range = Math.max(1, end - start);
+  const progress = Math.max(0, Math.min(1, (caretLine - start) / range));
+  const containerRect = scrollContainer.getBoundingClientRect();
+  let measureRect = block.getBoundingClientRect();
+  if (block.classList.contains('pkc-md-block')) {
+    const inner = block.querySelector<HTMLElement>('pre, table');
+    if (inner) measureRect = inner.getBoundingClientRect();
+  }
+  const blockTopInScroll =
+    scrollContainer.scrollTop + (measureRect.top - containerRect.top);
+  return blockTopInScroll + measureRect.height * progress;
+}
+
+/**
+ * Editor → Preview sync. Find the preview element matching the
+ * caret's source line, mark it active, and scroll if needed.
+ * No-op when sync is disabled or the preview has no anchors.
+ */
+export function syncPreviewToCaret(
+  textarea: HTMLTextAreaElement,
+  preview: Element,
+): void {
+  if (!syncEnabled) return;
+  const line = caretSourceLine(textarea);
+  const target = findPreviewElementForLine(preview, line);
+  if (!target) {
+    setActive(preview, null);
+    return;
+  }
+  setActive(preview, target);
+  if (preview instanceof HTMLElement) {
+    const targetY = blockTargetY(preview, target, line);
+    safeScrollPane(preview, targetY);
+  }
+}
+
+/**
+ * Preview → Editor sync. Take a click coordinate inside the
+ * preview, find the source line of the clicked block (or fallback
+ * via point lookup), and place the textarea caret at the start of
+ * that line. The textarea is scrolled so the caret is visible.
+ */
+export function syncCaretToPreview(
+  textarea: HTMLTextAreaElement,
+  preview: Element,
+  clickedEl: Element,
+  viewportY: number,
+): boolean {
+  if (!syncEnabled) return false;
+  let line = findSourceLineForElement(clickedEl);
+  if (line === null) {
+    line = findSourceLineByPoint(preview, viewportY);
+  }
+  if (line === null) return false;
+  const offset = caretOffsetForSourceLine(textarea.value, line);
+  markProgrammaticCaretMove();
+  textarea.focus({ preventScroll: true });
+  textarea.selectionStart = offset;
+  textarea.selectionEnd = offset;
+  // Scroll textarea so caret is visible (browser handles via blur+focus).
+  // Best-effort: set scrollTop based on line index × line height.
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
+  const desiredScrollTop = Math.max(
+    0,
+    line * lineHeight - textarea.clientHeight * 0.35,
+  );
+  if (Math.abs(textarea.scrollTop - desiredScrollTop) > lineHeight) {
+    textarea.scrollTop = desiredScrollTop;
+  }
+  setActive(preview, clickedEl.closest<HTMLElement>('[data-pkc-source-line]'));
+  return true;
+}
+
+/**
+ * Debug overlay opt-in. URL flag `?pkc-debug=split-sync` (canonical,
+ * per debug-via-url-flag-protocol.md) or legacy localStorage key
+ * `pkc2.split-sync-debug=true`. When ON, the sync layer attaches
+ * extra DOM markers + a small floating panel showing the computed
+ * caret line / target block / progress.
+ */
+export function isSplitSyncDebugMode(): boolean {
+  try {
+    if (window.localStorage?.getItem(SYNC_DEBUG_KEY) === 'true') return true;
+  } catch {
+    /* localStorage unavailable */
+  }
+  if (typeof window !== 'undefined' && window.location?.search) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pkc-debug') === 'split-sync') return true;
+    if (params.get('pkc-split-sync-debug') === '1') return true;
+  }
+  return false;
+}
+
 /**
  * Returns the 0-indexed source line of the textarea caret. Counts
  * newlines (`\n`) from offset 0 to the current `selectionStart`.
