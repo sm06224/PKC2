@@ -1,14 +1,14 @@
-# Archived — PR-specific findings (perf wave PR #176-198)
+# Archived — PR-specific findings (perf wave PR #176-198 + 領域 10-1 PR #206/#256)
 
 **Status**: archive(参照のみ)
-**Audit date**: 2026-05-02、reform-2026-05 で確定した 5-gate verification を全件適用済み
+**Audit date**: 2026-05-02 (Phase 3) / 2026-05-05 (領域 10-1 着地分追加)、reform-2026-05 で確定した 5-gate verification を全件適用済み
 **Source**: 旧 `docs/development/<name>-pr<N>-findings.md`(旧位置から移動)
 
-PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198 で実施)で個別 PR 単位に書かれた retrospective record。各 doc は対応 PR が main に merge 済 + 実装 anchor が現 src/ に存在 + 該当 test が `tests/` に存在することを 5-gate verification(`../SUMMARY.md` §「移動条件」)で確認済み。
+PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198)+ **領域 10-1 split-view sync wave**(PR #206 paused → #256 着地)で個別 PR / wave 単位に書かれた retrospective record。各 doc は対応 PR が main に merge 済 + 実装 anchor が現 src/ に存在 + 該当 test が `tests/` に存在することを 5-gate verification(`../SUMMARY.md` §「移動条件」)で確認済み。
 
 「実装が完了し、参照のみが目的」(`../../completed/SUMMARY.md` 同方針)。新規設計時に「これは既に実装済みかどうか」の一次窓口の一つとして使用する。
 
-## 一覧(PR # 順、計 21 件)
+## 一覧(PR # 順、計 23 件)
 
 | PR # | File | 概要 |
 |---|---|---|
@@ -35,6 +35,8 @@ PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198 で実施)で個別 PR
 | #196 | [`copy-buttons-pr196-findings.md`](./copy-buttons-pr196-findings.md) | code block / table の copy button、smoke 11/11 で button 可視性確認 |
 | #197 | [`nav-history-pr197-findings.md`](./nav-history-pr197-findings.md) | browser back/forward を internal navigation に wire |
 | #198 | [`editor-key-helpers-pr198-findings.md`](./editor-key-helpers-pr198-findings.md) | textarea key helpers(Enter list / bracket pairs / skip-out / Tab indent)— Phase 1B PR #1 で `tests/smoke/editor-key-helpers.spec.ts`(8 件、`page.keyboard.type` real keystroke)を追加し gate 5 を満たしてから archive |
+| #206 | [`pr-206-paused.md`](./pr-206-paused.md) | caret↔preview sync **paused 当時の retrospective**(2026-05-01)。reform-2026-05 doctrine の起点(描画 vs 生成 / debug 導線 / OS event 経由 click の 3 paused 理由が後続 reform を駆動)。**SUPERSEDED by #256**(2026-05-05 archive 移動) |
+| #256 | [`split-view-sync-pr256-findings.md`](./split-view-sync-pr256-findings.md) | 領域 10-1 Split View block 対応ハイライト + caret 位置 indicator wave。PR #255 (foundation, PR 1) + PR #256 (orchestration PR 2 + hotfix-1〜7 + follow-up x4) を集約。block-level anchor + comfort-band scroll + caret indicator + ⇄ opt-in toggle + chrome leak gate + Flags 4 個 + IR audit doc(NEW)起こし + visual-state-parity 52 件全 green。`pr-206-paused.md` の 3 paused 理由を逐一 counter |
 
 ## 残置 0 件(deficit register クリア)
 

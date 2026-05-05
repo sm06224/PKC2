@@ -1,6 +1,17 @@
-# PR #206 — Caret ↔ Preview Sync(保留)
+# PR #206 — Caret ↔ Preview Sync(SUPERSEDED — 2026-05-05 PR #256 で再開 + 着地)
 
-**Status**: ⛔ **PAUSED / RELEASE BLOCKED**(2026-05-01 ユーザー判断)
+**Status**: 🔚 **SUPERSEDED**(2026-05-05、`split-view-sync-pr256-findings.md` 参照)
+**Original status**: ⛔ PAUSED / RELEASE BLOCKED(2026-05-01 ユーザー判断)
+**Successor**: [`split-view-sync-pr256-findings.md`](./split-view-sync-pr256-findings.md)
+**Branch (legacy)**: `claude/pkc2-caret-preview-sync-pr206`(commit: `dcfc9df`、v17 まで)
+**PR (legacy)**: <https://github.com/sm06224/PKC2/pull/206>(closed)
+
+本 doc は paused 当時の retrospective として歴史保存。実装は PR #256 で再開され、reform-2026-05 doctrine(`visual-state-parity-testing.md` §6 / `debug-via-url-flag-protocol.md` / Phase 8 順序性)の下で着地している。本 doc が指摘する 3 つの paused 理由(描画 vs 生成 / debug 導線 / OS event 経由 click)はすべて PR #256 で counter 済。
+
+下記、当時の retrospective を保存。
+
+---
+
 **Branch**: `claude/pkc2-caret-preview-sync-pr206`(commit: `dcfc9df`、v17 まで)
 **PR**: <https://github.com/sm06224/PKC2/pull/206>(draft 化済み)
 
