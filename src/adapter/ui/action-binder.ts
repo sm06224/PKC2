@@ -69,6 +69,15 @@ import { exportContainerAsHtml } from '../platform/exporter';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import {
+  syncPreviewToCaret,
+  syncCaretToPreview,
+  isSyncEnabled,
+  setSyncEnabled,
+  consumeScrollSuppression,
+  consumeSelectionSuppression,
+  refreshEditorActiveLine,
+} from './source-preview-sync';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
@@ -2885,6 +2894,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_SHOW_ARCHIVED' });
         break;
       }
+      case 'toggle-source-preview-sync': {
+        // 領域 10-1: ⇄ button next to the split-resize handle. Toggles
+        // the shared syncEnabled flag (persisted to localStorage).
+        // When newly enabled, immediately push the active block to
+        // the preview so the user sees it engage; when disabled, the
+        // helper clears all `[data-pkc-active-source]` markers.
+        e.preventDefault();
+        e.stopPropagation();
+        const next = !isSyncEnabled();
+        setSyncEnabled(next);
+        if (next) {
+          const wrapper = target.closest<HTMLElement>('.pkc-text-split-editor');
+          const ta = wrapper?.querySelector<HTMLTextAreaElement>(
+            'textarea[data-pkc-field="body"]',
+          );
+          const preview = wrapper?.querySelector<HTMLElement>(
+            '[data-pkc-region="text-edit-preview"]',
+          );
+          if (ta && preview) syncPreviewToCaret(ta, preview);
+        }
+        break;
+      }
       case 'toggle-search-hide-buckets': {
         dispatcher.dispatch({ type: 'TOGGLE_SEARCH_HIDE_BUCKETS' });
         break;
@@ -5105,6 +5136,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = e.target as Element | null;
     if (!target) return;
 
+    // 2026-05-05 hotfix-6: edit-mode preview suppresses chrome
+    // interactions. The user is editing — clicking a table or fence
+    // here should jump the caret to the corresponding source line
+    // (handled by source-preview-sync), not pop a media-viewer modal.
+    if (target.closest('.pkc-text-edit-preview')) return;
+
     // Don't hijack clicks the user wanted on something else inside.
     if (
       target.closest('a')
@@ -5194,6 +5231,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleTableSortClick(e: MouseEvent): void {
     const target = e.target as Element | null;
     if (!target) return;
+    // 2026-05-05 hotfix-6: skip in edit-mode preview (sort UI is for
+    // view-mode only — editing the underlying source is the right
+    // affordance during edit).
+    if (target.closest('.pkc-text-edit-preview')) return;
     const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-sort"]');
     if (!btn) return;
     const table = btn.closest<HTMLTableElement>('table');
@@ -5212,6 +5253,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function handleTableFilterToggle(e: MouseEvent): void {
     const target = e.target as Element | null;
     if (!target) return;
+    if (target.closest('.pkc-text-edit-preview')) return;
     const btn = target.closest<HTMLElement>('[data-pkc-action="md-table-filter-toggle"]');
     if (!btn) return;
     const table = btn.closest<HTMLTableElement>('table');
@@ -5225,6 +5267,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const target = e.target as Element | null;
     if (!target) return;
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.closest('.pkc-text-edit-preview')) return;
     if (!target.classList.contains('pkc-md-table-filter-input')) return;
     const table = target.closest<HTMLTableElement>('table');
     if (!table) return;
@@ -6119,6 +6162,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let splitResizeStartFr: [number, number] = [1, 1];
 
   function handleSplitResizeMouseDown(e: MouseEvent): void {
+    // Don't start a resize when the user clicked an action button
+    // anchored on the handle (e.g. the ⇄ source/preview-sync toggle).
+    const actionEl = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action]');
+    if (actionEl) return;
     const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-split-resize]');
     if (!handle) return;
     const wrapper = handle.closest<HTMLElement>('.pkc-text-split-editor');
@@ -6199,13 +6246,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
 
     if (hasMarkdownSyntax(resolved)) {
-      preview.innerHTML = renderMarkdown(resolved);
+      // 領域 10-1: opt-in source-line anchors so the caret-sync
+      // layer (source-preview-sync.ts) can match preview blocks to
+      // editor source lines (and vice versa).
+      preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';
       pre.textContent = src;
       preview.appendChild(pre);
+    }
+    // After re-render, refresh the sync layer so the active marker
+    // tracks the new DOM. No-op when sync is disabled.
+    if (document.activeElement === textarea) {
+      syncPreviewToCaret(textarea, preview);
     }
   }
 
@@ -6233,6 +6288,137 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
   root.addEventListener('input', handleTextEditPreviewInput);
+
+  // ── 領域 10-1: Source ↔ Preview sync wiring ──
+  // Caret-tracking handlers (selectionchange / keyup / focus) keep the
+  // preview's active block + scroll in sync with the editor caret.
+  // Preview-click handler does the reverse: clicking a rendered block
+  // jumps the editor caret to the corresponding source line.
+  //
+  // Suppression flags in source-preview-sync.ts break the feedback
+  // loop between the two directions (programmatic scroll / caret move
+  // doesn't re-trigger the opposite handler).
+  function findActiveSplitEditor(): {
+    textarea: HTMLTextAreaElement;
+    preview: HTMLElement;
+  } | null {
+    // Source of truth = the focused textarea inside a split editor.
+    // Falls back to the first split editor with a textarea on the page
+    // when nothing is focused (e.g. selectionchange after blur).
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLTextAreaElement &&
+      active.getAttribute('data-pkc-field') === 'body'
+    ) {
+      const wrapper = active.closest<HTMLElement>('.pkc-text-split-editor');
+      if (wrapper) {
+        const preview = wrapper.querySelector<HTMLElement>(
+          '[data-pkc-region="text-edit-preview"]',
+        );
+        if (preview) return { textarea: active, preview };
+      }
+    }
+    return null;
+  }
+
+  function handleSourceSyncSelectionChange(): void {
+    if (consumeSelectionSuppression()) return;
+    if (!isSyncEnabled()) return;
+    const pair = findActiveSplitEditor();
+    if (!pair) return;
+    syncPreviewToCaret(pair.textarea, pair.preview);
+  }
+
+  function handleSourceSyncFocus(e: FocusEvent): void {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    if (!target.closest('.pkc-text-split-editor')) return;
+    if (!isSyncEnabled()) return;
+    const wrapper = target.closest<HTMLElement>('.pkc-text-split-editor');
+    const preview = wrapper?.querySelector<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (!preview) return;
+    syncPreviewToCaret(target, preview);
+  }
+
+  // Preview → Editor: click on a rendered block jumps the caret.
+  // Bound at capture phase so we can pre-empt the action-binder click
+  // path for non-action targets while still letting links / asset
+  // chips handle their own clicks. We DO let the click propagate so
+  // the caret-position helpers (snippet sheet etc.) still see it.
+  function handleSourceSyncPreviewClick(e: MouseEvent): void {
+    if (!isSyncEnabled()) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const preview = target.closest<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (!preview) return;
+    // Skip clicks on interactive children — links, buttons, inputs,
+    // task-list checkboxes, asset chips. Their own handlers manage
+    // the click; jumping the caret on top of that surprises the user.
+    if (
+      target.closest(
+        'a, button, input, textarea, select, [data-pkc-action], .pkc-md-block-toolbar, .pkc-task-checkbox',
+      )
+    ) {
+      return;
+    }
+    const wrapper = preview.closest<HTMLElement>('.pkc-text-split-editor');
+    const textarea = wrapper?.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    syncCaretToPreview(textarea, preview, target, e.clientY);
+  }
+
+  // Suppress the preview-pane scroll → editor follow loop. Currently
+  // the preview is the receiver only (editor → preview drives it),
+  // so we just consume any flagged programmatic scroll.
+  //
+  // 2026-05-05 hotfix: filter MUST come BEFORE consumeScrollSuppression.
+  // Capture-phase root listener fires for editor textarea scroll AND
+  // preview pane scroll; if we consume the flag eagerly we steal it
+  // from the preview's actual programmatic scroll event, breaking the
+  // feedback-loop guard. Worse, on touchpad reverse-direction scrolls
+  // user reported "first reverse swipe is swallowed" — that's the
+  // editor scroll event eating the flag set by a recent
+  // syncPreviewToCaret-driven preview scroll, then leaking into
+  // unintended dispatcher logic on the *next* scroll tick.
+  function handlePreviewScroll(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.getAttribute('data-pkc-region') !== 'text-edit-preview') return;
+    if (consumeScrollSuppression()) return;
+    // No-op: future enhancement could sync editor scroll to preview
+    // scroll when the user manually scrolls the preview pane.
+  }
+
+  // 2026-05-05 hotfix-3: textarea natural scroll only repositions
+  // the editor active-line overlay. It does NOT call
+  // syncPreviewToCaret because that would re-scroll the preview
+  // pane programmatically during the user's continued wheel gesture
+  // (Mac touchpad inertia fires many wheel events in succession;
+  // calling safeScrollPane in the middle of that loop has been
+  // observed to interact badly with reverse-direction scrolling on
+  // some platforms — the conservative fix is to leave the preview
+  // alone unless the caret actually moved).
+  function handleEditorScroll(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof HTMLTextAreaElement)) return;
+    if (t.getAttribute('data-pkc-field') !== 'body') return;
+    if (!t.closest('.pkc-text-split-editor')) return;
+    if (!isSyncEnabled()) return;
+    refreshEditorActiveLine(t);
+  }
+
+  document.addEventListener('selectionchange', handleSourceSyncSelectionChange);
+  root.addEventListener('focusin', handleSourceSyncFocus);
+  root.addEventListener('click', handleSourceSyncPreviewClick, true);
+  root.addEventListener('scroll', handlePreviewScroll, true);
+  root.addEventListener('scroll', handleEditorScroll, true);
 
   root.addEventListener('click', handleClick);
   // Press-drag-release UX for the color picker palette (2026-04-26
@@ -6393,6 +6579,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
     root.removeEventListener('input', handleTextEditPreviewInput);
     if (previewDebounceTimer) { clearTimeout(previewDebounceTimer); previewDebounceTimer = null; }
+    document.removeEventListener('selectionchange', handleSourceSyncSelectionChange);
+    root.removeEventListener('focusin', handleSourceSyncFocus);
+    root.removeEventListener('click', handleSourceSyncPreviewClick, true);
+    root.removeEventListener('scroll', handlePreviewScroll, true);
+    root.removeEventListener('scroll', handleEditorScroll, true);
     document.removeEventListener('mousedown', handleShellMenuOverlayMouseDown, true);
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);

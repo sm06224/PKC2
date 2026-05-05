@@ -2212,11 +2212,40 @@ mark.pkc-search-mark {
   background: var(--c-border);
   border-radius: var(--radius-md);
   transition: background var(--transition-fast);
+  position: relative;
 }
 .pkc-text-split-resize-handle:hover,
 .pkc-text-split-resize-handle[data-pkc-resizing="true"] {
   background: var(--c-accent);
 }
+
+/* 領域 10-1: ⇄ source/preview-sync toggle anchored on the resize handle.
+   Absolute-positioned so it overlays without affecting the 6px handle
+   column width. data-pkc-sync-state reflects the persisted flag. */
+.pkc-btn-toggle-sync {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-circle);
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+.pkc-btn-toggle-sync:hover,
+.pkc-btn-toggle-sync[data-pkc-sync-state="on"] {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #fff;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="off"] { opacity: 0.6; }
 
 .pkc-text-edit-preview {
   border: 1px solid var(--c-border);
@@ -2228,6 +2257,130 @@ mark.pkc-search-mark {
   font-size: var(--fs-lg);
   line-height: 1.5;
   min-height: 200px;
+}
+/* 2026-05-05 hotfix-7 follow-up-3: smooth-scroll only when sync is
+   programmatically scrolling. CSS-level `scroll-behavior: smooth`
+   would also delay user wheel + Playwright `scrollIntoView`, which
+   broke click-coord-based tests. Programmatic smoothness is opted
+   in by `ensureRectInBand` via `scrollTo({behavior:'smooth'})`. */
+
+/* 領域 10-1: active source-block highlight in the live preview pane.
+   Subtle background tint + accent border-left so the user can track
+   which block their caret is in.
+
+   2026-05-05 hotfix-5: scoped to NON-table elements (`<table>` /
+   `<tr>` would break their layout under `position: relative`).
+
+   2026-05-05 hotfix-7 + follow-up: badge sits in the LEFT outer
+   margin (left: -28px) so it never overlaps content text — the
+   badge area lives outside the block's content rect. The block
+   itself gets `margin-left: 28px` only when active so the rest of
+   the layout stays unchanged in non-active state. Width of the
+   badge column = 24px + 4px gap. */
+.pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr) {
+  background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+  border-left: 3px solid var(--c-accent);
+  position: relative;
+}
+.pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr)::before {
+  /* Badge in the RIGHT outer margin so it cannot overlap any
+     content (text wraps before reaching the right edge of the
+     block, then the badge sits in the preview pane's right
+     padding gutter). 2026-05-05 hotfix-7 follow-up:
+     `left: -32px` would clip outside the preview's left border;
+     right side has free padding gutter from `.pkc-text-edit-preview`
+     so the badge stays visible. */
+  content: "L" attr(data-pkc-source-line);
+  position: absolute;
+  right: -32px;
+  top: 0;
+  background: var(--c-accent);
+  color: var(--c-surface);
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono, monospace);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 1;
+  line-height: 1.4;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* 2026-05-05 hotfix: editing-mode preview suppresses interactive
+   overlays(copy / sort / filter / media-viewer hover etc.). The
+   user has the source on the left; clicking those chrome elements
+   during active editing was unwanted noise. View-mode preview keeps
+   the chrome — the rule is scoped to `.pkc-text-edit-preview`.
+
+   2026-05-05 hotfix-6: extended to table sort / filter chrome. The
+   sort buttons are added by `enhanceMdTable` via MutationObserver
+   and would otherwise appear inside the live preview the moment a
+   table renders. */
+.pkc-text-edit-preview .pkc-md-copy-btn { display: none !important; }
+.pkc-text-edit-preview .pkc-md-block:hover > .pkc-md-copy-btn,
+.pkc-text-edit-preview .pkc-md-block:focus-within > .pkc-md-copy-btn { display: none !important; }
+.pkc-text-edit-preview [data-pkc-action="md-table-sort"],
+.pkc-text-edit-preview [data-pkc-action="md-table-filter-toggle"],
+.pkc-text-edit-preview .pkc-md-table-filter-row,
+.pkc-text-edit-preview .pkc-md-table-filter-input { display: none !important; }
+/* Hover-tint on .pkc-md-block (block hover halo from view mode) is
+   noise during editing — neutralize. */
+.pkc-text-edit-preview .pkc-md-block:hover { background: inherit; }
+
+/* 2026-05-05 hotfix-7 follow-up: edit-mode preview cursor unification.
+   View-mode `.pkc-md-block` has `cursor: zoom-in` (for media-viewer
+   modal). In edit mode the modal is suppressed (handler-level gate),
+   so the cursor change has no functional meaning and only confuses
+   the user. Force `cursor: text` everywhere inside the edit-mode
+   preview so the experience matches a normal text region. */
+.pkc-text-edit-preview,
+.pkc-text-edit-preview * { cursor: text !important; }
+.pkc-text-edit-preview a { cursor: pointer !important; }
+
+/* 2026-05-05 hotfix: editor-side current-line overlay (PKC-symmetric
+   to the preview's [data-pkc-active-source] highlight). Positioned
+   absolutely inside `.pkc-text-split-editor` (the wrapper grid) by
+   source-preview-sync.ts. pointer-events: none — never blocks the
+   textarea's caret / selection. Visual: faint accent stripe matching
+   the preview side so the user can compare both ends at a glance. */
+.pkc-text-split-editor { position: relative; }
+.pkc-editor-active-line {
+  position: absolute;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--c-accent) 10%, transparent);
+  border-left: 3px solid var(--c-accent);
+  z-index: 0;
+  transition: top 80ms linear;
+}
+
+/* 2026-05-05 hotfix-7 follow-up-2: caret-row indicator went
+   GLOBAL — see `src/adapter/ui/caret-indicator.ts`. The element is
+   created at boot as a `position: fixed` overlay parented to
+   <body>, so it works on every textarea in PKC2 (title, body,
+   search, log rows, …) without per-component wiring. Visual
+   styling lives inline in that module. */
+.pkc-editor-active-line::after {
+  /* 2026-05-05 hotfix-7 follow-up: badge stays inside the overlay
+     at top-right. The overlay's width = textarea.clientWidth so the
+     badge sits just inside the textarea right border. textarea text
+     wraps before the right border, so the badge does not overlap.
+     pointer-events: none on the parent already prevents interaction
+     interference. */
+  content: "L" attr(data-pkc-active-line);
+  position: absolute;
+  right: 4px;
+  top: 0;
+  background: var(--c-accent);
+  color: var(--c-surface);
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono, monospace);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  min-width: 24px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* ── Buttons ──

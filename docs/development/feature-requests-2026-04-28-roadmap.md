@@ -520,11 +520,21 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 > 以前に実装を保留した Split View の同期スクロール、マークダウン方言拡張、今後を見据えた内部中間表現の導入による word, ppt 向け組版と HTML レンダリングの同一内部表現からのサポート前段作業と実装、スプレッドシートエントリ、PKC-message の拡張と内部中間表現を実際の word, ppt レンダリングを担当する PKC-extension に渡す仕組みと実装、特殊なフォルダであるアルバムエントリとその表示表現としてのコンタクトシート、アプリランチャー、sandbox iframe 用ワークスペースコントローラまたはマルチウィンドウコントローラの実装
 
-### 10-1: Split View の同期スクロール(再開、保留解除)
+### 10-1: Split View の **block 対応ハイライト**(再開、「同期スクロール」呼称は撤回)— **着地**
 
-過去の Split View 機能で同期スクロールが保留されていたものを再開。Editor / Preview pane の caret 位置 vs scroll 位置の対応取りが論点。`docs/development/pr-206-paused.md` で paused 状態の caret↔preview sync 議論と関係する可能性あり。
+過去の Split View 機能で同期スクロールが保留されていたもの(`pr-206-paused.md`)を再開、ただし **行レベル一致は markdown 仕様上 N:M 関係で原理的に不能** であることを認め、「block 対応ハイライト + caret auto-scroll」にスコープを再定義(2026-05-05、hotfix-5)。業界事例調査(VS Code 内蔵 / Joplin / Codebraid / iA Writer / Markdown-Edit 等、出典 30+ 1 次資料)で **PKC2 の方針が業界 de facto standard と一致** することを確認。詳細は `intermediate-representation-audit.md` §5。
 
-サイズ: 中(~3 PR 想定)。前提: 同期 scroll 設計レビュー → 実装 → parity test。
+サイズ: 中(PR 1 + PR 2 + hotfix 1〜5、計 7 commit、着地済)。
+
+**Status(2026-05-05)**: 着地。
+- **PR 1**(foundation):markdown-render に `sourceLineAnchors` opt-in、source-preview-sync helpers、unit 18 件
+- **PR 2**(orchestration):⇄ toggle button、selectionchange/click/scroll listener、Playwright parity 10 件
+- **hotfix-1**(real content):CSV fence anchor 消失修正、tr_open 単位 anchor、make/collectSourceLineAttrs export
+- **hotfix-2〜3**:editor active-line overlay、scroll suppression、real wheel diagnostic、IR-friendly helper
+- **hotfix-4**:overlay clamp→hide、line-number badge(L<n>)、on-screen debug overlay (`?pkc-debug=split-sync`)
+- **hotfix-5**(現在):「同期スクロール」呼称撤回、block-center scroll 化、table layout 崩壊修正、ensureCaretVisibleInEditor、IR audit doc 起こし
+
+**残(deferred)**: 行レベル一致は 領域 10-3 IR 導入後に Phase 4 として再評価。entry-window split editor は別 document context のため別 follow-up。
 
 ### 10-2: マークダウン方言拡張(領域 6 と統合)
 
@@ -536,11 +546,14 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 **戦略的な前段作業**。HTML / word / ppt 三系統のレンダリングが現在は経路バラバラ(html は markdown-it 経由、export 系は別 path)。AST レベルの「PKC document IR」を定義して、HTML レンダラ / word renderer / ppt renderer / strip-dialect が同じ IR を入力にするよう統合。
 
+**Status(2026-05-05)**: audit draft 起こし済み(`docs/development/intermediate-representation-audit.md`)。領域 10-1 hotfix-5 を契機に、行レベル sync 不能の根本理由整理 + IR 経由でしか解けない問題の明文化が完了。Q1〜Q7 オープンクエスチョン待ち、user 方針合意後 Phase 1 spec へ。業界事例調査(audit §5)で「IR 真面目運用は Codebraid Preview のみ、ROI は限定的」「markdown-it token 直接利用 vs IR 専用層」の設計判断が必要、と判明。
+
 サイズ: 大(独立 wave、~3 ヶ月)。前提:
 - (a) 領域 6 markdown 方言の正規化(IR の input 形式が安定してから着手)
-- (b) IR spec 起こし(audit doc + draft schema)
+- (b) IR spec 起こし(audit doc 完了、spec doc 起こし待ち)
 - (c) HTML renderer を IR 経由に切替(現状の markdown-it path は維持しつつ adapter 層を挟む)
 - (d) word / ppt renderer を IR から起こす(extension 経由、後述 10-5)
+- (e) 領域 10-1 を IR 上で再構築(Phase 4)— 行レベル sync を諦めずに済むかの再評価
 
 ### 10-4: スプレッドシートエントリ(新 archetype)
 

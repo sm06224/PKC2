@@ -17,6 +17,7 @@ import {
   captureRenderContinuity,
   restoreRenderContinuity,
 } from './adapter/ui/render-continuity';
+import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import {
   bindActions,
   populateAttachmentPreviews,
@@ -333,6 +334,13 @@ async function boot(): Promise<void> {
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
+
+  // 3a. Global caret-row indicator (always on, sync-independent).
+  // Paints a subtle marker at the focused textarea's caret row
+  // anywhere in PKC2 (split editor body, title input, search,
+  // log row inputs, …). 2026-05-05 user direction:「caret 位置の
+  // 視覚効果は PKC 全体で入力中部分で適用してください」.
+  installCaretIndicator();
 
   // 3b. Debug-via-URL-flag report button has moved into the renderer
   // header (next to the ⚙ shell menu) as of stage β follow-up

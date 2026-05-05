@@ -36,7 +36,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   const panel = overlay.locator('[data-pkc-region="flags-inspector-panel"]');
   await expect(panel).toBeVisible();
 
-  // 21 Tier 0 defineFlag entries:
+  // 25 Tier 0 defineFlag entries (after caret_indicator 4 flags added in hotfix-7 follow-up-4):
   //   wave 1 (7): recent.default_limit / textlog.staged_render.{initial_count,lookahead}
   //               / persistence.debounce_ms / image.{max_long_edge,optimize_threshold_bytes}
   //               / search.max_results_per_entry
@@ -45,8 +45,10 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //               / touch.tap_threshold_px / textlog.placeholder.min_height_px
   //               / attachment.{warn_soft_bytes,warn_heavy_bytes,reject_hard_bytes}
   //   Phase 3a (1): theme.scale (runtime UI multiplier)
+  //   hotfix-7 follow-up-4 (4): caret_indicator.{enabled, tint_pct,
+  //                              border_alpha_pct, border_width_px}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(21, { timeout: 5_000 });
+  await expect(rows).toHaveCount(25, { timeout: 5_000 });
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -284,7 +286,7 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  expect(snap.rowCount).toBe(21);
+  expect(snap.rowCount).toBe(25);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);
