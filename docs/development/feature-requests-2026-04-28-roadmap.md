@@ -514,6 +514,88 @@ B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**�
 
 ---
 
+## 領域 10: 機能改修フェーズの新規要件(2026-05-04 user 追加、CSS wave 完了 → ドキュメンテーション後に着手)
+
+CSS architecture redesign wave(領域 9)着地後にドキュメンテーションを行い、その後 main の機能改修フェーズに復帰する際に着手する 8 件。user direction(2026-05-04 chat):
+
+> 以前に実装を保留した Split View の同期スクロール、マークダウン方言拡張、今後を見据えた内部中間表現の導入による word, ppt 向け組版と HTML レンダリングの同一内部表現からのサポート前段作業と実装、スプレッドシートエントリ、PKC-message の拡張と内部中間表現を実際の word, ppt レンダリングを担当する PKC-extension に渡す仕組みと実装、特殊なフォルダであるアルバムエントリとその表示表現としてのコンタクトシート、アプリランチャー、sandbox iframe 用ワークスペースコントローラまたはマルチウィンドウコントローラの実装
+
+### 10-1: Split View の同期スクロール(再開、保留解除)
+
+過去の Split View 機能で同期スクロールが保留されていたものを再開。Editor / Preview pane の caret 位置 vs scroll 位置の対応取りが論点。`docs/development/pr-206-paused.md` で paused 状態の caret↔preview sync 議論と関係する可能性あり。
+
+サイズ: 中(~3 PR 想定)。前提: 同期 scroll 設計レビュー → 実装 → parity test。
+
+### 10-2: マークダウン方言拡張(領域 6 と統合)
+
+§領域 6 で計画していた markdown 方言拡張を機能改修フェーズで継続。clickable image / table-of-numbers / etc. の拡張仕様を順次着地。
+
+サイズ: 大(wave、6-10 PR)。
+
+### 10-3: 内部中間表現(IR)導入 — word / ppt 組版と HTML レンダリングを同一 IR から派生
+
+**戦略的な前段作業**。HTML / word / ppt 三系統のレンダリングが現在は経路バラバラ(html は markdown-it 経由、export 系は別 path)。AST レベルの「PKC document IR」を定義して、HTML レンダラ / word renderer / ppt renderer / strip-dialect が同じ IR を入力にするよう統合。
+
+サイズ: 大(独立 wave、~3 ヶ月)。前提:
+- (a) 領域 6 markdown 方言の正規化(IR の input 形式が安定してから着手)
+- (b) IR spec 起こし(audit doc + draft schema)
+- (c) HTML renderer を IR 経由に切替(現状の markdown-it path は維持しつつ adapter 層を挟む)
+- (d) word / ppt renderer を IR から起こす(extension 経由、後述 10-5)
+
+### 10-4: スプレッドシートエントリ(新 archetype)
+
+新 archetype `spreadsheet`(または類似名)。Container schema に追加、body は表形式 JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
+
+サイズ: 大(spec → reducer → renderer → editor → import/export、~5+ PR)。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)。
+
+### 10-5: PKC-Message 拡張 + IR を PKC-extension に渡す機構
+
+PKC-Message v2(`docs/development/pkc-message-v2-open-questions-decisions-2026-05.md`)を拡張し、内部中間表現(10-3 IR)を **PKC-extension**(word / ppt renderer 担当の外部ワーカー / iframe / WASM)に dispatch する経路を実装。`record.offer.ir` 等の新 method を仕様化。
+
+サイズ: 大(PKC-Message v2.1 / v2.2 で段階的、~4 PR)。前提: 10-3 IR が安定してから。
+
+### 10-6: アルバムエントリ + コンタクトシート表示
+
+特殊な folder = album。中身が画像 attachment 主体の folder であることを archetype として認識し、表示表現として **コンタクトシート**(grid サムネイル + キャプション)を提供。folder archetype の subtype として実装するか、別 archetype として定義するかは spec audit で決定。
+
+サイズ: 中(spec → reducer subtype → presenter、~3 PR)。前提: image 系 attachment 機能(既存)+ folder navigation(既存)。
+
+### 10-7: アプリランチャー
+
+PKC2 単一 HTML 内に複数の「アプリ」(別目的の view / mode)を切替できる launcher UI。具体例:Editor / Calendar / Kanban / 新規 Spreadsheet (10-4) / Album (10-6) を入口で選択する dashboard 的位置付け。Shell menu の上位概念。
+
+サイズ: 中(spec → state slice → presenter + parity test、~3 PR)。前提: 既存 view-mode (`detail` / `calendar` / `kanban`)の概念整理 + 新 archetype 着地状況。
+
+### 10-8: Sandbox iframe ワークスペースコントローラ / マルチウィンドウコントローラ
+
+attachment sandbox(既存)の延長で、複数 iframe を「workspace」として束ねる controller。または OS native のマルチウィンドウを管理する controller。詳細仕様は user 議論待ち。
+
+サイズ: 大(spec audit が必要)。前提: 既存 sandbox / detached window / postMessage transport の整理。
+
+### 着手順序の所感(2026-05-04 時点、user 議論前の draft)
+
+| 段階 | wave | 理由 |
+|---|---|---|
+| 0 | 領域 9 残 phase(Phase 1b / 1c / 3 / 4) | 現 wave 完了 |
+| 1 | **ドキュメンテーション pass** | user direction 通り、機能改修前に CHANGELOG / spec 更新 |
+| 2 | 10-1 Split View 同期スクロール | 保留解除、影響範囲狭い |
+| 3 | 10-2 markdown 方言拡張 wave | 10-3 IR の input 形式安定化が前提 |
+| 4 | 10-3 内部 IR audit + 段階導入 | 戦略的前段、3 ヶ月 wave |
+| 5 | 10-4 スプレッドシート archetype | 独立性高い、IR とは別軸で進められる |
+| 6 | 10-5 PKC-Message + extension 連携 | 10-3 IR の安定後 |
+| 7 | 10-6 アルバム / コンタクトシート | 独立、image 既存資産で着手可 |
+| 8 | 10-7 アプリランチャー | 10-4 / 10-6 が揃うと意味が増す |
+| 9 | 10-8 sandbox / multi-window controller | 仕様議論先行が必要 |
+
+実際の順序は user 判断 + 着手前の grep discipline(本書 + INDEX + ledger)で再確定する。
+
+### サイズ集計(粗い目算)
+
+- 中 サイズ × 4 件(10-1 / 10-6 / 10-7 / 10-8 の小規模解釈)≈ 12 PR
+- 大 サイズ × 4 件(10-2 / 10-3 / 10-4 / 10-5)≈ 18-22 PR、計 ~6-9 ヶ月
+
+---
+
 ## 参照
 
 - 直近の perf wave 振り返り: `docs/development/archived/singletons/perf-wave-pr176-pr193-retrospective.md`
