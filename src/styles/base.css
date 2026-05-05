@@ -1,22 +1,54 @@
 /* PKC2 base styles — Fallout/PIP-Boy inspired dark theme with punk warmth */
 
-/* ── Phase 3a (CSS architecture redesign wave, 2026-05-04):
- *    Runtime UI scale multiplier ──
+/* ── Phase 3a / 3b (CSS architecture redesign wave, 2026-05-04):
+ *    Runtime UI scale multiplier + device-class adaptive ──
  *
- * Couples `theme.scale` Tier 0 defineFlag (default 1.0, range 0.5-2.0)
- * to the root font-size, so every rem-based design token (`--space-*`,
- * `--fs-*`) scales automatically when the user / device-class probe
- * adjusts the multiplier. The `var(--theme-scale, 1)` fallback keeps
- * the resting state correct even before JS init runs (one-frame
- * window between paint and `applyThemeScale()`).
+ * Two-layer cascade:
  *
- * `applyThemeScale()` in src/adapter/ui/theme-scale.ts pushes the
- * resolved flag value into `--theme-scale` on every render. Phase 3b
- * will add device-class media-query overrides (e.g. mobile defaults
- * to ~0.9). Spec: docs/development/css-architecture-audit-2026-05.md
- * §5.2 / §6 Phase 3a. */
+ *   1. `--theme-scale-default` is the *device-class* default (1.0
+ *      desktop, 0.9 phone, 0.95 tablet/coarse-pointer-narrow). Set
+ *      via the media-query block below.
+ *
+ *   2. `--theme-scale` is the *user / explicit* override pushed by
+ *      `applyThemeScale()` only when the `theme.scale` Tier 0 flag's
+ *      source is non-default (URL or Container). When the flag is at
+ *      its default 1.0, `applyThemeScale` removes the property so
+ *      the CSS fallback chain falls through to the device default.
+ *
+ * The calc() chain reads:
+ *
+ *   font-size: calc(16px * var(--theme-scale, var(--theme-scale-default, 1)))
+ *
+ * which expands to:
+ *   - explicit user override → use --theme-scale
+ *   - else → use --theme-scale-default
+ *   - else → use 1
+ *
+ * `applyThemeScale()` lives in src/adapter/ui/theme-scale.ts; it is
+ * idempotent and called from renderer + main.ts FLAGS_CHANGED + boot.
+ *
+ * Spec: docs/development/css-architecture-audit-2026-05.md §5.2 / §6
+ * Phase 3a (single-axis scale) + 3b (device-class default). */
 :root {
-  font-size: calc(16px * var(--theme-scale, 1));
+  --theme-scale-default: 1;
+  font-size: calc(16px * var(--theme-scale, var(--theme-scale-default, 1)));
+}
+
+/* Phase 3b — device-class adaptive defaults.
+ *
+ * Mobile (touch + narrow viewport): UI rendered at 90% so action
+ * targets keep their physical size while more content fits per
+ * paint. Coarse-pointer + medium width (tablet) gets a softer 95%.
+ * Desktop (the implicit default block above) stays at 1.0.
+ *
+ * These defaults can still be overridden by explicit `theme.scale`
+ * inspector edits or URL flag — the fallback chain only consults
+ * --theme-scale-default when --theme-scale is absent. */
+@media (pointer: coarse) and (max-width: 640px) {
+  :root { --theme-scale-default: 0.9; }
+}
+@media (pointer: coarse) and (min-width: 641px) and (max-width: 1024px) {
+  :root { --theme-scale-default: 0.95; }
 }
 
 /* ── Dark theme (default): Fallout terminal / PIP-Boy ──
