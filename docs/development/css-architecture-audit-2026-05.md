@@ -458,6 +458,60 @@ function applyArchetypePalette(palette: Record<ArchetypeId, string>): void {
 
 ---
 
+## 9.5 Lessons learned(2026-05-05 wave 完了後追記)
+
+CSS wave 9 で 2 件の hotfix(PR #245 / #252)を要した。今後の CSS migration / dedup 作業で同じ落とし穴を避けるため、教訓を本 doc に固定する。
+
+### 9.5.1 CSS migration regex は **value boundary** を厳密に anchor する
+
+**事象**(PR #245):Phase 1a の Python migration script が `\b1rem\b` regex を使い、`0.1rem` 中の `1rem` 部分にもマッチして `0.var(--space-5)` という invalid CSS を 28 sites 生成。Browser は invalid declaration を silent ignore するため、smoke / unit が click landing しか見ていなかった結果、padding が消失した button が live で 24 時間以上残存。
+
+**root cause**:`\b` は word/non-word boundary に基づく。CSS value `0.1rem` は `0`(word)→ `.`(non-word)→ `1`(word)で `.` の前後に `\b` が立つため、`\b1rem\b` が `1rem` 部分にヒット。
+
+**教訓** — CSS value migration の regex は以下を **構造的に** 担保する:
+
+```python
+# 不可:word boundary だけでは partial substring が match
+re.compile(r'\b1rem\b')
+
+# 可:declaration LHS を anchor + value を RHS 全体として要求
+re.compile(
+  r'(font-size:\s*)(VALUE_ALT)(\s*(?:;|!important|\}|$))',
+  re.MULTILINE,
+)
+```
+
+key は:
+1. **start anchor**:property name(`font-size:`、`border-radius:`、`padding:` 等)を必須前置
+2. **value alternation**:置換対象 value を完全列挙(部分マッチ阻止)
+3. **end anchor**:`;` / `!important` / `}` / 行末を後続 lookbehind / 隣接マッチで強制 → value が「declaration の RHS 全体」であることを保証
+
+Phase 1b(font-size)/ Phase 1c(radius)はこの pattern を踏襲して 0 incident。Phase 1a(spacing)は本 pattern 確立前で被害発生 → 本書の固定教訓化。
+
+### 9.5.2 variant rule を「diff-only」に縮小する時は **JS 側 standalone usage を全件 audit** する
+
+**事象**(PR #252):Phase 2b で `.pkc-btn-danger` を「diff のみ」(border-color + color)に縮小 → `class="pkc-btn pkc-btn-danger"` 形式の併用前提化したが、`renderer.ts` の **2 sites**(delete-entry button / import confirm button)が **standalone** で `class="pkc-btn-danger"` だけを emit していたため、padding / font-size declaration を失って UA default まで collapse(user 報告:「Delete だけ小さくなる」)。
+
+**root cause**:CSS dedup は variant rule から「base に既にある property」を削るが、JS 側の class 生成 site が base class を併用しているとは限らない。`.pkc-btn-primary` は完全に `'pkc-btn pkc-btn-primary'` の形で使われていたため問題なかったが、`.pkc-btn-danger` は混在していた。
+
+**教訓** — variant rule を縮小する PR では:
+
+1. **`grep -rEh "createElement\('button',\s*'pkc-btn-(VARIANT)" src/`** を全 variant に対し実行
+2. standalone(`pkc-btn-VARIANT` 単独)usage を全件列挙
+3. いずれかが standalone なら以下のいずれかで対応:
+   - (a) JS 側を `'pkc-btn pkc-btn-VARIANT'` に統一(canonical utility-first pattern)
+   - (b) variant rule に必要な base property を残置(dedup を諦める)
+   - (c) variant を selector list `.pkc-btn, .pkc-btn-VARIANT` に追加して base 側で chrome を share
+4. PR description に「standalone usage audit 結果」を必ず記載
+
+smoke が click landing しか見ない構造のため、こうした visual collapse は automated test で検知されにくい。**Phase 8 順序性 doctrine の拡張案**:variant 縮小 PR では「button size の computed pixel が UA default を超えて feature-aware の値を持つ」を Playwright で assert する parity test を追加する余地あり(future enhancement)。
+
+### 9.5.3 単一 PR で「token 導入 + dedup」を混ぜない
+
+Phase 1(token introduction)は **bundle 増**、Phase 2(dedup)は **bundle 減**。両者を同 PR でやると net delta が混乱して headroom 議論が困難になる(実際 Phase 1a-tail で headroom が 1 KB 切る寸前まで肥大化した経験あり)。**1 PR = 単一の delta 方向** を原則とするのが今後の wave 設計の指針。
+
+---
+
 ## 10. 関連 doc
 
 - 起点 user direction: `feature-requests-2026-04-28-roadmap.md` §領域 9

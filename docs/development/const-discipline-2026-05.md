@@ -53,7 +53,9 @@ User direction(2026-05-03):
 
 `grep -rn "MAX_\|MIN_\|_LIMIT\|_THRESHOLD\|_BUDGET\|_DEFAULT\|_INTERVAL\|_TTL\|_COUNT\|maxBytes" src/` 結果を 3 tier に分類。
 
-### Tier 0(default、runtime flag 化候補) — 17 件
+### Tier 0(default、runtime flag 化候補) — 21 件着地(初期 20 + theme.scale、2026-05-05 status)
+
+> **着地状況サマリ**: 当初の **20 件 Tier 0 候補は全件 defineFlag 化完了**(PR-γ wave 1 = 7 件 / wave 2 = 13 件)。**領域 9 CSS architecture redesign wave** で `theme.scale`(Tier 0、range 0.5〜2.0、default 1.0)を 21 番目の flag として追加(PR #250)。下表は v1 audit 時の初期 17 件の inventory を保持(後続 attachment 3 件 + theme.scale 計 4 件は表外で別 sub-section に列挙)。
 
 | # | const | 値 | 場所 | 提案 flag key |
 |---|---|---|---|---|
@@ -84,6 +86,8 @@ User direction(2026-05-03):
 | 20 | `SIZE_REJECT_HARD` | 250 MB | 同上 | `attachment.reject_hard_bytes` |
 
 **計 20 件の Tier 0**(当初 17 → attachment 3 件追加で 20)。
+
+> **2026-05-05 update**: + `theme.scale`(領域 9 CSS wave、Tier 0、`src/adapter/ui/theme-scale.ts` で declare、range 0.5〜2.0、default 1.0、`document.documentElement.style --theme-scale` への push 経由で root font-size の calc multiplier として動作)= **計 21 件 Tier 0 着地**。20 件は PR-γ wave 1 + 2 で `defineFlag` 化、21 番目は CSS wave で defineFlag → CSS variable pipeline の最初の application として実装。
 
 ### Tier 1(build option / wire spec) — 7 件
 

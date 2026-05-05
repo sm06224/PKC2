@@ -137,6 +137,21 @@ PR 着地時には `docs/development/doc-archival-discipline.md` §6.1 に従い
 
 **順序性テストも必須**(2026-05-04 reform-2026-05 Phase 8、user 実機テスト省略前提):動的機構(flag / setting / event 連携 / dispatch + 副作用)を含む PR では、**state mutation → consumer behavior change** の end-to-end parity test を必須。DOM attribute 遷移までで止めず、consumer の挙動が user-visible 観測点(DOM 数値 / 表示要素数 / 副作用)で変化することを assert する。reform-2026-05 §6 visual-state-parity-testing(描画と状態の一致)と AND 条件で適用。詳細は `pr-review-checklist.md` §2.11。Claude 側で **boot → action → consumer 観測の鎖を全件 covered** であることを保証する責務を負う。
 
+**CSS migration / dedup の落とし穴 2 件**(2026-05-05 reform-2026-05 Phase 9、領域 9 CSS wave 2 hotfix の教訓):
+
+1. **value boundary を厳密に anchor**(PR #245 教訓):CSS value migration の regex は `\b1rem\b` のような word boundary だけでは不可。`0.1rem` 中の `1rem` 部分にもマッチして invalid CSS 28 site を生成した実例あり。必須 pattern:
+   ```python
+   re.compile(
+     r'(font-size:\s*)(VALUE_ALT)(\s*(?:;|!important|\}|$))',
+     re.MULTILINE,
+   )
+   ```
+   property name(LHS)と terminating context(`;` / `}` / `!important` / 行末)で value 全体を anchor し、partial substring match を構造的に阻止する。
+
+2. **variant rule 縮小時の standalone audit**(PR #252 教訓):CSS dedup で variant rule(`.pkc-btn-danger` 等)を「diff のみ」に縮小する PR では、必ず JS 側の class 生成 site を全件 grep して standalone usage(`pkc-btn-VARIANT` 単独)が無いか確認する。`grep -rEh "createElement\('button',\s*'pkc-btn-(VARIANT)" src/` を全 variant に対し実行、standalone があれば (a) `'pkc-btn pkc-btn-VARIANT'` への JS 修正、(b) 必要 base property の variant 残置、(c) selector list での chrome share、のいずれかで対応。Phase 8 順序性 doctrine の延長で、variant 縮小 PR には computed pixel parity test を追加する余地あり(future enhancement)。
+
+詳細は `docs/development/css-architecture-audit-2026-05.md` §9.5 lessons-learned。
+
 ## PR Workflow / Review Checklist
 
 PKC2 は 2026-04-25 以降 **User + Claude の 2 名体制**(ChatGPT 統括役は外れ、Gemini 等が将来加わる可能性あり)で運用されている。Claude が implementer + auditor を兼任するため、**PR 作成時に必ず 8 項目の自己監査を行う**。
