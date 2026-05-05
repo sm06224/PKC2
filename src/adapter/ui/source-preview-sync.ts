@@ -485,14 +485,28 @@ function updateDebugPanel(textarea: HTMLTextAreaElement, preview?: Element): voi
  * reproduce it, so this is a conservative defensive fix).
  */
 export function refreshEditorActiveLine(textarea: HTMLTextAreaElement): void {
-  updateEditorActiveLine(textarea);
-  // Debug panel mirrors the same state — refresh on every textarea
-  // scroll so the diagnostic flag captures even non-caret-moving
-  // events.
+  // 2026-05-05 hotfix-7 follow-up: lookup the current active preview
+  // block and pass its start line so the editor overlay's L<n> badge
+  // stays in sync with the preview's L<n> across textarea natural
+  // scroll. Without this, wheel-scrolling the editor reset the badge
+  // to caret-line-number and re-broke the L number unification.
   const wrapper = textarea.closest<HTMLElement>('.pkc-text-split-editor');
   const preview = wrapper?.querySelector<HTMLElement>(
     '[data-pkc-region="text-edit-preview"]',
   );
+  let activeStart: number | undefined;
+  if (preview) {
+    const active = preview.querySelector<HTMLElement>('[data-pkc-active-source]');
+    const startStr = active?.getAttribute('data-pkc-source-line');
+    if (startStr !== null && startStr !== undefined) {
+      const parsed = parseInt(startStr, 10);
+      if (Number.isFinite(parsed)) activeStart = parsed;
+    }
+  }
+  updateEditorActiveLine(textarea, activeStart);
+  // Debug panel mirrors the same state — refresh on every textarea
+  // scroll so the diagnostic flag captures even non-caret-moving
+  // events.
   updateDebugPanel(textarea, preview ?? undefined);
 }
 

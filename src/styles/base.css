@@ -2263,36 +2263,32 @@ mark.pkc-search-mark {
    Subtle background tint + accent border-left so the user can track
    which block their caret is in.
 
-   2026-05-05 hotfix-5: scoped to NON-table elements only.
-   `<table>` and `<tr>` have their own layout engine; forcing them
-   into `position: relative` + `border-left` + `::before` content
-   injection corrupted column widths and cell borders (user report:
-   「オーバーレイが描画されるとプレビューの方が崩れる(特にテーブル)」).
+   2026-05-05 hotfix-5: scoped to NON-table elements (`<table>` /
+   `<tr>` would break their layout under `position: relative`).
 
-   For table-bearing blocks the highlight rides on the
-   `pkc-md-block` wrapper (a normal `<div>`) which the table_open
-   custom renderer wraps around the `<table>` — same source-line
-   anchor, no layout interference.
-
-   The `:not()` selector excludes `<table>` and `<tr>` so even when
-   `tr_open` carries an anchor (added in PR 2 hotfix for per-row
-   click), the visual highlight is delegated to the surrounding
-   wrapper instead.
-
-   2026-05-05 hotfix-7: badge position moved INSIDE the block at
-   top-right (`right: 4px; top: 4px`) so it never covers the first
-   character of the paragraph / heading / fence content (visual
-   regression spotted in L3/L4/L6/L7 long-md screenshots). */
+   2026-05-05 hotfix-7 + follow-up: badge sits in the LEFT outer
+   margin (left: -28px) so it never overlaps content text — the
+   badge area lives outside the block's content rect. The block
+   itself gets `margin-left: 28px` only when active so the rest of
+   the layout stays unchanged in non-active state. Width of the
+   badge column = 24px + 4px gap. */
 .pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr) {
   background: color-mix(in srgb, var(--c-accent) 8%, transparent);
   border-left: 3px solid var(--c-accent);
   position: relative;
 }
 .pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr)::before {
+  /* Badge in the RIGHT outer margin so it cannot overlap any
+     content (text wraps before reaching the right edge of the
+     block, then the badge sits in the preview pane's right
+     padding gutter). 2026-05-05 hotfix-7 follow-up:
+     `left: -32px` would clip outside the preview's left border;
+     right side has free padding gutter from `.pkc-text-edit-preview`
+     so the badge stays visible. */
   content: "L" attr(data-pkc-source-line);
   position: absolute;
-  right: 4px;
-  top: 4px;
+  right: -32px;
+  top: 0;
   background: var(--c-accent);
   color: var(--c-surface);
   font-size: var(--fs-2xs);
@@ -2302,6 +2298,8 @@ mark.pkc-search-mark {
   pointer-events: none;
   z-index: 1;
   line-height: 1.4;
+  min-width: 24px;
+  text-align: center;
 }
 
 /* 2026-05-05 hotfix: editing-mode preview suppresses interactive
@@ -2325,6 +2323,16 @@ mark.pkc-search-mark {
    noise during editing — neutralize. */
 .pkc-text-edit-preview .pkc-md-block:hover { background: inherit; }
 
+/* 2026-05-05 hotfix-7 follow-up: edit-mode preview cursor unification.
+   View-mode `.pkc-md-block` has `cursor: zoom-in` (for media-viewer
+   modal). In edit mode the modal is suppressed (handler-level gate),
+   so the cursor change has no functional meaning and only confuses
+   the user. Force `cursor: text` everywhere inside the edit-mode
+   preview so the experience matches a normal text region. */
+.pkc-text-edit-preview,
+.pkc-text-edit-preview * { cursor: text !important; }
+.pkc-text-edit-preview a { cursor: pointer !important; }
+
 /* 2026-05-05 hotfix: editor-side current-line overlay (PKC-symmetric
    to the preview's [data-pkc-active-source] highlight). Positioned
    absolutely inside `.pkc-text-split-editor` (the wrapper grid) by
@@ -2341,6 +2349,12 @@ mark.pkc-search-mark {
   transition: top 80ms linear;
 }
 .pkc-editor-active-line::after {
+  /* 2026-05-05 hotfix-7 follow-up: badge stays inside the overlay
+     at top-right. The overlay's width = textarea.clientWidth so the
+     badge sits just inside the textarea right border. textarea text
+     wraps before the right border, so the badge does not overlap.
+     pointer-events: none on the parent already prevents interaction
+     interference. */
   content: "L" attr(data-pkc-active-line);
   position: absolute;
   right: 4px;
@@ -2352,6 +2366,9 @@ mark.pkc-search-mark {
   padding: 1px 4px;
   border-radius: var(--radius-sm);
   line-height: 1.4;
+  min-width: 24px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* ── Buttons ──
