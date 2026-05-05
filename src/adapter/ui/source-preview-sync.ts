@@ -314,21 +314,91 @@ function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
   // `clientTop` is the border width, `clientHeight` is padding + content.
   const visibleTop = taRect.top + textarea.clientTop;
   const visibleBottom = visibleTop + textarea.clientHeight;
-  // Caret top in viewport coords from getCaretViewportCoords.
-  let caretTop = caret.top;
-  // If the caret is scrolled out of the visible area, clamp the
-  // overlay to the closest edge so it doesn't bleed outside.
-  if (caretTop < visibleTop) caretTop = visibleTop;
-  if (caretTop + caret.height > visibleBottom) {
-    caretTop = visibleBottom - caret.height;
+  const caretTop = caret.top;
+  const caretBottom = caretTop + caret.height;
+  // 2026-05-05 hotfix-4: previous logic clamped the overlay to the
+  // textarea's edge when the caret was scrolled out of view. The
+  // result was an overlay glued to the top edge but pointing nowhere
+  // — "視覚効果が意味のないもの" per user feedback. Now we HIDE the
+  // overlay outright when the caret is outside the visible region.
+  // The user can then unambiguously read: overlay visible = caret on
+  // screen, overlay missing = caret scrolled out of view.
+  if (caretBottom <= visibleTop || caretTop >= visibleBottom) {
+    overlay.style.display = 'none';
+    return;
   }
-  // Translate to wrapper-relative coords for absolute positioning.
   overlay.style.display = 'block';
   overlay.style.top = `${caretTop - wrapperRect.top}px`;
   overlay.style.left = `${taRect.left + textarea.clientLeft - wrapperRect.left}px`;
   overlay.style.width = `${textarea.clientWidth}px`;
   overlay.style.height = `${caret.height}px`;
   overlay.setAttribute('data-pkc-active-line', String(line));
+}
+
+/**
+ * On-screen debug overlay (only when `?pkc-debug=split-sync` URL
+ * flag is on). Shows real-time caret line / preview active line /
+ * scroll positions / suppression flag state in a fixed top-right
+ * panel so the user can capture exactly what's wrong during a
+ * scroll glitch — invaluable when the symptom doesn't reproduce in
+ * the test harness.
+ *
+ * Lazy-creates the panel on first call. No-op when the flag is off.
+ */
+let debugPanelEl: HTMLElement | null = null;
+function ensureDebugPanel(): HTMLElement | null {
+  if (!isSplitSyncDebugMode()) return null;
+  if (debugPanelEl && document.body.contains(debugPanelEl)) return debugPanelEl;
+  const panel = document.createElement('div');
+  panel.id = 'pkc-split-sync-debug-panel';
+  panel.style.cssText = [
+    'position:fixed',
+    'top:8px',
+    'right:8px',
+    'z-index:9999',
+    'background:rgba(0,0,0,0.8)',
+    'color:#0f0',
+    'font:11px/1.4 monospace',
+    'padding:6px 8px',
+    'border-radius:4px',
+    'pointer-events:none',
+    'white-space:pre',
+    'max-width:360px',
+  ].join(';');
+  document.body.appendChild(panel);
+  debugPanelEl = panel;
+  return panel;
+}
+
+function updateDebugPanel(textarea: HTMLTextAreaElement, preview?: Element): void {
+  const panel = ensureDebugPanel();
+  if (!panel) return;
+  const line = caretSourceLine(textarea);
+  const caret = getCaretViewportCoords(textarea);
+  const taRect = textarea.getBoundingClientRect();
+  const visibleTop = taRect.top + textarea.clientTop;
+  const visibleBottom = visibleTop + textarea.clientHeight;
+  const caretInView =
+    caret.top >= visibleTop && caret.top + caret.height <= visibleBottom;
+  let activePreviewLine: string = '-';
+  let previewScrollTop: string = '-';
+  if (preview instanceof HTMLElement) {
+    const active = preview.querySelector<HTMLElement>('[data-pkc-active-source]');
+    activePreviewLine =
+      active?.getAttribute('data-pkc-source-line') ?? '(none)';
+    previewScrollTop = String(preview.scrollTop);
+  }
+  panel.textContent = [
+    `[split-sync debug @ ${new Date().toLocaleTimeString()}]`,
+    `caret line: ${line}`,
+    `caret top:  ${caret.top.toFixed(0)} (in view: ${caretInView ? 'YES' : 'NO'})`,
+    `ta scroll:  ${textarea.scrollTop}`,
+    `preview line: ${activePreviewLine}`,
+    `preview scroll: ${previewScrollTop}`,
+    `sync enabled: ${syncEnabled}`,
+    `suppress scroll: ${suppressNextScrollEvent}`,
+    `suppress sel:    ${suppressNextSelectionChange}`,
+  ].join('\n');
 }
 
 /**
@@ -349,6 +419,14 @@ function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
  */
 export function refreshEditorActiveLine(textarea: HTMLTextAreaElement): void {
   updateEditorActiveLine(textarea);
+  // Debug panel mirrors the same state — refresh on every textarea
+  // scroll so the diagnostic flag captures even non-caret-moving
+  // events.
+  const wrapper = textarea.closest<HTMLElement>('.pkc-text-split-editor');
+  const preview = wrapper?.querySelector<HTMLElement>(
+    '[data-pkc-region="text-edit-preview"]',
+  );
+  updateDebugPanel(textarea, preview ?? undefined);
 }
 
 /**
@@ -363,6 +441,7 @@ export function syncPreviewToCaret(
 ): void {
   if (!syncEnabled) {
     updateEditorActiveLine(textarea);
+    updateDebugPanel(textarea, preview);
     return;
   }
   updateEditorActiveLine(textarea);
@@ -370,6 +449,7 @@ export function syncPreviewToCaret(
   const target = findPreviewElementForLine(preview, line);
   if (!target) {
     setActive(preview, null);
+    updateDebugPanel(textarea, preview);
     return;
   }
   setActive(preview, target);
@@ -377,6 +457,7 @@ export function syncPreviewToCaret(
     const targetY = blockTargetY(preview, target, line);
     safeScrollPane(preview, targetY);
   }
+  updateDebugPanel(textarea, preview);
 }
 
 /**

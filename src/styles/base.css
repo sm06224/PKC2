@@ -2262,10 +2262,29 @@ mark.pkc-search-mark {
 /* 領域 10-1: active source-block highlight in the live preview pane.
    Subtle background tint + accent border-left — visible enough for
    the user to track the caret without fighting with code / table
-   chrome. Applied via [data-pkc-active-source] by source-preview-sync. */
+   chrome. Applied via [data-pkc-active-source] by source-preview-sync.
+
+   2026-05-05 hotfix-4: line-number badge on the active block —
+   symmetric to the editor overlay's badge, so the user can read
+   "L5 on left ↔ L5 on right = synced" at a glance. */
 .pkc-text-edit-preview [data-pkc-active-source] {
   background: color-mix(in srgb, var(--c-accent) 8%, transparent);
   border-left: 3px solid var(--c-accent);
+  position: relative;
+}
+.pkc-text-edit-preview [data-pkc-active-source]::before {
+  content: "L" attr(data-pkc-source-line);
+  position: absolute;
+  left: -3px;
+  top: -1px;
+  background: var(--c-accent);
+  color: var(--c-surface);
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono, monospace);
+  padding: 1px 4px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* 2026-05-05 hotfix: editing-mode preview suppresses interactive
@@ -2291,6 +2310,19 @@ mark.pkc-search-mark {
   border-left: 3px solid var(--c-accent);
   z-index: 0;
   transition: top 80ms linear;
+}
+.pkc-editor-active-line::after {
+  content: "L" attr(data-pkc-active-line);
+  position: absolute;
+  right: 4px;
+  top: 0;
+  background: var(--c-accent);
+  color: var(--c-surface);
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono, monospace);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
 }
 
 /* ── Buttons ──
