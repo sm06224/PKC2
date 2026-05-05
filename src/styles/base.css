@@ -2277,7 +2277,12 @@ mark.pkc-search-mark {
    The `:not()` selector excludes `<table>` and `<tr>` so even when
    `tr_open` carries an anchor (added in PR 2 hotfix for per-row
    click), the visual highlight is delegated to the surrounding
-   wrapper instead. */
+   wrapper instead.
+
+   2026-05-05 hotfix-7: badge position moved INSIDE the block at
+   top-right (`right: 4px; top: 4px`) so it never covers the first
+   character of the paragraph / heading / fence content (visual
+   regression spotted in L3/L4/L6/L7 long-md screenshots). */
 .pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr) {
   background: color-mix(in srgb, var(--c-accent) 8%, transparent);
   border-left: 3px solid var(--c-accent);
@@ -2286,16 +2291,17 @@ mark.pkc-search-mark {
 .pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr)::before {
   content: "L" attr(data-pkc-source-line);
   position: absolute;
-  left: -3px;
-  top: -1px;
+  right: 4px;
+  top: 4px;
   background: var(--c-accent);
   color: var(--c-surface);
   font-size: var(--fs-2xs);
   font-family: var(--font-mono, monospace);
   padding: 1px 4px;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: var(--radius-sm);
   pointer-events: none;
   z-index: 1;
+  line-height: 1.4;
 }
 
 /* 2026-05-05 hotfix: editing-mode preview suppresses interactive

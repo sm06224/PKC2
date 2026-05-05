@@ -218,11 +218,31 @@ export function consumeSelectionSuppression(): boolean {
  * `[data-pkc-active-source]` to apply a subtle border / background
  * tint.
  */
+/**
+ * Resolve the element that should actually receive the highlight
+ * marker. CSS suppresses highlight on `<table>` / `<tr>` to avoid
+ * breaking table layout, so when the natural target is one of those
+ * we delegate to the surrounding `.pkc-md-block` wrapper. Used by
+ * `setActive` AND by callers that need to read the highlighted
+ * element's source-line back for badge labelling (so editor + preview
+ * show the same L<n>).
+ */
+function resolveHighlightTarget(el: HTMLElement | null): HTMLElement | null {
+  if (!el) return null;
+  const tag = el.tagName;
+  if (tag === 'TR' || tag === 'TABLE') {
+    const wrapper = el.closest<HTMLElement>('.pkc-md-block');
+    if (wrapper) return wrapper;
+  }
+  return el;
+}
+
 function setActive(preview: Element, el: HTMLElement | null): void {
   for (const p of preview.querySelectorAll<HTMLElement>('[' + ACTIVE_ATTR + ']')) {
     p.removeAttribute(ACTIVE_ATTR);
   }
-  if (el) el.setAttribute(ACTIVE_ATTR, '');
+  const target = resolveHighlightTarget(el);
+  if (target) target.setAttribute(ACTIVE_ATTR, '');
 }
 
 /**
@@ -329,7 +349,18 @@ function blockMeasureRect(block: HTMLElement): DOMRect {
  * exposes "caret went to source line N but the preview shows block
  * at line M" misalignments visually.
  */
-function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
+function updateEditorActiveLine(
+  textarea: HTMLTextAreaElement,
+  /**
+   * 2026-05-05 hotfix-7: when the editor overlay is paired with a
+   * preview active block, the caller passes the active block's
+   * **start line** here so both pane labels read the same number
+   * (e.g. caret on fence line 80 → overlay shows "L66" matching the
+   * preview's fence wrapper L66 badge). Falls back to caret line
+   * when no active block exists (orphan caret in blank line stretch).
+   */
+  activeBlockStartLine?: number,
+): void {
   const wrapper = textarea.closest<HTMLElement>('.pkc-text-split-editor');
   if (!wrapper) return;
   const overlay = wrapper.querySelector<HTMLElement>('.pkc-editor-active-line');
@@ -338,7 +369,10 @@ function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
     overlay.style.display = 'none';
     return;
   }
-  const line = caretSourceLine(textarea);
+  const caretLine = caretSourceLine(textarea);
+  // Use the block's start line as the badge label when provided so
+  // editor + preview show the same L<n>.
+  const labelLine = activeBlockStartLine ?? caretLine;
   // Real caret position via mirror-div measurement.
   const caret = getCaretViewportCoords(textarea);
   const taRect = textarea.getBoundingClientRect();
@@ -365,7 +399,7 @@ function updateEditorActiveLine(textarea: HTMLTextAreaElement): void {
   overlay.style.left = `${taRect.left + textarea.clientLeft - wrapperRect.left}px`;
   overlay.style.width = `${textarea.clientWidth}px`;
   overlay.style.height = `${caret.height}px`;
-  overlay.setAttribute('data-pkc-active-line', String(line));
+  overlay.setAttribute('data-pkc-active-line', String(labelLine));
 }
 
 /**
@@ -483,17 +517,27 @@ export function syncPreviewToCaret(
   // visual correspondence breaks. Auto-scroll the editor first so the
   // caret is in view, THEN compute / paint the overlay + preview.
   ensureCaretVisibleInEditor(textarea);
-  updateEditorActiveLine(textarea);
   const line = caretSourceLine(textarea);
-  const target = findPreviewElementForLine(preview, line);
-  if (!target) {
+  const rawTarget = findPreviewElementForLine(preview, line);
+  if (!rawTarget) {
+    updateEditorActiveLine(textarea);
     setActive(preview, null);
     updateDebugPanel(textarea, preview);
     return;
   }
-  setActive(preview, target);
+  // 2026-05-05 hotfix-7: badge label uses the **highlight target**'s
+  // source-line (same element that actually shows the L<n> badge in
+  // the preview), so editor overlay + preview badge render identical
+  // numbers even when the highlight is delegated (e.g. <tr> → wrapper).
+  const highlightTarget = resolveHighlightTarget(rawTarget);
+  const labelStart = highlightTarget?.getAttribute('data-pkc-source-line');
+  const labelLine = labelStart !== null && labelStart !== undefined
+    ? parseInt(labelStart, 10)
+    : line;
+  updateEditorActiveLine(textarea, Number.isFinite(labelLine) ? labelLine : line);
+  setActive(preview, rawTarget);
   if (preview instanceof HTMLElement) {
-    const rect = blockMeasureRect(target);
+    const rect = blockMeasureRect(rawTarget);
     // 2026-05-05 hotfix-6: minimum-amount scroll. If the active
     // block is already entirely inside the preview's visible area,
     // do nothing. If it's out of view, scroll by exactly the delta
@@ -558,8 +602,20 @@ export function syncCaretToPreview(
   textarea.selectionStart = offset;
   textarea.selectionEnd = offset;
   ensureCaretVisibleInEditor(textarea);
-  updateEditorActiveLine(textarea);
-  setActive(preview, clickedEl.closest<HTMLElement>('[data-pkc-source-line]'));
+  // 2026-05-05 hotfix-7: derive badge label from the HIGHLIGHTED
+  // element (same as syncPreviewToCaret) so editor + preview show
+  // the same L<n> after delegation (e.g. <tr> → wrapper).
+  const anchored = clickedEl.closest<HTMLElement>('[data-pkc-source-line]');
+  const highlightTarget = resolveHighlightTarget(anchored);
+  const labelStr = highlightTarget?.getAttribute('data-pkc-source-line');
+  const labelLine = labelStr !== null && labelStr !== undefined
+    ? parseInt(labelStr, 10)
+    : NaN;
+  updateEditorActiveLine(
+    textarea,
+    Number.isFinite(labelLine) ? labelLine : line,
+  );
+  setActive(preview, anchored);
   return true;
 }
 
