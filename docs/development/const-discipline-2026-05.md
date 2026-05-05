@@ -1,7 +1,26 @@
 # Const discipline + flags 機構 audit — 2026-05-03
 
-**Status**: LIVE(audit + design draft、user 承認済み YES → PR-β 機構実装 / PR-γ 段階移行 を予定)
+**Status**: PARTIAL(2026-05-05 update — Tier 0 全 20 件着地済 / Tier 1+2 の annotation + CI grep が pending)
 **Source**: 2026-05-03 user direction「const のビルドオプション化 / 動的変更手段 / 追加ルール doc 化」+「Firefox / Chrome `about:flags` 風」+「`__settings__` / `__about__` system entry 機構流用 OK」
+
+## Status timeline
+
+- 2026-05-03 LIVE 起こし(本書、audit + design)
+- 2026-05-03〜04 **PR-β-1**(機構コア)+ **PR-β-2**(inspector overlay)着地
+- 2026-05-04 **PR-γ wave 1**(Tier 0 上位 7 件 defineFlag 化、PR #232)着地
+- 2026-05-04 **PR-γ wave 2**(残 13 件、PR #240)着地 — **Tier 0 全 20 件完了**
+- 2026-05-04 critical bug fix(PR #236 = defineFlag live getter)+ persistence destructure-at-call hotfix(PR #238)着地
+- 2026-05-04 **領域 9 CSS architecture redesign wave**(PR #241〜#253、計 11 PR)で `theme.scale` を 21 番目の Tier 0 flag として追加、defineFlag → CSS variable pipeline pattern を確立
+- 2026-05-05 **PARTIAL** に status 更新 — **次の作業は PR-δ(Tier 1/2 const に annotation 付与)+ PR-ε(CI grep 検査)**、本書 §「移行ステップ」参照。本書は当該作業の起点として LIVE 維持
+
+## 関連 PR
+
+- 機構: #228(OQ decisions)/ #232(PR-β-1 機構コア)/ #233(PR-β-2 inspector)
+- migration wave 1: #234(parity test)/ #236(critical bug fix)/ #238(persistence hotfix)
+- migration wave 2: #240(残 13 件 + regression check)
+- 領域 9 CSS wave での新 flag: #250(theme.scale)
+
+参考:`docs/development/css-architecture-audit-2026-05.md` の Phase 3a / 3b で本機構の **`defineFlag → CSS variable pipeline`** 設計が実装され、runtime adaptive UI scale を実現(本書 §10 で計画していた dispatch path の application 例)。
 
 ## 1. 背景 — なぜ必要か
 
@@ -34,7 +53,9 @@ User direction(2026-05-03):
 
 `grep -rn "MAX_\|MIN_\|_LIMIT\|_THRESHOLD\|_BUDGET\|_DEFAULT\|_INTERVAL\|_TTL\|_COUNT\|maxBytes" src/` 結果を 3 tier に分類。
 
-### Tier 0(default、runtime flag 化候補) — 17 件
+### Tier 0(default、runtime flag 化候補) — 21 件着地(初期 20 + theme.scale、2026-05-05 status)
+
+> **着地状況サマリ**: 当初の **20 件 Tier 0 候補は全件 defineFlag 化完了**(PR-γ wave 1 = 7 件 / wave 2 = 13 件)。**領域 9 CSS architecture redesign wave** で `theme.scale`(Tier 0、range 0.5〜2.0、default 1.0)を 21 番目の flag として追加(PR #250)。下表は v1 audit 時の初期 17 件の inventory を保持(後続 attachment 3 件 + theme.scale 計 4 件は表外で別 sub-section に列挙)。
 
 | # | const | 値 | 場所 | 提案 flag key |
 |---|---|---|---|---|
@@ -65,6 +86,8 @@ User direction(2026-05-03):
 | 20 | `SIZE_REJECT_HARD` | 250 MB | 同上 | `attachment.reject_hard_bytes` |
 
 **計 20 件の Tier 0**(当初 17 → attachment 3 件追加で 20)。
+
+> **2026-05-05 update**: + `theme.scale`(領域 9 CSS wave、Tier 0、`src/adapter/ui/theme-scale.ts` で declare、range 0.5〜2.0、default 1.0、`document.documentElement.style --theme-scale` への push 経由で root font-size の calc multiplier として動作)= **計 21 件 Tier 0 着地**。20 件は PR-γ wave 1 + 2 で `defineFlag` 化、21 番目は CSS wave で defineFlag → CSS variable pipeline の最初の application として実装。
 
 ### Tier 1(build option / wire spec) — 7 件
 

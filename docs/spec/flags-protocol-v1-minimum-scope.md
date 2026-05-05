@@ -17,7 +17,9 @@
 
 ### 0-1. hard-code const の限界
 
-`docs/development/const-discipline-2026-05.md` §3 に列挙した **20 件の Tier 0 const**(数値 / boolean / enum)は現状すべて hard-code、変更には rebuild + dist 再生成が必要。これは:
+`docs/development/const-discipline-2026-05.md` §3 に列挙した **当初 20 件の Tier 0 const**(数値 / boolean / enum)は v1 起こし時点で hard-code、変更には rebuild + dist 再生成が必要だった。これは:
+
+> **2026-05-05 update**: 20 件は PR-γ wave 1(7 件、PR #232)+ wave 2(13 件、PR #240)で全件 `defineFlag` 化済。さらに領域 9 CSS architecture redesign wave で `theme.scale`(PR #250)が 21 番目の Tier 0 flag として追加。本 spec の例示は v1 起こし時の文脈を保持するが、実装上は 21 件着地済。
 
 - **PoC / 実機 A/B 試験のサイクルが遅い**(値変更 → npm run build → reload → 評価、最低 30 秒)
 - **ユーザーが値の存在を知らない**(power user が「もうちょっと debounce 短く」を試せない)
