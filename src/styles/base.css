@@ -5324,6 +5324,54 @@ mark.pkc-search-mark {
   white-space: nowrap;
 }
 
+/* ── Filer Graph (Phase 2b) ── */
+
+.pkc-filer-graph {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-filer-graph-edge {
+  stroke: var(--c-border, rgba(0, 0, 0, 0.3));
+  stroke-width: 1;
+  stroke-opacity: 0.5;
+}
+
+.pkc-filer-graph-node {
+  cursor: pointer;
+}
+
+.pkc-filer-graph-node:hover .pkc-filer-graph-circle {
+  stroke-width: 2;
+}
+
+.pkc-filer-graph-circle {
+  fill: var(--c-bg, #fff);
+  stroke: var(--c-fg, currentColor);
+  stroke-width: 1.5;
+}
+
+.pkc-filer-graph-circle-folder { fill: rgba(255, 200, 100, 0.4); }
+.pkc-filer-graph-circle-text { fill: rgba(120, 180, 255, 0.4); }
+.pkc-filer-graph-circle-textlog { fill: rgba(100, 220, 180, 0.4); }
+.pkc-filer-graph-circle-todo { fill: rgba(255, 150, 150, 0.4); }
+.pkc-filer-graph-circle-attachment { fill: rgba(180, 180, 180, 0.4); }
+
+.pkc-filer-graph-node[data-pkc-active="true"] .pkc-filer-graph-circle {
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 3;
+}
+
+.pkc-filer-graph-label {
+  font-size: 11px;
+  fill: var(--c-fg, currentColor);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
 
 .pkc-filer-grid {

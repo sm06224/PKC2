@@ -157,7 +157,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 128 * 1024 },  // 128 KB (領域 10-6 ζ'' Phase 3a: contact-sheet / book-base / youtube-base card grids. 126 → 128 KB +2 KB for Phase 3a subset card styling + frontmatter Properties dl + mobile column fallback; previous 126 KB)
+  { file: 'dist/bundle.css', maxBytes: 130 * 1024 },  // 130 KB (領域 10-6 ζ'' Phase 2b: graph view SVG styling — node circles per-archetype color + edges + label + active outline. 128 → 130 KB +2 KB; previous 128 KB)
 ];
 
 function formatKB(bytes) {

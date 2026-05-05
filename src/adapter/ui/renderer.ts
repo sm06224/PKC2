@@ -79,6 +79,8 @@ import { resolveAssetReferences, hasAssetReferences } from '../../features/markd
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
+import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
+import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { buildLinkIndex } from '../../features/link-index/link-index';
@@ -3925,10 +3927,7 @@ function renderFilerView(state: AppState): HTMLElement {
       filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'youtube'));
       break;
     case 'graph':
-      // Phase 2b lands the actual graph layout; for now, fall back to
-      // the explorer table so users with a 'graph' profile saved still
-      // see something sensible.
-      filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
+      filer.appendChild(renderFilerGraph(state, visibleChildren));
       break;
     case 'explorer':
     default:
@@ -4430,6 +4429,104 @@ function pickImageAssetForEntry(entry: Entry, assets: Record<string, string>): s
     if (url && url.startsWith('data:image/')) return url;
   }
   return null;
+}
+
+/**
+ * Graph subset (領域 10-6 ζ'' Phase 2b).
+ * Force-directed network of folder children + their relations,
+ * rendered as inline SVG. Vanilla TS Verlet / spring / repulsion;
+ * Tier 0 flags expose every tunable PKC1 once tweaked in d3-force.
+ */
+function renderFilerGraph(state: AppState, children: readonly Entry[]): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  // Reasonable default canvas size. The simulation is deterministic
+  // for a given child set, so the SVG looks identical between renders
+  // until membership changes.
+  const width = 800;
+  const height = 480;
+
+  const childIds = new Set(children.map((c) => c.lid));
+  const links = (state.container?.relations ?? [])
+    .filter(
+      (r) =>
+        (r.kind === 'structural' || r.kind === 'semantic')
+        && childIds.has(r.from)
+        && childIds.has(r.to),
+    )
+    .map((r) => ({ from: r.from, to: r.to }));
+
+  const nodes = children.map((c) => ({ id: c.lid }));
+  const params = getGraphForceParams(width, height);
+  const sim = seedSimulation(nodes, width, height);
+  const iter = graphIterations();
+  for (let i = 0; i < iter; i++) {
+    stepSimulation(sim, links, params);
+  }
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
+  svg.classList.add('pkc-filer-graph');
+  svg.setAttribute('data-pkc-region', 'filer-graph');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+
+  // Edges first so node circles render on top.
+  const idx = new Map<string, { x: number; y: number }>();
+  for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
+
+  const edgeLayer = document.createElementNS(svgNS, 'g');
+  edgeLayer.setAttribute('class', 'pkc-filer-graph-edges');
+  for (const link of links) {
+    const a = idx.get(link.from);
+    const b = idx.get(link.to);
+    if (!a || !b) continue;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', String(a.x));
+    line.setAttribute('y1', String(a.y));
+    line.setAttribute('x2', String(b.x));
+    line.setAttribute('y2', String(b.y));
+    line.setAttribute('class', 'pkc-filer-graph-edge');
+    edgeLayer.appendChild(line);
+  }
+  svg.appendChild(edgeLayer);
+
+  const nodeLayer = document.createElementNS(svgNS, 'g');
+  nodeLayer.setAttribute('class', 'pkc-filer-graph-nodes');
+  for (const n of sim) {
+    const child = children.find((c) => c.lid === n.id);
+    if (!child) continue;
+    const group = document.createElementNS(svgNS, 'g');
+    group.setAttribute('class', 'pkc-filer-graph-node');
+    group.setAttribute('data-pkc-action', 'select-entry');
+    group.setAttribute('data-pkc-lid', child.lid);
+    group.setAttribute('data-pkc-archetype', child.archetype);
+    group.setAttribute('transform', `translate(${n.x}, ${n.y})`);
+    if (child.lid === state.selectedLid) {
+      group.setAttribute('data-pkc-active', 'true');
+    }
+
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('r', String(params.collideRadius * 0.6));
+    circle.setAttribute('class', `pkc-filer-graph-circle pkc-filer-graph-circle-${child.archetype}`);
+    group.appendChild(circle);
+
+    const label = document.createElementNS(svgNS, 'text');
+    label.setAttribute('class', 'pkc-filer-graph-label');
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('y', String(params.collideRadius * 0.6 + 12));
+    label.textContent = truncate(child.title || child.lid, 18);
+    group.appendChild(label);
+
+    nodeLayer.appendChild(group);
+  }
+  svg.appendChild(nodeLayer);
+
+  wrapper.appendChild(svg);
+  return wrapper;
 }
 
 function renderKanbanView(state: AppState): HTMLElement {
@@ -5226,7 +5323,7 @@ function renderMetaPaneImpl(
       { value: 'contact-sheet', label: 'Contact sheet (album)' },
       { value: 'book-base', label: 'Book base' },
       { value: 'youtube-base', label: 'YouTube base' },
-      // Phase 2b: { value: 'graph', label: 'Graph' },
+      { value: 'graph', label: 'Graph (relations)' },
     ];
     const current = entry.display_profile?.kind ?? 'explorer';
     for (const opt of opts) {
