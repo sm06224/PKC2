@@ -1,7 +1,26 @@
 # Const discipline + flags 機構 audit — 2026-05-03
 
-**Status**: LIVE(audit + design draft、user 承認済み YES → PR-β 機構実装 / PR-γ 段階移行 を予定)
+**Status**: PARTIAL(2026-05-05 update — Tier 0 全 20 件着地済 / Tier 1+2 の annotation + CI grep が pending)
 **Source**: 2026-05-03 user direction「const のビルドオプション化 / 動的変更手段 / 追加ルール doc 化」+「Firefox / Chrome `about:flags` 風」+「`__settings__` / `__about__` system entry 機構流用 OK」
+
+## Status timeline
+
+- 2026-05-03 LIVE 起こし(本書、audit + design)
+- 2026-05-03〜04 **PR-β-1**(機構コア)+ **PR-β-2**(inspector overlay)着地
+- 2026-05-04 **PR-γ wave 1**(Tier 0 上位 7 件 defineFlag 化、PR #232)着地
+- 2026-05-04 **PR-γ wave 2**(残 13 件、PR #240)着地 — **Tier 0 全 20 件完了**
+- 2026-05-04 critical bug fix(PR #236 = defineFlag live getter)+ persistence destructure-at-call hotfix(PR #238)着地
+- 2026-05-04 **領域 9 CSS architecture redesign wave**(PR #241〜#253、計 11 PR)で `theme.scale` を 21 番目の Tier 0 flag として追加、defineFlag → CSS variable pipeline pattern を確立
+- 2026-05-05 **PARTIAL** に status 更新 — **次の作業は PR-δ(Tier 1/2 const に annotation 付与)+ PR-ε(CI grep 検査)**、本書 §「移行ステップ」参照。本書は当該作業の起点として LIVE 維持
+
+## 関連 PR
+
+- 機構: #228(OQ decisions)/ #232(PR-β-1 機構コア)/ #233(PR-β-2 inspector)
+- migration wave 1: #234(parity test)/ #236(critical bug fix)/ #238(persistence hotfix)
+- migration wave 2: #240(残 13 件 + regression check)
+- 領域 9 CSS wave での新 flag: #250(theme.scale)
+
+参考:`docs/development/css-architecture-audit-2026-05.md` の Phase 3a / 3b で本機構の **`defineFlag → CSS variable pipeline`** 設計が実装され、runtime adaptive UI scale を実現(本書 §10 で計画していた dispatch path の application 例)。
 
 ## 1. 背景 — なぜ必要か
 
