@@ -410,7 +410,10 @@ test.describe('源 ↔ プレビュー 同期(領域 10-1, parity)', () => {
     // Real OS event: page.mouse.click at the centre of the line-18
     // paragraph. Native click → action-binder click handler →
     // syncCaretToPreview → caret moves.
-    const para18 = await previewBlock(page, 18);
+    // .first() — tagSourceLines + the領域 10-1 PR 2 hotfix can stamp
+    // the same source-line on multiple elements (wrapper div + inner
+    // <pre>/<code>/<table>); they share the same anchor by design.
+    const para18 = (await previewBlock(page, 18)).first();
     const box = await para18.boundingBox();
     if (!box) throw new Error('para-18 has no bounding box');
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -444,7 +447,7 @@ test.describe('源 ↔ プレビュー 同期(領域 10-1, parity)', () => {
     // Click somewhere INSIDE the fence (rendered <pre>). Even though
     // the click lands inside, the closest anchored ancestor is the
     // fence wrapper at line 20.
-    const fence = await previewBlock(page, 20);
+    const fence = (await previewBlock(page, 20)).first();
     const box = await fence.boundingBox();
     if (!box) throw new Error('fence has no bounding box');
     // Click in the middle vertically — proves we land on the fence

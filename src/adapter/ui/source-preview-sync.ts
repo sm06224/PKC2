@@ -211,16 +211,25 @@ function safeScrollPane(scrollContainer: HTMLElement, targetY: number): void {
 }
 
 /**
- * Compute target Y (in pane scroll-space) for a caret line within
- * an anchored block whose source range is [start, end]. The caret's
- * relative depth in the source range maps to the same relative
- * offset within the rendered block's height — so a long fence
- * tracks the caret as the user types deeper, instead of glueing
- * to the block's top edge.
+ * Compute target Y (in pane scroll-space) for a caret line within an
+ * anchored block whose source range is `[start, end]` (inclusive).
+ *
+ * Two regimes:
+ * - **Block fits in viewport**: target the block's vertical centre
+ *   so the whole block stays comfortably in view as the caret moves
+ *   within it (avoids jitter from re-scrolling for every caret tick).
+ * - **Block overflows viewport** (long fence, big CSV table, deep
+ *   nested list): target the **rendered centre of the caret-row**
+ *   inside the block, computed as `blockTop + (lineIndex + 0.5) *
+ *   (blockHeight / lineCount)`. This is the fix for the PR #206 trap
+ *   and the 2026-05-05 user report: with proportional offset alone,
+ *   when the block was much taller than the viewport, the caret-row
+ *   could end up at any random spot on screen — including off-screen
+ *   above the viewport top.
  *
  * For `.pkc-md-block` wrappers (fence / table chrome with copy /
  * expand buttons + padding), the inner `<pre>` / `<table>` rect is
- * used so caret alignment lands on user-visible content, not the
+ * used so the alignment lands on user-visible content, not the
  * wrapper's padded outer edge.
  */
 function blockTargetY(
@@ -232,8 +241,9 @@ function blockTargetY(
   const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
   const start = startStr !== null ? parseInt(startStr, 10) : 0;
   const end = endStr !== null ? parseInt(endStr, 10) : start;
-  const range = Math.max(1, end - start);
-  const progress = Math.max(0, Math.min(1, (caretLine - start) / range));
+  // Inclusive line count: a single-line block has lineCount=1.
+  const lineCount = Math.max(1, end - start + 1);
+  const lineIndex = Math.max(0, Math.min(lineCount - 1, caretLine - start));
   const containerRect = scrollContainer.getBoundingClientRect();
   let measureRect = block.getBoundingClientRect();
   if (block.classList.contains('pkc-md-block')) {
@@ -242,7 +252,17 @@ function blockTargetY(
   }
   const blockTopInScroll =
     scrollContainer.scrollTop + (measureRect.top - containerRect.top);
-  return blockTopInScroll + measureRect.height * progress;
+  const paneH = scrollContainer.clientHeight;
+  if (measureRect.height <= paneH) {
+    // Whole block fits — aim for its centre.
+    return blockTopInScroll + measureRect.height * 0.5;
+  }
+  // Block too tall — locate the caret-row centre within the block.
+  // `linePxHeight` is an approximation; markdown-it doesn't guarantee
+  // 1:1 source line ↔ rendered line, but for fences / lists / tables
+  // each source line maps to roughly one rendered row.
+  const linePxHeight = measureRect.height / lineCount;
+  return blockTopInScroll + (lineIndex + 0.5) * linePxHeight;
 }
 
 /**

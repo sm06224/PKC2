@@ -121,10 +121,15 @@ const defaultFence = md.renderer.rules.fence ??
   };
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
+  // 領域 10-1 PR 2 hotfix: tagSourceLines puts data-pkc-source-line
+  // on the fence token, but renderCsvFence emits its own HTML and
+  // bypasses token.attrs entirely. Hoist the source-line attrs onto
+  // the wrapper div so the active-block lookup can find the fence.
+  const sourceLineAttrs = collectSourceLineAttrs(token);
   const html = renderCsvFence(token.content, token.info);
-  if (html !== null) return wrapWithCopyButton(html, 'code');
+  if (html !== null) return wrapWithCopyButton(html, 'code', sourceLineAttrs);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
-  return wrapWithCopyButton(fenceHtml, 'code');
+  return wrapWithCopyButton(fenceHtml, 'code', sourceLineAttrs);
 };
 
 // PR #196: table copy button overlay. Wraps the entire <table>…</table>
@@ -134,7 +139,16 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
 // (the table's own HTML) to the clipboard via `copyMarkdownAndHtml`-
 // style multi-MIME write.
 md.renderer.rules.table_open = function (tokens, idx, options, _env, self) {
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
+  // 領域 10-1 PR 2 hotfix: also propagate source-line attrs onto the
+  // pkc-md-block wrapper so caret-on-table-line activates the wrapper
+  // visually (the inner <table> still carries its own attrs through
+  // self.renderToken). The wrapper appearing first in DOM order means
+  // querySelectorAll('[data-pkc-source-line]') sees it before the
+  // <table> — fine for active-block lookup since both anchors share
+  // the same source range.
+  const token = tokens[idx]!;
+  const sourceLineAttrs = collectSourceLineAttrs(token);
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="table"${sourceLineAttrs}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="table" type="button" aria-label="コピー" title="コピー">⧉</button>${self.renderToken(tokens, idx, options)}`;
 };
 md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
   return `${self.renderToken(tokens, idx, options)}</div>`;
@@ -145,9 +159,95 @@ md.renderer.rules.table_close = function (tokens, idx, options, _env, self) {
  * carries `data-pkc-action="copy-md-block"` so the existing
  * `action-binder` event delegation picks it up. The host element is
  * `position: relative` so the button can sit absolutely top-right.
+ *
+ * 領域 10-1 PR 2 hotfix: optional `extraAttrs` carries the source-line
+ * attribute string (e.g. ' data-pkc-source-line="5" data-pkc-source-end="13"')
+ * built from the originating token. Custom fence / table renderers
+ * emit their own HTML and bypass token.attrs, so the wrapper has to
+ * propagate these attrs explicitly for source ↔ preview sync to work.
  */
-function wrapWithCopyButton(innerHtml: string, kind: 'code' | 'table'): string {
-  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
+function wrapWithCopyButton(
+  innerHtml: string,
+  kind: 'code' | 'table',
+  extraAttrs: string = '',
+): string {
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="${kind}"${extraAttrs}><button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="${kind}" type="button" aria-label="コピー" title="コピー">⧉</button>${innerHtml}</div>`;
+}
+
+/**
+ * Build a `data-pkc-source-line` / `data-pkc-source-end` attribute
+ * string from raw values. Token-agnostic — designed to be re-used by
+ * future renderer paths that don't go through markdown-it (領域 10-3
+ * 内部 IR、PKC-Message dispatch to extension, etc.). Returns '' when
+ * `start` is null/undefined so callers can splice the result
+ * unconditionally.
+ *
+ * Internally this is the kernel of the source-line anchor contract:
+ * **the only HTML output that matters for the source ↔ preview sync
+ * layer is the attribute string itself**, regardless of which renderer
+ * produced it. Keeping this generic now means the hypothetical IR
+ * walker (領域 10-3) can call `makeSourceLineAttrs(node.startLine,
+ * node.endLine)` directly — no markdown-it Token shim required.
+ */
+export function makeSourceLineAttrs(
+  start: number | string | null | undefined,
+  end?: number | string | null | undefined,
+): string {
+  if (start === null || start === undefined) return '';
+  let out = ` data-pkc-source-line="${start}"`;
+  if (end !== null && end !== undefined) {
+    out += ` data-pkc-source-end="${end}"`;
+  }
+  return out;
+}
+
+/**
+ * Collect `data-pkc-source-line` / `data-pkc-source-end` attrs from a
+ * markdown-it token (set by `tagSourceLines`) into an attr string.
+ *
+ * **Public — extension contract for markdown-it custom renderers**.
+ * `tagSourceLines` writes the source-line anchor pair onto block-level
+ * tokens via `token.attrSet`. The default markdown-it renderer copies
+ * `token.attrs` onto the rendered element automatically — but **custom
+ * renderers that emit their own HTML string bypass that copy**, so the
+ * source-line attrs are silently dropped and the source ↔ preview
+ * sync layer cannot find the block.
+ *
+ * Any custom renderer registered on `md.renderer.rules.<token>` MUST
+ * call `collectSourceLineAttrs(token)` and splice the result onto the
+ * **outermost element** of its emitted HTML. The 領域 10-1 PR 2
+ * hotfix established this contract for `fence` (CSV-to-table) and
+ * `table_open` (copy-button wrapper); future renderer additions
+ * (e.g. clickable image / ToC / per-archetype embed) MUST follow the
+ * same pattern.
+ *
+ * Pattern:
+ *
+ * ```ts
+ * md.renderer.rules.my_block = function (tokens, idx, options, env, self) {
+ *   const token = tokens[idx]!;
+ *   const sourceLineAttrs = collectSourceLineAttrs(token);
+ *   return `<div class="my-wrapper"${sourceLineAttrs}>...</div>`;
+ * };
+ * ```
+ *
+ * The opt-in flag `RenderMarkdownOptions.sourceLineAnchors` controls
+ * whether the upstream `tagSourceLines` runs at all — view-mode
+ * rendering skips it for backwards compatibility, so this helper
+ * returns `''` when no anchors were stamped (silent no-op, safe).
+ *
+ * Internally a thin wrapper around `makeSourceLineAttrs(start, end)`
+ * — that primitive is reusable by future non-markdown-it renderers
+ * (領域 10-3 IR, PKC-Message extension dispatch, etc.).
+ *
+ * See `docs/development/markdown-render-scope.md` §「拡張時の
+ * source-line anchor 規約」for the full extension contract.
+ */
+export function collectSourceLineAttrs(token: Token): string {
+  return makeSourceLineAttrs(
+    token.attrGet('data-pkc-source-line'),
+    token.attrGet('data-pkc-source-end'),
+  );
 }
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
@@ -536,6 +636,11 @@ const SOURCE_LINE_TOKEN_TYPES: ReadonlySet<string> = new Set([
   'fence',
   'code_block',
   'table_open',
+  // 領域 10-1 PR 2 hotfix: table row level anchoring so click-on-row
+  // and caret-on-row land on the right source line. Without this,
+  // a click anywhere in a 5-row table jumps to table_open's start
+  // line for every row — surprising the user.
+  'tr_open',
   'hr',
   'html_block',
 ]);

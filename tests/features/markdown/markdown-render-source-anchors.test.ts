@@ -8,7 +8,10 @@
  * 属性が付かないことも guard する。
  */
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown } from '../../../src/features/markdown/markdown-render';
+import {
+  renderMarkdown,
+  makeSourceLineAttrs,
+} from '../../../src/features/markdown/markdown-render';
 
 describe('renderMarkdown — sourceLineAnchors opt-in (PR 1, 領域 10-1)', () => {
   it('opt-in なしでは anchor 属性を一切付けない(既存挙動)', () => {
@@ -85,5 +88,68 @@ describe('renderMarkdown — sourceLineAnchors opt-in (PR 1, 領域 10-1)', () =
 
   it('空文字列では空文字列を返す(early return)', () => {
     expect(renderMarkdown('', { sourceLineAnchors: true })).toBe('');
+  });
+
+  // 領域 10-1 PR 2 hotfix specs ─────────────────────────────
+
+  it('CSV fence(custom renderer 経由)に source-line attrs を付与する', () => {
+    // markdown-it default fence renderer は token.attrs を copy する
+    // ので anchor が出るが、CSV fence は renderCsvFence が独自 HTML
+    // を return するため bypass する。collectSourceLineAttrs を
+    // outermost wrapper に splice する hotfix の regression guard。
+    const md = '```csv\na,b\n1,2\n```';
+    const html = renderMarkdown(md, { sourceLineAnchors: true });
+    // The pkc-md-block wrapper around the CSV table must carry the
+    // anchor (start line 0, end inclusive line 3).
+    expect(html).toMatch(/<div class="pkc-md-block"[^>]*data-pkc-source-line="0"/);
+    expect(html).toMatch(/<div class="pkc-md-block"[^>]*data-pkc-source-end="3"/);
+  });
+
+  it('table の outer wrapper(pkc-md-block)にも source-line attrs を付与する', () => {
+    const md = '| a | b |\n|---|---|\n| 1 | 2 |';
+    const html = renderMarkdown(md, { sourceLineAnchors: true });
+    // The wrapper div carries the same anchor as the inner <table>
+    // so click on the wrapper chrome (copy button etc.) still finds
+    // the right source line via closest('[data-pkc-source-line]').
+    expect(html).toMatch(/<div class="pkc-md-block"[^>]*data-pkc-md-block-kind="table"[^>]*data-pkc-source-line="0"/);
+  });
+
+  it('table 行(tr_open)に source-line attrs を付与する', () => {
+    // Without per-row anchors, click-on-row jumps to the table_open
+    // line for every row, which is surprising for a long table. The
+    // hotfix added tr_open to SOURCE_LINE_TOKEN_TYPES.
+    const md = '| col |\n|---|\n| a |\n| b |\n| c |';
+    const html = renderMarkdown(md, { sourceLineAnchors: true });
+    // The 3 data rows are on source lines 2, 3, 4 (0-indexed).
+    // Header row (line 0) and separator (line 1) — markdown-it's
+    // table tokenizer wraps the header into thead/tr at line 0 and
+    // each data row tr_open at lines 2, 3, 4.
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="2"/);
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="3"/);
+    expect(html).toMatch(/<tr[^>]*data-pkc-source-line="4"/);
+  });
+});
+
+describe('makeSourceLineAttrs — token-agnostic helper(IR 経路への入口)', () => {
+  it('start = null / undefined では空文字列', () => {
+    expect(makeSourceLineAttrs(null)).toBe('');
+    expect(makeSourceLineAttrs(undefined)).toBe('');
+    expect(makeSourceLineAttrs(null, 5)).toBe('');
+  });
+
+  it('start のみ指定で source-line のみ', () => {
+    expect(makeSourceLineAttrs(3)).toBe(' data-pkc-source-line="3"');
+    expect(makeSourceLineAttrs('5')).toBe(' data-pkc-source-line="5"');
+  });
+
+  it('start と end の両方指定で両方', () => {
+    expect(makeSourceLineAttrs(0, 12)).toBe(
+      ' data-pkc-source-line="0" data-pkc-source-end="12"',
+    );
+  });
+
+  it('end が null / undefined なら省略', () => {
+    expect(makeSourceLineAttrs(2, null)).toBe(' data-pkc-source-line="2"');
+    expect(makeSourceLineAttrs(2, undefined)).toBe(' data-pkc-source-line="2"');
   });
 });
