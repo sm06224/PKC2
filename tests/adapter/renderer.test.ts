@@ -5153,7 +5153,7 @@ describe('Todo Calendar Foundation', () => {
     assets: {},
   };
 
-  it('shows view mode toggle bar with Detail and Calendar buttons', () => {
+  it('shows view mode toggle bar with Detail / Calendar / Kanban / Filer buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
@@ -5163,10 +5163,11 @@ describe('Todo Calendar Foundation', () => {
     const bar = root.querySelector('[data-pkc-region="view-mode-bar"]');
     expect(bar).not.toBeNull();
     const btns = bar!.querySelectorAll('.pkc-view-mode-btn');
-    expect(btns).toHaveLength(3);
+    expect(btns).toHaveLength(4);
     expect(btns[0]!.textContent).toBe('Detail');
     expect(btns[1]!.textContent).toBe('Calendar');
     expect(btns[2]!.textContent).toBe('Kanban');
+    expect(btns[3]!.textContent).toBe('Filer');
   });
 
   it('marks active view mode button', () => {
@@ -6530,10 +6531,10 @@ describe('Todo Kanban DnD Foundation', () => {
       expect(kanbanDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders four buttons', () => {
       render(dndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(4);
     });
 
     it('kanban column count badge still accurate', () => {
@@ -6765,10 +6766,10 @@ describe('Todo Calendar Date Move Foundation', () => {
       expect(calDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders four buttons', () => {
       render(calDndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(4);
     });
 
     it('calendar navigation buttons still present', () => {
@@ -6827,11 +6828,12 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       render(kanbanState(), root);
       const bar = root.querySelector('[data-pkc-region="view-mode-bar"]')!;
       const btns = bar.querySelectorAll('[data-pkc-view-switch]');
-      // Kanban is active → Detail and Calendar should have view-switch
-      expect(btns).toHaveLength(2);
+      // Kanban is active → Detail / Calendar / Filer should have view-switch
+      expect(btns).toHaveLength(3);
       const modes = Array.from(btns).map(b => b.getAttribute('data-pkc-view-switch'));
       expect(modes).toContain('detail');
       expect(modes).toContain('calendar');
+      expect(modes).toContain('filer');
     });
 
     it('active view mode button does NOT have data-pkc-view-switch', () => {
@@ -6942,10 +6944,10 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders four buttons', () => {
       render(kanbanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(4);
     });
 
     it('readonly mode: no draggable on Kanban cards, no view-switch risk', () => {
@@ -7104,7 +7106,8 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
     it('view switch attributes still on non-active tabs', () => {
       render(cleanupKanbanState(), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      expect(switchBtns).toHaveLength(2);
+      // Kanban active → Detail / Calendar / Filer have view-switch
+      expect(switchBtns).toHaveLength(3);
     });
 
     it('click selection still works (select-entry present)', () => {
@@ -7251,10 +7254,10 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle renders three buttons', () => {
+    it('view mode toggle renders four buttons', () => {
       render(kanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(4);
     });
 
     it('readonly: no draggable Calendar items', () => {
@@ -7877,7 +7880,8 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     it('view switch buttons still present on non-detail views', () => {
       render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      expect(switchBtns.length).toBe(2);
+      // Kanban active → Detail / Calendar / Filer have view-switch
+      expect(switchBtns.length).toBe(3);
     });
   });
 });

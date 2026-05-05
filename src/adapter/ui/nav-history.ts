@@ -33,7 +33,7 @@ import type { AppState } from '../state/app-state';
 
 interface NavSnapshot {
   selectedLid: string | null;
-  viewMode: 'detail' | 'calendar' | 'kanban';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer';
 }
 
 interface NavStateEnvelope {

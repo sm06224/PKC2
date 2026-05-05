@@ -92,4 +92,30 @@ export interface Entry {
    * Canonical spec: `docs/spec/color-tag-data-model-v1-minimum-scope.md` §3.
    */
   color_tag?: string | null;
+  /**
+   * Filer view subset profile — meaningful only when archetype === 'folder'.
+   * Determines how the folder's children are rendered in filer view.
+   *
+   * Phase 1 supports `'explorer'` (default if undefined). Phase 2b adds
+   * `'graph'`, Phase 3a adds `'contact-sheet' | 'book-base' | 'youtube-base'`.
+   *
+   * Backward compat: undefined treated as `'explorer'`. Old reader ignores
+   * the field; old writer never sets it. additive optional, no schema
+   * version bump.
+   *
+   * Canonical spec: `docs/development/filer-view-explorer-subset-spec.md` §2.3.
+   */
+  display_profile?: FilerProfile;
 }
+
+/**
+ * Filer view subset profile — discriminated union.
+ *
+ * Phase 1 only `'explorer'`. Future kinds added additively:
+ *   - 'graph' (Phase 2b)
+ *   - 'contact-sheet' | 'book-base' | 'youtube-base' (Phase 3a)
+ */
+export type FilerProfile =
+  | { kind: 'explorer'; columns?: FilerColumnId[] };
+
+export type FilerColumnId = 'name' | 'archetype' | 'updated_at' | 'tags';

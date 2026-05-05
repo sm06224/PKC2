@@ -319,7 +319,7 @@ export interface AppState {
    */
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar' | 'kanban';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer';
   /** Calendar navigation: year. Runtime-only. */
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */
@@ -2756,6 +2756,31 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_VIEW_MODE': {
       const next: AppState = { ...state, viewMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'SET_DISPLAY_PROFILE': {
+      if (!state.container) return blocked(state, action);
+      const target = state.container.entries.find((e) => e.lid === action.lid);
+      if (!target) return { state, events: [] };
+      if (target.archetype !== 'folder') return { state, events: [] };
+      const ts = now();
+      const updated: Entry = action.profile === undefined
+        ? (() => {
+            const { display_profile: _drop, ...rest } = target;
+            return { ...rest, updated_at: ts } as Entry;
+          })()
+        : { ...target, display_profile: action.profile, updated_at: ts };
+      const nextEntries = state.container.entries.map((e) =>
+        e.lid === action.lid ? updated : e,
+      );
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          entries: nextEntries,
+          meta: { ...state.container.meta, updated_at: ts },
+        },
+      };
       return { state: next, events: [] };
     }
     case 'SET_CALENDAR_MONTH': {

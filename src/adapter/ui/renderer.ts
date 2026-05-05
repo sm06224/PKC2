@@ -28,7 +28,7 @@ import {
   getEntryRevisions,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
-import type { ArchetypeId } from '../../core/model/record';
+import type { ArchetypeId, FilerProfile } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { parseSearchQuery } from '../../features/search/query-parser';
 import { sortEntries } from '../../features/search/sort';
@@ -3589,6 +3589,12 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
+  // Filer view (Phase 1: skeleton placeholder; Phase 1 PR-2 will add table render)
+  if (state.viewMode === 'filer') {
+    center.appendChild(renderFilerView(state));
+    return center;
+  }
+
   // Detail view (existing behavior)
   const selected = findSelectedEntry(state);
   const canEdit = state.phase === 'ready' && !state.readonly;
@@ -3666,7 +3672,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
@@ -3674,6 +3680,7 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLE
     { key: 'detail', label: 'Detail' },
     { key: 'calendar', label: 'Calendar' },
     { key: 'kanban', label: 'Kanban' },
+    { key: 'filer', label: 'Filer' },
   ];
 
   for (const { key, label } of modes) {
@@ -3854,6 +3861,44 @@ function renderCalendarView(state: AppState): HTMLElement {
   }
 
   return cal;
+}
+
+function renderFilerView(state: AppState): HTMLElement {
+  // Phase 1 PR-1: skeleton placeholder. PR-2 fills in folder scope resolution,
+  // table rendering, breadcrumb, empty state, and display_profile editor.
+  const filer = createElement('div', 'pkc-filer');
+  filer.setAttribute('data-pkc-region', 'filer-view');
+  const profile = resolveFilerSubset(state);
+  filer.setAttribute('data-pkc-subset', profile.kind);
+
+  const header = createElement('header', 'pkc-filer-header');
+  header.setAttribute('data-pkc-region', 'filer-header');
+  filer.appendChild(header);
+
+  const placeholder = createElement('div', 'pkc-filer-placeholder');
+  placeholder.setAttribute('data-pkc-region', 'filer-placeholder');
+  placeholder.textContent = 'Filer view (Phase 1 PR-1 skeleton — table render lands in PR-2)';
+  filer.appendChild(placeholder);
+
+  return filer;
+}
+
+/**
+ * Resolve which FilerProfile to use for the current selection.
+ *
+ * Phase 1 PR-1: returns the selected folder's `display_profile`, or
+ * the default `{ kind: 'explorer' }` when undefined / non-folder /
+ * no selection. PR-2 will reuse this for table column / row render.
+ */
+function resolveFilerSubset(state: AppState): FilerProfile {
+  const lid = state.selectedLid;
+  const entry = lid && state.container
+    ? state.container.entries.find((e) => e.lid === lid)
+    : undefined;
+  if (entry && entry.archetype === 'folder' && entry.display_profile) {
+    return entry.display_profile;
+  }
+  return { kind: 'explorer' };
 }
 
 function renderKanbanView(state: AppState): HTMLElement {

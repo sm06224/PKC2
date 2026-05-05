@@ -2938,7 +2938,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'set-view-mode': {
-        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
+        const mode = target.getAttribute('data-pkc-view-mode') as
+          | 'detail'
+          | 'calendar'
+          | 'kanban'
+          | 'filer';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
@@ -4973,7 +4977,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clear any existing timer
     if (viewSwitchTimer) clearTimeout(viewSwitchTimer);
 
-    const targetMode = btn.getAttribute('data-pkc-view-switch') as 'detail' | 'calendar' | 'kanban';
+    const targetMode = btn.getAttribute('data-pkc-view-switch') as
+      | 'detail'
+      | 'calendar'
+      | 'kanban'
+      | 'filer';
     viewSwitchTimer = setTimeout(() => {
       viewSwitchTimer = null;
       dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: targetMode });

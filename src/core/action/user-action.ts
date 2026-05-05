@@ -1,4 +1,4 @@
-import type { ArchetypeId } from '../model/record';
+import type { ArchetypeId, FilerProfile } from '../model/record';
 import type { RelationKind } from '../model/relation';
 import type { EntryConflict, Resolution } from '../model/merge-conflict';
 import type { EditBaseSnapshot } from '../operations/dual-edit-safety';
@@ -466,7 +466,8 @@ export type UserAction =
   | { type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' }
   | { type: 'TOGGLE_TREE_HIDE_BUCKETS' }
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
-  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
+  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' }
+  | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }
   /**
