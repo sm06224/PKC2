@@ -157,7 +157,7 @@ const ROOT = resolve(__dirname, '..');
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
   { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 124 * 1024 },  // 124 KB (領域 10-1 PR #256 hotfix-7 follow-up: caret-indicator + active-line + chrome 抑制 + cursor:text + line-num badge / wave total +1.74 KB; previous 122 KB)
+  { file: 'dist/bundle.css', maxBytes: 126 * 1024 },  // 126 KB (領域 10-6 ζ'' Phase 1 PR-2: filer view explorer subset table styling — breadcrumb + table cells + tag chip + profile editor + mobile fallback. 124 → 126 KB, +2 KB roughly headed for Phase 2-3 subset profile additions; previous 124 KB)
 ];
 
 function formatKB(bytes) {

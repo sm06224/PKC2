@@ -4475,6 +4475,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Filer view (領域 10-6 ζ'' Phase 1) — folder display profile editor.
+    // The `<select>` lives in the meta pane and carries the folder lid on
+    // itself; dispatch SET_DISPLAY_PROFILE on change. Phase 1 only knows
+    // the `'explorer'` kind; future kinds widen this switch.
+    if (action === 'set-display-profile') {
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLSelectElement) {
+        const kind = target.value;
+        if (kind === 'explorer') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: { kind: 'explorer' } });
+        } else if (kind === '') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: undefined });
+        }
+      }
+      return;
+    }
+
     // v1 relation-kind inline edit. The <select> carries the relation id
     // on itself; dispatch UPDATE_RELATION_KIND on change. Reducer blocks
     // readonly / provenance / unknown id / same-kind as no-op.

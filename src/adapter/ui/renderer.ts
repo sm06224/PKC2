@@ -41,7 +41,16 @@ import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resol
 import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
-import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
+import {
+  buildTree,
+  getBreadcrumb,
+  getAvailableFolders,
+  getStructuralParent,
+  collectDescendantLids,
+  getStructuralChildren,
+  getRootEntries,
+  getAncestorFolderLids,
+} from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { getFilterIndexes } from './filter-cache';
@@ -3864,41 +3873,194 @@ function renderCalendarView(state: AppState): HTMLElement {
 }
 
 function renderFilerView(state: AppState): HTMLElement {
-  // Phase 1 PR-1: skeleton placeholder. PR-2 fills in folder scope resolution,
-  // table rendering, breadcrumb, empty state, and display_profile editor.
   const filer = createElement('div', 'pkc-filer');
   filer.setAttribute('data-pkc-region', 'filer-view');
-  const profile = resolveFilerSubset(state);
+
+  const scope = resolveFilerScope(state);
+  const profile = resolveFilerSubsetForScope(state, scope);
   filer.setAttribute('data-pkc-subset', profile.kind);
+  if (scope) filer.setAttribute('data-pkc-filer-scope-lid', scope.lid);
 
-  const header = createElement('header', 'pkc-filer-header');
-  header.setAttribute('data-pkc-region', 'filer-header');
-  filer.appendChild(header);
+  filer.appendChild(renderFilerHeader(state, scope, profile));
 
-  const placeholder = createElement('div', 'pkc-filer-placeholder');
-  placeholder.setAttribute('data-pkc-region', 'filer-placeholder');
-  placeholder.textContent = 'Filer view (Phase 1 PR-1 skeleton — table render lands in PR-2)';
-  filer.appendChild(placeholder);
+  const children = scope
+    ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
+    : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
+  // System entries should never surface in the filer.
+  const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
+  if (visibleChildren.length === 0) {
+    const empty = createElement('div', 'pkc-filer-empty');
+    empty.setAttribute('data-pkc-region', 'filer-empty');
+    empty.textContent = scope
+      ? 'このフォルダには項目がありません。'
+      : '表示できるエントリがありません。';
+    filer.appendChild(empty);
+    return filer;
+  }
+
+  filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
   return filer;
 }
 
 /**
- * Resolve which FilerProfile to use for the current selection.
+ * Resolve which folder is the current "filer scope" — the folder
+ * whose children are listed in the table.
  *
- * Phase 1 PR-1: returns the selected folder's `display_profile`, or
- * the default `{ kind: 'explorer' }` when undefined / non-folder /
- * no selection. PR-2 will reuse this for table column / row render.
+ * Rules:
+ *   1. If the selected entry is a folder, that folder is the scope.
+ *   2. Otherwise, walk structural ancestors until we hit a folder.
+ *   3. If neither yields a folder, the scope is `null` (= root).
  */
-function resolveFilerSubset(state: AppState): FilerProfile {
+function resolveFilerScope(state: AppState): Entry | null {
   const lid = state.selectedLid;
-  const entry = lid && state.container
-    ? state.container.entries.find((e) => e.lid === lid)
-    : undefined;
-  if (entry && entry.archetype === 'folder' && entry.display_profile) {
-    return entry.display_profile;
+  if (!lid || !state.container) return null;
+  const entry = state.container.entries.find((e) => e.lid === lid);
+  if (!entry) return null;
+  if (entry.archetype === 'folder') return entry;
+  const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, lid);
+  if (ancestors.length === 0) return null;
+  return state.container.entries.find((e) => e.lid === ancestors[0]) ?? null;
+}
+
+/**
+ * Resolve the FilerProfile for a given scope. Phase 1 only `'explorer'`.
+ * Default when `display_profile` is undefined or scope is null.
+ */
+function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): FilerProfile {
+  if (scope && scope.archetype === 'folder' && scope.display_profile) {
+    return scope.display_profile;
   }
+  // Phase 2b adds 'graph' default heuristic; Phase 1 always falls back to explorer.
+  void state;
   return { kind: 'explorer' };
+}
+
+function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerProfile): HTMLElement {
+  const header = createElement('header', 'pkc-filer-header');
+  header.setAttribute('data-pkc-region', 'filer-header');
+
+  const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
+  breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
+  const trail: { label: string; lid: string | null }[] = [{ label: 'Root', lid: null }];
+  if (scope && state.container) {
+    const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
+    // ancestors are nearest-first; reverse to get root-to-current order.
+    for (const aLid of ancestors.slice().reverse()) {
+      const a = state.container.entries.find((e) => e.lid === aLid);
+      if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
+    }
+    trail.push({ label: scope.title || scope.lid, lid: scope.lid });
+  }
+  for (let i = 0; i < trail.length; i++) {
+    const seg = trail[i]!;
+    if (i > 0) {
+      const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
+      sep.textContent = ' / ';
+      breadcrumb.appendChild(sep);
+    }
+    if (seg.lid === null) {
+      // Root segment is non-actionable in Phase 1 — clicking root
+      // would require an UNSELECT action that isn't part of this PR.
+      const span = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-root');
+      span.setAttribute('data-pkc-filer-breadcrumb', 'root');
+      span.textContent = seg.label;
+      breadcrumb.appendChild(span);
+    } else {
+      const link = createElement('button', 'pkc-filer-breadcrumb-segment');
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', seg.lid);
+      link.setAttribute('data-pkc-filer-breadcrumb', 'folder');
+      link.textContent = seg.label;
+      breadcrumb.appendChild(link);
+    }
+  }
+  header.appendChild(breadcrumb);
+
+  const subsetBadge = createElement('span', 'pkc-filer-subset-label');
+  subsetBadge.setAttribute('data-pkc-filer-subset-label', profile.kind);
+  subsetBadge.textContent = subsetLabelText(profile.kind);
+  header.appendChild(subsetBadge);
+
+  return header;
+}
+
+function subsetLabelText(kind: FilerProfile['kind']): string {
+  switch (kind) {
+    case 'explorer':
+      return 'Explorer';
+  }
+}
+
+function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const table = createElement('table', 'pkc-filer-table');
+  table.setAttribute('data-pkc-region', 'filer-table');
+
+  const thead = createElement('thead', 'pkc-filer-thead');
+  const headRow = createElement('tr', 'pkc-filer-head-row');
+  const cols: { key: 'name' | 'archetype' | 'updated_at' | 'tags'; label: string }[] = [
+    { key: 'name', label: '名前' },
+    { key: 'archetype', label: '種類' },
+    { key: 'updated_at', label: '更新' },
+    { key: 'tags', label: 'タグ' },
+  ];
+  for (const c of cols) {
+    const th = createElement('th', `pkc-filer-th pkc-filer-th-${c.key}`);
+    th.setAttribute('data-pkc-filer-column', c.key);
+    th.textContent = c.label;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = createElement('tbody', 'pkc-filer-tbody');
+  for (const child of children) {
+    const tr = createElement('tr', 'pkc-filer-row');
+    tr.setAttribute('data-pkc-action', 'select-entry');
+    tr.setAttribute('data-pkc-lid', child.lid);
+    tr.setAttribute('data-pkc-archetype', child.archetype);
+    if (child.lid === state.selectedLid) {
+      tr.setAttribute('data-pkc-active', 'true');
+    }
+
+    const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
+    const icon = createElement('span', 'pkc-filer-row-icon');
+    icon.textContent = archetypeIcon(child.archetype);
+    nameTd.appendChild(icon);
+    const titleSpan = createElement('span', 'pkc-filer-row-title');
+    titleSpan.textContent = child.title || child.lid;
+    nameTd.appendChild(titleSpan);
+    tr.appendChild(nameTd);
+
+    const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
+    archTd.textContent = archetypeLabel(child.archetype);
+    tr.appendChild(archTd);
+
+    const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
+    updTd.textContent = formatTimestamp(child.updated_at);
+    tr.appendChild(updTd);
+
+    const tagsTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-tags');
+    const tags = child.tags ?? [];
+    if (tags.length === 0) {
+      tagsTd.textContent = '';
+    } else {
+      for (const tag of tags) {
+        const chip = createElement('span', 'pkc-filer-tag-chip');
+        chip.textContent = tag;
+        tagsTd.appendChild(chip);
+      }
+    }
+    tr.appendChild(tagsTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  return wrapper;
 }
 
 function renderKanbanView(state: AppState): HTMLElement {
@@ -4664,6 +4826,41 @@ function renderMetaPaneImpl(
     moveSection.appendChild(moveBtn);
 
     meta.appendChild(moveSection);
+  }
+
+  // Filer display profile (folder archetype only) —領域 10-6 ζ'' Phase 1.
+  // Phase 1 only ships `'explorer'`; Phase 2b/3a will add `'graph'` /
+  // `'contact-sheet'` / `'book-base'` / `'youtube-base'` to the option list.
+  if (entry.archetype === 'folder' && canEdit) {
+    const profileSection = createElement('div', 'pkc-filer-profile-editor');
+    profileSection.setAttribute('data-pkc-region', 'filer-display-profile-editor');
+    profileSection.setAttribute('data-pkc-lid', entry.lid);
+
+    const profileLabel = createElement('span', 'pkc-filer-profile-label');
+    profileLabel.textContent = 'Filer 表示';
+    profileSection.appendChild(profileLabel);
+
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-action', 'set-display-profile');
+    select.setAttribute('data-pkc-lid', entry.lid);
+    select.className = 'pkc-filer-profile-select';
+
+    const opts: { value: string; label: string }[] = [
+      { value: 'explorer', label: 'Explorer (table)' },
+      // Phase 2b: { value: 'graph', label: 'Graph' },
+      // Phase 3a: contact-sheet / book-base / youtube-base
+    ];
+    const current = entry.display_profile?.kind ?? 'explorer';
+    for (const opt of opts) {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if (opt.value === current) option.selected = true;
+      select.appendChild(option);
+    }
+    profileSection.appendChild(select);
+
+    meta.appendChild(profileSection);
   }
 
   // History section

@@ -55,9 +55,9 @@ test('Filer tab click switches viewMode and paints filer-view region', async ({ 
   const filerRegion = page.locator('[data-pkc-region="filer-view"]');
   await expect(filerRegion).toBeVisible({ timeout: 5_000 });
 
-  // Phase 1 PR-1 placeholder is present.
-  const placeholder = page.locator('[data-pkc-region="filer-placeholder"]');
-  await expect(placeholder).toBeVisible();
+  // Filer header (breadcrumb + subset label) is always rendered, both
+  // when there are entries (table) and when empty.
+  await expect(page.locator('[data-pkc-region="filer-header"]')).toBeVisible();
 
   // Active tab moved to filer.
   await expect(filerTab).toHaveAttribute('data-pkc-active', 'true');
