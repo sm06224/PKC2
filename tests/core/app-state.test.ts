@@ -795,6 +795,70 @@ describe('AppState reducer', () => {
     const newEntry = state.container!.entries[3]!;
     expect(newEntry.body).toBe('unchanged body');
   });
+
+  // ── PR-U v1.1 capture profile additive tests (2026-05-06) ──
+
+  it('PR-U v1.1: ACCEPT_OFFER with kind+thumbnail_url+provider injects frontmatter (no blockquote dup)', () => {
+    const offer = {
+      offer_id: 'v11-1', title: 'YT video', body: 'video notes',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      source_url: 'https://www.youtube.com/watch?v=abc',
+      captured_at: '2026-05-06T00:00:00Z',
+      kind: 'video', provider: 'YouTube',
+      thumbnail_url: 'https://i.ytimg.com/vi/abc/maxresdefault.jpg',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'v11-1' });
+    const newEntry = state.container!.entries[3]!;
+    // v1.1 path uses frontmatter exclusively for provenance(no blockquote
+    // duplication)。url / captured_at も frontmatter 側に折り畳み。
+    expect(newEntry.body).toContain('---\nkind: video');
+    expect(newEntry.body).toContain('url: https://www.youtube.com/watch?v=abc');
+    expect(newEntry.body).toContain('thumbnail: https://i.ytimg.com/vi/abc/maxresdefault.jpg');
+    expect(newEntry.body).toContain('provider: YouTube');
+    expect(newEntry.body).toContain('captured_at: 2026-05-06T00:00:00Z');
+    expect(newEntry.body).toContain('video notes');
+    // v0 blockquote should NOT be emitted in the v1.1 path.
+    expect(newEntry.body).not.toContain('> Source:');
+    expect(newEntry.body).not.toContain('> Captured:');
+  });
+
+  it('PR-U v1.1: ACCEPT_OFFER honors sender-built frontmatter (no double-inject)', () => {
+    const senderBuilt = '---\nkind: novel\nurl: https://kakuyomu.jp/works/123\n---\n\n# Title\n\nbody';
+    const offer = {
+      offer_id: 'v11-2', title: 'Sender FM', body: senderBuilt,
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      kind: 'novel', provider: 'カクヨム',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'v11-2' });
+    const newEntry = state.container!.entries[3]!;
+    // Sender's frontmatter is preserved; host does not inject a second one.
+    expect(newEntry.body).toBe(senderBuilt);
+    // Single occurrence of the opening `---` (no double frontmatter).
+    expect((newEntry.body.match(/^---/gm) ?? []).length).toBe(2); // open + close
+  });
+
+  it('PR-U v1.1: ACCEPT_OFFER with only v0 fields does NOT inject frontmatter', () => {
+    // Backward-compat:旧 sender(v0)が source_url + captured_at だけ送る
+    // 場合、frontmatter 追加せず blockquote のみ(従来挙動)。
+    const offer = {
+      offer_id: 'v11-3', title: 'V0 only', body: 'plain',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      source_url: 'https://example.com',
+      captured_at: '2026-05-06T00:00:00Z',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'v11-3' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toBe(
+      '> Source: https://example.com\n> Captured: 2026-05-06T00:00:00Z\n\nplain',
+    );
+    expect(newEntry.body).not.toContain('---');
+  });
 });
 
 // ── Import confirmation ────────────────────────

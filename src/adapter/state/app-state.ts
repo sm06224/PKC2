@@ -854,6 +854,70 @@ function injectCaptureHeader(body: string, sourceUrl: string | null, capturedAt:
 }
 
 /**
+ * PR-U v1.1 (2026-05-06):capture profile additive fields(kind /
+ * thumbnail_url / provider / duration_sec / pages / isbn)を YAML
+ * frontmatter として body 先頭に注入。v0 の `injectCaptureHeader`
+ * (blockquote)はその後ろに重ねる。
+ *
+ * Sender が既に frontmatter を作っている body を送った場合(`---` で
+ * 始まる)は **frontmatter は既存を尊重して何もしない**(sender intent
+ * を上書きしない、後方互換)。Sender が plain body を送った時のみ host
+ * が frontmatter を build する。
+ *
+ * これにより:
+ *   - PR-V 以降の bookmarklet は payload に kind / thumbnail_url を
+ *     送るだけで、body は plain markdown(frontmatter なし)を渡せばよい
+ *   - v0 sender(frontmatter 自前 build)も従来通り動く
+ *   - 旧 v0 receiver(本コードがない PKC2)は payload の追加 field を
+ *     無視するだけ(unknown field 互換、spec §9.4)
+ */
+function injectCaptureFrontmatter(
+  body: string,
+  fields: {
+    kind?: string | null;
+    thumbnail_url?: string | null;
+    provider?: string | null;
+    source_url?: string | null;
+    captured_at?: string | null;
+    duration_sec?: number | null;
+    pages?: number | null;
+    isbn?: string | null;
+  },
+): string {
+  // Sender が既に frontmatter を build している場合は手出ししない。
+  if (body.trimStart().startsWith('---')) return body;
+  // v1.1 固有 field(kind / thumbnail_url / provider / duration_sec /
+  // pages / isbn)が **どれか** ある場合のみ frontmatter を生成する。
+  // v0 の source_url / captured_at だけのときは従来 blockquote 互換の
+  // ため frontmatter は作らない(下流で `injectCaptureHeader` が走る)。
+  const hasV11 =
+    !!fields.kind || !!fields.thumbnail_url || !!fields.provider
+    || typeof fields.duration_sec === 'number'
+    || typeof fields.pages === 'number'
+    || !!fields.isbn;
+  if (!hasV11) return body;
+  const yamlString = (v: string): string => {
+    // YAML safe scalar:URL chars(query ? & =、fragment #、segment :)を
+    // すべて含めた regex。日本語 / 空白 / quote 文字が混じる場合だけ
+    // JSON.stringify で quote。
+    if (/^[\w\-./:@+#?&=%~]+$/.test(v)) return v;
+    return JSON.stringify(v);
+  };
+  const lines: string[] = ['---'];
+  if (fields.kind) lines.push(`kind: ${fields.kind}`);
+  if (fields.source_url) lines.push(`url: ${yamlString(fields.source_url)}`);
+  if (fields.thumbnail_url) lines.push(`thumbnail: ${yamlString(fields.thumbnail_url)}`);
+  if (fields.provider) lines.push(`provider: ${yamlString(fields.provider)}`);
+  if (typeof fields.duration_sec === 'number') lines.push(`duration_sec: ${fields.duration_sec}`);
+  if (typeof fields.pages === 'number') lines.push(`pages: ${fields.pages}`);
+  if (fields.isbn) lines.push(`isbn: ${yamlString(fields.isbn)}`);
+  if (fields.captured_at) lines.push(`captured_at: ${yamlString(fields.captured_at)}`);
+  lines.push('---');
+  lines.push('');
+  return `${lines.join('\n')}${body}`;
+}
+
+/**
  * FI-Settings v1 (2026-04-18): read the effective SystemSettingsPayload
  * for a state, synthesizing it from the legacy mirror fields when
  * `state.settings` has not been populated yet (pre-RESTORE_SETTINGS
@@ -1584,11 +1648,31 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const container = addEntry(
         state.container, lid, offer.archetype, offer.title, ts,
       );
-      // Inject capture provenance header per
-      // `docs/spec/record-offer-capture-profile.md` §10.4. Header is
-      // emitted only when at least one of `source_url` / `captured_at`
-      // is present; absent → body unchanged (existing behavior).
-      const finalBody = injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
+      // Inject capture provenance:
+      // - v1.1 capture fields(kind / thumbnail_url / provider 等)が
+      //   ある場合は **frontmatter** で source_url / captured_at も
+      //   含めて表現する(blockquote は重複するので skip)。
+      // - 旧 v0 sender(これらの field なし)は従来通り **blockquote**
+      //   のみで provenance を表現(後方互換)。
+      // Spec ref:`docs/spec/record-offer-capture-profile.md` §8.4(v1.1)
+      //         + §10.4(v0)。
+      const hasV11Capture =
+        !!offer.kind || !!offer.thumbnail_url || !!offer.provider
+        || typeof offer.duration_sec === 'number'
+        || typeof offer.pages === 'number'
+        || !!offer.isbn;
+      const finalBody = hasV11Capture
+        ? injectCaptureFrontmatter(offer.body, {
+            kind: offer.kind ?? null,
+            thumbnail_url: offer.thumbnail_url ?? null,
+            provider: offer.provider ?? null,
+            source_url: offer.source_url ?? null,
+            captured_at: offer.captured_at ?? null,
+            duration_sec: offer.duration_sec ?? null,
+            pages: offer.pages ?? null,
+            isbn: offer.isbn ?? null,
+          })
+        : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
       const updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
       const next: AppState = {

@@ -511,6 +511,12 @@ v1 が ship された後、**v1 範囲で許可される変更**:
 - AcceptanceMode の strictness 強化(例: `'any' → 'embedded-only'` は v2 扱い)
 - envelope core field(protocol / version / type / source_id / target_id / timestamp)の削除 / 型変更
 
+#### 9.2.1 v1.1 capture profile additive(2026-05-06、PR-U)
+
+v1.1 として `RecordOfferPayload` に **capture-specific optional fields** を追加(`kind` / `thumbnail_url` / `provider` / `duration_sec` / `pages` / `isbn`)。新 message type は **追加しない**(既存 `record:offer` の payload superset として扱う)。詳細は `docs/spec/record-offer-capture-profile.md` §8.6。
+
+PongProfile / capabilities array に変更なし(同 type のため new capability key 不要)。後方互換:v1.0 sender / v1.0 receiver いずれも従来通り動作する(unknown field 互換、§9.4)。
+
 ### 9.3 v2 Bump Trigger
 
 以下のいずれかに該当する変更は **v2 bump が必要**:
