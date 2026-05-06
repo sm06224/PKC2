@@ -34,18 +34,29 @@ export type AutoCategory = 'image' | 'book' | 'video' | 'novel' | 'audio' | 'oth
  * Classify a single entry into one auto-detect category. Pure.
  *
  * Priority:
- *   1. attachment + image MIME → 'image'
+ *   1. attachment + MIME(image/audio/video/pdf/epub)→ matching category
  *   2. text frontmatter `kind:` → matching category
  *   3. text frontmatter `url:` → URL host classification
  *   4. first http(s) URL in body → URL host classification
  *   5. otherwise → 'other'
+ *
+ * PR-X (2026-05-06):attachment の MIME 判定を image だけでなく audio /
+ * video / book(PDF / epub)も拾うよう拡張。これにより自前 mp3 / mp4 /
+ * pdf / epub を folder に放り込めば filer Auto 7 割多数決で audio-base /
+ * video-base / book-base が自動的に表示される(Bases UX 化、外部 url
+ * 経路と統合)。
  */
 export function classifyEntryForAutoProfile(entry: Entry): AutoCategory {
   if (entry.archetype === 'attachment' && entry.body) {
     try {
       const meta = JSON.parse(entry.body) as { mime?: unknown };
-      if (typeof meta.mime === 'string' && meta.mime.startsWith('image/')) {
-        return 'image';
+      if (typeof meta.mime === 'string') {
+        const mime = meta.mime;
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('audio/')) return 'audio';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime === 'application/pdf') return 'book';
+        if (mime === 'application/epub+zip') return 'book';
       }
     } catch {
       // body not JSON — fall through.

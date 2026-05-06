@@ -5085,6 +5085,32 @@ function pickImageAssetForEntry(
   assets: Record<string, string>,
   container: Container | null = null,
 ): string | null {
+  // PR-X (2026-05-06):0. text frontmatter `thumbnail: <url>`(PR-U
+  // v1.1 capture profile)。bookmarklet 経由で `kind: video` + thumbnail
+  // url が入った entry が、card grid で raster 画像で表示される経路。
+  // YouTube / Niconico / カクヨム 等の外部 thumbnail を直接 img src で
+  // ロード(CORS は host 側に任せる、PKC2 は単に URL を渡すだけ)。
+  if (entry.archetype === 'text' && entry.body) {
+    const fmEnd = entry.body.indexOf('---', 3);
+    if (entry.body.trimStart().startsWith('---') && fmEnd > 0) {
+      const fmBlock = entry.body.slice(0, fmEnd);
+      const tm = fmBlock.match(/^thumbnail:\s*"?([^"\n]+)"?/m);
+      if (tm) {
+        const v = tm[1]!.trim();
+        // http(s) URL or data URL を直接返す。`asset:KEY` は asset
+        // resolution path にフォールバック。
+        if (/^https?:\/\//i.test(v) || v.startsWith('data:')) return v;
+        if (v.startsWith('asset:')) {
+          const k = v.slice(6);
+          const b64 = assets[k];
+          if (b64) {
+            if (b64.startsWith('data:')) return b64;
+            return `data:image/png;base64,${b64}`;
+          }
+        }
+      }
+    }
+  }
   // 1. attachment archetype.
   if (entry.archetype === 'attachment' && entry.body) {
     try {

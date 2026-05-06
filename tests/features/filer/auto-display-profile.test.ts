@@ -57,9 +57,25 @@ describe('classifyEntryForAutoProfile', () => {
     expect(classifyEntryForAutoProfile(mkAttachment('a2', 'image/jpeg'))).toBe('image');
   });
 
-  it('attachment with non-image MIME → other', () => {
-    expect(classifyEntryForAutoProfile(mkAttachment('a3', 'application/pdf'))).toBe('other');
-    expect(classifyEntryForAutoProfile(mkAttachment('a4', 'audio/mpeg'))).toBe('other');
+  it('PR-X: attachment with audio/* MIME → audio', () => {
+    expect(classifyEntryForAutoProfile(mkAttachment('a4', 'audio/mpeg'))).toBe('audio');
+    expect(classifyEntryForAutoProfile(mkAttachment('a5', 'audio/wav'))).toBe('audio');
+    expect(classifyEntryForAutoProfile(mkAttachment('a6', 'audio/ogg'))).toBe('audio');
+  });
+
+  it('PR-X: attachment with video/* MIME → video', () => {
+    expect(classifyEntryForAutoProfile(mkAttachment('v1', 'video/mp4'))).toBe('video');
+    expect(classifyEntryForAutoProfile(mkAttachment('v2', 'video/webm'))).toBe('video');
+  });
+
+  it('PR-X: attachment with PDF or epub MIME → book', () => {
+    expect(classifyEntryForAutoProfile(mkAttachment('p1', 'application/pdf'))).toBe('book');
+    expect(classifyEntryForAutoProfile(mkAttachment('p2', 'application/epub+zip'))).toBe('book');
+  });
+
+  it('attachment with truly unrecognized MIME → other', () => {
+    expect(classifyEntryForAutoProfile(mkAttachment('a7', 'application/zip'))).toBe('other');
+    expect(classifyEntryForAutoProfile(mkAttachment('a8', 'text/plain'))).toBe('other');
   });
 
   it('text frontmatter kind: book → book', () => {
