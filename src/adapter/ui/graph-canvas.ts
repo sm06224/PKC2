@@ -232,19 +232,61 @@ export function __getGraphCanvasNodesForTest(canvas: HTMLCanvasElement): Array<{
 /**
  * Convert a client (viewport) point into the canvas's logical coord
  * space (the same space `payload.positions` uses). Accounts for the
+/**
+ * PR-Δ1 (2026-05-07、修正指示9):canvas 内部 raster サイズと CSS
+ * 表示サイズの aspect mismatch によるノード歪み(円が楕円化)を撃退
+ * するための uniform-scale + letterbox 計算。
+ *
+ * payload の logical 座標系 (payload.width × payload.height、典型的に
+ * 960 × 600)を CSS pixel 表示エリアに **同比例** で fit させる。狭い
+ * 方向に letterbox(背景色)が生じる代わりに、円は常に円のまま。
+ *
+ * 戻り値:
+ *   - cssW / cssH:CSS 表示寸法 (px)
+ *   - dpr:devicePixelRatio
+ *   - scale:logical → CSS px 変換比率(uniform、両軸同値)
+ *   - offsetX / offsetY:letterbox 中央寄せのための CSS px 単位 offset
+ */
+function getCanvasRenderTransform(canvas: HTMLCanvasElement): {
+  cssW: number;
+  cssH: number;
+  dpr: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+} | null {
+  const payload = payloads.get(canvas);
+  if (!payload) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null;
+  const dpr = canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+  const scale = Math.min(rect.width / payload.width, rect.height / payload.height);
+  const offsetX = (rect.width - payload.width * scale) / 2;
+  const offsetY = (rect.height - payload.height * scale) / 2;
+  return {
+    cssW: rect.width,
+    cssH: rect.height,
+    dpr,
+    scale,
+    offsetX,
+    offsetY,
+  };
+}
+
+/**
+ * PR-Δ1:CSS rect の重要 helper。`getBoundingClientRect` を 1 度だけ
+ * 呼び出して使い回す callers のために、canvas CSS サイズを返す。
  * canvas CSS-display vs. logical size ratio.
  */
 function clientToLogical(canvas: HTMLCanvasElement, clientX: number, clientY: number): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
-  const payload = payloads.get(canvas);
-  const lw = payload?.width ?? rect.width;
-  const lh = payload?.height ?? rect.height;
-  const sx = rect.width === 0 ? 1 : lw / rect.width;
-  const sy = rect.height === 0 ? 1 : lh / rect.height;
-  return {
-    x: (clientX - rect.left) * sx,
-    y: (clientY - rect.top) * sy,
-  };
+  const tr = getCanvasRenderTransform(canvas);
+  if (!tr) return { x: clientX - rect.left, y: clientY - rect.top };
+  // PR-Δ1:uniform scale + letterbox offset を反映。元の non-uniform
+  // sx/sy を撤回し、円が円のまま hit-test も正しく当たる。
+  const cssX = clientX - rect.left - tr.offsetX;
+  const cssY = clientY - rect.top - tr.offsetY;
+  return { x: cssX / tr.scale, y: cssY / tr.scale };
 }
 
 /** Convert logical coord → user (post-view-transform) coord. */
@@ -395,10 +437,16 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   const view = viewStates.get(canvas);
   if (!ctx || !payload || !view) return;
 
-  const dpr = canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
-  // Match raster size to logical × dpr if not already.
-  const targetW = Math.round(payload.width * dpr);
-  const targetH = Math.round(payload.height * dpr);
+  // PR-Δ1 (2026-05-07、修正指示9):canvas raster size を CSS 表示
+  // サイズに合わせて adjust(× dpr で hi-DPI 対応)。旧は payload の
+  // logical 寸法 (960 × 600) で raster を作り、CSS は `width:100%`
+  // で勝手に伸縮させていたので CSS aspect が 1.846 で内部が 1.6 だと
+  // ノードが楕円化する。今は raster = CSS × dpr に合わせ、描画 ctx
+  // 側で uniform-scale + letterbox させて aspect を保つ。
+  const tr = getCanvasRenderTransform(canvas);
+  if (!tr) return;
+  const targetW = Math.round(tr.cssW * tr.dpr);
+  const targetH = Math.round(tr.cssH * tr.dpr);
   if (canvas.width !== targetW) canvas.width = targetW;
   if (canvas.height !== targetH) canvas.height = targetH;
 
@@ -414,11 +462,18 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // 1. Reset transform → clear raw raster.
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // 2. Now apply dpr scale + paint solid background.
-  ctx.scale(dpr, dpr);
+  // 2. PR-Δ1:letterbox 部を含む raster 全体に theme.bg を塗る。
+  //    aspect mismatch がある場合(短軸方向に letterbox が出る)、
+  //    そこも地色で埋めるため transform 適用前に塗っておく。
   ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, payload.width, payload.height);
-  // 3. Subtle tint overlay (semi-transparent — but we have solid bg now).
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // 3. PR-Δ1:uniform scale + center offset + dpr。これで logical
+  //    coords (payload.width × payload.height) は CSS rect 内に
+  //    aspect 保持で letterbox 配置される。
+  ctx.scale(tr.dpr, tr.dpr);
+  ctx.translate(tr.offsetX, tr.offsetY);
+  ctx.scale(tr.scale, tr.scale);
+  // 4. Subtle tint overlay (semi-transparent — but we have solid bg now).
   ctx.fillStyle = theme.bgTag;
   ctx.fillRect(0, 0, payload.width, payload.height);
 
@@ -753,14 +808,12 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       return;
     }
     if (!panStart) return;
-    const rect = canvas.getBoundingClientRect();
-    const payload = payloads.get(canvas);
-    const lw = payload?.width ?? rect.width;
-    const lh = payload?.height ?? rect.height;
-    const sx = rect.width === 0 ? 1 : lw / rect.width;
-    const sy = rect.height === 0 ? 1 : lh / rect.height;
-    view.tx = panStart.tx + (me.clientX - panStart.clientX) * sx;
-    view.ty = panStart.ty + (me.clientY - panStart.clientY) * sy;
+    // PR-Δ1 (2026-05-07):pan delta も uniform scale で変換、aspect
+    // 歪みを伝播させない。
+    const tr = getCanvasRenderTransform(canvas);
+    const inv = tr ? 1 / tr.scale : 1;
+    view.tx = panStart.tx + (me.clientX - panStart.clientX) * inv;
+    view.ty = panStart.ty + (me.clientY - panStart.clientY) * inv;
     drawGraphCanvas(canvas);
   }, { signal });
 
@@ -868,14 +921,11 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
         drawGraphCanvas(canvas);
         te.preventDefault();
       } else if (panStart) {
-        const rect = canvas.getBoundingClientRect();
-        const payload = payloads.get(canvas);
-        const lw = payload?.width ?? rect.width;
-        const lh = payload?.height ?? rect.height;
-        const sx = rect.width === 0 ? 1 : lw / rect.width;
-        const sy = rect.height === 0 ? 1 : lh / rect.height;
-        view.tx = panStart.tx + (t.clientX - panStart.clientX) * sx;
-        view.ty = panStart.ty + (t.clientY - panStart.clientY) * sy;
+        // PR-Δ1 (2026-05-07):touch pan も uniform scale で変換。
+        const tr = getCanvasRenderTransform(canvas);
+        const inv = tr ? 1 / tr.scale : 1;
+        view.tx = panStart.tx + (t.clientX - panStart.clientX) * inv;
+        view.ty = panStart.ty + (t.clientY - panStart.clientY) * inv;
         drawGraphCanvas(canvas);
         te.preventDefault();
       }
