@@ -1787,8 +1787,119 @@ if (useSplitEditor) {
     pkcSplitPreviewTimer = setTimeout(function() {
       var src = document.getElementById('body-edit').value;
       document.getElementById('body-preview').innerHTML = renderMd(src);
+      pkcRefreshSyncMarker();
     }, 100);
   });
+
+  /* ─────────────────────────────────────────────────────────────
+   * PR-CC (2026-05-06):entry-window split sync.
+   *
+   * User report: ダブルクリックで開いた TEXT エントリは スプリット
+   * ビューの同期編集機能が不活だった。メインウィンドウの時と同じに
+   * してほしい。
+   *
+   * 親 window 側の source-preview-sync.ts と同じ仕組みを child
+   * window のローカル document に inline で実装。child は ES module
+   * import できない(document.write 経由の inline HTML)ので、必要な
+   * helper(caretSourceLine / findPreviewElementForLine /
+   * findSourceLineByPoint / ensureRectInBand)を pure JS で定義。
+   *
+   * localStorage key は "pkc2.split-sync-enabled"(親と共通)。
+   * ON のときに caret 移動 → preview block highlight + scroll、
+   * preview click → caret jump、を実施。
+   * ───────────────────────────────────────────────────────────── */
+  var SYNC_KEY = 'pkc2.split-sync-enabled';
+  var ACTIVE_ATTR = 'data-pkc-active-source';
+  function pkcSyncEnabled() {
+    try { return localStorage.getItem(SYNC_KEY) === 'true'; } catch (_e) { return false; }
+  }
+  function pkcCaretSourceLine(ta) {
+    var pos = ta.selectionStart || 0;
+    var line = 0;
+    var v = ta.value;
+    for (var i = 0; i < pos; i++) if (v.charCodeAt(i) === 10) line++;
+    return line;
+  }
+  function pkcFindPreviewElementForLine(preview, targetLine) {
+    var nodes = preview.querySelectorAll('[data-pkc-source-line]');
+    var best = null, bestLine = -1;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var n = parseInt(el.getAttribute('data-pkc-source-line'), 10);
+      if (!isFinite(n)) continue;
+      if (n <= targetLine && n > bestLine) { best = el; bestLine = n; }
+    }
+    return best;
+  }
+  function pkcFindSourceLineByPoint(preview, viewportY) {
+    var nodes = preview.querySelectorAll('[data-pkc-source-line]');
+    if (nodes.length === 0) return null;
+    var best = null, bestTop = -Infinity;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var top = el.getBoundingClientRect().top;
+      if (top <= viewportY && top > bestTop) { best = el; bestTop = top; }
+    }
+    if (!best) best = nodes[0];
+    var n = parseInt(best.getAttribute('data-pkc-source-line'), 10);
+    return isFinite(n) ? n : null;
+  }
+  function pkcEnsureRectInBand(scroll, rect) {
+    var r = scroll.getBoundingClientRect();
+    var bandTop = r.top + r.height * 0.20;
+    var bandBot = r.top + r.height * 0.55;
+    if (rect.top >= bandTop && rect.bottom <= bandBot) return;
+    var delta = rect.top - bandTop;
+    scroll.scrollBy({ top: delta, behavior: 'auto' });
+  }
+  function pkcClearActiveMarker() {
+    var marked = document.querySelectorAll('[' + ACTIVE_ATTR + ']');
+    for (var i = 0; i < marked.length; i++) marked[i].removeAttribute(ACTIVE_ATTR);
+  }
+  function pkcRefreshSyncMarker() {
+    if (!useSplitEditor) return;
+    if (!pkcSyncEnabled()) { pkcClearActiveMarker(); return; }
+    var ta = document.getElementById('body-edit');
+    var preview = document.getElementById('body-preview');
+    if (!ta || !preview) return;
+    if (document.activeElement !== ta) return;
+    var line = pkcCaretSourceLine(ta);
+    var target = pkcFindPreviewElementForLine(preview, line);
+    pkcClearActiveMarker();
+    if (!target) return;
+    target.setAttribute(ACTIVE_ATTR, 'true');
+    pkcEnsureRectInBand(preview, target.getBoundingClientRect());
+  }
+  document.addEventListener('selectionchange', function() {
+    if (!useSplitEditor || !pkcSyncEnabled()) return;
+    var ta = document.getElementById('body-edit');
+    if (document.activeElement !== ta) return;
+    pkcRefreshSyncMarker();
+  });
+  /* preview click → caret jump in textarea */
+  var previewEl = document.getElementById('body-preview');
+  if (previewEl) {
+    previewEl.addEventListener('click', function(e) {
+      if (!pkcSyncEnabled()) return;
+      var t = e.target;
+      /* skip interactive children(<a>, <button>, copy buttons 等) */
+      if (t && t.closest && t.closest('a,button,input,textarea,select,[data-pkc-action]')) return;
+      var line = pkcFindSourceLineByPoint(previewEl, e.clientY);
+      if (line === null) return;
+      var ta = document.getElementById('body-edit');
+      if (!ta) return;
+      /* compute textarea offset from line number */
+      var v = ta.value, off = 0, l = 0;
+      for (var i = 0; i < v.length; i++) {
+        if (l === line) break;
+        if (v.charCodeAt(i) === 10) l++;
+        off = i + 1;
+      }
+      ta.focus();
+      ta.setSelectionRange(off, off);
+      pkcRefreshSyncMarker();
+    });
+  }
 }
 
 /* ── Attachment preview boot ── */
