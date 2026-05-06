@@ -713,6 +713,12 @@ export function syncCaretToPreview(
  * `pkc2.split-sync-debug=true`. When ON, the sync layer attaches
  * extra DOM markers + a small floating panel showing the computed
  * caret line / target block / progress.
+ *
+ * PR-XXX (2026-05-07、修正指示2 残):MacOS + Firefox 想定不具合の
+ * 投機的 fix は入れない。code review hypothesis(`selectionchange`
+ * timing / `scrollIntoView` smooth interrupt / `elementFromPoint`
+ * overflow:hidden 戻り値)は `docs/development/split-sync-firefox-investigation.md`
+ * に保存。user 報告 + Report dump 取得後に red-first で潰す方針。
  */
 export function isSplitSyncDebugMode(): boolean {
   try {

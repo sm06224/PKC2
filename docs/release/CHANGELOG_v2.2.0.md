@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-XXX(2026-05-07、investigation only)
+
+- **Split sync MacOS + Firefox 再調査(投機的 fix なし、investigation memo)**:user 修正指示2 残「split sync MacOS+Firefox 再調査」への対応。**現時点で具体 repro / pixel screenshot / DOM dump が無いため、投機的 fix を入れず code review + hypothesis を document に残す**(reform-2026-05 doctrine §6 visual-state-parity:repro 不在で投機修正は「動いている側を壊す」リスク)。
+- **新 doc**:`docs/development/split-sync-firefox-investigation.md`。code read-through 結果 + Firefox 特有挙動差 hypothesis 3 件(H1: `selectionchange` timing、H2: `scrollIntoView({ behavior: 'smooth' })` interrupt、H3: `elementFromPoint` overflow: hidden 戻り値)+ 次 step plan(`?pkc-debug=split-sync` Report dump → failing parity test → fix + green)。
+- **source-preview-sync.ts** にも調査 memo へのリンクコメントを追加(将来の reader が investigation 状態を即把握できる)。
+- bundle / unit test に変更なし(doc-only PR、コードはコメント追加のみ)。
+
 ### Wave 10-7 review fix PR-WWW(2026-05-07)
 
 - **Graph node hover preview tooltip**:user 修正指示5 残「graph node に hover で title + body excerpt が見える tooltip がほしい」への対応。`GraphCanvasNode.preview` interface は PR-LLL で既に追加済みだったが、実際に tooltip を表示する DOM 機構が未実装だった。
