@@ -184,6 +184,20 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-9 hotfix PR-Δ4(2026-05-07、修正指示9)
+
+- **graph node 過密 + サイズ抹本見直し(PKC1 依存撃退)**:user 報告「ノードサイズがリレーションやタイトルに比べて異常に大きく、ノード間が過密、視認性の著しい低下あり」への対応。
+- **修正**:
+  - `graph.node_radius_factor` flag default を **0.45 → 0.35**(視覚半径 50 × 0.35 = 17.5 px、PR-TTT の 0.45 比 -22%)。label / edge を node より優先表示
+  - `DEFAULT_FORCE_PARAMS` を 抹本見直し:
+    - `linkDistance` 120 → **180**(edge 自然長↑、繋がりが見える)
+    - `charge` -380 → **-600**(反発↑、銀河風に散らばる)
+    - `collideRadius` 36 → **50**(label 重複領域を確保、最低 100 px の間隔)
+  - PKC1 force-layout 値からの離脱、PKC2 独自の readability 優先設計
+  - 既存 unit test `force-layout.test.ts` の link distance bound を default linkDistance 比相対(0.4× 〜 1.4×)に書き直し、将来の値変更に追従
+- **Playwright 視覚確認**:`tests/smoke/diagnostic-2026-05-07.spec.ts D-01` で 30 nodes / 50 edges 配置、screenshot で node が label より小さく、間隔がはっきり開いて relationships を読み取れる状態を確認。canvas 内部 raster と CSS 表示は完全一致(aspect fix)
+- bundle.js 925.18 → 925.19 KB(+0.01 KB:flag default 値 1 字)、bundle.css 不変。unit 6563 / 6563 pass + Playwright smoke pass。
+
 ### Wave 10-9 hotfix PR-Δ3(2026-05-07、修正指示9)
 
 - **filer multi-select + bulk operations 革命的 UX**:user 報告「ファイラにマルチ選択、一括選択機能をつけ、エントリ整理機能に革命的な操作性を付与しろ」への対応。multi-select infrastructure(`TOGGLE_MULTI_SELECT` action、`getAllSelected` helper、`pkc-multi-action-bar` 描画)は既存だったが、**filer explorer 行からはトリガーできず、視覚 marker も無かった**。

@@ -107,17 +107,21 @@ export const graphIterations = defineFlag<number>(
  * Node 視覚半径の collideRadius に対する比率(PR-TTT 2026-05-07、
  * 修正指示7 #6「ノードが大きすぎる、ラベル優先表示」)。視覚 r は
  * `collideRadius * value` で算出、衝突判定 r も同じ値を使う。
- * default 0.45 で従来 0.6 → 0.45(縮小 25%)。label の hit を増やす。
+ *
+ * PR-Δ4 (2026-05-07、修正指示9):default 0.45 → 0.35。
+ * 50 ばね × 0.35 = 17.5 px の視覚半径 + 50 px の衝突半径で、ノード
+ * 同士は最低 100 px 離れ、label が node より大きく見える(銀河の星々の
+ * 比率を意識)。
  *
  * range [0.2, 1.0] で誤って 0 に振らない。
  */
 export const graphNodeRadiusFactor = defineFlag<number>(
   'graph.node_radius_factor',
-  0.45,
+  0.35,
   {
     range: [0.2, 1.0],
     category: FLAG_CATEGORY,
-    description: 'node 視覚半径 / collide_radius 比率(0.45 = 従来 0.6 の縮小 25%)。小さくするほど label が相対的に大きく見える',
+    description: 'node 視覚半径 / collide_radius 比率(0.35 = label / edge を node より優先表示)。小さくするほど label が相対的に大きく見える',
     tier: 0,
   },
 );

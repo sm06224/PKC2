@@ -56,10 +56,13 @@ describe('force-layout', () => {
     const dx = sim[1]!.x - sim[0]!.x;
     const dy = sim[1]!.y - sim[0]!.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Should have settled near linkDistance (70). Allow generous tolerance
-    // since collision + repulsion + center pull all interact.
-    expect(dist).toBeGreaterThan(40);
-    expect(dist).toBeLessThan(160);
+    // Should have settled near `params.linkDistance`. Tolerance derives
+    // from collision + repulsion + center pull. PR-Δ4 (2026-05-07)
+    // bumped DEFAULT_FORCE_PARAMS.linkDistance to 180 → tolerance band
+    // re-centered.
+    const target = params.linkDistance;
+    expect(dist).toBeGreaterThan(target * 0.4); // 0.4 × 180 = 72
+    expect(dist).toBeLessThan(target * 1.4);    // 1.4 × 180 = 252
   });
 
   it('runSimulation produces a layout with finite, non-NaN positions', () => {

@@ -62,17 +62,18 @@ export interface ForceParams {
 }
 
 export const DEFAULT_FORCE_PARAMS: ForceParams = {
-  // PR-P (2026-05-06、user 報告「グラフがかなり汚い、ゴチャゴチャ」):
-  // node 同士の余白を広げて重なりを防ぎ、長 label が読めるようにする。
-  // 旧 linkDistance 70 / charge -180 / collide 20 は密集して文字が
-  // 重なっていた。新値:
-  //   linkDistance 70 → 120 (ばね自然長↑、edge 長く取る)
-  //   charge -180 → -380 (反発↑、node が散らばる)
-  //   collideRadius 20 → 36 (衝突半径↑、label 重複領域確保)
-  linkDistance: 120,
+  // PR-Δ4 (2026-05-07、修正指示9「ノードサイズが異常に大きく、
+  // ノード間が過密、視認性の著しい低下」):node_radius_factor 縮小
+  // (0.45 → 0.35)と組み合わせて、ノードが label / edge より小さく
+  // 見えるよう force layout のばね距離 + 反発 + 衝突半径を一段 bump。
+  //   linkDistance 120 → 180 (edge が長く伸び、繋がりが見える)
+  //   charge -380 → -600 (反発↑、銀河風の散らばり)
+  //   collideRadius 36 → 50 (label 重複領域を大幅確保)
+  // PKC1 force-layout 値からの離脱、PKC2 独自の readability 優先設計。
+  linkDistance: 180,
   linkStrength: 0.6,
-  charge: -380,
-  collideRadius: 36,
+  charge: -600,
+  collideRadius: 50,
   centerStrength: 0.02,
   centerX: 0,
   centerY: 0,
