@@ -184,6 +184,10 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-GG(2026-05-06)
+
+- **左ペイン entry click 時の scroll 位置消失 bug を root-cause 修正**:user 報告「大量のエントリがある状況でクリックすると左ペインのスクロールが上に戻る」の原因は、`<aside class="pkc-sidebar">`(`data-pkc-region="sidebar"`)が実際の scroll container ではなく、その内側の `<ul class="pkc-entry-list">`(`flex:1; overflow-y:auto`)が真の scrollable element だった点。2026-04-26 で導入された scroll 保存ロジックは `sidebar.scrollTop` を読んでいたが値は常に 0、restore は silent な no-op となり毎 render で entry-list が頭に戻っていた。修正:`<ul class="pkc-entry-list">` に `data-pkc-region="entry-list"` を付与、`render-continuity.ts` の `SCROLL_REGIONS` に追加、`renderer.ts` の full-render と `replaceSidebarRegion` 両 path で entry-list scrollTop を capture/restore。layout-clamp race 防止のため rAF 二度書き(synchronous + 1 frame defer の idempotent re-apply)も追加。**Phase 8 順序性 parity test**:`sidebar-scroll-preservation-parity.spec.ts`(NEW)で 80 entry seed → entry-list を 600px scroll → 中央の entry を `page.mouse.click(x, y)` で click → SELECT_ENTRY 後に `entry-list.scrollTop` が ±2px 以内で保たれることを assert。bug 修正前は 0 に戻り test FAIL する設計。bundle.js +0.6 KB(capture/restore 経路 1 region 追加)、bundle.css 不変。unit 6455 / 6455、smoke +1 件 pass。
+
 ### PoC bench Application(2026-05-04)
 
 - **PoC 提案 A — `textlog.staged_render.initial_count` flag sweep 実行**:Phase 8 順序性テスト doctrine の最初の application として、Flags 機構を経由した bench sweep を実走。同一 `dist/pkc2.html` バンドルに対し URL flag のみ変えて 6 値(1 / 4 / 8 / 16 / 32 / 64)を測定 — リビルドゼロで実機 A/B 取得可能であることを実証。結果:

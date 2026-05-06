@@ -377,13 +377,25 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // dispatch wipes `root.innerHTML`, which resets the sidebar
   // scroll back to the top — long sidebars then snap-jump as the
   // user is mid-scroll. Capture both the sidebar and center-pane
-  // scrollTop before the rebuild so the post-render rAF handler
-  // below can restore them. The center-pane preservation already
-  // exists via `preserveCenterPaneScroll` for inline mutations,
-  // but full-shell re-renders (CONTAINER_LOADED, theme changes,
-  // any click-elsewhere) skipped that helper.
+  // scrollTop before the rebuild so the post-render handler below
+  // can restore them. The center-pane preservation already exists
+  // via `preserveCenterPaneScroll` for inline mutations, but
+  // full-shell re-renders (CONTAINER_LOADED, theme changes, any
+  // click-elsewhere) skipped that helper.
+  //
+  // PR-GG (2026-05-06): the actual scroll container for the entry
+  // list is `<ul class="pkc-entry-list" data-pkc-region="entry-
+  // list">`, not the outer `<aside data-pkc-region="sidebar">`.
+  // The aside has `display: flex; flex-direction: column` and
+  // never overflows; the UL has `flex: 1; overflow-y: auto`.
+  // Capturing only the aside read scrollTop = 0 every time, so
+  // the restore was silently a no-op — exactly the user-reported
+  // "大量のエントリがある状況でクリックすると左ペインのスクロー
+  // ルが上に戻る" symptom.
   const prevSidebarScroll =
     root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevEntryListScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]')?.scrollTop ?? null;
   const prevCenterScroll =
     root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
 
@@ -473,13 +485,50 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // helper still wins when the SELECTION moved (`scrollIntoView`
   // with `block: 'nearest'` is a no-op when the row is already
   // in view).
+  //
+  // PR-GG (2026-05-06): the synchronous write can clamp to
+  // `maxScrollTop = scrollHeight - clientHeight` when layout has
+  // not finished measuring the just-mounted sidebar (large entry
+  // counts amplify this). Schedule a rAF-deferred re-apply so the
+  // captured value wins once `scrollHeight` settles. Idempotent:
+  // a successful synchronous write turns the rAF pass into a no-op.
   if (prevSidebarScroll !== null) {
     const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
     if (sidebar) sidebar.scrollTop = prevSidebarScroll;
   }
+  if (prevEntryListScroll !== null) {
+    const entryList = root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+    if (entryList) entryList.scrollTop = prevEntryListScroll;
+  }
   if (prevCenterScroll !== null) {
     const center = root.querySelector<HTMLElement>('.pkc-center-content');
     if (center) center.scrollTop = prevCenterScroll;
+  }
+  if (prevSidebarScroll !== null || prevEntryListScroll !== null || prevCenterScroll !== null) {
+    const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+    if (raf) {
+      raf(() => {
+        if (!root.isConnected) return;
+        if (prevSidebarScroll !== null) {
+          const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+          if (sidebar && sidebar.scrollTop !== prevSidebarScroll) {
+            sidebar.scrollTop = prevSidebarScroll;
+          }
+        }
+        if (prevEntryListScroll !== null) {
+          const entryList = root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+          if (entryList && entryList.scrollTop !== prevEntryListScroll) {
+            entryList.scrollTop = prevEntryListScroll;
+          }
+        }
+        if (prevCenterScroll !== null) {
+          const center = root.querySelector<HTMLElement>('.pkc-center-content');
+          if (center && center.scrollTop !== prevCenterScroll) {
+            center.scrollTop = prevCenterScroll;
+          }
+        }
+      });
+    }
   }
 
   // Post-render: if the current selection changed since the last
@@ -587,6 +636,12 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   const oldSidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
   if (!oldSidebar) return;
   const scrollTop = oldSidebar.scrollTop;
+  // PR-GG (2026-05-06): the actual scroll container is the inner
+  // `<ul data-pkc-region="entry-list">`. Capture it too.
+  const oldEntryList = oldSidebar.querySelector<HTMLElement>(
+    '[data-pkc-region="entry-list"]',
+  );
+  const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
   const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
 
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
@@ -595,6 +650,23 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
 
   oldSidebar.replaceWith(newSidebar);
   newSidebar.scrollTop = scrollTop;
+  const newEntryList = newSidebar.querySelector<HTMLElement>(
+    '[data-pkc-region="entry-list"]',
+  );
+  if (newEntryList) newEntryList.scrollTop = entryListScrollTop;
+  // rAF-deferred re-apply to win against layout clamping when
+  // scrollHeight hasn't settled yet. Idempotent.
+  const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+  if (raf) {
+    raf(() => {
+      if (newSidebar.isConnected && newSidebar.scrollTop !== scrollTop) {
+        newSidebar.scrollTop = scrollTop;
+      }
+      if (newEntryList && newEntryList.isConnected && newEntryList.scrollTop !== entryListScrollTop) {
+        newEntryList.scrollTop = entryListScrollTop;
+      }
+    });
+  }
 }
 
 function renderInitializing(): HTMLElement {
@@ -3113,6 +3185,15 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   }
 
   const list = createElement('ul', 'pkc-entry-list');
+  // PR-GG (2026-05-06): mark the entry-list as a scroll region so
+  // render-continuity capture/restore preserves it across full
+  // re-renders. Critical: the `<aside class="pkc-sidebar">` wrapper
+  // never overflows because the entry-list is `flex:1; overflow-y:
+  // auto` — the user's actual scroll lives on this UL, not on the
+  // outer sidebar. Without this attribute, every dispatch silently
+  // wiped the sidebar's scroll position back to 0, manifesting as
+  // "大量のエントリでクリックすると左ペインが上に戻る".
+  list.setAttribute('data-pkc-region', 'entry-list');
   const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
   // v1 backlink count badge: per-target count map. PR #192 routes
