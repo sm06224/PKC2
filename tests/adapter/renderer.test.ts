@@ -3462,7 +3462,9 @@ describe('Renderer', () => {
     //  Data menu reordered into Share (HTML) | Archive (ZIP) | Import
     //  groups — icon 📤 = share, 📦 = ZIP package, 📥 = import)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(12);
+    // PR-PP (2026-05-06): + 🆕 New PKC button — system-entries-only
+    // export (`__settings__` / `__flags__` / `__about__` only).
+    expect(btns.length).toBe(13);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {

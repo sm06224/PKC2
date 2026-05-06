@@ -2363,6 +2363,20 @@ function renderExportImportInline(state: AppState): HTMLElement {
   lightBtn.textContent = 'Light';
   content.appendChild(lightBtn);
 
+  // PR-PP (2026-05-06): New PKC button — exports a fresh HTML carrying
+  // ONLY the reserved system entries (`__settings__` / `__flags__` /
+  // `__about__`) with user content stripped. Use case:「私の theme と
+  // flag 設定を埋め込んだ blank PKC2 を相手に渡す / 新 workspace の
+  // 起点にする」(user 修正指示2).
+  const newPkcBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  newPkcBtn.setAttribute('data-pkc-action', 'export-system-only');
+  newPkcBtn.setAttribute(
+    'title',
+    'システムエントリ(設定 / Flags / About)だけを含む空の PKC2 を HTML で書き出す。相手は同じ theme / 設定で blank workspace を始められる',
+  );
+  newPkcBtn.textContent = '🆕 New PKC';
+  content.appendChild(newPkcBtn);
+
   // Selected-entry HTML clone export — produces a stand-alone `.html`
   // that the recipient can open without PKC2. Subset logic
   // (referenced entries, owned attachments, reachable assets,

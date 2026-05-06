@@ -184,6 +184,14 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-PP(2026-05-06)
+
+- **🆕 New PKC button(system entries のみ export)**:user 修正指示2「New PKC button(system entries のみ export)」への対応。Data menu の Share group に新ボタン追加、現 container から **reserved system entries**(`__settings__` / `__flags__` / `__about__`)だけを抽出して fresh container を作成 → light HTML 形式で download。relations / revisions / assets / 非 reserved entries は全て strip。use case:「私の theme と flag 設定を埋め込んだ blank PKC2 を相手に渡す / 新 workspace の起点にする」。
+- **新規 helper**:`src/features/auto-fill/system-only-container.ts`(pure)。`buildSystemOnlyContainer(source, options)` で system 限定 container を組み立てる。container_id は `new-pkc-<isoTimestamp>`、title は default `New PKC2 (system-only)`(override 可)、updated_at は now で stamp。source 不変(no mutation)。
+- **action-binder 結線**:新 action `export-system-only` を追加、live state から container を取得 → `buildSystemOnlyContainer` → `exportContainerAsHtml` を直接呼ぶ(BEGIN_EXPORT phase は経由しない、derived container だから)。失敗は console.error に流すのみで dispatcher 状態は汚染しない。
+- **テスト**:`tests/features/auto-fill/system-only-container.test.ts`(8 件)— reserved entries のみ抽出 / 全 user content strip / fresh container_id + timestamps / default + override title / source 不変 / system entry body round-trip / 空 source 対応。renderer + grouping test の button count assertion を 12 → 13 に更新。
+- bundle.js 899.51 → 900.56 KB(+1.05 KB:helper + button + action 結線)、bundle.css 不変。unit 6497 → 6505(+8)pass。
+
 ### Wave 10-6 review fix PR-OO(2026-05-06)
 
 - **テーマカラー Export 修正**:user 修正指示2「テーマカラー Export 修正」への対応。`buildExportHtml` が live `#pkc-root` の `data-pkc-theme` 属性 + inline `style` block(`--c-accent` / `--c-bg` / `--c-fg` 等の CSS variable override)を snapshot して export 済 HTML の `<div id="pkc-root">` 開きタグに inline する。これにより export HTML が **first paint** で正しい theme を出す(boot 後の `RESTORE_SETTINGS` まで待たない)、light source mode(boot 抑制 = `__settings__` re-apply 抑制)でも theme 値が描画に効く。

@@ -68,6 +68,7 @@ import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
+import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -1375,6 +1376,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const mode = (target.getAttribute('data-pkc-export-mode') ?? 'full') as ExportMode;
         const mutability = (target.getAttribute('data-pkc-export-mutability') ?? 'editable') as ExportMutability;
         dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode, mutability });
+        break;
+      }
+      case 'export-system-only': {
+        // PR-PP (2026-05-06):"New PKC" export — strip user content,
+        // keep only `__settings__` / `__flags__` / `__about__`. Bypasses
+        // BEGIN_EXPORT phase because we're exporting a derived
+        // container, not the live state. Best-effort: failure is
+        // logged but does not poison the dispatcher.
+        const liveState = dispatcher.getState();
+        if (!liveState.container) break;
+        const systemOnly = buildSystemOnlyContainer(liveState.container);
+        exportContainerAsHtml(systemOnly, { mode: 'light', mutability: 'editable' })
+          .then((result) => {
+            if (result.success) {
+              console.log(
+                `[PKC2] Exported system-only: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`,
+              );
+            } else {
+              console.error(`[PKC2] system-only export failed: ${result.error}`);
+            }
+          })
+          .catch((e: unknown) => {
+            console.error('[PKC2] system-only export threw:', e);
+          });
         break;
       }
       case 'rehydrate':
