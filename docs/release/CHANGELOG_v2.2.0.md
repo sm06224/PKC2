@@ -184,6 +184,21 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-TT(2026-05-06)
+
+- **Data… menu emoji PC/スマホ統一**:user 修正指示2「上部メニューバーの『Date...』のボタン配下のメニューについて、スマホ向け画面と異なり、PC向け画面では絵文字がないなどの違いがあり、統一感がない」(`Date` は `Data…` の typo と user 確認済)への対応。PC `Data…` panel(`renderExportImportInline`)の labels に mobile drawer (action-binder) で使用済の emoji 接頭辞を揃えた。
+- **変更**:
+  - `Export` → `📤 Export`(Share group)
+  - `Light` → `📤 Light`(Share group)
+  - `Backup ZIP` → `📦 Backup ZIP`(Archive group)
+  - `TEXTLOGs` → `📦 TEXTLOGs`(同)
+  - `TEXTs` → `📦 TEXTs`(同)
+  - `Mixed` → `📦 Mixed`(同)
+  - `Import` → `📥 Import`(Import group)
+  - 既存の `🆕 New PKC` / `📤 Selected as HTML` / `📦 Selected (TEXT/TEXTLOG)` / `📥 Textlog` / `📥 Text` / `📥 Entry` / `📥 Batch` は変更なし
+- **テスト追従**:`renderer.test.ts` の textContent assertion 計 8 件を新 emoji 付き label に更新、PR-TT 由来であることを comment で明示。
+- bundle.js 905.90 → 905.95 KB(+0.05 KB:label 文字列拡張)、bundle.css 不変。unit 6518 / 6518 pass。
+
 ### Wave 10-6 review fix PR-SS(2026-05-06)
 
 - **全 grid サムネ contain 統一(長辺合わせ)**:user 修正指示4 補足「サムネは元画像の長辺に合わせて引き伸ばしなしで表示してほしい(全 grid)」への対応。PR-KK の contact-sheet 限定 contain 修正を `.pkc-filer-card-thumb img` 全体の baseline に upgrade、book / video / novel / audio / contact-sheet を統一。cover-art convention の crop が「ノベル系 SVG / Amazon 商品画像」で意図しない切り抜きを引き起こしていたため撤回。letterbox 部の背景は thumb 既存の `bg-tag` neutral grey が見える。

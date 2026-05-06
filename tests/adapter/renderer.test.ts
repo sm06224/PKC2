@@ -191,11 +191,12 @@ describe('Renderer', () => {
     // Full (editable) — primary export
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('full');
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[0]!.textContent).toBe('Export');
+    // PR-TT (2026-05-06): emoji-prefixed labels to match mobile drawer.
+    expect(exportBtns[0]!.textContent).toBe('📤 Export');
     // Light (editable)
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('light');
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[1]!.textContent).toBe('Light');
+    expect(exportBtns[1]!.textContent).toBe('📤 Light');
   });
 
   it('shows exporting badge in exporting phase', () => {
@@ -3476,9 +3477,10 @@ describe('Renderer', () => {
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
     const texts = Array.from(panel!.querySelectorAll('button')).map(b => b.textContent);
-    expect(texts).toContain('Export');
-    expect(texts).toContain('Light');
-    expect(texts).toContain('Import');
+    // PR-TT: emoji-prefixed PC labels matching mobile drawer.
+    expect(texts).toContain('📤 Export');
+    expect(texts).toContain('📤 Light');
+    expect(texts).toContain('📥 Import');
   });
 
   it('does not render export/import panel in readonly mode', () => {
@@ -3510,7 +3512,7 @@ describe('Renderer', () => {
     render(state, root);
     const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
     expect(importBtn).not.toBeNull();
-    expect(importBtn!.textContent).toBe('Import');
+    expect(importBtn!.textContent).toBe('📥 Import');
   });
 
   // ── W1 Slice F: Tag chip UI prototype ──────────────────
@@ -3754,7 +3756,7 @@ describe('Container-wide TEXTLOG export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTLOGs');
+    expect(btn!.textContent).toBe('📦 TEXTLOGs');
   });
 
   it('hides TEXTLOGs button when container has no textlog entries', () => {
@@ -3775,7 +3777,7 @@ describe('Container-wide TEXTLOG export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTLOGs');
+    expect(btn!.textContent).toBe('📦 TEXTLOGs');
   });
 });
 
@@ -3799,7 +3801,7 @@ describe('Container-wide TEXT export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTs');
+    expect(btn!.textContent).toBe('📦 TEXTs');
   });
 
   it('hides TEXTs button when container has no text entries', () => {
@@ -3824,7 +3826,7 @@ describe('Container-wide TEXT export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTs');
+    expect(btn!.textContent).toBe('📦 TEXTs');
   });
 });
 
@@ -7583,14 +7585,15 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="full"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Export');
+      // PR-TT: emoji-prefixed (Share=📤) labels.
+      expect(btn!.textContent).toBe('📤 Export');
     });
 
     it('renders Light export button in ready state', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="light"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Light');
+      expect(btn!.textContent).toBe('📤 Light');
     });
 
     it('renders Backup ZIP export button in ready state', () => {
@@ -7598,20 +7601,22 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       // label is "Backup ZIP" so users can tell apart the
       // backup-oriented `.pkc2.zip` from the archetype-filtered batch
       // bundles (TEXTLOGs / TEXTs / Mixed) and from the single-entry
-      // bundles (📦 Selected). The action attribute stays
-      // `export-zip` for back-compat with existing event wiring.
-      // See docs/development/import-export-surface-audit.md §6.1 / §8.1.
+      // bundles (📦 Selected). PR-TT (2026-05-06): prefix with 📦
+      // (Archive group) to match mobile drawer parity. The action
+      // attribute stays `export-zip` for back-compat with existing
+      // event wiring. See docs/development/import-export-surface-audit.md
+      // §6.1 / §8.1.
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="export-zip"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Backup ZIP');
+      expect(btn!.textContent).toBe('📦 Backup ZIP');
     });
 
     it('renders Import button in ready state', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-import"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Import');
+      expect(btn!.textContent).toBe('📥 Import');
     });
 
     it('hides export/import buttons in readonly mode', () => {

@@ -1056,7 +1056,7 @@ function renderHeader(state: AppState): HTMLElement {
       const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
       textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
       textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
-      textlogsBtn.textContent = 'TEXTLOGs';
+      textlogsBtn.textContent = '📦 TEXTLOGs';
       header.appendChild(textlogsBtn);
     }
 
@@ -1067,7 +1067,7 @@ function renderHeader(state: AppState): HTMLElement {
       const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
       textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
       textsBtn.setAttribute('title', 'Export all TEXTs as a single ZIP bundle (.texts.zip)');
-      textsBtn.textContent = 'TEXTs';
+      textsBtn.textContent = '📦 TEXTs';
       header.appendChild(textsBtn);
     }
 
@@ -1076,7 +1076,7 @@ function renderHeader(state: AppState): HTMLElement {
       const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
       mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
       mixedBtn.setAttribute('title', 'Export all TEXTs + TEXTLOGs as a single ZIP bundle (.mixed.zip)');
-      mixedBtn.textContent = 'Mixed';
+      mixedBtn.textContent = '📦 Mixed';
       header.appendChild(mixedBtn);
     }
   }
@@ -2416,7 +2416,11 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     '全データを配布用 HTML でエクスポート（相手に PKC2 不要・単体で開ける・編集可能）',
   );
-  exportBtn.textContent = 'Export';
+  // PR-TT (2026-05-06): user 修正指示2「Date... 配下メニュー、PC で
+  // 絵文字なくモバイルと統一感がない」(Data… の typo と解釈)。PC
+  // labels を mobile drawer の emoji 接頭辞に揃える。Share=📤 / Archive
+  // ZIP=📦 / Import=📥 の 3 系統 icon が distinct になるよう拡張。
+  exportBtn.textContent = '📤 Export';
   content.appendChild(exportBtn);
 
   // Export Light (editable) — same as Full but strips assets
@@ -2428,7 +2432,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'アセットなしの軽量な配布用 HTML をエクスポート（相手に PKC2 不要・単体で開ける）',
   );
-  lightBtn.textContent = 'Light';
+  lightBtn.textContent = '📤 Light';
   content.appendChild(lightBtn);
 
   // PR-PP (2026-05-06): New PKC button — exports a fresh HTML carrying
@@ -2490,7 +2494,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'Backup ZIP（.pkc2.zip）として書き出す — バックアップ・マシン移行・別 PKC2 への再インポート用',
   );
-  zipBtn.textContent = 'Backup ZIP';
+  zipBtn.textContent = '📦 Backup ZIP';
   content.appendChild(zipBtn);
 
   // Container-wide TEXTLOG export — only shown when the container
@@ -2504,7 +2508,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全テキストログをまとめて ZIP エクスポート（再インポート用）',
     );
-    textlogsBtn.textContent = 'TEXTLOGs';
+    textlogsBtn.textContent = '📦 TEXTLOGs';
     content.appendChild(textlogsBtn);
   }
 
@@ -2519,7 +2523,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全テキストをまとめて ZIP エクスポート（再インポート用）',
     );
-    textsBtn.textContent = 'TEXTs';
+    textsBtn.textContent = '📦 TEXTs';
     content.appendChild(textsBtn);
   }
 
@@ -2533,7 +2537,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip・再インポート用)',
     );
-    mixedBtn.textContent = 'Mixed';
+    mixedBtn.textContent = '📦 Mixed';
     content.appendChild(mixedBtn);
   }
 
@@ -2580,7 +2584,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'HTML または Backup ZIP を取り込む（プレビューで Replace / Merge を選択）',
   );
-  importBtn.textContent = 'Import';
+  importBtn.textContent = '📥 Import';
   content.appendChild(importBtn);
 
   // Import single-entry bundle (.textlog.zip)
