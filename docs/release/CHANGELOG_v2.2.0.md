@@ -184,6 +184,14 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-II(2026-05-06)
+
+- **ノベル系 SVG サムネ生成(タイトル+作者名+プロバイダ)**:user 修正指示2「ノベル系 SVG サムネ(タイトル+作者名)」への対応。カクヨム / 小説家になろう のような「**本物の表紙画像が無い**」 novel-kind entry は、PR-X の URL 直渡し / PR-HH の materialize でも使える画像が無く、card grid で archetype icon の寂しい box になっていた。本 PR は frontmatter `kind: novel` (および `kind: book`)を検出した場合、entry.title + frontmatter.author + frontmatter.provider から **SVG カバーを合成して data:image/svg+xml URL** で `<img src>` に渡す。
+- **新規 helper**:`src/features/auto-fill/novel-cover-svg.ts`(pure)。`buildNovelCoverSvg(fields)` で SVG markup、`buildNovelCoverDataUrl(fields)` で base64-encoded data URL を返す。設計:aspect ratio 2:3(本の表紙標準)、provider 由来の決定論的 gradient(同じ provider は同じ色 → container export 後も再現性)、長 title は最大 4 行で wrap、tail ellipsis、XML escape 済。`小説家になろう` / `カクヨム` には専用パレット(緑系・青系)、未知の provider は generic gray、`kind: book` も別パレット(ベージュ系)。
+- **renderer 結線**:`pickImageAssetForEntry` の最後の fallback step (4) として追加。step 0(frontmatter URL)→ 1(attachment asset)→ 2(body asset:KEY)→ 3(folder thumb)が全て null を返した場合、`kind: novel` または `kind: book` で title が空でなければ SVG カバーを返す。既存 path には影響なし(image asset がある場合は従来通り raster 画像優先)。
+- **テスト**:`tests/features/auto-fill/novel-cover-svg.test.ts`(10 件)— SVG 生成 / 空 title / author 省略 / provider パレット切替 / XML escape / multi-line wrap / data URL round-trip 復号確認 を網羅。
+- bundle.js 894.40 → 897.05 KB(+2.65 KB:SVG generator + provider palette + wrap helper + 結線)、bundle.css 不変。unit 6474 → 6484(+10)pass。
+
 ### Wave 10-6 review fix PR-HH(2026-05-06)
 
 - **サムネ URL を保存時に解決・asset 化(動的解決排除)**:user 修正指示2「サムネを保存時 URL 解決・asset 化(動的解決排除)」への対応。bookmarklet 経由 PKC-Message v1.1 capture profile の `thumbnail_url`(YouTube / Niconico / カクヨム / Amazon 等の外部 URL)を、accept 時に **fetch + canvas-encode → base64 asset として container.assets に格納**、frontmatter の `thumbnail: <url>` を `thumbnail: asset:KEY` に書換える。container export 時にもサムネが移植され、original host が落ちても、CORS が変わっても、画像はローカルで描画される。

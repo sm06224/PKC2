@@ -89,6 +89,7 @@ import { resolveAssetReferences, hasAssetReferences } from '../../features/markd
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
+import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
 import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
 import {
@@ -5165,6 +5166,27 @@ function pickImageAssetForEntry(
       if (child.archetype !== 'attachment') continue;
       const inner = pickImageAssetForEntry(child, assets, null);
       if (inner) return inner;
+    }
+  }
+  // 4. PR-II (2026-05-06): novel-kind synthesis fallback. カクヨム /
+  // 小説家になろう のような表紙画像が存在しない site の entry は
+  // ここまで全 step が null を返す。frontmatter `kind: novel` を
+  // 検出した場合は title + author + provider から SVG カバーを
+  // 合成して card grid の見栄えを救う。`book` kind も同様の
+  // フォールバック対象(Amazon 等で thumbnail_url が拾えなかった
+  // 場合のセーフネット)。
+  if (entry.archetype === 'text' && entry.body) {
+    const fm = parseFrontmatter(entry.body);
+    const kind = typeof fm.meta.kind === 'string' ? fm.meta.kind : null;
+    if (kind === 'novel' || kind === 'book') {
+      const author = typeof fm.meta.author === 'string' ? fm.meta.author : null;
+      const provider = typeof fm.meta.provider === 'string' ? fm.meta.provider : null;
+      const dataUrl = buildNovelCoverDataUrl({
+        title: entry.title,
+        author,
+        provider,
+      });
+      if (dataUrl) return dataUrl;
     }
   }
   return null;
