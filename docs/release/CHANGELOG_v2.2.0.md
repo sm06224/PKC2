@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-HHH(2026-05-06)
+
+- **Filer Graph subset 廃止(center Graph タブが canonical)**:user 修正指示5「廃止したはずのFilerのGraphがまだ活きている。センターペインのGraphタブが正です」への対応。`folder.body` に display profile `graph` を持つ folder を filer view した際の `renderFilerGraph` SVG レンダリングを **完全削除**。center pane の viewMode='graph' タブ (`renderCenterGraphView`) が canonical な graph 表示として残る(PR-AAA の auto-fit / PR-DD の zoom range などが効く)。
+- **影響範囲**:
+  - filer 内 subset dispatch の `case 'graph'` を削除 → default(explorer table)に silent fallback。古い container で `profile.kind='graph'` を持つ folder は explorer 表示になる(後方互換、データ破壊なし)
+  - folder display profile picker の `<option value="graph">` を除去(新規選択不可)
+  - `renderFilerGraph` 関数本体(~90 行)を完全削除、コメントブロックのみ残す
+- bundle.js 914.99 → 912.68 KB(**-2.31 KB**:filer graph SVG renderer 削除)、bundle.css 不変。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-GGG(2026-05-06)
 
 - **Flags Inspector 検索 box が活性化**:user 修正指示5「Flags Inspector で検索ができない」への対応。検索 input + category select は元々 DOM 上にあったが event handler が付いていなかったため filter が効かない状態だった。**`input` event で in-place row filter** を実装、`data-pkc-region="flag-row"` ごとに `display: none` toggle、空 section は heading ごと隠す。

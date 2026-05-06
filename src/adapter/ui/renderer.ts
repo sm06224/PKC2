@@ -4544,9 +4544,12 @@ function renderFilerView(state: AppState): HTMLElement {
     case 'audio-base':
       filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'audio'));
       break;
-    case 'graph':
-      filer.appendChild(renderFilerGraph(state, visibleChildren));
-      break;
+    // PR-HHH (2026-05-06、user 修正指示5「廃止したはずのFilerのGraph
+    // がまだ活きている。センターペインのGraphタブが正です」):filer
+    // 内 Graph subset を廃止、center pane viewMode='graph' タブが
+    // canonical。`profile.kind === 'graph'` が container に残っていても
+    // 引き続き受理する(後方互換)が、explorer table へ silent fallback
+    // (default 分岐に流す)。inventory は別枝で生かす。
     case 'inventory':
       filer.appendChild(renderFilerInventory(state, visibleChildren));
       break;
@@ -5388,103 +5391,14 @@ function pickImageAssetForEntry(
   return null;
 }
 
-/**
- * Graph subset (領域 10-6 ζ'' Phase 2b).
- * Force-directed network of folder children + their relations,
- * rendered as inline SVG. Vanilla TS Verlet / spring / repulsion;
- * Tier 0 flags expose every tunable PKC1 once tweaked in d3-force.
+/*
+ * PR-HHH (2026-05-06、user 修正指示5「廃止したはずのFilerのGraph
+ * がまだ活きている」):filer 内 Graph subset の `renderFilerGraph`
+ * 関数は完全削除。center pane の viewMode='graph' タブ
+ * (`renderCenterGraphView`)が canonical な graph 表示として残る。
+ * 古い container で `profile.kind='graph'` を持つ folder は subset
+ * 分岐の default(explorer table)へ silent fallback。
  */
-function renderFilerGraph(state: AppState, children: readonly Entry[]): HTMLElement {
-  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
-  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
-
-  // Reasonable default canvas size. The simulation is deterministic
-  // for a given child set, so the SVG looks identical between renders
-  // until membership changes.
-  const width = 800;
-  const height = 480;
-
-  const childIds = new Set(children.map((c) => c.lid));
-  const links = (state.container?.relations ?? [])
-    .filter(
-      (r) =>
-        (r.kind === 'structural' || r.kind === 'semantic')
-        && childIds.has(r.from)
-        && childIds.has(r.to),
-    )
-    .map((r) => ({ from: r.from, to: r.to }));
-
-  const nodes = children.map((c) => ({ id: c.lid }));
-  const params = getGraphForceParams(width, height);
-  const sim = seedSimulation(nodes, width, height);
-  const iter = graphIterations();
-  for (let i = 0; i < iter; i++) {
-    stepSimulation(sim, links, params);
-  }
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
-  svg.classList.add('pkc-filer-graph');
-  svg.setAttribute('data-pkc-region', 'filer-graph');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
-
-  // Edges first so node circles render on top.
-  const idx = new Map<string, { x: number; y: number }>();
-  for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
-
-  const edgeLayer = document.createElementNS(svgNS, 'g');
-  edgeLayer.setAttribute('class', 'pkc-filer-graph-edges');
-  for (const link of links) {
-    const a = idx.get(link.from);
-    const b = idx.get(link.to);
-    if (!a || !b) continue;
-    const line = document.createElementNS(svgNS, 'line');
-    line.setAttribute('x1', String(a.x));
-    line.setAttribute('y1', String(a.y));
-    line.setAttribute('x2', String(b.x));
-    line.setAttribute('y2', String(b.y));
-    line.setAttribute('class', 'pkc-filer-graph-edge');
-    edgeLayer.appendChild(line);
-  }
-  svg.appendChild(edgeLayer);
-
-  const nodeLayer = document.createElementNS(svgNS, 'g');
-  nodeLayer.setAttribute('class', 'pkc-filer-graph-nodes');
-  for (const n of sim) {
-    const child = children.find((c) => c.lid === n.id);
-    if (!child) continue;
-    const group = document.createElementNS(svgNS, 'g');
-    group.setAttribute('class', 'pkc-filer-graph-node');
-    group.setAttribute('data-pkc-action', 'select-entry');
-    group.setAttribute('data-pkc-lid', child.lid);
-    group.setAttribute('data-pkc-archetype', child.archetype);
-    group.setAttribute('transform', `translate(${n.x}, ${n.y})`);
-    if (child.lid === state.selectedLid) {
-      group.setAttribute('data-pkc-active', 'true');
-    }
-
-    const circle = document.createElementNS(svgNS, 'circle');
-    circle.setAttribute('r', String(params.collideRadius * 0.6));
-    circle.setAttribute('class', `pkc-filer-graph-circle pkc-filer-graph-circle-${child.archetype}`);
-    group.appendChild(circle);
-
-    const label = document.createElementNS(svgNS, 'text');
-    label.setAttribute('class', 'pkc-filer-graph-label');
-    label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('y', String(params.collideRadius * 0.6 + 12));
-    label.textContent = truncate(child.title || child.lid, 18);
-    group.appendChild(label);
-
-    nodeLayer.appendChild(group);
-  }
-  svg.appendChild(nodeLayer);
-
-  wrapper.appendChild(svg);
-  return wrapper;
-}
 
 /**
  * Inventory subset (Phase 5) — Bases 風 query view over folder
@@ -6939,7 +6853,8 @@ function renderMetaPaneImpl(
       { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
       { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
       { value: 'audio-base', label: 'Audio base (Spotify / 録音 / podcast)' },
-      { value: 'graph', label: 'Graph (relations)' },
+      // PR-HHH (2026-05-06):filer 内 Graph subset は廃止。center pane の
+      // viewMode='graph' タブが canonical。option は除去。
       { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
     ];
     // PR-G G15 (2026-05-06):default は auto。undefined display_profile も
