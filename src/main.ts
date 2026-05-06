@@ -1636,6 +1636,114 @@ function mountZipExportHandler(root: HTMLElement, dispatcher: Dispatcher): void 
 }
 
 /**
+ * In-app reset workspace dialog. Replaces the legacy `confirm()` +
+ * `prompt()` 2-stage chain because iOS Safari (especially in
+ * Add-to-Home-Screen / standalone mode) sometimes suppresses
+ * `prompt()` silently — the user would tap Reset and nothing would
+ * happen.
+ *
+ * The dialog uses real DOM (sticky overlay + form + input + 2 buttons)
+ * so its rendering is independent of the browser's native dialog
+ * machinery. Returns `true` only when the user types `RESET` and
+ * presses Confirm; cancel / Esc / outside-tap return `false`.
+ *
+ * PR-YYY (2026-05-07、修正指示8 #1):iPhone WorkSpace Clear 不動作。
+ */
+function showResetWorkspaceDialog(): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'pkc-reset-dialog-overlay';
+    overlay.setAttribute('data-pkc-region', 'reset-dialog');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+
+    const card = document.createElement('div');
+    card.className = 'pkc-reset-dialog-card';
+
+    const heading = document.createElement('h2');
+    heading.className = 'pkc-reset-dialog-heading';
+    heading.textContent = '⚠ ワークスペースリセット ⚠';
+    card.appendChild(heading);
+
+    const body = document.createElement('div');
+    body.className = 'pkc-reset-dialog-body';
+    body.appendChild(makeP('以下のデータがすべて削除されます:'));
+    const ul = document.createElement('ul');
+    ul.className = 'pkc-reset-dialog-list';
+    ul.appendChild(makeLi('ブラウザに保存されたローカルデータ (IndexedDB)'));
+    ul.appendChild(makeLi('未エクスポートの変更内容'));
+    body.appendChild(ul);
+    body.appendChild(makeP('HTML に埋め込まれた元データから再読み込みされます。この操作は取り消せません。'));
+    body.appendChild(makeP('確認のため「RESET」と入力してください:'));
+    card.appendChild(body);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pkc-reset-dialog-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('data-pkc-field', 'reset-dialog-input');
+    card.appendChild(input);
+
+    const actions = document.createElement('div');
+    actions.className = 'pkc-reset-dialog-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'pkc-btn-small';
+    cancelBtn.textContent = 'キャンセル';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'pkc-btn-small pkc-btn-danger';
+    confirmBtn.textContent = '削除';
+    confirmBtn.disabled = true;
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    const cleanup = (result: boolean): void => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cleanup(false);
+      } else if (e.key === 'Enter' && !confirmBtn.disabled) {
+        e.preventDefault();
+        cleanup(true);
+      }
+    };
+    input.addEventListener('input', () => {
+      confirmBtn.disabled = input.value !== 'RESET';
+    });
+    cancelBtn.addEventListener('click', () => cleanup(false));
+    confirmBtn.addEventListener('click', () => cleanup(input.value === 'RESET'));
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(false);
+    });
+    document.addEventListener('keydown', onKey);
+
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
+function makeP(text: string): HTMLParagraphElement {
+  const p = document.createElement('p');
+  p.textContent = text;
+  return p;
+}
+
+function makeLi(text: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.textContent = text;
+  return li;
+}
+
+/**
  * Mount workspace reset handler: clears IDB and reloads page.
  * After clearing, the app falls back to pkc-data (embedded in HTML).
  */
@@ -1644,24 +1752,13 @@ function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): v
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');
     if (!target) return;
 
-    // Stage 1: explain what will happen
-    const stage1 = confirm(
-      '⚠ ワークスペースリセット ⚠\n\n'
-      + '以下のデータがすべて削除されます:\n'
-      + '• ブラウザに保存されたローカルデータ (IndexedDB)\n'
-      + '• 未エクスポートの変更内容\n\n'
-      + 'HTML に埋め込まれた元データから再読み込みされます。\n'
-      + 'この操作は取り消せません。\n\n'
-      + '続行しますか？',
-    );
-    if (!stage1) return;
-
-    // Stage 2: require typed confirmation
-    const typed = prompt(
-      '本当に削除しますか？\n'
-      + '確認のため「RESET」と入力してください:',
-    );
-    if (typed !== 'RESET') return;
+    // PR-YYY (2026-05-07、修正指示8 #1):iPhone WorkSpace Clear 不動作 fix。
+    // 旧実装は `confirm()` + `prompt()` の 2 段階だったが、iOS Safari は
+    // standalone (Add to Home Screen) / file:// などで `prompt()` を
+    // silent に suppress することがあり、ユーザーから見ると Reset ボタンが
+    // 反応しない bug として現れていた。in-app DOM dialog に置換する。
+    const ok = await showResetWorkspaceDialog();
+    if (!ok) return;
 
     try {
       await store.clearAll();

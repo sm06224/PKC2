@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-8 review fix PR-YYY(2026-05-07)
+
+- **iPhone WorkSpace Clear 不動作 修正**:user 修正指示8 #1「iPhoneでWorkSpace Clearが不動作」への対応。root cause は iOS Safari(特に Add to Home Screen / standalone / file:// 系)で `prompt()` が silent に suppress される既知挙動。旧実装は `confirm()` → `prompt('RESET')` の 2 段階だったが、iPhone では 2 段目が出ずに Reset がフリーズ。
+- **修正**:`confirm()` + `prompt()` を in-app DOM dialog に置換。`<div role="dialog" aria-modal="true">` 直下に warning + `<input>` + Confirm/Cancel button。`RESET` と入力するまで Confirm 無効、Esc / outside-click / Cancel で abort。`Enter` で Confirm。`prompt()` の native 挙動に依存しないため iOS / Android / desktop すべてで等価動作。
+- 既存 Family A overlay/card pattern(shell-menu / shortcut)に同居、accent surface + green glow + blur backdrop。z-index 20100(shell-menu より上)。
+- bundle.js 916.27 → 918.10 KB(+1.83 KB:dialog builder ~80 行)、bundle.css 144.41 → 145.29 KB(+0.88 KB)。unit 6552 / 6552 pass。
+
 ### Wave 10-7 review fix PR-RRR(2026-05-07)
 
 - **Filer Explorer 行ストライプ採用**:user 修正指示7 #4「ファイラのエクスプローラビューは行ストライプを採用し得て視認性を上げて」への対応。`.pkc-filer-tbody .pkc-filer-row:nth-child(even)` に薄い背景 (`var(--c-bg-stripe, rgba(0, 0, 0, 0.025))`) を敷き、長い folder の row 識別を改善。

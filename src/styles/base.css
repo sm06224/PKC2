@@ -4371,7 +4371,8 @@ mark.pkc-search-mark {
 .pkc-storage-profile-overlay,
 .pkc-textlog-preview-overlay,
 .pkc-text-to-textlog-overlay,
-.pkc-text-replace-overlay {
+.pkc-text-replace-overlay,
+.pkc-reset-dialog-overlay {
   position: fixed;
   inset: 0;
   display: flex;
@@ -4384,7 +4385,8 @@ mark.pkc-search-mark {
  * its own .pkc-flags-inspector-backdrop carries the bg/blur). */
 .pkc-shell-menu-overlay,
 .pkc-shortcut-overlay,
-.pkc-storage-profile-overlay {
+.pkc-storage-profile-overlay,
+.pkc-reset-dialog-overlay {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(2px);
 }
@@ -4402,7 +4404,8 @@ mark.pkc-search-mark {
 .pkc-shell-menu-card,
 .pkc-flags-inspector-panel,
 .pkc-shortcut-card,
-.pkc-storage-profile-card {
+.pkc-storage-profile-card,
+.pkc-reset-dialog-card {
   background: var(--c-surface);
   border: 1px solid var(--c-accent);
   border-radius: var(--radius-lg);
@@ -4931,6 +4934,53 @@ mark.pkc-search-mark {
 .pkc-shell-menu-close {
   margin-top: var(--space-3);
   align-self: flex-end;
+}
+
+/* ── Reset Workspace Dialog ── (PR-YYY 2026-05-07) */
+.pkc-reset-dialog-overlay {
+  z-index: 20100;
+}
+.pkc-reset-dialog-card {
+  padding: 1.5rem;
+  max-width: min(420px, 90vw);
+  width: 95%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+}
+.pkc-reset-dialog-heading {
+  margin: 0;
+  font-size: var(--fs-lg, 1.125rem);
+  color: var(--c-accent);
+  font-weight: 600;
+}
+.pkc-reset-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  font-size: var(--fs-sm, 0.875rem);
+  line-height: 1.5;
+}
+.pkc-reset-dialog-body p {
+  margin: 0;
+}
+.pkc-reset-dialog-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.pkc-reset-dialog-input {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-fg);
+}
+.pkc-reset-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2, 0.5rem);
 }
 
 /* ── Shortcut Help Overlay ── */
