@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-EEE(2026-05-06)
+
+- **bookmarklet YouTube 拡張(タイトル / 投稿者 / 説明)**:user 修正指示5「Send to PKC2 ブックマークレットでYoutubeの動画タイトルを引っ張れていない。投稿者情報と動画説明欄も引っ張ってほしい」への対応。YouTube watch ページで `og:title` が空 / 古い値のことが多いため、bookmarklet の YouTube ブランチに DOM scraper を追加:
+  - **動画タイトル**:`#title h1 yt-formatted-string` / `#title h1` / `h1.ytd-watch-metadata` / `h1.title yt-formatted-string` の最初に hit するもの → `payload.title` 上書き
+  - **投稿者**:`ytd-channel-name #text-container a` / `ytd-channel-name a` / `#owner #channel-name a` / `#upload-info #text a` / `[itemprop=author] [itemprop=name]` → `payload.author`(PR-JJ の field を流用)
+  - **説明欄**:`#description-inline-expander` / `ytd-text-inline-expander` / `#description ytd-text-inline-expander` / `#description #text` / `meta[name=description]` → `payload.body` 内の excerpt(800 char cap、空白圧縮)
+- **DL モード(PR-QQ)も同じ scraper を共有** するため、PR-FF と整合する形で frontmatter に正しい author + 自然な excerpt が入る。
+- bundle.js 911.78 → 912.68 KB(+0.90 KB:scraper 拡張 selector list)、bundle.css 不変。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-DDD(2026-05-06)
 
 - **`/` コマンドリストを caret 直下に出す + viewport flip**:user 修正指示5「『/』コマンドリストがカーソル直下ではなく、テキストエリアの外に出現する」への対応。PR-FF で `position: fixed` + `textarea.boundingRect.bottom` 起点に変えていたが、縦長 textarea で caret が中段にある場合 menu が遠くに離れる / viewport 下端で clip されるケースがあった。

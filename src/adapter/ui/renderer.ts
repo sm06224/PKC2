@@ -1690,7 +1690,24 @@ function renderShellMenu(
     + 'pkAuthor=null,pkBrand=null;'
     // 5 公式 site detection(URL host pattern → kind/provider)
     + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
-    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";'
+    // PR-EEE (2026-05-06、user 修正指示5):YouTube DOM scraper 拡張。
+    // og:title が空の watch ページが多いため、複数候補から動画タイ
+    // トル / 投稿者 / 説明文を拾う。失敗しても既存 og 値 fallback で
+    // null にはならない安全網。
+    // タイトル候補:#title h1 yt-formatted-string / h1.title など。
+    + 'var ytT=document.querySelector("#title h1 yt-formatted-string,#title h1,h1.ytd-watch-metadata,h1.title yt-formatted-string");'
+    + 'if(ytT&&ytT.textContent){var ytTtxt=ytT.textContent.trim();if(ytTtxt)t=ytTtxt;}'
+    // 投稿者候補(channel name):#owner-name / ytd-channel-name a / itemprop=author。
+    + 'var ytC=document.querySelector("ytd-channel-name #text-container a,ytd-channel-name a,#owner #channel-name a,#upload-info #text a,[itemprop=\\"author\\"] [itemprop=\\"name\\"]");'
+    + 'var ytCtxt=ytC?ytC.textContent.trim():(ytC?ytC.getAttribute("content"):"");'
+    + 'if(ytCtxt)pkAuthor=ytCtxt;'
+    // 説明欄候補:#description-inline-expander / #description / meta[name=description]。
+    + 'var ytD=document.querySelector("#description-inline-expander,ytd-text-inline-expander,#description ytd-text-inline-expander,#description #text"),ytDtxt="";'
+    + 'if(ytD)ytDtxt=ytD.innerText||ytD.textContent||"";'
+    + 'if(!ytDtxt){var ytMd=document.querySelector("meta[name=description]");if(ytMd)ytDtxt=ytMd.getAttribute("content")||"";}'
+    + 'if(ytDtxt){ytDtxt=ytDtxt.replace(/\\s+/g," ").trim();if(ytDtxt)excerpt=ytDtxt.slice(0,800);}'
+    + '}'
     + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
     + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
     + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
