@@ -204,6 +204,7 @@ function resolveTheme(canvas: HTMLCanvasElement): {
   border: string;
   accent: string;
   bgTag: string;
+  graphEdge: string;
 } {
   const root = canvas.ownerDocument.documentElement;
   const cs = canvas.ownerDocument.defaultView!.getComputedStyle(root);
@@ -218,6 +219,8 @@ function resolveTheme(canvas: HTMLCanvasElement): {
     border: get('--c-border', 'rgba(0,0,0,0.3)'),
     accent: get('--c-accent', '#3b82f6'),
     bgTag: get('--c-bg-tag', 'rgba(0,0,0,0.04)'),
+    // PR-K G20:graph view edges 専用 token。WCAG AA non-text 3:1 を確保。
+    graphEdge: get('--c-graph-edge', '#666'),
   };
 }
 
@@ -260,9 +263,21 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
 
   const theme = resolveTheme(canvas);
 
+  // PR-K G21 (2026-05-06、user 報告):「グラフの残像がひどい」。
+  // 旧:`fillRect(0, 0, width, height)` の前に `clearRect` を呼んでおら
+  // ず、背景が `--c-bg-tag` (`rgba(0,0,0,0.04)`)で **半透明** だった
+  // ので、新フレームを描く前に旧フレームが消えず ghost として残って
+  // いた。修正:transform 適用前の素 canvas pixel space で `clearRect`
+  // を全面に当て、その後 **不透明** な `theme.bg` を background に塗る。
   ctx.save();
+  // 1. Reset transform → clear raw raster.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // 2. Now apply dpr scale + paint solid background.
   ctx.scale(dpr, dpr);
-  // Background.
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, payload.width, payload.height);
+  // 3. Subtle tint overlay (semi-transparent — but we have solid bg now).
   ctx.fillStyle = theme.bgTag;
   ctx.fillRect(0, 0, payload.width, payload.height);
 
@@ -276,9 +291,15 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   }
 
   // Edges.
-  ctx.strokeStyle = theme.border;
-  ctx.lineWidth = 1 / view.scale;
-  ctx.globalAlpha = 0.6;
+  // PR-K G20 (2026-05-06):user 報告「グラフの線が見えない、WCAG どう?」。
+  // 旧:`theme.border (rgba(0,0,0,0.12))` × `globalAlpha 0.6` ≈ 7% 不透明
+  // → 1.04:1 contrast(ほぼ不可視、WCAG fail)。
+  // 新:専用 token `--c-graph-edge` を導入(dark `#6e7e58` ≈ 5.6:1、
+  // light `#5c6b48` ≈ 5.4:1)。line width 1.5 / scale で fine line でも
+  // 目視可能。
+  ctx.strokeStyle = theme.graphEdge;
+  ctx.lineWidth = 1.5 / view.scale;
+  ctx.globalAlpha = 1;
   for (const link of payload.links) {
     const a = payload.positions.get(link.from);
     const b = payload.positions.get(link.to);
@@ -288,7 +309,6 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
 
   // Nodes.
   const r = payload.collideRadius * 0.6;

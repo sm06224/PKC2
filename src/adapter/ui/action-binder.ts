@@ -6747,13 +6747,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   });
   // PR-H G16 (2026-05-06):Canvas には DOM 子の data-pkc-action は無いので、
   // graph-canvas が node click を hit-test し CustomEvent で notify する。
-  // root でこの event を listen し SELECT_ENTRY を dispatch。filer の
-  // 「filer view 中なら detail に飛ばずに scope を変える」semantics は
-  // viewMode === 'graph' では不要(graph 中に node click → detail へ
-  // 切り替わるべき。以下は素直に SELECT_ENTRY 単独)。
+  // root でこの event を listen し SELECT_ENTRY + SET_VIEW_MODE 'detail'
+  // を dispatch する。
+  // PR-K G22 修正(2026-05-06、user 報告):「グラフのノードをクリック
+  // しても該当のエントリが開かない」。SELECT_ENTRY 単独だと viewMode は
+  // 'graph' のままで detail 表示に切り替わらない。SET_VIEW_MODE を併発
+  // して detail に飛ばす(folder click であっても graph では同じ — graph
+  // ペーン内で folder navigation する semantics は無い)。
   root.addEventListener('pkc-graph-node-click', (ev) => {
     const detail = (ev as CustomEvent).detail as { lid?: unknown } | undefined;
     if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
   });
   root.addEventListener('dragstart', handleDragStart);
