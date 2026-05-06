@@ -87,6 +87,11 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.graphFocusLid !== prev.graphFocusLid) return 'full';
   if (state.inventoryQuery !== prev.inventoryQuery) return 'full';
   if (state.filerExplorerSort !== prev.filerExplorerSort) return 'full';
+  // PR-NNN (2026-05-06、user 修正指示6「Filer の検索窓が活きていない」):
+  // `SET_FILER_SEARCH_QUERY` dispatch で `filerSearchQuery` のみ変わる
+  // ケースで render-scope が `'none'` を返し、filter が画面に反映され
+  // ない bug。`'full'` trigger に追加して filer 再描画を起こす。
+  if (state.filerSearchQuery !== prev.filerSearchQuery) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
   if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
