@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-JJJ(2026-05-06)
+
+- **エントリウィンドウ複数開き — 既存挙動の確認 + regression guard**:user 修正指示5「エントリウィンドウを複数開いて編集可能なようにして(今はエントリフォーカスが外れると勝手に閉じてしまう認識)」への対応。code audit の結果、`openEntryWindow` は既に lid 別 `pkc-entry-${lid}` window 名で **複数同時 open をサポート**(focus 外れでの自動 close ロジックは存在しない)。user 観察に再現可能性が無いため、**regression guard test 3 件** を新設して将来「自動 close」回帰を fingerprint で検出可能にする。
+- **テスト**:`tests/adapter/entry-window-multi-open-pr-jjj.test.ts`(3 件):
+  1. 異なる 2 lid を順次 open → `getOpenEntryWindowLids()` が両方含む + window.open が 2 種の名前で呼ばれた
+  2. 同 lid を 2 回 open → 既存 child の `focus()` が呼ばれ、第 2 window は作成されない
+  3. 1 つの child を close 状態にする → `getOpenEntryWindowLids()` から脱落
+- 実機で「閉じてしまう」が再現する場合は browser specific(iOS Safari の popup 制限など)の可能性が高く、in-page modal への置換を follow-up wave で検討。
+- bundle.js / bundle.css 不変。unit 6549 → 6552(+3)pass。
+
 ### Wave 10-6 review fix PR-III(2026-05-06)
 
 - **左ペイン entry に 🔗 copy-link button(編集中も活きる)**:user 修正指示5「エントリ編集中、左ペインのコピーリンク系の挙動のみ活かしてほしい。リンクをたくさん埋め込んだエントリを作成する時に手間」への対応。各 sidebar entry に `<button class="pkc-entry-copy-link" data-pkc-action="copy-entry-permalink">🔗</button>` を常設、CSS で `opacity: 0` → `:hover` / `:focus` 時に visible に。click は `e.target.closest([data-pkc-action])` で button を先にマッチさせるため、parent の `select-entry` を pre-empt して permalink だけが clipboard コピーされる(編集中の body / focus / scroll は一切影響を受けない)。
