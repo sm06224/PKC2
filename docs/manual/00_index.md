@@ -53,6 +53,7 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 08 | 運用ガイド | Export / Import / Rehydrate の詳細と典型シナリオ |
 | 09 | トラブルシューティングと用語集 | 困ったときの対処と用語辞書 |
 | 10 | ファイラ / グラフ / インベントリ | filer view 5 subset(explorer / contact-sheet / book-base / video-base / novel-base / inventory)+ 独立 graph view 4 mode + frontmatter Properties + 画像 PiP プレビュー + bookmarklet 取込 + サイドバー filer モード |
+| 11 | Bookmarklet サンプル | PKC-Message v1 を外部から叩く初の公式 sample(envelope 構築 / handshake / user-consent gate / 完全コード) |
 
 ## 最近の UX 改善（2026-04-22 時点）
 
