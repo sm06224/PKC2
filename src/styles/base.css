@@ -5752,6 +5752,14 @@ mark.pkc-search-mark {
   flex: 1;
   display: block;
   min-height: 480px;
+  /* PR-DD (2026-05-06、user 報告「グラフが Canvas の大きさに引っ張ら
+     れてアス比がおかしくなる」):aspect-ratio で 960:600 (= 8:5) を維持。
+     container の width が変わっても canvas が縦横同じ比で scale するので、
+     描画(payload.width=960 / height=600 baseline)が歪まない。modern
+     browser で aspect-ratio CSS は widely supported。 */
+  aspect-ratio: 8 / 5;
+  width: 100%;
+  height: auto;
   touch-action: none;
   cursor: grab;
   background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));

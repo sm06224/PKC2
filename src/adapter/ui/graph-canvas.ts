@@ -76,8 +76,11 @@ interface CanvasViewState {
   rectEnd: { ux: number; uy: number } | null;
 }
 
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 8;
+// PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
+// galaxy 風の超広域に拡張。MIN 0.1 → 0.05(全体俯瞰)、MAX 8 → 32
+// (個別 node まで近づける)。
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 32;
 
 const payloads: WeakMap<HTMLCanvasElement, GraphCanvasPayload> = new WeakMap();
 const viewStates: WeakMap<HTMLCanvasElement, CanvasViewState> = new WeakMap();
