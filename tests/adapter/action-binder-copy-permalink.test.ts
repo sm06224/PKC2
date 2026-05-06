@@ -154,8 +154,12 @@ function expectedExternalAsset(key: string): string {
 describe('Copy permalink — entry meta pane', () => {
   it('renders a "Copy link" button in the entry meta header', () => {
     setupAndSelect('e1');
+    // PR-III (2026-05-06):sidebar entry にも 🔗 copy-link 小ボタンが
+    // 追加されたため、center pane の title-row 版を狙ってクラス指定で
+    // 絞り込み。Sidebar 版は `pkc-entry-copy-link`、center pane 版は
+    // `pkc-action-copy-permalink`。
     const btn = root.querySelector<HTMLButtonElement>(
-      '[data-pkc-action="copy-entry-permalink"][data-pkc-lid="e1"]',
+      'button.pkc-action-copy-permalink[data-pkc-action="copy-entry-permalink"][data-pkc-lid="e1"]',
     );
     expect(btn).not.toBeNull();
     expect(btn!.textContent).toContain('Copy link');

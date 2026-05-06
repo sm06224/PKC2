@@ -1325,6 +1325,34 @@
   transform: scale(0.98);
 }
 
+/* PR-III (2026-05-06):sidebar entry 用 🔗 copy-link button。
+ * hover で visible、click は parent の select-entry を pre-empt して
+ * permalink だけ clipboard コピー(編集中 body の focus を奪わない)。
+ * keyboard focus でも visible にして a11y を確保。 */
+.pkc-entry-copy-link {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 2px);
+  padding: 0 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
+}
+
+.pkc-entry-item:hover .pkc-entry-copy-link,
+.pkc-entry-copy-link:focus,
+.pkc-entry-copy-link:focus-visible {
+  opacity: 1;
+}
+
+.pkc-entry-copy-link:hover {
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.08));
+  border-color: var(--c-border);
+}
+
 [data-pkc-selected="true"] {
   background: var(--c-accent);
   color: var(--c-accent-fg);

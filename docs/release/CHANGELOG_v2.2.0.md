@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-III(2026-05-06)
+
+- **左ペイン entry に 🔗 copy-link button(編集中も活きる)**:user 修正指示5「エントリ編集中、左ペインのコピーリンク系の挙動のみ活かしてほしい。リンクをたくさん埋め込んだエントリを作成する時に手間」への対応。各 sidebar entry に `<button class="pkc-entry-copy-link" data-pkc-action="copy-entry-permalink">🔗</button>` を常設、CSS で `opacity: 0` → `:hover` / `:focus` 時に visible に。click は `e.target.closest([data-pkc-action])` で button を先にマッチさせるため、parent の `select-entry` を pre-empt して permalink だけが clipboard コピーされる(編集中の body / focus / scroll は一切影響を受けない)。
+- system / reserved entries は除外、a11y のため keyboard focus でも visible。既存の center pane title-row の `🔗 Copy link` button (`pkc-action-copy-permalink`)は変更なし、test を class scope で絞って同居許容。
+- bundle.js 912.68 → 913.02 KB(+0.34 KB)、bundle.css 142.90 → 143.35 KB(+0.45 KB:hover-fade button styling)。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-HHH(2026-05-06)
 
 - **Filer Graph subset 廃止(center Graph タブが canonical)**:user 修正指示5「廃止したはずのFilerのGraphがまだ活きている。センターペインのGraphタブが正です」への対応。`folder.body` に display profile `graph` を持つ folder を filer view した際の `renderFilerGraph` SVG レンダリングを **完全削除**。center pane の viewMode='graph' タブ (`renderCenterGraphView`) が canonical な graph 表示として残る(PR-AAA の auto-fit / PR-DD の zoom range などが効く)。

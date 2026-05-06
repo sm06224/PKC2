@@ -4087,6 +4087,27 @@ function renderEntryItem(
     li.appendChild(downBtn);
   }
 
+  // PR-III (2026-05-06、user 修正指示5「エントリ編集中、左ペインの
+  // コピーリンク系の挙動のみ活かしてほしい。リンクをたくさん埋め
+  // 込んだエントリを作成する時に手間」):各 sidebar entry に小さな
+  // 🔗 copy-link button を常設、hover で visible(CSS)。click は
+  // `e.target.closest([data-pkc-action])` で button が先にマッチする
+  // ため、parent の select-entry を pre-empt して permalink だけが
+  // clipboard へコピーされる(編集中の body / focus / scroll は
+  // 一切影響を受けない)。reserved / system entries では非表示。
+  if (
+    !isReservedLid(entry.lid)
+    && !isSystemArchetype(entry.archetype)
+  ) {
+    const copyLinkBtn = createElement('button', 'pkc-entry-copy-link');
+    copyLinkBtn.setAttribute('data-pkc-action', 'copy-entry-permalink');
+    copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+    copyLinkBtn.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+    copyLinkBtn.setAttribute('aria-label', 'Copy permalink');
+    copyLinkBtn.textContent = '🔗';
+    li.appendChild(copyLinkBtn);
+  }
+
   return li;
 }
 
