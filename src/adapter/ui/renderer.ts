@@ -1536,6 +1536,39 @@ function renderShellMenu(
   debugSection.appendChild(debugButtons);
   card.appendChild(debugSection);
 
+  // PR-O (2026-05-06):Bookmarklet generator。user 報告「ブックマーク
+  // レットが使えないように感じる」。実装は Phase 3c-E から存在(URL
+  // `?pkc-snapshot=<base64>` を boot path で intake)、しかし生成 UI が
+  // 無く一般 user に届いていなかった。shell menu から draggable link
+  // で配布する。
+  const bmSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-bookmarklet');
+  const bmLabel = createElement('span', 'pkc-shell-menu-label');
+  bmLabel.textContent = 'Bookmarklet';
+  bmSection.appendChild(bmLabel);
+  const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
+  bmDesc.textContent = 'ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。';
+  bmSection.appendChild(bmDesc);
+  // The bookmarklet inlines the PKC2 stable URL. Single-line minified
+  // for brevity. User can edit the bookmark URL if they use a different
+  // PKC2 instance.
+  const PKC2_STABLE_URL = 'https://sm06224.github.io/PKC-Public/PKC2/';
+  const bmJs = (
+    '(function(){'
+    + 'var s=getSelection().toString().trim(),'
+    + 'd={captured_at:new Date().toISOString(),selection:{url:location.href,title:document.title,snippet:s}},'
+    + 'b=btoa(unescape(encodeURIComponent(JSON.stringify(d))));'
+    + `open(${JSON.stringify(PKC2_STABLE_URL)}+'?pkc-snapshot='+encodeURIComponent(b),'_blank');`
+    + '})();'
+  );
+  const bmLink = document.createElement('a');
+  bmLink.className = 'pkc-shell-menu-bookmarklet-link';
+  bmLink.href = `javascript:${bmJs}`;
+  bmLink.textContent = '📌 Send to PKC2';
+  bmLink.title = 'ドラッグしてブックマークバーに追加';
+  bmLink.draggable = true;
+  bmSection.appendChild(bmLink);
+  card.appendChild(bmSection);
+
   // PR-M (2026-05-06):shell menu に GitHub Pages の公開 URL を 3 件
   // 出して、初見 user がマニュアル / 安定版 / 開発版に到達できるよう
   // にする。user 指示:

@@ -4697,6 +4697,36 @@ mark.pkc-search-mark {
   text-decoration: underline dotted;
 }
 
+/* PR-O (2026-05-06):Bookmarklet generator section in shell menu。 */
+.pkc-shell-menu-bookmarklet-desc {
+  font-size: var(--fs-xs, 0.8125rem);
+  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  margin-bottom: var(--space-2, 0.5rem);
+  line-height: 1.4;
+}
+
+.pkc-shell-menu-bookmarklet-link {
+  display: inline-block;
+  padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--c-accent-fg, #fff);
+  background: var(--c-accent, #3b82f6);
+  border: 1px solid var(--c-accent, #3b82f6);
+  border-radius: var(--radius-sm, 2px);
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.pkc-shell-menu-bookmarklet-link:active {
+  cursor: grabbing;
+}
+
+.pkc-shell-menu-bookmarklet-link:hover {
+  filter: brightness(1.1);
+}
+
 /* PR-M (2026-05-06):shell menu の公開 URL block。 */
 .pkc-shell-menu-public-urls-list {
   display: flex;
