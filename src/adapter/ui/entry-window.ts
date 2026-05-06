@@ -649,13 +649,37 @@ function getParentCssVars(): string {
     '--c-tok-type', '--c-tok-attr', '--c-tok-tag', '--c-tok-meta',
     '--c-tok-ins', '--c-tok-del', '--c-tok-hunk',
   ];
-  const style = getComputedStyle(document.documentElement);
+  // PR-BB hotfix (2026-05-06、user 報告「ダブルクリックで TEXT エントリ
+  // 開いたら、テーマ色が反映されていなかった」):
+  //
+  // 旧:`getComputedStyle(document.documentElement)` で `<html>` から
+  // var を読んでいた。しかしテーマの override は `#pkc-root[data-pkc-theme="..."]`
+  // にあり、`<html>` 自体の computed value は :root default(dark)
+  // のまま → 子 window が常に dark で開く。
+  //
+  // 新:`#pkc-root` 要素から読み、`data-pkc-theme` の値も同伴する。
+  // 子 window 側で同 attribute を再現することで、token に加えて
+  // theme-class scoped CSS rule(scanline 等)も届く。
+  const root = document.querySelector('#pkc-root') ?? document.documentElement;
+  const style = getComputedStyle(root);
   const lines: string[] = [];
   for (const v of vars) {
     const val = style.getPropertyValue(v).trim();
     if (val) lines.push(`  ${v}: ${val};`);
   }
   return lines.join('\n');
+}
+
+/**
+ * PR-BB (2026-05-06):親 window の `data-pkc-theme` 属性値を読む。
+ * 子 window 側 `<html>` に同じ値を stamp して、scoped CSS rule
+ * (`#pkc-root[data-pkc-theme="dark"] .X`)も子で発火するようにする。
+ * 未設定(system 任せ)の場合は空文字を返す。
+ */
+function getParentDataPkcTheme(): string {
+  const root = document.querySelector('#pkc-root');
+  if (!root) return '';
+  return root.getAttribute('data-pkc-theme') ?? '';
 }
 
 /**
@@ -964,8 +988,14 @@ function buildWindowHtml(
     : '';
   const sandboxAllow = (entry.archetype === 'attachment' && assetContext?.sandboxAllow) ?? [];
 
+  // PR-BB (2026-05-06):親の data-pkc-theme を子 <html> にも stamp。
+  // 子 window が同 token + 同 theme attribute を持つので、selector
+  // (`[data-pkc-theme="dark"] .X`)経由の rule も発火可能。
+  const parentTheme = getParentDataPkcTheme();
+  const themeAttr = parentTheme ? ` data-pkc-theme="${parentTheme}"` : '';
+
   return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="ja"${themeAttr}>
 <head>
 <meta charset="utf-8">
 <title>${escapedTitle} — PKC2</title>
