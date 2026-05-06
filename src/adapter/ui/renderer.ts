@@ -1568,29 +1568,59 @@ function renderShellMenu(
   // user-consent gate(spec §6.2)が温存されるので、bookmarklet が
   // 自動的に entry を注入することは **無い**(必ず PendingOffer banner
   // で user が "保存" を click する)。
+  // PR-V (2026-05-06):page-open UX(選択不要)+ 5 公式 site scraper
+  //(YouTube / Niconico / Narou / カクヨム / Amazon)+ generic OG meta
+  // fallback。v1.1 capture profile additive(kind / thumbnail_url /
+  // provider)を envelope に乗せて送信。host が body 先頭に YAML
+  // frontmatter を生成 → folder の中身が 7 割同 kind なら filer Auto
+  // で book-base / video-base / novel-base 等に Bases 化。
+  //
+  // 期待挙動:
+  //   - YouTube ページで click → kind:'video' / provider:'YouTube' /
+  //     thumbnail = i.ytimg.com/vi/<id>/maxresdefault.jpg
+  //   - カクヨム ページで click → kind:'novel' / provider:'カクヨム' /
+  //     thumbnail = og:image
+  //   - Amazon 商品ページ → kind:'book' / provider:'Amazon' /
+  //     thumbnail = og:image
+  //   - その他のページ → og:type / og:image fallback、不明なら kind 付与なし
   const bmJs = (
     '(function(){'
-    + 'var s=getSelection().toString().trim(),'
+    + 'var u=location.href,h=location.host,'
+    + 'q=function(s){var e=document.querySelector(s);return e?(e.getAttribute("content")||e.getAttribute("href")||""):""},'
+    + 'ogTitle=q("meta[property=\\"og:title\\"]"),'
+    + 'ogImg=q("meta[property=\\"og:image\\"]"),'
+    + 'ogDesc=q("meta[property=\\"og:description\\"]"),'
+    + 'ogType=q("meta[property=\\"og:type\\"]"),'
+    + 'ogSite=q("meta[property=\\"og:site_name\\"]"),'
+    + 't=ogTitle||document.title||"Snapshot",'
+    + 'sel=getSelection().toString().trim(),'
+    + 'firstP=document.querySelector("article p,main p"),'
+    + 'excerpt=sel||ogDesc||(firstP?firstP.textContent.slice(0,500):""),'
     + 'now=new Date().toISOString(),'
-    + 't=document.title||"Snapshot",'
-    + 'b="---\\nurl: "+location.href+"\\ncaptured_at: "+now+"\\n---\\n\\n# "+t+"\\n\\n"+s,'
-    + 'env={'
-    + 'protocol:"pkc-message",'
-    + 'version:1,'
-    + 'type:"record:offer",'
-    + 'source_id:"extension:pkc2-bookmarklet@1.0",'
-    + 'target_id:null,'
-    + 'payload:{title:t.slice(0,200),body:b,source_url:location.href,captured_at:now},'
-    + 'timestamp:now'
-    + '},'
+    + 'kind=null,provider=null,thumb=ogImg||null;'
+    // 5 公式 site detection(URL host pattern → kind/provider)
+    + 'if(/youtube\\.com|youtu\\.be/.test(h)){kind="video";provider="YouTube";'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
+    + 'else if(/nicovideo\\.jp/.test(h)){kind="video";provider="niconico";}'
+    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(h)){kind="novel";provider="小説家になろう";}'
+    + 'else if(/kakuyomu\\.jp/.test(h)){kind="novel";provider="カクヨム";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(h)){kind="book";provider="Amazon";}'
+    // generic fallback by og:type
+    + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
+    + 'else if(/^music\\./.test(ogType)){kind="audio";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="article"&&ogSite)provider=ogSite;'
+    // payload 組立(plain markdown body、host が frontmatter を inject)
+    + 'var body="# "+t+(excerpt?"\\n\\n"+excerpt:""),'
+    + 'pl={title:t.slice(0,200),body:body,source_url:u,captured_at:now};'
+    + 'if(kind)pl.kind=kind;if(thumb)pl.thumbnail_url=thumb;if(provider)pl.provider=provider;'
+    + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
+    + 'source_id:"extension:pkc2-bookmarklet@1.1",target_id:null,payload:pl,timestamp:now},'
     + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
     + 'if(!w){alert("PKC2: popup blocked");return;}'
-    + 'function h(e){'
-    + 'if(e.source!==w)return;'
+    + 'function h(e){if(e.source!==w)return;'
     + 'if(e.data&&e.data.type==="pkc-bookmarklet-ready"){'
-    + 'w.postMessage(env,"*");'
-    + 'removeEventListener("message",h);'
-    + '}}'
+    + 'w.postMessage(env,"*");removeEventListener("message",h);}}'
     + 'addEventListener("message",h);'
     + '})();'
   );
