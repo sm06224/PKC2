@@ -184,6 +184,17 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-XX(2026-05-06)
+
+- **左ペイン no-op 押し除け継続調査**:user 修正指示4「左ペインの no-op っぽい挙動継続中。何らかの要素によって押し除けられているのかもしれない」への対応。PR-GG が entry-list の scroll 保持を着地済だが user 継続報告のため、4 シナリオの stress test と 3 段目 timer-based fallback を追加。
+- **3 段目 fallback**(`render-continuity.ts`):synchronous + rAF に加えて 200ms 後の `setTimeout` 再 apply を追加。Firefox の rAF より遅延する reflow race で「押し除けられた」 scroll を回復させる安全網。`!==` guard で no-op 時は何もしないため高頻度 dispatch 時もコスト最小。
+- **Multi-click stress test**(`sidebar-scroll-multi-click-parity.spec.ts`、4 件):
+  1. 200 entry seed + scrollTop=1500 + 5 連続 click → drift ≤ 8px
+  2. viewport 端で部分 clipped 行を click → drift ≤ 8px
+  3. filer→detail mode 切替を含む 3-dispatch chain で entry click → drift ≤ 8px
+  4. ArrowDown + click 交互 10 cycle → 1 viewport 内収まる(意図的な選択追従)
+- bundle.js 908.07 → 908.17 KB(+0.10 KB:setTimeout fallback)、bundle.css 不変。unit 6523 / 6523 pass、smoke +4 pass。
+
 ### Wave 10-6 review fix PR-WW(2026-05-06)
 
 - **bookmarklet 同名 window target で tab 再利用**:user 修正指示4「ブックマークレットで取り込むたびに新しいタブで PKC が開く。UX 低下・許容不可」への対応。primary bookmarklet `📌 Send to PKC2` の `window.open(URL, '_blank')` を `window.open(URL, 'pkc2-bookmarklet')` に変更、ID-named target で同名 tab を reuse する browser default を活用。2 回目以降の click は既存 PKC2 tab に postMessage が届くため新 tab が量産されない。reuse された tab を foreground に出すため `w.focus()` を try/catch で呼び出し(cross-origin focus は silent fail)。

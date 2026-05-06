@@ -123,11 +123,24 @@ export function restoreRenderContinuity(
   // wins even if the first pass clamped to `maxScrollTop` because
   // layout was still in flux. Skip if rAF is unavailable (non-DOM
   // env) — the synchronous pass above is the fallback.
-  const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+  const win = root.ownerDocument?.defaultView ?? null;
+  const raf = win?.requestAnimationFrame;
   if (raf) {
     raf(() => {
       if (root.isConnected) applyScrollSnapshot(root, snapshot.scrolls);
     });
+  }
+
+  // PR-XX (2026-05-06): browser-specific layout settle race(特に Firefox
+  // で reflow が rAF より遅延するケース)を救うための 3 段目 fallback。
+  // 200ms 後に scroll を再 apply、ここで一致しないなら何かが scroll を
+  // 押し除けている → user 報告の 「押し除けられている」 状況を救う。
+  // 高頻度 dispatch 時に積み上がらないよう、各 region の現値が snapshot
+  // と一致していたら no-op(applyScrollSnapshot 内で `!==` guard 済)。
+  if (win && typeof win.setTimeout === 'function') {
+    win.setTimeout(() => {
+      if (root.isConnected) applyScrollSnapshot(root, snapshot.scrolls);
+    }, 200);
   }
 
   restoreFocus(root, snapshot.focus);
