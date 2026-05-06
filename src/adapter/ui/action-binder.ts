@@ -3051,6 +3051,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (svg) resetGraphZoom(svg);
         break;
       }
+      case 'toggle-graph-region-select-mode': {
+        // PR-E G8 後半 (2026-05-06):region-slice tool の ON/OFF。
+        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' });
+        break;
+      }
+      case 'clear-graph-region-selection': {
+        // 選択 lids を空に。mode 自体は維持(user が連続 select したい
+        // ケースが多そう)。
+        dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids: [] });
+        break;
+      }
       // set-graph-mode: handled in handleChange (select element).
       case 'open-image-preview-from-filer': {
         // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
@@ -6713,6 +6724,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
+  // PR-E G8 後半 (2026-05-06):graph-zoom が drag-rect 解放時に
+  // emit する CustomEvent を root で listen し、SET_GRAPH_REGION_SELECTED_LIDS
+  // を dispatch する。
+  root.addEventListener('pkc-graph-region-selected', (ev) => {
+    const detail = (ev as CustomEvent).detail as { lids?: unknown } | undefined;
+    if (!detail || !Array.isArray(detail.lids)) return;
+    const lids = detail.lids.filter((s): s is string => typeof s === 'string');
+    dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids });
+  });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
   root.addEventListener('dragstart', handleCalendarDragStart);

@@ -5768,6 +5768,44 @@ mark.pkc-search-mark {
   pointer-events: none;
 }
 
+/* ── Graph region-slice (PR-E G8 後半, 2026-05-06) ──
+   Drag-rect 中の rect 視覚化と、選択された node の highlight。
+   region-mode 時は背景の cursor を crosshair にして「pan ではない」
+   ことを user に伝える。 */
+
+.pkc-graph-region-rect {
+  fill: var(--c-accent, #3b82f6);
+  fill-opacity: 0.1;
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+  pointer-events: none;
+}
+
+.pkc-center-graph-svg[data-pkc-graph-region-select-mode="true"],
+.pkc-filer-graph[data-pkc-graph-region-select-mode="true"] {
+  cursor: crosshair;
+}
+
+.pkc-filer-graph-node[data-pkc-graph-region-selected="true"] .pkc-filer-graph-circle {
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px var(--c-accent, #3b82f6));
+}
+
+.pkc-graph-region-count {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--c-accent, #3b82f6);
+  padding: 0 var(--space-2, 0.5rem);
+}
+
+button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"] {
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  border-color: var(--c-accent, #3b82f6);
+}
+
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
 
 .pkc-filer-grid {

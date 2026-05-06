@@ -128,6 +128,13 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
     midX: number; midY: number;
     layerMidX: number; layerMidY: number;
   } | null = null;
+  // PR-E G8 後半 (2026-05-06):region-select mode 中の drag-rect。
+  // start/end は zoom-layer の user 座標(tx/ty + scale 解除済み)。
+  let rectStart: { ux: number; uy: number } | null = null;
+  let rectEl: SVGRectElement | null = null;
+
+  /** Read region-select mode flag from svg data attribute. */
+  const isRegionMode = (): boolean => svg.getAttribute('data-pkc-graph-region-select-mode') === 'true';
 
   // ── Wheel zoom (cursor-centered) ──
   svg.addEventListener('wheel', (ev) => {
@@ -149,6 +156,7 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
   }, { passive: false, signal });
 
   // ── Mouse drag pan (background only — drag on a node still selects) ──
+  // ── In region-select mode, the same gesture instead drags a rect. ──
   svg.addEventListener('mousedown', (ev) => {
     const me = ev as MouseEvent;
     if (me.button !== 0) return;
@@ -158,6 +166,24 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
     if (target?.closest('.pkc-filer-graph-node')) return;
     const state = zoomStates.get(svg);
     if (!state) return;
+    if (isRegionMode()) {
+      const focal = clientToSvgUserPoint(svg, me.clientX, me.clientY);
+      rectStart = { ux: focal.x, uy: focal.y };
+      panStart = null;
+      // Place the rect in zoom-layer so it pans/zooms with content.
+      const layer = getZoomLayer(svg);
+      if (layer) {
+        rectEl = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect') as SVGRectElement;
+        rectEl.setAttribute('class', 'pkc-graph-region-rect');
+        rectEl.setAttribute('x', String(rectStart.ux));
+        rectEl.setAttribute('y', String(rectStart.uy));
+        rectEl.setAttribute('width', '0');
+        rectEl.setAttribute('height', '0');
+        layer.appendChild(rectEl);
+      }
+      me.preventDefault();
+      return;
+    }
     panStart = { clientX: me.clientX, clientY: me.clientY, tx: state.tx, ty: state.ty };
     me.preventDefault();
   }, { signal });
@@ -166,8 +192,20 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
   // still updates pan continuously and releases cleanly.
   const win = svg.ownerDocument.defaultView!;
   win.addEventListener('mousemove', (ev) => {
-    if (!panStart) return;
     const me = ev as MouseEvent;
+    if (rectStart && rectEl) {
+      const focal = clientToSvgUserPoint(svg, me.clientX, me.clientY);
+      const x = Math.min(rectStart.ux, focal.x);
+      const y = Math.min(rectStart.uy, focal.y);
+      const w = Math.abs(focal.x - rectStart.ux);
+      const h = Math.abs(focal.y - rectStart.uy);
+      rectEl.setAttribute('x', String(x));
+      rectEl.setAttribute('y', String(y));
+      rectEl.setAttribute('width', String(w));
+      rectEl.setAttribute('height', String(h));
+      return;
+    }
+    if (!panStart) return;
     const state = zoomStates.get(svg);
     if (!state) return;
     // ScreenCTM scaling: the svg uses preserveAspectRatio with viewBox
@@ -182,6 +220,35 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
   }, { signal });
 
   win.addEventListener('mouseup', () => {
+    if (rectStart && rectEl) {
+      // Region selected — compute which node groups have center inside
+      // the rect and emit a CustomEvent for action-binder to dispatch.
+      const rx = Number(rectEl.getAttribute('x'));
+      const ry = Number(rectEl.getAttribute('y'));
+      const rw = Number(rectEl.getAttribute('width'));
+      const rh = Number(rectEl.getAttribute('height'));
+      const lids: string[] = [];
+      // Only consider non-degenerate rects(< 4×4 user-space area is
+      // probably an accidental click)。
+      if (rw >= 4 && rh >= 4) {
+        const groups = svg.querySelectorAll<SVGGElement>('.pkc-filer-graph-node[data-pkc-lid]');
+        for (const g of Array.from(groups)) {
+          const tr = g.getAttribute('transform') ?? '';
+          const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(tr);
+          if (!m) continue;
+          const nx = parseFloat(m[1]!);
+          const ny = parseFloat(m[2]!);
+          if (nx >= rx && nx <= rx + rw && ny >= ry && ny <= ry + rh) {
+            lids.push(g.getAttribute('data-pkc-lid')!);
+          }
+        }
+        const ev = new CustomEvent('pkc-graph-region-selected', { detail: { lids }, bubbles: true });
+        svg.dispatchEvent(ev);
+      }
+      rectEl.remove();
+      rectEl = null;
+      rectStart = null;
+    }
     panStart = null;
   }, { signal });
 

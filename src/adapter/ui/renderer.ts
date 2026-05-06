@@ -5187,6 +5187,27 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   zoomReset.title = '拡大縮小・パン位置をリセット(wheel / pinch / drag で操作可能)';
   toolbar.appendChild(zoomReset);
 
+  // PR-E G8 後半 (2026-05-06):region-slice toggle。ON のとき、背景 drag
+  // で rect 選択ができる(従来 pan は当面その mode 内で機能停止)。
+  // Selected lids 数を併記し、>0 のとき clear ボタンも出す。
+  const regionMode = state.graphRegionSelectMode ?? false;
+  const regionLids = state.graphRegionSelectedLids ?? [];
+  const regionToggle = createElement('button', 'pkc-btn-small');
+  regionToggle.setAttribute('data-pkc-action', 'toggle-graph-region-select-mode');
+  regionToggle.textContent = regionMode ? '⌗ region 選択中' : '⌗ region 選択';
+  regionToggle.title = '背景 drag で rect を引き、内部の entry を一括選択(再 click で OFF)';
+  if (regionMode) regionToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(regionToggle);
+  if (regionLids.length > 0) {
+    const count = createElement('span', 'pkc-graph-region-count');
+    count.textContent = `選択 ${regionLids.length} 件`;
+    toolbar.appendChild(count);
+    const clear = createElement('button', 'pkc-btn-small');
+    clear.setAttribute('data-pkc-action', 'clear-graph-region-selection');
+    clear.textContent = '✕ 選択解除';
+    toolbar.appendChild(clear);
+  }
+
   wrap.appendChild(toolbar);
 
   // SVG body
@@ -5222,6 +5243,9 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', '100%');
+  // PR-E G8 後半 (2026-05-06):region-select mode flag。graph-zoom の
+  // mousedown handler がこれを読んで pan / rect-drag を分岐する。
+  if (regionMode) svg.setAttribute('data-pkc-graph-region-select-mode', 'true');
 
   // PR-C G1 (2026-05-06):zoom + pan は zoom-layer の transform 経由で
   // 適用、force layout は再計算しない。zoom-layer の中に edges + nodes
@@ -5307,6 +5331,7 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     group.setAttribute('data-pkc-archetype', node.archetype);
     group.setAttribute('transform', `translate(${n.x}, ${n.y})`);
     if (node.id === state.selectedLid) group.setAttribute('data-pkc-active', 'true');
+    if (regionLids.includes(node.id)) group.setAttribute('data-pkc-graph-region-selected', 'true');
 
     const circle = document.createElementNS(svgNS, 'circle');
     circle.setAttribute('r', String(params.collideRadius * 0.6));

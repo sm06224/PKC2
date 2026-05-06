@@ -469,6 +469,8 @@ export type UserAction =
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' }
   | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity' }
   | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
+  | { type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' }
+  | { type: 'SET_GRAPH_REGION_SELECTED_LIDS'; lids: readonly string[] }
   | { type: 'SET_INVENTORY_FILTER'; key: string; value: string }
   | { type: 'SET_INVENTORY_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_INVENTORY_GROUP_BY'; groupBy: string | null }

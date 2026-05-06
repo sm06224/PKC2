@@ -339,6 +339,17 @@ export interface AppState {
    */
   graphFocusLid?: string | null;
   /**
+   * Region-slice tool mode (PR-E G8 後半、2026-05-06)。
+   * ON のとき、graph view の background drag は pan ではなく rect 選択
+   * を駆動する。OFF(default)では従来通り pan。Runtime-only。
+   */
+  graphRegionSelectMode?: boolean;
+  /**
+   * Region-slice の選択結果 lids。drag-rect 解放時に rect 内の node の
+   * lid を集めて格納。空配列 / undefined は「選択なし」。Runtime-only。
+   */
+  graphRegionSelectedLids?: readonly string[];
+  /**
    * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
    * Runtime-only, scoped to the current filer scope folder.
    */
@@ -2896,6 +2907,23 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       } else {
         next = { ...next, graphFocusLid: action.lid };
       }
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_GRAPH_REGION_SELECT_MODE': {
+      // PR-E G8 後半 (2026-05-06):背景 drag を pan / rect 選択どちらに
+      // 振るかの toggle。OFF に切り替える時は選択結果も clear する
+      // (mode 抜けたら highlight が残ったままだと user が「なぜハイ
+      // ライト」と混乱する)。
+      const turnOn = !(state.graphRegionSelectMode ?? false);
+      const next: AppState = {
+        ...state,
+        graphRegionSelectMode: turnOn,
+        graphRegionSelectedLids: turnOn ? state.graphRegionSelectedLids : [],
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_GRAPH_REGION_SELECTED_LIDS': {
+      const next: AppState = { ...state, graphRegionSelectedLids: action.lids };
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {
