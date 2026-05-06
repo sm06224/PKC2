@@ -184,6 +184,18 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-SSS(2026-05-07)
+
+- **Filer Explorer 列幅固定比率 + 中間省略 + tooltip**:user 修正指示7 #3 への対応。
+- 現状 root cause:`table-layout: auto` で長い title が列を支配し、archetype / created / updated / tags が極端に narrow に潰れていた。
+- **修正**:
+  - `.pkc-filer-table` に `table-layout: fixed`、各 `<th>` に `width: 40 / 12 / 16 / 16 / 16%` を割り当て、長 title でも他列幅が変動しない
+  - `.pkc-filer-cell` 全般に `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` で auto trim
+  - `truncateMiddle(s, 48, 8)` 関数を renderer に追加。長い filename(>48 char)を「先頭 39 char + … + 末尾 8 char」で表示し、date prefix / 拡張子 / suffix を保持。短いものは無加工
+  - **tooltip**:全 cell の primary text に `title` 属性を設定(name=fullTitle / created=ISO / updated=ISO / tags=joined)。hover で full text 確認可能
+- **future work**:column resize handle は `resize: horizontal` を試したが table 内の `<th>` で effective でない browser 多数のため deferred。`<colgroup>` + drag handle で完全実装するなら別 PR(scope 大)。
+- bundle.js 916.27 → 916.47 KB(+0.20 KB)、bundle.css 144.41 → 144.68 KB(+0.27 KB)。unit 6552 / 6552 pass。
+
 ### Wave 10-7 review fix PR-RRR(2026-05-07)
 
 - **Filer Explorer 行ストライプ採用**:user 修正指示7 #4「ファイラのエクスプローラビューは行ストライプを採用し得て視認性を上げて」への対応。`.pkc-filer-tbody .pkc-filer-row:nth-child(even)` に薄い背景 (`var(--c-bg-stripe, rgba(0, 0, 0, 0.025))`) を敷き、長い folder の row 識別を改善。

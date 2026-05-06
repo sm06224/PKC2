@@ -5426,7 +5426,17 @@ mark.pkc-search-mark {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-sm, 0.875rem);
+  /* PR-SSS (2026-05-07、修正指示7 #3):列幅固定比率。auto layout
+   * だと長い title が列を支配し archetype / dates / tags が潰れて
+   * いたため固定比率に。hidden + ellipsis で over-flow を自動 trim。 */
+  table-layout: fixed;
 }
+
+.pkc-filer-th-name      { width: 40%; }
+.pkc-filer-th-archetype { width: 12%; }
+.pkc-filer-th-created_at { width: 16%; }
+.pkc-filer-th-updated_at { width: 16%; }
+.pkc-filer-th-tags      { width: 16%; }
 
 .pkc-filer-th {
   text-align: left;
@@ -5437,6 +5447,10 @@ mark.pkc-search-mark {
   position: sticky;
   top: 0;
   background: var(--c-bg, transparent);
+  /* PR-SSS:長い header label も省略表示。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pkc-filer-row {
@@ -5464,6 +5478,12 @@ mark.pkc-search-mark {
   padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
   vertical-align: middle;
+  /* PR-SSS (2026-05-07、修正指示7 #3):table-layout: fixed と
+   * 連動した cell 単位の overflow trim。tags cell は inline-block
+   * の chip 列でも同様に枠から溢れない。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pkc-filer-cell-name {

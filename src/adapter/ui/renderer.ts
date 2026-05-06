@@ -5035,7 +5035,13 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     icon.textContent = archetypeIcon(child.archetype);
     nameTd.appendChild(icon);
     const titleSpan = createElement('span', 'pkc-filer-row-title');
-    titleSpan.textContent = child.title || child.lid;
+    const fullTitle = child.title || child.lid;
+    // PR-SSS (2026-05-07、修正指示7 #3):中間省略 + tooltip。長文件名
+    // (>40 char)で頭尾だけ残して中間を ellipsis 化、末尾 8 char で
+    // date / 拡張子 / suffix を保持。`title` 属性に full text を載せ
+    // hover で全名確認可能。短い title は通常の tail ellipsis(CSS)に任せる。
+    titleSpan.textContent = truncateMiddle(fullTitle, 48);
+    titleSpan.title = fullTitle;
     nameTd.appendChild(titleSpan);
     tr.appendChild(nameTd);
 
@@ -5045,10 +5051,12 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
 
     const createdTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-created');
     createdTd.textContent = formatTimestamp(child.created_at);
+    createdTd.title = child.created_at;
     tr.appendChild(createdTd);
 
     const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
     updTd.textContent = formatTimestamp(child.updated_at);
+    updTd.title = child.updated_at;
     tr.appendChild(updTd);
 
     const tagsTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-tags');
@@ -5056,6 +5064,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     if (tags.length === 0) {
       tagsTd.textContent = '';
     } else {
+      tagsTd.title = tags.join(', ');
       for (const tag of tags) {
         const chip = createElement('span', 'pkc-filer-tag-chip');
         chip.textContent = tag;
@@ -5069,6 +5078,22 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   table.appendChild(tbody);
   wrapper.appendChild(table);
   return wrapper;
+}
+
+/**
+ * Middle-truncate a long string while preserving `tailLen` characters
+ * at the end. Used by the filer explorer name cell so that file names
+ * like `2026-04-25_dump_long_name.pdf` keep their date prefix and
+ * extension visible after the ellipsis. Returns the original string
+ * unchanged when its length doesn't exceed `maxLen`.
+ *
+ * PR-SSS (2026-05-07、修正指示7 #3)。
+ */
+function truncateMiddle(s: string, maxLen: number, tailLen = 8): string {
+  if (s.length <= maxLen) return s;
+  const headLen = maxLen - tailLen - 1;
+  if (headLen <= 0) return s;
+  return `${s.slice(0, headLen)}…${s.slice(-tailLen)}`;
 }
 
 /**
