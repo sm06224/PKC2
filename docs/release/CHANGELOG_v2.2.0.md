@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-RRR(2026-05-07)
+
+- **Filer Explorer 行ストライプ採用**:user 修正指示7 #4「ファイラのエクスプローラビューは行ストライプを採用し得て視認性を上げて」への対応。`.pkc-filer-tbody .pkc-filer-row:nth-child(even)` に薄い背景 (`var(--c-bg-stripe, rgba(0, 0, 0, 0.025))`) を敷き、長い folder の row 識別を改善。
+- **specificity 設計**:`:nth-child(even)` 単独 selector で書き、`.pkc-filer-row:hover` / `[data-pkc-active="true"]` の specificity を超えないようにする。cascade 順は (1) stripe → (2) hover → (3) active で hover/active が必ず勝つ。
+- bundle.js 916.15 → 916.27 KB(+0.12 KB:変動誤差レベル)、bundle.css 144.31 → 144.41 KB(+0.10 KB:CSS 1 ルール追加)。unit 6552 / 6552 pass。
+
 ### Wave 10-7 review fix PR-PPP(2026-05-07)
 
 修正指示7 への対応開始 wave。**input field UX during dispatch-driven re-renders** という共通テーマで 2 件をまとめて修正:

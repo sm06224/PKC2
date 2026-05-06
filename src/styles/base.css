@@ -5443,6 +5443,15 @@ mark.pkc-search-mark {
   cursor: pointer;
 }
 
+/* PR-RRR (2026-05-07、修正指示7 #4):エクスプローラビューの行
+ * ストライプ。視認性を上げるため偶数行にうっすらした背景を敷く。
+ * hover / active より specificity を低く保つため :nth-child を
+ * 単独 selector で使い、:hover と [data-pkc-active] が後勝ちする
+ * cascade 順を維持する。*/
+.pkc-filer-tbody .pkc-filer-row:nth-child(even) {
+  background: var(--c-bg-stripe, rgba(0, 0, 0, 0.025));
+}
+
 .pkc-filer-row:hover {
   background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
 }
