@@ -119,6 +119,26 @@ export async function buildExportHtml(
   const styles = stylesEl?.textContent ?? '';
   const theme = themeEl?.textContent ?? '/* theme overrides */';
 
+  // PR-OO (2026-05-06): snapshot the live `#pkc-root` element's
+  // applied theme — `data-pkc-theme` (light / dark) attribute and
+  // the inline style block carrying `--c-accent` / `--c-bg` /
+  // `--c-fg` overrides. Exporting these inline lets the imported
+  // HTML render in the user's theme on the **first paint**, before
+  // the JS boot runs `RESTORE_SETTINGS` from the `__settings__`
+  // entry. Without this, exports flashed default theme briefly,
+  // and on `light` source mode (boot suppressed) the override
+  // values were never re-applied at all — user report:
+  // 「テーマカラー Export 修正」.
+  const rootEl = document.getElementById('pkc-root');
+  const rootThemeAttr = rootEl?.getAttribute('data-pkc-theme') ?? null;
+  const rootStyle = rootEl?.getAttribute('style') ?? null;
+  const rootThemeFragment = rootThemeAttr
+    ? ` data-pkc-theme="${escapeAttr(rootThemeAttr)}"`
+    : '';
+  const rootStyleFragment = rootStyle
+    ? ` style="${escapeAttr(rootStyle)}"`
+    : '';
+
   // Read and optionally augment metadata
   let metaJson = metaEl?.textContent?.trim() ?? '{}';
   try {
@@ -157,7 +177,7 @@ export async function buildExportHtml(
   <style id="pkc-theme">${theme}</style>
 </head>
 <body>
-  <div id="pkc-root"></div>
+  <div id="pkc-root"${rootThemeFragment}${rootStyleFragment}></div>
 
   <script id="pkc-data" type="application/json">${dataJson}</script>
 

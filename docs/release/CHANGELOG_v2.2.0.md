@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-OO(2026-05-06)
+
+- **テーマカラー Export 修正**:user 修正指示2「テーマカラー Export 修正」への対応。`buildExportHtml` が live `#pkc-root` の `data-pkc-theme` 属性 + inline `style` block(`--c-accent` / `--c-bg` / `--c-fg` 等の CSS variable override)を snapshot して export 済 HTML の `<div id="pkc-root">` 開きタグに inline する。これにより export HTML が **first paint** で正しい theme を出す(boot 後の `RESTORE_SETTINGS` まで待たない)、light source mode(boot 抑制 = `__settings__` re-apply 抑制)でも theme 値が描画に効く。
+- **テスト**:`tests/adapter/exporter-theme-snapshot-pr-oo.test.ts`(5 件)— `data-pkc-theme` 注入 / inline `style` 注入 / 両 attribute 同時注入 / 未設定時は bare div / attribute 値の HTML escape(injection 防止)を網羅。
+- bundle.js 899.29 → 899.51 KB(+0.22 KB:export root の attribute / style snapshot 路)、bundle.css 不変。unit 6492 → 6497(+5)pass。
+
 ### Wave 10-6 review fix PR-NN(2026-05-06)
 
 - **Flags inspector 設定変更時勝手 scroll 修正**:user 修正指示2「Flags 画面で設定変更時の勝手 scroll 修正」への対応。`SET_FLAG` dispatch は `__flags__` system entry を mutate し container identity が変わる → render-scope は `'full'` を返し root.innerHTML が wipe される。inspector body は新規作成され scrollTop=0 になり、ユーザーが下方の flag を編集するたびに上に飛ばされていた。
