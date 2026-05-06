@@ -17,6 +17,7 @@ import {
   formatISO8601,
 } from '../../features/datetime/datetime-format';
 import { getActiveUserTemplates } from '../../features/templates/template-flag';
+import { getCaretViewportCoords } from './caret-position';
 
 // ── Command definitions ──
 
@@ -290,28 +291,42 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
 
   renderMenuItems(inst);
 
-  // Position near the textarea.
+  // Position near the caret.
   //
-  // PR-FF (2026-05-06、user 報告「テキストエリア入力時の入力補助コマンド
-  // 「/」コマンドの候補リストが表示されない」):
+  // PR-FF (2026-05-06):textarea bounding rect 直下に出していたが、
+  // 縦長 textarea で caret が中段にある場合 menu が遠くに離れる /
+  // viewport 下端で `bottom + menu height` が clip される問題があった。
   //
-  // 旧:`position: absolute` + `${rect.left - rootRect.left}` で root に
-  // 相対配置したが、`#pkc-root` は static(positioned ではない)のため、
-  // 実際には viewport 由来の initial containing block に対する offset
-  // として解釈され、root の viewport offset 分ズレた位置に menu が
-  // 出ていた(画面外 / header 裏 / 不可視位置に落ち込む可能性)。
-  //
-  // 新:`position: fixed` + 直接 viewport 座標を使用。textarea の
-  // boundingClientRect そのものを座標に渡せば確実に textarea 直下に
-  // 出る。スクロール時 menu が固定位置に張り付くが、slash menu は
-  // 1 入力 sub-tree の transient UI なので viewport 固定で問題なし。
-  const rect = textarea.getBoundingClientRect();
+  // PR-DDD (2026-05-06、user 修正指示5):**caret 座標直下** に出す。
+  // mirror-div ベースの `getCaretViewportCoords` でキャレットの正確
+  // な viewport 座標を計算、その直下に menu を `position: fixed` で
+  // 配置。textarea がスクロールしても caret に追従。viewport 下端
+  // 近くで menu が clip しないよう、空きが足りない時は caret の上に
+  // フリップ表示する flip-up 経路も追加(後段の post-render measure)。
+  const caret = getCaretViewportCoords(textarea);
+  const taRect = textarea.getBoundingClientRect();
   menu.style.position = 'fixed';
-  menu.style.left = `${rect.left}px`;
-  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, Math.min(caret.left, taRect.right - 200))}px`;
+  menu.style.top = `${caret.top + caret.height + 4}px`;
   menu.style.zIndex = '1000';
 
   root.appendChild(menu);
+
+  // PR-DDD (2026-05-06):mount 後に menu の高さを measure、viewport
+  // 下端を超える場合は caret の上に flip して clip を回避。
+  const win = root.ownerDocument?.defaultView ?? null;
+  if (win) {
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.bottom > win.innerHeight - 4) {
+      const flipTop = caret.top - menuRect.height - 4;
+      menu.style.top = `${Math.max(4, flipTop)}px`;
+    }
+    // 右端 clip も同時に守る。
+    if (menuRect.right > win.innerWidth - 4) {
+      const flippedLeft = win.innerWidth - menuRect.width - 8;
+      menu.style.left = `${Math.max(4, flippedLeft)}px`;
+    }
+  }
 }
 
 function renderMenuItems(inst: ActiveSlashMenu): void {

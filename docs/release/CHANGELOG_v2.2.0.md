@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-DDD(2026-05-06)
+
+- **`/` コマンドリストを caret 直下に出す + viewport flip**:user 修正指示5「『/』コマンドリストがカーソル直下ではなく、テキストエリアの外に出現する」への対応。PR-FF で `position: fixed` + `textarea.boundingRect.bottom` 起点に変えていたが、縦長 textarea で caret が中段にある場合 menu が遠くに離れる / viewport 下端で clip されるケースがあった。
+- **修正**:`getCaretViewportCoords(textarea)` で **caret の正確な viewport 座標** を取得、その直下に menu を配置。mount 後に `getBoundingClientRect` で再 measure、viewport 下端を超える場合は **caret 上に flip-up**、右端 clip も同様に flip-left で吸収。`Math.max(8, Math.min(caret.left, taRect.right - 200))` で textarea 右端外への突き出しも防止。
+- bundle.js 911.44 → 911.78 KB(+0.34 KB:caret-position import + flip 計算)、bundle.css 不変。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-CCC(2026-05-06)
 
 - **`/tmp` 公式テンプレ 4 種(video/audio/novel/book)を default に同梱**:user 修正指示5「公式としてVideo,Audio,Novel,Bookのテンプレを用意すべき」+ 修正指示5「Flags InspectorにVideo,Audio,Book,NovelのFormattenのテンプレが登録されていない」への対応。`templates.entries` flag の default JSON を拡張、PR-BBB の `mt` / `rt`(メモ・振り返り)に加えて以下 4 公式テンプレを追加:
