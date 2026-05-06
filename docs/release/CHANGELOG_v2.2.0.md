@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-NN(2026-05-06)
+
+- **Flags inspector 設定変更時勝手 scroll 修正**:user 修正指示2「Flags 画面で設定変更時の勝手 scroll 修正」への対応。`SET_FLAG` dispatch は `__flags__` system entry を mutate し container identity が変わる → render-scope は `'full'` を返し root.innerHTML が wipe される。inspector body は新規作成され scrollTop=0 になり、ユーザーが下方の flag を編集するたびに上に飛ばされていた。
+- **修正**:`pkc-flags-inspector-body` に `data-pkc-region="flags-inspector-body"` を付与、`render-continuity.ts` の SCROLL_REGIONS に追加。PR-GG で導入した synchronous + rAF retry の二段書き経路で scroll 復元。
+- **Phase 8 順序性 parity test**:`tests/smoke/flags-inspector-scroll-preservation-parity.spec.ts`(NEW)で inspector 開く → body を 200px scroll → numeric flag を `change` event 経由で更新(focus-induced scroll を回避するため `input.fill()` ではなく直接 DOM mutation)→ 2 rAF 待ち → body の scrollTop が ±2px 以内で保たれることを assert。
+- bundle.js 899.21 → 899.29 KB(+0.08 KB:SCROLL_REGIONS 1 entry + body data-pkc-region)、bundle.css 不変。unit 6492 / 6492 pass、smoke +1 pass。
+
 ### Wave 10-6 review fix PR-MM(2026-05-06)
 
 - **ショートカットメニュー実態合わせ(Flags 集中管理見据え)**:user 修正指示2「ショートカットメニュー実態合わせ(Flags 集中管理見据え)」への対応。`renderShortcutHelp` の文言を action-binder の actual key handling と完全一致するよう audit-update。漏れていたのは:Arrow keys のサイドバー / カレンダー / カンバン navigation、`Ctrl+Arrow Left/Right`(kanban column move)、`Ctrl+Shift+Arrow Up/Down`(カレンダー週送り)、`Ctrl+Enter` (TEXTLOG append)、`Space`(checkbox toggle)、Esc 系の close target 列挙。新 group:Navigation / Calendar view / Kanban view / Note の 4 つを追加(計 8 group)。最後の Note は「将来的に flags-controlled shortcut registry でユーザー rebinding 可能化」と Flags 集中管理 wave への前置きを記載。

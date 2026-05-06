@@ -331,6 +331,12 @@ export function renderFlagsInspector(): HTMLElement {
   // body makes everything share one scrollable viewport, and the
   // footer shrinks to just the summary line.
   const body = createElement('div', 'pkc-flags-inspector-body');
+  // PR-NN (2026-05-06): mark the scrollable inspector body as a
+  // continuity region so a SET_FLAG dispatch — which triggers a
+  // full re-render via container.entries.__flags__ identity bump —
+  // does not snap the user back to the top mid-edit. User report:
+  // 「Flags 画面で設定変更時の勝手 scroll 修正」.
+  body.setAttribute('data-pkc-region', 'flags-inspector-body');
   if (flags.length === 0) {
     const empty = createElement('div', 'pkc-flags-inspector-empty');
     empty.textContent = 'No flags registered yet.';

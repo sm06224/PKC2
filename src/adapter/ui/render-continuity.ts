@@ -43,7 +43,16 @@
  * actual scroll. Capturing only `sidebar` was a silent no-op for
  * sidebar scroll preservation, manifesting as "大量のエントリで
  * クリックすると左ペインが上に戻る". */
-const SCROLL_REGIONS = ['sidebar', 'entry-list', 'center-content', 'meta'] as const;
+const SCROLL_REGIONS = [
+  'sidebar',
+  'entry-list',
+  'center-content',
+  'meta',
+  // PR-NN (2026-05-06): flags-inspector-body は SET_FLAG で full
+  // re-render が走るため、scroll を継続させないと「設定を変更する
+  // たびに勝手に上にスクロールが戻る」になる(user 修正指示2)。
+  'flags-inspector-body',
+] as const;
 
 export interface RenderFocusSnapshot {
   /** `data-pkc-field` of the focused element, if any. */
