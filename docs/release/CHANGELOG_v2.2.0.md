@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-VVV(2026-05-07)
+
+- **数式計算入力補助、行頭以外でも動作**:user 修正指示7 #8「数式計算入力補助 行頭以外でも動作」への対応。旧仕様は `caretPos === lineEnd` 必須(行末でしか発火しない)。`Total: 1+2=` のように先頭に文脈テキストを書いて式を続けたとき、行末でも `Total: 1+2=` 直後の caret で `=` 直前は数式と非数式文字の混在状態なので発火していた -- が、`= ok` のように後続テキストがあると caret が行末でないため発火しなかった。
+- **修正**:
+  - `detectInlineCalcRequest` の判定を「caret 直前が `=` か」に変更。直前が `=` なら、そこから後方走査で expression 範囲を抽出。走査は `\n` / 文字列先頭 / 非 calc 文字のいずれかで停止
+  - 後方走査の whitelist:digits + operators (`+-*/%`) + parens + dot + whitespace。日本語などの非 ASCII 文字に当たれば即停止し、`結果は 3*4=` から `3*4` を正しく分離
+  - `lineStart` / `lineEnd` は caller への informational として依然出力(highlighting / 範囲計算 future use)
+- **互換性**:既存仕様(行末で `1+2=` + Enter)は新仕様でも完全互換(後方走査は行頭まで走るので結果同じ)。既存 tests 32 件全 pass、新規 6 ケース(mid-line / 日本語前置 / 改行越え / `foo=` 非数式 reject 等)を追加し計 38 件 pass。
+- bundle.js 916.97 → 917.13 KB(+0.16 KB:後方走査 + isCalcChar 関数)、bundle.css 不変。unit 6563 / 6563 pass(+6 新規)。
+
 ### Wave 10-7 review fix PR-UUU(2026-05-07)
 
 - **TAB → 半角スペース n 個(行頭限定)**:user 修正指示7 #7 + 修正指示6 残「TAB の行頭挿入を半角スペース n 個に展開して」への対応。プレーン textarea(markdown 拡張外)で行頭 Tab 押下時、`\t` ではなく半角スペース n 個を挿入。

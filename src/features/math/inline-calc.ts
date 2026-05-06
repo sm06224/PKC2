@@ -198,19 +198,27 @@ export interface InlineCalcRequest {
 
 /**
  * Inspect the text around `caretPos` and return an
- * `InlineCalcRequest` if the current line ends with `=` and the
- * caret is at the end of that line. Otherwise returns `null`.
+ * `InlineCalcRequest` if the caret sits immediately after `=` and
+ * the text leading up to it forms a valid arithmetic expression.
+ * Otherwise returns `null`.
  *
- * Contract:
- *   - Caret must be at the end of the current line
- *     (`caretPos === lineEnd`). The rationale is predictability:
- *     inline calc is a mid-sentence feature and must not fire
- *     just because the line contains an `=` somewhere.
- *   - The expression must be non-empty after stripping the `=`
- *     and surrounding whitespace.
+ * Contract (PR-VVV 2026-05-07、修正指示7 #8 で旧 line-end 縛りを撤廃):
+ *   - `fullText[caretPos - 1]` must be `=`. Caret position elsewhere
+ *     is a silent no-op.
+ *   - The expression is extracted by backwards-scanning from the `=`
+ *     across allowed calc characters (digits / operators / parens /
+ *     dot / whitespace). Scan stops at `\n`, at start of text, or at
+ *     any character outside the calc whitelist. This lets
+ *     `Total: 1+2=` fire calc on `1+2` without requiring the caret
+ *     to be at line end.
+ *   - The expression must be non-empty after trimming whitespace.
  *   - Pure: does not evaluate. Callers must still run
  *     `evaluateCalcExpression` and handle a `{ ok: false }`
  *     result as a silent no-op.
+ *
+ * `lineStart` / `lineEnd` are still computed for caller info
+ * (highlighting, future ranges); they describe the surrounding
+ * line, not the expression itself.
  */
 export function detectInlineCalcRequest(
   fullText: string,
@@ -219,28 +227,47 @@ export function detectInlineCalcRequest(
   if (typeof fullText !== 'string') return null;
   if (caretPos < 0 || caretPos > fullText.length) return null;
 
-  // Current line = text between the previous '\n' and the next
-  // '\n'. Both scans are O(line length) and do not allocate.
+  // Caret must immediately follow `=`.
+  if (fullText[caretPos - 1] !== '=') return null;
+
+  // Backwards-scan to find expression start. Stops at `\n`, start of
+  // text, or any non-calc-whitelist character. This makes
+  // `Total: 1+2=` valid (scan stops at `:`, expression = `1+2`).
+  let exprStart = caretPos - 1;
+  while (exprStart > 0) {
+    const ch = fullText[exprStart - 1]!;
+    if (ch === '\n') break;
+    if (!isCalcChar(ch)) break;
+    exprStart--;
+  }
+
+  const expression = fullText.slice(exprStart, caretPos - 1).trim();
+  if (expression.length === 0) return null;
+
+  // Compute lineStart / lineEnd for caller info (caller may want to
+  // know if there's content after the caret on the same line).
   let lineStart = caretPos;
   while (lineStart > 0 && fullText[lineStart - 1] !== '\n') lineStart--;
   let lineEnd = caretPos;
   while (lineEnd < fullText.length && fullText[lineEnd] !== '\n') lineEnd++;
 
-  // Caret must be at line end — anywhere else is a silent no-op.
-  if (caretPos !== lineEnd) return null;
-
-  const lineText = fullText.slice(lineStart, lineEnd);
-  if (!lineText.endsWith('=')) return null;
-
-  const expression = lineText.slice(0, -1).trim();
-  if (expression.length === 0) return null;
-
   return {
     lineStart,
     lineEnd,
     expression,
-    equalsPos: lineEnd - 1,
+    equalsPos: caretPos - 1,
   };
+}
+
+function isCalcChar(ch: string): boolean {
+  // Same whitelist as `evaluateCalcExpression`'s gate (digits +
+  // operators + parens + dot + whitespace).
+  return (
+    (ch >= '0' && ch <= '9')
+    || ch === '+' || ch === '-' || ch === '*' || ch === '/' || ch === '%'
+    || ch === '(' || ch === ')' || ch === '.'
+    || ch === ' ' || ch === '\t'
+  );
 }
 
 /**
