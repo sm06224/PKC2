@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-TTT(2026-05-07)
+
+- **Graph node サイズ縮小、label 優先表示**:user 修正指示7 #6「グラフのノードが大きい、label を優先表示にして」への対応。従来 `collideRadius * 0.6 = 21.6 px` の視覚半径が degree-scaling で最大 38.88 px まで膨張し、label が node に隠れていた。
+- **修正**:
+  - 新 flag `graph.node_radius_factor`(Tier 0、default 0.45、range 0.2-1.0)を追加。`collideRadius * value` で視覚半径を計算、衝突 hit-test も同値を使用。default で従来比 75%(36 × 0.45 = 16.2 px)に縮小、label が相対的に大きく見える
+  - degree scaling を緩和:`min(1.8, 1 + degree * 0.05)` → `min(1.5, 1 + degree * 0.04)`。連結度 10 で 40% 増 → 上限 50% 増、エッジ集中ノードでも label が読める
+  - render / hit-test / Venn ring の 3 箇所すべて新 factor を経由(統一)
+- **flag 経由 tunability**:user が「もっと小さく」「もっと大きく」と気軽に調整できる。runtime A/B も可能
+- bundle.js 916.27 → 916.70 KB(+0.43 KB:flag 1 件 + 3 site 改修)、bundle.css 不変。unit 6552 / 6552 pass。
+
 ### Wave 10-7 review fix PR-SSS(2026-05-07)
 
 - **Filer Explorer 列幅固定比率 + 中間省略 + tooltip**:user 修正指示7 #3 への対応。

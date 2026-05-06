@@ -104,6 +104,25 @@ export const graphIterations = defineFlag<number>(
 );
 
 /**
+ * Node 視覚半径の collideRadius に対する比率(PR-TTT 2026-05-07、
+ * 修正指示7 #6「ノードが大きすぎる、ラベル優先表示」)。視覚 r は
+ * `collideRadius * value` で算出、衝突判定 r も同じ値を使う。
+ * default 0.45 で従来 0.6 → 0.45(縮小 25%)。label の hit を増やす。
+ *
+ * range [0.2, 1.0] で誤って 0 に振らない。
+ */
+export const graphNodeRadiusFactor = defineFlag<number>(
+  'graph.node_radius_factor',
+  0.45,
+  {
+    range: [0.2, 1.0],
+    category: FLAG_CATEGORY,
+    description: 'node 視覚半径 / collide_radius 比率(0.45 = 従来 0.6 の縮小 25%)。小さくするほど label が相対的に大きく見える',
+    tier: 0,
+  },
+);
+
+/**
  * Wheel zoom 感度(PR-F G19、2026-05-06)。整数 [10, 200] で与えて内部で
  * 1/10000 倍する(integer 表現の方が flags inspector で扱いやすい)。
  *

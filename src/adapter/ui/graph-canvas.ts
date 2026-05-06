@@ -24,7 +24,7 @@
  * Layer rule: adapter 層なので core / features 経由で参照可。
  */
 
-import { graphZoomWheelSensitivity } from '../../features/graph/flags';
+import { graphZoomWheelSensitivity, graphNodeRadiusFactor } from '../../features/graph/flags';
 import type { Entry } from '@core/model/record';
 
 export interface GraphCanvasNode {
@@ -264,7 +264,8 @@ export function hitTestNodeAt(canvas: HTMLCanvasElement, clientX: number, client
   if (!payload) return null;
   const logical = clientToLogical(canvas, clientX, clientY);
   const user = logicalToUser(canvas, logical.x, logical.y);
-  const r = payload.collideRadius * 0.6;
+  // PR-TTT (2026-05-07、修正指示7 #6):node 視覚半径を flag 制御化。
+  const r = payload.collideRadius * graphNodeRadiusFactor();
   const r2 = r * r;
   // Iterate in reverse so visually-on-top(later-drawn) nodes win ties.
   // Current draw order = payload.nodes order, so reverse iterate.
@@ -457,7 +458,7 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // 描画。複数 group に所属する node は ring が重なり Venn 相当の重畳
   // を視覚化(node 自体の色 + group 1 の ring + group 2 の ring …)。
   if (payload.vennMemberships && payload.vennMemberships.size > 0) {
-    const baseR = payload.collideRadius * 0.6;
+    const baseR = payload.collideRadius * graphNodeRadiusFactor();
     for (const node of payload.nodes) {
       const memberships = payload.vennMemberships.get(node.id);
       if (!memberships || memberships.length === 0) continue;
@@ -482,17 +483,19 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // PR-LLL (2026-05-06):relation 数に応じてサイズ拡大、archetype
   // emoji を中央に重畳描画(円は薄く残して selection / hover の
   // affordance を保持)。
-  const baseR = payload.collideRadius * 0.6;
+  const baseR = payload.collideRadius * graphNodeRadiusFactor();
   for (const node of payload.nodes) {
     const p = payload.positions.get(node.id);
     if (!p) continue;
     const isSelected = node.id === payload.selectedLid;
     const isInRegion = payload.regionLids.includes(node.id);
 
-    // PR-LLL: degree-scaled radius. degree 0 → 1.0x、degree 1 →
-    // 1.05x、degree 10 → 1.5x、上限 1.8x で打ち止め。
+    // PR-LLL: degree-scaled radius. degree 0 → 1.0x、degree 1 → 1.04x、
+    // degree 10 → 1.4x、上限 1.5x で打ち止め。
+    // PR-TTT (2026-05-07、修正指示7 #6):過剰スケールを抑制(0.05/1.8 → 0.04/1.5)
+    // し、ノードサイズを label に対して相対的に小さく。
     const degree = node.degree ?? 0;
-    const scale = Math.min(1.8, 1 + degree * 0.05);
+    const scale = Math.min(1.5, 1 + degree * 0.04);
     const r = baseR * scale;
 
     // Circle (背景色、emoji 視認性のため薄め).
