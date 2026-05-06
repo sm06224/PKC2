@@ -4871,8 +4871,16 @@ mark.pkc-search-mark {
 .pkc-shortcut-card {
   /* Family A surface hoisted to shared list (Phase 2a). */
   padding: 1.5rem;
-  max-width: 400px;
-  width: 90%;
+  /* PR-RR (2026-05-06): user 修正指示4「ショートカットメニューが画面に
+   * 収まっていない。３段組にしてスクロールもオンに」への対応。
+   * 8 group / 30+ row が 1 column 縦長で viewport を超えていたため、
+   * card 幅 expanded + table を 3 column grid + body に max-height +
+   * overflow scroll。狭い viewport では auto-fit で 1〜2 col に degrade。 */
+  max-width: min(960px, 95vw);
+  width: 95%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .pkc-shortcut-heading {
@@ -4880,37 +4888,55 @@ mark.pkc-search-mark {
   color: var(--c-accent);
   margin-bottom: var(--space-4);
   font-weight: 600;
+  flex: 0 0 auto;
 }
 
+/* PR-RR (2026-05-06): 3 column grid + scrollable body so the help
+ * fits in viewport. `auto-fit minmax(280px, 1fr)` degrades to 1〜2 col
+ * on narrow screens. card itself has `flex` + `max-height: 85vh` so
+ * `overflow-y: auto` here scrolls only the table. */
 .pkc-shortcut-table {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2-5);
-  margin-bottom: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  column-gap: var(--space-5, 1.25rem);
+  row-gap: var(--space-2, 0.5rem);
+  margin-bottom: var(--space-3);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-right: var(--space-2, 0.5rem);
 }
 
 .pkc-shortcut-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2-5);
+  /* PR-RR: narrow cell でも key + desc が共存できるよう min-width:0 を
+   * 子要素に許可する flex baseline。 */
+  min-width: 0;
 }
 
 .pkc-shortcut-key {
   display: inline-block;
-  min-width: 120px;
-  padding: var(--space-1-5) var(--space-2-5);
+  min-width: 90px;
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
   color: var(--c-accent);
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs, 0.75rem);
   text-align: center;
 }
 
 .pkc-shortcut-desc {
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   color: var(--c-fg);
+  /* desc が長い場合も折り返して row 高さを伸ばす(切り捨てない)。 */
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .pkc-shortcut-group {

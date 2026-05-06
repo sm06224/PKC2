@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-RR(2026-05-06)
+
+- **ショートカットメニュー 3 段組 + scroll**:user 修正指示4「ショートカットメニューが画面に収まっていない。３段組にしてスクロールもオンにして」への対応。`.pkc-shortcut-card` を `max-width: min(960px, 95vw)` + `max-height: 85vh` + flex column に拡張、`.pkc-shortcut-table` を `display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` で 1〜4 col に auto-fit、`overflow-y: auto` で table 内 scroll を有効化。row は子要素に `min-width: 0` を許可して narrow cell でも key + desc が共存。
+- **Phase 8 順序性 parity test**:`tests/smoke/shortcut-help-layout-parity.spec.ts`(NEW)で 1280×720 viewport に対し card height ≤ 85vh、`getComputedStyle().display === 'grid'` + `overflowY === 'auto'` + grid-template-columns col 数 ≥ 2 + scrollHeight > clientHeight を assert。**併せて PR-FF re-verify**(`/` slash menu が viewport fixed 座標で出る)を別 test で固定化。
+- bundle.css 142.31 → 142.62 KB(+0.31 KB:grid + flex layout 拡充)、bundle.js 不変。unit 6518 / 6518 pass、smoke +2 pass。
+
 ### Wave 10-6 review fix PR-QQ(2026-05-06)
 
 - **bookmarklet ローカル PKC 用 file DL モード**:user 修正指示2「bookmarklet ローカル PKC 用 file DL モード(PKC 哲学的にローカル動作許容)」への対応。file:// で開いた PKC2 では browser cross-origin policy で postMessage handshake が成立しない。代替経路として **`📥 Save .pkc-capture.json` bookmarklet variant** を追加、現ページのキャプチャを PKC-Message v1 envelope JSON ファイルとして download。ファイルを PKC2 の Import picker / drop に渡すと既存の record:offer 受理経路に乗り、user accept で entry mint。
