@@ -86,10 +86,8 @@ test('PR-FF re-verify: slash menu opens at caret position in fixed coords', asyn
   await body.press('/');
 
   // The slash menu uses `position: fixed` (PR-FF) so it appears in
-  // viewport coordinates near the caret. Look for the floating menu
-  // and verify it's actually visible (not clipped off-screen).
-  const menu = page.locator('[data-pkc-region="slash-menu"], [data-pkc-action="slash-menu-pick"]').first();
-  // Wait briefly for the menu to mount.
+  // viewport coordinates near the caret. Wait briefly for the menu
+  // to mount.
   await page.waitForTimeout(150);
 
   // Either the dedicated region attribute or the action attribute on

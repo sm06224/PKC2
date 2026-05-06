@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-SS(2026-05-06)
+
+- **全 grid サムネ contain 統一(長辺合わせ)**:user 修正指示4 補足「サムネは元画像の長辺に合わせて引き伸ばしなしで表示してほしい(全 grid)」への対応。PR-KK の contact-sheet 限定 contain 修正を `.pkc-filer-card-thumb img` 全体の baseline に upgrade、book / video / novel / audio / contact-sheet を統一。cover-art convention の crop が「ノベル系 SVG / Amazon 商品画像」で意図しない切り抜きを引き起こしていたため撤回。letterbox 部の背景は thumb 既存の `bg-tag` neutral grey が見える。
+- **PR-KK の override 削除**:`.pkc-filer-grid-contact-sheet .pkc-filer-card-thumb img` の override は redundant になり削除。
+- **Phase 8 順序性 parity test 拡張**:`contact-sheet-object-fit-parity.spec.ts` に **book-base grid テスト追加**。folder の display_profile_kind を `book-base` で seed → `.pkc-filer-grid-book-base .pkc-filer-card-thumb img` で `getComputedStyle().objectFit === 'contain'` を assert。spec 名 / 内容を 全 grid 統一に合わせて更新。
+- bundle.css 142.62 → 142.54 KB(**-0.08 KB**:override 1 rule 削除 - net 縮小)、bundle.js 不変。unit 6518 / 6518 pass、smoke +1 pass。
+
 ### Wave 10-6 review fix PR-RR(2026-05-06)
 
 - **ショートカットメニュー 3 段組 + scroll**:user 修正指示4「ショートカットメニューが画面に収まっていない。３段組にしてスクロールもオンにして」への対応。`.pkc-shortcut-card` を `max-width: min(960px, 95vw)` + `max-height: 85vh` + flex column に拡張、`.pkc-shortcut-table` を `display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` で 1〜4 col に auto-fit、`overflow-y: auto` で table 内 scroll を有効化。row は子要素に `min-width: 0` を許可して narrow cell でも key + desc が共存。

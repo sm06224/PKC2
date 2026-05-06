@@ -6052,15 +6052,10 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   aspect-ratio: 1 / 1;
 }
 
-/* PR-KK (2026-05-06): contact-sheet は元画像の長辺をセルにフィッ
- * トさせる contain 仕様(user 修正指示2「サムネ元画像長辺合わせ
- * で引き伸ばしなし」)。.pkc-filer-card-thumb img の汎用 cover
- * (cover-art / book card 用、覆う + crop)を contact-sheet 限定で
- * contain に上書き。letterbox 部の背景は thumb 既存の bg-tag が
- * neutral grey で見えるためそのまま。 */
-.pkc-filer-grid-contact-sheet .pkc-filer-card-thumb img {
-  object-fit: contain;
-}
+/* PR-KK → PR-SS (2026-05-06): contact-sheet 限定 override は撤回。
+ * `.pkc-filer-card-thumb img` 全体が contain 統一されたため redundant。
+ * 互換のため selector は残す(value 不要)— と思ったが noop は混乱
+ * するので削除。`.pkc-filer-card-thumb img` の汎用ルールで賄える。 */
 
 .pkc-filer-grid-contact-sheet .pkc-filer-card-caption {
   position: absolute;
@@ -6109,10 +6104,20 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   background: var(--c-bg-tag, rgba(0, 0, 0, 0.05));
 }
 
+/* PR-SS (2026-05-06): user 修正指示2「サムネ元画像長辺合わせで引き
+ * 伸ばしなし」を全 grid に拡張(book / video / novel / audio /
+ * contact-sheet 統一)。元画像の縦横比を維持し、cell からはみ出さ
+ * ない範囲で長辺をフィットさせる contain を全カード共通の baseline に。
+ * letterbox 部の背景は thumb 既存の bg-tag が neutral grey で見える。
+ *
+ * 旧 cover(crop して埋める cover-art convention)は user 報告の
+ * 「ノベル系 SVG / Amazon 商品ページの引き伸ばし」を再現してしまう
+ * ため撤回。PR-KK で contact-sheet のみ contain にしていた upgrade
+ * を全カードに広げる形。 */
 .pkc-filer-card-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .pkc-filer-card-thumb-fallback {
