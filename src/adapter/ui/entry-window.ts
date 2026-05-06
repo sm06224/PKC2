@@ -86,12 +86,18 @@ function renderEntryPreview(
   text: string,
   overrideCtx?: AssetResolutionContext | null,
 ): string {
+  // PR-XX2-fix (2026-05-07、user 報告):popup split editor の input →
+  // preview re-render 経路。`sourceLineAnchors: true` を必ず付与しないと
+  // re-render 後の preview に source-line anchor が消え、popup-side
+  // sync logic が target を見失う。center pane の split editor preview
+  // も同じ option を使う(`detail-presenter.ts` の initial render +
+  // action-binder.ts の `updateTextEditPreview`)。
   const ctx = overrideCtx ?? previewResolverContexts.get(lid);
   if (ctx && text && hasAssetReferences(text)) {
     const resolved = resolveAssetReferences(text, ctx);
-    return renderMarkdown(resolved);
+    return renderMarkdown(resolved, { sourceLineAnchors: true });
   }
-  return renderMarkdown(text ?? '');
+  return renderMarkdown(text ?? '', { sourceLineAnchors: true });
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -715,7 +721,14 @@ function renderViewBody(
       // `[](asset:…)` chips already appear as inline data URIs /
       // fragment-href chips by the time markdown-it sees them.
       const source = ctx?.resolvedBody != null ? ctx.resolvedBody : entry.body;
-      return renderMarkdown(source || '') || '<em style="color:var(--c-muted)">(empty)</em>';
+      // PR-XX2-fix (2026-05-07、user 報告):popup 別窓 split editor の
+      // block 同期が button 押下後も無動作だった root cause。preview HTML
+      // に `data-pkc-source-line` anchor が無かったため `pkcFindPreview-
+      // ElementForLine` が target 0 件で no-op していた。text archetype
+      // は popup でも split editor (entry.archetype === 'text' で確定)
+      // なので、anchor を常時 emit して sync を機能させる。
+      return renderMarkdown(source || '', { sourceLineAnchors: true })
+        || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
 }
@@ -1347,6 +1360,17 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   font-size: 0.85rem;
   line-height: 1.5;
   min-height: 200px;
+}
+/* PR-XX2-fix (2026-05-07、user 報告 popup sync 無動作):
+   data-pkc-active-source highlight rule は base.css にのみ存在し、
+   popup は inline style しか持たないため marker が見えなかった。
+   center pane と等価な visual を inline で再現する。 */
+.pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr) {
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+  border-left: 3px solid var(--c-accent);
+  padding-left: 0.4rem;
+  margin-left: -0.4rem;
+  border-radius: 2px;
 }
 
 /* ── Tab bar (Source/Preview) ── */

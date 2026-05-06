@@ -9,7 +9,7 @@
  *        tests/smoke/diagnostic-2026-05-07.spec.ts --project chromium
  */
 
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 async function seedManyEntries(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
@@ -159,6 +159,78 @@ test('D-02 graph node hover preview tooltip', async ({ page }) => {
     };
   });
   console.log('D-02 hover tooltip:', JSON.stringify(tipVisible, null, 2));
+});
+
+test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', async ({ page, context }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  // Pick first text entry, double-click to open popup window.
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  // Locate the first text entry in the sidebar.
+  const item = page.locator('li.pkc-entry-item[data-pkc-lid="e0"]').first();
+  await item.waitFor();
+  // Wait for popup to appear after dblclick.
+  const [popup] = await Promise.all([
+    context.waitForEvent('page'),
+    item.dblclick(),
+  ]);
+  await popup.waitForLoadState('domcontentloaded');
+  await popup.waitForLoadState('load');
+  // Popup opens directly in edit mode for text archetype (action-binder.ts handleDblClickAction).
+  await popup.waitForSelector('#body-edit', { state: 'visible' });
+
+  // Verify ⇄ button exists.
+  const toggle = popup.locator('#btn-toggle-sync');
+  await toggle.waitFor();
+  // Initial state should be off.
+  expect(await toggle.getAttribute('data-pkc-sync-state')).toBe('off');
+
+  // Click the toggle to turn ON.
+  await toggle.click();
+  expect(await toggle.getAttribute('data-pkc-sync-state')).toBe('on');
+
+  // Set caret on a specific line.
+  await popup.evaluate(() => {
+    const ta = document.getElementById('body-edit') as HTMLTextAreaElement;
+    ta.value = 'Line 0\n## Header on line 1\n\nParagraph line 3.\n\n- item 5\n- item 6\n';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await popup.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Move caret to line 1 (on the header).
+  await popup.evaluate(() => {
+    const ta = document.getElementById('body-edit') as HTMLTextAreaElement;
+    ta.focus();
+    const offset = ta.value.indexOf('## Header');
+    ta.setSelectionRange(offset, offset);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await popup.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Inspect the active marker: preview should have an element with
+  // data-pkc-active-source="true" matching the header block.
+  const result = await popup.evaluate(() => {
+    const preview = document.getElementById('body-preview');
+    if (!preview) return { hasPreview: false };
+    const anchored = preview.querySelectorAll('[data-pkc-source-line]');
+    const active = preview.querySelector('[data-pkc-active-source="true"]');
+    return {
+      hasPreview: true,
+      anchorCount: anchored.length,
+      activeText: active?.textContent?.slice(0, 80) ?? null,
+      activeTagName: active?.tagName ?? null,
+    };
+  });
+  console.log('D-06 popup sync state:', JSON.stringify(result, null, 2));
+
+  await popup.screenshot({
+    path: 'test-results/diag-2026-05-07/D-06-popup-sync-after-toggle.png',
+    fullPage: false,
+  });
+
+  expect(result.anchorCount).toBeGreaterThan(0);
+  expect(result.activeText).not.toBeNull();
 });
 
 test('D-05 filer multi-select via checkbox (PR-Δ3)', async ({ page }) => {
