@@ -1545,14 +1545,25 @@ function renderShellMenu(
   const bmLabel = createElement('span', 'pkc-shell-menu-label');
   bmLabel.textContent = 'Bookmarklet';
   bmSection.appendChild(bmLabel);
-  // PR-R (2026-05-06):bookmarklet target URL を **現在の PKC2 instance**
-  // から resolve する。user 報告「PKC2-DEV で生成したのに stable の
-  // PKC2 が開く、環境を無視するのは PKC2 哲学違反」。`location.origin
-  // + location.pathname` で生成元 instance の URL を採用、stable / dev /
-  // local / 単一 HTML どこからでも自然に動く。
-  const bookmarkletTargetUrl = `${window.location.origin}${window.location.pathname}`;
+  // PR-R (2026-05-06) → PR-Z hotfix (2026-05-06):bookmarklet target URL
+  // 解決を環境別に固める。
+  //
+  // - http(s) hosted(GitHub Pages / 自前 host)→ そのままその URL を target に
+  // - file:// で開いている場合は `window.location.origin === 'null'`(string)
+  //   になり、`null + pathname` で壊れた URL を生成していた(user 報告
+  //   「null/Users/.../pkc2-...html」)。修正:`file://` のときは public
+  //   stable URL に fallback し、user に「file:// では同 instance への
+  //   bookmarklet 経由は不可能(Web ページから file:// は browser security
+  //   でブロック)」を desc 文で伝える。
+  const PKC2_PUBLIC_STABLE_URL = 'https://sm06224.github.io/PKC-Public/PKC2/';
+  const isFileOrigin = window.location.origin === 'null' || window.location.protocol === 'file:';
+  const bookmarkletTargetUrl = isFileOrigin
+    ? PKC2_PUBLIC_STABLE_URL
+    : `${window.location.origin}${window.location.pathname}`;
   const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
-  bmDesc.textContent = `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。送信先は今 click 時の PKC2 instance(${bookmarkletTargetUrl})。`;
+  bmDesc.textContent = isFileOrigin
+    ? `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。\n⚠ 現在 file:// で開いているため、bookmarklet 送信先は public stable URL(${PKC2_PUBLIC_STABLE_URL})に fallback します。自前 host の PKC2 を使う場合は下のコードをコピーして URL 部分を編集してください。`
+    : `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。送信先は今 click 時の PKC2 instance(${bookmarkletTargetUrl})。`;
   bmSection.appendChild(bmDesc);
   // PR-S (2026-05-06):**PKC-Message v1 spec §4.1 envelope + §7.2
   // record:offer に完全準拠** な bookmarklet。User 指摘「PKC-Message の
@@ -1585,7 +1596,7 @@ function renderShellMenu(
   //   - その他のページ → og:type / og:image fallback、不明なら kind 付与なし
   const bmJs = (
     '(function(){'
-    + 'var u=location.href,h=location.host,'
+    + 'var u=location.href,host=location.host,'
     + 'q=function(s){var e=document.querySelector(s);return e?(e.getAttribute("content")||e.getAttribute("href")||""):""},'
     + 'ogTitle=q("meta[property=\\"og:title\\"]"),'
     + 'ogImg=q("meta[property=\\"og:image\\"]"),'
@@ -1599,12 +1610,12 @@ function renderShellMenu(
     + 'now=new Date().toISOString(),'
     + 'kind=null,provider=null,thumb=ogImg||null;'
     // 5 公式 site detection(URL host pattern → kind/provider)
-    + 'if(/youtube\\.com|youtu\\.be/.test(h)){kind="video";provider="YouTube";'
+    + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
     + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
-    + 'else if(/nicovideo\\.jp/.test(h)){kind="video";provider="niconico";}'
-    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(h)){kind="novel";provider="小説家になろう";}'
-    + 'else if(/kakuyomu\\.jp/.test(h)){kind="novel";provider="カクヨム";}'
-    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(h)){kind="book";provider="Amazon";}'
+    + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
+    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
+    + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){kind="book";provider="Amazon";}'
     // generic fallback by og:type
     + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
     + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
@@ -1618,10 +1629,13 @@ function renderShellMenu(
     + 'source_id:"extension:pkc2-bookmarklet@1.1",target_id:null,payload:pl,timestamp:now},'
     + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
     + 'if(!w){alert("PKC2: popup blocked");return;}'
-    + 'function h(e){if(e.source!==w)return;'
+    // PR-Z fix:旧 `function h(e){...}` は `var h=location.host` と衝突して
+    // string で上書きされ addEventListener が TypeError を投げていた。
+    // handler は `onPkc2Ready` に rename。
+    + 'function onPkc2Ready(e){if(e.source!==w)return;'
     + 'if(e.data&&e.data.type==="pkc-bookmarklet-ready"){'
-    + 'w.postMessage(env,"*");removeEventListener("message",h);}}'
-    + 'addEventListener("message",h);'
+    + 'w.postMessage(env,"*");removeEventListener("message",onPkc2Ready);}}'
+    + 'addEventListener("message",onPkc2Ready);'
     + '})();'
   );
   const bmLink = document.createElement('a');
