@@ -4653,9 +4653,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (action === 'set-graph-mode') {
       // 領域 10-6 ζ'' Phase 4 follow-up 4 — center pane Graph view の
       // mode 切替 select。
+      // PR-D G8 (2026-05-06):'time-proximity' を 5th option として追加。
       if (target instanceof HTMLSelectElement) {
-        const v = target.value as 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy';
-        const valid: typeof v[] = ['relations', 'color-tags', 'tag-groups', 'folder-hierarchy'];
+        const v = target.value as 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
+        const valid: typeof v[] = ['relations', 'color-tags', 'tag-groups', 'folder-hierarchy', 'time-proximity'];
         if (valid.includes(v)) {
           dispatcher.dispatch({ type: 'SET_GRAPH_MODE', mode: v });
         }

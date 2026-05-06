@@ -12,7 +12,9 @@
  *      Filer / Graph).
  *   2. Clicking the Graph tab via real OS click flips viewMode and
  *      paints `[data-pkc-region="graph-view"]`.
- *   3. graph-mode toolbar renders with the 4 mode selector options.
+ *   3. graph-mode toolbar renders with the 5 mode selector options
+ *      (relations / color-tags / tag-groups / folder-hierarchy /
+ *      time-proximity — last added in PR-D G8).
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -57,7 +59,7 @@ test('順序性: Graph tab click → viewMode=graph + graph-view region paints',
   await expect(tab).toHaveAttribute('data-pkc-active', 'true');
 });
 
-test('graph mode selector lists 4 options (relations / color-tags / tag-groups / folder-hierarchy)', async ({ page }) => {
+test('graph mode selector lists 5 options (relations / color-tags / tag-groups / folder-hierarchy / time-proximity)', async ({ page }) => {
   await bootAndSeed(page);
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
   const box = await tab.boundingBox();
@@ -72,6 +74,7 @@ test('graph mode selector lists 4 options (relations / color-tags / tag-groups /
   expect(options.some((t) => t.startsWith('Color tags'))).toBe(true);
   expect(options.some((t) => t.startsWith('Tag groups'))).toBe(true);
   expect(options.some((t) => t.startsWith('Folder hierarchy'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Time proximity'))).toBe(true);
 });
 
 test('順序性: switching graph-mode updates data-pkc-graph-mode attribute', async ({ page }) => {

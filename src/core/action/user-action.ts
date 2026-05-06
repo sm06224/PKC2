@@ -467,7 +467,7 @@ export type UserAction =
   | { type: 'TOGGLE_TREE_HIDE_BUCKETS' }
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' }
-  | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' }
+  | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity' }
   | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
   | { type: 'SET_INVENTORY_FILTER'; key: string; value: string }
   | { type: 'SET_INVENTORY_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }

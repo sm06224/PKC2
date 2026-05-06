@@ -330,7 +330,7 @@ export interface AppState {
    *
    * Runtime-only.
    */
-  graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy';
+  graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
   /**
    * Optional focus lid for graph view. When set, the graph centers on
    * this entry and includes its 1-hop neighbourhood. When unset, the

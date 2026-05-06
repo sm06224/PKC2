@@ -5150,6 +5150,7 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     { v: 'color-tags', label: 'Color tags' },
     { v: 'tag-groups', label: 'Tag groups' },
     { v: 'folder-hierarchy', label: 'Folder hierarchy' },
+    { v: 'time-proximity', label: 'Time proximity(時系列接近性)' },
   ]) {
     const opt = document.createElement('option');
     opt.value = m.v;
@@ -5200,9 +5201,18 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   const { nodes, links } = buildGraphForMode(allEntries, allRels, mode, state.graphFocusLid ?? null);
 
   const params = getGraphForceParams(width, height);
-  const sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
-  const iter = graphIterations();
-  for (let i = 0; i < iter; i++) stepSimulation(sim, links, params);
+  // PR-D G8 (2026-05-06):time-proximity mode は force layout を bypass して
+  // created_at で x 座標を線形配置(時系列接近性)。y は archetype の lane
+  // に振って衝突を避ける。これにより「Recent ほど右、古いものほど左」が
+  // 視覚的に zero-shot で読める。other modes は従来通り force layout。
+  let sim;
+  if (mode === 'time-proximity') {
+    sim = seedTimeProximityLayout(nodes, allEntries, width, height);
+  } else {
+    sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
+    const iter = graphIterations();
+    for (let i = 0; i < iter; i++) stepSimulation(sim, links, params);
+  }
 
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
@@ -5219,6 +5229,52 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   // が呼ばれて wired される(action-binder からは触らない)。
   const zoomLayer = document.createElementNS(svgNS, 'g');
   zoomLayer.setAttribute('class', 'pkc-graph-zoom-layer');
+
+  // PR-D G8 (2026-05-06):time-proximity mode は左右で時系列軸 label を
+  // 出して「左:古い / 右:新しい」を視覚で読めるようにする。zoom-layer
+  // の中に入れて pan/zoom と一緒に動く(label が独立浮遊しない)。
+  if (mode === 'time-proximity') {
+    const axisLayer = document.createElementNS(svgNS, 'g');
+    axisLayer.setAttribute('class', 'pkc-graph-time-axis');
+    const allTs = allEntries
+      .map((e) => Date.parse(e.created_at))
+      .filter((t) => Number.isFinite(t) && t > 0);
+    if (allTs.length > 0) {
+      const minT = Math.min(...allTs);
+      const maxT = Math.max(...allTs);
+      const fmt = (ms: number): string => {
+        const d = new Date(ms);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+      // 3 ticks: oldest / midpoint / newest
+      for (const [t, anchor, label] of [
+        [minT, 'start', `← ${fmt(minT)}(古い)`],
+        [(minT + maxT) / 2, 'middle', fmt((minT + maxT) / 2)],
+        [maxT, 'end', `${fmt(maxT)}(新しい)→`],
+      ] as const) {
+        const padX = 40;
+        const usableW = width - padX * 2;
+        const xRatio = (t - minT) / Math.max(1, maxT - minT);
+        const x = padX + xRatio * usableW;
+        const text = document.createElementNS(svgNS, 'text');
+        text.setAttribute('class', 'pkc-graph-time-axis-label');
+        text.setAttribute('x', String(x));
+        text.setAttribute('y', String(height - 12));
+        text.setAttribute('text-anchor', anchor);
+        text.textContent = label;
+        axisLayer.appendChild(text);
+        // Vertical guide line.
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('class', 'pkc-graph-time-axis-line');
+        line.setAttribute('x1', String(x));
+        line.setAttribute('y1', '20');
+        line.setAttribute('x2', String(x));
+        line.setAttribute('y2', String(height - 24));
+        axisLayer.appendChild(line);
+      }
+    }
+    zoomLayer.appendChild(axisLayer);
+  }
 
   const idx = new Map<string, { x: number; y: number }>();
   for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
@@ -5289,10 +5345,79 @@ interface GraphNodeView {
   colorClass?: string;
 }
 
+/**
+ * Time-proximity layout (PR-D G8 — 時系列接近性).
+ *
+ * Force layout を bypass。entries の created_at で x 座標を線形配置:
+ *   - 最古エントリ → x = padding
+ *   - 最新エントリ → x = width - padding
+ * y 座標は archetype を lane に分けて衝突を避ける。同じ archetype 内
+ * では created_at で sort して順番に積む(deterministic、同一 input で
+ * 必ず同一 layout)。
+ *
+ * 結果として「左:古い / 右:新しい / 上下:archetype 別」というグリッド
+ * 風配置になる。force layout のように毎レンダーで微妙に位置がずれる
+ * 動きは無く、user は「同じ entry はいつも同じ場所」を期待できる。
+ */
+function seedTimeProximityLayout(
+  nodes: readonly GraphNodeView[],
+  entries: readonly Entry[],
+  width: number,
+  height: number,
+): { id: string; x: number; y: number; vx: number; vy: number }[] {
+  if (nodes.length === 0) return [];
+  const created = new Map<string, number>();
+  for (const e of entries) {
+    const t = Date.parse(e.created_at);
+    created.set(e.lid, Number.isFinite(t) ? t : 0);
+  }
+  const ts = nodes.map((n) => created.get(n.id) ?? 0).filter((t) => t > 0);
+  const minT = ts.length > 0 ? Math.min(...ts) : 0;
+  const maxT = ts.length > 0 ? Math.max(...ts) : 1;
+  const span = Math.max(1, maxT - minT);
+
+  // Bucket nodes by archetype to assign lanes.
+  const lanes = new Map<string, number>();
+  const laneOrder: string[] = [];
+  for (const n of nodes) {
+    if (!lanes.has(n.archetype)) {
+      lanes.set(n.archetype, laneOrder.length);
+      laneOrder.push(n.archetype);
+    }
+  }
+  const laneCount = Math.max(1, laneOrder.length);
+  const padX = 40;
+  const padY = 40;
+  const usableW = width - padX * 2;
+  const usableH = height - padY * 2;
+  const laneH = usableH / laneCount;
+
+  return nodes.map((n) => {
+    const t = created.get(n.id) ?? minT;
+    const xRatio = (t - minT) / span;
+    const x = padX + xRatio * usableW;
+    const lane = lanes.get(n.archetype) ?? 0;
+    // Within-lane: deterministic vertical jitter from lid hash to avoid
+    // vertical line-up of same-archetype nodes whose timestamps cluster.
+    const jitter = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.6);
+    const y = padY + lane * laneH + laneH / 2 + jitter;
+    return { id: n.id, x, y, vx: 0, vy: 0 };
+  });
+}
+
+/** Cheap deterministic hash → [0, 1). Used for lane jitter. */
+function hashStringToUnit(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
 function buildGraphForMode(
   entries: readonly Entry[],
   relations: readonly { kind: string; from: string; to: string }[],
-  mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy',
+  mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity',
   focusLid: string | null,
 ): { nodes: GraphNodeView[]; links: { from: string; to: string }[] } {
   // Restrict scope when focusLid is set to 1-hop neighbourhood.
@@ -5350,6 +5475,11 @@ function buildGraphForMode(
       }
       break;
     }
+    case 'time-proximity':
+      // Time-proximity layout は edge を引かない(時系列軸そのものが
+      // 「接近性」の表現)。位置決定は seedTimeProximityLayout が行う。
+      links = [];
+      break;
   }
 
   // Folder-hierarchy color assignment via BFS depth.

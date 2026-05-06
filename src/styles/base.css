@@ -5749,6 +5749,25 @@ mark.pkc-search-mark {
   cursor: pointer;
 }
 
+/* ── Graph time-proximity axis (PR-D G8, 2026-05-06) ──
+   左:古い / 右:新しい を視覚で読めるよう、3 tick(min / mid / max)
+   の vertical guide line + bottom date label。zoom-layer 内に配置して
+   pan/zoom と一緒に動く。 */
+
+.pkc-graph-time-axis-label {
+  font-size: 11px;
+  fill: var(--c-fg-muted, rgba(0, 0, 0, 0.5));
+  user-select: none;
+  pointer-events: none;
+}
+
+.pkc-graph-time-axis-line {
+  stroke: var(--c-border, rgba(0, 0, 0, 0.15));
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
 
 .pkc-filer-grid {
