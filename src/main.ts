@@ -651,6 +651,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPostMessageHandshake(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -675,6 +676,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPostMessageHandshake(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -693,6 +695,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPostMessageHandshake(dispatcher);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -809,6 +812,73 @@ function maybeIngestSnapshotFromUrl(dispatcher: Dispatcher): void {
     window.history.replaceState({}, document.title, url);
   } catch {
     /* ignore */
+  }
+}
+
+/**
+ * PR-Q (2026-05-06):bookmarklet payload を URL query 経由ではなく
+ * **postMessage 経由** で受け取る path を新設。User 提言:
+ * > GET クエリを晒すより、ブラウザ内で PKC-Message 経由の方が良くない?
+ *
+ * 旧 path(URL `?pkc-snapshot=<base64>`):
+ *   - payload がアドレスバー / 履歴 / Referrer Header / server access
+ *     log にそのまま乗る → 漏洩リスク
+ *   - URL 長制限(~2000 chars)で長文 snapshot は失敗
+ *
+ * 新 path:
+ *   - bookmarklet が `?pkc-bookmarklet=ready` で PKC2 を新タブで起動
+ *     (payload なし、純粋な「これから送るよ」signal)
+ *   - PKC2 boot 時に opener へ `postMessage({type:'pkc-bookmarklet-ready'})`
+ *     を送信
+ *   - bookmarklet は ready を受けて payload を `postMessage` で送信
+ *   - PKC2 は受信 → validate → snapshotToEntryDraft → CREATE_ENTRY
+ *
+ * Security:
+ *   - payload は URL に乗らない(history / log / Referrer すべて clean)
+ *   - 同一ブラウザ内 postMessage のみ → ネットワーク経由の payload
+ *     流出ゼロ
+ *   - 受信 message は `isSnapshot` で structural validate、不正 message
+ *     は silent drop
+ *   - origin チェックは緩い(bookmarklet origin = scraping page で
+ *     様々なため `'*'` を accept)が、payload validation で防御
+ */
+function installBookmarkletPostMessageHandshake(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  const isBookmarkletInvocation = params.get('pkc-bookmarklet') === 'ready';
+
+  // Listen for incoming snapshot payloads regardless of how PKC2 was
+  // opened — even a manual session can receive snapshots from a
+  // bookmarklet running in another tab opened earlier.
+  window.addEventListener('message', (ev) => {
+    const data = ev.data as { type?: unknown; payload?: unknown } | null | undefined;
+    if (!data || data.type !== 'pkc-bookmarklet-snapshot') return;
+    const decoded = data.payload;
+    if (!isSnapshot(decoded)) return;
+    const draft = snapshotToEntryDraft(decoded);
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: draft.title });
+    const lid = dispatcher.getState().editingLid;
+    if (lid) {
+      dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title: draft.title, body: draft.body });
+    }
+  });
+
+  // Notify the opener that we're ready to receive a payload, then
+  // strip the URL flag so refresh doesn't re-trigger the handshake.
+  if (isBookmarkletInvocation && window.opener) {
+    try {
+      window.opener.postMessage({ type: 'pkc-bookmarklet-ready' }, '*');
+    } catch {
+      /* opener inaccessible (cross-origin opaque) — ignore */
+    }
+    try {
+      params.delete('pkc-bookmarklet');
+      const newSearch = params.toString();
+      const url = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
+      window.history.replaceState({}, document.title, url);
+    } catch {
+      /* ignore */
+    }
   }
 }
 

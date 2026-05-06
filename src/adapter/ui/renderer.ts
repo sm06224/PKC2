@@ -1548,16 +1548,28 @@ function renderShellMenu(
   const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
   bmDesc.textContent = 'ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。';
   bmSection.appendChild(bmDesc);
-  // The bookmarklet inlines the PKC2 stable URL. Single-line minified
-  // for brevity. User can edit the bookmark URL if they use a different
-  // PKC2 instance.
+  // PR-Q (2026-05-06):URL query 経由 → postMessage 経由に refactor。
+  // user 提言「GET クエリを晒すより、ブラウザ内で PKC-Message 経由の
+  // 方が良くない?」。bookmarklet flow:
+  //   1. PKC2 を `?pkc-bookmarklet=ready` で開く(payload なし、signal のみ)
+  //   2. PKC2 boot 時に opener に `postMessage({type:'pkc-bookmarklet-ready'})`
+  //   3. bookmarklet が ready を受けて payload を postMessage で送信
+  //   4. PKC2 が validate → CREATE_ENTRY
+  // payload は URL に乗らないので 履歴 / log / Referrer すべて clean。
   const PKC2_STABLE_URL = 'https://sm06224.github.io/PKC-Public/PKC2/';
   const bmJs = (
     '(function(){'
     + 'var s=getSelection().toString().trim(),'
     + 'd={captured_at:new Date().toISOString(),selection:{url:location.href,title:document.title,snippet:s}},'
-    + 'b=btoa(unescape(encodeURIComponent(JSON.stringify(d))));'
-    + `open(${JSON.stringify(PKC2_STABLE_URL)}+'?pkc-snapshot='+encodeURIComponent(b),'_blank');`
+    + `w=open(${JSON.stringify(PKC2_STABLE_URL + '?pkc-bookmarklet=ready')},'_blank');`
+    + 'if(!w){alert("PKC2: popup blocked");return;}'
+    + 'function h(e){'
+    + 'if(e.source!==w)return;'
+    + 'if(e.data&&e.data.type==="pkc-bookmarklet-ready"){'
+    + 'w.postMessage({type:"pkc-bookmarklet-snapshot",payload:d},"*");'
+    + 'removeEventListener("message",h);'
+    + '}}'
+    + 'addEventListener("message",h);'
     + '})();'
   );
   const bmLink = document.createElement('a');
