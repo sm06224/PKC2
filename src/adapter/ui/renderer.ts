@@ -14,6 +14,7 @@ import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
 import { installGraphZoomGestures } from './graph-zoom';
+import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
@@ -4199,16 +4200,33 @@ function resolveFilerScope(state: AppState): Entry | null {
 }
 
 /**
- * Resolve the FilerProfile for a given scope. Phase 1 only `'explorer'`.
- * Default when `display_profile` is undefined or scope is null.
+ * Resolve the FilerProfile for a given scope.
+ *
+ * PR-G G15 (2026-05-06):display_profile が undefined または `{kind:'auto'}`
+ * のとき、folder の direct children を 7 割多数決で classify して
+ * concrete profile に解決する。それ以外の kind はそのまま返す。
  */
 function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): FilerProfile {
-  if (scope && scope.archetype === 'folder' && scope.display_profile) {
-    return scope.display_profile;
+  const explicit = scope && scope.archetype === 'folder' ? scope.display_profile : undefined;
+  if (explicit && explicit.kind !== 'auto') {
+    return explicit;
   }
-  // Phase 2b adds 'graph' default heuristic; Phase 1 always falls back to explorer.
-  void state;
-  return { kind: 'explorer' };
+  // Auto-detect から実 profile を決める。scope === null = container root
+  // のときは scope 全 user entries を直接 children として扱う(root も
+  // 一種の folder として「中身が画像ばかりなら album」を適用したい)。
+  if (!state.container) return { kind: 'explorer' };
+  const allUserEntries = state.container.entries.filter((e) => !isSystemArchetype(e.archetype));
+  let children: Entry[];
+  if (scope) {
+    const childLids = new Set<string>();
+    for (const r of state.container.relations) {
+      if (r.kind === 'structural' && r.from === scope.lid) childLids.add(r.to);
+    }
+    children = allUserEntries.filter((e) => childLids.has(e.lid));
+  } else {
+    children = allUserEntries;
+  }
+  return autoDetectFilerProfile(children);
 }
 
 function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerProfile): HTMLElement {
@@ -4319,6 +4337,8 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
 
 function subsetLabelText(kind: FilerProfile['kind']): string {
   switch (kind) {
+    case 'auto':
+      return 'Auto';
     case 'explorer':
       return 'Explorer';
     case 'contact-sheet':
@@ -6434,6 +6454,7 @@ function renderMetaPaneImpl(
     select.className = 'pkc-filer-profile-select';
 
     const opts: { value: string; label: string }[] = [
+      { value: 'auto', label: 'Auto(自動判定 / 7 割多数決)' },
       { value: 'explorer', label: 'Explorer (table)' },
       { value: 'contact-sheet', label: 'Contact sheet (album)' },
       { value: 'book-base', label: 'Book base (Amazon / 楽天 / 蔵書)' },
@@ -6443,7 +6464,9 @@ function renderMetaPaneImpl(
       { value: 'graph', label: 'Graph (relations)' },
       { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
     ];
-    const current = entry.display_profile?.kind ?? 'explorer';
+    // PR-G G15 (2026-05-06):default は auto。undefined display_profile も
+    // auto と同じ意味として扱う。
+    const current = entry.display_profile?.kind ?? 'auto';
     for (const opt of opts) {
       const option = document.createElement('option');
       option.value = opt.value;
@@ -6452,6 +6475,23 @@ function renderMetaPaneImpl(
       select.appendChild(option);
     }
     profileSection.appendChild(select);
+
+    // Auto モード時、自動判定された結果を併記して user に伝える。
+    if (current === 'auto' && container) {
+      const childLids = new Set<string>();
+      for (const r of container.relations) {
+        if (r.kind === 'structural' && r.from === entry.lid) childLids.add(r.to);
+      }
+      const children = container.entries.filter(
+        (e) => childLids.has(e.lid) && !isSystemArchetype(e.archetype),
+      );
+      const resolved = autoDetectFilerProfile(children);
+      const hint = createElement('span', 'pkc-filer-profile-hint');
+      hint.setAttribute('data-pkc-region', 'filer-profile-auto-hint');
+      hint.setAttribute('data-pkc-resolved-kind', resolved.kind);
+      hint.textContent = `→ 現在: ${resolved.kind}(${children.length} 件中)`;
+      profileSection.appendChild(hint);
+    }
 
     meta.appendChild(profileSection);
   }

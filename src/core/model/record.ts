@@ -113,6 +113,10 @@ export interface Entry {
  *
  * Each kind defines how the children of a folder are presented in
  * filer view:
+ *   - 'auto'          : 子 entries の所属を 7 割多数決で contact-sheet /
+ *                       book-base / video-base / novel-base / audio-base /
+ *                       explorer のいずれかに自動解決(PR-G G15、
+ *                       2026-05-06)
  *   - 'explorer'      : table (Phase 1)
  *   - 'contact-sheet' : grid of image attachments (Phase 3a)
  *   - 'book-base'     : grid of card-style book entries (Phase 3a)
@@ -120,10 +124,13 @@ export interface Entry {
  *   - 'graph'         : force-directed network of TEXT + relations
  *                       (Phase 2b — reserved kind)
  *
- * Backward compat: undefined treated as `'explorer'`. Old reader
- * ignores the field; old writer never sets it.
+ * Backward compat: undefined は `'auto'` と同義に変更(PR-G G15、user の
+ * 直接 direction)。旧 reader は undefined を `'explorer'` として描画して
+ * いたが、新 reader は auto-detect。Old writer は `auto` を書かないので
+ * write 経路の contract は不変(field 自体が optional のまま)。
  */
 export type FilerProfile =
+  | { kind: 'auto' }
   | { kind: 'explorer'; columns?: FilerColumnId[] }
   | { kind: 'contact-sheet'; cell_size?: 'sm' | 'md' | 'lg' }
   | { kind: 'book-base' }

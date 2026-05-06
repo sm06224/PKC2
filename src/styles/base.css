@@ -5816,6 +5816,17 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-color: var(--c-accent, #3b82f6);
 }
 
+/* ── Filer display profile auto hint (PR-G G15, 2026-05-06) ──
+   Auto mode 選択時、自動判定された結果(contact-sheet 等)を select の
+   下に小さく併記。意図しない subset に切り替わっていたら user が気付ける。 */
+
+.pkc-filer-profile-hint {
+  display: block;
+  margin-top: var(--space-1, 0.25rem);
+  font-size: var(--fs-xs, 0.8125rem);
+  color: var(--c-fg-muted, rgba(0, 0, 0, 0.55));
+}
+
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
 
 .pkc-filer-grid {

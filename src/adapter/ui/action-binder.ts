@@ -4700,7 +4700,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const lid = target.getAttribute('data-pkc-lid');
       if (lid && target instanceof HTMLSelectElement) {
         const kind = target.value;
-        const valid: Array<'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'audio-base' | 'graph' | 'inventory'> = [
+        // PR-G G15 (2026-05-06):'auto' を追加。auto を選んだ時は
+        // explicit に `{kind:'auto'}` を保存(undefined と semantics は
+        // 同じだが、user が「明示的に auto を選んだ」状態を保持する)。
+        const valid: Array<'auto' | 'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'audio-base' | 'graph' | 'inventory'> = [
+          'auto',
           'explorer',
           'contact-sheet',
           'book-base',
