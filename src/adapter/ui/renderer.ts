@@ -1721,8 +1721,18 @@ function renderShellMenu(
     + 'if(pkAuthor)pl.author=pkAuthor;if(pkBrand)pl.brand=pkBrand;'
     + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
     + 'source_id:"extension:pkc2-bookmarklet@1.1",target_id:null,payload:pl,timestamp:now},'
-    + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
+    // PR-WW (2026-05-06):user 修正指示4「ブックマークレットで取り込
+    // むたびに新しいタブで PKC が開く。UX 低下・許容不可」への対応。
+    // `'_blank'` から **named target** `'pkc2-bookmarklet'` に変更。
+    // 既に同名 window/tab があれば browser はそれを focus + reuse、
+    // 無ければ新規 tab を 1 度だけ開く。2 回目以降の click で post-
+    // Message が同じ PKC2 instance に届くので「新タブが量産される」
+    // 問題が解消する。
+    + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'pkc2-bookmarklet');`
     + 'if(!w){alert("PKC2: popup blocked");return;}'
+    // PR-WW: 既存 named tab を reuse した場合、focus を明示的に呼ばないと
+    // bookmarklet 元 tab に視線が留まり「何も起きていない」と見える。
+    + 'try{w.focus();}catch(_){}'
     // PR-Z fix:旧 `function h(e){...}` は `var h=location.host` と衝突して
     // string で上書きされ addEventListener が TypeError を投げていた。
     // handler は `onPkc2Ready` に rename。

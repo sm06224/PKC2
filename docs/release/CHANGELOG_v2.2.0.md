@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-WW(2026-05-06)
+
+- **bookmarklet 同名 window target で tab 再利用**:user 修正指示4「ブックマークレットで取り込むたびに新しいタブで PKC が開く。UX 低下・許容不可」への対応。primary bookmarklet `📌 Send to PKC2` の `window.open(URL, '_blank')` を `window.open(URL, 'pkc2-bookmarklet')` に変更、ID-named target で同名 tab を reuse する browser default を活用。2 回目以降の click は既存 PKC2 tab に postMessage が届くため新 tab が量産されない。reuse された tab を foreground に出すため `w.focus()` を try/catch で呼び出し(cross-origin focus は silent fail)。
+- DL 経由 bookmarklet `📥 Save .pkc-capture.json` は window を開かないので変更なし。
+- bundle.js 908.04 → 908.07 KB(+0.03 KB:literal 差分のみ)、bundle.css 不変。unit 6523 / 6523 pass。
+
 ### Wave 10-6 review fix PR-VV(2026-05-06)
 
 - **取り込み先 folder picker**:user 修正指示4「取り込み先の指定をしたい」への対応。`PendingOffer` banner に **target folder picker `<select>`** を追加。container に folder entry がある時のみ表示、`📂 (root)` + `📁 <folder name>` を ABC 順で並べる。Accept 時に同 `[data-pkc-offer-id]` item 内の picker から value を読み、`ACCEPT_OFFER { target_folder_lid }` に渡す。
