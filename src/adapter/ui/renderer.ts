@@ -13,7 +13,12 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
-import { installGraphZoomGestures } from './graph-zoom';
+import {
+  bindGraphCanvas,
+  installGraphCanvasGestures,
+  buildTimeAxisHint,
+  type GraphCanvasPayload,
+} from './graph-canvas';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
@@ -5284,128 +5289,50 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     for (let i = 0; i < iter; i++) stepSimulation(sim, links, params);
   }
 
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
-  svg.classList.add('pkc-filer-graph', 'pkc-center-graph-svg');
-  svg.setAttribute('data-pkc-region', 'graph-svg');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
-  // PR-E G8 後半 (2026-05-06):region-select mode flag。graph-zoom の
-  // mousedown handler がこれを読んで pan / rect-drag を分岐する。
-  if (regionMode) svg.setAttribute('data-pkc-graph-region-select-mode', 'true');
+  // PR-H G16 (2026-05-06):SVG → Canvas 化。force layout の出力 (sim) を
+  // payload にして graph-canvas.ts の `bindGraphCanvas` に渡す。draw +
+  // gesture handler は graph-canvas に集約。click hit-testing は
+  // coordinate-based(node の data-pkc-lid 属性は持たない、CustomEvent
+  // 経由で action-binder に通知)。
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const n of sim) positions.set(n.id, { x: n.x, y: n.y });
 
-  // PR-C G1 (2026-05-06):zoom + pan は zoom-layer の transform 経由で
-  // 適用、force layout は再計算しない。zoom-layer の中に edges + nodes
-  // を入れる。gesture handlers は wrap 側で installGraphZoomGestures(svg)
-  // が呼ばれて wired される(action-binder からは触らない)。
-  const zoomLayer = document.createElementNS(svgNS, 'g');
-  zoomLayer.setAttribute('class', 'pkc-graph-zoom-layer');
+  const timeAxis = mode === 'time-proximity' ? buildTimeAxisHint(allEntries) : undefined;
 
-  // PR-D G8 (2026-05-06):time-proximity mode は左右で時系列軸 label を
-  // 出して「左:古い / 右:新しい」を視覚で読めるようにする。zoom-layer
-  // の中に入れて pan/zoom と一緒に動く(label が独立浮遊しない)。
-  if (mode === 'time-proximity') {
-    const axisLayer = document.createElementNS(svgNS, 'g');
-    axisLayer.setAttribute('class', 'pkc-graph-time-axis');
-    const allTs = allEntries
-      .map((e) => Date.parse(e.created_at))
-      .filter((t) => Number.isFinite(t) && t > 0);
-    if (allTs.length > 0) {
-      const minT = Math.min(...allTs);
-      const maxT = Math.max(...allTs);
-      const fmt = (ms: number): string => {
-        const d = new Date(ms);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      };
-      // 3 ticks: oldest / midpoint / newest
-      for (const [t, anchor, label] of [
-        [minT, 'start', `← ${fmt(minT)}(古い)`],
-        [(minT + maxT) / 2, 'middle', fmt((minT + maxT) / 2)],
-        [maxT, 'end', `${fmt(maxT)}(新しい)→`],
-      ] as const) {
-        const padX = 40;
-        const usableW = width - padX * 2;
-        const xRatio = (t - minT) / Math.max(1, maxT - minT);
-        const x = padX + xRatio * usableW;
-        const text = document.createElementNS(svgNS, 'text');
-        text.setAttribute('class', 'pkc-graph-time-axis-label');
-        text.setAttribute('x', String(x));
-        text.setAttribute('y', String(height - 12));
-        text.setAttribute('text-anchor', anchor);
-        text.textContent = label;
-        axisLayer.appendChild(text);
-        // Vertical guide line.
-        const line = document.createElementNS(svgNS, 'line');
-        line.setAttribute('class', 'pkc-graph-time-axis-line');
-        line.setAttribute('x1', String(x));
-        line.setAttribute('y1', '20');
-        line.setAttribute('x2', String(x));
-        line.setAttribute('y2', String(height - 24));
-        axisLayer.appendChild(line);
-      }
-    }
-    zoomLayer.appendChild(axisLayer);
-  }
+  const canvas = document.createElement('canvas');
+  canvas.classList.add('pkc-graph-canvas');
+  canvas.setAttribute('data-pkc-region', 'graph-canvas');
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  if (regionMode) canvas.setAttribute('data-pkc-graph-region-select-mode', 'true');
 
-  const idx = new Map<string, { x: number; y: number }>();
-  for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
+  wrap.appendChild(canvas);
 
-  const edgeLayer = document.createElementNS(svgNS, 'g');
-  edgeLayer.setAttribute('class', 'pkc-filer-graph-edges');
-  for (const link of links) {
-    const a = idx.get(link.from);
-    const b = idx.get(link.to);
-    if (!a || !b) continue;
-    const line = document.createElementNS(svgNS, 'line');
-    line.setAttribute('x1', String(a.x));
-    line.setAttribute('y1', String(a.y));
-    line.setAttribute('x2', String(b.x));
-    line.setAttribute('y2', String(b.y));
-    line.setAttribute('class', 'pkc-filer-graph-edge');
-    edgeLayer.appendChild(line);
-  }
-  zoomLayer.appendChild(edgeLayer);
+  const payload: GraphCanvasPayload = {
+    width,
+    height,
+    mode,
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      archetype: n.archetype,
+      cssColor: n.cssColor,
+    })),
+    positions,
+    links,
+    selectedLid: state.selectedLid,
+    regionLids,
+    regionMode,
+    collideRadius: params.collideRadius,
+    timeAxis: timeAxis ?? undefined,
+  };
 
-  const nodeLayer = document.createElementNS(svgNS, 'g');
-  nodeLayer.setAttribute('class', 'pkc-filer-graph-nodes');
-  for (const n of sim) {
-    const node = nodes.find((x) => x.id === n.id);
-    if (!node) continue;
-    const group = document.createElementNS(svgNS, 'g');
-    group.setAttribute('class', 'pkc-filer-graph-node');
-    group.setAttribute('data-pkc-action', 'select-entry');
-    group.setAttribute('data-pkc-lid', node.id);
-    group.setAttribute('data-pkc-archetype', node.archetype);
-    group.setAttribute('transform', `translate(${n.x}, ${n.y})`);
-    if (node.id === state.selectedLid) group.setAttribute('data-pkc-active', 'true');
-    if (regionLids.includes(node.id)) group.setAttribute('data-pkc-graph-region-selected', 'true');
-
-    const circle = document.createElementNS(svgNS, 'circle');
-    circle.setAttribute('r', String(params.collideRadius * 0.6));
-    if (node.cssColor) circle.setAttribute('style', `fill: ${node.cssColor}`);
-    circle.setAttribute('class', `pkc-filer-graph-circle pkc-filer-graph-circle-${node.archetype}`);
-    if (node.colorClass) circle.classList.add(node.colorClass);
-    group.appendChild(circle);
-
-    const label = document.createElementNS(svgNS, 'text');
-    label.setAttribute('class', 'pkc-filer-graph-label');
-    label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('y', String(params.collideRadius * 0.6 + 12));
-    label.textContent = truncate(node.label, 18);
-    group.appendChild(label);
-
-    nodeLayer.appendChild(group);
-  }
-  zoomLayer.appendChild(nodeLayer);
-  svg.appendChild(zoomLayer);
-
-  wrap.appendChild(svg);
-  // svg は DOM mount 後に gesture install(BoundingClientRect / ScreenCTM
-  // が必要)。renderer は同期だが、queueMicrotask で次の microtask に
-  // 譲る — caller(main render flow)の append が終わってから実行される。
-  queueMicrotask(() => installGraphZoomGestures(svg));
+  // bindGraphCanvas needs the canvas mounted to compute its display
+  // size; queueMicrotask defers to after this DOM tree is appended.
+  queueMicrotask(() => {
+    bindGraphCanvas(canvas, payload);
+    installGraphCanvasGestures(canvas);
+  });
   return wrap;
 }
 

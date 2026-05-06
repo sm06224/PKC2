@@ -5642,6 +5642,27 @@ mark.pkc-search-mark {
   min-height: 0;
 }
 
+/* PR-H G16 (2026-05-06):SVG → Canvas 化。Canvas は単一 element なので
+   gesture handler が hit-test で node を解決する。touch-action: none で
+   browser の native pinch zoom を奪い、独自 handler に流す。 */
+.pkc-graph-canvas {
+  flex: 1;
+  display: block;
+  min-height: 480px;
+  touch-action: none;
+  cursor: grab;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-graph-canvas:active {
+  cursor: grabbing;
+}
+
+.pkc-graph-canvas[data-pkc-graph-region-select-mode="true"] {
+  cursor: crosshair;
+}
+
 .pkc-center-graph-toolbar {
   display: flex;
   flex-wrap: wrap;

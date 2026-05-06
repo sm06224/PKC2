@@ -1,0 +1,692 @@
+/**
+ * Graph view Canvas renderer + gestures (PR-H G16, 2026-05-06).
+ *
+ * User direction:
+ * > グラフ表示が全然グラフっぽくない。これ Canvas?SVG なら Canvas にしてね
+ *
+ * Replaces the SVG-based graph rendering(`graph-zoom.ts` の SVG path)。
+ * Canvas は単一 element なので:
+ *   - test 互換のため `data-pkc-region="graph-canvas"` を root に立て、
+ *     hit-test → lid 解決を coordinate-based(`hitTestNodeAt`)で実装
+ *   - 描画は `<canvas>` に直接、edges / nodes / labels / time-axis /
+ *     region-rect を全部 ctx で書く(SVG 階層化された要素 layer 不要)
+ *   - zoom + pan の transform は ctx.translate + ctx.scale で実施
+ *   - hi-DPI:`canvas.width = logicalW × dpr`、`canvas.style.width =
+ *     '100%'` で CSS 拡大、`ctx.scale(dpr, dpr)` で論理座標系を維持
+ *
+ * Gestures(graph-zoom.ts の論理を Canvas 用に再利用):
+ *   - wheel: cursor 中心 zoom(感度 flag `graph.zoom.wheel_sensitivity`)
+ *   - mouse drag(背景):pan / region-select(mode 別)
+ *   - 2-finger pinch / 1-finger touch drag:zoom / pan
+ *   - mousedown on node(coord で hit):dispatch SELECT_ENTRY
+ *   - region-select: drag-rect 解放時に `pkc-graph-region-selected` CustomEvent
+ *
+ * Layer rule: adapter 層なので core / features 経由で参照可。
+ */
+
+import { graphZoomWheelSensitivity } from '../../features/graph/flags';
+import type { Entry } from '@core/model/record';
+
+export interface GraphCanvasNode {
+  id: string;
+  label: string;
+  archetype: string;
+  /** Optional inline fill (color-tags / hierarchy depth). */
+  cssColor?: string;
+}
+
+export interface GraphCanvasLink {
+  from: string;
+  to: string;
+}
+
+export interface GraphCanvasPayload {
+  /** Logical viewBox-equivalent dimensions (px). Coords below are in this space. */
+  width: number;
+  height: number;
+  /** Active graph mode (`relations` etc., used for axis hint rendering). */
+  mode: string;
+  nodes: readonly GraphCanvasNode[];
+  positions: ReadonlyMap<string, { x: number; y: number }>;
+  links: readonly GraphCanvasLink[];
+  selectedLid: string | null;
+  regionLids: readonly string[];
+  regionMode: boolean;
+  collideRadius: number;
+  /**
+   * For time-proximity mode. When present, draws 3 vertical guide lines +
+   * date labels across the bottom in the same coord space as nodes.
+   */
+  timeAxis?: { minT: number; maxT: number };
+}
+
+interface CanvasViewState {
+  scale: number;
+  tx: number;
+  ty: number;
+  /** Region-select drag in progress; null when not dragging. */
+  rectStart: { ux: number; uy: number } | null;
+  rectEnd: { ux: number; uy: number } | null;
+}
+
+const MIN_SCALE = 0.1;
+const MAX_SCALE = 8;
+
+const payloads: WeakMap<HTMLCanvasElement, GraphCanvasPayload> = new WeakMap();
+const viewStates: WeakMap<HTMLCanvasElement, CanvasViewState> = new WeakMap();
+const gestureControllers: WeakMap<HTMLCanvasElement, AbortController> = new WeakMap();
+
+function getOrInitView(canvas: HTMLCanvasElement): CanvasViewState {
+  let v = viewStates.get(canvas);
+  if (!v) {
+    v = { scale: 1, tx: 0, ty: 0, rectStart: null, rectEnd: null };
+    viewStates.set(canvas, v);
+  }
+  return v;
+}
+
+/**
+ * Public — renderer calls this to (re)bind the data + draw. Idempotent.
+ * The view state(zoom / pan)survives re-binding so the user's zoom
+ * level is preserved across re-renders.
+ */
+export function bindGraphCanvas(canvas: HTMLCanvasElement, payload: GraphCanvasPayload): void {
+  payloads.set(canvas, payload);
+  // Clear the "smoke-test data stamp" flag so the next draw re-emits
+  // node summary attrs reflecting the new payload.
+  canvas.removeAttribute('data-pkc-graph-nodes-bound');
+  getOrInitView(canvas);
+  drawGraphCanvas(canvas);
+}
+
+/** Reset zoom + pan to identity. */
+export function resetGraphCanvasZoom(canvas: HTMLCanvasElement): void {
+  const v = getOrInitView(canvas);
+  v.scale = 1;
+  v.tx = 0;
+  v.ty = 0;
+  v.rectStart = null;
+  v.rectEnd = null;
+  drawGraphCanvas(canvas);
+}
+
+/** Test-only — read current view state. */
+export function __getGraphCanvasViewForTest(canvas: HTMLCanvasElement): CanvasViewState | undefined {
+  return viewStates.get(canvas);
+}
+
+/**
+ * Test-only — given a payload, return the bounding box of a named node
+ * (in logical coord space). Lets parity tests verify positions without
+ * hit-testing canvas pixels.
+ */
+export function __getGraphCanvasNodePosForTest(canvas: HTMLCanvasElement, lid: string): { x: number; y: number } | null {
+  const p = payloads.get(canvas);
+  return p?.positions.get(lid) ?? null;
+}
+
+/**
+ * Test-only — return all (lid, label, position) tuples currently bound
+ * to the canvas. Smoke tests use this to look up positions / labels
+ * without DOM children (which Canvas doesn't have).
+ */
+export function __getGraphCanvasNodesForTest(canvas: HTMLCanvasElement): Array<{ lid: string; label: string; x: number; y: number }> {
+  const p = payloads.get(canvas);
+  if (!p) return [];
+  const out: Array<{ lid: string; label: string; x: number; y: number }> = [];
+  for (const n of p.nodes) {
+    const pos = p.positions.get(n.id);
+    if (!pos) continue;
+    out.push({ lid: n.id, label: n.label, x: pos.x, y: pos.y });
+  }
+  return out;
+}
+
+/**
+ * Convert a client (viewport) point into the canvas's logical coord
+ * space (the same space `payload.positions` uses). Accounts for the
+ * canvas CSS-display vs. logical size ratio.
+ */
+function clientToLogical(canvas: HTMLCanvasElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  const payload = payloads.get(canvas);
+  const lw = payload?.width ?? rect.width;
+  const lh = payload?.height ?? rect.height;
+  const sx = rect.width === 0 ? 1 : lw / rect.width;
+  const sy = rect.height === 0 ? 1 : lh / rect.height;
+  return {
+    x: (clientX - rect.left) * sx,
+    y: (clientY - rect.top) * sy,
+  };
+}
+
+/** Convert logical coord → user (post-view-transform) coord. */
+function logicalToUser(canvas: HTMLCanvasElement, lx: number, ly: number): { x: number; y: number } {
+  const v = viewStates.get(canvas);
+  if (!v) return { x: lx, y: ly };
+  return { x: (lx - v.tx) / v.scale, y: (ly - v.ty) / v.scale };
+}
+
+/**
+ * Coordinate-based hit testing — given a client point, return the
+ * topmost node lid under it (within node radius). Used by mouse / touch
+ * handlers to translate clicks into select-entry dispatches.
+ */
+export function hitTestNodeAt(canvas: HTMLCanvasElement, clientX: number, clientY: number): string | null {
+  const payload = payloads.get(canvas);
+  if (!payload) return null;
+  const logical = clientToLogical(canvas, clientX, clientY);
+  const user = logicalToUser(canvas, logical.x, logical.y);
+  const r = payload.collideRadius * 0.6;
+  const r2 = r * r;
+  // Iterate in reverse so visually-on-top(later-drawn) nodes win ties.
+  // Current draw order = payload.nodes order, so reverse iterate.
+  for (let i = payload.nodes.length - 1; i >= 0; i--) {
+    const n = payload.nodes[i]!;
+    const p = payload.positions.get(n.id);
+    if (!p) continue;
+    const dx = user.x - p.x;
+    const dy = user.y - p.y;
+    if (dx * dx + dy * dy <= r2) return n.id;
+  }
+  return null;
+}
+
+/**
+ * Resolve theme-aware colors at draw time. The canvas paints into a
+ * raster bitmap, so CSS `var(--c-...)` cascades aren't visible — we
+ * need to compute concrete RGB strings from the page's `:root` style.
+ */
+function resolveTheme(canvas: HTMLCanvasElement): {
+  bg: string;
+  fg: string;
+  fgMuted: string;
+  border: string;
+  accent: string;
+  bgTag: string;
+} {
+  const root = canvas.ownerDocument.documentElement;
+  const cs = canvas.ownerDocument.defaultView!.getComputedStyle(root);
+  const get = (key: string, fallback: string): string => {
+    const v = cs.getPropertyValue(key).trim();
+    return v.length > 0 ? v : fallback;
+  };
+  return {
+    bg: get('--c-bg', '#fff'),
+    fg: get('--c-fg', '#222'),
+    fgMuted: get('--c-fg-muted', 'rgba(0,0,0,0.5)'),
+    border: get('--c-border', 'rgba(0,0,0,0.3)'),
+    accent: get('--c-accent', '#3b82f6'),
+    bgTag: get('--c-bg-tag', 'rgba(0,0,0,0.04)'),
+  };
+}
+
+/** archetype → fill color (matches existing CSS rules). */
+function archetypeFill(archetype: string): string {
+  switch (archetype) {
+    case 'folder': return 'rgba(255, 200, 100, 0.55)';
+    case 'text': return 'rgba(120, 180, 255, 0.55)';
+    case 'textlog': return 'rgba(100, 220, 180, 0.55)';
+    case 'todo': return 'rgba(255, 150, 150, 0.55)';
+    case 'attachment': return 'rgba(180, 180, 180, 0.55)';
+    default: return 'rgba(160, 160, 160, 0.55)';
+  }
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + '…';
+}
+
+/**
+ * Main draw function. Idempotent — clears the canvas and redraws
+ * everything from `payload` + `viewState`. Call after any state change.
+ *
+ * Hi-DPI: `canvas.width = logicalW × dpr`, `ctx.scale(dpr, dpr)` so
+ * subsequent draws are in logical pixel coords.
+ */
+export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  const payload = payloads.get(canvas);
+  const view = viewStates.get(canvas);
+  if (!ctx || !payload || !view) return;
+
+  const dpr = canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+  // Match raster size to logical × dpr if not already.
+  const targetW = Math.round(payload.width * dpr);
+  const targetH = Math.round(payload.height * dpr);
+  if (canvas.width !== targetW) canvas.width = targetW;
+  if (canvas.height !== targetH) canvas.height = targetH;
+
+  const theme = resolveTheme(canvas);
+
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  // Background.
+  ctx.fillStyle = theme.bgTag;
+  ctx.fillRect(0, 0, payload.width, payload.height);
+
+  // View transform.
+  ctx.translate(view.tx, view.ty);
+  ctx.scale(view.scale, view.scale);
+
+  // Time axis (under nodes).
+  if (payload.timeAxis && payload.mode === 'time-proximity') {
+    drawTimeAxis(ctx, payload, view, theme);
+  }
+
+  // Edges.
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 1 / view.scale;
+  ctx.globalAlpha = 0.6;
+  for (const link of payload.links) {
+    const a = payload.positions.get(link.from);
+    const b = payload.positions.get(link.to);
+    if (!a || !b) continue;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Nodes.
+  const r = payload.collideRadius * 0.6;
+  for (const node of payload.nodes) {
+    const p = payload.positions.get(node.id);
+    if (!p) continue;
+    const isSelected = node.id === payload.selectedLid;
+    const isInRegion = payload.regionLids.includes(node.id);
+
+    // Circle.
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = node.cssColor ?? archetypeFill(node.archetype);
+    ctx.fill();
+
+    if (isSelected || isInRegion) {
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 3 / view.scale;
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = theme.fg;
+      ctx.lineWidth = 1.5 / view.scale;
+      ctx.stroke();
+    }
+
+    // Label with halo (G18 readability).
+    const labelText = truncate(node.label, 18);
+    const fontSize = 13;
+    ctx.font = `500 ${fontSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.lineWidth = 3 / view.scale;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = theme.bg;
+    ctx.strokeText(labelText, p.x, p.y + r + 4);
+    ctx.fillStyle = theme.fg;
+    ctx.fillText(labelText, p.x, p.y + r + 4);
+  }
+
+  // Region-select rect (drawn last so it's above everything).
+  if (view.rectStart && view.rectEnd) {
+    const x = Math.min(view.rectStart.ux, view.rectEnd.ux);
+    const y = Math.min(view.rectStart.uy, view.rectEnd.uy);
+    const w = Math.abs(view.rectEnd.ux - view.rectStart.ux);
+    const h = Math.abs(view.rectEnd.uy - view.rectStart.uy);
+    ctx.fillStyle = theme.accent;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1.5 / view.scale;
+    ctx.setLineDash([4 / view.scale, 2 / view.scale]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+
+  // Surface zoom state to data attrs for parity tests.
+  canvas.setAttribute('data-pkc-graph-zoom-scale', String(view.scale));
+  canvas.setAttribute('data-pkc-graph-zoom-tx', String(view.tx));
+  canvas.setAttribute('data-pkc-graph-zoom-ty', String(view.ty));
+  // Smoke-test surface — Canvas は DOM 子を持たないので、parity test が
+  // 個々の node の座標 / lid を assert するために JSON で表面化する。
+  // bind 時に 1 度書けば十分(scale/tx/ty とは違って draw ループで不変)。
+  if (canvas.getAttribute('data-pkc-graph-nodes-bound') !== 'true') {
+    const summary = payload.nodes.map((n) => {
+      const p = payload.positions.get(n.id);
+      return { lid: n.id, label: n.label, archetype: n.archetype, x: p?.x ?? 0, y: p?.y ?? 0 };
+    });
+    canvas.setAttribute('data-pkc-graph-nodes', JSON.stringify(summary));
+    canvas.setAttribute('data-pkc-graph-edges', String(payload.links.length));
+    canvas.setAttribute('data-pkc-graph-time-axis', payload.timeAxis ? 'true' : 'false');
+    canvas.setAttribute('data-pkc-graph-nodes-bound', 'true');
+  }
+}
+
+function drawTimeAxis(
+  ctx: CanvasRenderingContext2D,
+  payload: GraphCanvasPayload,
+  view: CanvasViewState,
+  theme: { fgMuted: string; border: string },
+): void {
+  if (!payload.timeAxis) return;
+  const { minT, maxT } = payload.timeAxis;
+  const fmt = (ms: number): string => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const ticks: [number, 'left' | 'center' | 'right', string][] = [
+    [minT, 'left', `← ${fmt(minT)}(古い)`],
+    [(minT + maxT) / 2, 'center', fmt((minT + maxT) / 2)],
+    [maxT, 'right', `${fmt(maxT)}(新しい)→`],
+  ];
+  const padX = 40;
+  const usableW = payload.width - padX * 2;
+  ctx.save();
+  ctx.font = `11px sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = theme.fgMuted;
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 1 / view.scale;
+  ctx.setLineDash([2 / view.scale, 4 / view.scale]);
+  for (const [t, anchor, label] of ticks) {
+    const xRatio = (t - minT) / Math.max(1, maxT - minT);
+    const x = padX + xRatio * usableW;
+    // Vertical guide line.
+    ctx.beginPath();
+    ctx.moveTo(x, 20);
+    ctx.lineTo(x, payload.height - 24);
+    ctx.stroke();
+    // Label.
+    ctx.textAlign = anchor === 'left' ? 'left' : anchor === 'right' ? 'right' : 'center';
+    ctx.fillText(label, x, payload.height - 18);
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/**
+ * Wire wheel / drag / touch / pinch handlers on a canvas. Idempotent —
+ * re-binding aborts the previous controller. Call once after the
+ * canvas is mounted; bindGraphCanvas() handles redraw on payload changes.
+ */
+export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
+  const prev = gestureControllers.get(canvas);
+  if (prev) prev.abort();
+  const controller = new AbortController();
+  const signal = controller.signal;
+  gestureControllers.set(canvas, controller);
+
+  getOrInitView(canvas);
+
+  let panStart: { clientX: number; clientY: number; tx: number; ty: number } | null = null;
+  let pinchStart: {
+    dist: number; scale: number;
+    midClientX: number; midClientY: number;
+    midUserX: number; midUserY: number;
+  } | null = null;
+  let pressDownLid: string | null = null;
+  let mouseDownPos: { x: number; y: number } | null = null;
+
+  const isRegionMode = (): boolean => canvas.getAttribute('data-pkc-graph-region-select-mode') === 'true';
+
+  const win = canvas.ownerDocument.defaultView!;
+
+  // ── Wheel: cursor-centered zoom. ──
+  canvas.addEventListener('wheel', (ev) => {
+    const we = ev as WheelEvent;
+    we.preventDefault();
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    const logical = clientToLogical(canvas, we.clientX, we.clientY);
+    const userX = (logical.x - view.tx) / view.scale;
+    const userY = (logical.y - view.ty) / view.scale;
+    const sensitivity = graphZoomWheelSensitivity() * 0.0001;
+    const factor = Math.exp(-we.deltaY * sensitivity);
+    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, view.scale * factor));
+    view.scale = newScale;
+    view.tx = logical.x - userX * newScale;
+    view.ty = logical.y - userY * newScale;
+    drawGraphCanvas(canvas);
+  }, { passive: false, signal });
+
+  // ── Mouse: click / drag / pan / region-select. ──
+  canvas.addEventListener('mousedown', (ev) => {
+    const me = ev as MouseEvent;
+    if (me.button !== 0) return;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    // First check if this is a click on a node — if so, defer to mouseup.
+    pressDownLid = hitTestNodeAt(canvas, me.clientX, me.clientY);
+    mouseDownPos = { x: me.clientX, y: me.clientY };
+    if (pressDownLid) {
+      // Don't engage pan/region for node clicks.
+      return;
+    }
+    if (isRegionMode()) {
+      const logical = clientToLogical(canvas, me.clientX, me.clientY);
+      view.rectStart = { ux: logical.x, uy: logical.y };
+      view.rectEnd = { ux: logical.x, uy: logical.y };
+      panStart = null;
+      drawGraphCanvas(canvas);
+    } else {
+      panStart = { clientX: me.clientX, clientY: me.clientY, tx: view.tx, ty: view.ty };
+    }
+    me.preventDefault();
+  }, { signal });
+
+  win.addEventListener('mousemove', (ev) => {
+    const me = ev as MouseEvent;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    if (view.rectStart) {
+      const logical = clientToLogical(canvas, me.clientX, me.clientY);
+      view.rectEnd = { ux: logical.x, uy: logical.y };
+      drawGraphCanvas(canvas);
+      return;
+    }
+    if (!panStart) return;
+    const rect = canvas.getBoundingClientRect();
+    const payload = payloads.get(canvas);
+    const lw = payload?.width ?? rect.width;
+    const lh = payload?.height ?? rect.height;
+    const sx = rect.width === 0 ? 1 : lw / rect.width;
+    const sy = rect.height === 0 ? 1 : lh / rect.height;
+    view.tx = panStart.tx + (me.clientX - panStart.clientX) * sx;
+    view.ty = panStart.ty + (me.clientY - panStart.clientY) * sy;
+    drawGraphCanvas(canvas);
+  }, { signal });
+
+  win.addEventListener('mouseup', (ev) => {
+    const me = ev as MouseEvent;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    if (view.rectStart && view.rectEnd) {
+      // Region-select complete — compute hit lids and emit.
+      finalizeRegionSelect(canvas);
+      view.rectStart = null;
+      view.rectEnd = null;
+      drawGraphCanvas(canvas);
+    }
+    if (pressDownLid) {
+      // Click on a node — emit a synthetic CustomEvent so action-binder
+      // can dispatch SELECT_ENTRY without touching SVG-style delegation.
+      const start = mouseDownPos;
+      if (start) {
+        const dist = Math.hypot(me.clientX - start.x, me.clientY - start.y);
+        if (dist < 5) {
+          const evt = new CustomEvent('pkc-graph-node-click', {
+            detail: { lid: pressDownLid },
+            bubbles: true,
+          });
+          canvas.dispatchEvent(evt);
+        }
+      }
+    }
+    panStart = null;
+    pressDownLid = null;
+    mouseDownPos = null;
+  }, { signal });
+
+  // ── Touch: pinch + 1-finger pan / region-select / tap. ──
+  canvas.addEventListener('touchstart', (ev) => {
+    const te = ev as TouchEvent;
+    const touches = te.touches;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    if (touches.length === 2) {
+      const t0 = touches[0]!;
+      const t1 = touches[1]!;
+      const midClient = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
+      const dx = t0.clientX - t1.clientX;
+      const dy = t0.clientY - t1.clientY;
+      const dist = Math.hypot(dx, dy) || 1;
+      const logical = clientToLogical(canvas, midClient.x, midClient.y);
+      const midUserX = (logical.x - view.tx) / view.scale;
+      const midUserY = (logical.y - view.ty) / view.scale;
+      pinchStart = {
+        dist,
+        scale: view.scale,
+        midClientX: midClient.x,
+        midClientY: midClient.y,
+        midUserX,
+        midUserY,
+      };
+      panStart = null;
+      view.rectStart = null;
+      view.rectEnd = null;
+      te.preventDefault();
+    } else if (touches.length === 1) {
+      const t = touches[0]!;
+      pressDownLid = hitTestNodeAt(canvas, t.clientX, t.clientY);
+      mouseDownPos = { x: t.clientX, y: t.clientY };
+      if (pressDownLid) return;
+      if (isRegionMode()) {
+        const logical = clientToLogical(canvas, t.clientX, t.clientY);
+        view.rectStart = { ux: logical.x, uy: logical.y };
+        view.rectEnd = { ux: logical.x, uy: logical.y };
+        panStart = null;
+        drawGraphCanvas(canvas);
+      } else {
+        panStart = { clientX: t.clientX, clientY: t.clientY, tx: view.tx, ty: view.ty };
+      }
+    }
+  }, { passive: false, signal });
+
+  canvas.addEventListener('touchmove', (ev) => {
+    const te = ev as TouchEvent;
+    const touches = te.touches;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    if (touches.length === 2 && pinchStart) {
+      const t0 = touches[0]!;
+      const t1 = touches[1]!;
+      const dx = t0.clientX - t1.clientX;
+      const dy = t0.clientY - t1.clientY;
+      const dist = Math.hypot(dx, dy) || 1;
+      const ratio = dist / pinchStart.dist;
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinchStart.scale * ratio));
+      const midClient = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
+      const logicalNow = clientToLogical(canvas, midClient.x, midClient.y);
+      view.scale = newScale;
+      view.tx = logicalNow.x - pinchStart.midUserX * newScale;
+      view.ty = logicalNow.y - pinchStart.midUserY * newScale;
+      drawGraphCanvas(canvas);
+      te.preventDefault();
+    } else if (touches.length === 1) {
+      const t = touches[0]!;
+      if (view.rectStart) {
+        const logical = clientToLogical(canvas, t.clientX, t.clientY);
+        view.rectEnd = { ux: logical.x, uy: logical.y };
+        drawGraphCanvas(canvas);
+        te.preventDefault();
+      } else if (panStart) {
+        const rect = canvas.getBoundingClientRect();
+        const payload = payloads.get(canvas);
+        const lw = payload?.width ?? rect.width;
+        const lh = payload?.height ?? rect.height;
+        const sx = rect.width === 0 ? 1 : lw / rect.width;
+        const sy = rect.height === 0 ? 1 : lh / rect.height;
+        view.tx = panStart.tx + (t.clientX - panStart.clientX) * sx;
+        view.ty = panStart.ty + (t.clientY - panStart.clientY) * sy;
+        drawGraphCanvas(canvas);
+        te.preventDefault();
+      }
+    }
+  }, { passive: false, signal });
+
+  canvas.addEventListener('touchend', (ev) => {
+    const te = ev as TouchEvent;
+    const touches = te.touches;
+    const view = viewStates.get(canvas);
+    if (!view) return;
+    if (touches.length < 2) pinchStart = null;
+    if (touches.length === 0) {
+      if (view.rectStart && view.rectEnd) {
+        finalizeRegionSelect(canvas);
+        view.rectStart = null;
+        view.rectEnd = null;
+        drawGraphCanvas(canvas);
+      }
+      // Tap on a node?
+      if (pressDownLid && te.changedTouches.length === 1) {
+        const ct = te.changedTouches[0]!;
+        const start = mouseDownPos;
+        if (start) {
+          const dist = Math.hypot(ct.clientX - start.x, ct.clientY - start.y);
+          if (dist < 10) {
+            canvas.dispatchEvent(new CustomEvent('pkc-graph-node-click', {
+              detail: { lid: pressDownLid },
+              bubbles: true,
+            }));
+          }
+        }
+      }
+      panStart = null;
+      pressDownLid = null;
+      mouseDownPos = null;
+    }
+  }, { passive: false, signal });
+}
+
+function finalizeRegionSelect(canvas: HTMLCanvasElement): void {
+  const view = viewStates.get(canvas);
+  const payload = payloads.get(canvas);
+  if (!view || !payload || !view.rectStart || !view.rectEnd) return;
+  // Convert logical rect → user-space rect.
+  const u0 = logicalToUser(canvas, view.rectStart.ux, view.rectStart.uy);
+  const u1 = logicalToUser(canvas, view.rectEnd.ux, view.rectEnd.uy);
+  const rx = Math.min(u0.x, u1.x);
+  const ry = Math.min(u0.y, u1.y);
+  const rw = Math.abs(u1.x - u0.x);
+  const rh = Math.abs(u1.y - u0.y);
+  const lids: string[] = [];
+  if (rw >= 4 && rh >= 4) {
+    for (const node of payload.nodes) {
+      const p = payload.positions.get(node.id);
+      if (!p) continue;
+      if (p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh) lids.push(node.id);
+    }
+    canvas.dispatchEvent(new CustomEvent('pkc-graph-region-selected', {
+      detail: { lids },
+      bubbles: true,
+    }));
+  }
+}
+
+/**
+ * Container helper for renderer — given pre-computed graph data, return
+ * the time-axis hint. Used to keep the renderer's responsibility narrow
+ * (it just provides Entry data; we extract timestamps).
+ */
+export function buildTimeAxisHint(entries: readonly Entry[]): { minT: number; maxT: number } | null {
+  const ts = entries
+    .map((e) => Date.parse(e.created_at))
+    .filter((t) => Number.isFinite(t) && t > 0);
+  if (ts.length === 0) return null;
+  return { minT: Math.min(...ts), maxT: Math.max(...ts) };
+}
+

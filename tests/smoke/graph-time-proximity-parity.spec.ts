@@ -60,51 +60,52 @@ test('switching mode to time-proximity updates data-pkc-graph-mode (state mutati
   );
 });
 
-test('time-proximity mode renders 3 axis labels (oldest / mid / newest)', async ({ page }) => {
+test('time-proximity mode flags time-axis on canvas (data-pkc-graph-time-axis="true")', async ({ page }) => {
   await bootSeedAndOpenGraph(page);
   await page.locator('select.pkc-graph-mode-select').selectOption('time-proximity');
-
-  // axis labels live inside the zoom-layer (so they pan/zoom together).
-  const labels = page.locator('.pkc-graph-time-axis-label');
-  await expect(labels).toHaveCount(3);
-  const texts = await labels.allTextContents();
-  expect(texts.some((t) => t.includes('古い'))).toBe(true);
-  expect(texts.some((t) => t.includes('新しい'))).toBe(true);
-});
-
-test('older entry node has lower x than newer entry node (consumer = transform attr)', async ({ page }) => {
-  await bootSeedAndOpenGraph(page);
-  await page.locator('select.pkc-graph-mode-select').selectOption('time-proximity');
-  // Wait one frame so render settles.
+  // Wait one frame so render settles + canvas data stamps.
   await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 
-  // Map title → x. Titles "Old" / "Mid" / "New" were created in that
-  // order so created_at is strictly increasing; layout must put them
-  // left-to-right.
-  const xByTitle = await page.evaluate(() => {
+  await expect(page.locator('[data-pkc-region="graph-canvas"]')).toHaveAttribute(
+    'data-pkc-graph-time-axis',
+    'true',
+  );
+});
+
+test('older entry node has lower x than newer entry node (consumer = canvas node summary attr)', async ({ page }) => {
+  await bootSeedAndOpenGraph(page);
+  await page.locator('select.pkc-graph-mode-select').selectOption('time-proximity');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
+
+  // PR-H G16:Canvas は DOM 子を持たないので、graph-canvas が JSON
+  // serialize して `data-pkc-graph-nodes` に表面化した node summary
+  // を読み取る。Titles "Old" / "Mid" / "New" が created_at 順で
+  // x 軸に並んでいることを confirm。
+  const xByLabel = await page.evaluate(() => {
+    const c = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
+    if (!c) return {};
+    const json = c.getAttribute('data-pkc-graph-nodes');
+    if (!json) return {};
+    const nodes = JSON.parse(json) as Array<{ label: string; x: number }>;
     const out: Record<string, number> = {};
-    const groups = document.querySelectorAll<SVGGElement>('.pkc-filer-graph-node');
-    for (const g of Array.from(groups)) {
-      const labelEl = g.querySelector('.pkc-filer-graph-label');
-      const title = labelEl?.textContent ?? '';
-      const tr = g.getAttribute('transform') || '';
-      const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(tr);
-      if (m) out[title] = parseFloat(m[1]!);
-    }
+    for (const n of nodes) out[n.label] = n.x;
     return out;
   });
 
-  expect(xByTitle['Old']).toBeDefined();
-  expect(xByTitle['Mid']).toBeDefined();
-  expect(xByTitle['New']).toBeDefined();
-  expect(xByTitle['Old']!).toBeLessThan(xByTitle['Mid']!);
-  expect(xByTitle['Mid']!).toBeLessThan(xByTitle['New']!);
+  expect(xByLabel['Old']).toBeDefined();
+  expect(xByLabel['Mid']).toBeDefined();
+  expect(xByLabel['New']).toBeDefined();
+  expect(xByLabel['Old']!).toBeLessThan(xByLabel['Mid']!);
+  expect(xByLabel['Mid']!).toBeLessThan(xByLabel['New']!);
 });
 
 test('time-proximity mode draws no edges (時系列軸そのものが接近性表現)', async ({ page }) => {
   await bootSeedAndOpenGraph(page);
   await page.locator('select.pkc-graph-mode-select').selectOption('time-proximity');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 
-  const edgeCount = await page.locator('.pkc-filer-graph-edge').count();
-  expect(edgeCount).toBe(0);
+  await expect(page.locator('[data-pkc-region="graph-canvas"]')).toHaveAttribute(
+    'data-pkc-graph-edges',
+    '0',
+  );
 });

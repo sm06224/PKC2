@@ -35,7 +35,7 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
-import { resetGraphZoom } from './graph-zoom';
+import { resetGraphCanvasZoom } from './graph-canvas';
 import {
   enhanceTable,
   sortColumn,
@@ -3042,13 +3042,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'reset-graph-zoom': {
-        // PR-C G1 (2026-05-06):galaxy 風 zoom / pan を identity に戻す。
-        // dispatcher を経由せず、現在 mount 中の svg を直接探して reset。
-        // gesture handlers と同じく imperative path(re-render しない)。
-        const svg = root.querySelector<SVGSVGElement>(
-          '[data-pkc-region="graph-svg"]',
+        // PR-C G1 + PR-H G16 (2026-05-06):galaxy 風 zoom / pan を identity
+        // に戻す。Canvas 化に追従して selector は data-pkc-region="graph-canvas"。
+        // dispatcher を経由せず、現在 mount 中の canvas を直接探して reset。
+        const canvas = root.querySelector<HTMLCanvasElement>(
+          '[data-pkc-region="graph-canvas"]',
         );
-        if (svg) resetGraphZoom(svg);
+        if (canvas) resetGraphCanvasZoom(canvas);
         break;
       }
       case 'toggle-graph-region-select-mode': {
@@ -6736,7 +6736,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
-  // PR-E G8 後半 (2026-05-06):graph-zoom が drag-rect 解放時に
+  // PR-E G8 後半 (2026-05-06):graph-canvas が drag-rect 解放時に
   // emit する CustomEvent を root で listen し、SET_GRAPH_REGION_SELECTED_LIDS
   // を dispatch する。
   root.addEventListener('pkc-graph-region-selected', (ev) => {
@@ -6744,6 +6744,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!detail || !Array.isArray(detail.lids)) return;
     const lids = detail.lids.filter((s): s is string => typeof s === 'string');
     dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids });
+  });
+  // PR-H G16 (2026-05-06):Canvas には DOM 子の data-pkc-action は無いので、
+  // graph-canvas が node click を hit-test し CustomEvent で notify する。
+  // root でこの event を listen し SELECT_ENTRY を dispatch。filer の
+  // 「filer view 中なら detail に飛ばずに scope を変える」semantics は
+  // viewMode === 'graph' では不要(graph 中に node click → detail へ
+  // 切り替わるべき。以下は素直に SELECT_ENTRY 単独)。
+  root.addEventListener('pkc-graph-node-click', (ev) => {
+    const detail = (ev as CustomEvent).detail as { lid?: unknown } | undefined;
+    if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
   });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);

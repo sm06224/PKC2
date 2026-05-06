@@ -43,7 +43,7 @@ async function bootAndOpenGraph(page: Page): Promise<void> {
 test('Ctrl+wheel on graph svg → zoom-layer transform shows scale > 1 (consumer painted)', async ({ page }) => {
   await bootAndOpenGraph(page);
 
-  const svg = page.locator('[data-pkc-region="graph-svg"]');
+  const svg = page.locator('[data-pkc-region="graph-canvas"]');
   await expect(svg).toBeVisible();
   const box = await svg.boundingBox();
   if (!box) throw new Error('Graph svg has no boundingBox');
@@ -58,7 +58,7 @@ test('Ctrl+wheel on graph svg → zoom-layer transform shows scale > 1 (consumer
   // Consumer observation: the zoom-layer's transform attr now contains
   // a scale factor > 1.
   const scale = await page.evaluate(() => {
-    const svg = document.querySelector('[data-pkc-region="graph-svg"]') as SVGSVGElement | null;
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
   });
   expect(scale).toBeGreaterThan(1);
@@ -67,7 +67,7 @@ test('Ctrl+wheel on graph svg → zoom-layer transform shows scale > 1 (consumer
 test('reset button click → transform back to identity', async ({ page }) => {
   await bootAndOpenGraph(page);
 
-  const svg = page.locator('[data-pkc-region="graph-svg"]');
+  const svg = page.locator('[data-pkc-region="graph-canvas"]');
   const box = await svg.boundingBox();
   if (!box) throw new Error('Graph svg has no boundingBox');
 
@@ -76,7 +76,7 @@ test('reset button click → transform back to identity', async ({ page }) => {
   await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 
   const beforeReset = await page.evaluate(() => {
-    const svg = document.querySelector('[data-pkc-region="graph-svg"]') as SVGSVGElement | null;
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
   });
   expect(beforeReset).toBeGreaterThan(1);
@@ -89,7 +89,7 @@ test('reset button click → transform back to identity', async ({ page }) => {
   await page.mouse.click(rbox.x + rbox.width / 2, rbox.y + rbox.height / 2);
 
   const afterReset = await page.evaluate(() => {
-    const svg = document.querySelector('[data-pkc-region="graph-svg"]') as SVGSVGElement | null;
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
   });
   expect(afterReset).toBe(1);
@@ -98,7 +98,7 @@ test('reset button click → transform back to identity', async ({ page }) => {
 test('mousedown on the graph background then drag → tx/ty updates (pan)', async ({ page }) => {
   await bootAndOpenGraph(page);
 
-  const svg = page.locator('[data-pkc-region="graph-svg"]');
+  const svg = page.locator('[data-pkc-region="graph-canvas"]');
   const box = await svg.boundingBox();
   if (!box) throw new Error('Graph svg has no boundingBox');
 
@@ -112,7 +112,7 @@ test('mousedown on the graph background then drag → tx/ty updates (pan)', asyn
   await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 
   const { tx, ty } = await page.evaluate(() => {
-    const svg = document.querySelector('[data-pkc-region="graph-svg"]') as SVGSVGElement | null;
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return {
       tx: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-tx') ?? '0') : 0,
       ty: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-ty') ?? '0') : 0,
