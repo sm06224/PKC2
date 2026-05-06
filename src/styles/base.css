@@ -5419,6 +5419,82 @@ mark.pkc-search-mark {
   background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
 }
 
+/* ── Image preview window (PiP / window.open fallback) ──
+   PR-B G7 (2026-05-06):pinch-zoom + pan + double-tap を支える layout。
+   touch-action: none で stage の native gesture(scroll / pinch zoom)を
+   handler 側に委譲、wrap で transform を適用、img は fit と numeric の
+   2 mode を class で切り替える。 */
+
+.pkc-image-preview-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  background: #111;
+  color: #eee;
+  overflow: hidden;
+}
+
+.pkc-image-preview-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem);
+  background: rgba(0, 0, 0, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pkc-image-preview-zoom-select {
+  font: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm, 2px);
+  padding: 0 var(--space-1, 0.25rem);
+}
+
+.pkc-image-preview-stage {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* iOS Safari pinch / scroll を独自 touch handler で全部処理する。 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pkc-image-preview-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pkc-image-preview-img {
+  display: block;
+  /* numeric mode: transform-origin は 0 0(top-left)、stage の左上を
+     基準に translate + scale。CSS 側は max を解除して transform に任せる。 */
+  max-width: none;
+  max-height: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.pkc-image-preview-img.pkc-image-preview-img-fit {
+  /* fit mode: CSS contain、transform は無効。flex で stage 中央に配置。 */
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  transform: none !important;
+}
+
 /* ── Sidebar filer-mode (Phase 4 follow-up `sidebar.mode = 'filer'`) ── */
 
 .pkc-sidebar-filer-mode {
