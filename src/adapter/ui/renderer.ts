@@ -90,6 +90,7 @@ import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
+import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
 import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
 import {
@@ -5242,22 +5243,25 @@ function pickImageAssetForEntry(
   // url が入った entry が、card grid で raster 画像で表示される経路。
   // YouTube / Niconico / カクヨム 等の外部 thumbnail を直接 img src で
   // ロード(CORS は host 側に任せる、PKC2 は単に URL を渡すだけ)。
+  // PR-YY (2026-05-06):user 修正指示4「サムネ指定が PKC embed と
+  // 記法が異なる」への対応 — `extractThumbnailRef` で markdown image
+  // syntax `![...](TARGET)` 含めた PKC embed 互換形式を受理。
   if (entry.archetype === 'text' && entry.body) {
     const fmEnd = entry.body.indexOf('---', 3);
     if (entry.body.trimStart().startsWith('---') && fmEnd > 0) {
       const fmBlock = entry.body.slice(0, fmEnd);
-      const tm = fmBlock.match(/^thumbnail:\s*"?([^"\n]+)"?/m);
+      const tm = fmBlock.match(/^thumbnail:\s*(.+)$/m);
       if (tm) {
-        const v = tm[1]!.trim();
-        // http(s) URL or data URL を直接返す。`asset:KEY` は asset
-        // resolution path にフォールバック。
-        if (/^https?:\/\//i.test(v) || v.startsWith('data:')) return v;
-        if (v.startsWith('asset:')) {
-          const k = v.slice(6);
-          const b64 = assets[k];
-          if (b64) {
-            if (b64.startsWith('data:')) return b64;
-            return `data:image/png;base64,${b64}`;
+        const v = extractThumbnailRef(tm[1]!);
+        if (v) {
+          if (/^https?:\/\//i.test(v) || v.startsWith('data:')) return v;
+          if (v.startsWith('asset:')) {
+            const k = v.slice(6);
+            const b64 = assets[k];
+            if (b64) {
+              if (b64.startsWith('data:')) return b64;
+              return `data:image/png;base64,${b64}`;
+            }
           }
         }
       }
@@ -6475,6 +6479,33 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     bc.appendChild(current);
 
     view.appendChild(bc);
+  }
+
+  // PR-YY (2026-05-06):user 修正指示4「TEXTエントリのサムネイル
+  // 指定が … エントリを開いても適切なサムネが表示されない」への対応。
+  // text archetype で frontmatter / body / folder 経由で resolve できる
+  // hero thumbnail があれば body の前に大きく表示する。filer card
+  // grid と同じ `pickImageAssetForEntry` を経由するので一貫性あり。
+  // attachment 自体は既に presenter が body 内で preview を出すので除外。
+  // novel cover SVG fallback も含むため、kind:novel/book でも hero が
+  // 出る。
+  if (
+    entry.archetype === 'text'
+    && container
+    && !isReservedLid(entry.lid)
+    && !isSystemArchetype(entry.archetype)
+  ) {
+    const heroUrl = pickImageAssetForEntry(entry, container.assets, container);
+    if (heroUrl) {
+      const hero = createElement('div', 'pkc-view-hero-thumb');
+      hero.setAttribute('data-pkc-region', 'view-hero-thumb');
+      const heroImg = document.createElement('img');
+      heroImg.src = heroUrl;
+      heroImg.alt = entry.title || '';
+      heroImg.loading = 'lazy';
+      hero.appendChild(heroImg);
+      view.appendChild(hero);
+    }
   }
 
   // Archetype-dispatched body rendering.

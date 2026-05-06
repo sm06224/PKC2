@@ -1716,6 +1716,31 @@
   line-height: 1.5;
 }
 
+/* PR-YY (2026-05-06):detail view hero thumbnail。frontmatter
+ * `thumbnail:` で指定された画像を body の上に大きく表示。
+ * `object-fit: contain` で長辺合わせ(PR-SS 全 grid 統一と一致)。
+ * 高さ上限あり、container はめ込みすぎを防ぐ。 */
+.pkc-view-hero-thumb {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-height: 360px;
+}
+
+.pkc-view-hero-thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  height: auto;
+  width: auto;
+  object-fit: contain;
+}
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);

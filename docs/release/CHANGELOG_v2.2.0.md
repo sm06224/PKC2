@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-YY(2026-05-06)
+
+- **TEXT entry サムネ指定 PKC embed 方式統一 + detail view hero 表示**:user 修正指示4「TEXTエントリのサムネイル指定が既存のPKC embed方式と記法が異なる。エントリを開いても適切なサムネが表示されない」への 2 系統対応:
+  - **記法統一**:`extractThumbnailRef(rawValue)` を pure helper として export、frontmatter `thumbnail:` value に **markdown image syntax `![](asset:KEY)` / `![alt](url)` 含めた PKC embed 互換** を受理。bare URL / `asset:KEY` / `data:URI` / quoted variants / markdown alt+title は全て同じ scheme prefix 結果に正規化。`findThumbnailHttpUrl` と `pickImageAssetForEntry` の thumbnail step は新 helper 経由で、PKC embed 記法と完全一致。
+  - **detail view hero**:`renderView` の body 描画前に `<div data-pkc-region="view-hero-thumb">` を挿入、`pickImageAssetForEntry` resolved URL を `<img>` で hero 表示。frontmatter URL / asset:KEY / data: / 全 grid と同じ contain で長辺合わせ、max-height 360px。filer card grid と一貫した見え方。
+- bundle.js 908.17 → 908.85 KB(+0.68 KB:extractor + hero 描画)、bundle.css 142.54 → 142.90 KB(+0.36 KB:hero CSS)。unit 6523 → 6535(+12)pass。
+
 ### Wave 10-6 review fix PR-XX(2026-05-06)
 
 - **左ペイン no-op 押し除け継続調査**:user 修正指示4「左ペインの no-op っぽい挙動継続中。何らかの要素によって押し除けられているのかもしれない」への対応。PR-GG が entry-list の scroll 保持を着地済だが user 継続報告のため、4 シナリオの stress test と 3 段目 timer-based fallback を追加。
