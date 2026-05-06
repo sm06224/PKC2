@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-GGG(2026-05-06)
+
+- **Flags Inspector 検索 box が活性化**:user 修正指示5「Flags Inspector で検索ができない」への対応。検索 input + category select は元々 DOM 上にあったが event handler が付いていなかったため filter が効かない状態だった。**`input` event で in-place row filter** を実装、`data-pkc-region="flag-row"` ごとに `display: none` toggle、空 section は heading ごと隠す。
+- **module-level memo で filter persist**:`SET_FLAG` 等の re-render で input が再生成されても `inspectorFilter` / `inspectorCategoryFilter` の値を input.value + select.selected に復元、検索文字列 / category 選択が維持される(state machine を膨らませずに対応)。
+- 検索範囲:**flag key + description 全文** の case-insensitive 部分一致。category select で category 限定。両方 AND。
+- bundle.js 914.13 → 914.99 KB(+0.86 KB:filter helper + event listeners)、bundle.css 不変。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-FFF(2026-05-06)
 
 - **`📥 Save .pkc-capture.json` でサムネ取得復活**:user 修正指示5「📥 Save .pkc-capture.jsonブックマークレットがサムネを取得できないのは許容できない」への対応。primary `📌 Send to PKC2` bookmarklet と DL bookmarklet で scraper logic が divergence していたため、PR-EEE(YouTube DOM scraper)+ PR-ZZ(Amazon thumbnail DOM fallback)を DL bookmarklet にも inline 反映。

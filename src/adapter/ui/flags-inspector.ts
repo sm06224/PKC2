@@ -227,6 +227,50 @@ function renderBuildFeaturesSection(): HTMLElement {
   return details;
 }
 
+// PR-GGG (2026-05-06、user 修正指示5「Flags Inspector で検索が
+// できない」):filter を module-level memo で persist。SET_FLAG
+// 等の re-render で input が再生成されても value 復元 + 状態保持。
+// AppState を膨らませない代わりに、inspector overlay が unmount
+// されると次回 open 時には残るが reset したいケースでは reset-all
+// で別 path を作る(本 PR では維持で OK、user 利便性優先)。
+let inspectorFilter = '';
+let inspectorCategoryFilter = '';
+
+/**
+ * Filter the rendered flag rows in place based on the current
+ * `inspectorFilter` (key / description substring) and
+ * `inspectorCategoryFilter` (category). 既存 row の `display`
+ * 属性を toggle、scroll 状態は保持。
+ */
+function applyInspectorFilter(panel: HTMLElement): void {
+  const q = inspectorFilter.trim().toLowerCase();
+  const cat = inspectorCategoryFilter.trim();
+  const rows = panel.querySelectorAll<HTMLElement>(
+    '[data-pkc-region="flag-row"]',
+  );
+  rows.forEach((row) => {
+    const key = (row.getAttribute('data-pkc-key') ?? '').toLowerCase();
+    const desc = (row.querySelector('.pkc-flag-description')?.textContent ?? '').toLowerCase();
+    const parentSection = row.closest<HTMLElement>('.pkc-flags-inspector-category-block');
+    const rowCat = parentSection?.getAttribute('data-pkc-flag-category') ?? '';
+    const matchQ = q === '' || key.includes(q) || desc.includes(q);
+    const matchCat = cat === '' || rowCat === cat;
+    row.style.display = matchQ && matchCat ? '' : 'none';
+  });
+  // Hide category section heading when no row inside survives filter.
+  const sections = panel.querySelectorAll<HTMLElement>(
+    '.pkc-flags-inspector-category-block',
+  );
+  sections.forEach((section) => {
+    const visibleRows = section.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="flag-row"]',
+    );
+    let anyVisible = false;
+    visibleRows.forEach((r) => { if (r.style.display !== 'none') anyVisible = true; });
+    section.style.display = anyVisible ? '' : 'none';
+  });
+}
+
 /**
  * Build the inspector overlay DOM. Returns the root element ready
  * to be appended to `#pkc-root`. The renderer wraps this in a
@@ -276,6 +320,13 @@ export function renderFlagsInspector(): HTMLElement {
   search.className = 'pkc-flags-inspector-search';
   search.placeholder = 'Search by key / description…';
   search.setAttribute('data-pkc-field', 'flags-search');
+  search.value = inspectorFilter;
+  // PR-GGG: input event で in-place row filter。state machine 経由で
+  // ない代わりに module-level memo に保存、re-render を起こさない。
+  search.addEventListener('input', () => {
+    inspectorFilter = search.value;
+    applyInspectorFilter(panel);
+  });
   toolbar.appendChild(search);
 
   const categorySelect = document.createElement('select');
@@ -289,8 +340,13 @@ export function renderFlagsInspector(): HTMLElement {
     const o = document.createElement('option');
     o.value = cat;
     o.textContent = cat;
+    if (cat === inspectorCategoryFilter) o.selected = true;
     categorySelect.appendChild(o);
   }
+  categorySelect.addEventListener('change', () => {
+    inspectorCategoryFilter = categorySelect.value;
+    applyInspectorFilter(panel);
+  });
   toolbar.appendChild(categorySelect);
 
   const resetAll = createElement('button', 'pkc-btn-small');
@@ -377,5 +433,9 @@ export function renderFlagsInspector(): HTMLElement {
   panel.appendChild(footer);
 
   overlay.appendChild(panel);
+  // PR-GGG (2026-05-06):mount 直後に persisted filter を反映。
+  // re-render されても module-level memo から復元されるので、
+  // user の検索文字列 / category 選択が維持される。
+  applyInspectorFilter(panel);
   return overlay;
 }
