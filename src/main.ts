@@ -1014,7 +1014,12 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   // PR-QQ (2026-05-06): accept `.pkc-capture.json` for the local
   // bookmarklet DL mode in addition to the existing HTML / ZIP
   // container imports.
+  // PR-UU (2026-05-06): user 修正指示4「.pkc-capture.json の複数取り
+  // 込みを有効化して」— `multiple` を on に。container HTML / ZIP
+  // は基本 1 件 import 想定だが、複数選択しても先頭ファイルが従来
+  // 通り処理される(後方互換、capture JSON 経路のみ全件 loop)。
   fileInput.accept = '.html,.zip,.json';
+  fileInput.multiple = true;
   fileInput.style.display = 'none';
   fileInput.setAttribute('data-pkc-role', 'import-input');
   document.body.appendChild(fileInput);
@@ -1029,8 +1034,56 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
 
   // Handle file selection
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
+    const allFiles = Array.from(fileInput.files ?? []);
+    if (allFiles.length === 0) return;
+
+    // PR-UU (2026-05-06): when ALL selected files are capture JSONs,
+    // process every one in sequence as separate `SYS_RECORD_OFFERED`
+    // dispatches so the user sees a stack of PendingOffer banners
+    // (PKC-Message §6 user-consent gate is preserved per offer).
+    // Mixed selections (HTML + capture-json + zip) fall back to the
+    // legacy first-file behavior since that path has its own preview
+    // dialog flow.
+    const allCapture = allFiles.every((f) => isCaptureJsonFilename(f.name));
+    if (allCapture) {
+      let n = 0;
+      for (const file of allFiles) {
+        const text = await file.text();
+        const parsed = parseCaptureJson(text);
+        if (!parsed) {
+          console.warn(`[PKC2] capture JSON rejected: ${file.name}`);
+          continue;
+        }
+        n += 1;
+        const offer = {
+          offer_id: `dl-${Date.now().toString(36)}-${n}`,
+          title: parsed.payload.title,
+          body: parsed.payload.body,
+          archetype: parsed.payload.archetype ?? 'text',
+          source_container_id: parsed.payload.source_container_id ?? null,
+          reply_to_id: null,
+          received_at: new Date().toISOString(),
+          source_url: parsed.payload.source_url ?? null,
+          captured_at: parsed.payload.captured_at ?? null,
+          kind: parsed.payload.kind ?? null,
+          thumbnail_url: parsed.payload.thumbnail_url ?? null,
+          provider: parsed.payload.provider ?? null,
+          duration_sec: parsed.payload.duration_sec ?? null,
+          pages: parsed.payload.pages ?? null,
+          isbn: parsed.payload.isbn ?? null,
+          author: parsed.payload.author ?? null,
+          brand: parsed.payload.brand ?? null,
+        };
+        dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
+        console.log(`[PKC2] capture import (${n}/${allFiles.length}): ${file.name} → offer ${offer.offer_id}`);
+      }
+      console.log(`[PKC2] capture import batch complete: ${n}/${allFiles.length} accepted`);
+      return;
+    }
+
+    // Single capture json among mixed picks — handle just it (legacy
+    // single-file path).
+    const file = allFiles[0]!;
 
     // PR-QQ: capture JSON branch (bookmarklet DL mode). Detect by
     // filename — accepts `.pkc-capture.json` or `.pkc-capture`.

@@ -184,6 +184,11 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-UU(2026-05-06)
+
+- **`.pkc-capture.json` 複数取り込み**:user 修正指示4「.pkc-capture.json の複数取り込みを有効化して」への対応。`mountImportHandler` の hidden file input に `multiple = true` を付与、change handler に **all-capture-json branch** を追加。全選択ファイルが capture JSON なら順次 `SYS_RECORD_OFFERED` を dispatch、PendingOffer banner が件数分スタック表示される(PKC-Message §6 user-consent gate は per offer 維持)。混在選択(HTML + capture-json + zip)は legacy 先頭ファイル動作で従来通り(preview dialog flow を壊さない)。
+- bundle.js 905.95 → 906.97 KB(+1.02 KB:loop dispatch 経路)、bundle.css 不変。unit 6518 / 6518 pass。
+
 ### Wave 10-6 review fix PR-TT(2026-05-06)
 
 - **Data… menu emoji PC/スマホ統一**:user 修正指示2「上部メニューバーの『Date...』のボタン配下のメニューについて、スマホ向け画面と異なり、PC向け画面では絵文字がないなどの違いがあり、統一感がない」(`Date` は `Data…` の typo と user 確認済)への対応。PC `Data…` panel(`renderExportImportInline`)の labels に mobile drawer (action-binder) で使用済の emoji 接頭辞を揃えた。
