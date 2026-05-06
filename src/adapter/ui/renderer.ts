@@ -1545,8 +1545,14 @@ function renderShellMenu(
   const bmLabel = createElement('span', 'pkc-shell-menu-label');
   bmLabel.textContent = 'Bookmarklet';
   bmSection.appendChild(bmLabel);
+  // PR-R (2026-05-06):bookmarklet target URL を **現在の PKC2 instance**
+  // から resolve する。user 報告「PKC2-DEV で生成したのに stable の
+  // PKC2 が開く、環境を無視するのは PKC2 哲学違反」。`location.origin
+  // + location.pathname` で生成元 instance の URL を採用、stable / dev /
+  // local / 単一 HTML どこからでも自然に動く。
+  const bookmarkletTargetUrl = `${window.location.origin}${window.location.pathname}`;
   const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
-  bmDesc.textContent = 'ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。';
+  bmDesc.textContent = `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。送信先は今 click 時の PKC2 instance(${bookmarkletTargetUrl})。`;
   bmSection.appendChild(bmDesc);
   // PR-Q (2026-05-06):URL query 経由 → postMessage 経由に refactor。
   // user 提言「GET クエリを晒すより、ブラウザ内で PKC-Message 経由の
@@ -1556,12 +1562,11 @@ function renderShellMenu(
   //   3. bookmarklet が ready を受けて payload を postMessage で送信
   //   4. PKC2 が validate → CREATE_ENTRY
   // payload は URL に乗らないので 履歴 / log / Referrer すべて clean。
-  const PKC2_STABLE_URL = 'https://sm06224.github.io/PKC-Public/PKC2/';
   const bmJs = (
     '(function(){'
     + 'var s=getSelection().toString().trim(),'
     + 'd={captured_at:new Date().toISOString(),selection:{url:location.href,title:document.title,snippet:s}},'
-    + `w=open(${JSON.stringify(PKC2_STABLE_URL + '?pkc-bookmarklet=ready')},'_blank');`
+    + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
     + 'if(!w){alert("PKC2: popup blocked");return;}'
     + 'function h(e){'
     + 'if(e.source!==w)return;'
