@@ -33,11 +33,27 @@ export interface GraphCanvasNode {
   archetype: string;
   /** Optional inline fill (color-tags / hierarchy depth). */
   cssColor?: string;
+  /**
+   * PR-LLL (2026-05-06):node degree(linked relation count)。設定
+   * されていれば draw が radius スケーリングに使う。0 / undefined は
+   * default size のまま。
+   */
+  degree?: number;
+  /**
+   * PR-LLL:hover tooltip 用 preview 文字列(title + body excerpt)。
+   * 設定されていれば mousemove で当たった時に下端 tooltip 表示。
+   */
+  preview?: string;
 }
 
 export interface GraphCanvasLink {
   from: string;
   to: string;
+  /**
+   * PR-LLL:`structural` / `semantic` / `categorical` / `temporal` の
+   * kind 別に edge を色分けする。設定されていれば legend にも反映。
+   */
+  kind?: string;
 }
 
 export interface GraphCanvasPayload {
@@ -309,6 +325,45 @@ function archetypeFill(archetype: string): string {
   }
 }
 
+/**
+ * PR-LLL (2026-05-06、user 修正指示5「ノードはエントリ種別に応じて
+ * 絵文字にすること」):archetype → emoji map。center pane の
+ * archetype icon と一致(視覚的整合)。
+ */
+export function archetypeEmoji(archetype: string): string {
+  switch (archetype) {
+    case 'folder': return '📁';
+    case 'text': return '📝';
+    case 'textlog': return '📜';
+    case 'todo': return '☑';
+    case 'attachment': return '📎';
+    case 'form': return '📋';
+    case 'generic': return '📄';
+    default: return '◯';
+  }
+}
+
+/**
+ * PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
+ * relation kind → CSS color。legend と同じ色を使うため共通化。
+ * Color choices are CB-friendly(色覚多様性配慮、鮮やかすぎない
+ * 中明度):
+ *   - structural(folder hierarchy)→ blue
+ *   - semantic(本文中の entry: link)→ purple
+ *   - categorical(tag)→ green
+ *   - temporal(time proximity)→ orange
+ *   - その他 → fallback gray(theme.graphEdge)
+ */
+export function relationColor(kind: string | undefined, fallback: string): string {
+  switch (kind) {
+    case 'structural': return '#3b82f6';
+    case 'semantic': return '#a855f7';
+    case 'categorical': return '#22c55e';
+    case 'temporal': return '#f97316';
+    default: return fallback;
+  }
+}
+
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + '…';
@@ -382,13 +437,15 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // 線幅 + token color の両方で「edge が一目で見える」を確保。
   // theme.graphEdge は base.css で dark / light 両方 7:1 程度に bump
   // 済み(両 theme で同等の視認性)。
-  ctx.strokeStyle = theme.graphEdge;
+  // PR-LLL (2026-05-06):relation kind 別に色分け。kind が undefined
+  // の link は theme.graphEdge にフォールバック(後方互換)。
   ctx.lineWidth = 2.5 / view.scale;
   ctx.globalAlpha = 1;
   for (const link of payload.links) {
     const a = payload.positions.get(link.from);
     const b = payload.positions.get(link.to);
     if (!a || !b) continue;
+    ctx.strokeStyle = relationColor(link.kind, theme.graphEdge);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
@@ -422,14 +479,23 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   }
 
   // Nodes.
-  const r = payload.collideRadius * 0.6;
+  // PR-LLL (2026-05-06):relation 数に応じてサイズ拡大、archetype
+  // emoji を中央に重畳描画(円は薄く残して selection / hover の
+  // affordance を保持)。
+  const baseR = payload.collideRadius * 0.6;
   for (const node of payload.nodes) {
     const p = payload.positions.get(node.id);
     if (!p) continue;
     const isSelected = node.id === payload.selectedLid;
     const isInRegion = payload.regionLids.includes(node.id);
 
-    // Circle.
+    // PR-LLL: degree-scaled radius. degree 0 → 1.0x、degree 1 →
+    // 1.05x、degree 10 → 1.5x、上限 1.8x で打ち止め。
+    const degree = node.degree ?? 0;
+    const scale = Math.min(1.8, 1 + degree * 0.05);
+    const r = baseR * scale;
+
+    // Circle (背景色、emoji 視認性のため薄め).
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
     ctx.fillStyle = node.cssColor ?? archetypeFill(node.archetype);
@@ -444,6 +510,16 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
       ctx.lineWidth = 1.5 / view.scale;
       ctx.stroke();
     }
+
+    // PR-LLL:archetype emoji を node 中央に描画。emoji font は OS
+    // が決めるが segoe / apple-color / noto-color が共通で使える。
+    const emoji = archetypeEmoji(node.archetype);
+    const emojiSize = Math.max(14, r * 1.2);
+    ctx.font = `${emojiSize}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = theme.fg;
+    ctx.fillText(emoji, p.x, p.y);
 
     // Label with halo (G18 readability).
     // PR-P (2026-05-06):user 報告「エントリ名が省略されているので、

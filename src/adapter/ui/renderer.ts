@@ -17,6 +17,8 @@ import {
   bindGraphCanvas,
   installGraphCanvasGestures,
   buildTimeAxisHint,
+  archetypeEmoji,
+  relationColor,
   type GraphCanvasPayload,
 } from './graph-canvas';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
@@ -5766,6 +5768,16 @@ function renderCenterGraphView(state: AppState): HTMLElement {
 
   wrap.appendChild(canvas);
 
+  // PR-LLL (2026-05-06、user 修正指示5「リレーション数に応じてノード
+  // サイズを大きくすること」):各 node の degree(関連 link 数)を
+  // 計算して payload に乗せる。両端ノードに +1 ずつ。time-proximity
+  // mode は links が空なので degree 全 0、size 一律(意図通り)。
+  const degreeMap = new Map<string, number>();
+  for (const lk of links) {
+    degreeMap.set(lk.from, (degreeMap.get(lk.from) ?? 0) + 1);
+    degreeMap.set(lk.to, (degreeMap.get(lk.to) ?? 0) + 1);
+  }
+
   const payload: GraphCanvasPayload = {
     width,
     height,
@@ -5775,6 +5787,7 @@ function renderCenterGraphView(state: AppState): HTMLElement {
       label: n.label,
       archetype: n.archetype,
       cssColor: n.cssColor,
+      degree: degreeMap.get(n.id) ?? 0,
     })),
     positions,
     links,
@@ -5792,6 +5805,45 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     bindGraphCanvas(canvas, payload);
     installGraphCanvasGestures(canvas);
   });
+
+  // PR-LLL (2026-05-06、user 修正指示5「グラフに凡例を表示」):
+  // archetype emoji + relation kind 色 を凡例として overlay 表示。
+  // 既に payload にある link.kind の集合と node.archetype の集合
+  // から、現在描画されている色 / 絵文字だけを示す(全 archetype を
+  // 機械的に並べると noise になる)。
+  const legend = createElement('div', 'pkc-graph-legend');
+  legend.setAttribute('data-pkc-region', 'graph-legend');
+  const legendH = createElement('div', 'pkc-graph-legend-heading');
+  legendH.textContent = '凡例';
+  legend.appendChild(legendH);
+  // Archetypes seen.
+  const archetypesSeen = new Set<string>();
+  for (const n of nodes) archetypesSeen.add(n.archetype);
+  const archList = createElement('div', 'pkc-graph-legend-row');
+  for (const a of Array.from(archetypesSeen).sort()) {
+    const item = createElement('span', 'pkc-graph-legend-item');
+    item.textContent = `${archetypeEmoji(a)} ${a}`;
+    archList.appendChild(item);
+  }
+  legend.appendChild(archList);
+  // Relation kinds seen.
+  const kindsSeen = new Set<string>();
+  for (const lk of links) if (lk.kind) kindsSeen.add(lk.kind);
+  if (kindsSeen.size > 0) {
+    const kindsList = createElement('div', 'pkc-graph-legend-row');
+    for (const k of Array.from(kindsSeen).sort()) {
+      const item = createElement('span', 'pkc-graph-legend-item');
+      const swatch = createElement('span', 'pkc-graph-legend-swatch');
+      swatch.style.background = relationColor(k, 'currentColor');
+      item.appendChild(swatch);
+      const label = document.createTextNode(` ${k}`);
+      item.appendChild(label);
+      kindsList.appendChild(item);
+    }
+    legend.appendChild(kindsList);
+  }
+  wrap.appendChild(legend);
+
   return wrap;
 }
 
@@ -5879,7 +5931,7 @@ function buildGraphForMode(
   relations: readonly { kind: string; from: string; to: string }[],
   mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity',
   focusLid: string | null,
-): { nodes: GraphNodeView[]; links: { from: string; to: string }[] } {
+): { nodes: GraphNodeView[]; links: { from: string; to: string; kind?: string }[] } {
   // Restrict scope when focusLid is set to 1-hop neighbourhood.
   let nodeIds = new Set<string>(entries.map((e) => e.lid));
   if (focusLid && entries.some((e) => e.lid === focusLid)) {
@@ -5894,15 +5946,19 @@ function buildGraphForMode(
   const filteredEntries = entries.filter((e) => inScope(e.lid));
   const linksRaw = relations.filter((r) => inScope(r.from) && inScope(r.to));
 
-  let links: { from: string; to: string }[] = [];
+  // PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
+  // link.kind を payload まで運ぶ。色は graph-canvas の relationColor() で決定。
+  let links: { from: string; to: string; kind?: string }[] = [];
   switch (mode) {
     case 'relations':
       links = linksRaw
         .filter((r) => r.kind === 'structural' || r.kind === 'semantic')
-        .map((r) => ({ from: r.from, to: r.to }));
+        .map((r) => ({ from: r.from, to: r.to, kind: r.kind }));
       break;
     case 'folder-hierarchy':
-      links = linksRaw.filter((r) => r.kind === 'structural').map((r) => ({ from: r.from, to: r.to }));
+      links = linksRaw
+        .filter((r) => r.kind === 'structural')
+        .map((r) => ({ from: r.from, to: r.to, kind: 'structural' }));
       break;
     case 'color-tags': {
       // Edges between entries that share the same color_tag.
@@ -5916,7 +5972,7 @@ function buildGraphForMode(
       }
       for (const arr of byColor.values()) {
         // chain pattern keeps O(N) edges per group.
-        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]! });
+        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical' });
       }
       break;
     }
@@ -5931,7 +5987,7 @@ function buildGraphForMode(
         }
       }
       for (const arr of byTag.values()) {
-        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]! });
+        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical' });
       }
       break;
     }

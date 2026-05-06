@@ -184,6 +184,17 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-LLL(2026-05-06)
+
+- **Graph 改善 5 連**:user 修正指示5「グラフについて(センターペインのグラフタブ)」の各項目を実装(hover preview のみ次 wave deferred):
+  1. **レスポンシブ アス比**:`.pkc-graph-canvas` の固定 `aspect-ratio: 8/5` を廃止、`width: 100%; height: 100%; max-height: min(72vh, 720px)` で flex 親に追従。canvas 内座標は 960×600 固定だが PR-AAA auto-fit-to-bounds で全 node が収まる scale に自動調整(view 移動なし)。
+  2. **リレーションは線の色で分ける**:`GraphCanvasLink.kind` を payload まで運ぶ。`relationColor()` で structural=blue / semantic=purple / categorical=green / temporal=orange / fallback=theme.graphEdge。CB-friendly 配色。
+  3. **凡例表示**:`renderCenterGraphView` の末尾に `<div class="pkc-graph-legend">` を overlay。表示中の archetype emoji + 表示中の relation kind 色 swatch のみ列挙(全 archetype を機械的に並べると noise になる)。
+  4. **ノードはエントリ種別に応じて絵文字**:`archetypeEmoji(archetype)` を export、draw 時に node 中央に emoji を `Segoe UI Emoji / Apple Color Emoji / Noto Color Emoji` で描画。circle は薄く残して selection / hover の affordance を維持。
+  5. **リレーション数に応じてノードサイズ**:`degreeMap` を構築して payload に load、draw 時に `radius * Math.min(1.8, 1 + degree * 0.05)` で stretch。time-proximity モードは links 0 で全 node 同 size(意図通り)。
+- **deferred**:hover でプレビューホバーは `mousemove` + tooltip overlay の実装が広範になるため次 wave へ。
+- bundle.js 913.01 → 914.67 KB(+1.66 KB:relation color / emoji 描画 / legend)、bundle.css 143.35 → 144.07 KB(+0.72 KB:legend layout + responsive canvas)。unit 6552 / 6552 pass。
+
 ### Wave 10-6 review fix PR-KKK(2026-05-06)
 
 - **iPhone コンタクトシート tap で画像 viewer が出るよう順序入替**:user 修正指示5「iPhone ではアルバム表示のコンタクトシート画像をタップ時に画像を閲覧できない」への対応。`open-image-preview-from-filer` action の中で `dispatch SELECT_ENTRY` → 全 shell 再描画(100+ entries で 50-100ms)→ `openImagePreview()` の順だったため、iOS Safari の user-activation 規約上 popup が「stale activation」で抑制されていた。**`openImagePreview()` を `dispatch` より先に呼ぶ順序** に修正、user activation token を温存して `window.open(dataUrl, '_blank')` が確実に native image viewer を起動できるようにした。selection 更新は viewer open 後に dispatch(順序逆転による副作用なし、view layer は冪等)。
