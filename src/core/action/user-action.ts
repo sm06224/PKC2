@@ -110,7 +110,17 @@ export type UserAction =
    * See `docs/development/relation-kind-edit-v1.md`.
    */
   | { type: 'UPDATE_RELATION_KIND'; id: string; kind: RelationKind }
-  | { type: 'ACCEPT_OFFER'; offer_id: string }
+  /**
+   * ACCEPT_OFFER — accept a pending record:offer, mint a new entry.
+   *
+   * Contract:
+   *   - `offer_id` must resolve to a `PendingOffer` in state.
+   *   - `target_folder_lid`(PR-VV、2026-05-06):**optional** target
+   *     folder. When present and resolves to a folder entry, a
+   *     structural relation is created from the target folder to the
+   *     new entry. Absent / null / unknown lid → entry lands at root.
+   */
+  | { type: 'ACCEPT_OFFER'; offer_id: string; target_folder_lid?: string | null }
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
   | { type: 'CONFIRM_MERGE_IMPORT'; now: string }

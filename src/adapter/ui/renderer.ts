@@ -717,7 +717,8 @@ function renderShell(state: AppState): HTMLElement {
 
   // Pending offers bar
   if (state.pendingOffers.length > 0) {
-    shell.appendChild(renderPendingOffers(state.pendingOffers));
+    // PR-VV (2026-05-06):folder picker 候補のため container を渡す。
+    shell.appendChild(renderPendingOffers(state.pendingOffers, state.container));
   }
 
   // Shell menu panel (hidden by default, toggled by action-binder).
@@ -8241,13 +8242,26 @@ function renderBatchImportResult(summary: BatchImportResultSummary): HTMLElement
   return banner;
 }
 
-function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
+function renderPendingOffers(
+  offers: PendingOffer[],
+  container?: Container | null,
+): HTMLElement {
   const bar = createElement('div', 'pkc-pending-offers');
   bar.setAttribute('data-pkc-region', 'pending-offers');
 
   const label = createElement('span', 'pkc-pending-label');
   label.textContent = `${offers.length} pending offer${offers.length > 1 ? 's' : ''}`;
   bar.appendChild(label);
+
+  // PR-VV (2026-05-06):folder picker のための候補を 1 度だけ collect。
+  // 大規模 container でも O(N)、O(N) sort 1 回。display は title 優先で
+  // 並べ、空 title は lid を fallback。
+  const folders: { lid: string; label: string }[] = container
+    ? container.entries
+        .filter((e) => e.archetype === 'folder')
+        .map((e) => ({ lid: e.lid, label: e.title || e.lid }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    : [];
 
   for (const offer of offers) {
     const item = createElement('div', 'pkc-pending-item');
@@ -8256,6 +8270,28 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
     const title = createElement('span', 'pkc-pending-title');
     title.textContent = offer.title || '(untitled)';
     item.appendChild(title);
+
+    // PR-VV: target folder picker. 同じ `[data-pkc-offer-id]` item 内に
+    // <select> を置く。action-binder が accept-offer click 時に同 item
+    // 内の select を querySelector で読み、value を ACCEPT_OFFER の
+    // `target_folder_lid` に渡す。空文字列 = root scope。
+    if (folders.length > 0) {
+      const targetSelect = document.createElement('select');
+      targetSelect.className = 'pkc-pending-target';
+      targetSelect.setAttribute('data-pkc-pending-target', offer.offer_id);
+      targetSelect.setAttribute('title', '取り込み先フォルダ(空 = root scope)');
+      const rootOpt = document.createElement('option');
+      rootOpt.value = '';
+      rootOpt.textContent = '📂 (root)';
+      targetSelect.appendChild(rootOpt);
+      for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.lid;
+        opt.textContent = `📁 ${f.label}`;
+        targetSelect.appendChild(opt);
+      }
+      item.appendChild(targetSelect);
+    }
 
     const acceptBtn = createElement('button', 'pkc-btn');
     acceptBtn.setAttribute('data-pkc-action', 'accept-offer');

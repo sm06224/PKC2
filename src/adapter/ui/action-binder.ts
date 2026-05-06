@@ -1407,7 +1407,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'accept-offer': {
         const offerId = target.getAttribute('data-pkc-offer-id');
-        if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+        if (!offerId) break;
+        // PR-VV (2026-05-06):同 `[data-pkc-offer-id]` item 内の
+        // folder picker から target_folder_lid を読み取る。空文字列 →
+        // null = root scope。picker 自体が無いケース(folder 0 件 or
+        // 古い renderer)も undefined で root 扱い。
+        const item = target.closest<HTMLElement>(`[data-pkc-offer-id="${offerId}"]`);
+        const picker = item?.querySelector<HTMLSelectElement>(
+          `select[data-pkc-pending-target="${offerId}"]`,
+        );
+        const targetFolderLid = picker?.value || null;
+        dispatcher.dispatch({
+          type: 'ACCEPT_OFFER',
+          offer_id: offerId,
+          target_folder_lid: targetFolderLid,
+        });
         break;
       }
       case 'dismiss-offer': {

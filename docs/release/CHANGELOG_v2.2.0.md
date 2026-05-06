@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-VV(2026-05-06)
+
+- **取り込み先 folder picker**:user 修正指示4「取り込み先の指定をしたい」への対応。`PendingOffer` banner に **target folder picker `<select>`** を追加。container に folder entry がある時のみ表示、`📂 (root)` + `📁 <folder name>` を ABC 順で並べる。Accept 時に同 `[data-pkc-offer-id]` item 内の picker から value を読み、`ACCEPT_OFFER { target_folder_lid }` に渡す。
+- **action 拡張**:`ACCEPT_OFFER { offer_id, target_folder_lid?: string | null }`(additive、既存 caller は影響なし)。reducer は `target_folder_lid` が valid folder lid に解決した場合のみ structural relation 1 件追加 + RELATION_CREATED event を emit、unknown / non-folder / null は silent root fallback。
+- **テスト**:`tests/core/accept-offer-target-folder-pr-vv.test.ts`(5 件)— 未指定 root / valid folder relation 生成 / non-folder fallback / unknown lid fallback / null fallback を網羅。
+- bundle.js 906.97 → 908.04 KB(+1.07 KB:reducer 拡張 + folder picker 描画)、bundle.css 不変。unit 6518 → 6523(+5)pass。
+
 ### Wave 10-6 review fix PR-UU(2026-05-06)
 
 - **`.pkc-capture.json` 複数取り込み**:user 修正指示4「.pkc-capture.json の複数取り込みを有効化して」への対応。`mountImportHandler` の hidden file input に `multiple = true` を付与、change handler に **all-capture-json branch** を追加。全選択ファイルが capture JSON なら順次 `SYS_RECORD_OFFERED` を dispatch、PendingOffer banner が件数分スタック表示される(PKC-Message §6 user-consent gate は per offer 維持)。混在選択(HTML + capture-json + zip)は legacy 先頭ファイル動作で従来通り(preview dialog flow を壊さない)。

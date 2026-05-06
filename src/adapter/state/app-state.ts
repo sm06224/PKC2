@@ -1688,20 +1688,36 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           })
         : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
-      const updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
+      let updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
+      // PR-VV (2026-05-06): user 修正指示4「取り込み先の指定をしたい」.
+      // `target_folder_lid` が PendingOffer banner の picker から渡された
+      // 場合、folder への structural relation を 1 件追加して entry を
+      // その folder 配下に置く。target lid が unknown / non-folder な場合は
+      // 静かに root scope へ fallback。
+      const events: DomainEvent[] = [
+        { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
+        { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
+      ];
+      if (action.target_folder_lid) {
+        const target = updatedContainer.entries.find((e) => e.lid === action.target_folder_lid);
+        if (target && target.archetype === 'folder') {
+          const relId = generateLid();
+          updatedContainer = addRelation(
+            updatedContainer, relId, action.target_folder_lid, lid, 'structural', ts,
+          );
+          events.push({
+            type: 'RELATION_CREATED', id: relId,
+            from: action.target_folder_lid, to: lid, kind: 'structural',
+          });
+        }
+      }
       const next: AppState = {
         ...state,
         container: updatedContainer,
         pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
         selectedLid: lid,
       };
-      return {
-        state: next,
-        events: [
-          { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
-          { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
-        ],
-      };
+      return { state: next, events };
     }
     case 'DISMISS_OFFER': {
       const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
