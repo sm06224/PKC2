@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-KK(2026-05-06)
+
+- **contact-sheet サムネ引き伸ばしなし(長辺合わせ contain)**:user 修正指示2「サムネ元画像長辺合わせで引き伸ばしなし」への対応。`.pkc-filer-grid-contact-sheet .pkc-filer-card-thumb img` を `object-fit: contain` 指定に上書き。card grid の `cover`(crop して埋める cover-art 用)とは別に、contact-sheet は写真 grid 想定なので元画像の長辺を 1:1 セルにフィットさせ letterbox を許容する仕様に。letterbox 部の背景は thumb 既存の `bg-tag` neutral grey が見えてくる。
+- **Phase 8 順序性 parity test**:`tests/smoke/contact-sheet-object-fit-parity.spec.ts`(NEW)で folder + image attachment を IDB に直 seed → contact-sheet 表示で thumb img を `getComputedStyle().objectFit === 'contain'` を assert。class lookup でなく実 painted DOM の computed style を読む doctrine 準拠。
+- bundle.css 142.23 → 142.31 KB(+0.08 KB:`object-fit: contain` 1 rule)、bundle.js 不変。unit 6492 / 6492 / smoke +1(全件 pass)。
+
 ### Wave 10-6 review fix PR-JJ(2026-05-06)
 
 - **Amazon 商品名 + メーカー / 著者 抽出**:user 修正指示2「Amazon 商品名+メーカー/著者抽出」への対応。bookmarklet の Amazon ブランチを拡張、`#productTitle` から clean な商品名を取得し、`#bylineInfo` から書籍は **著者**、物販は **ブランド** を拾って payload に乗せる。書籍判定は URL の `/dp/`(B0/4/0/1/9-prefix ASIN)+ bylineInfo の「(著)」「(Author)」テキスト、それ以外は kind を null にして brand を採用。
