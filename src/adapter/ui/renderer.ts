@@ -4641,84 +4641,9 @@ function resolveFilerNavigation(state: AppState): {
   return { current: scope, parent: rootSentinel, parentIsRootSentinel: true };
 }
 
-function buildFilerNavCard(
-  kind: 'current' | 'parent',
-  target: Entry,
-  label: string,
-  toRootSentinel = false,
-): HTMLElement {
-  const card = createElement(
-    'div',
-    `pkc-filer-card pkc-filer-card-nav pkc-filer-card-nav-${kind}`,
-  );
-  if (toRootSentinel) {
-    // ".." from a top-level folder → container root (DESELECT_ENTRY 経由)。
-    card.setAttribute('data-pkc-action', 'filer-scope-root');
-  } else {
-    card.setAttribute('data-pkc-action', 'select-entry');
-    card.setAttribute('data-pkc-lid', target.lid);
-  }
-  card.setAttribute('data-pkc-archetype', 'folder');
-  card.setAttribute('data-pkc-filer-nav', kind);
-  if (kind === 'parent' && !toRootSentinel) card.setAttribute('data-pkc-drop-target', 'folder');
-
-  const thumb = createElement('div', 'pkc-filer-card-thumb pkc-filer-card-thumb-fallback');
-  thumb.textContent = label;
-  card.appendChild(thumb);
-
-  const titleEl = createElement('div', 'pkc-filer-card-title');
-  titleEl.textContent = target.title || target.lid;
-  card.appendChild(titleEl);
-  return card;
-}
-
-function buildFilerNavRow(
-  kind: 'current' | 'parent',
-  target: Entry,
-  label: string,
-  toRootSentinel = false,
-): HTMLTableRowElement {
-  const tr = createElement('tr', `pkc-filer-row pkc-filer-row-nav pkc-filer-row-nav-${kind}`) as HTMLTableRowElement;
-  if (toRootSentinel) {
-    tr.setAttribute('data-pkc-action', 'filer-scope-root');
-  } else {
-    tr.setAttribute('data-pkc-action', 'select-entry');
-    tr.setAttribute('data-pkc-lid', target.lid);
-  }
-  tr.setAttribute('data-pkc-archetype', 'folder');
-  tr.setAttribute('data-pkc-filer-nav', kind);
-  // ".." rows are drop targets so user can drag-drop into the parent
-  // folder. "." is not a drop target (would be a no-op).
-  if (kind === 'parent') {
-    tr.setAttribute('data-pkc-drop-target', 'folder');
-  }
-
-  const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
-  const icon = createElement('span', 'pkc-filer-row-icon');
-  icon.textContent = '📁';
-  nameTd.appendChild(icon);
-  const titleSpan = createElement('span', 'pkc-filer-row-title');
-  titleSpan.textContent = `${label}    (${target.title || target.lid})`;
-  nameTd.appendChild(titleSpan);
-  tr.appendChild(nameTd);
-
-  const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
-  archTd.textContent = kind === 'current' ? '自身' : '親フォルダ';
-  tr.appendChild(archTd);
-
-  const createdTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-created');
-  createdTd.textContent = '';
-  tr.appendChild(createdTd);
-
-  const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
-  updTd.textContent = '';
-  tr.appendChild(updTd);
-
-  const tagsTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-tags');
-  tagsTd.textContent = '';
-  tr.appendChild(tagsTd);
-  return tr;
-}
+// PR-EE (2026-05-06):buildFilerNavCard / buildFilerNavRow は削除
+// (user direction「. / .. row は breadcrumb のパンくずで代替可能なため
+// 不要」)。breadcrumb の root / parent click が同等 navigation を提供。
 
 function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): HTMLElement {
   const wrapper = createElement('div', 'pkc-filer-table-wrapper');
@@ -4771,15 +4696,12 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   const tbody = createElement('tbody', 'pkc-filer-tbody');
   const canEditDnd = state.phase === 'ready' && !state.readonly;
 
-  // "." and ".." navigation rows.「カレントフォルダ」+「1 階層上」を
-  // 先頭に出す。root では ".." を省略(2026-05-05 user direction)。
-  const nav = resolveFilerNavigation(state);
-  if (nav.current) {
-    tbody.appendChild(buildFilerNavRow('current', nav.current, '.'));
-  }
-  if (nav.parent) {
-    tbody.appendChild(buildFilerNavRow('parent', nav.parent, '..', nav.parentIsRootSentinel));
-  }
+  // PR-EE (2026-05-06、user 報告):「.」「..」row は breadcrumb の
+  // パンくず動作で代替できるため削除(user direction:「結果的に不要
+  // となったため削除、パス表示からのパンクズ動作で代替可能」)。
+  // breadcrumb の Root / 親 folder click で同等の navigation が成立する。
+  // resolveFilerNavigation は data-pkc-region="filer-breadcrumb" の
+  // 描画でも参照されるので、削除はせず call 側のみ撤去。
 
   for (const child of sortedChildren) {
     const tr = createElement('tr', 'pkc-filer-row');
@@ -4864,9 +4786,8 @@ function renderFilerContactSheet(
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
 
-  const nav = resolveFilerNavigation(state);
-  if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
-  if (nav.parent) grid.appendChild(buildFilerNavCard("parent", nav.parent, "..", nav.parentIsRootSentinel));
+  // PR-EE (2026-05-06):「.」「..」 card は breadcrumb で代替可能のため
+  // 削除(user direction)。
 
   for (const child of children) {
     const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
@@ -4944,9 +4865,8 @@ function renderFilerCardGrid(
   const canEditDnd = state.phase === 'ready' && !state.readonly;
   const assets = state.container?.assets ?? {};
 
-  const nav = resolveFilerNavigation(state);
-  if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
-  if (nav.parent) grid.appendChild(buildFilerNavCard("parent", nav.parent, "..", nav.parentIsRootSentinel));
+  // PR-EE (2026-05-06):「.」「..」 card は breadcrumb で代替可能のため
+  // 削除(user direction)。
 
   for (const child of children) {
     const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
