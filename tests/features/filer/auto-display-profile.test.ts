@@ -13,7 +13,6 @@ import {
 
 function mkEntry(overrides: Partial<Entry> & { lid: string }): Entry {
   return {
-    lid: overrides.lid,
     title: overrides.lid,
     body: '',
     archetype: 'text',

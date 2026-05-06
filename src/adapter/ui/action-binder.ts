@@ -3110,6 +3110,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // 開けなくてはならない」。breadcrumb の "Root" をクリックした
         // ら DESELECT_ENTRY で selectedLid を null にする → filer の
         // resolveFilerScope が null を返し、root entries が一覧される。
+        //
+        // PR-J fix(2026-05-06、user 報告):「FOLDER の Detail を Filer
+        // にしたとき、パスから Root に戻ると Filer じゃなくなる」。
+        // viewMode を明示 'filer' に再 dispatch することで、prior path
+        // で何らかの理由で viewMode が drift していても filer に戻す
+        // belt-and-suspenders。SET_VIEW_MODE は filer→filer で no-op、
+        // detail→filer で復帰、と両ケース desired。
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
         dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         break;
       }

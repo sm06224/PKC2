@@ -1359,13 +1359,23 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       }
 
       events.push({ type: 'EDIT_BEGUN', lid });
+      // PR-J fix (2026-05-06):filer 中の作成は filer に留める。
+      // user 報告:「FOLDER の Detail を Filer にしたとき、パスから
+      // Root に戻ると Filer じゃなくなる、この動作は正直 no-op」。
+      // 根本原因は CREATE_ENTRY が無条件で viewMode='detail' に飛ばす
+      // ことで、filer 中に作成 → 編集確定すると detail に着地、その
+      // 状態で path の Root を click しても filer に戻れない。
+      // 解決:filer モード中の作成は filer のまま保持(scope は新規
+      // entry が folder ならその folder、非 folder なら ancestor folder
+      // に自動 fallback する resolveFilerScope の semantic に乗る)。
+      const nextViewMode = state.viewMode === 'filer' ? 'filer' : 'detail';
       const next: AppState = {
         ...state,
         container,
         selectedLid: lid,
         phase: 'editing',
         editingLid: lid,
-        viewMode: 'detail',
+        viewMode: nextViewMode,
         // Newly-auto-created bucket folders (`ASSETS` / `TODOS`)
         // start collapsed so the user's sidebar stays clean — they
         // can tap to expand whenever they need to see what landed
