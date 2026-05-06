@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-WWW(2026-05-07)
+
+- **Graph node hover preview tooltip**:user 修正指示5 残「graph node に hover で title + body excerpt が見える tooltip がほしい」への対応。`GraphCanvasNode.preview` interface は PR-LLL で既に追加済みだったが、実際に tooltip を表示する DOM 機構が未実装だった。
+- **修正**:
+  - `GraphNodeView` に `preview?: string` を追加、`buildGraphPayload` で entry.body の冒頭 100 char を frontmatter strip + 改行畳み込みで生成し title と組み合わせる
+  - graph-canvas.ts の gesture installer に `mousemove` / `mouseleave` listener を追加。`hitTestNodeAt` で node 解決、`payload.nodes.find` で preview 文字列を取得し、canvas 親(`.pkc-center-graph-view` を `position: relative` 化)に absolute 配置の `<div>` tooltip を表示
+  - drag / region-select 中は tooltip 非表示(操作の邪魔をしない)
+  - tooltip CSS:`.pkc-graph-hover-tooltip` に max-width 320px、`white-space: pre-line` で title の \n + excerpt を 2 行表示、`pointer-events: none` で hit-test 非干渉
+- bundle.js 917.13 → 918.18 KB(+1.05 KB:hover handler + tooltip 構築)、bundle.css 144.68 → 145.16 KB(+0.48 KB:tooltip CSS + positioning context)。unit 6563 / 6563 pass。
+
 ### Wave 10-7 review fix PR-VVV(2026-05-07)
 
 - **数式計算入力補助、行頭以外でも動作**:user 修正指示7 #8「数式計算入力補助 行頭以外でも動作」への対応。旧仕様は `caretPos === lineEnd` 必須(行末でしか発火しない)。`Total: 1+2=` のように先頭に文脈テキストを書いて式を続けたとき、行末でも `Total: 1+2=` 直後の caret で `=` 直前は数式と非数式文字の混在状態なので発火していた -- が、`= ok` のように後続テキストがあると caret が行末でないため発火しなかった。

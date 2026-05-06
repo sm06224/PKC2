@@ -5864,6 +5864,9 @@ mark.pkc-search-mark {
 /* ── Center Graph view (Phase 4 follow-up 4 — independent view-mode) ── */
 
 .pkc-center-graph-view {
+  /* PR-WWW (2026-05-07、修正指示5 残):tooltip を absolute 配置するため
+   * positioning context に。 */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -5946,6 +5949,27 @@ mark.pkc-search-mark {
 
 .pkc-graph-canvas[data-pkc-graph-region-select-mode="true"] {
   cursor: crosshair;
+}
+
+/* PR-WWW (2026-05-07、修正指示5 残):graph node hover preview tooltip。
+ * absolute 配置(.pkc-center-graph-view が positioning context)、
+ * pointer-events: none で hit-test に干渉しない。 */
+.pkc-graph-hover-tooltip {
+  position: absolute;
+  z-index: 50;
+  max-width: 320px;
+  padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
+  font-size: var(--fs-xs, 0.8125rem);
+  line-height: 1.4;
+  background: var(--c-surface, rgba(20, 20, 20, 0.95));
+  color: var(--c-fg, #e0e0e0);
+  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius, 4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: pre-line;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pkc-center-graph-toolbar {

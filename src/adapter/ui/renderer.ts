@@ -5820,6 +5820,8 @@ function renderCenterGraphView(state: AppState): HTMLElement {
       archetype: n.archetype,
       cssColor: n.cssColor,
       degree: degreeMap.get(n.id) ?? 0,
+      // PR-WWW (2026-05-07、修正指示5 残):hover preview tooltip。
+      ...(n.preview ? { preview: n.preview } : {}),
     })),
     positions,
     links,
@@ -5887,6 +5889,8 @@ interface GraphNodeView {
   cssColor?: string;
   /** Optional class hint for tag-group coloring. */
   colorClass?: string;
+  /** Hover tooltip 用 preview(title + body excerpt). PR-WWW(2026-05-07). */
+  preview?: string;
 }
 
 /**
@@ -6108,11 +6112,23 @@ function buildGraphForMode(
       default:
         break;
     }
+    // PR-WWW (2026-05-07、修正指示5 残):hover tooltip 用 preview。
+    // entry.body の冒頭を 100 char に trim、改行 / マークアップ系
+    // ノイズを軽く除去して title と組み合わせる。
+    const bodyExcerpt = ((e as Entry).body ?? '')
+      .replace(/^---[\s\S]*?---\n?/, '') // strip frontmatter
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+    const preview = bodyExcerpt
+      ? `${e.title || e.lid}\n${bodyExcerpt}`
+      : (e.title || e.lid);
     return {
       id: e.lid,
       label: e.title || e.lid,
       archetype: e.archetype,
       ...(cssColor ? { cssColor } : {}),
+      preview,
     };
   });
 

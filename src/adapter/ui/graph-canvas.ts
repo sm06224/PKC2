@@ -649,6 +649,56 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
 
   const win = canvas.ownerDocument.defaultView!;
 
+  // ── Hover tooltip (PR-WWW 2026-05-07、修正指示5 残)──
+  // node の preview 文字列を mouse 位置近くに表示。dragging / pinch
+  // 中は非表示。tooltip は canvas の親に absolute 配置(canvas 自体を
+  // positioning context にしないため、positioned ancestor が必要)。
+  let hoverTooltip: HTMLDivElement | null = null;
+  const ensureTooltip = (): HTMLDivElement => {
+    if (hoverTooltip) return hoverTooltip;
+    const t = canvas.ownerDocument.createElement('div');
+    t.className = 'pkc-graph-hover-tooltip';
+    t.setAttribute('data-pkc-region', 'graph-hover-tooltip');
+    t.style.display = 'none';
+    canvas.parentElement?.appendChild(t);
+    hoverTooltip = t;
+    return t;
+  };
+  const hideTooltip = (): void => {
+    if (hoverTooltip) hoverTooltip.style.display = 'none';
+  };
+  canvas.addEventListener('mousemove', (ev) => {
+    const me = ev as MouseEvent;
+    // Skip during pan / region drag — those operations own the cursor.
+    if (panStart || viewStates.get(canvas)?.rectStart) {
+      hideTooltip();
+      return;
+    }
+    const lid = hitTestNodeAt(canvas, me.clientX, me.clientY);
+    if (!lid) {
+      hideTooltip();
+      return;
+    }
+    const node = payloads.get(canvas)?.nodes.find((n) => n.id === lid);
+    const text = node?.preview ?? node?.label;
+    if (!text) {
+      hideTooltip();
+      return;
+    }
+    const tip = ensureTooltip();
+    tip.textContent = text;
+    tip.style.display = 'block';
+    // Position relative to canvas parent (assumed positioning context).
+    const parentRect = canvas.parentElement!.getBoundingClientRect();
+    const x = me.clientX - parentRect.left + 12;
+    const y = me.clientY - parentRect.top + 12;
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+  }, { signal });
+  canvas.addEventListener('mouseleave', () => {
+    hideTooltip();
+  }, { signal });
+
   // ── Wheel: cursor-centered zoom. ──
   canvas.addEventListener('wheel', (ev) => {
     const we = ev as WheelEvent;
