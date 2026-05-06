@@ -4993,6 +4993,27 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   // localStorage `pkc2.filer.column-widths` から永続化された幅を読み出し、
   // <th> の width style に上書き反映。最終 col には resize handle 不要。
   const persistedWidths = readFilerColumnWidths();
+
+  // PR-Δ3 (2026-05-07、修正指示9):multi-select check column を先頭に
+  // 追加。header checkbox は visible 全選択 / 全解除のトグル。
+  const allSelectedVisible =
+    sortedChildren.length > 0
+    && sortedChildren.every((c) => (state.multiSelectedLids ?? []).includes(c.lid));
+  const someSelectedVisible =
+    !allSelectedVisible
+    && sortedChildren.some((c) => (state.multiSelectedLids ?? []).includes(c.lid));
+  const checkTh = createElement('th', 'pkc-filer-th pkc-filer-th-check');
+  const checkAll = document.createElement('input');
+  checkAll.type = 'checkbox';
+  checkAll.className = 'pkc-filer-row-check';
+  checkAll.setAttribute('data-pkc-action', 'filer-toggle-all-multi-select');
+  checkAll.setAttribute('aria-label', '全選択切替');
+  checkAll.title = '全選択 / 全解除';
+  checkAll.checked = allSelectedVisible;
+  checkAll.indeterminate = someSelectedVisible;
+  checkTh.appendChild(checkAll);
+  headRow.appendChild(checkTh);
+
   for (let i = 0; i < cols.length; i++) {
     const c = cols[i]!;
     const th = createElement('th', `pkc-filer-th pkc-filer-th-${c.key}`);
@@ -5035,6 +5056,9 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   // resolveFilerNavigation は data-pkc-region="filer-breadcrumb" の
   // 描画でも参照されるので、削除はせず call 側のみ撤去。
 
+  // PR-Δ3 (2026-05-07、修正指示9):filer multi-select 視認性。
+  // sidebar と同じく `data-pkc-multi-selected="true"` で active 装飾。
+  const multiSet = new Set<string>(state.multiSelectedLids ?? []);
   for (const child of sortedChildren) {
     const tr = createElement('tr', 'pkc-filer-row');
     tr.setAttribute('data-pkc-action', 'select-entry');
@@ -5053,6 +5077,21 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     if (child.lid === state.selectedLid) {
       tr.setAttribute('data-pkc-active', 'true');
     }
+    if (multiSet.has(child.lid)) {
+      tr.setAttribute('data-pkc-multi-selected', 'true');
+    }
+
+    // PR-Δ3 multi-select checkbox cell(先頭に挿入)。
+    const checkTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-check');
+    const checkBox = document.createElement('input');
+    checkBox.type = 'checkbox';
+    checkBox.className = 'pkc-filer-row-check';
+    checkBox.setAttribute('data-pkc-action', 'filer-toggle-row-multi-select');
+    checkBox.setAttribute('data-pkc-lid', child.lid);
+    checkBox.setAttribute('aria-label', '選択切替');
+    checkBox.checked = multiSet.has(child.lid);
+    checkTd.appendChild(checkBox);
+    tr.appendChild(checkTd);
 
     const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
     const icon = createElement('span', 'pkc-filer-row-icon');

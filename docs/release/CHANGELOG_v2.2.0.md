@@ -184,6 +184,18 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-9 hotfix PR-Δ3(2026-05-07、修正指示9)
+
+- **filer multi-select + bulk operations 革命的 UX**:user 報告「ファイラにマルチ選択、一括選択機能をつけ、エントリ整理機能に革命的な操作性を付与しろ」への対応。multi-select infrastructure(`TOGGLE_MULTI_SELECT` action、`getAllSelected` helper、`pkc-multi-action-bar` 描画)は既存だったが、**filer explorer 行からはトリガーできず、視覚 marker も無かった**。
+- **修正**:
+  - 各 `<tr.pkc-filer-row>` に `data-pkc-multi-selected="true"` を反映、accent 装飾(`color-mix accent 40%` background + `inset 1px accent` shadow、既存)で multi-select 状態が一目で分かる
+  - 行先頭に **checkbox cell**(`<td.pkc-filer-cell-check><input class="pkc-filer-row-check" data-pkc-action="filer-toggle-row-multi-select">`)を追加。click で `TOGGLE_MULTI_SELECT` dispatch、`stopPropagation` で行 select-entry 動作と分離
+  - **Header checkbox**(`data-pkc-action="filer-toggle-all-multi-select"`)で visible 全選択 / 全解除トグル。`indeterminate` で部分選択 state も表現
+  - Shift+click in filer:**filer 表 visible order を range source として優先**(旧実装は sidebar order のみ参照、filer click では `undefined` で歯抜け range が発生)
+  - bulk action bar(Delete / Move to.../ Clear、既存)が filer view 中も sidebar に表示される(変更不要)
+- **Playwright 視覚確認**:`tests/smoke/diagnostic-2026-05-07.spec.ts D-05` で 3 行 checkbox を実 mouse click → 3 行に `data-pkc-multi-selected="true"` 反映、multi-action-bar に「3 selected」+ Delete / Move / Clear 操作表示を確認、screenshot 添付。
+- bundle.js 923.36 → 925.18 KB(+1.82 KB)、bundle.css 145.61 → 145.83 KB(+0.22 KB)。unit 6563 / 6563 pass + Playwright smoke pass。
+
 ### Wave 10-9 hotfix PR-Δ2(2026-05-07、修正指示9)
 
 - **filer 列幅 drag-to-resize handle 追加**:user 報告「ファイラの列幅調整の要望はどこで対応している?調整できない」への抹本対応。元 PR-SSS は `table-layout: fixed` + `<th>` 比率指定のみで、resize handle は **deferred** だった。今回実装。

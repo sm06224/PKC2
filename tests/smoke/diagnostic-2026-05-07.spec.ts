@@ -161,6 +161,42 @@ test('D-02 graph node hover preview tooltip', async ({ page }) => {
   console.log('D-02 hover tooltip:', JSON.stringify(tipVisible, null, 2));
 });
 
+test('D-05 filer multi-select via checkbox (PR-Δ3)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  await filerTab.waitFor();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer view-mode tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Click 3 row checkboxes via real OS event.
+  const rowChecks = page.locator('input.pkc-filer-row-check[data-pkc-lid]');
+  for (const i of [0, 2, 4]) {
+    const box = await rowChecks.nth(i).boundingBox();
+    if (!box) throw new Error(`row check ${i} missing`);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
+  }
+
+  const result = await page.evaluate(() => {
+    const checkedRows = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-multi-selected="true"]',
+    )).map((r) => r.getAttribute('data-pkc-lid'));
+    const bar = document.querySelector('[data-pkc-region="multi-action-bar"]');
+    const barText = bar?.textContent?.trim() ?? '';
+    return { checkedRows, barVisible: !!bar, barText };
+  });
+  console.log('D-05 multi-select state:', JSON.stringify(result, null, 2));
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-05-filer-multi-select.png',
+    fullPage: false,
+  });
+});
+
 test('D-04 filer column resize handle drag (PR-Δ2)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedManyEntries(page);

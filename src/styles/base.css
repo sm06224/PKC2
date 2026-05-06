@@ -5440,11 +5440,20 @@ mark.pkc-search-mark {
   table-layout: fixed;
 }
 
-.pkc-filer-th-name      { width: 40%; }
+/* PR-Δ3 (2026-05-07、修正指示9):multi-select checkbox 列幅。 */
+.pkc-filer-th-check     { width: 32px; }
+.pkc-filer-cell-check   { padding: var(--space-1, 0.125rem) var(--space-2, 0.5rem); text-align: center; }
+.pkc-filer-row-check    {
+  cursor: pointer;
+  width: 16px; height: 16px;
+  margin: 0;
+  vertical-align: middle;
+}
+.pkc-filer-th-name      { width: 38%; }
 .pkc-filer-th-archetype { width: 12%; }
 .pkc-filer-th-created_at { width: 16%; }
 .pkc-filer-th-updated_at { width: 16%; }
-.pkc-filer-th-tags      { width: 16%; }
+.pkc-filer-th-tags      { width: 14%; }
 
 .pkc-filer-th {
   text-align: left;

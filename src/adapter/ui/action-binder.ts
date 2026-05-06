@@ -1142,18 +1142,32 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
-          // Snapshot the sidebar's visible LIDs in DOM order so the
-          // reducer can pick the range in tree-traversal order
-          // instead of storage order. Without this the user reports
-          // "歯抜け" — Shift+click across folder boundaries skips
-          // entries that are not contiguous in `container.entries`.
-          const visibleOrder = sidebarRegion
-            ? Array.from(
-                sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
-              )
-                .map((el) => el.getAttribute('data-pkc-lid'))
-                .filter((v): v is string => typeof v === 'string')
-            : undefined;
+          // Snapshot visible LIDs in DOM order so the reducer can pick
+          // the range in tree-traversal order instead of storage order.
+          // Without this the user reports "歯抜け" — Shift+click across
+          // folder boundaries skips entries that are not contiguous in
+          // `container.entries`.
+          // PR-Δ3 (2026-05-07、修正指示9):filer 列のときも range を
+          // ソート順で連続選択できるよう、filer-table の <tr> も visible
+          // order の source として優先する(filer view 側 click が来た時)。
+          const filerTable = root.querySelector<HTMLElement>('[data-pkc-region="filer-table"]');
+          const fromFilerClick = !!filerTable?.contains(target);
+          let visibleOrder: string[] | undefined;
+          if (fromFilerClick) {
+            visibleOrder = Array.from(
+              filerTable!.querySelectorAll<HTMLElement>('tr.pkc-filer-row[data-pkc-lid]'),
+            )
+              .map((el) => el.getAttribute('data-pkc-lid'))
+              .filter((v): v is string => typeof v === 'string');
+          } else {
+            visibleOrder = sidebarRegion
+              ? Array.from(
+                  sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+                )
+                  .map((el) => el.getAttribute('data-pkc-lid'))
+                  .filter((v): v is string => typeof v === 'string')
+              : undefined;
+          }
           suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
@@ -3074,6 +3088,48 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           | 'filer'
           | 'graph';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'filer-toggle-row-multi-select': {
+        // PR-Δ3 (2026-05-07、修正指示9):filer 行 checkbox。
+        // sidebar の Ctrl+click と同じ semantics、checkbox UX で
+        // discoverability を上げる。
+        e.preventDefault();
+        e.stopPropagation();
+        const rowLid = target.getAttribute('data-pkc-lid');
+        if (rowLid) {
+          dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: rowLid });
+        }
+        break;
+      }
+      case 'filer-toggle-all-multi-select': {
+        // PR-Δ3:filer header checkbox。visible 行を一括トグル。
+        // 全選択中なら CLEAR_MULTI_SELECT、そうでなければ全 visible を
+        // 選択状態に push(Ctrl+A 相当の即時操作)。
+        e.preventDefault();
+        e.stopPropagation();
+        const filerTable = root.querySelector<HTMLElement>('[data-pkc-region="filer-table"]');
+        if (!filerTable) break;
+        const visible = Array.from(
+          filerTable.querySelectorAll<HTMLElement>('tr.pkc-filer-row[data-pkc-lid]'),
+        )
+          .map((el) => el.getAttribute('data-pkc-lid'))
+          .filter((v): v is string => typeof v === 'string');
+        if (visible.length === 0) break;
+        const cur = dispatcher.getState().multiSelectedLids ?? [];
+        const allIn = visible.every((l) => cur.includes(l));
+        if (allIn) {
+          dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+        } else {
+          // 1 個ずつ TOGGLE するのは O(n) dispatch で大きい list に
+          // 重い。reducer は SET_MULTI_SELECT を持たないので未選択のみ
+          // TOGGLE で追加する。
+          for (const l of visible) {
+            if (!cur.includes(l)) {
+              dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: l });
+            }
+          }
+        }
         break;
       }
       case 'set-filer-explorer-sort': {
