@@ -6222,6 +6222,12 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-radius: 0;
   padding: 0;
   background: transparent;
+  /* PR-ZZZ (2026-05-07、修正指示8 #2):200+ image album で off-screen
+   * card の paint / decode を browser に skip させる。
+   * `contain-intrinsic-size` で scrollbar 高さを正しく予約。
+   * `--filer-thumb-px` は cell-size flag 連動(sm 96 / md 160 / lg 220)。 */
+  content-visibility: auto;
+  contain-intrinsic-size: var(--filer-thumb-px, 160px) var(--filer-thumb-px, 160px);
 }
 
 /* contact-sheet caption: thumb 右下 overlay、反転文字色、半透明背景 */

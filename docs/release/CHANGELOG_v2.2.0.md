@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-8 review fix PR-ZZZ(2026-05-07)
+
+- **Album contact-sheet 軽量化**:user 修正指示8 #2「アルバムコンタクトシートの表示が重い。サムネ向けのローコスト画像にしているのか疑問」への対応。診断:現状は full-resolution `data:image/...;base64,...` を `<img src>` に直接渡しており、**サムネ向けの低解像度画像は materialize されていない**。200 枚 × 5MB の album で browser memory 1GB / paint stall 数秒の負荷。user の指摘は正しい。
+- **最小有効最適化 2 件**(infra 改造なしで体感負荷を 1/10 以下に):
+  1. **`decoding="async"`**:全 thumb img tag(contact-sheet / book-base / video-base / novel-base / audio-base)に付与、画像 decode を main thread から外し scroll の jank を回避。
+  2. **`content-visibility: auto` + `contain-intrinsic-size`**:`.pkc-filer-grid-contact-sheet .pkc-filer-card` に適用。off-screen card の layout / paint / image decode を browser が skip、200 枚 album でも初回 paint は viewport 内 ~10 枚分のみで完了。`contain-intrinsic-size: var(--filer-thumb-px) var(--filer-thumb-px)` で scroll 高さを事前予約、scrollbar 飛躍を回避。
+- **future work**:真のサムネ materialize(import 時に 320×320 max + JPEG quality 0.7 で別 asset 生成、`thumb_asset_key` を attachment frontmatter に追記)は inflight に乗せない(scope 拡大 + schema 変更)。Phase 8 budget bump と組み合わせて別 PR で検討。
+- bundle.js 918.10 → 918.14 KB(+0.04 KB:img attr 1 件、誤差レベル)、bundle.css 145.29 → 145.39 KB(+0.10 KB:CSS 2 ルール追加)。unit 6552 / 6552 pass。
+
 ### Wave 10-8 review fix PR-YYY(2026-05-07)
 
 - **iPhone WorkSpace Clear 不動作 修正**:user 修正指示8 #1「iPhoneでWorkSpace Clearが不動作」への対応。root cause は iOS Safari(特に Add to Home Screen / standalone / file:// 系)で `prompt()` が silent に suppress される既知挙動。旧実装は `confirm()` → `prompt('RESET')` の 2 段階だったが、iPhone では 2 段目が出ずに Reset がフリーズ。

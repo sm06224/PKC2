@@ -5133,6 +5133,9 @@ function renderFilerContactSheet(
       img.src = dataUrl;
       img.alt = child.title || child.lid;
       img.loading = 'lazy';
+      // PR-ZZZ (2026-05-07、修正指示8 #2):decode を main thread から
+      // 切り離し、200+ image album の paint stall を回避。
+      img.decoding = 'async';
       thumb.appendChild(img);
     } else {
       thumb.classList.add('pkc-filer-card-thumb-fallback');
@@ -5207,6 +5210,8 @@ function renderFilerCardGrid(
       img.src = dataUrl;
       img.alt = child.title || child.lid;
       img.loading = 'lazy';
+      // PR-ZZZ (2026-05-07、修正指示8 #2):decode を main thread から外す。
+      img.decoding = 'async';
       thumb.appendChild(img);
     } else {
       thumb.classList.add('pkc-filer-card-thumb-fallback');
