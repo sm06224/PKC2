@@ -3138,8 +3138,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // set-graph-mode: handled in handleChange (select element).
       case 'open-image-preview-from-filer': {
         // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
-        // attachment in the filer opens a Document PiP / fallback
-        // modal viewer instead of switching to detail.
+        // attachment in the filer opens the browser native image
+        // viewer (PR-N: window.open data URL → OS image viewer).
+        //
+        // PR-KKK (2026-05-06、user 修正指示5「iPhone ではアルバム
+        // 表示のコンタクトシート画像をタップ時に画像を閲覧できない」):
+        // iOS Safari の user-activation 規約は厳格で、tap → click
+        // から `window.open()` までの間に重い同期処理(`dispatch
+        // SELECT_ENTRY` → 全 shell 再描画、100+ entries で 50-100ms)
+        // が挟まると activation token が「stale」と判定されて popup
+        // が抑制される。**`openImagePreview()` を最優先で呼ぶ** 順序
+        // に変更し、selection 更新は viewer open 後に dispatch する。
         if (!lid) break;
         const st = dispatcher.getState();
         const ent = st.container?.entries.find((x) => x.lid === lid);
@@ -3153,11 +3162,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           const b64 = st.container?.assets?.[key];
           if (!b64) break;
           const dataUrl = b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`;
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-          // Lazy import via dynamic require pattern would split the
-          // bundle; we use the static import added to action-binder.
+          // Open viewer FIRST while we still hold user activation.
           openImagePreview({ src: dataUrl, label: name, permalink: `entry:${lid}` })
             .catch((e) => { console.warn('[image-preview] open failed', e); });
+          // Then update selection (re-render is fine post-open).
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         } catch (e) {
           console.warn('[image-preview] body parse failed', e);
         }

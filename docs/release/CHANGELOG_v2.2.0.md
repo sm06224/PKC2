@@ -184,6 +184,11 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-KKK(2026-05-06)
+
+- **iPhone コンタクトシート tap で画像 viewer が出るよう順序入替**:user 修正指示5「iPhone ではアルバム表示のコンタクトシート画像をタップ時に画像を閲覧できない」への対応。`open-image-preview-from-filer` action の中で `dispatch SELECT_ENTRY` → 全 shell 再描画(100+ entries で 50-100ms)→ `openImagePreview()` の順だったため、iOS Safari の user-activation 規約上 popup が「stale activation」で抑制されていた。**`openImagePreview()` を `dispatch` より先に呼ぶ順序** に修正、user activation token を温存して `window.open(dataUrl, '_blank')` が確実に native image viewer を起動できるようにした。selection 更新は viewer open 後に dispatch(順序逆転による副作用なし、view layer は冪等)。
+- bundle.js -0.01 KB(順序入れ替え net 0)、bundle.css 不変。unit 6552 / 6552 pass。
+
 ### Wave 10-6 review fix PR-JJJ(2026-05-06)
 
 - **エントリウィンドウ複数開き — 既存挙動の確認 + regression guard**:user 修正指示5「エントリウィンドウを複数開いて編集可能なようにして(今はエントリフォーカスが外れると勝手に閉じてしまう認識)」への対応。code audit の結果、`openEntryWindow` は既に lid 別 `pkc-entry-${lid}` window 名で **複数同時 open をサポート**(focus 外れでの自動 close ロジックは存在しない)。user 観察に再現可能性が無いため、**regression guard test 3 件** を新設して将来「自動 close」回帰を fingerprint で検出可能にする。
