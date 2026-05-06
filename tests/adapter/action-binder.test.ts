@@ -93,12 +93,17 @@ function setup() {
 }
 
 describe('ActionBinder', () => {
-  it('click on entry item dispatches SELECT_ENTRY', () => {
+  it('click on entry item dispatches SELECT_ENTRY (after dblclick window)', async () => {
     const { events } = setup();
 
     const item = root.querySelector('[data-pkc-action="select-entry"]');
     expect(item).not.toBeNull();
     item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // PR-MMM (2026-05-06):sidebar click は ~250ms の dblclick window
+    // を空けてから SELECT_ENTRY を dispatch する(両 click 間で再描画
+    // を発生させない)。test 側も同窓を待つ。
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
 
     expect(events.some((e) => e.type === 'ENTRY_SELECTED')).toBe(true);
   });

@@ -276,10 +276,13 @@ describe('Keyboard navigation: Arrow Up / Down (Phase 1)', () => {
     expect(events.some((e) => e.type === 'ENTRY_DESELECTED')).toBe(true);
   });
 
-  it('regression: click selection still works', () => {
+  it('regression: click selection still works', async () => {
     const { dispatcher } = setupNav();
     const item = root.querySelector('[data-pkc-action="select-entry"][data-pkc-lid="n2"]');
     item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // PR-MMM (2026-05-06):sidebar click は ~250ms 遅延後 SELECT_ENTRY
+    // dispatch するため、test も同窓を待つ。
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
 
     expect(dispatcher.getState().selectedLid).toBe('n2');
   });

@@ -226,6 +226,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let colorPickerLid: string | null = null;
   let colorPickerEl: HTMLElement | null = null;
   let colorPickerTrigger: HTMLElement | null = null;
+  // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック検知
+  // までの間だけでも要素の再描画を抑止して左ペインの行ズレ防止」):
+  // sidebar 単一 click による SELECT_ENTRY dispatch を ~250ms 遅延
+  // させ、その間に dblclick が来たら timer を cancel して dblclick
+  // action 直接実行に切り替える。両 click 間に再描画が走らないため
+  // 行 / 文字位置が固定される。
+  let sidebarSelectTimer: number | null = null;
+  let sidebarSelectLid: string | null = null;
 
   // 2026-04-26 user report:
   //   "シェルメニューの色設定 / スポイトツールが表示されるけど、
@@ -1108,6 +1116,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           }
         };
         if (me.detail >= 2) {
+          // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック
+          // 検知までの間だけでも要素の再描画を抑止して左ペインの行
+          // ズレ防止をしたい」):dblclick 確定時は pending sidebar
+          // SELECT_ENTRY timer を cancel して dblclick action を直接
+          // 実行。これにより click 1 と click 2 の間に再描画が走らない。
+          if (sidebarSelectTimer !== null) {
+            window.clearTimeout(sidebarSelectTimer);
+            sidebarSelectTimer = null;
+            sidebarSelectLid = null;
+          }
           handleDblClickAction(target, lid);
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
@@ -1166,7 +1184,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
           suppressAutoScroll(lid);
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+          // PR-MMM (2026-05-06、user 修正指示5):sidebar からの単一
+          // click は dblclick window(250ms)分だけ SELECT_ENTRY 発火
+          // を delay する。同窓内で次の click が detail≥2 で来たら
+          // 上の dblclick 分岐が timer を cancel して dblclick action
+          // を直接 dispatch。timer が満了する前に他の sidebar entry が
+          // click されたら、より新しい click のみ生かして古い timer は
+          // 破棄(LRU 1)。
+          // 非 sidebar click(center / meta / overlay)は従来通り即時
+          // dispatch — 編集対象の選択を delay すると体感悪化のため。
+          if (fromSidebarClick) {
+            if (sidebarSelectTimer !== null) {
+              window.clearTimeout(sidebarSelectTimer);
+            }
+            sidebarSelectLid = lid;
+            sidebarSelectTimer = window.setTimeout(() => {
+              sidebarSelectTimer = null;
+              if (sidebarSelectLid === lid) {
+                dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+                sidebarSelectLid = null;
+              }
+            }, 250);
+          } else {
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+          }
         }
         break;
       }

@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-MMM(2026-05-06)
+
+- **左ペイン dblclick 検知まで再描画抑止**:user 修正指示5「左ペインのダブルクリック検知までの間だけでも要素の再描画を抑止して左ペインの行ズレ防止をしたい」への対応。sidebar 単一 click による `SELECT_ENTRY` dispatch を **~250ms 遅延** させ、その間に dblclick が来たら timer を cancel して dblclick action を直接実行に切り替える。両 click 間で再描画が走らないため行 / 文字位置が固定される。
+- **non-sidebar click(center / meta / overlay)は従来通り即時 dispatch** — 編集対象の選択を delay すると体感悪化のため。multi-select(`Ctrl+Click`)/ range-select(`Shift+Click`)も従来通り即時(dblclick とは別 path)。
+- **テスト追従**:`action-binder.test.ts` + `action-binder-keyboard.test.ts` の click → SELECT_ENTRY 系 2 件を `await setTimeout(300)` で 250ms 遅延後にアサート、PR-MMM 由来であることを comment で明示。
+- bundle.js 914.67 → 914.96 KB(+0.29 KB:timer 管理)、bundle.css 不変。unit 6552 / 6552 pass。
+
 ### Wave 10-6 review fix PR-LLL(2026-05-06)
 
 - **Graph 改善 5 連**:user 修正指示5「グラフについて(センターペインのグラフタブ)」の各項目を実装(hover preview のみ次 wave deferred):
