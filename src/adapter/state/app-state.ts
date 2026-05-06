@@ -883,6 +883,9 @@ function injectCaptureFrontmatter(
     duration_sec?: number | null;
     pages?: number | null;
     isbn?: string | null;
+    // PR-JJ additive
+    author?: string | null;
+    brand?: string | null;
   },
 ): string {
   // Sender が既に frontmatter を build している場合は手出ししない。
@@ -895,7 +898,9 @@ function injectCaptureFrontmatter(
     !!fields.kind || !!fields.thumbnail_url || !!fields.provider
     || typeof fields.duration_sec === 'number'
     || typeof fields.pages === 'number'
-    || !!fields.isbn;
+    || !!fields.isbn
+    // PR-JJ additive trigger
+    || !!fields.author || !!fields.brand;
   if (!hasV11) return body;
   const yamlString = (v: string): string => {
     // YAML safe scalar:URL chars(query ? & =、fragment #、segment :)を
@@ -909,6 +914,9 @@ function injectCaptureFrontmatter(
   if (fields.source_url) lines.push(`url: ${yamlString(fields.source_url)}`);
   if (fields.thumbnail_url) lines.push(`thumbnail: ${yamlString(fields.thumbnail_url)}`);
   if (fields.provider) lines.push(`provider: ${yamlString(fields.provider)}`);
+  // PR-JJ additive: author for book/novel, brand for goods.
+  if (fields.author) lines.push(`author: ${yamlString(fields.author)}`);
+  if (fields.brand) lines.push(`brand: ${yamlString(fields.brand)}`);
   if (typeof fields.duration_sec === 'number') lines.push(`duration_sec: ${fields.duration_sec}`);
   if (typeof fields.pages === 'number') lines.push(`pages: ${fields.pages}`);
   if (fields.isbn) lines.push(`isbn: ${yamlString(fields.isbn)}`);
@@ -1661,7 +1669,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         !!offer.kind || !!offer.thumbnail_url || !!offer.provider
         || typeof offer.duration_sec === 'number'
         || typeof offer.pages === 'number'
-        || !!offer.isbn;
+        || !!offer.isbn
+        // PR-JJ additive
+        || !!offer.author || !!offer.brand;
       const finalBody = hasV11Capture
         ? injectCaptureFrontmatter(offer.body, {
             kind: offer.kind ?? null,
@@ -1672,6 +1682,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             duration_sec: offer.duration_sec ?? null,
             pages: offer.pages ?? null,
             isbn: offer.isbn ?? null,
+            // PR-JJ additive
+            author: offer.author ?? null,
+            brand: offer.brand ?? null,
           })
         : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry

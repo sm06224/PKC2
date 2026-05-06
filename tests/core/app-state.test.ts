@@ -841,6 +841,58 @@ describe('AppState reducer', () => {
     expect((newEntry.body.match(/^---/gm) ?? []).length).toBe(2); // open + close
   });
 
+  it('PR-JJ: ACCEPT_OFFER with author injects `author:` frontmatter line for kind:book', () => {
+    const offer = {
+      offer_id: 'jj-1', title: '異世界転生記', body: '# 異世界転生記',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      source_url: 'https://amazon.co.jp/dp/B0EXAMPLE',
+      kind: 'book', provider: 'Amazon',
+      author: '山田太郎',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'jj-1' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toContain('kind: book');
+    expect(newEntry.body).toContain('provider: Amazon');
+    // Japanese names get JSON-quoted by the YAML mini-emitter (they don't
+    // match the safe-scalar regex). Both forms are valid YAML.
+    expect(newEntry.body).toMatch(/author: "?山田太郎"?/);
+    expect(newEntry.body).not.toContain('brand:');
+  });
+
+  it('PR-JJ: ACCEPT_OFFER with brand injects `brand:` frontmatter line for non-book Amazon', () => {
+    const offer = {
+      offer_id: 'jj-2', title: 'Logicool Mouse', body: '# Logicool Mouse',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      provider: 'Amazon',
+      brand: 'Logicool',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'jj-2' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toContain('provider: Amazon');
+    expect(newEntry.body).toContain('brand: Logicool');
+    expect(newEntry.body).not.toContain('author:');
+  });
+
+  it('PR-JJ: ACCEPT_OFFER triggers v1.1 frontmatter path on author alone (no kind/provider)', () => {
+    // author only is enough — drives the v1.1 frontmatter trigger so legacy
+    // blockquote duplication is skipped.
+    const offer = {
+      offer_id: 'jj-3', title: '自費出版', body: 'plain',
+      archetype: 'text', source_container_id: null,
+      reply_to_id: null, received_at: '2026-05-06T00:00:00Z',
+      author: '個人作家',
+    };
+    const { state: withOffer } = reduce(readyState(), { type: 'SYS_RECORD_OFFERED', offer });
+    const { state } = reduce(withOffer, { type: 'ACCEPT_OFFER', offer_id: 'jj-3' });
+    const newEntry = state.container!.entries[3]!;
+    expect(newEntry.body).toMatch(/^---\n/);
+    expect(newEntry.body).toMatch(/author: "?個人作家"?/);
+  });
+
   it('PR-U v1.1: ACCEPT_OFFER with only v0 fields does NOT inject frontmatter', () => {
     // Backward-compat:旧 sender(v0)が source_url + captured_at だけ送る
     // 場合、frontmatter 追加せず blockquote のみ(従来挙動)。

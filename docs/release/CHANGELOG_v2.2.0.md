@@ -184,6 +184,13 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-JJ(2026-05-06)
+
+- **Amazon 商品名 + メーカー / 著者 抽出**:user 修正指示2「Amazon 商品名+メーカー/著者抽出」への対応。bookmarklet の Amazon ブランチを拡張、`#productTitle` から clean な商品名を取得し、`#bylineInfo` から書籍は **著者**、物販は **ブランド** を拾って payload に乗せる。書籍判定は URL の `/dp/`(B0/4/0/1/9-prefix ASIN)+ bylineInfo の「(著)」「(Author)」テキスト、それ以外は kind を null にして brand を採用。
+- **PKC-Message v1.1 spec additive**:`record:offer` payload に `author?: string` / `brand?: string` を追加。`record-offer-handler.ts` の validator + `PendingOffer` type + offer 構築 / `injectCaptureFrontmatter` の field 列 / v1.1 trigger 条件 / `ACCEPT_OFFER` の pass-through を全て更新。author / brand 単独でも v1.1 frontmatter path が起動する(v0 blockquote duplication を回避)。frontmatter は YAML safe-scalar 判定で日本語は JSON-quote、ASCII brand は unquoted。
+- **テスト**:`tests/adapter/transport/record-offer-author-brand-pr-jj.test.ts`(5 件、payload 受理 / 型 mismatch reject / 後方互換 backward-compat)+ `tests/core/app-state.test.ts` ACCEPT_OFFER 拡張(3 件、author 注入 / brand 注入 / author 単独 v1.1 trigger)。
+- bundle.js 897.05 → 898.25 KB(+1.20 KB:bookmarklet Amazon scraper + payload schema 追記)、bundle.css 不変。unit 6484 → 6492(+8)pass。
+
 ### Wave 10-6 review fix PR-II(2026-05-06)
 
 - **ノベル系 SVG サムネ生成(タイトル+作者名+プロバイダ)**:user 修正指示2「ノベル系 SVG サムネ(タイトル+作者名)」への対応。カクヨム / 小説家になろう のような「**本物の表紙画像が無い**」 novel-kind entry は、PR-X の URL 直渡し / PR-HH の materialize でも使える画像が無く、card grid で archetype icon の寂しい box になっていた。本 PR は frontmatter `kind: novel` (および `kind: book`)を検出した場合、entry.title + frontmatter.author + frontmatter.provider から **SVG カバーを合成して data:image/svg+xml URL** で `<img src>` に渡す。

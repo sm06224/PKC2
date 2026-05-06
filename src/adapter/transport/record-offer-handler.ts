@@ -105,6 +105,14 @@ export interface RecordOfferPayload {
   pages?: number;
   /** book の ISBN(13 桁推奨)。 */
   isbn?: string;
+  // ── PR-JJ Amazon scraper additive (2026-05-06) ─────────────
+  // 書籍 / 漫画は author、それ以外の物販は brand を bookmarklet が
+  // DOM から拾って frontmatter に注入する。両方とも optional /
+  // unknown 互換、旧 sender / 旧 receiver は無視するだけ。
+  /** 著者 / 作者(`kind: book` / `kind: novel` で意味を持つ)。 */
+  author?: string;
+  /** メーカー / ブランド(`kind: book` 以外の Amazon 商品で意味を持つ)。 */
+  brand?: string;
 }
 
 /**
@@ -156,6 +164,11 @@ export interface PendingOffer {
   duration_sec?: number | null;
   pages?: number | null;
   isbn?: string | null;
+  // ── PR-JJ additive (2026-05-06) ──
+  /** 著者 / 作者(book / novel で意味を持つ)。 */
+  author?: string | null;
+  /** メーカー / ブランド(物販系 Amazon で意味を持つ)。 */
+  brand?: string | null;
 }
 
 // ── Validation ────────────────────────
@@ -180,6 +193,9 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   if (p.duration_sec !== undefined && typeof p.duration_sec !== 'number') return null;
   if (p.pages !== undefined && typeof p.pages !== 'number') return null;
   if (p.isbn !== undefined && typeof p.isbn !== 'string') return null;
+  // PR-JJ additive
+  if (p.author !== undefined && typeof p.author !== 'string') return null;
+  if (p.brand !== undefined && typeof p.brand !== 'string') return null;
   return {
     title: p.title,
     body: p.body,
@@ -195,6 +211,9 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
     duration_sec: typeof p.duration_sec === 'number' ? p.duration_sec : undefined,
     pages: typeof p.pages === 'number' ? p.pages : undefined,
     isbn: typeof p.isbn === 'string' ? p.isbn : undefined,
+    // PR-JJ additive
+    author: typeof p.author === 'string' ? p.author : undefined,
+    brand: typeof p.brand === 'string' ? p.brand : undefined,
   };
 }
 
@@ -234,6 +253,9 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     duration_sec: payload.duration_sec ?? null,
     pages: payload.pages ?? null,
     isbn: payload.isbn ?? null,
+    // PR-JJ additive
+    author: payload.author ?? null,
+    brand: payload.brand ?? null,
   };
 
   // Stash the sender's window so a later `record:reject` (on dismiss)

@@ -1681,14 +1681,32 @@ function renderShellMenu(
     + 'firstP=document.querySelector("article p,main p"),'
     + 'excerpt=sel||ogDesc||(firstP?firstP.textContent.slice(0,500):""),'
     + 'now=new Date().toISOString(),'
-    + 'kind=null,provider=null,thumb=ogImg||null;'
+    + 'kind=null,provider=null,thumb=ogImg||null,'
+    // PR-JJ:author / brand は Amazon scraper で詰めるための holder。
+    // 他 site scraper も将来同じ holder を使える(syosetu / kakuyomu の
+    // author 抽出が PR-JJ scope 外でも、holder だけ既存)。
+    + 'pkAuthor=null,pkBrand=null;'
     // 5 公式 site detection(URL host pattern → kind/provider)
     + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
     + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
     + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
     + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
     + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
-    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){kind="book";provider="Amazon";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){'
+    // PR-JJ Amazon scraper(2026-05-06):#productTitle で clean な
+    // 商品名、#bylineInfo の <a> から author / brand を拾う。
+    // book / kindle 系は書名 + 著者、その他は商品名 + ブランド。
+    + 'kind="book";provider="Amazon";'
+    + 'var pTitle=document.getElementById("productTitle"),pTitleTxt=pTitle?pTitle.textContent.trim():"";'
+    + 'if(pTitleTxt)t=pTitleTxt;'
+    + 'var byline=document.getElementById("bylineInfo"),bylineLink=byline?byline.querySelector("a"):null,'
+    + 'bylineTxt=bylineLink?bylineLink.textContent.trim():(byline?byline.textContent.replace(/\\s+/g," ").trim():"");'
+    // book detection — URL に dp/ASIN(B〜10桁 の Kindle/書籍指標)があるか、
+    // bylineInfo に「(著)」「(Author)」が含まれるかで判定。
+    + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
+    + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
+    + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    + '}'
     // generic fallback by og:type
     + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
     + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
@@ -1698,6 +1716,8 @@ function renderShellMenu(
     + 'var body="# "+t+(excerpt?"\\n\\n"+excerpt:""),'
     + 'pl={title:t.slice(0,200),body:body,source_url:u,captured_at:now};'
     + 'if(kind)pl.kind=kind;if(thumb)pl.thumbnail_url=thumb;if(provider)pl.provider=provider;'
+    // PR-JJ additive
+    + 'if(pkAuthor)pl.author=pkAuthor;if(pkBrand)pl.brand=pkBrand;'
     + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
     + 'source_id:"extension:pkc2-bookmarklet@1.1",target_id:null,payload:pl,timestamp:now},'
     + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
