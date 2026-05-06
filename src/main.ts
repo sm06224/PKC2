@@ -72,6 +72,8 @@ import {
   getReplyWindowForOffer,
   clearReplyWindowForOffer,
 } from './adapter/transport/record-offer-handler';
+import { findThumbnailHttpUrl } from './features/auto-fill/thumbnail-frontmatter';
+import { fetchImageAsBase64 } from './adapter/platform/fetch-image-asset';
 import { canHandleMessage } from './adapter/transport/capability';
 import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
@@ -563,6 +565,34 @@ async function boot(): Promise<void> {
       // a reserved type, not wired in v1), but we still need to drop
       // the registry entry so the Map does not grow unbounded.
       clearReplyWindowForOffer(event.offer_id);
+      // PR-HH (2026-05-06): when the just-accepted entry's body
+      // carries a http(s) thumbnail URL in its YAML frontmatter,
+      // materialize it into a local container asset so card grids
+      // no longer depend on the original host's runtime
+      // availability + CORS posture. Best-effort: any failure
+      // (network / CORS taint / canvas error) leaves the URL in
+      // place so the existing runtime fallback path still works.
+      void (async (): Promise<void> => {
+        try {
+          const st = dispatcher.getState();
+          const entry = st.container?.entries.find((e) => e.lid === event.lid);
+          if (!entry || entry.archetype !== 'text') return;
+          const url = findThumbnailHttpUrl(entry.body ?? '');
+          if (!url) return;
+          const fetched = await fetchImageAsBase64(url);
+          if (!fetched) return;
+          const assetKey = `thumb-${event.lid}-${Date.now().toString(36)}`;
+          dispatcher.dispatch({
+            type: 'MATERIALIZE_THUMBNAIL',
+            lid: event.lid,
+            assetKey,
+            assetData: fetched.b64,
+            mime: fetched.mime,
+          });
+        } catch {
+          /* best-effort — runtime URL fallback still renders */
+        }
+      })();
     }
     if (event.type === 'FLAGS_CHANGED') {
       // Flags Protocol v1 (2026-05-03): refresh the runtime flag

@@ -689,6 +689,31 @@ export type UserAction =
       }>;
     }
   /**
+   * MATERIALIZE_THUMBNAIL — convert a runtime-resolved http(s)
+   * thumbnail URL into a local container asset (PR-HH, 2026-05-06).
+   *
+   * Contract:
+   * - Allowed in `ready` and `editing` phases (no phase change).
+   * - Blocked when readonly or container is absent.
+   * - When the entry's body has a `thumbnail: <http URL>` line in
+   *   its leading YAML frontmatter, replaces the URL with
+   *   `asset:<assetKey>` and writes the asset bytes into
+   *   `container.assets`.
+   * - Idempotent on repeat: if the URL has already been replaced
+   *   (or no http URL is present), the body is unchanged. The
+   *   asset write is still applied so concurrent fetchers converge
+   *   on the same key.
+   * - Does NOT change selection / edit state / phase / events.
+   *   Best-effort post-OFFER_ACCEPTED side effect.
+   */
+  | {
+      type: 'MATERIALIZE_THUMBNAIL';
+      lid: string;
+      assetKey: string;
+      assetData: string;
+      mime: string;
+    }
+  /**
    * SET_SANDBOX_POLICY — update container-level default sandbox policy.
    *
    * Contract:

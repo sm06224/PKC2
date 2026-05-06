@@ -43,6 +43,7 @@ import {
   type SaveConflictCheck,
 } from '../../core/operations/dual-edit-safety';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
+import { rewriteThumbnailToAssetKey } from '../../features/auto-fill/thumbnail-frontmatter';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
 import { applyConflictResolutions } from '../../features/import/conflict-detect';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
@@ -3456,6 +3457,37 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container };
       return { state: next, events };
     }
+    case 'MATERIALIZE_THUMBNAIL': {
+      // PR-HH (2026-05-06): post-OFFER_ACCEPTED side effect that
+      // converts a runtime-resolved http(s) thumbnail URL into a
+      // local container asset. Idempotent — when the body has
+      // already been rewritten or the entry is gone, we still
+      // accept the asset write so concurrent fetchers converge.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const newBody = rewriteThumbnailToAssetKey(entry.body ?? '', action.assetKey);
+      const ts = now();
+      const updatedEntries = state.container.entries.map((e) =>
+        e.lid === action.lid ? { ...e, body: newBody, updated_at: ts } : e,
+      );
+      const updatedAssets = {
+        ...state.container.assets,
+        [action.assetKey]: action.assetData,
+      };
+      const updatedMeta = { ...state.container.meta, updated_at: ts };
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          entries: updatedEntries,
+          assets: updatedAssets,
+          meta: updatedMeta,
+        },
+      };
+      return { state: next, events: [] };
+    }
     case 'TOGGLE_FOLDER_COLLAPSE': {
       const lids = state.collapsedFolders.includes(action.lid)
         ? state.collapsedFolders.filter((l) => l !== action.lid)
@@ -3805,6 +3837,12 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'PASTE_ATTACHMENT': {
       // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
+      return reduceReady(state, action);
+    }
+    case 'MATERIALIZE_THUMBNAIL': {
+      // PR-HH: same idempotent body+asset write semantics in
+      // editing phase. Delegates to ready handler which preserves
+      // phase/editingLid/selectedLid.
       return reduceReady(state, action);
     }
     case 'MOVE_ENTRY_UP':
