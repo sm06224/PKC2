@@ -5354,6 +5354,17 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     toolbar.appendChild(clear);
   }
 
+  // PR-I G17 (2026-05-06):Venn-style グルーピング toggle。ON のとき
+  // node ごとに folder ancestors + tags への所属を concentric ring で
+  // 描画する(色は group id ハッシュで deterministic に hue 決定)。
+  const vennMode = state.graphVennGroupingMode ?? false;
+  const vennToggle = createElement('button', 'pkc-btn-small');
+  vennToggle.setAttribute('data-pkc-action', 'toggle-graph-venn-grouping-mode');
+  vennToggle.textContent = vennMode ? '🎨 Venn ON' : '🎨 Venn';
+  vennToggle.title = 'folder / tag の所属を Venn 図風 ring で重畳描画(toggle)';
+  if (vennMode) vennToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(vennToggle);
+
   wrap.appendChild(toolbar);
 
   // SVG body
@@ -5391,12 +5402,36 @@ function renderCenterGraphView(state: AppState): HTMLElement {
 
   const timeAxis = mode === 'time-proximity' ? buildTimeAxisHint(allEntries) : undefined;
 
+  // PR-I G17 (2026-05-06):Venn-style グルーピング ON のとき、各 node の
+  // 所属 group ids(folder ancestor lids + tag names)を集めて payload に
+  // 載せる。Canvas が deterministic hue を hash で割り当て、translucent
+  // ring を concentric に描画する。
+  let vennMemberships: Map<string, string[]> | undefined;
+  if (vennMode && state.container) {
+    vennMemberships = new Map();
+    const entriesByLid = new Map<string, Entry>();
+    for (const e of state.container.entries) entriesByLid.set(e.lid, e);
+    for (const n of nodes) {
+      const groups: string[] = [];
+      // Folder ancestors via getAncestorFolderLids(structural relations).
+      const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, n.id);
+      for (const lid of ancestors) groups.push(`folder:${lid}`);
+      // Tags from entry.
+      const e = entriesByLid.get(n.id);
+      if (e?.tags && e.tags.length > 0) {
+        for (const t of e.tags) groups.push(`tag:${t}`);
+      }
+      if (groups.length > 0) vennMemberships.set(n.id, groups);
+    }
+  }
+
   const canvas = document.createElement('canvas');
   canvas.classList.add('pkc-graph-canvas');
   canvas.setAttribute('data-pkc-region', 'graph-canvas');
   canvas.style.width = '100%';
   canvas.style.height = '100%';
   if (regionMode) canvas.setAttribute('data-pkc-graph-region-select-mode', 'true');
+  if (vennMode) canvas.setAttribute('data-pkc-graph-venn-mode', 'true');
 
   wrap.appendChild(canvas);
 
@@ -5417,6 +5452,7 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     regionMode,
     collideRadius: params.collideRadius,
     timeAxis: timeAxis ?? undefined,
+    vennMemberships: vennMemberships ?? undefined,
   };
 
   // bindGraphCanvas needs the canvas mounted to compute its display

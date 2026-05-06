@@ -471,6 +471,7 @@ export type UserAction =
   | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
   | { type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' }
   | { type: 'SET_GRAPH_REGION_SELECTED_LIDS'; lids: readonly string[] }
+  | { type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' }
   | { type: 'SET_INVENTORY_FILTER'; key: string; value: string }
   | { type: 'SET_INVENTORY_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_INVENTORY_GROUP_BY'; groupBy: string | null }

@@ -58,6 +58,13 @@ export interface GraphCanvasPayload {
    * date labels across the bottom in the same coord space as nodes.
    */
   timeAxis?: { minT: number; maxT: number };
+  /**
+   * PR-I G17 (2026-05-06):Venn-style グルーピング memberships。
+   * ON のとき、各 node lid → 所属 group ids(folder ancestor lids + tag
+   * names)の配列。draw 時に concentric translucent ring を node 周りに
+   * 重ねて Venn-like overlap を視覚化。
+   */
+  vennMemberships?: ReadonlyMap<string, readonly string[]>;
 }
 
 interface CanvasViewState {
@@ -242,6 +249,18 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * PR-I G17:group id → deterministic hue [0, 360)。同じ id は常に同じ
+ * 色になり、複数 group の重なりを安定して視覚化できる。
+ */
+function vennHueForGroupId(id: string): number {
+  let h = 5381;
+  for (let i = 0; i < id.length; i++) {
+    h = ((h * 33) ^ id.charCodeAt(i)) | 0;
+  }
+  return ((h >>> 0) % 360);
+}
+
+/**
  * Main draw function. Idempotent — clears the canvas and redraws
  * everything from `payload` + `viewState`. Call after any state change.
  *
@@ -308,6 +327,32 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+  }
+
+  // PR-I G17 (2026-05-06):Venn-style memberships。各 node の所属 group
+  // ごとに deterministic な hue で translucent ring を concentric に
+  // 描画。複数 group に所属する node は ring が重なり Venn 相当の重畳
+  // を視覚化(node 自体の色 + group 1 の ring + group 2 の ring …)。
+  if (payload.vennMemberships && payload.vennMemberships.size > 0) {
+    const baseR = payload.collideRadius * 0.6;
+    for (const node of payload.nodes) {
+      const memberships = payload.vennMemberships.get(node.id);
+      if (!memberships || memberships.length === 0) continue;
+      const p = payload.positions.get(node.id);
+      if (!p) continue;
+      memberships.forEach((groupId, idx) => {
+        // 各 ring は node 円の外周から段階的に外へ広がる(idx 0 = +6,
+        // idx 1 = +11, ...)。半径は user-space pixel、line width は
+        // view.scale で割って render pixel 一定化。
+        const ringR = baseR + 6 + idx * 5;
+        const hue = vennHueForGroupId(groupId);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.55)`;
+        ctx.lineWidth = 4 / view.scale;
+        ctx.stroke();
+      });
+    }
   }
 
   // Nodes.

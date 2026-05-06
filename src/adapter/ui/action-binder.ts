@@ -3056,6 +3056,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' });
         break;
       }
+      case 'toggle-graph-venn-grouping-mode': {
+        // PR-I G17 (2026-05-06):Venn-style グルーピング ring の ON/OFF。
+        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });
+        break;
+      }
       case 'clear-graph-region-selection': {
         // 選択 lids を空に。mode 自体は維持(user が連続 select したい
         // ケースが多そう)。

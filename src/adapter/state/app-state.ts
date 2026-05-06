@@ -350,6 +350,12 @@ export interface AppState {
    */
   graphRegionSelectedLids?: readonly string[];
   /**
+   * PR-I G17 (2026-05-06):graph view の Venn-style グルーピング toggle。
+   * ON のとき、各 node の folder ancestors + tags への所属を Canvas
+   * に色付き concentric ring として overlay 描画する。Runtime-only。
+   */
+  graphVennGroupingMode?: boolean;
+  /**
    * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
    * Runtime-only, scoped to the current filer scope folder.
    */
@@ -2945,6 +2951,15 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_GRAPH_REGION_SELECTED_LIDS': {
       const next: AppState = { ...state, graphRegionSelectedLids: action.lids };
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_GRAPH_VENN_GROUPING_MODE': {
+      // PR-I G17 (2026-05-06):graph view の Venn-style グルーピング
+      // toggle。ON / OFF を flip するだけのシンプル reducer。
+      const next: AppState = {
+        ...state,
+        graphVennGroupingMode: !(state.graphVennGroupingMode ?? false),
+      };
       return { state: next, events: [] };
     }
     case 'SET_FILER_SEARCH_QUERY': {
