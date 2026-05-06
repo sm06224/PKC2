@@ -65,7 +65,7 @@ import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { buildBatchImportPlan } from './features/batch-import/import-planner';
 import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/batch-import/import-planner';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
-import { createHandlerRegistry } from './adapter/transport/message-handler';
+import { createHandlerRegistry, type MessageHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
 import {
   recordOfferHandler,
@@ -651,7 +651,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
-        installBookmarkletPostMessageHandshake(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -676,7 +676,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
-        installBookmarkletPostMessageHandshake(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -695,7 +695,7 @@ async function boot(): Promise<void> {
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
-        installBookmarkletPostMessageHandshake(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -816,68 +816,122 @@ function maybeIngestSnapshotFromUrl(dispatcher: Dispatcher): void {
 }
 
 /**
- * PR-Q (2026-05-06):bookmarklet payload を URL query 経由ではなく
- * **postMessage 経由** で受け取る path を新設。User 提言:
- * > GET クエリを晒すより、ブラウザ内で PKC-Message 経由の方が良くない?
+ * PR-S (2026-05-06):bookmarklet を **PKC-Message v1 spec 準拠** に
+ * 全面書換え。User 指摘:
+ * > これ、ちゃんと PKC-Message の規約読んだ?
  *
- * 旧 path(URL `?pkc-snapshot=<base64>`):
- *   - payload がアドレスバー / 履歴 / Referrer Header / server access
- *     log にそのまま乗る → 漏洩リスク
- *   - URL 長制限(~2000 chars)で長文 snapshot は失敗
+ * 旧 PR-Q の独自 type `pkc-bookmarklet-snapshot` は **spec 違反**:
+ *   - envelope 必須 field(`protocol` / `version` / `source_id` /
+ *     `timestamp`)を持たなかった
+ *   - 勝手な type 名で `KNOWN_TYPES` に未登録
+ *   - **user 同意経路をバイパス**(spec §6.2 違反)で CREATE_ENTRY 直
+ *     dispatch していた
+ *   - origin allowlist / capability gate / envelope validation すべて skip
  *
- * 新 path:
- *   - bookmarklet が `?pkc-bookmarklet=ready` で PKC2 を新タブで起動
- *     (payload なし、純粋な「これから送るよ」signal)
- *   - PKC2 boot 時に opener へ `postMessage({type:'pkc-bookmarklet-ready'})`
- *     を送信
- *   - bookmarklet は ready を受けて payload を `postMessage` で送信
- *   - PKC2 は受信 → validate → snapshotToEntryDraft → CREATE_ENTRY
+ * 新設計(spec §4.1 envelope + §7.2 record:offer):
+ *   - bookmarklet が `record:offer` envelope(spec 完全準拠)を送る
+ *   - origin policy は `?pkc-bookmarklet=ready` URL flag が付いた boot
+ *     時のみ **one-shot で any origin** を許容(URL flag は user-initiated
+ *     なので user が明示同意)、それ以外は通常の `mountMessageBridge`
+ *     allowlist が効く
+ *   - 受信した envelope は `recordOfferHandler` を直 invoke、PendingOffer
+ *     banner → user accept で初めて entry mint(**user 同意経路温存**、
+ *     spec §6.2 / §7.2.5 通り)
+ *   - record:offer 受信後 / 30 秒タイムアウトで listener 自動 removal
  *
- * Security:
- *   - payload は URL に乗らない(history / log / Referrer すべて clean)
- *   - 同一ブラウザ内 postMessage のみ → ネットワーク経由の payload
- *     流出ゼロ
- *   - 受信 message は `isSnapshot` で structural validate、不正 message
- *     は silent drop
- *   - origin チェックは緩い(bookmarklet origin = scraping page で
- *     様々なため `'*'` を accept)が、payload validation で防御
+ * v1 spec の中で完結:envelope / type / handler / user-consent gate
+ * すべて既存の `record:offer` path に乗る。spec 拡張不要。
+ *
+ * 残るリスク評価:
+ *   - bookmarklet 経由は cross-origin postMessage を一時受け入れる →
+ *     URL flag が偽 click で生やされた場合に payload 注入の窓が 30 秒
+ *     開く。ただし最終的に user の accept がないと entry は作られない
+ *     (spec §6.2 user-consent gate)ので、最悪でも PendingOffer banner
+ *     を 1 件 user に見せるだけで終わる(DoS 程度の被害、storage write
+ *     なし)。
  */
-function installBookmarkletPostMessageHandshake(dispatcher: Dispatcher): void {
+function installBookmarkletPkcMessageBridge(
+  dispatcher: Dispatcher,
+  registry: MessageHandlerRegistry,
+): void {
   if (typeof window === 'undefined' || !window.location) return;
   const params = new URLSearchParams(window.location.search);
-  const isBookmarkletInvocation = params.get('pkc-bookmarklet') === 'ready';
+  if (params.get('pkc-bookmarklet') !== 'ready') return;
 
-  // Listen for incoming snapshot payloads regardless of how PKC2 was
-  // opened — even a manual session can receive snapshots from a
-  // bookmarklet running in another tab opened earlier.
-  window.addEventListener('message', (ev) => {
-    const data = ev.data as { type?: unknown; payload?: unknown } | null | undefined;
-    if (!data || data.type !== 'pkc-bookmarklet-snapshot') return;
-    const decoded = data.payload;
-    if (!isSnapshot(decoded)) return;
-    const draft = snapshotToEntryDraft(decoded);
-    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: draft.title });
-    const lid = dispatcher.getState().editingLid;
-    if (lid) {
-      dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title: draft.title, body: draft.body });
-    }
-  });
+  // Strip the URL flag immediately so reload doesn't re-trigger the
+  // cross-origin window.
+  try {
+    params.delete('pkc-bookmarklet');
+    const newSearch = params.toString();
+    window.history.replaceState(
+      {},
+      document.title,
+      `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`,
+    );
+  } catch {
+    /* ignore */
+  }
 
-  // Notify the opener that we're ready to receive a payload, then
-  // strip the URL flag so refresh doesn't re-trigger the handshake.
-  if (isBookmarkletInvocation && window.opener) {
+  let consumed = false;
+  const onMessage = (ev: MessageEvent): void => {
+    if (consumed) return;
+    if (!ev.source) return;
+    const data = ev.data as Record<string, unknown> | null | undefined;
+    // Validate as PKC-Message envelope (spec §4.1 / §4.2).
+    if (!data || typeof data !== 'object') return;
+    if (data.protocol !== 'pkc-message') return;
+    if (data.version !== 1) return;
+    if (data.type !== 'record:offer') return;
+    if (typeof data.timestamp !== 'string') return;
+    consumed = true;
+
+    // Route through the spec-compliant handler. PendingOffer is created
+    // and the user must explicitly Accept on the banner before any
+    // entry is minted (spec §6.2 / §7.2.5 user-consent gate).
+    //
+    // Sender stub:`record:offer` handler does not call ctx.sender (it
+    // stashes sourceWindow for the later record:reject reply path).
+    // The dismiss-side reply uses bridgeHandle.sender via the
+    // `OFFER_DISMISSED` event handler in main.ts, not this path. So a
+    // no-op sender stub is safe here.
+    const noopSender = {
+      send: (
+        _target: Window,
+        _type: string,
+        _payload: unknown,
+        _targetId?: string | null,
+        _targetOrigin?: string,
+      ): void => {
+        /* unused for record:offer inbound path */
+      },
+    } as Parameters<typeof registry.route>[0]['sender'];
+    const currentState = dispatcher.getState();
+    registry.route({
+      envelope: data as unknown as Parameters<typeof registry.route>[0]['envelope'],
+      sourceWindow: ev.source as Window,
+      origin: ev.origin,
+      container: currentState.container,
+      embedded: currentState.embedded,
+      dispatcher,
+      sender: noopSender,
+    });
+    window.removeEventListener('message', onMessage);
+  };
+  window.addEventListener('message', onMessage);
+  // Auto-cleanup after 30s — bookmarklet's expected handshake is
+  // sub-second; anything longer is a stuck / aborted flow.
+  setTimeout(() => {
+    if (!consumed) window.removeEventListener('message', onMessage);
+  }, 30_000);
+
+  // Notify the opener (the bookmarklet's host page) that we're ready
+  // to receive a record:offer envelope. The opener checks `e.data.type
+  // === 'pkc-bookmarklet-ready'` and posts the envelope back.
+  if (window.opener) {
     try {
       window.opener.postMessage({ type: 'pkc-bookmarklet-ready' }, '*');
     } catch {
-      /* opener inaccessible (cross-origin opaque) — ignore */
-    }
-    try {
-      params.delete('pkc-bookmarklet');
-      const newSearch = params.toString();
-      const url = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
-      window.history.replaceState({}, document.title, url);
-    } catch {
-      /* ignore */
+      /* opaque cross-origin opener — ignore */
     }
   }
 }

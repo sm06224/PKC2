@@ -1554,24 +1554,41 @@ function renderShellMenu(
   const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
   bmDesc.textContent = `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。送信先は今 click 時の PKC2 instance(${bookmarkletTargetUrl})。`;
   bmSection.appendChild(bmDesc);
-  // PR-Q (2026-05-06):URL query 経由 → postMessage 経由に refactor。
-  // user 提言「GET クエリを晒すより、ブラウザ内で PKC-Message 経由の
-  // 方が良くない?」。bookmarklet flow:
-  //   1. PKC2 を `?pkc-bookmarklet=ready` で開く(payload なし、signal のみ)
-  //   2. PKC2 boot 時に opener に `postMessage({type:'pkc-bookmarklet-ready'})`
-  //   3. bookmarklet が ready を受けて payload を postMessage で送信
-  //   4. PKC2 が validate → CREATE_ENTRY
-  // payload は URL に乗らないので 履歴 / log / Referrer すべて clean。
+  // PR-S (2026-05-06):**PKC-Message v1 spec §4.1 envelope + §7.2
+  // record:offer に完全準拠** な bookmarklet。User 指摘「PKC-Message の
+  // 規約読んだ?」を受けて全面書換え。flow:
+  //   1. bookmarklet が PKC2 を `?pkc-bookmarklet=ready` で開く
+  //   2. PKC2 boot 時、URL flag 検知して one-shot listener install +
+  //      opener に `{type:'pkc-bookmarklet-ready'}` 送信
+  //   3. bookmarklet が ready を受けて **正式 envelope の record:offer**
+  //      を target に postMessage
+  //   4. PKC2 が envelope validate → recordOfferHandler 経由で
+  //      PendingOffer 化 → user accept で初めて entry mint
+  //
+  // user-consent gate(spec §6.2)が温存されるので、bookmarklet が
+  // 自動的に entry を注入することは **無い**(必ず PendingOffer banner
+  // で user が "保存" を click する)。
   const bmJs = (
     '(function(){'
     + 'var s=getSelection().toString().trim(),'
-    + 'd={captured_at:new Date().toISOString(),selection:{url:location.href,title:document.title,snippet:s}},'
+    + 'now=new Date().toISOString(),'
+    + 't=document.title||"Snapshot",'
+    + 'b="---\\nurl: "+location.href+"\\ncaptured_at: "+now+"\\n---\\n\\n# "+t+"\\n\\n"+s,'
+    + 'env={'
+    + 'protocol:"pkc-message",'
+    + 'version:1,'
+    + 'type:"record:offer",'
+    + 'source_id:"extension:pkc2-bookmarklet@1.0",'
+    + 'target_id:null,'
+    + 'payload:{title:t.slice(0,200),body:b,source_url:location.href,captured_at:now},'
+    + 'timestamp:now'
+    + '},'
     + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'_blank');`
     + 'if(!w){alert("PKC2: popup blocked");return;}'
     + 'function h(e){'
     + 'if(e.source!==w)return;'
     + 'if(e.data&&e.data.type==="pkc-bookmarklet-ready"){'
-    + 'w.postMessage({type:"pkc-bookmarklet-snapshot",payload:d},"*");'
+    + 'w.postMessage(env,"*");'
     + 'removeEventListener("message",h);'
     + '}}'
     + 'addEventListener("message",h);'
