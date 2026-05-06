@@ -1959,21 +1959,37 @@ function renderShortcutHelp(): HTMLElement {
   heading.textContent = 'Keyboard Shortcuts';
   card.appendChild(heading);
 
+  // PR-MM (2026-05-06): registry を action-binder と shortcut-help が
+  // 共有するための shared SOT は Flags 集中管理 wave で導入予定。
+  // 本 PR は help 文言を action-binder の actual key handling に合わせ
+  // て audit-update する scope。
   const shortcuts: { key: string; desc: string; group?: string }[] = [
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
     { key: 'Ctrl+E / ⌘+E', desc: 'Edit selected entry' },
-    { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
+    { key: 'Escape', desc: 'Cancel edit / Deselect / Close menus / overlay' },
     { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
-    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
-    { key: 'Shift+Click', desc: 'Range select' },
+    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select (sidebar)' },
+    { key: 'Shift+Click', desc: 'Range select (sidebar)' },
+    { key: '', desc: '', group: 'Navigation (sidebar / list)' },
+    { key: 'Arrow Up / Down', desc: 'Move selection in sidebar tree' },
+    { key: 'Arrow Left / Right', desc: 'Collapse / expand folder; jump to parent / first child' },
+    { key: 'Enter', desc: 'Open selected entry (in non-editing mode)' },
+    { key: '', desc: '', group: 'Calendar view' },
+    { key: 'Arrow Left / Right', desc: 'Step day' },
+    { key: 'Ctrl+Shift+Arrow Up / Down', desc: 'Step week (±7 days)' },
+    { key: '', desc: '', group: 'Kanban view' },
+    { key: 'Ctrl+Arrow Left / Right', desc: 'Move selected todo across columns' },
+    { key: 'Arrow Left / Right', desc: 'Cross-column step (pick first card in target column)' },
     { key: '', desc: '', group: 'Panes' },
     { key: 'Ctrl+\\ / ⌘+\\', desc: 'Toggle sidebar (left pane)' },
     { key: 'Ctrl+Shift+\\', desc: 'Toggle meta pane (right pane)' },
     { key: 'Ctrl+Alt+\\', desc: 'Focus mode — hide both panes (Windows / cross-platform)' },
     { key: 'Alt+Space', desc: 'Focus mode — hide both panes (Mac / Linux only; blocked by Windows OS menu)' },
-    { key: '', desc: '', group: 'Editing' },
-    { key: 'Tab (in textarea)', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
+    { key: '', desc: '', group: 'Editing (textarea)' },
+    { key: 'Tab', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
+    { key: 'Ctrl+Enter / ⌘+Enter', desc: 'Append entry (TEXTLOG append textarea)' },
+    { key: 'Space', desc: 'Toggle checkbox under caret (markdown task list)' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
     { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
     { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
@@ -1983,6 +1999,9 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+Shift+Alt+D', desc: 'Insert ISO 8601' },
     { key: '', desc: '', group: 'Slash Commands (edit mode)' },
     { key: '/', desc: 'Open input assist menu (line start)' },
+    { key: '', desc: '', group: 'Note' },
+    { key: '', desc:
+      'Future: a flags-controlled shortcut registry (`shortcuts.*` flag namespace) will let users rebind these keys without rebuild.' },
   ];
 
   const table = createElement('div', 'pkc-shortcut-table');

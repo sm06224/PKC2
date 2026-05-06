@@ -184,6 +184,12 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-MM(2026-05-06)
+
+- **ショートカットメニュー実態合わせ(Flags 集中管理見据え)**:user 修正指示2「ショートカットメニュー実態合わせ(Flags 集中管理見据え)」への対応。`renderShortcutHelp` の文言を action-binder の actual key handling と完全一致するよう audit-update。漏れていたのは:Arrow keys のサイドバー / カレンダー / カンバン navigation、`Ctrl+Arrow Left/Right`(kanban column move)、`Ctrl+Shift+Arrow Up/Down`(カレンダー週送り)、`Ctrl+Enter` (TEXTLOG append)、`Space`(checkbox toggle)、Esc 系の close target 列挙。新 group:Navigation / Calendar view / Kanban view / Note の 4 つを追加(計 8 group)。最後の Note は「将来的に flags-controlled shortcut registry でユーザー rebinding 可能化」と Flags 集中管理 wave への前置きを記載。
+- **テスト追従**:`renderer.test.ts` の `groups.length` assertion を 4 → 8 に更新、PR-MM の audit 由来であることを comment で明示。
+- bundle.js 898.25 → 899.21 KB(+0.96 KB:help 文言拡充 4 group + 7 entry)、bundle.css 不変。unit 6492 / 6492 pass。
+
 ### Wave 10-6 review fix PR-KK(2026-05-06)
 
 - **contact-sheet サムネ引き伸ばしなし(長辺合わせ contain)**:user 修正指示2「サムネ元画像長辺合わせで引き伸ばしなし」への対応。`.pkc-filer-grid-contact-sheet .pkc-filer-card-thumb img` を `object-fit: contain` 指定に上書き。card grid の `cover`(crop して埋める cover-art 用)とは別に、contact-sheet は写真 grid 想定なので元画像の長辺を 1:1 セルにフィットさせ letterbox を許容する仕様に。letterbox 部の背景は thumb 既存の `bg-tag` neutral grey が見えてくる。
