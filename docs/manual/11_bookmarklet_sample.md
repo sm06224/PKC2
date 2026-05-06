@@ -193,14 +193,189 @@ URL flag を仕込まれて偽の bookmarklet click を user が踏んでも、�
 
 ## 10. 関連 spec / 実装 ref
 
-- **spec**: `docs/spec/pkc-message-api-v1.md` — envelope §4 / capability §5 / record:offer §7.2 / 漏洩防止 §6.3
-- **profile**: `docs/spec/record-offer-capture-profile.md` — frontmatter blockquote injection §10.4 / 9.x security
+- **spec**: `docs/spec/pkc-message-api-v1.md` — envelope §4 / capability §5 / record:offer §7.2 / 漏洩防止 §6.3 / **§9.2.1 v1.1 capture profile additive**
+- **profile**: `docs/spec/record-offer-capture-profile.md` — frontmatter blockquote injection §10.4 / 9.x security / **§8.6 v1.1 additive fields**
 - **PKC2 実装**:
   - `src/adapter/transport/message-bridge.ts` — bridge mount + origin allowlist
-  - `src/adapter/transport/record-offer-handler.ts` — `validateOfferPayload` + PendingOffer flow
+  - `src/adapter/transport/record-offer-handler.ts` — `validateOfferPayload`(v1.1 fields 含む)+ PendingOffer flow
   - `src/main.ts` の `installBookmarkletPkcMessageBridge` — bookmarklet 専用の one-shot listener
-- **PKC2 PR ref**: `wave 10-6 review fix S`(PR #295) — ad-hoc 独自 type → spec 準拠 record:offer への書換え
+  - `src/adapter/state/app-state.ts` の `injectCaptureFrontmatter` — v1.1 frontmatter 自動生成
+  - `src/features/filer/auto-display-profile.ts` — `kind:` / mime → Bases subset 自動判定
+- **PKC2 PR ref**: PR #295 (S) ad-hoc 独自 type → spec 準拠、PR #297 (U) v1.1 capture profile、PR #298 (V) page-open UX + 5 公式 site scraper、PR #299 (W) custom template editor、PR #300 (X) mime + thumbnail 描画統合
 
 ---
+
+## 11. 5 公式サイトでの実例
+
+PR-V(PR #298)で **5 公式 site の URL host pattern** が bookmarklet に inline されており、各サイトで click すると自動的に kind / provider / thumbnail が決まります。
+
+### 11.1 YouTube
+
+```
+URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+→ kind: video
+→ provider: YouTube
+→ thumbnail_url: https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg
+                 (URL から videoID を regex 抽出して maxres を組み立て)
+```
+
+`<meta property="og:image">` も拾えるが、YouTube の og:image は中解像度。bookmarklet は **直接 maxresdefault.jpg を使う** ことで card grid で 1280×720 の高画質 thumbnail を表示。
+
+### 11.2 niconico
+
+```
+URL: https://www.nicovideo.jp/watch/sm9
+→ kind: video
+→ provider: niconico
+→ thumbnail_url: og:image(nicovideo の standard thumbnail)
+```
+
+niconico は og:image が標準的なので bookmarklet は素直に拾うだけ。
+
+### 11.3 小説家になろう
+
+```
+URL: https://ncode.syosetu.com/n2267be/
+→ kind: novel
+→ provider: 小説家になろう
+→ thumbnail_url: og:image(なろう作品 cover、無い作品もあり)
+```
+
+`(www|ncode|novel18|mypage).syosetu.com` の sub-domain も同 provider として扱う。R-18 サイト(novel18)も同等(user 自身の閲覧前提)。
+
+### 11.4 カクヨム
+
+```
+URL: https://kakuyomu.jp/works/16817330650681500611
+→ kind: novel
+→ provider: カクヨム
+→ thumbnail_url: og:image(KADOKAWA 系の標準 og)
+```
+
+### 11.5 Amazon
+
+```
+URL: https://www.amazon.co.jp/dp/B0xxxxxxxx
+→ kind: book
+→ provider: Amazon
+→ thumbnail_url: og:image(書影、商品ページの大画像)
+```
+
+`amazon.co.jp` / `.com` / `.co.uk` / `.de` / `.fr` / `.es` / `.it` の各 TLD に対応。Kindle 本も紙書籍も同等(`kind: book`)。書影が provider 側で長期 stable なので URL 保存で十分。
+
+### 11.6 公式 5 site の Bases 化フロー(全体図)
+
+```
+[YouTube ページ]
+      ↓ ブックマーク click
+[bookmarklet が page metadata 採集]
+  - kind: video
+  - thumbnail_url: ...maxresdefault.jpg
+  - provider: YouTube
+      ↓ window.open(PKC2?pkc-bookmarklet=ready)
+[PKC2 boot + handshake]
+  - opener.postMessage("ready")
+      ↓ bookmarklet → w.postMessage(record:offer envelope)
+[recordOfferHandler]
+  - validateOfferPayload(v1.1 含む)
+  - SYS_RECORD_OFFERED → PendingOffer banner
+      ↓ user "保存" click
+[ACCEPT_OFFER reducer]
+  - injectCaptureFrontmatter で entry body 先頭に YAML frontmatter 生成
+  - kind / url / thumbnail / provider / captured_at が刻まれる
+      ↓
+[entry が container に追加]
+      ↓ filer view を開く(同じ folder に YouTube entry が 7 件以上)
+[autoDetectFilerProfile]
+  - 7 割多数決 → kind:'video' が >= 70%
+  - folder の display_profile を 'video-base' として render
+      ↓
+[card grid 描画]
+  - pickImageAssetForEntry が frontmatter.thumbnail を読み
+  - <img src="https://i.ytimg.com/vi/.../maxresdefault.jpg"> で表示
+      ↓
+[user 視点]
+  「Bases 風 video カードグリッド、YouTube thumbnail が並ぶ」
+```
+
+## 12. 自前ローカルアセットの位置づけ
+
+bookmarklet 経路と **同じ Bases UX に集約** することが PR-X(PR #300)の目的。
+
+### 12.1 attachment 経由(drag-drop)
+
+PKC2 の attachment archetype は body に `{ name, mime, asset_key }` を JSON 化して持ち、`container.assets[asset_key]` に base64 を格納します。`autoDetectFilerProfile` が **mime を読み取って** kind を即決:
+
+| MIME | 自動 category | folder 中身 7 割 → subset |
+|---|---|---|
+| `image/png`, `image/jpeg`, `image/gif`, `image/webp`, ... | image | contact-sheet(album)|
+| `audio/mpeg`(MP3), `audio/wav`, `audio/ogg`, ... | audio | audio-base |
+| `video/mp4`, `video/webm`, `video/quicktime` | video | video-base |
+| `application/pdf` | book | book-base |
+| `application/epub+zip` | book | book-base(将来 reader 連携) |
+
+#### 操作:
+
+1. PC のフォルダから `.mp3` を 7 ファイル以上 drag → PKC2 の folder を target に drop
+2. PKC2 が attachment entry を 7 件作成(`mime: audio/mpeg`)
+3. folder の filer 表示を開く → autoDetect が 87.5% > 70% → **audio-base subset** に切替
+4. card grid で audio file 一覧(現状 thumbnail なし、各 entry を click → detail で再生)
+
+mp4 / pdf / epub も同様。**外部 URL 経路(YouTube)とローカル経路(MP4)が同じ folder に混在しても OK** — 両方とも `kind: video` / `mime: video/*` で video-base に集約されます。
+
+### 12.2 アルバム(image folder)
+
+複数の画像 attachment を 1 folder にまとめると、autoDetect が 100% image → contact-sheet subset(gap=0、caption overlay 反転、サムネ右下 / G12 PR-A)で表示。
+
+#### 操作:
+
+1. 自炊画像 / 旅行写真 を folder に drag
+2. filer auto detect → contact-sheet(album)
+3. ギャップ無しのモザイク表示で一覧
+
+### 12.3 ZIP まとめ(自炊本 / 写真集)
+
+ZIP を直接 attachment にすると `application/zip` で **other 扱い**(filer 単独表示には乗らない)。**folder 配下に展開してから集約する** のが PKC2 流儀:
+
+#### 推奨フロー:
+
+1. ZIP 内の画像を OS / 別アプリで一旦展開
+2. PKC2 で folder を作成
+3. その folder に展開された画像を drag(複数選択 drop)
+4. folder 中身が image 100% → contact-sheet で表示
+
+将来 wave で「ZIP を folder + 子 attachment に自動展開する import 経路」を検討余地あり(PKC2 の単一 HTML 哲学を破らないために慎重に)。
+
+### 12.4 epub の将来計画
+
+epub は `application/epub+zip` で **kind: 'book'** に classify 済(PR-X)。現状 reader UI は無いので detail view で attachment download する形ですが、将来 wave で:
+
+- **epub reader を埋め込み**(epub.js 等の vanilla TS port、PKC2 dep 0 を維持できるか要検討)
+- attachment archetype + epub mime の entry を click → reader UI が起動
+- 章移動 / 栞 / 検索 / annotation を PKC2 内で完結
+
+epub 取込の bookmarklet 連携(青空文庫 等から epub を直接 capture)も将来 wave。
+
+---
+
+## 13. PR-U〜X の連携で実現される統合像
+
+| 経路 | 入口 | 中間 | 結果 subset |
+|---|---|---|---|
+| YouTube ページ → 動画 capture | bookmarklet | record:offer + frontmatter | video-base + thumbnail |
+| ローカル MP4 → 動画ファイル取込 | drag-drop | attachment + mime: video/mp4 | video-base |
+| 小説家になろう → 連載 capture | bookmarklet | record:offer + frontmatter | novel-base + cover |
+| Amazon 書籍ページ → 書影 capture | bookmarklet | record:offer + frontmatter | book-base + 書影 |
+| ローカル PDF → 自炊書取込 | drag-drop | attachment + mime: pdf | book-base |
+| ローカル epub → 電子書籍取込 | drag-drop | attachment + mime: epub | book-base + (将来)reader |
+| 旅行写真 → アルバム化 | drag-drop | folder + 子 attachment(image)| contact-sheet |
+
+**全部が同じ filer Auto(PR-G、7 割多数決)に乗る** ので、user は「とりあえず folder にぶっこんで filer を開けば形が決まる」UX。
+
+外部 sender(別 PKC2 / Extension / OS launcher)も同じ `record:offer` envelope を v1.1 capture profile で送るだけで完全互換に動作。**PKC-Message v1.1 は外部からの取込口として完成**。
+
+---
+
+> **PR-Y 拡張(2026-05-06)**:本章は当初「bookmarklet 1 例の sample」として書きましたが、user feedback を受けて「**外部 web ページ + ローカルアセット + 将来 epub の統合像**」に拡張しました。PR-U / V / W / X / Y を経て、PKC2 の取込 surface は 「アセットの来歴に依らず Bases に集約」という統一像に至っています。
 
 > **本章の位置付け**:`record:offer` は v1 spec で「外部 sender が host に書き込める唯一の経路」(spec §6.2)です。本章 bookmarklet はそれを踏まえた **public sample** であり、Extension / OS launcher / 別 PKC instance などへの応用の出発点です。
