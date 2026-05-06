@@ -184,6 +184,18 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-9 hotfix PR-Δ2(2026-05-07、修正指示9)
+
+- **filer 列幅 drag-to-resize handle 追加**:user 報告「ファイラの列幅調整の要望はどこで対応している?調整できない」への抹本対応。元 PR-SSS は `table-layout: fixed` + `<th>` 比率指定のみで、resize handle は **deferred** だった。今回実装。
+- **修正**:
+  - 各 `<th>` の右端に 8px 幅の `<span class="pkc-filer-th-resize" data-pkc-action="filer-col-resize-start">` を追加(最終列除く)
+  - `position: absolute; right: 0; cursor: col-resize;` で `<th>` (sticky positioning context) に anchor、`hover` / `[data-pkc-resizing="true"]` で accent 強調
+  - action-binder.ts に専用 mousedown / mousemove / mouseup handler を追加。drag delta を `<th>.style.width` に直接反映、`mouseup` で `localStorage["pkc2.filer.column-widths"]` に永続化
+  - renderer は `readFilerColumnWidths()` で永続化幅を読み出し、render 時に `<th>.style.width` を上書き反映
+  - 列幅 clamp:40px〜1500px(誤操作防止)
+- **Playwright 視覚確認**:`tests/smoke/diagnostic-2026-05-07.spec.ts D-04` で実 OS event ベースの drag(mouseDown → move +80px → mouseUp)を発火、`<th>` width 472 → 552(+80px、drag 距離一致)+ localStorage 永続化を確認
+- bundle.js 921.42 → 923.36 KB(+1.94 KB)、bundle.css 145.26 → 145.61 KB(+0.35 KB)。unit 6563 / 6563 pass + Playwright smoke pass。
+
 ### Wave 10-7 hotfix PR-XX2(2026-05-07、修正指示2 残 正しい意図)
 
 - **別窓 (entry-window popup) の split editor に ⇄ toggle button を追加**:user 訂正指示「左ペインからダブルクリックで起動した別窓で、センターペインと同じブロック同期機能を活かしてほしい(機能がないので追加して欲しい)」への対応。元 PR-CC で popup の inline JS sync ロジックは実装済みだったが、**起動 UI である ⇄ button が popup の resize handle に存在しなかった**ため user は機能を有効化できない状態だった(私の前回 PR-XXX は Firefox 環境特有 bug の調査と読み違えて投機的 hypothesis doc を生成し、user 指摘で撤回)。

@@ -4989,13 +4989,37 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
       return sortDir === 'desc' ? -cmp : cmp;
     });
   }
-  for (const c of cols) {
+  // PR-Δ2 (2026-05-07、修正指示9):filer 列幅 drag-resize handle。
+  // localStorage `pkc2.filer.column-widths` から永続化された幅を読み出し、
+  // <th> の width style に上書き反映。最終 col には resize handle 不要。
+  const persistedWidths = readFilerColumnWidths();
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i]!;
     const th = createElement('th', `pkc-filer-th pkc-filer-th-${c.key}`);
     th.setAttribute('data-pkc-filer-column', c.key);
     th.setAttribute('data-pkc-action', 'set-filer-explorer-sort');
     th.setAttribute('data-pkc-sort-key', c.key);
+    // 永続化幅があれば反映、なければ CSS 既定の % 比率に任せる。
+    const w = persistedWidths[c.key];
+    if (typeof w === 'number' && w > 0) {
+      (th as HTMLElement).style.width = `${w}px`;
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'pkc-filer-th-label';
     const arrow = sortBy === c.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-    th.textContent = `${c.label}${arrow}`;
+    labelSpan.textContent = `${c.label}${arrow}`;
+    th.appendChild(labelSpan);
+    // Resize handle - 最終 col は省略(右端を引き伸ばすのは別 col の
+    // 縮小と意味的に同じだが、UX 上不要混乱の元)。
+    if (i < cols.length - 1) {
+      const handle = document.createElement('span');
+      handle.className = 'pkc-filer-th-resize';
+      handle.setAttribute('data-pkc-action', 'filer-col-resize-start');
+      handle.setAttribute('data-pkc-col', c.key);
+      handle.setAttribute('aria-hidden', 'true');
+      handle.title = '列幅をドラッグで調整';
+      th.appendChild(handle);
+    }
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
@@ -5078,6 +5102,35 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   table.appendChild(tbody);
   wrapper.appendChild(table);
   return wrapper;
+}
+
+/**
+ * PR-Δ2 (2026-05-07、修正指示9 ファイラ列幅調整):
+ * `localStorage.pkc2.filer.column-widths` を JSON parse して
+ * `{ [colKey]: pxWidth }` を返す。stale / corrupted 値は安全に無視。
+ *
+ * 永続化キーは action-binder (case 'filer-col-resize-start' の mouseup)
+ * から書き込まれる。
+ */
+const FILER_COLUMN_WIDTHS_KEY = 'pkc2.filer.column-widths';
+
+function readFilerColumnWidths(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage?.getItem(FILER_COLUMN_WIDTHS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v > 20 && v < 2000) {
+        out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /**

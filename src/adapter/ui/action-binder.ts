@@ -6678,6 +6678,73 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('mousedown', handleSplitResizeMouseDown);
 
+  // ── Filer explorer column resize (PR-Δ2 2026-05-07、修正指示9) ──
+  // Drag right-edge handle of each <th> to resize column width。
+  // mouseup で localStorage `pkc2.filer.column-widths` に永続化 →
+  // 次の renderer が pickup して幅を反映。
+  let filerColResizeActive = false;
+  let filerColResizeStartX = 0;
+  let filerColResizeStartW = 0;
+  let filerColResizeTh: HTMLElement | null = null;
+  let filerColResizeKey = '';
+  const FILER_COL_WIDTHS_KEY = 'pkc2.filer.column-widths';
+
+  function handleFilerColResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-action="filer-col-resize-start"]',
+    );
+    if (!handle) return;
+    const th = handle.closest<HTMLElement>('th.pkc-filer-th');
+    if (!th) return;
+    const key = handle.getAttribute('data-pkc-col') ?? '';
+    if (!key) return;
+    filerColResizeActive = true;
+    filerColResizeStartX = e.clientX;
+    filerColResizeStartW = th.getBoundingClientRect().width;
+    filerColResizeTh = th;
+    filerColResizeKey = key;
+    handle.setAttribute('data-pkc-resizing', 'true');
+    e.preventDefault();
+    e.stopPropagation();
+    document.addEventListener('mousemove', handleFilerColResizeMouseMove);
+    document.addEventListener('mouseup', handleFilerColResizeMouseUp);
+  }
+
+  function handleFilerColResizeMouseMove(e: MouseEvent): void {
+    if (!filerColResizeActive || !filerColResizeTh) return;
+    const dx = e.clientX - filerColResizeStartX;
+    const next = Math.max(40, Math.min(1500, filerColResizeStartW + dx));
+    filerColResizeTh.style.width = `${next}px`;
+  }
+
+  function handleFilerColResizeMouseUp(): void {
+    if (filerColResizeActive && filerColResizeTh && filerColResizeKey) {
+      const final = filerColResizeTh.getBoundingClientRect().width;
+      try {
+        const raw = window.localStorage?.getItem(FILER_COL_WIDTHS_KEY);
+        const cur: Record<string, number> =
+          raw && typeof raw === 'string'
+            ? (JSON.parse(raw) as Record<string, number>) ?? {}
+            : {};
+        cur[filerColResizeKey] = Math.round(final);
+        window.localStorage?.setItem(FILER_COL_WIDTHS_KEY, JSON.stringify(cur));
+      } catch {
+        /* localStorage unavailable */
+      }
+      const handle = filerColResizeTh.querySelector<HTMLElement>(
+        '[data-pkc-resizing="true"]',
+      );
+      if (handle) handle.removeAttribute('data-pkc-resizing');
+    }
+    filerColResizeActive = false;
+    filerColResizeTh = null;
+    filerColResizeKey = '';
+    document.removeEventListener('mousemove', handleFilerColResizeMouseMove);
+    document.removeEventListener('mouseup', handleFilerColResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleFilerColResizeMouseDown);
+
   // ── TEXT split editor: update preview ──
   // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
   let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;

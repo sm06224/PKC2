@@ -5452,13 +5452,37 @@ mark.pkc-search-mark {
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
   font-weight: 600;
   opacity: 0.85;
+  /* PR-Δ2 (2026-05-07、修正指示9):resize handle を absolute 配置
+   * するため positioning context が必要。`position: sticky` は absolute
+   * 子要素の anchor として機能するので追加 `relative` 不要。
+   * overflow hidden は label 側に移動(`.pkc-filer-th-label`)。 */
   position: sticky;
   top: 0;
   background: var(--c-bg, transparent);
-  /* PR-SSS:長い header label も省略表示。 */
+}
+.pkc-filer-th-label {
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: middle;
+}
+/* PR-Δ2 column resize handle - 右端 8px、cursor col-resize、hover で accent。 */
+.pkc-filer-th-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 1;
+}
+.pkc-filer-th-resize:hover,
+.pkc-filer-th-resize[data-pkc-resizing="true"] {
+  background: var(--c-accent, #33ff66);
+  opacity: 0.4;
 }
 
 .pkc-filer-row {

@@ -125,7 +125,7 @@ test('D-02 graph node hover preview tooltip', async ({ page }) => {
   await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
   await page.evaluate(() => new Promise((r) => setTimeout(r, 600)));
 
-  // Find a node position from canvas attrs and hover over it.
+  // PR-Δ1:aspect fix の uniform scale + letterbox transform に合わせる。
   const nodePos = await page.evaluate(() => {
     const c = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     if (!c) return null;
@@ -135,9 +135,11 @@ test('D-02 graph node hover preview tooltip', async ({ page }) => {
     const n = nodes[0];
     if (!n) return null;
     const rect = c.getBoundingClientRect();
-    const sx = rect.width / 960;
-    const sy = rect.height / 600;
-    return { x: rect.left + n.x * sx, y: rect.top + n.y * sy };
+    const PAYLOAD_W = 960, PAYLOAD_H = 600;
+    const scale = Math.min(rect.width / PAYLOAD_W, rect.height / PAYLOAD_H);
+    const offsetX = (rect.width - PAYLOAD_W * scale) / 2;
+    const offsetY = (rect.height - PAYLOAD_H * scale) / 2;
+    return { x: rect.left + offsetX + n.x * scale, y: rect.top + offsetY + n.y * scale };
   });
   if (!nodePos) throw new Error('no nodes found');
   await page.mouse.move(nodePos.x, nodePos.y);
@@ -157,6 +159,55 @@ test('D-02 graph node hover preview tooltip', async ({ page }) => {
     };
   });
   console.log('D-02 hover tooltip:', JSON.stringify(tipVisible, null, 2));
+});
+
+test('D-04 filer column resize handle drag (PR-Δ2)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  // Switch to filer view mode explicitly. Detail mode is the default.
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  await filerTab.waitFor();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer view-mode tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Find the first resize handle (between name and archetype columns).
+  const handle = page.locator('[data-pkc-action="filer-col-resize-start"][data-pkc-col="name"]').first();
+  await handle.waitFor({ state: 'attached', timeout: 5000 });
+  const hbox = await handle.boundingBox();
+  if (!hbox) throw new Error('resize handle missing');
+
+  // Capture initial width.
+  const initialWidth = await page.evaluate(() => {
+    const th = document.querySelector('th.pkc-filer-th-name') as HTMLElement | null;
+    return th?.getBoundingClientRect().width ?? -1;
+  });
+
+  // Drag handle 80px to the right via real OS events.
+  await page.mouse.move(hbox.x + hbox.width / 2, hbox.y + hbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hbox.x + hbox.width / 2 + 80, hbox.y + hbox.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+
+  const afterWidth = await page.evaluate(() => {
+    const th = document.querySelector('th.pkc-filer-th-name') as HTMLElement | null;
+    return th?.getBoundingClientRect().width ?? -1;
+  });
+
+  // localStorage に永続化されているか確認。
+  const persisted = await page.evaluate(() => {
+    return localStorage.getItem('pkc2.filer.column-widths');
+  });
+
+  console.log('D-04 column resize:', JSON.stringify({ initialWidth, afterWidth, delta: afterWidth - initialWidth, persisted }, null, 2));
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-04-filer-after-resize.png',
+    fullPage: false,
+  });
 });
 
 test('D-03 filer explorer column width state', async ({ page }) => {

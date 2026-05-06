@@ -109,6 +109,9 @@ test('K-V3 — node click → detail view (consumer = data-pkc-view-mode flips)'
 
   // Find the position of node "a" via the canvas's data-pkc-graph-nodes
   // JSON, click that screen coord.
+  // PR-Δ1 (2026-05-07):aspect fix で canvas 描画は uniform scale +
+  // letterbox 化されたため、旧 non-uniform sx/sy 計算は無効。logical
+  // → client は scale = min(rw/960, rh/600) + center offset で計算。
   const nodeAClient = await page.evaluate(() => {
     const c = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     if (!c) return null;
@@ -118,10 +121,11 @@ test('K-V3 — node click → detail view (consumer = data-pkc-view-mode flips)'
     const a = nodes.find((n) => n.lid === 'a');
     if (!a) return null;
     const rect = c.getBoundingClientRect();
-    // logical 960×600 → display rect.
-    const sx = rect.width / 960;
-    const sy = rect.height / 600;
-    return { x: rect.left + a.x * sx, y: rect.top + a.y * sy };
+    const PAYLOAD_W = 960, PAYLOAD_H = 600;
+    const scale = Math.min(rect.width / PAYLOAD_W, rect.height / PAYLOAD_H);
+    const offsetX = (rect.width - PAYLOAD_W * scale) / 2;
+    const offsetY = (rect.height - PAYLOAD_H * scale) / 2;
+    return { x: rect.left + offsetX + a.x * scale, y: rect.top + offsetY + a.y * scale };
   });
   if (!nodeAClient) throw new Error('node a not found in canvas attrs');
   await page.mouse.click(nodeAClient.x, nodeAClient.y);
