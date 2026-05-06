@@ -83,6 +83,10 @@
      PR-K の `#6e7e58` (5.6:1) では user 体感「線細くて見えない」
      報告あり、ここで一段 bump して両 theme で同等の視認性を確保。 */
   --c-graph-edge: #a8c08a;
+  /* PR-RRR-V2 (2026-05-07、user 報告「ファイラのストライプがダーク
+   * テーマでほぼ違いがわからん」):dark 用 stripe は黒重ねでは
+   * 不可視のため白系を 7% で重ねる。light は黒系 6% で同等視認性。 */
+  --c-bg-stripe: rgba(255, 255, 255, 0.07);
   --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   /* Slice A: markdown body font alias. Currently mono (PKC2 terminal theme);
@@ -206,6 +210,8 @@
        (`#f0ebe0`) 上で `#3a4530` ≈ **8.4:1**(PR-K の `#5c6b48` 5.4:1
        から bump、dark `#a8c08a` 8.5:1 と等価コントラスト)。 */
     --c-graph-edge: #3a4530;
+    /* PR-RRR-V2 (2026-05-07):light 版 stripe — 黒系 6% 重ねで視認性確保。 */
+    --c-bg-stripe: rgba(0, 0, 0, 0.06);
     /* Belt-and-braces: explicitly bind the body-text alias to the
        concrete light-ink hex instead of relying on lazy
        `var(--c-fg)` substitution — removes any cascade edge case
@@ -251,6 +257,8 @@
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
   --c-graph-edge: #3a4530;
+  /* PR-RRR-V2 (2026-05-07):data-pkc-theme="light" 経路用 stripe。 */
+  --c-bg-stripe: rgba(0, 0, 0, 0.06);
   /* Explicit concrete-hex binding; see the @media light block
      for the rationale. */
   --c-text: #1a1a14;
@@ -5461,9 +5469,12 @@ mark.pkc-search-mark {
  * ストライプ。視認性を上げるため偶数行にうっすらした背景を敷く。
  * hover / active より specificity を低く保つため :nth-child を
  * 単独 selector で使い、:hover と [data-pkc-active] が後勝ちする
- * cascade 順を維持する。*/
+ * cascade 順を維持する。
+ * PR-RRR-V2 (2026-05-07、user 報告「ストライプがダークテーマで
+ * ほぼ違いがわからん」):fallback を 0.025 → 0.06 に bump、加えて
+ * --c-bg-stripe を theme 別に dark=白7% / light=黒6% で定義済(top)。 */
 .pkc-filer-tbody .pkc-filer-row:nth-child(even) {
-  background: var(--c-bg-stripe, rgba(0, 0, 0, 0.025));
+  background: var(--c-bg-stripe, rgba(0, 0, 0, 0.06));
 }
 
 .pkc-filer-row:hover {

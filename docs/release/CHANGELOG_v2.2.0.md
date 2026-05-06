@@ -184,6 +184,22 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 hotfix PR-RRR-V2(2026-05-07)
+
+- **filer 行ストライプ視認性強化(ダークテーマ対応)**:user 報告「ファイラのストライプが見づらいし、ダークテーマだとほぼ違いがわからん」への hotfix。元 PR-RRR の `rgba(0, 0, 0, 0.025)` は dark theme background `#0d0f0a` に黒を 2.5% 重ねても変化が殆ど見えず stripe が機能していなかった。
+- **修正**:
+  - `--c-bg-stripe` を theme token として 3 ブロック(`:root`/`@media light`/`[data-pkc-theme="light"]`)に追加
+  - **dark**:`rgba(255, 255, 255, 0.07)` で薄い lightening(暗背景には白系で重ねる方が見える)
+  - **light**:`rgba(0, 0, 0, 0.06)` で薄い darkening
+  - fallback も 0.025 → 0.06 に bump、未定義 theme でも視認可能
+- bundle.js 不変、bundle.css 145.16 → 145.26 KB(+0.10 KB)。unit 6563 / 6563 pass。
+
+### Wave 10-7 review fix PR-XXX 撤回(2026-05-07)
+
+- 元 PR #352「split sync MacOS+Firefox 再調査(investigation only)」を user 指摘で撤回。**正しい要望**:左ペインからダブルクリックで起動する別窓 (entry-window popup) にセンターペインと同じ block 同期機能を追加してほしい(現状 popup の resize handle に ⇄ toggle button が無く、内部 inline JS 経路を user が起動できない)。
+- 当方の誤読:Firefox 環境特有 bug の調査と思い込み、Playwright で popup window の DOM を観察すれば一瞬で「⇄ ボタンが無い」ことに気付けたはずなのに、code grep のみで投機的 hypothesis を doc 化した。reform-2026-05 §6 visual-state-parity を逆に踏みにじる結果に。
+- `docs/development/split-sync-firefox-investigation.md` は別 PR で削除、replacement 実装(⇄ button 追加)も別 PR。
+
 ### Wave 10-7 review fix PR-WWW(2026-05-07)
 
 - **Graph node hover preview tooltip**:user 修正指示5 残「graph node に hover で title + body excerpt が見える tooltip がほしい」への対応。`GraphCanvasNode.preview` interface は PR-LLL で既に追加済みだったが、実際に tooltip を表示する DOM 機構が未実装だった。
