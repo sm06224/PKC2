@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-CCC(2026-05-06)
+
+- **`/tmp` 公式テンプレ 4 種(video/audio/novel/book)を default に同梱**:user 修正指示5「公式としてVideo,Audio,Novel,Bookのテンプレを用意すべき」+ 修正指示5「Flags InspectorにVideo,Audio,Book,NovelのFormattenのテンプレが登録されていない」への対応。`templates.entries` flag の default JSON を拡張、PR-BBB の `mt` / `rt`(メモ・振り返り)に加えて以下 4 公式テンプレを追加:
+  - `vd`(/tmpvd): video — `kind: video / provider / url / thumbnail / duration_sec` frontmatter + 視聴メモ
+  - `au`(/tmpau): audio — `kind: audio / author / duration_sec`
+  - `nv`(/tmpnv): novel — `kind: novel / author` + あらすじ・感想
+  - `bk`(/tmpbk): book — `kind: book / author / isbn / pages` + 読書メモ
+- frontmatter shape は v1.1 capture profile と一致、bookmarklet 自動入力 entry と手入力 entry を **filer Auto / hero thumbnail / graph kind 整合** で同等扱い可能。
+- bundle.js 910.95 → 911.44 KB(+0.49 KB:default JSON 拡張)、bundle.css 不変。unit 6549 / 6549 pass(default count 増えても dynamic count なので test は green)。
+
 ### Wave 10-6 review fix PR-BBB(2026-05-06)
 
 - **`/tmpXX` テンプレ挿入(Flags 管理)**:user 修正指示4「自前で手入力するためのテンプレが必要。「/」コマンドにテンプレ挿入のコマンドを追加し、テンプレを用意「/tmpXX」とし、XXは半角英数２文字、Flagsからjson形式で編集可能とする」への対応。

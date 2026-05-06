@@ -24,6 +24,15 @@ const DEFAULT_TEMPLATES_JSON = JSON.stringify(
     // User can override / add more via the Flags inspector.
     mt: '## メモ\n\n- [ ] \n',
     rt: '## 振り返り\n\n良かったこと:\n\n改善点:\n',
+    // PR-CCC (2026-05-06、user 修正指示5):公式 4 種(video / audio /
+    // novel / book)を default に同梱。frontmatter は v1.1 capture
+    // profile と同じ shape にして、手入力 entry も bookmarklet 経由
+    // 自動入力 entry も同等に扱える(filer Auto / hero thumbnail /
+    // graph kind 整合)。
+    vd: '---\nkind: video\nprovider: \nurl: \nthumbnail: \nduration_sec: \n---\n\n# \n\n## 概要\n\n## 視聴メモ\n\n- [00:00] \n',
+    au: '---\nkind: audio\nprovider: \nurl: \nthumbnail: \nduration_sec: \nauthor: \n---\n\n# \n\n## 概要\n\n## 視聴メモ\n\n',
+    nv: '---\nkind: novel\nprovider: \nurl: \nthumbnail: \nauthor: \n---\n\n# \n\n## あらすじ\n\n## 感想\n\n',
+    bk: '---\nkind: book\nprovider: \nurl: \nthumbnail: \nauthor: \nisbn: \npages: \n---\n\n# \n\n## 概要\n\n## 読書メモ\n\n',
   },
   null,
   2,
