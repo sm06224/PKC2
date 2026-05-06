@@ -103,22 +103,25 @@ test('breadcrumb segment for the current folder paints at its viewport coord', a
   await expect(breadcrumb).toBeVisible();
 
   // The trail starts with "Root" (non-actionable) then the current folder.
+  // PR-A G3 (2026-05-06):current segment is an editable input
+  // (`data-pkc-filer-breadcrumb="current"`), ancestor folders are buttons
+  // (`...="folder"`). The painted element here is the current segment.
   const folderSeg = page
-    .locator('[data-pkc-filer-breadcrumb="folder"]')
+    .locator('[data-pkc-filer-breadcrumb="current"]')
     .first();
   await expect(folderSeg).toBeVisible();
 
-  // Pixel parity: clicking the folder breadcrumb segment hits the
+  // Pixel parity: clicking the current breadcrumb segment hits the
   // segment via elementFromPoint, not an occluding element.
   const segBox = await folderSeg.boundingBox();
-  if (!segBox) throw new Error('Folder breadcrumb segment has no boundingBox');
+  if (!segBox) throw new Error('Current breadcrumb segment has no boundingBox');
   const cx = segBox.x + segBox.width / 2;
   const cy = segBox.y + segBox.height / 2;
   const isInside = await page.evaluate(
     ({ x, y }) => {
       const target = document.elementFromPoint(x, y);
       if (!target) return false;
-      return !!target.closest('[data-pkc-filer-breadcrumb="folder"]');
+      return !!target.closest('[data-pkc-filer-breadcrumb="current"]');
     },
     { x: cx, y: cy },
   );
