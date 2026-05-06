@@ -46,7 +46,8 @@ function makeSourceContainer(): Container {
       },
     ],
     relations: [
-      { id: 'r1', from: 'user-1', to: 'user-2', kind: 'structural' },
+      { id: 'r1', from: 'user-1', to: 'user-2', kind: 'structural',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
     ],
     revisions: [
       { id: 'rev1', entry_lid: 'user-1', title: 'My Note', body: 'older notes',

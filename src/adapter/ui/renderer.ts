@@ -1737,7 +1737,75 @@ function renderShellMenu(
   bmLink.textContent = '📌 Send to PKC2';
   bmLink.title = 'ドラッグしてブックマークバーに追加';
   bmLink.draggable = true;
+
+  // PR-QQ (2026-05-06):「ローカル PKC 用 file DL モード」 bookmarklet。
+  // file:// で開いている PKC2 は browser の cross-origin policy で
+  // postMessage handshake が成立しない(file:// → file:// は禁止、
+  // file:// ⇄ http(s):// も window.opener が null)。代わりにこの
+  // bookmarklet は同じ envelope を `.pkc-capture.json` ファイルとして
+  // download する。ユーザーは PKC2 の Import ボタンから picker で
+  // 拾うか、shell に drop することで取り込める(後続 PR で完成)。
+  // PKC 哲学:ローカル動作を許容する経路を 1 本確保する。
+  const bmDlJs = (
+    '(function(){'
+    + 'var u=location.href,host=location.host,'
+    + 'q=function(s){var e=document.querySelector(s);return e?(e.getAttribute("content")||e.getAttribute("href")||""):""},'
+    + 'ogTitle=q("meta[property=\\"og:title\\"]"),'
+    + 'ogImg=q("meta[property=\\"og:image\\"]"),'
+    + 'ogDesc=q("meta[property=\\"og:description\\"]"),'
+    + 'ogType=q("meta[property=\\"og:type\\"]"),'
+    + 'ogSite=q("meta[property=\\"og:site_name\\"]"),'
+    + 't=ogTitle||document.title||"Snapshot",'
+    + 'sel=getSelection().toString().trim(),'
+    + 'firstP=document.querySelector("article p,main p"),'
+    + 'excerpt=sel||ogDesc||(firstP?firstP.textContent.slice(0,500):""),'
+    + 'now=new Date().toISOString(),'
+    + 'kind=null,provider=null,thumb=ogImg||null,'
+    + 'pkAuthor=null,pkBrand=null;'
+    // 同じ 5 site detection logic — PR-V から継承(JJ Amazon 拡張済)。
+    + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
+    + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
+    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
+    + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){'
+    + 'kind="book";provider="Amazon";'
+    + 'var pTitle=document.getElementById("productTitle"),pTitleTxt=pTitle?pTitle.textContent.trim():"";'
+    + 'if(pTitleTxt)t=pTitleTxt;'
+    + 'var byline=document.getElementById("bylineInfo"),bylineLink=byline?byline.querySelector("a"):null,'
+    + 'bylineTxt=bylineLink?bylineLink.textContent.trim():(byline?byline.textContent.replace(/\\s+/g," ").trim():"");'
+    + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
+    + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
+    + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    + '}'
+    + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
+    + 'else if(/^music\\./.test(ogType)){kind="audio";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="article"&&ogSite)provider=ogSite;'
+    + 'var body="# "+t+(excerpt?"\\n\\n"+excerpt:""),'
+    + 'pl={title:t.slice(0,200),body:body,source_url:u,captured_at:now};'
+    + 'if(kind)pl.kind=kind;if(thumb)pl.thumbnail_url=thumb;if(provider)pl.provider=provider;'
+    + 'if(pkAuthor)pl.author=pkAuthor;if(pkBrand)pl.brand=pkBrand;'
+    + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
+    + 'source_id:"extension:pkc2-bookmarklet@1.1-dl",target_id:null,payload:pl,timestamp:now};'
+    // 違いはここから:postMessage せず Blob を作って download trigger。
+    + 'var json=JSON.stringify(env,null,2),'
+    + 'blob=new Blob([json],{type:"application/json"}),'
+    + 'url=URL.createObjectURL(blob),'
+    + 'fname="pkc2-capture-"+now.replace(/[:.]/g,"-").slice(0,19)+".pkc-capture.json",'
+    + 'a=document.createElement("a");'
+    + 'a.href=url;a.download=fname;document.body.appendChild(a);a.click();'
+    + 'setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},0);'
+    + '})();'
+  );
+  const bmDlLink = document.createElement('a');
+  bmDlLink.className = 'pkc-shell-menu-bookmarklet-link pkc-shell-menu-bookmarklet-link-dl';
+  bmDlLink.href = `javascript:${bmDlJs}`;
+  bmDlLink.textContent = '📥 Save .pkc-capture.json';
+  bmDlLink.title = 'ローカル PKC 用:現ページのキャプチャを JSON ファイルでダウンロード(後で PKC2 にドロップ可)';
+  bmDlLink.draggable = true;
   bmSection.appendChild(bmLink);
+  bmSection.appendChild(bmDlLink);
 
   // PR-W (2026-05-06):custom scraper を user が追加するための template
   // editor。<details> で展開、bookmarklet JS を <textarea> に表示して

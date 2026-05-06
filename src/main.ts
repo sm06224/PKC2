@@ -74,6 +74,10 @@ import {
 } from './adapter/transport/record-offer-handler';
 import { findThumbnailHttpUrl } from './features/auto-fill/thumbnail-frontmatter';
 import { fetchImageAsBase64 } from './adapter/platform/fetch-image-asset';
+import {
+  parseCaptureJson,
+  isCaptureJsonFilename,
+} from './features/auto-fill/parse-capture-json';
 import { canHandleMessage } from './adapter/transport/capability';
 import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
@@ -1007,7 +1011,10 @@ function createEmptyContainer(): Container {
 function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.html,.zip';
+  // PR-QQ (2026-05-06): accept `.pkc-capture.json` for the local
+  // bookmarklet DL mode in addition to the existing HTML / ZIP
+  // container imports.
+  fileInput.accept = '.html,.zip,.json';
   fileInput.style.display = 'none';
   fileInput.setAttribute('data-pkc-role', 'import-input');
   document.body.appendChild(fileInput);
@@ -1024,6 +1031,46 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
+
+    // PR-QQ: capture JSON branch (bookmarklet DL mode). Detect by
+    // filename — accepts `.pkc-capture.json` or `.pkc-capture`.
+    // Validates the envelope, then dispatches `SYS_RECORD_OFFERED`
+    // so the user sees the same accept / dismiss UX as the
+    // postMessage path.
+    if (isCaptureJsonFilename(file.name)) {
+      const text = await file.text();
+      const parsed = parseCaptureJson(text);
+      if (!parsed) {
+        console.warn(`[PKC2] capture JSON rejected: ${file.name}`);
+        dispatcher.dispatch({
+          type: 'SYS_ERROR',
+          error: `Capture import failed: ${file.name} は有効な PKC-Message v1 envelope ではありません。`,
+        });
+        return;
+      }
+      const offer = {
+        offer_id: `dl-${Date.now().toString(36)}`,
+        title: parsed.payload.title,
+        body: parsed.payload.body,
+        archetype: parsed.payload.archetype ?? 'text',
+        source_container_id: parsed.payload.source_container_id ?? null,
+        reply_to_id: null,
+        received_at: new Date().toISOString(),
+        source_url: parsed.payload.source_url ?? null,
+        captured_at: parsed.payload.captured_at ?? null,
+        kind: parsed.payload.kind ?? null,
+        thumbnail_url: parsed.payload.thumbnail_url ?? null,
+        provider: parsed.payload.provider ?? null,
+        duration_sec: parsed.payload.duration_sec ?? null,
+        pages: parsed.payload.pages ?? null,
+        isbn: parsed.payload.isbn ?? null,
+        author: parsed.payload.author ?? null,
+        brand: parsed.payload.brand ?? null,
+      };
+      dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
+      console.log(`[PKC2] capture import: ${file.name} → offer ${offer.offer_id}`);
+      return;
+    }
 
     // Route to appropriate importer based on file extension
     if (file.name.endsWith('.zip')) {

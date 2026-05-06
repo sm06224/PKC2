@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-QQ(2026-05-06)
+
+- **bookmarklet ローカル PKC 用 file DL モード**:user 修正指示2「bookmarklet ローカル PKC 用 file DL モード(PKC 哲学的にローカル動作許容)」への対応。file:// で開いた PKC2 では browser cross-origin policy で postMessage handshake が成立しない。代替経路として **`📥 Save .pkc-capture.json` bookmarklet variant** を追加、現ページのキャプチャを PKC-Message v1 envelope JSON ファイルとして download。ファイルを PKC2 の Import picker / drop に渡すと既存の record:offer 受理経路に乗り、user accept で entry mint。
+- **新規 helper**:`src/features/auto-fill/parse-capture-json.ts`(pure)。`parseCaptureJson(text)` で envelope を validate(`protocol/version/type` の 3 段 gate + payload field 列の型チェック)、未知 kind は silent drop、v1.1 additive fields(author / brand / pages / isbn / duration_sec)を round-trip。`isCaptureJsonFilename(name)` で `.pkc-capture.json` / `.pkc-capture` 両方を case-insensitive で判定。
+- **import 経路結線**:`mountImportHandler` の file picker accept に `.json` を追加、change handler に capture-json 分岐を最上位に設置。validate 通過時は同じ shape の `PendingOffer` を組み立てて `SYS_RECORD_OFFERED` を dispatch、reject 時は `SYS_ERROR` を投げる。既存の HTML / ZIP / textlog 分岐は影響なし。
+- **renderer 結線**:bookmarklet section の primary `📌 Send to PKC2` の隣に `📥 Save .pkc-capture.json` リンクを追加。draggable + 同等の scraping logic(YouTube / Niconico / Narou / カクヨム / Amazon scraper を継承、PR-V/JJ 由来)を含む独立 bookmarklet コードを生成。
+- **テスト**:`tests/features/auto-fill/parse-capture-json.test.ts`(13 件)— well-formed envelope / malformed JSON / 各 reject path(protocol / version / type / missing title / missing body)/ 未知 kind silent drop / v1.1 additive round-trip / filename matcher の各 case を網羅。
+- bundle.js 900.56 → 905.90 KB(+5.34 KB:第 2 bookmarklet コード + import 分岐 + parse-capture helper)、bundle.css 不変。unit 6505 → 6518(+13)pass。
+
 ### Wave 10-6 review fix PR-PP(2026-05-06)
 
 - **🆕 New PKC button(system entries のみ export)**:user 修正指示2「New PKC button(system entries のみ export)」への対応。Data menu の Share group に新ボタン追加、現 container から **reserved system entries**(`__settings__` / `__flags__` / `__about__`)だけを抽出して fresh container を作成 → light HTML 形式で download。relations / revisions / assets / 非 reserved entries は全て strip。use case:「私の theme と flag 設定を埋め込んだ blank PKC2 を相手に渡す / 新 workspace の起点にする」。
