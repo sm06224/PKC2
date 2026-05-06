@@ -1808,9 +1808,22 @@ function renderShellMenu(
     + 'now=new Date().toISOString(),'
     + 'kind=null,provider=null,thumb=ogImg||null,'
     + 'pkAuthor=null,pkBrand=null;'
-    // 同じ 5 site detection logic — PR-V から継承(JJ Amazon 拡張済)。
+    // PR-FFF (2026-05-06):primary bookmarklet と同じ scraper logic
+    // を DL モードにも適用。PR-V の 5 site detection、PR-JJ の Amazon
+    // author/brand + thumb fallback chain、PR-EEE の YouTube DOM
+    // scraper(タイトル/投稿者/説明)を全部 inline。
     + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
-    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";}'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";'
+    + 'var ytT=document.querySelector("#title h1 yt-formatted-string,#title h1,h1.ytd-watch-metadata,h1.title yt-formatted-string");'
+    + 'if(ytT&&ytT.textContent){var ytTtxt=ytT.textContent.trim();if(ytTtxt)t=ytTtxt;}'
+    + 'var ytC=document.querySelector("ytd-channel-name #text-container a,ytd-channel-name a,#owner #channel-name a,#upload-info #text a,[itemprop=\\"author\\"] [itemprop=\\"name\\"]");'
+    + 'var ytCtxt=ytC?ytC.textContent.trim():(ytC?ytC.getAttribute("content"):"");'
+    + 'if(ytCtxt)pkAuthor=ytCtxt;'
+    + 'var ytD=document.querySelector("#description-inline-expander,ytd-text-inline-expander,#description ytd-text-inline-expander,#description #text"),ytDtxt="";'
+    + 'if(ytD)ytDtxt=ytD.innerText||ytD.textContent||"";'
+    + 'if(!ytDtxt){var ytMd=document.querySelector("meta[name=description]");if(ytMd)ytDtxt=ytMd.getAttribute("content")||"";}'
+    + 'if(ytDtxt){ytDtxt=ytDtxt.replace(/\\s+/g," ").trim();if(ytDtxt)excerpt=ytDtxt.slice(0,800);}'
+    + '}'
     + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
     + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
     + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
@@ -1823,6 +1836,15 @@ function renderShellMenu(
     + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
     + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
     + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    // Amazon thumbnail DOM fallback chain(PR-ZZ from primary、ここで初導入)。
+    + 'var amImg=null,amSel=["#imgTagWrapperId img","#landingImage","#ebooksImgBlkFront img","#main-image","#imgBlkFront","#booksImageBlock_feature_div img"];'
+    + 'for(var ai=0;ai<amSel.length&&!amImg;ai++){'
+    + 'var amEl=document.querySelector(amSel[ai]);'
+    + 'if(amEl){amImg=amEl.getAttribute("data-old-hires")||amEl.getAttribute("data-a-dynamic-image")||amEl.src||null;'
+    + 'if(amImg&&amImg.charAt(0)==="{"){'
+    + 'try{var amObj=JSON.parse(amImg);var amKeys=Object.keys(amObj||{});amImg=amKeys.length?amKeys[0]:null;}catch(_amE){amImg=null;}'
+    + '}}}'
+    + 'if(amImg&&/^https?:/.test(amImg))thumb=amImg;'
     + '}'
     + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
     + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'

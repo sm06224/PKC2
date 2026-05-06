@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-FFF(2026-05-06)
+
+- **`📥 Save .pkc-capture.json` でサムネ取得復活**:user 修正指示5「📥 Save .pkc-capture.jsonブックマークレットがサムネを取得できないのは許容できない」への対応。primary `📌 Send to PKC2` bookmarklet と DL bookmarklet で scraper logic が divergence していたため、PR-EEE(YouTube DOM scraper)+ PR-ZZ(Amazon thumbnail DOM fallback)を DL bookmarklet にも inline 反映。
+- 追加 logic:
+  - YouTube:`#title h1` / channel name selector / description-expander から title / author / excerpt
+  - Amazon:`#imgTagWrapperId img` 等の **6 selector chain × `data-old-hires` / `data-a-dynamic-image` / `src`** の順で thumbnail 抽出
+- 結果として **2 bookmarklets が完全 feature parity** に。
+- bundle.js 912.68 → 914.13 KB(+1.45 KB:DL bookmarklet に YouTube + Amazon scraper を inline)、bundle.css 不変。unit 6549 / 6549 pass。
+
 ### Wave 10-6 review fix PR-EEE(2026-05-06)
 
 - **bookmarklet YouTube 拡張(タイトル / 投稿者 / 説明)**:user 修正指示5「Send to PKC2 ブックマークレットでYoutubeの動画タイトルを引っ張れていない。投稿者情報と動画説明欄も引っ張ってほしい」への対応。YouTube watch ページで `og:title` が空 / 古い値のことが多いため、bookmarklet の YouTube ブランチに DOM scraper を追加:
