@@ -369,6 +369,17 @@ export interface AppState {
     sortDir?: 'asc' | 'desc';
   };
   /**
+   * PR-L (2026-05-06):filer 側の検索 query。
+   * User direction:
+   * > ファイラ側にも検索窓付けてよ(左ペインの代替活用のための布石)。
+   * > 左ペインは大規模管理に向いていないから、大規模管理用のファイラです。
+   *
+   * 空文字列 / undefined = 検索なし(従来挙動 = direct children を表示)。
+   * 非空文字列 = scope 配下の **全 descendants** を title 部分一致で
+   * 絞り込み(深さ無制限 subtree search)。Runtime-only。
+   */
+  filerSearchQuery?: string;
+  /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
    *   (current folder or the entry's first folder ancestor; null = root).
@@ -2934,6 +2945,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_GRAPH_REGION_SELECTED_LIDS': {
       const next: AppState = { ...state, graphRegionSelectedLids: action.lids };
+      return { state: next, events: [] };
+    }
+    case 'SET_FILER_SEARCH_QUERY': {
+      // PR-L (2026-05-06):filer 側の検索 query を更新。空文字列 →
+      // 検索キャンセル(direct children に戻る)、非空 → subtree search。
+      const next: AppState = { ...state, filerSearchQuery: action.query };
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {

@@ -4475,6 +4475,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
       return;
     }
+    // PR-L (2026-05-06):filer 側の検索窓 input → SET_FILER_SEARCH_QUERY。
+    if (target.getAttribute('data-pkc-action') === 'set-filer-search-query') {
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: value });
+      return;
+    }
 
     // Slash menu trigger detection for eligible textareas
     if (target instanceof HTMLTextAreaElement && isSlashEligible(target)) {

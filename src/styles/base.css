@@ -5844,6 +5844,33 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-color: var(--c-accent, #3b82f6);
 }
 
+/* ── Filer search input (PR-L, 2026-05-06) ──
+   左ペインの代替活用 / 大規模管理用 foundation。filer-header に並ぶ
+   small input、scope 配下の subtree を title 部分一致で絞り込む。 */
+
+.pkc-filer-search-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-right: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-search-input {
+  font: inherit;
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  width: 14rem;
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg, transparent);
+  color: var(--c-fg, currentColor);
+}
+
+.pkc-filer-search-input:focus {
+  outline: none;
+  border-color: var(--c-accent, #3b82f6);
+}
+
 /* ── Filer display profile auto hint (PR-G G15, 2026-05-06) ──
    Auto mode 選択時、自動判定された結果(contact-sheet 等)を select の
    下に小さく併記。意図しない subset に切り替わっていたら user が気付ける。 */

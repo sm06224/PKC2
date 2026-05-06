@@ -4012,11 +4012,49 @@ function renderFilerView(state: AppState): HTMLElement {
 
   filer.appendChild(renderFilerHeader(state, scope, profile));
 
-  const children = scope
-    ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
-    : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
-  // System entries should never surface in the filer.
-  const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+  // PR-L (2026-05-06):filer 検索 query 反映。空 → direct children、
+  // 非空 → scope 配下を再帰展開して title 部分一致で flat 表示。
+  const searchQuery = (state.filerSearchQuery ?? '').trim().toLowerCase();
+  let visibleChildren: Entry[];
+  if (searchQuery.length > 0) {
+    // Subtree walk: BFS from scope (or root entries) collecting all
+    // descendants. Then title-substring filter.
+    const allEntries = (state.container?.entries ?? []).filter(
+      (e) => !isSystemArchetype(e.archetype),
+    );
+    const rels = state.container?.relations ?? [];
+    const childrenByParent = new Map<string, string[]>();
+    for (const r of rels) {
+      if (r.kind !== 'structural') continue;
+      const arr = childrenByParent.get(r.from) ?? [];
+      arr.push(r.to);
+      childrenByParent.set(r.from, arr);
+    }
+    const reachable = new Set<string>();
+    const queue: string[] = [];
+    if (scope) {
+      const initial = childrenByParent.get(scope.lid) ?? [];
+      queue.push(...initial);
+    } else {
+      queue.push(...getRootEntries(rels, allEntries).map((e) => e.lid));
+    }
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (reachable.has(id)) continue;
+      reachable.add(id);
+      const sub = childrenByParent.get(id);
+      if (sub) queue.push(...sub);
+    }
+    visibleChildren = allEntries.filter(
+      (e) => reachable.has(e.lid) && (e.title || e.lid).toLowerCase().includes(searchQuery),
+    );
+  } else {
+    const children = scope
+      ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
+      : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
+    // System entries should never surface in the filer.
+    visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+  }
 
   // Even an empty folder still renders the subset surface so the
   // "." and ".." navigation affordances stay reachable. The empty
@@ -4336,6 +4374,20 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
   subsetBadge.setAttribute('data-pkc-filer-subset-label', profile.kind);
   subsetBadge.textContent = subsetLabelText(profile.kind);
   header.appendChild(subsetBadge);
+
+  // PR-L (2026-05-06):filer 側の検索窓。空文字列で direct children、
+  // 非空文字列で scope 配下の **全 descendants** を title 部分一致で
+  // 絞り込み。「左ペインの代替活用 / 大規模管理用」目的の foundation。
+  const searchWrap = createElement('div', 'pkc-filer-search-wrap');
+  searchWrap.setAttribute('data-pkc-region', 'filer-search');
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.className = 'pkc-filer-search-input';
+  searchInput.setAttribute('data-pkc-action', 'set-filer-search-query');
+  searchInput.setAttribute('placeholder', '🔍 タイトル検索(scope 配下を再帰)');
+  searchInput.value = state.filerSearchQuery ?? '';
+  searchWrap.appendChild(searchInput);
+  header.appendChild(searchWrap);
 
   return header;
 }
