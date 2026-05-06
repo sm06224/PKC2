@@ -184,6 +184,15 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-BBB(2026-05-06)
+
+- **`/tmpXX` テンプレ挿入(Flags 管理)**:user 修正指示4「自前で手入力するためのテンプレが必要。「/」コマンドにテンプレ挿入のコマンドを追加し、テンプレを用意「/tmpXX」とし、XXは半角英数２文字、Flagsからjson形式で編集可能とする」への対応。
+- **新規 flag**:`templates.entries`(Tier 1、string、JSON)。default は starter set:`{"mt":"## メモ\\n\\n- [ ] \\n","rt":"## 振り返り\\n\\n良かったこと:\\n\\n改善点:\\n"}`。Flags inspector で JSON を編集すると次回 `/` 起動から候補に出る。
+- **新規 helper**:`src/features/templates/template-flag.ts`(pure)。`parseUserTemplates(json)` で `{key, body}[]` を抽出、key は **2 文字 alnum 限定**(`/[a-z0-9]{2}/`)で他は silent drop、value 非 string も drop。`getActiveUserTemplates()` で live flag 値を parse。
+- **slash menu 結線**:`getAllSlashCommands()` で SLASH_COMMANDS + dynamic templates を連結、`openSlashMenu` / `filterSlashMenu` 両 path で使用。template label は body の先頭 40 char preview を表示(`/tmpmt — ## メモ ↵ - [ ] ↵`)。insert は body verbatim。
+- **テスト**:`tests/features/templates/template-flag.test.ts`(8 件)— valid JSON / 不正 JSON / 非 object root / 不正 key 排除 / 非 string body 排除 / sort by key / 空文字列 / multiline body 保持。`tests/adapter/slash-menu.test.ts` の既存 3 件を default template 数を反映するよう更新。
+- bundle.js 910.01 → 910.95 KB(+0.94 KB:flag + helper + 結線)、bundle.css 不変。unit 6541 → 6549(+8)pass。
+
 ### Wave 10-6 review fix PR-AAA(2026-05-06)
 
 - **グラフビュー auto-fit-to-bounds(銀河風 zoom 整備)**:user 修正指示1「グラフビューが詰まりすぎていて見づらい。できるなら、拡大縮小可能にして欲しい。まるで銀河の星々のように」への対応。`bindGraphCanvas` の初回 bind で全 node の bounding box を canvas viewport にフィットする `fitToBounds(view, payload)` を実行、user は最初から全ノードを俯瞰できる。subsequent re-bind は user の zoom/pan を保持(`autoFitDone` flag で 1 度限り)。既存の wheel zoom + pinch zoom は MIN_SCALE=0.05 / MAX_SCALE=32(PR-DD)の銀河 range をそのまま使える。

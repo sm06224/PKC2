@@ -16,6 +16,7 @@ import {
   formatDateTime,
   formatISO8601,
 } from '../../features/datetime/datetime-format';
+import { getActiveUserTemplates } from '../../features/templates/template-flag';
 
 // ── Command definitions ──
 
@@ -114,6 +115,35 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     },
   },
 ];
+
+/**
+ * PR-BBB (2026-05-06):user 修正指示4「自前で手入力するためのテン
+ * プレが必要。「/」コマンドにテンプレ挿入のコマンドを追加し、テン
+ * プレを用意「/tmpXX」とし、XXは半角英数２文字、Flagsからjson形式
+ * で編集可能とする」.
+ *
+ * `templates.entries` flag を parse して `/tmpXX` 形式の SlashCommand
+ * を生成、static SLASH_COMMANDS の後ろに連結。flag の値が変わる
+ * たびに `getAllSlashCommands()` が live で再評価されるので、
+ * inspector で template を追加したら次回 `/` 起動から見える。
+ */
+function getAllSlashCommands(): SlashCommand[] {
+  const templates = getActiveUserTemplates();
+  if (templates.length === 0) return SLASH_COMMANDS;
+  const tmplCommands: SlashCommand[] = templates.map((t) => {
+    // Preview the first line (or up to 40 chars) for the menu label.
+    const previewSrc = (t.body || '').replace(/\n+/g, ' ↵ ').trim();
+    const preview = previewSrc.length > 40
+      ? `${previewSrc.slice(0, 40)}…`
+      : previewSrc || '(empty)';
+    return {
+      id: `tmp${t.key}`,
+      label: `/tmp${t.key} — ${preview}`,
+      insert: t.body,
+    };
+  });
+  return [...SLASH_COMMANDS, ...tmplCommands];
+}
 
 // ── Trigger detection ──
 
@@ -250,7 +280,7 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
   inst.textarea = textarea;
   inst.slashPos = slashPos;
   inst.selectedIndex = 0;
-  inst.filteredCommands = [...SLASH_COMMANDS];
+  inst.filteredCommands = getAllSlashCommands();
 
   const menu = document.createElement('div');
   menu.className = 'pkc-slash-menu';
@@ -370,7 +400,7 @@ export function filterSlashMenu(query: string): void {
   const inst = getActiveInstance();
   if (!inst || !inst.menu) return;
   const q = query.toLowerCase();
-  inst.filteredCommands = SLASH_COMMANDS.filter((cmd) => {
+  inst.filteredCommands = getAllSlashCommands().filter((cmd) => {
     const id = cmd.id.toLowerCase();
     const label = cmd.label.toLowerCase();
     if (id.includes(q) || label.includes(q)) return true;
