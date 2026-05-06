@@ -184,6 +184,11 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-ZZ(2026-05-06)
+
+- **Amazon サムネ DOM 取得 fallback**:user 修正指示4「Amazon からサムネ取得されていない」への対応。bookmarklet の Amazon ブランチに **DOM image fallback chain** を追加。og:image が無い / placeholder のページが大半なため、複数候補 selector(`#imgTagWrapperId img` / `#landingImage` / `#ebooksImgBlkFront img` / `#main-image` / `#imgBlkFront` / `#booksImageBlock_feature_div img`)を順に試して **`data-old-hires` → `data-a-dynamic-image` JSON 第 1 key → `src`** から URL 抽出、http(s) のみ採用。og:image にも何も無ければ既存挙動(thumb=null)に degrade。
+- bundle.js 908.85 → 909.41 KB(+0.56 KB:bookmarklet DOM fallback chain)、bundle.css 不変。unit 6535 / 6535 pass。
+
 ### Wave 10-6 review fix PR-YY(2026-05-06)
 
 - **TEXT entry サムネ指定 PKC embed 方式統一 + detail view hero 表示**:user 修正指示4「TEXTエントリのサムネイル指定が既存のPKC embed方式と記法が異なる。エントリを開いても適切なサムネが表示されない」への 2 系統対応:

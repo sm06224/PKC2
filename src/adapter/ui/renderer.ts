@@ -1708,6 +1708,23 @@ function renderShellMenu(
     + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
     + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
     + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    // PR-ZZ (2026-05-06):user 修正指示4「Amazon からサムネ取得され
+    // ていない」への対応。og:image が無い / placeholder の Amazon
+    // 商品ページが大半。複数の DOM 候補から先頭の有効 src を採用:
+    //   #imgTagWrapperId img → 一般商品(`data-old-hires` で hi-res)
+    //   #landingImage → 一部商品 / kindle
+    //   #ebooksImgBlkFront img → ebook
+    //   #main-image / #imgBlkFront → variants
+    // どれも抽出できなければ既存 thumb(og:image)に fallback。
+    + 'var amImg=null,amSel=["#imgTagWrapperId img","#landingImage","#ebooksImgBlkFront img","#main-image","#imgBlkFront","#booksImageBlock_feature_div img"];'
+    + 'for(var ai=0;ai<amSel.length&&!amImg;ai++){'
+    + 'var amEl=document.querySelector(amSel[ai]);'
+    + 'if(amEl){amImg=amEl.getAttribute("data-old-hires")||amEl.getAttribute("data-a-dynamic-image")||amEl.src||null;'
+    + 'if(amImg&&amImg.charAt(0)==="{"){'
+    // data-a-dynamic-image: JSON object {url: [w,h]}. Pick first key.
+    + 'try{var amObj=JSON.parse(amImg);var amKeys=Object.keys(amObj||{});amImg=amKeys.length?amKeys[0]:null;}catch(_amE){amImg=null;}'
+    + '}}}'
+    + 'if(amImg&&/^https?:/.test(amImg))thumb=amImg;'
     + '}'
     // generic fallback by og:type
     + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
