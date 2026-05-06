@@ -74,6 +74,12 @@ interface CanvasViewState {
   /** Region-select drag in progress; null when not dragging. */
   rectStart: { ux: number; uy: number } | null;
   rectEnd: { ux: number; uy: number } | null;
+  /**
+   * PR-AAA (2026-05-06):banner of "first bind has been auto-fit to
+   * node bounds yet". Once true, subsequent re-binds preserve the
+   * user's zoom/pan instead of re-fitting. Reset by `resetGraphCanvasZoom`.
+   */
+  autoFitDone?: boolean;
 }
 
 // PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
@@ -105,19 +111,74 @@ export function bindGraphCanvas(canvas: HTMLCanvasElement, payload: GraphCanvasP
   // Clear the "smoke-test data stamp" flag so the next draw re-emits
   // node summary attrs reflecting the new payload.
   canvas.removeAttribute('data-pkc-graph-nodes-bound');
-  getOrInitView(canvas);
+  const view = getOrInitView(canvas);
+  // PR-AAA (2026-05-06):user 修正指示1「グラフビューが詰まりすぎ
+  // ていて見づらい … まるで銀河の星々のように」への対応。初回 bind
+  // で全 node の bounding box を画面内にフィットさせる auto-fit を
+  // 実行(`autoFitDone` flag で 1 度限り)。subsequent re-bind は user
+  // の zoom / pan を保持。 resetGraphCanvasZoom が flag をクリアして
+  // re-fit を可能にする。
+  if (!view.autoFitDone && payload.positions.size > 0) {
+    fitToBounds(view, payload);
+    view.autoFitDone = true;
+  }
   drawGraphCanvas(canvas);
 }
 
-/** Reset zoom + pan to identity. */
+/** Reset zoom + pan to auto-fit (PR-AAA: identity → auto-fit). */
 export function resetGraphCanvasZoom(canvas: HTMLCanvasElement): void {
   const v = getOrInitView(canvas);
+  const payload = payloads.get(canvas);
   v.scale = 1;
   v.tx = 0;
   v.ty = 0;
   v.rectStart = null;
   v.rectEnd = null;
+  v.autoFitDone = false;
+  if (payload && payload.positions.size > 0) {
+    fitToBounds(v, payload);
+    v.autoFitDone = true;
+  }
   drawGraphCanvas(canvas);
+}
+
+/**
+ * PR-AAA: compute a `scale` + `tx/ty` that fits all node positions
+ * inside the canvas's logical viewport with 12% padding margin. Pure
+ * mutator on `view` — caller drives the redraw.
+ */
+function fitToBounds(view: CanvasViewState, payload: GraphCanvasPayload): void {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const pos of payload.positions.values()) {
+    if (pos.x < minX) minX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.x > maxX) maxX = pos.x;
+    if (pos.y > maxY) maxY = pos.y;
+  }
+  if (!Number.isFinite(minX)) return;
+  // Account for node radius so labels don't get clipped.
+  const r = Math.max(payload.collideRadius, 24);
+  minX -= r; minY -= r; maxX += r; maxY += r;
+  const w = Math.max(1, maxX - minX);
+  const h = Math.max(1, maxY - minY);
+  const pad = 0.88;
+  const sx = (payload.width * pad) / w;
+  const sy = (payload.height * pad) / h;
+  // PR-AAA:auto-fit は zoom-OUT 専用。bbox がもともと viewport 内に
+  // 収まる場合(scale > 1)は identity に保つ — 既存 test の click
+  // 座標期待値を壊さず、銀河 view としても自然(1 つの近接群を
+  // 拡大しすぎない)。
+  const s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
+  if (s >= 1) {
+    view.scale = 1;
+    view.tx = 0;
+    view.ty = 0;
+    return;
+  }
+  view.scale = s;
+  // Center the bounding box within the canvas logical viewport.
+  view.tx = (payload.width - w * s) / 2 - minX * s;
+  view.ty = (payload.height - h * s) / 2 - minY * s;
 }
 
 /** Test-only — read current view state. */

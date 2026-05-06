@@ -184,6 +184,14 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-AAA(2026-05-06)
+
+- **グラフビュー auto-fit-to-bounds(銀河風 zoom 整備)**:user 修正指示1「グラフビューが詰まりすぎていて見づらい。できるなら、拡大縮小可能にして欲しい。まるで銀河の星々のように」への対応。`bindGraphCanvas` の初回 bind で全 node の bounding box を canvas viewport にフィットする `fitToBounds(view, payload)` を実行、user は最初から全ノードを俯瞰できる。subsequent re-bind は user の zoom/pan を保持(`autoFitDone` flag で 1 度限り)。既存の wheel zoom + pinch zoom は MIN_SCALE=0.05 / MAX_SCALE=32(PR-DD)の銀河 range をそのまま使える。
+- **設計**:auto-fit は **zoom-OUT 専用**(scale ≤ 1.0 にしか効かない)。bbox が viewport 内にすでに収まる場合は identity に保ち、既存の click 座標期待値を壊さない。これは「1 つの近接群を拡大しすぎない」銀河風挙動とも整合。
+- **`resetGraphCanvasZoom` も auto-fit に統一**:従来は scale=1, tx/ty=0 への reset。新挙動は `autoFitDone = false` でクリアして再 fit、user が「ズームを戻す」操作で全俯瞰に戻れる。
+- **テスト**:`tests/adapter/graph-canvas-fit-bounds-pr-aaa.test.ts`(6 件)— 初回 auto-fit / 2 回目以降 preserve / reset で re-fit / 空 positions 安全 / 単一 node はゼロ in-place / MIN_SCALE clamp。既存 graph-canvas-gestures test も全 9 件 green を維持。
+- bundle.js 909.41 → 910.01 KB(+0.60 KB:fitToBounds + autoFitDone flag)、bundle.css 不変。unit 6535 → 6541(+6)pass。
+
 ### Wave 10-6 review fix PR-ZZ(2026-05-06)
 
 - **Amazon サムネ DOM 取得 fallback**:user 修正指示4「Amazon からサムネ取得されていない」への対応。bookmarklet の Amazon ブランチに **DOM image fallback chain** を追加。og:image が無い / placeholder のページが大半なため、複数候補 selector(`#imgTagWrapperId img` / `#landingImage` / `#ebooksImgBlkFront img` / `#main-image` / `#imgBlkFront` / `#booksImageBlock_feature_div img`)を順に試して **`data-old-hires` → `data-a-dynamic-image` JSON 第 1 key → `src`** から URL 抽出、http(s) のみ採用。og:image にも何も無ければ既存挙動(thumb=null)に degrade。
