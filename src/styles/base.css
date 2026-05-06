@@ -4703,7 +4703,7 @@ mark.pkc-search-mark {
 /* PR-O (2026-05-06):Bookmarklet generator section in shell menu。 */
 .pkc-shell-menu-bookmarklet-desc {
   font-size: var(--fs-xs, 0.8125rem);
-  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  color: var(--c-muted);
   margin-bottom: var(--space-2, 0.5rem);
   line-height: 1.4;
 }
@@ -4738,13 +4738,13 @@ mark.pkc-search-mark {
 
 .pkc-shell-menu-bookmarklet-custom-summary {
   cursor: pointer;
-  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  color: var(--c-muted);
   user-select: none;
   padding: var(--space-1, 0.25rem) 0;
 }
 
 .pkc-shell-menu-bookmarklet-custom-desc {
-  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  color: var(--c-muted);
   margin: var(--space-1, 0.25rem) 0;
   line-height: 1.4;
 }
@@ -5890,7 +5890,7 @@ mark.pkc-search-mark {
 
 .pkc-graph-time-axis-label {
   font-size: 11px;
-  fill: var(--c-fg-muted, rgba(0, 0, 0, 0.5));
+  fill: var(--c-muted);
   user-select: none;
   pointer-events: none;
 }
@@ -5975,7 +5975,7 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   display: block;
   margin-top: var(--space-1, 0.25rem);
   font-size: var(--fs-xs, 0.8125rem);
-  color: var(--c-fg-muted, rgba(0, 0, 0, 0.55));
+  color: var(--c-muted);
 }
 
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */

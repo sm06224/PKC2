@@ -222,7 +222,9 @@ function resolveTheme(canvas: HTMLCanvasElement): {
   return {
     bg: get('--c-bg', '#fff'),
     fg: get('--c-fg', '#222'),
-    fgMuted: get('--c-fg-muted', 'rgba(0,0,0,0.5)'),
+    // PKC2 token は `--c-muted`(`--c-fg-muted` は存在しない)。
+    // PR-AA hotfix:fallback も rgb 値を両 theme で見える gray に。
+    fgMuted: get('--c-muted', '#888'),
     border: get('--c-border', 'rgba(0,0,0,0.3)'),
     accent: get('--c-accent', '#3b82f6'),
     bgTag: get('--c-bg-tag', 'rgba(0,0,0,0.04)'),
