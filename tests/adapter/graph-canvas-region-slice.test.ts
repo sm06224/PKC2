@@ -23,7 +23,8 @@ function makeCanvas(width = 800, height = 600): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   const stubCtx = {
     save: () => {}, restore: () => {}, clearRect: () => {}, fillRect: () => {},
-    strokeRect: () => {}, translate: () => {}, scale: () => {}, beginPath: () => {},
+    strokeRect: () => {}, translate: () => {}, scale: () => {}, setTransform: () => {},
+    beginPath: () => {},
     moveTo: () => {}, lineTo: () => {}, arc: () => {}, fill: () => {}, stroke: () => {},
     fillText: () => {}, strokeText: () => {}, setLineDash: () => {},
     globalAlpha: 1, font: '', fillStyle: '#000', strokeStyle: '#000',

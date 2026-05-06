@@ -62,10 +62,17 @@ export interface ForceParams {
 }
 
 export const DEFAULT_FORCE_PARAMS: ForceParams = {
-  linkDistance: 70,
+  // PR-P (2026-05-06、user 報告「グラフがかなり汚い、ゴチャゴチャ」):
+  // node 同士の余白を広げて重なりを防ぎ、長 label が読めるようにする。
+  // 旧 linkDistance 70 / charge -180 / collide 20 は密集して文字が
+  // 重なっていた。新値:
+  //   linkDistance 70 → 120 (ばね自然長↑、edge 長く取る)
+  //   charge -180 → -380 (反発↑、node が散らばる)
+  //   collideRadius 20 → 36 (衝突半径↑、label 重複領域確保)
+  linkDistance: 120,
   linkStrength: 0.6,
-  charge: -180,
-  collideRadius: 20,
+  charge: -380,
+  collideRadius: 36,
   centerStrength: 0.02,
   centerX: 0,
   centerY: 0,

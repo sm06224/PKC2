@@ -50,6 +50,7 @@ function makeCanvas(width = 960, height = 600): HTMLCanvasElement {
     strokeRect: () => {},
     translate: () => {},
     scale: () => {},
+    setTransform: () => {},
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},

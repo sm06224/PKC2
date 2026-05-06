@@ -78,9 +78,11 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
-  /* PR-K G20 (2026-05-06):graph view edges 専用 token。
-     wcag non-text contrast 3:1 を確保(dark 上で #6e7e58 ≈ 5.6:1)。 */
-  --c-graph-edge: #6e7e58;
+  /* PR-K G20 → PR-P (2026-05-06):graph view edges 専用 token。
+     dark theme で `#a8c08a` ≈ **8.5:1** vs `#0d0f0a` (PIP-Boy black)。
+     PR-K の `#6e7e58` (5.6:1) では user 体感「線細くて見えない」
+     報告あり、ここで一段 bump して両 theme で同等の視認性を確保。 */
+  --c-graph-edge: #a8c08a;
   --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   /* Slice A: markdown body font alias. Currently mono (PKC2 terminal theme);
@@ -200,9 +202,10 @@
     --c-warn-fg: #ffffff;
     --c-info: #2563eb;
     --c-info-fg: #ffffff;
-    /* PR-K G20 (2026-05-06):graph view edges 専用 token、light 版。
-       parchment bg 上で #5c6b48 ≈ 5.4:1(WCAG AA non-text 余裕で達成)。 */
-    --c-graph-edge: #5c6b48;
+    /* PR-K G20 → PR-P (2026-05-06):light 版。parchment bg
+       (`#f0ebe0`) 上で `#3a4530` ≈ **8.4:1**(PR-K の `#5c6b48` 5.4:1
+       から bump、dark `#a8c08a` 8.5:1 と等価コントラスト)。 */
+    --c-graph-edge: #3a4530;
     /* Belt-and-braces: explicitly bind the body-text alias to the
        concrete light-ink hex instead of relying on lazy
        `var(--c-fg)` substitution — removes any cascade edge case
@@ -247,7 +250,7 @@
   --c-warn-fg: #ffffff;
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
-  --c-graph-edge: #5c6b48;
+  --c-graph-edge: #3a4530;
   /* Explicit concrete-hex binding; see the @media light block
      for the rationale. */
   --c-text: #1a1a14;

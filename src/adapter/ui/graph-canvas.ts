@@ -310,14 +310,14 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   }
 
   // Edges.
-  // PR-K G20 (2026-05-06):user 報告「グラフの線が見えない、WCAG どう?」。
-  // 旧:`theme.border (rgba(0,0,0,0.12))` × `globalAlpha 0.6` ≈ 7% 不透明
-  // → 1.04:1 contrast(ほぼ不可視、WCAG fail)。
-  // 新:専用 token `--c-graph-edge` を導入(dark `#6e7e58` ≈ 5.6:1、
-  // light `#5c6b48` ≈ 5.4:1)。line width 1.5 / scale で fine line でも
-  // 目視可能。
+  // PR-K G20 → PR-P (2026-05-06):user 報告「関連線が細くて関連が
+  // 見えない、ライト/ダークで見やすさが変わる」。PR-K で WCAG 5.5:1
+  // を担保したが太さ 1.5 px はまだ細い。PR-P で 2.5 px に bump、
+  // 線幅 + token color の両方で「edge が一目で見える」を確保。
+  // theme.graphEdge は base.css で dark / light 両方 7:1 程度に bump
+  // 済み(両 theme で同等の視認性)。
   ctx.strokeStyle = theme.graphEdge;
-  ctx.lineWidth = 1.5 / view.scale;
+  ctx.lineWidth = 2.5 / view.scale;
   ctx.globalAlpha = 1;
   for (const link of payload.links) {
     const a = payload.positions.get(link.from);
@@ -380,7 +380,11 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     }
 
     // Label with halo (G18 readability).
-    const labelText = truncate(node.label, 18);
+    // PR-P (2026-05-06):user 報告「エントリ名が省略されているので、
+    // 何が関連しているのかわからない」。truncate 長を 18 → 32 に
+    // bump、長い title でも relations が読めるように。force layout の
+    // 余白 bump (PR-P のもう 1 件) と組み合わせて重複を最小化。
+    const labelText = truncate(node.label, 32);
     const fontSize = 13;
     ctx.font = `500 ${fontSize}px sans-serif`;
     ctx.textAlign = 'center';
