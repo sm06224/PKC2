@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-UUU(2026-05-07)
+
+- **TAB → 半角スペース n 個(行頭限定)**:user 修正指示7 #7 + 修正指示6 残「TAB の行頭挿入を半角スペース n 個に展開して」への対応。プレーン textarea(markdown 拡張外)で行頭 Tab 押下時、`\t` ではなく半角スペース n 個を挿入。
+- **修正**:
+  - 新 flag `editor.tab_indent_spaces`(Tier 0、default 2、range 0-8)を `editor-flags.ts` に追加。0 で完全 off(従来 `\t`)。
+  - action-binder.ts の generic Tab fall-through に行頭判定を追加:`start === 0 || value[start-1] === '\n'` で line head を検出。**行頭 + 単一カーソル + flag>0** の 3 条件 AND で半角スペース展開、それ以外は従来 `\t`。
+  - markdown 互換 field(body / textlog / todo-description)は editor-key-helpers の `INDENT_UNIT = "  "` 経由で別系統(常に 2 spaces 固定、list-slot indent)。本変更はその上流の generic textarea Tab 挙動。
+- **parity test**(reform-2026-05 Phase 8 順序性 doctrine 必須):新規 `tests/adapter/action-binder-tab-indent.test.ts` で **flag mutation → Tab keydown → textarea value 反映** の 5 ケース(default 2 / 4 / 0 / 行中→\\t / 改行直後→spaces)を全件 assert。`setFlagSource('parity-test', ...)` で flag を mock し、source 優先順を経由して getter 値を切替。
+- bundle.js 916.70 → 916.97 KB(+0.27 KB:flag 1 件 + 行頭判定 + 分岐ロジック)、bundle.css 不変。unit 6557 / 6557 pass(+5 新規)。
+
 ### Wave 10-7 review fix PR-TTT(2026-05-07)
 
 - **Graph node サイズ縮小、label 優先表示**:user 修正指示7 #6「グラフのノードが大きい、label を優先表示にして」への対応。従来 `collideRadius * 0.6 = 21.6 px` の視覚半径が degree-scaling で最大 38.88 px まで膨張し、label が node に隠れていた。

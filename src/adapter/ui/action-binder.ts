@@ -22,6 +22,7 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
+import { editorTabIndentSpaces } from './editor-flags';
 import {
   applySnippet,
   placeFloatingTrigger,
@@ -3745,14 +3746,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const start = ta.selectionStart ?? 0;
       const end = ta.selectionEnd ?? start;
       e.preventDefault();
-      // Splice `\t` in. `setRangeText` keeps undo history intact
-      // where browsers support it; the explicit assignment fallback
-      // covers the rare cases where it's not implemented.
+      // PR-UUU (2026-05-07、修正指示7 #7):行頭 Tab を半角スペース
+      // n 個に展開(flag `editor.tab_indent_spaces`、default 2)。
+      // 行頭以外の Tab は常に `\t`(タブ揃え用法尊重)。flag = 0 で
+      // 完全 off(全部 `\t`、従来通り)。
+      const indentSpaces = editorTabIndentSpaces();
+      const atLineStart = start === 0 || ta.value.charAt(start - 1) === '\n';
+      const insertText = (indentSpaces > 0 && atLineStart && start === end)
+        ? ' '.repeat(indentSpaces)
+        : '\t';
+      // Splice the chosen text in. `setRangeText` keeps undo history
+      // intact where browsers support it; the explicit assignment
+      // fallback covers the rare cases where it's not implemented.
       if (typeof ta.setRangeText === 'function') {
-        ta.setRangeText('\t', start, end, 'end');
+        ta.setRangeText(insertText, start, end, 'end');
       } else {
-        ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
-        ta.selectionStart = ta.selectionEnd = start + 1;
+        ta.value = ta.value.slice(0, start) + insertText + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + insertText.length;
       }
       // Notify subscribers (preview pane, dirty-state, etc.) that
       // the textarea content changed — `setRangeText` does not fire
