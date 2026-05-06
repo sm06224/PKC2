@@ -3056,6 +3056,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' });
         break;
       }
+      case 'copy-bookmarklet-code': {
+        // PR-W (2026-05-06):shell menu の bookmarklet template を
+        // clipboard へコピー。textarea の中身を読んで navigator.clipboard
+        // に書き込む。失敗時は textarea の select() で fallback。
+        const ta = root.querySelector<HTMLTextAreaElement>(
+          '.pkc-shell-menu-bookmarklet-code',
+        );
+        if (!ta) break;
+        const code = ta.value;
+        const ok = (): void => {
+          target.textContent = '✓ コピー完了';
+          window.setTimeout(() => { target.textContent = '📋 クリップボードにコピー'; }, 1500);
+        };
+        if (window.navigator.clipboard?.writeText) {
+          window.navigator.clipboard.writeText(code).then(ok).catch(() => {
+            ta.select();
+            target.textContent = '⚠ 手動コピーしてください';
+          });
+        } else {
+          ta.select();
+          try {
+            window.document.execCommand('copy');
+            ok();
+          } catch {
+            target.textContent = '⚠ 手動コピーしてください';
+          }
+        }
+        break;
+      }
       case 'toggle-graph-venn-grouping-mode': {
         // PR-I G17 (2026-05-06):Venn-style グルーピング ring の ON/OFF。
         dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });

@@ -4730,6 +4730,45 @@ mark.pkc-search-mark {
   filter: brightness(1.1);
 }
 
+/* PR-W (2026-05-06):custom scraper template editor。 */
+.pkc-shell-menu-bookmarklet-custom {
+  margin-top: var(--space-2, 0.5rem);
+  font-size: var(--fs-xs, 0.8125rem);
+}
+
+.pkc-shell-menu-bookmarklet-custom-summary {
+  cursor: pointer;
+  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  user-select: none;
+  padding: var(--space-1, 0.25rem) 0;
+}
+
+.pkc-shell-menu-bookmarklet-custom-desc {
+  color: var(--c-fg-muted, rgba(0, 0, 0, 0.6));
+  margin: var(--space-1, 0.25rem) 0;
+  line-height: 1.4;
+}
+
+.pkc-shell-menu-bookmarklet-code {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-2xs, 0.75rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  color: var(--c-fg, currentColor);
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: var(--space-1, 0.25rem);
+}
+
+.pkc-shell-menu-bookmarklet-copy {
+  display: block;
+  width: 100%;
+}
+
 /* PR-M (2026-05-06):shell menu の公開 URL block。 */
 .pkc-shell-menu-public-urls-list {
   display: flex;

@@ -1631,6 +1631,46 @@ function renderShellMenu(
   bmLink.title = 'ドラッグしてブックマークバーに追加';
   bmLink.draggable = true;
   bmSection.appendChild(bmLink);
+
+  // PR-W (2026-05-06):custom scraper を user が追加するための template
+  // editor。<details> で展開、bookmarklet JS を <textarea> に表示して
+  // user が copy / 編集できる。User direction:
+  // > それ以外はユーザーが自分でスクレイピングを用意できるようにしましょう
+  //
+  // 編集経路:
+  //   1. user が下の textarea から JS をコピー
+  //   2. 自分のお気に入りブックマークの URL に `javascript:` prefix を
+  //      付けて貼り付け
+  //   3. host pattern 部(`if(/youtube\.com|...)`...)に独自 site を追加
+  //   4. 名前を変えて保存(複数 site 用 bookmarklet を user が育てる)
+  //
+  // PKC2 内に scraper 設定を保存する代わりに、bookmarklet 自体を user
+  // が育てる UX。PKC2 哲学(local-first / single-source)に沿う。
+  const bmCustom = document.createElement('details');
+  bmCustom.className = 'pkc-shell-menu-bookmarklet-custom';
+  const bmCustomSummary = document.createElement('summary');
+  bmCustomSummary.className = 'pkc-shell-menu-bookmarklet-custom-summary';
+  bmCustomSummary.textContent = '▼ カスタム作成 / コードを表示';
+  bmCustom.appendChild(bmCustomSummary);
+  const bmCustomDesc = createElement('div', 'pkc-shell-menu-bookmarklet-custom-desc');
+  bmCustomDesc.textContent = '5 公式 site 以外(個人 blog / 別 SNS / 自社 wiki 等)も対応したい場合、下の JS をコピーして自分でブックマークを作成し、host pattern 部分に独自 site を追加してください。';
+  bmCustom.appendChild(bmCustomDesc);
+  const bmCode = document.createElement('textarea');
+  bmCode.className = 'pkc-shell-menu-bookmarklet-code';
+  bmCode.setAttribute('readonly', 'true');
+  bmCode.setAttribute('spellcheck', 'false');
+  bmCode.setAttribute('rows', '6');
+  bmCode.value = `javascript:${bmJs}`;
+  bmCode.title = 'クリックで全選択 → Ctrl/Cmd+C でコピー';
+  bmCode.addEventListener('focus', () => bmCode.select());
+  bmCustom.appendChild(bmCode);
+  const bmCopyBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-bookmarklet-copy');
+  bmCopyBtn.setAttribute('data-pkc-action', 'copy-bookmarklet-code');
+  bmCopyBtn.textContent = '📋 クリップボードにコピー';
+  bmCopyBtn.title = 'bookmarklet JS をクリップボードへ';
+  bmCustom.appendChild(bmCopyBtn);
+  bmSection.appendChild(bmCustom);
+
   card.appendChild(bmSection);
 
   // PR-M (2026-05-06):shell menu に GitHub Pages の公開 URL を 3 件
