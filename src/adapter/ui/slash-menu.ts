@@ -260,14 +260,26 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
 
   renderMenuItems(inst);
 
-  // Position near the textarea
+  // Position near the textarea.
+  //
+  // PR-FF (2026-05-06、user 報告「テキストエリア入力時の入力補助コマンド
+  // 「/」コマンドの候補リストが表示されない」):
+  //
+  // 旧:`position: absolute` + `${rect.left - rootRect.left}` で root に
+  // 相対配置したが、`#pkc-root` は static(positioned ではない)のため、
+  // 実際には viewport 由来の initial containing block に対する offset
+  // として解釈され、root の viewport offset 分ズレた位置に menu が
+  // 出ていた(画面外 / header 裏 / 不可視位置に落ち込む可能性)。
+  //
+  // 新:`position: fixed` + 直接 viewport 座標を使用。textarea の
+  // boundingClientRect そのものを座標に渡せば確実に textarea 直下に
+  // 出る。スクロール時 menu が固定位置に張り付くが、slash menu は
+  // 1 入力 sub-tree の transient UI なので viewport 固定で問題なし。
   const rect = textarea.getBoundingClientRect();
-  const rootRect = root.getBoundingClientRect();
-  menu.style.position = 'absolute';
-  menu.style.left = `${rect.left - rootRect.left}px`;
-  // Place below the textarea's current line or at bottom of textarea
-  menu.style.top = `${rect.bottom - rootRect.top + 4}px`;
-  menu.style.zIndex = '100';
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.zIndex = '1000';
 
   root.appendChild(menu);
 }
