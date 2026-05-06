@@ -4586,7 +4586,8 @@ mark.pkc-search-mark {
   flex-wrap: wrap;
 }
 .pkc-flag-editor-text,
-.pkc-flag-editor-enum {
+.pkc-flag-editor-enum,
+.pkc-flag-editor-textarea {
   flex: 1 1 80px;
   font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
@@ -4594,6 +4595,22 @@ mark.pkc-search-mark {
   color: var(--c-fg);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
+}
+
+/* PR-PPP (2026-05-07):長尺 / 改行を含む string flag 用 textarea
+ * editor。`templates.entries` 等の JSON 編集を行いやすくするため
+ * monospace + 改行保持 + 等幅 tab。 */
+.pkc-flag-editor-textarea {
+  flex: 1 1 100%;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
 }
 .pkc-flag-reset {
   font-size: var(--fs-sm);

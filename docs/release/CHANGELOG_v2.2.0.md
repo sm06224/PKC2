@@ -184,6 +184,25 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 review fix PR-PPP(2026-05-07)
+
+修正指示7 への対応開始 wave。**input field UX during dispatch-driven re-renders** という共通テーマで 2 件をまとめて修正:
+
+#### (a) Flags `templates.entries` が編集できない bug
+- **root cause**:string flag の editor が `<input type="text">` 固定で、複数行 / 長尺 JSON の入力に向かない。改行が剥落、横スクロールも辛い。
+- **修正**:`flags-inspector.ts` の editor builder を分岐、**default value が 60 文字以上 OR 改行を含む** string flag は `<textarea>` editor に切り替え。`monospace` font + `tab-size: 2` + `resize: vertical`、`templates.entries` 等の JSON 編集に最適化。
+- **focus 復元**:textarea に `data-pkc-field="flag-editor-${key}"` を付与、`SET_FLAG` dispatch で full re-render が走っても render-continuity helper が caret 位置 + selection range を保持。
+- **action-binder 拡張**:`set-flag-string` 受理を `HTMLInputElement` だけだったのを `|| HTMLTextAreaElement` に。
+
+#### (b) Filer 検索窓の focus が勝手に外れる(日本語入力支障)
+- **root cause**:filer 検索 input には `data-pkc-field` が無く、`SET_FILER_SEARCH_QUERY` dispatch が full re-render を起こすたび focus が新 DOM に引き継がれない。日本語 IME 合成中も dispatch されてしまい、変換候補が壊れる。
+- **修正**:
+  - `data-pkc-field="filer-search"` を input に付与、render-continuity が focus + caret + selection を復元
+  - `searchImeComposing` フラグの監視対象に `filer-search` を追加、合成中は dispatch スキップ
+  - `compositionend` で最終値を 1 回だけ dispatch
+
+bundle.js 915.57 → 916.15 KB(+0.58 KB)、bundle.css 144.07 → 144.31 KB(+0.24 KB)。unit 6552 / 6552 pass。
+
 ### Wave 10-6 review fix PR-OOO(2026-05-06)
 
 - **TEXTAREA Tab → 全角空白 入力 bug の defensive layer**:user 修正指示6「TEXTAREA の TAB キー押下で全角空白が入力されることがある(過去のショートカットキーが残っている可能性)」への対応。PKC2 source code 全文 grep でも U+3000(`　`)を Tab に bind するコードは存在せず、bug の出所は browser / IME tab-completion 側 と推定。defensive layer を追加して**根治**:

@@ -4876,6 +4876,13 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
   searchInput.type = 'search';
   searchInput.className = 'pkc-filer-search-input';
   searchInput.setAttribute('data-pkc-action', 'set-filer-search-query');
+  // PR-QQQ (2026-05-07、user 修正指示7「Filer の検索窓からフォーカス
+  // が勝手に外れる。日本語の変換とかに支障大」):render-continuity
+  // helper が focus + caret を復元するための data-pkc-field を付与。
+  // SET_FILER_SEARCH_QUERY dispatch で full re-render が走っても、
+  // 同 field 名の input が新 DOM にあれば focus + caret + selection
+  // が保持される。
+  searchInput.setAttribute('data-pkc-field', 'filer-search');
   searchInput.setAttribute('placeholder', '🔍 タイトル検索(scope 配下を再帰)');
   searchInput.value = state.filerSearchQuery ?? '';
   searchWrap.appendChild(searchInput);

@@ -4592,16 +4592,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let navTicketCounter = 0;
   function handleSearchCompositionStart(e: Event): void {
     const target = e.target as HTMLElement | null;
-    if (target?.getAttribute('data-pkc-field') === 'search') {
+    const field = target?.getAttribute('data-pkc-field');
+    // PR-QQQ (2026-05-07):sidebar 検索 + filer 検索の両方で IME 中は
+    // dispatch をスキップする。filer 側は data-pkc-field="filer-search"
+    // を持つ(PR-QQQ で追加)。
+    if (field === 'search' || field === 'filer-search') {
       searchImeComposing = true;
     }
   }
   function handleSearchCompositionEnd(e: Event): void {
     const target = e.target as HTMLInputElement | null;
-    if (target?.getAttribute('data-pkc-field') === 'search') {
+    const field = target?.getAttribute('data-pkc-field');
+    if (field === 'search') {
       searchImeComposing = false;
       // Composition just committed; dispatch the final value once.
-      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target.value });
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target!.value });
+    } else if (field === 'filer-search') {
+      searchImeComposing = false;
+      dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: target!.value });
     }
   }
 
@@ -4616,7 +4624,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
     // PR-L (2026-05-06):filer 側の検索窓 input → SET_FILER_SEARCH_QUERY。
+    // PR-QQQ (2026-05-07):IME 合成中は skip(同 input が日本語を打って
+    // いる最中で full re-render が走ると変換候補が壊れる)。
     if (target.getAttribute('data-pkc-action') === 'set-filer-search-query') {
+      if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: value });
       return;
@@ -4783,7 +4794,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     if (action === 'set-flag-string') {
       const key = target.getAttribute('data-pkc-key');
-      if (key && target instanceof HTMLInputElement) {
+      // PR-PPP (2026-05-07):長尺 / 改行を含む string flag(`templates.
+      // entries` 等)は `<textarea>` editor。target instanceof
+      // HTMLTextAreaElement も同経路で受理。
+      if (key && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
         dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
       }
       return;

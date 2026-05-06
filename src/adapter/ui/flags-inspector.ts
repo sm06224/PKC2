@@ -122,6 +122,33 @@ function renderEditor(flag: FlagDescriptor): HTMLElement {
   }
 
   // Numeric / string: text input
+  // PR-PPP (2026-05-07、user 修正指示7「Flags `templates.entries` が
+  // 編集できない」):default value が複数行 / 長尺の string flag は
+  // `<input type="text">` だと改行が剥落する + 横スクロールも辛い。
+  // 60 文字以上 or 改行を含む default は **`<textarea>` editor** に
+  // 切り替え。number flag / 短 string は従来通り 1 行 input。
+  const isLongString =
+    typeof flag.defaultValue === 'string'
+    && (flag.defaultValue.length >= 60 || flag.defaultValue.includes('\n'));
+  if (isLongString) {
+    const ta = document.createElement('textarea');
+    ta.className = 'pkc-flag-editor pkc-flag-editor-textarea';
+    ta.value = String(flag.currentValue ?? '');
+    ta.disabled = !editable;
+    ta.rows = Math.min(12, Math.max(4, String(flag.currentValue ?? '').split('\n').length));
+    ta.spellcheck = false;
+    // PR-PPP (2026-05-07):data-pkc-field を per-key で振って render-
+    // continuity の focus 復元キーに使う。SET_FLAG dispatch ごとに
+    // 全 shell 再描画が走るが、`flag-editor-${key}` が一致する textarea
+    // が新 DOM にあれば caret も含めて復元される。
+    ta.setAttribute('data-pkc-field', `flag-editor-${flag.key}`);
+    if (editable) {
+      ta.setAttribute('data-pkc-action', 'set-flag-string');
+      ta.setAttribute('data-pkc-key', flag.key);
+    }
+    return ta;
+  }
+
   const input = document.createElement('input');
   input.className = 'pkc-flag-editor pkc-flag-editor-text';
   input.type = typeof flag.defaultValue === 'number' ? 'number' : 'text';
