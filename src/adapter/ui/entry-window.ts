@@ -1308,7 +1308,35 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   width: 6px;
   background: var(--c-border);
   border-radius: 3px;
+  /* PR-XX2 (2026-05-07、user 訂正指示):⇄ toggle button 配置のため
+     positioning context に。中央 absolute 配置 = block 同期 ON/OFF。 */
+  position: relative;
 }
+/* PR-XX2 ⇄ toggle button(child window 限定の inline CSS。
+   center pane は base.css の .pkc-btn-toggle-sync を使用)。 */
+.pkc-btn-toggle-sync {
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.8125rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="on"] {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #fff;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="off"] { opacity: 0.6; }
 .pkc-text-edit-preview {
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -1677,7 +1705,15 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
            useSplitEditor in the child-side script. -->
       <div class="pkc-text-split-editor" data-pkc-region="text-split-editor">
         <textarea class="pkc-editor-body" id="body-edit" data-pkc-field="body" data-pkc-viewport-sized="true"></textarea>
-        <div class="pkc-text-split-resize-handle" aria-hidden="true"></div>
+        <div class="pkc-text-split-resize-handle" aria-hidden="true">
+          <!-- PR-XX2 (2026-05-07):popup 別窓にも block 同期 toggle を設置。
+               center pane と同じ localStorage key (pkc2.split-sync-enabled)
+               を共有するので、片方の ON/OFF が両方に伝播する。 -->
+          <button type="button" class="pkc-btn-toggle-sync" id="btn-toggle-sync"
+                  data-pkc-action="toggle-source-preview-sync"
+                  data-pkc-sync-state="off" aria-pressed="false"
+                  title="block 対応ハイライト OFF(クリックで ON)">⇄</button>
+        </div>
         <div id="body-preview" class="pkc-text-edit-preview pkc-md-rendered" data-pkc-region="text-edit-preview">${renderedBody}</div>
       </div>` : `      <div class="pkc-tab-bar" id="tab-bar">
         <span class="pkc-tab" id="tab-source" data-pkc-active="true" onclick="showTab('source')">Source</span>
@@ -1900,6 +1936,47 @@ if (useSplitEditor) {
       pkcRefreshSyncMarker();
     });
   }
+
+  /* PR-XX2 (2026-05-07、user 訂正指示):⇄ toggle button の click
+   * handler + 初期 visual state。center pane と同じ localStorage key
+   * を共有しているので、popup 開いた瞬間の値を visual に反映する。 */
+  function pkcUpdateSyncToggleVisuals() {
+    var btn = document.getElementById('btn-toggle-sync');
+    if (!btn) return;
+    var on = pkcSyncEnabled();
+    btn.setAttribute('data-pkc-sync-state', on ? 'on' : 'off');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.setAttribute('title',
+      on ? 'block 対応ハイライト ON(クリックで OFF)'
+         : 'block 対応ハイライト OFF(クリックで ON)');
+  }
+  pkcUpdateSyncToggleVisuals();
+  var pkcToggleBtn = document.getElementById('btn-toggle-sync');
+  if (pkcToggleBtn) {
+    pkcToggleBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var next = !pkcSyncEnabled();
+      try { localStorage.setItem(SYNC_KEY, next ? 'true' : 'false'); }
+      catch (_e) { /* localStorage unavailable */ }
+      pkcUpdateSyncToggleVisuals();
+      if (next) {
+        /* 即時 sync で「engage した」感覚を出す。OFF 時は marker を一掃。 */
+        pkcRefreshSyncMarker();
+      } else {
+        pkcClearActiveMarker();
+      }
+    });
+  }
+
+  /* storage event:同 origin の他 window(center pane や別 popup)が
+   * toggle した瞬間に本 popup の visual も追従させる。 */
+  window.addEventListener('storage', function(ev) {
+    if (ev.key !== SYNC_KEY) return;
+    pkcUpdateSyncToggleVisuals();
+    if (pkcSyncEnabled()) pkcRefreshSyncMarker();
+    else pkcClearActiveMarker();
+  });
 }
 
 /* ── Attachment preview boot ── */

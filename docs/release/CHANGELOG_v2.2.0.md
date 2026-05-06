@@ -184,6 +184,16 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-7 hotfix PR-XX2(2026-05-07、修正指示2 残 正しい意図)
+
+- **別窓 (entry-window popup) の split editor に ⇄ toggle button を追加**:user 訂正指示「左ペインからダブルクリックで起動した別窓で、センターペインと同じブロック同期機能を活かしてほしい(機能がないので追加して欲しい)」への対応。元 PR-CC で popup の inline JS sync ロジックは実装済みだったが、**起動 UI である ⇄ button が popup の resize handle に存在しなかった**ため user は機能を有効化できない状態だった(私の前回 PR-XXX は Firefox 環境特有 bug の調査と読み違えて投機的 hypothesis doc を生成し、user 指摘で撤回)。
+- **修正**:
+  - `entry-window.ts` の HTML template の `pkc-text-split-resize-handle` 内に `<button class="pkc-btn-toggle-sync" data-pkc-action="toggle-source-preview-sync" id="btn-toggle-sync">⇄</button>` を追加
+  - inline CSS で `.pkc-text-split-resize-handle` に `position: relative` 付与、center pane と同じ視覚 design の `.pkc-btn-toggle-sync` rule を popup local CSS に追加
+  - inline JS に `pkcUpdateSyncToggleVisuals()` を追加、popup 起動時に **`localStorage["pkc2.split-sync-enabled"]` の現在値を visual に反映**(center pane と key 共有)。click handler は `localStorage` を flip + 即時 sync(ON 時)/ marker 一掃(OFF 時)
+  - **`storage` event listener** を追加、center pane や他 popup が toggle した瞬間に本 popup の visual も追従
+- bundle.js 918.18 → 921.37 KB(+3.19 KB:button HTML + handler + storage listener)、bundle.css 不変(CSS は inline JS 内 string)。unit 6563 / 6563 pass。
+
 ### Wave 10-7 hotfix PR-RRR-V2(2026-05-07)
 
 - **filer 行ストライプ視認性強化(ダークテーマ対応)**:user 報告「ファイラのストライプが見づらいし、ダークテーマだとほぼ違いがわからん」への hotfix。元 PR-RRR の `rgba(0, 0, 0, 0.025)` は dark theme background `#0d0f0a` に黒を 2.5% 重ねても変化が殆ど見えず stripe が機能していなかった。
