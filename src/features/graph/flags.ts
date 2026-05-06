@@ -104,6 +104,26 @@ export const graphIterations = defineFlag<number>(
 );
 
 /**
+ * Wheel zoom 感度(PR-F G19、2026-05-06)。整数 [10, 200] で与えて内部で
+ * 1/10000 倍する(integer 表現の方が flags inspector で扱いやすい)。
+ *
+ *   factor = exp(-deltaY × value × 0.0001)
+ *
+ * default 35 ≈ wheel notch 100 で 1.42×(以前の hard-coded 15 = 1.16×
+ * の約 2.4 倍)。max 200 まで上げると 1 notch で 7.4× の超高感度。
+ */
+export const graphZoomWheelSensitivity = defineFlag<number>(
+  'graph.zoom.wheel_sensitivity',
+  35,
+  {
+    range: [10, 200],
+    category: FLAG_CATEGORY,
+    description: 'wheel zoom 感度(整数、内部で ×0.0001)。1 notch あたりの scale 変化率 ≈ exp(deltaY × value × 0.0001)',
+    tier: 0,
+  },
+);
+
+/**
  * Snapshot of all graph force params at the moment of the call.
  * Pass as `params` to `runSimulation` / `stepSimulation` so the
  * simulation runs with consistent values throughout an iteration.

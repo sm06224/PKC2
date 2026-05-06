@@ -55,11 +55,16 @@ test('explorer subset: empty folder shows empty message + nav rows', async ({ pa
   );
   await expect(page.locator('[data-pkc-region="filer-empty"]')).toBeVisible();
   await expect(page.locator('[data-pkc-region="filer-table"]')).toBeVisible();
-  // Only the "." nav row exists (no ".." at root, no real children).
+  // PR-F G14 (2026-05-06):「..」row は top-level folder でも表示する
+  // (container root へ戻る sentinel)。"."(自身)+ ".."(root) で 2 行。
   const navRows = page.locator('[data-pkc-filer-nav]');
-  await expect(navRows).toHaveCount(1);
+  await expect(navRows).toHaveCount(2);
   await expect(page.locator('[data-pkc-filer-nav="current"]')).toBeVisible();
-  await expect(page.locator('[data-pkc-filer-nav="parent"]')).toHaveCount(0);
+  await expect(page.locator('[data-pkc-filer-nav="parent"]')).toBeVisible();
+  // top-level folder の ".." は filer-scope-root アクションを発火する
+  // (data-pkc-lid を持たない sentinel)。
+  const parentNav = page.locator('[data-pkc-filer-nav="parent"]');
+  await expect(parentNav).toHaveAttribute('data-pkc-action', 'filer-scope-root');
 });
 
 test('順序性: SET_DISPLAY_PROFILE updates data-pkc-subset on filer-view', async ({ page }) => {
@@ -126,4 +131,28 @@ test('breadcrumb segment for the current folder paints at its viewport coord', a
     { x: cx, y: cy },
   );
   expect(isInside).toBe(true);
+});
+
+test('PR-F G14: clicking the ".." nav row from a top-level folder returns to root scope', async ({
+  page,
+}) => {
+  await bootAndSwitchToFiler(page);
+
+  // We're inside "Sample Folder" (selected by default after creation).
+  // The ".." row is a sentinel-targeted button → filer-scope-root.
+  const parentNav = page.locator('[data-pkc-filer-nav="parent"]');
+  await expect(parentNav).toBeVisible();
+  const box = await parentNav.boundingBox();
+  if (!box) throw new Error('Parent nav row has no boundingBox');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  // After click, the filer scope should resolve to container root —
+  // the "Sample Folder" folder is gone from the breadcrumb's current
+  // segment(or the breadcrumb shows "Root" without a current segment).
+  const breadcrumb = page.locator('[data-pkc-region="filer-breadcrumb"]');
+  await expect(breadcrumb).toBeVisible();
+  // No more "current" breadcrumb input — root scope = breadcrumb only
+  // shows the "Root" segment.
+  await expect(page.locator('[data-pkc-filer-breadcrumb="current"]')).toHaveCount(0);
+  await expect(page.locator('[data-pkc-filer-breadcrumb="root"]')).toBeVisible();
 });

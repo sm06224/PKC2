@@ -226,9 +226,10 @@ describe('graph zoom gestures (G1 PR-C parity)', () => {
     const before = __getGraphZoomStateForTest(svg)!.scale;
     svg.dispatchEvent(wheel);
     const after = __getGraphZoomStateForTest(svg)!.scale;
-    // 1 wheel event with deltaY=-100 → factor = exp(0.15) ≈ 1.162
-    // If handlers stacked 4× we'd see ~1.162^4 = 1.83 instead.
+    // PR-F G19: default sensitivity = 35 → factor = exp(-deltaY × 0.0035)。
+    // deltaY=-100 → exp(0.35) ≈ 1.419。handlers が 4× 重なると
+    // ~1.419^4 = 4.06 になり close-to が壊れる(検出可能)。
     const ratio = after / before;
-    expect(ratio).toBeCloseTo(Math.exp(0.15), 2);
+    expect(ratio).toBeCloseTo(Math.exp(0.35), 2);
   });
 });

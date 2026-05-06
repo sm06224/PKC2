@@ -4340,35 +4340,59 @@ function subsetLabelText(kind: FilerProfile['kind']): string {
 
 /**
  * Resolve "." (current folder) and ".." (parent folder) navigation
- * affordances for the filer view. At root scope, "." returns null
- * (no folder entry to represent) and ".." returns null per
- * 2026-05-05 user direction:「rootにいる場合は .. の表示は無し」.
+ * affordances for the filer view.
+ *
+ * 2026-05-06 user direction(G14):「..」が表示されないという報告 →
+ * **常に「..」を出す**ように修正。structural parent が無い top-level
+ * folder の「..」は Container root へ戻す sentinel(`__root__`)を target
+ * として返し、action-binder 側で `filer-scope-root` 動作にマップする。
+ * これで user は filer 内のどの位置からも一段上に戻れる。
  */
+const ROOT_NAV_SENTINEL_LID = '__root__';
+
 function resolveFilerNavigation(state: AppState): {
   current: Entry | null;
   parent: Entry | null;
+  parentIsRootSentinel?: boolean;
 } {
   const scope = resolveFilerScope(state);
   if (!scope) return { current: null, parent: null };
   if (!state.container) return { current: scope, parent: null };
   const parent = getStructuralParent(state.container.relations, state.container.entries, scope.lid);
-  return { current: scope, parent: parent ?? null };
+  if (parent) return { current: scope, parent };
+  // Top-level folder — synthesize a sentinel "Root" entry for the
+  // ".." row. The action-binder maps this lid to filer-scope-root.
+  const rootSentinel: Entry = {
+    lid: ROOT_NAV_SENTINEL_LID,
+    title: 'Root',
+    body: '',
+    archetype: 'folder',
+    created_at: '',
+    updated_at: '',
+  };
+  return { current: scope, parent: rootSentinel, parentIsRootSentinel: true };
 }
 
 function buildFilerNavCard(
   kind: 'current' | 'parent',
   target: Entry,
   label: string,
+  toRootSentinel = false,
 ): HTMLElement {
   const card = createElement(
     'div',
     `pkc-filer-card pkc-filer-card-nav pkc-filer-card-nav-${kind}`,
   );
-  card.setAttribute('data-pkc-action', 'select-entry');
-  card.setAttribute('data-pkc-lid', target.lid);
+  if (toRootSentinel) {
+    // ".." from a top-level folder → container root (DESELECT_ENTRY 経由)。
+    card.setAttribute('data-pkc-action', 'filer-scope-root');
+  } else {
+    card.setAttribute('data-pkc-action', 'select-entry');
+    card.setAttribute('data-pkc-lid', target.lid);
+  }
   card.setAttribute('data-pkc-archetype', 'folder');
   card.setAttribute('data-pkc-filer-nav', kind);
-  if (kind === 'parent') card.setAttribute('data-pkc-drop-target', 'folder');
+  if (kind === 'parent' && !toRootSentinel) card.setAttribute('data-pkc-drop-target', 'folder');
 
   const thumb = createElement('div', 'pkc-filer-card-thumb pkc-filer-card-thumb-fallback');
   thumb.textContent = label;
@@ -4384,10 +4408,15 @@ function buildFilerNavRow(
   kind: 'current' | 'parent',
   target: Entry,
   label: string,
+  toRootSentinel = false,
 ): HTMLTableRowElement {
   const tr = createElement('tr', `pkc-filer-row pkc-filer-row-nav pkc-filer-row-nav-${kind}`) as HTMLTableRowElement;
-  tr.setAttribute('data-pkc-action', 'select-entry');
-  tr.setAttribute('data-pkc-lid', target.lid);
+  if (toRootSentinel) {
+    tr.setAttribute('data-pkc-action', 'filer-scope-root');
+  } else {
+    tr.setAttribute('data-pkc-action', 'select-entry');
+    tr.setAttribute('data-pkc-lid', target.lid);
+  }
   tr.setAttribute('data-pkc-archetype', 'folder');
   tr.setAttribute('data-pkc-filer-nav', kind);
   // ".." rows are drop targets so user can drag-drop into the parent
@@ -4481,7 +4510,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     tbody.appendChild(buildFilerNavRow('current', nav.current, '.'));
   }
   if (nav.parent) {
-    tbody.appendChild(buildFilerNavRow('parent', nav.parent, '..'));
+    tbody.appendChild(buildFilerNavRow('parent', nav.parent, '..', nav.parentIsRootSentinel));
   }
 
   for (const child of sortedChildren) {
@@ -4569,7 +4598,7 @@ function renderFilerContactSheet(
 
   const nav = resolveFilerNavigation(state);
   if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
-  if (nav.parent) grid.appendChild(buildFilerNavCard('parent', nav.parent, '..'));
+  if (nav.parent) grid.appendChild(buildFilerNavCard("parent", nav.parent, "..", nav.parentIsRootSentinel));
 
   for (const child of children) {
     const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
@@ -4649,7 +4678,7 @@ function renderFilerCardGrid(
 
   const nav = resolveFilerNavigation(state);
   if (nav.current) grid.appendChild(buildFilerNavCard('current', nav.current, '.'));
-  if (nav.parent) grid.appendChild(buildFilerNavCard('parent', nav.parent, '..'));
+  if (nav.parent) grid.appendChild(buildFilerNavCard("parent", nav.parent, "..", nav.parentIsRootSentinel));
 
   for (const child of children) {
     const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };

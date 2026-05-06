@@ -5711,8 +5711,18 @@ mark.pkc-search-mark {
 }
 
 .pkc-filer-graph-label {
-  font-size: 11px;
+  /* PR-F G18 (2026-05-06):graph 文字読みやすさ改善。font 大きく
+     (11→13)、weight 太く(default→500)、SVG paint-order + stroke で
+     halo を作って背景の edge / 重なる circle に対してコントラスト
+     確保。SVG `paint-order: stroke` で stroke を fill の下に置くと
+     halo として機能する。 */
+  font-size: 13px;
+  font-weight: 500;
   fill: var(--c-fg, currentColor);
+  paint-order: stroke;
+  stroke: var(--c-bg, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
   pointer-events: none;
   user-select: none;
 }

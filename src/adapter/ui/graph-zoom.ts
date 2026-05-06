@@ -24,6 +24,8 @@
  * current transform via the layer's `transform` attribute.
  */
 
+import { graphZoomWheelSensitivity } from '../../features/graph/flags';
+
 interface GraphZoomState {
   scale: number;
   tx: number;
@@ -147,7 +149,10 @@ export function installGraphZoomGestures(svg: SVGSVGElement): void {
     // tx' = focal - imageInLayer * newScale so the focal point stays put.
     const imageX = (focal.x - state.tx) / state.scale;
     const imageY = (focal.y - state.ty) / state.scale;
-    const factor = Math.exp(-we.deltaY * 0.0015);
+    // PR-F G19 (2026-05-06):flag で wheel 感度を runtime 調整可能に。
+    // flag は整数 [10, 200] で持っているので内部で ×0.0001 する。
+    const sensitivity = graphZoomWheelSensitivity() * 0.0001;
+    const factor = Math.exp(-we.deltaY * sensitivity);
     const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, state.scale * factor));
     state.scale = newScale;
     state.tx = focal.x - imageX * newScale;
