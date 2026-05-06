@@ -13,6 +13,7 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderImagePreviewModal } from './image-preview';
+import { installGraphZoomGestures } from './graph-zoom';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
@@ -5174,6 +5175,17 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     clear.textContent = '全体に戻る';
     toolbar.appendChild(clear);
   }
+
+  // PR-C G1 (2026-05-06):galaxy 風 zoom / pan の reset ボタン。
+  // gesture handlers が svg の zoom-layer の transform を直接書くため、
+  // reset も dispatch を経由せず action-binder の switch case で
+  // resetGraphZoom(svg) を呼ぶ imperative path。
+  const zoomReset = createElement('button', 'pkc-btn-small');
+  zoomReset.setAttribute('data-pkc-action', 'reset-graph-zoom');
+  zoomReset.textContent = '↺ 表示リセット';
+  zoomReset.title = '拡大縮小・パン位置をリセット(wheel / pinch / drag で操作可能)';
+  toolbar.appendChild(zoomReset);
+
   wrap.appendChild(toolbar);
 
   // SVG body
@@ -5201,6 +5213,13 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', '100%');
 
+  // PR-C G1 (2026-05-06):zoom + pan は zoom-layer の transform 経由で
+  // 適用、force layout は再計算しない。zoom-layer の中に edges + nodes
+  // を入れる。gesture handlers は wrap 側で installGraphZoomGestures(svg)
+  // が呼ばれて wired される(action-binder からは触らない)。
+  const zoomLayer = document.createElementNS(svgNS, 'g');
+  zoomLayer.setAttribute('class', 'pkc-graph-zoom-layer');
+
   const idx = new Map<string, { x: number; y: number }>();
   for (const n of sim) idx.set(n.id, { x: n.x, y: n.y });
 
@@ -5218,7 +5237,7 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     line.setAttribute('class', 'pkc-filer-graph-edge');
     edgeLayer.appendChild(line);
   }
-  svg.appendChild(edgeLayer);
+  zoomLayer.appendChild(edgeLayer);
 
   const nodeLayer = document.createElementNS(svgNS, 'g');
   nodeLayer.setAttribute('class', 'pkc-filer-graph-nodes');
@@ -5249,9 +5268,14 @@ function renderCenterGraphView(state: AppState): HTMLElement {
 
     nodeLayer.appendChild(group);
   }
-  svg.appendChild(nodeLayer);
+  zoomLayer.appendChild(nodeLayer);
+  svg.appendChild(zoomLayer);
 
   wrap.appendChild(svg);
+  // svg は DOM mount 後に gesture install(BoundingClientRect / ScreenCTM
+  // が必要)。renderer は同期だが、queueMicrotask で次の microtask に
+  // 譲る — caller(main render flow)の append が終わってから実行される。
+  queueMicrotask(() => installGraphZoomGestures(svg));
   return wrap;
 }
 

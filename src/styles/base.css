@@ -5717,6 +5717,38 @@ mark.pkc-search-mark {
   user-select: none;
 }
 
+/* ── Graph zoom layer (PR-C G1, 2026-05-06) ──
+   wheel / drag / pinch で zoom-layer の transform を直接書き換える。
+   force layout は再計算しない。background は grab cursor、node 上は
+   pointer のままで selection を阻害しない。 */
+
+.pkc-graph-zoom-layer {
+  /* layer 自体は SVG group で transition/transform を持たないが、
+     gesture handlers が transform を毎フレーム更新するため will-change
+     で promote。 */
+  will-change: transform;
+  transform-origin: 0 0;
+}
+
+.pkc-center-graph-svg,
+.pkc-filer-graph {
+  /* Touch gesture 系は独自 handler が処理する。pinch zoom が browser
+     の page-level zoom に流れないよう touch-action: none。 */
+  touch-action: none;
+  cursor: grab;
+}
+
+.pkc-center-graph-svg:active,
+.pkc-filer-graph:active {
+  cursor: grabbing;
+}
+
+/* Node の hover / drag は selection 用 cursor を維持。 */
+.pkc-filer-graph-node,
+.pkc-filer-graph-node:active {
+  cursor: pointer;
+}
+
 /* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
 
 .pkc-filer-grid {

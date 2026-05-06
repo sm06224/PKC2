@@ -35,6 +35,7 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
+import { resetGraphZoom } from './graph-zoom';
 import {
   enhanceTable,
   sortColumn,
@@ -3038,6 +3039,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'open-graph-full': {
         dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid: null });
+        break;
+      }
+      case 'reset-graph-zoom': {
+        // PR-C G1 (2026-05-06):galaxy 風 zoom / pan を identity に戻す。
+        // dispatcher を経由せず、現在 mount 中の svg を直接探して reset。
+        // gesture handlers と同じく imperative path(re-render しない)。
+        const svg = root.querySelector<SVGSVGElement>(
+          '[data-pkc-region="graph-svg"]',
+        );
+        if (svg) resetGraphZoom(svg);
         break;
       }
       // set-graph-mode: handled in handleChange (select element).
