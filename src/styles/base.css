@@ -4697,6 +4697,30 @@ mark.pkc-search-mark {
   text-decoration: underline dotted;
 }
 
+/* PR-M (2026-05-06):shell menu の公開 URL block。 */
+.pkc-shell-menu-public-urls-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-shell-menu-public-url {
+  display: block;
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--c-fg, currentColor);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+
+.pkc-shell-menu-public-url:hover {
+  background: var(--c-hover, rgba(0, 0, 0, 0.08));
+  color: var(--c-accent, #3b82f6);
+}
+
 .pkc-shell-menu-help-list {
   margin: 0;
   padding: 0 0 0 var(--space-5);

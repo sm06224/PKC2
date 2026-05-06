@@ -1536,6 +1536,46 @@ function renderShellMenu(
   debugSection.appendChild(debugButtons);
   card.appendChild(debugSection);
 
+  // PR-M (2026-05-06):shell menu に GitHub Pages の公開 URL を 3 件
+  // 出して、初見 user がマニュアル / 安定版 / 開発版に到達できるよう
+  // にする。user 指示:
+  // > シェルメニューに公開URLを以下の追加して、これがあれば一般ユー
+  // > ザーもマニュアル見れるでしょ
+  const urlSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-public-urls');
+  const urlLabel = createElement('span', 'pkc-shell-menu-label');
+  urlLabel.textContent = 'Public URLs';
+  urlSection.appendChild(urlLabel);
+  const urlList = createElement('div', 'pkc-shell-menu-public-urls-list');
+  const publicUrls: { label: string; url: string; tip: string }[] = [
+    {
+      label: '📦 安定版',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2/',
+      tip: '安定版 PKC2(GitHub Pages 公開、最新リリース)',
+    },
+    {
+      label: '🧪 開発版',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2-DEV/',
+      tip: '開発版 PKC2(最新 main、未リリース機能を含む)',
+    },
+    {
+      label: '📖 Manual',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2-MANUAL/',
+      tip: 'PKC2 マニュアル(安定版ベース、入門〜上級)',
+    },
+  ];
+  for (const { label, url, tip } of publicUrls) {
+    const a = document.createElement('a');
+    a.className = 'pkc-shell-menu-public-url';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = tip;
+    a.textContent = label;
+    urlList.appendChild(a);
+  }
+  urlSection.appendChild(urlList);
+  card.appendChild(urlSection);
+
   // Version (clickable → About)
   const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');
   versionSection.setAttribute('data-pkc-action', 'select-about');
