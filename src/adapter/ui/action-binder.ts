@@ -235,6 +235,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let sidebarSelectTimer: number | null = null;
   let sidebarSelectLid: string | null = null;
 
+  // PR-OOO (2026-05-06、user 修正指示6「TEXTAREA の TAB キー押下で全角
+  // 空白が入力されることがある(過去のショートカットキーが残っている
+  // 可能性)」):defensive layer。Tab keydown が発生してから ~120ms 以内
+  // に textarea へ U+3000(`　`)が単独 insertText で入った場合、それを
+  // browser / IME tab-completion 由来とみなして preventDefault し、
+  // 代わりに `\t` を splice する。PKC2 source には U+3000 を Tab に
+  // bind するコードは存在しないため、bug の出所は browser / IME 側
+  // (or 過去 shortcut の残留 cached state)。
+  let lastTabKeydownAt = 0;
+  let lastTabKeydownTarget: HTMLTextAreaElement | null = null;
+
   // 2026-04-26 user report:
   //   "シェルメニューの色設定 / スポイトツールが表示されるけど、
   //    なぞって色合いを確認しようとし離すと閉じる"
@@ -3715,6 +3726,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // PR #198 v3 ordering: the markdown enhancements block above runs
     // first; this generic `\t` insert is the fall-through for
     // non-markdown fields and for cursor-Tab on plain prose lines.
+    // PR-OOO: 全 Tab keydown を時刻記録(modifier 有無に関わらず)し、
+    // `beforeinput` 経由で U+3000 が直後に来た場合の defensive 判定に使う。
+    if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
+      lastTabKeydownAt = Date.now();
+      lastTabKeydownTarget = e.target;
+    }
     if (
       e.key === 'Tab'
       && !e.shiftKey
@@ -6909,6 +6926,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('drop', handleEditorFileDrop);
+
+  // PR-OOO (2026-05-06):Tab → 全角空白 防衛 layer。Tab keydown から
+  // ~120ms 以内に textarea で U+3000 が insertText / insertCompositionText
+  // として届いたら、preventDefault してその場で `\t` を splice する。
+  root.addEventListener('beforeinput', (e: Event) => {
+    const ev = e as InputEvent;
+    if (!(ev.target instanceof HTMLTextAreaElement)) return;
+    const data = ev.data;
+    if (data !== '　') return;
+    if (ev.target !== lastTabKeydownTarget) return;
+    if (Date.now() - lastTabKeydownAt > 120) return;
+    // Tab → U+3000 の組み合わせ確定 → 介入。
+    ev.preventDefault();
+    const ta = ev.target;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? start;
+    if (typeof ta.setRangeText === 'function') {
+      ta.setRangeText('\t', start, end, 'end');
+    } else {
+      ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + 1;
+    }
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);

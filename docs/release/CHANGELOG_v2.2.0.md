@@ -184,6 +184,14 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-6 review fix PR-OOO(2026-05-06)
+
+- **TEXTAREA Tab → 全角空白 入力 bug の defensive layer**:user 修正指示6「TEXTAREA の TAB キー押下で全角空白が入力されることがある(過去のショートカットキーが残っている可能性)」への対応。PKC2 source code 全文 grep でも U+3000(`　`)を Tab に bind するコードは存在せず、bug の出所は browser / IME tab-completion 側 と推定。defensive layer を追加して**根治**:
+  - 全 Tab keydown(modifier 有無に関わらず)で `lastTabKeydownAt` + `lastTabKeydownTarget` を module-level に記録
+  - `root.addEventListener('beforeinput', ...)` で textarea への入力を監視。`InputEvent.data === '　'` AND **直前 120ms 以内** に Tab keydown が同 textarea で発火していたら、`preventDefault` + `setRangeText('\t')` で半角タブに置換
+  - 純粋な日本語入力(明示的に `　` を IME 経由で入力)は Tab keydown を伴わないため影響なし
+- bundle.js 915.01 → 915.57 KB(+0.56 KB:beforeinput listener)、bundle.css 不変。unit 6552 / 6552 pass。
+
 ### Wave 10-6 review fix PR-NNN(2026-05-06)
 
 - **Filer 検索窓を活性化(render-scope に `filerSearchQuery` を加える)**:user 修正指示6「Filer の検索窓が活きていない」への対応。bug の root cause:`render-scope.ts` の `'full'` re-render trigger に `filerSearchQuery` フィールドが含まれていなかったため、`SET_FILER_SEARCH_QUERY` のみが state を変更すると `computeRenderScope === 'none'` が返り、filer の subtree filter が画面に反映されない状態だった(input 自体は dispatch していた、フィルタロジックも renderer 内に正しく存在していた)。
