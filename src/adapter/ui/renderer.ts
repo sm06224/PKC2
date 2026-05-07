@@ -6151,12 +6151,33 @@ function seedTimeProximityLayout(
     const bucket = byBucket.get(key) ?? [n];
     const idx = bucket.indexOf(n);
     const total = bucket.length;
-    // 均等分布(N entries → N+1 等分の中央 N 点)、lane height の 80% を使う。
-    const yOffset = total > 1
-      ? ((idx + 1) / (total + 1) - 0.5) * (laneH * 0.8)
-      : (hashStringToUnit(n.id) - 0.5) * (laneH * 0.4);
+    // PR-Δ10 (2026-05-07、user 報告「時系列グラフでもノードが重なった
+    // ままになってる」、Playwright 計測 38 overlap pairs/30 nodes):
+    // bucket 内に N 個ある場合、Y を lane height いっぱいに均等分散させる。
+    // 4+ entries が同 X bucket に落ちると Y ピッチが node 衝突半径(70px)
+    // 以下になり重なる。X 方向にも bucketW 内で散らして 2D 配置にする。
+    // PR-Δ10 v2 (2026-05-07):bucket 内 N >= 2 のとき、minPitch=80px の
+    // grid に N entries を **必要なら bucket 外に拡張して** 配置。
+    // bucket box(50×laneH)を超えても OK、time-proximity の本旨は
+    // 「時系列順だけ正しければ良い」なので X が ±50px ずれるのは許容。
+    let xOffset = 0;
+    let yOffset: number;
+    if (total > 1) {
+      const minPitch = 80; // collide_radius 70 + margin 10
+      // 縦に何個積めるか
+      const rows = Math.max(1, Math.floor(laneH / minPitch));
+      const cols = Math.ceil(total / rows);
+      const col = Math.floor(idx / rows);
+      const row = idx % rows;
+      // X は bucketW 関係なく minPitch 間隔、cols 個を中央寄せ
+      xOffset = (col - (cols - 1) / 2) * minPitch;
+      // Y は lane 内 rows 等分中央
+      yOffset = (row + 0.5 - rows / 2) * (laneH / Math.max(1, rows));
+    } else {
+      yOffset = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.4);
+    }
     const y = padY + lane * laneH + laneH / 2 + yOffset;
-    return { id: n.id, x, y, vx: 0, vy: 0 };
+    return { id: n.id, x: x + xOffset, y, vx: 0, vy: 0 };
   });
 }
 

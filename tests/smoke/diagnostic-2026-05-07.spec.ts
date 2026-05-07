@@ -233,6 +233,283 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-14 time-proximity graph node overlap audit', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // 実 use case 想定:同じ日に作成された 20 entries を含む clustered timestamps。
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.locator('#pkc-root').waitFor();
+  await page.evaluate(async () => {
+    const archetypes = ['text', 'todo', 'folder', 'textlog', 'attachment'];
+    const entries: Array<{
+      lid: string; title: string; body: string; archetype: string;
+      created_at: string; updated_at: string;
+    }> = [];
+    // 20 entries on same day (clustered) + 10 spread.
+    for (let i = 0; i < 20; i++) {
+      entries.push({
+        lid: `cluster${i}`,
+        title: `Cluster ${i} 同日作成エントリ`,
+        body: '',
+        archetype: archetypes[i % archetypes.length]!,
+        created_at: `2025-06-15T${String(8 + (i % 12)).padStart(2, '0')}:${String((i * 7) % 60).padStart(2, '0')}:00Z`,
+        updated_at: `2025-06-15T${String(8 + (i % 12)).padStart(2, '0')}:${String((i * 7) % 60).padStart(2, '0')}:00Z`,
+      });
+    }
+    for (let i = 0; i < 10; i++) {
+      const month = String(((i * 31) % 12) + 1).padStart(2, '0');
+      entries.push({
+        lid: `spread${i}`,
+        title: `Spread ${i}`,
+        body: '',
+        archetype: archetypes[(i + 2) % archetypes.length]!,
+        created_at: `2024-${month}-10T00:00:00Z`,
+        updated_at: `2024-${month}-10T00:00:00Z`,
+      });
+    }
+    const cont = {
+      meta: {
+        container_id: 'diag-time-cluster',
+        schema_version: 1,
+        title: 'Time cluster',
+        created_at: '2026-05-07T00:00:00Z',
+        updated_at: '2026-05-07T00:00:00Z',
+      },
+      entries, relations: [], revisions: [], assets: {},
+    };
+    await new Promise<void>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = () => rej(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['containers', 'assets'], 'readwrite');
+        tx.objectStore('containers').clear();
+        tx.objectStore('assets').clear();
+        tx.objectStore('containers').put(cont, cont.meta.container_id);
+        tx.objectStore('containers').put(cont.meta.container_id, '__default__');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror = () => rej(tx.error);
+      };
+    });
+  });
+  await page.reload();
+  await page.locator('#pkc-root').waitFor();
+
+  const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]').first();
+  await tab.waitFor();
+  const tbox = await tab.boundingBox();
+  if (!tbox) throw new Error('graph tab missing');
+  await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+
+  // Switch to time-proximity mode.
+  await page.locator('select.pkc-graph-mode-select').selectOption('time-proximity');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+
+  // Pull data-pkc-graph-nodes for full position info.
+  const nodeData = await page.evaluate(() => {
+    const c = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
+    if (!c) return null;
+    const json = c.getAttribute('data-pkc-graph-nodes');
+    if (!json) return null;
+    return JSON.parse(json) as Array<{ lid: string; label: string; x: number; y: number }>;
+  });
+  if (!nodeData) throw new Error('no node data');
+
+  // Detect overlap: pairs with distance < collide threshold.
+  const COLLIDE = 70;
+  const overlaps: Array<{ a: string; b: string; dist: number }> = [];
+  for (let i = 0; i < nodeData.length; i++) {
+    for (let j = i + 1; j < nodeData.length; j++) {
+      const dx = nodeData[i]!.x - nodeData[j]!.x;
+      const dy = nodeData[i]!.y - nodeData[j]!.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < COLLIDE) {
+        overlaps.push({ a: nodeData[i]!.lid, b: nodeData[j]!.lid, dist: Math.round(d) });
+      }
+    }
+  }
+  console.log('D-14 time-proximity overlap pairs:', overlaps.length, 'of', nodeData.length, 'nodes');
+  if (overlaps.length > 0) {
+    console.log('D-14 first 5 overlaps:', JSON.stringify(overlaps.slice(0, 5)));
+  }
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-14-time-proximity.png',
+    fullPage: false,
+  });
+});
+
+test('D-13 popup split sync + caret indicator with REALISTIC long markdown', async ({ page, context }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  page.on('console', (msg) => {
+    if (msg.text().includes('[PKC2-DBG]')) console.log('[BROWSER]', msg.text());
+  });
+
+  // Realistic markdown:複数段落 / 見出し階層 / list / code fence / quote /
+  // table / 全部入りで 60+ 行。実 use case を想定。
+  const realBody = [
+    '# プロジェクトメモ',
+    '',
+    '## 概要',
+    '',
+    'ここはプロジェクトの**概要**です。複数行にわたる長い文章を含む段落をシミュレートします。実際の利用シーンでは、こういった長い説明文の中にカーソルを配置し、対応する preview 行をハイライトする挙動が求められます。',
+    '',
+    '## ToDo リスト',
+    '',
+    '- [ ] 機能 A の実装',
+    '  - [ ] サブタスク A-1',
+    '  - [x] サブタスク A-2 (完了)',
+    '- [ ] 機能 B の実装',
+    '  - パラメータ調整',
+    '  - テスト作成',
+    '- [ ] レビュー対応',
+    '',
+    '## ベンチマーク結果',
+    '',
+    '| 項目 | 旧値 | 新値 | 改善 |',
+    '|---|---|---|---|',
+    '| 起動時間 | 1.2s | 0.8s | 33% |',
+    '| メモリ | 120MB | 95MB | 21% |',
+    '| 初回 paint | 450ms | 280ms | 38% |',
+    '',
+    '## コード例',
+    '',
+    '```typescript',
+    'function calculateTotal(items: Item[]): number {',
+    '  return items.reduce((sum, item) => sum + item.price * item.qty, 0);',
+    '}',
+    '',
+    'const cart = [',
+    '  { name: "Widget", price: 100, qty: 3 },',
+    '  { name: "Gadget", price: 250, qty: 1 },',
+    '];',
+    'console.log(calculateTotal(cart)); // 550',
+    '```',
+    '',
+    '## 引用',
+    '',
+    '> 設計の本質は、複雑性を制御することにある。',
+    '> — F. P. Brooks',
+    '',
+    '> ネストした引用も',
+    '> > 内側の引用',
+    '> > も対応すべし',
+    '',
+    '## 数式計算メモ',
+    '',
+    'a=1+1=2',
+    '  2+3=5',
+    '  kokoo 1+2=3',
+    '',
+    '## 補足',
+    '',
+    'ここはドキュメントの末尾です。長文の真ん中や末尾に caret を置いたとき、preview の対応 block にハイライトが入り、caret indicator が常に textarea 内の正しい行に重なって表示されることを期待します。',
+  ].join('\n');
+
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  const shell = page.locator('#pkc-root');
+  await shell.waitFor();
+  await page.evaluate(async (body) => {
+    const cont = {
+      meta: {
+        container_id: 'diag-popup',
+        schema_version: 1,
+        title: 'Popup test',
+        created_at: '2026-05-07T00:00:00Z',
+        updated_at: '2026-05-07T00:00:00Z',
+      },
+      entries: [
+        { lid: 'long', title: '長文 Markdown', body, archetype: 'text', created_at: '2026-05-07T00:00:00Z', updated_at: '2026-05-07T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    await new Promise<void>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = () => rej(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['containers', 'assets'], 'readwrite');
+        tx.objectStore('containers').clear();
+        tx.objectStore('assets').clear();
+        tx.objectStore('containers').put(cont, cont.meta.container_id);
+        tx.objectStore('containers').put(cont.meta.container_id, '__default__');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror = () => rej(tx.error);
+      };
+    });
+  }, realBody);
+  await page.reload();
+  await shell.waitFor();
+
+  // Open popup via dblclick.
+  const item = page.locator('li.pkc-entry-item[data-pkc-lid="long"]').first();
+  await item.waitFor();
+  const [popup] = await Promise.all([
+    context.waitForEvent('page'),
+    item.dblclick(),
+  ]);
+  await popup.waitForLoadState('domcontentloaded');
+  await popup.waitForLoadState('load');
+  await popup.waitForSelector('#body-edit', { state: 'visible' });
+  await popup.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Turn ON sync.
+  await popup.locator('#btn-toggle-sync').click();
+  await popup.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Test multiple caret positions across various block types.
+  const probePositions = [
+    { name: 'P1 H1 行', searchFor: '# プロジェクトメモ', expectActive: 'H1' },
+    { name: 'P2 H2 行', searchFor: '## ベンチマーク結果', expectActive: 'H2' },
+    { name: 'P3 list item', searchFor: '- [ ] 機能 A の実装', expectActive: 'LI' },
+    { name: 'P4 nested list', searchFor: '  - [ ] サブタスク A-1', expectActive: 'LI' },
+    { name: 'P5 table row', searchFor: '| 起動時間 | 1.2s', expectActive: 'TD' },
+    { name: 'P6 code fence inside', searchFor: 'function calculateTotal', expectActive: 'CODE' },
+    { name: 'P7 blockquote', searchFor: '> 設計の本質は', expectActive: 'BLOCKQUOTE' },
+    { name: 'P8 末尾 paragraph', searchFor: 'ここはドキュメントの末尾', expectActive: 'P' },
+  ];
+
+  const results: Array<{ name: string; activeTag: string | null; activeText: string | null; caretIndicatorY: number | null; caretIndicatorVisible: boolean }> = [];
+  for (const probe of probePositions) {
+    await popup.evaluate((search) => {
+      const ta = document.getElementById('body-edit') as HTMLTextAreaElement;
+      ta.focus();
+      const offset = ta.value.indexOf(search);
+      if (offset < 0) return;
+      ta.setSelectionRange(offset, offset);
+      // Force selectionchange + scroll caret into view.
+      document.dispatchEvent(new Event('selectionchange'));
+      // Compute scroll: scroll textarea so caret is roughly in the middle.
+      const cs = window.getComputedStyle(ta);
+      const lineH = parseFloat(cs.lineHeight) || 21;
+      const v = ta.value;
+      let line = 0;
+      for (let i = 0; i < offset; i++) if (v.charCodeAt(i) === 10) line++;
+      ta.scrollTop = Math.max(0, line * lineH - ta.clientHeight / 2);
+    }, probe.searchFor);
+    await popup.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+
+    const r = await popup.evaluate(() => {
+      const preview = document.getElementById('body-preview');
+      const active = preview?.querySelector('[data-pkc-active-source="true"]');
+      const ind = document.getElementById('pkc-popup-caret-indicator');
+      return {
+        activeTag: active?.tagName ?? null,
+        activeText: active?.textContent?.slice(0, 40) ?? null,
+        caretIndicatorY: ind && ind.style.display !== 'none' ? ind.getBoundingClientRect().top : null,
+        caretIndicatorVisible: !!ind && ind.style.display !== 'none',
+      };
+    });
+    results.push({ name: probe.name, ...r });
+  }
+  console.log('D-13 results:', JSON.stringify(results, null, 2));
+  await popup.screenshot({
+    path: 'test-results/diag-2026-05-07/D-13-popup-realistic.png',
+    fullPage: false,
+  });
+});
+
 test('D-12 filer click selects EXACTLY the clicked entry (no ID collision)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // Capture browser console logs.
