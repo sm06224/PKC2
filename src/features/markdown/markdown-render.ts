@@ -410,6 +410,148 @@ function escapeHtmlAttr(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// ── L-6 (2026-05-07、wave-10-2 Phase 1):簡易 inline `:text:attrs:` ──
+//
+// Spec §4.3:`:<内容>:<attrs カンマ区切り>:` で <span> に attrs 適用。
+//
+// 例:
+//   :太字かつ赤字:bold, red:        → <span style="font-weight:bold;color:red;">…</span>
+//   :背景黒文字白:bg-black, white:   → <span style="background-color:black;color:white;">…</span>
+//   :大きい:lg, italic:              → <span style="font-size:var(--fs-lg);font-style:italic;">…</span>
+//
+// vocabulary は §4.5 で統一(L-2 と整合):
+//   - 強調:bold / italic / underline / strikethrough / code
+//   - 色:CSS color name / `#hex` / `rgb(...)` / `rgba(...)`
+//   - 背景色:`bg-<color>`
+//   - サイズ:xs / sm / md / lg / xl(font-size 段階)
+//   - font-family:serif / sans / mono
+//
+// 順不同、未知 attr が混じると false で fall through。
+//
+// 衝突回避:
+//   - vocab 厳格化により `12:30:45` 等の非 attrs 文字列は誤発火しない
+//   - code span / fenced 内では markdown-it が code を先に tokenize、適用されない
+
+const SIMPLE_INLINE_VOCAB_KEYWORDS = new Set([
+  'bold', 'italic', 'underline', 'strikethrough', 'strike', 'code',
+  'xs', 'sm', 'md', 'lg', 'xl',
+  'serif', 'sans', 'mono',
+]);
+
+// Phase 1 で validate する CSS named color の curated list(~50 色)。
+// 他のレアな color name を使う場合は #hex / rgb() で指定する旨を spec 記載。
+const NAMED_COLORS = new Set([
+  'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'brown',
+  'black', 'white', 'gray', 'grey', 'silver', 'gold',
+  'cyan', 'magenta', 'lime', 'navy', 'teal', 'aqua', 'maroon', 'olive',
+  'transparent', 'crimson', 'salmon', 'tomato', 'coral', 'lavender', 'turquoise',
+  'indigo', 'violet', 'fuchsia',
+  'aliceblue', 'azure', 'beige', 'ivory', 'khaki',
+  'darkred', 'darkgreen', 'darkblue', 'darkgray', 'darkgrey',
+  'lightgray', 'lightgrey', 'lightblue', 'lightgreen', 'lightyellow', 'lightpink',
+  'currentcolor', 'inherit',
+]);
+
+const COLOR_VALUE_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s]+\))$/;
+// 先頭は a-z(keyword / 色名)、`#`(hex 色)、または `r`(rgb)/`b`(bg-)
+const ATTRS_INNER_RE = /^[a-zA-Z#][a-zA-Z0-9\-,#()\s.]*$/;
+
+function isValidColor(c: string): boolean {
+  return NAMED_COLORS.has(c.toLowerCase()) || COLOR_VALUE_RE.test(c);
+}
+
+// attrs を top-level comma で split(parens 内 comma は保護)
+function splitAttrs(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ',' && depth === 0) {
+      out.push(s.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(s.slice(start).trim());
+  return out.filter(Boolean);
+}
+
+interface ParsedAttrs {
+  valid: boolean;
+  inlineStyle: string;
+}
+
+function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
+  const tokens = splitAttrs(attrsStr);
+  if (tokens.length === 0) return { valid: false, inlineStyle: '' };
+  const styles: Record<string, string> = {};
+  for (const t of tokens) {
+    if (SIMPLE_INLINE_VOCAB_KEYWORDS.has(t)) {
+      switch (t) {
+        case 'bold': styles['font-weight'] = 'bold'; break;
+        case 'italic': styles['font-style'] = 'italic'; break;
+        case 'underline': styles['text-decoration'] = 'underline'; break;
+        case 'strikethrough': case 'strike': styles['text-decoration'] = 'line-through'; break;
+        case 'code': styles['font-family'] = 'monospace'; break;
+        case 'xs': case 'sm': case 'md': case 'lg': case 'xl': styles['font-size'] = `var(--fs-${t})`; break;
+        case 'serif': styles['font-family'] = 'serif'; break;
+        case 'sans': styles['font-family'] = 'sans-serif'; break;
+        case 'mono': styles['font-family'] = 'monospace'; break;
+      }
+    } else if (t.startsWith('bg-')) {
+      const c = t.slice(3);
+      if (!isValidColor(c)) return { valid: false, inlineStyle: '' };
+      styles['background-color'] = c;
+    } else if (isValidColor(t)) {
+      styles['color'] = t;
+    } else {
+      return { valid: false, inlineStyle: '' };
+    }
+  }
+  const inlineStyle = Object.entries(styles)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ');
+  return { valid: true, inlineStyle };
+}
+
+md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (src.charCodeAt(start) !== 0x3A /* : */) return false;
+  // Scan forward to find a `:<attrs>:` boundary。
+  for (let i = start + 1; i < state.posMax; i++) {
+    const ch = src.charCodeAt(i);
+    if (ch === 0x0A /* newline */) return false;
+    if (ch !== 0x3A /* : */) continue;
+    // 候補境界。i から `:<attrs>:` を試行。
+    // `:` 以後 attrs 部分を抽出。
+    const restAfter = src.slice(i + 1);
+    const closeIdx = restAfter.indexOf(':');
+    if (closeIdx < 0) continue;
+    const attrsCandidate = restAfter.slice(0, closeIdx);
+    if (!attrsCandidate || !ATTRS_INNER_RE.test(attrsCandidate)) continue;
+    const parsed = parseSimpleInlineAttrs(attrsCandidate);
+    if (!parsed.valid) continue;
+    const content = src.slice(start + 1, i);
+    if (!content) continue;
+    // Match found:`<span style="...">content</span>` を出力。
+    // inner content は inline markup を保持したいので state.md.inline.parse で
+    // tokenize したいところだが、Phase 1 は plain text で。
+    const tokenOpen = state.push('simple_inline_open', 'span', 1);
+    tokenOpen.attrSet('class', 'pkc-inline-mark');
+    if (parsed.inlineStyle) tokenOpen.attrSet('style', parsed.inlineStyle);
+    const tokenText = state.push('text', '', 0);
+    tokenText.content = content;
+    state.push('simple_inline_close', 'span', -1);
+    state.pos = i + 1 + closeIdx + 1;  // skip past closing `:`
+    return true;
+  }
+  return false;
+});
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
