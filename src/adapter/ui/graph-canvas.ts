@@ -218,17 +218,13 @@ function fitToBounds(view: CanvasViewState, payload: GraphCanvasPayload): void {
   const pad = 0.88;
   const sx = (payload.width * pad) / w;
   const sy = (payload.height * pad) / h;
-  // PR-AAA:auto-fit は zoom-OUT 専用。bbox がもともと viewport 内に
-  // 収まる場合(scale > 1)は identity に保つ — 既存 test の click
-  // 座標期待値を壊さず、銀河 view としても自然(1 つの近接群を
-  // 拡大しすぎない)。
-  const s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
-  if (s >= 1) {
-    view.scale = 1;
-    view.tx = 0;
-    view.ty = 0;
-    return;
-  }
+  // U2 (2026-05-07、wave-10-6 UX evaluation):単一 folder の小 N case で
+  // node が中央に固まり viewport が空白だらけになる症状の修正。旧実装は
+  // `scale >= 1` で identity を強制(zoom-OUT 専用、銀河感重視)していたが、
+  // 小 N cluster が見栄え悪く U2 で指摘された。zoom-IN も許可、ただし
+  // 2.5x で cap して過剰拡大は防止(node の輪郭がボヤけない上限)。
+  const MAX_AUTOFIT_SCALE = 2.5;
+  const s = Math.max(MIN_SCALE, Math.min(MAX_AUTOFIT_SCALE, Math.min(sx, sy)));
   view.scale = s;
   // Center the bounding box within the canvas logical viewport.
   view.tx = (payload.width - w * s) / 2 - minX * s;

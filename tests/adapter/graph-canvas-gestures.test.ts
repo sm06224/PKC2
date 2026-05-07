@@ -179,6 +179,11 @@ describe('graph canvas gestures (PR-H G16 parity)', () => {
   it('mousedown on a node coordinate fires pkc-graph-node-click on mouseup (no pan)', () => {
     // Bind payload with one node at (100, 100).
     bindGraphCanvas(canvas, mkPayload(960, 600, [{ id: 'n1', x: 100, y: 100 }]));
+    // U2 (2026-05-07):auto-fit が小 bbox で zoom-in するため、gesture
+    // 単独 test では view を identity に reset(本 test の対象は hit test
+    // pipeline で auto-fit ではない)。
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1; v0.tx = 0; v0.ty = 0;
     let receivedLid: string | null = null;
     canvas.addEventListener('pkc-graph-node-click', (ev) => {
       receivedLid = (ev as CustomEvent).detail.lid;
