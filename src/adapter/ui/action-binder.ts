@@ -1183,14 +1183,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
             stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
           }
-          // PR-Δ3-fix (2026-05-07、user 報告「一つのテキストエントリを
-          // 選択したのに、べつのエントリも選択される、選択を外せない」):
-          // 通常 click(modifier 無し)時は **multi-select 残留を必ず
-          // clear** する。これまで multiSelectedLids は SELECT_ENTRY で
-          // 触らない設計だったので、過去の Ctrl/Shift+click の選択が
-          // sidebar / filer rows の data-pkc-multi-selected として残り
-          // 「別エントリも選択されている」ように見えていた。plain click
-          // = 単一選択への明示的リセット、これが OS 標準 UX。
+          // PR-Δ18 (2026-05-07、user 報告「Filer で選択を開始した時に
+          // エントリクリックを抑制していないから誤クリックで Detail が
+          // 開始する。使い物にならん」):
+          //   filer view + 既に multi-select している状態 = 「選択モード」
+          //   このときの plain row click は detail へ遷移せず、行 lid を
+          //   multi に toggle するだけ(includeAnchor: false で sidebar
+          //   selectedLid 巻込み回避)。クリアは Esc または Clear ボタン。
+          if (
+            currentState.viewMode === 'filer'
+            && currentState.multiSelectedLids.length > 0
+            && !stayInFiler
+          ) {
+            dispatcher.dispatch({
+              type: 'TOGGLE_MULTI_SELECT',
+              lid,
+              includeAnchor: false,
+            });
+            return;
+          }
+          // PR-Δ3-fix:filer / sidebar の plain click は multi 残留を
+          // clear して単一選択に戻す(OS 標準 UX)。但し上の filer 選択
+          // モード時は exit せず toggle で済ませる(return 済み)。
           if (currentState.multiSelectedLids.length > 0) {
             dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
           }
@@ -1386,6 +1400,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        // PR-Δ19 (2026-05-07、user 報告「Filer を開いている時に最上部の
+        // エントリ作成ボタンを押すと Detail 遷移が抑制され、画面が
+        // ロックする」):
+        //   非 detail mode (filer / calendar / kanban / graph) で
+        //   CREATE_ENTRY → phase='editing' に遷移するが、renderer は
+        //   filer/calendar 等を描画して editor が出ない → 画面ロック。
+        //   作成ボタンが押された瞬間に SET_VIEW_MODE 'detail' を先 dispatch、
+        //   editor が確実に表示される状態を作ってから CREATE_ENTRY。
+        const preStateForView = dispatcher.getState();
+        if (preStateForView.viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
         // FI-05: During editing, "📎 File" opens a file picker and inserts
         // a link instead of dispatching CREATE_ENTRY (which would clobber
         // the current editing state).

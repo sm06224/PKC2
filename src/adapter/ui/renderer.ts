@@ -610,10 +610,13 @@ function scrollSelectedSidebarNodeIntoView(
   // でも僅か scroll する場合がある(sub-pixel 補正)。click 元の row は
   // 定義により 100% visible なので、`scrollIntoView` を completely 包含
   // 検知 + skip にして震動を撃退。partially clipped(切れている)時のみ
-  // scroll。
+  // scroll。happy-dom 等で rect が 0 の場合は実機ではないので skip 判定
+  // を bypass(test 互換)。
   const sidebarRect = sidebar.getBoundingClientRect();
   const nodeRect = node.getBoundingClientRect();
-  const fullyInView = nodeRect.top >= sidebarRect.top
+  const haveLayout = sidebarRect.height > 0 && nodeRect.height > 0;
+  const fullyInView = haveLayout
+    && nodeRect.top >= sidebarRect.top
     && nodeRect.bottom <= sidebarRect.bottom;
   if (!fullyInView) {
     node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -6257,8 +6260,31 @@ function buildGraphForMode(
   }
 
   const inScope = (id: string): boolean => nodeIds.has(id);
-  const filteredEntries = entries.filter((e) => inScope(e.lid));
-  const linksRaw = relations.filter((r) => inScope(r.from) && inScope(r.to));
+  // PR-Δ17 (2026-05-07、user 報告「フォルダは厳密にはエントリではなく
+  // リレーション。グラフで一丁前にノードになっているせいで時系列近接性
+  // グラフが完全に破綻」):
+  //   folder archetype は **意味的に junction(結節点)** であり、
+  //   独立 entry として扱うべきではない。time-proximity mode では除外、
+  //   relations / color-tags / tag-groups でも folder は **構造線の
+  //   経路** にのみ寄与し node には載せない。folder-hierarchy mode は
+  //   folder の階層構造そのものを示すため例外として残す。
+  const isFolder = (lid: string): boolean => {
+    const e = entries.find((x) => x.lid === lid);
+    return e?.archetype === 'folder';
+  };
+  const excludeFolderAsNode = mode !== 'folder-hierarchy';
+  const filteredEntries = entries.filter((e) => {
+    if (!inScope(e.lid)) return false;
+    if (excludeFolderAsNode && e.archetype === 'folder') return false;
+    return true;
+  });
+  const linksRaw = relations.filter((r) => {
+    if (!inScope(r.from) || !inScope(r.to)) return false;
+    // folder を node から除外する mode では、folder を端点とする link も
+    // 引かない(node が無いところに線が引けないため)。
+    if (excludeFolderAsNode && (isFolder(r.from) || isFolder(r.to))) return false;
+    return true;
+  });
 
   // PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
   // link.kind を payload まで運ぶ。色は graph-canvas の relationColor() で決定。
