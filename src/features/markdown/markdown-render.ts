@@ -664,6 +664,87 @@ function tagSourceLines(tokens: Token[]): void {
 }
 
 /**
+ * L-5 (2026-05-07、wave-10-2 Phase 1):行頭 align prefix。
+ * `||` / `|>` / `<|` を line 先頭に置くと、その行から空行までの paragraph
+ * 全体が center / right / left 寄せになる。継続行は prefix 省略可。
+ *
+ * Algorithm:
+ *  1. pre-process で line ごとに prefix 検出、strip + 行番号 → align map を記録
+ *  2. md.parse 後、token を walk して paragraph_open の map[0] が map に
+ *     あれば `data-pkc-align` 属性を付与
+ *  3. CSS が `[data-pkc-align="..."]` を読んで text-align を適用
+ */
+type AlignKind = 'center' | 'right' | 'left';
+
+function preprocessAlignPrefix(source: string): {
+  stripped: string;
+  alignMap: Map<number, AlignKind>;
+} {
+  const lines = source.split('\n');
+  const alignMap = new Map<number, AlignKind>();
+  const out: string[] = [];
+  let currentAlign: AlignKind | null = null;
+  // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
+  const prefixRe = /^(\|\||\|>|<\|)(?:\s)?(.*)$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+    // Blank line ends the aligned paragraph.
+    if (trimmed === '') {
+      currentAlign = null;
+      out.push(line);
+      continue;
+    }
+    // Structural breaks(heading / list / blockquote / fence / hr / table)
+    // also reset alignment — alignment applies to paragraphs only.
+    const isStructural =
+      /^#{1,6}\s/.test(line)
+      || /^[-*+]\s/.test(line)
+      || /^\d+\.\s/.test(line)
+      || /^>/.test(line)
+      || /^```/.test(line)
+      || /^---+\s*$/.test(line)
+      || /^\|/.test(line);  // table row(also catches `||` but prefix matches first)
+    // Detect prefix
+    const m = prefixRe.exec(line);
+    if (m) {
+      const sym = m[1]!;
+      const rest = m[2] ?? '';
+      const align: AlignKind = sym === '||' ? 'center' : sym === '|>' ? 'right' : 'left';
+      currentAlign = align;
+      alignMap.set(i, align);
+      out.push(rest);
+      continue;
+    }
+    // Continuation line: inherit current alignment unless structural break.
+    if (isStructural) {
+      currentAlign = null;
+      out.push(line);
+      continue;
+    }
+    if (currentAlign) {
+      alignMap.set(i, currentAlign);
+    }
+    out.push(line);
+  }
+  return { stripped: out.join('\n'), alignMap };
+}
+
+function applyAlignAttrs(tokens: Token[], alignMap: Map<number, AlignKind>): void {
+  if (alignMap.size === 0) return;
+  for (const tok of tokens) {
+    if (tok.type === 'paragraph_open' && tok.map) {
+      const startLine = tok.map[0];
+      const align = alignMap.get(startLine);
+      if (align) {
+        tok.attrSet('data-pkc-align', align);
+      }
+    }
+  }
+}
+
+/**
  * Render markdown text to an HTML string.
  *
  * HTML tags in source are escaped (not rendered) for XSS safety.
@@ -677,11 +758,18 @@ export function renderMarkdown(
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
+  // L-5:line-prefix align(`||` / `|>` / `<|`)を pre-process で strip し、
+  // 行番号 → align map を保持。token への属性付与は md.parse 後に行う。
+  const { stripped, alignMap } = preprocessAlignPrefix(text);
   if (!opts.sourceLineAnchors) {
-    return md.render(text, env);
+    if (alignMap.size === 0) return md.render(stripped, env);
+    const tokens = md.parse(stripped, env);
+    applyAlignAttrs(tokens, alignMap);
+    return md.renderer.render(tokens, md.options, env);
   }
   // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
-  const tokens = md.parse(text, env);
+  const tokens = md.parse(stripped, env);
+  applyAlignAttrs(tokens, alignMap);
   tagSourceLines(tokens);
   return md.renderer.render(tokens, md.options, env);
 }
