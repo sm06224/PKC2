@@ -3514,8 +3514,15 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     sidebar.appendChild(hints);
   }
 
-  // Multi-selection action bar
-  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+  // PR-Δ25 (2026-05-07、user 訂正「Filer で選択時に左ペインに一括操作 UI
+  // が出るのは誤り、Filer 側に表示すべき」):viewMode === 'filer' のとき
+  // sidebar には bar を出さない(filer view 側で同 helper を呼んで filer
+  // 内部に表示する)。それ以外の view では従来通り sidebar 表示。
+  if (
+    state.multiSelectedLids.length > 0
+    && !state.readonly
+    && state.viewMode !== 'filer'
+  ) {
     const bar = createElement('div', 'pkc-multi-action-bar');
     bar.setAttribute('data-pkc-region', 'multi-action-bar');
 
@@ -4563,9 +4570,84 @@ function renderCalendarView(state: AppState): HTMLElement {
   return cal;
 }
 
+/**
+ * PR-Δ25 (2026-05-07、user 訂正「Filer の一括操作 UI は Filer 側に出す
+ * べき」):sidebar の multi-action-bar と等価な UI を filer view 上部に
+ * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
+ * 重複は意図的(sidebar/filer の独立性確保)。
+ */
+function buildFilerMultiActionBar(state: AppState): HTMLElement {
+  const bar = createElement('div', 'pkc-multi-action-bar pkc-filer-multi-action-bar');
+  bar.setAttribute('data-pkc-region', 'multi-action-bar');
+  const info = createElement('span', 'pkc-multi-action-info');
+  info.textContent = `${state.multiSelectedLids.length} selected`;
+  bar.appendChild(info);
+  const deleteBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+  deleteBtn.setAttribute('data-pkc-action', 'bulk-delete');
+  deleteBtn.textContent = 'Delete';
+  bar.appendChild(deleteBtn);
+  if (state.container) {
+    const folders = state.container.entries.filter(
+      (e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid),
+    );
+    if (folders.length > 0) {
+      const moveSelect = document.createElement('select');
+      moveSelect.className = 'pkc-multi-action-move';
+      moveSelect.setAttribute('data-pkc-action', 'bulk-move-select');
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = 'Move to...'; ph.disabled = true; ph.selected = true;
+      moveSelect.appendChild(ph);
+      const rootOpt = document.createElement('option');
+      rootOpt.value = '__root__'; rootOpt.textContent = '/ (Root)';
+      moveSelect.appendChild(rootOpt);
+      for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.lid; opt.textContent = `📁 ${f.title || '(untitled)'}`;
+        moveSelect.appendChild(opt);
+      }
+      bar.appendChild(moveSelect);
+    }
+    // tag input
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.className = 'pkc-multi-action-tag-input';
+    tagInput.placeholder = 'タグ追加 (Enter)';
+    tagInput.setAttribute('data-pkc-action', 'bulk-add-tag-input');
+    tagInput.setAttribute('data-pkc-field', 'bulk-add-tag');
+    tagInput.title = '選択中の全エントリに同じタグを追加';
+    bar.appendChild(tagInput);
+    // color tag
+    const colorSelect = document.createElement('select');
+    colorSelect.className = 'pkc-multi-action-color';
+    colorSelect.setAttribute('data-pkc-action', 'bulk-set-color-tag');
+    const cph = document.createElement('option');
+    cph.value = ''; cph.textContent = 'Color...'; cph.disabled = true; cph.selected = true;
+    colorSelect.appendChild(cph);
+    for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray']) {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      colorSelect.appendChild(opt);
+    }
+    const cloneOpt = document.createElement('option');
+    cloneOpt.value = '__none__'; cloneOpt.textContent = '✕ 解除';
+    colorSelect.appendChild(cloneOpt);
+    bar.appendChild(colorSelect);
+  }
+  const clearBtn = createElement('button', 'pkc-btn-small');
+  clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
+  clearBtn.textContent = 'Clear';
+  bar.appendChild(clearBtn);
+  return bar;
+}
+
 function renderFilerView(state: AppState): HTMLElement {
   const filer = createElement('div', 'pkc-filer');
   filer.setAttribute('data-pkc-region', 'filer-view');
+
+  // PR-Δ25:filer view top に multi-action-bar を表示。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    filer.appendChild(buildFilerMultiActionBar(state));
+  }
 
   // Trash mode short-circuits the normal folder-scope render. The
   // toolbar's "Trash" toggle dispatches SET_FILER_SCOPE 'trash' and
@@ -4905,12 +4987,38 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
     }
     trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
   }
-  for (let i = 0; i < trail.length; i++) {
-    const seg = trail[i]!;
+  // PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+  // しきれない」):trail.length > 5 のとき middle 部を「⋯」で集約し、
+  // 集約 button hover で full path を tooltip 表示、click で展開。
+  // 常に root + 最初 + 末尾 2 segments は visible にして context を保つ。
+  const collapsedTrail: typeof trail = [];
+  if (trail.length <= 5) {
+    collapsedTrail.push(...trail);
+  } else {
+    collapsedTrail.push(trail[0]!); // root
+    collapsedTrail.push(trail[1]!); // top-level
+    // ellipsis placeholder; lid carries full middle path joined
+    const middle = trail.slice(2, trail.length - 2);
+    const ellipsisLabels = middle.map((s) => s.label).join(' / ');
+    collapsedTrail.push({ label: `⋯ (${middle.length})`, lid: `__ellipsis__:${ellipsisLabels}` });
+    collapsedTrail.push(trail[trail.length - 2]!);
+    collapsedTrail.push(trail[trail.length - 1]!);
+  }
+
+  for (let i = 0; i < collapsedTrail.length; i++) {
+    const seg = collapsedTrail[i]!;
     if (i > 0) {
       const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
       sep.textContent = ' / ';
       breadcrumb.appendChild(sep);
+    }
+    if (seg.lid && seg.lid.startsWith('__ellipsis__:')) {
+      const tooltipText = seg.lid.slice('__ellipsis__:'.length);
+      const ellSpan = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-ellipsis');
+      ellSpan.textContent = seg.label;
+      ellSpan.title = tooltipText;
+      breadcrumb.appendChild(ellSpan);
+      continue;
     }
     if (seg.lid === null) {
       // Root segment is clickable — DESELECT_ENTRY moves the filer

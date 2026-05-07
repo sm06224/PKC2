@@ -539,6 +539,42 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   ctx.fillStyle = theme.bgTag;
   ctx.fillRect(0, 0, payload.width, payload.height);
 
+  // PR-Δ26 (2026-05-07、user 指摘「Galaxy 期待外れ、名前負け」):
+  // galaxy mode 時、銀河風の背景効果を描画。
+  //   1. Galactic core radial gradient(中心明、外側暗)
+  //   2. Starfield(deterministic 1000+ small dots)
+  //   3. Edge を nebula 色(青紫グラデ)に置換
+  //   4. 各 node に glow halo
+  if (graphGalaxyMode() === 1) {
+    // Core gradient
+    const cx = payload.width / 2, cy = payload.height / 2;
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(payload.width, payload.height) * 0.6);
+    coreGrad.addColorStop(0, 'rgba(90, 70, 130, 0.35)');
+    coreGrad.addColorStop(0.4, 'rgba(40, 30, 70, 0.22)');
+    coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.fillRect(0, 0, payload.width, payload.height);
+    // Starfield (deterministic stars based on canvas dims)。
+    const starCount = 600;
+    let s = 1234567;
+    const rand = (): number => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0xffffffff;
+    };
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    for (let i = 0; i < starCount; i++) {
+      const sx = rand() * payload.width;
+      const sy = rand() * payload.height;
+      const sr = 0.3 + rand() * 1.0;
+      const sa = 0.3 + rand() * 0.6;
+      ctx.globalAlpha = sa;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // View transform.
   ctx.translate(view.tx, view.ty);
   ctx.scale(view.scale, view.scale);
@@ -663,6 +699,20 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
 
     // PR-Δ22:galaxy mode で alpha 適用(深い node を奥に配置)。
     ctx.globalAlpha = alpha;
+    // PR-Δ26 (2026-05-07、user 指摘「Galaxy 期待外れ」):galaxy mode 時
+    // 各 node に glow halo を radial gradient で描画。星のような輝き感。
+    if (galaxyOn && node.archetype !== 'folder') {
+      const haloR = baseR * 4 * persp;
+      const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, haloR);
+      const haloHue = node.cssColor ?? archetypeFill(node.archetype, themeIsDark(theme.bg));
+      halo.addColorStop(0, haloHue);
+      halo.addColorStop(0.3, haloHue.replace(/[\d.]+\)$/, '0.4)') || 'rgba(180,180,255,0.4)');
+      halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, haloR, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // PR-Δ24 (2026-05-07、user 訂正「フォルダはリレーションの結節点
     // として小さく描画」):folder archetype は **小さい diamond(◇)** で
     // 描画、entry node の半分以下のサイズ + label 省略。

@@ -5404,6 +5404,18 @@ mark.pkc-search-mark {
   color: var(--c-fg, currentColor);
   cursor: pointer;
   padding: 0 var(--space-1, 0.25rem);
+  /* PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+   * しきれない」):各 segment に max-width + ellipsis、超過時は省略表示。
+   * tooltip(title 属性)で full text 確認可能。 */
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-filer-breadcrumb-ellipsis {
+  cursor: help;
+  opacity: 0.7;
+  font-style: italic;
 }
 
 .pkc-filer-breadcrumb-segment:hover {
