@@ -5954,12 +5954,15 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   const select = document.createElement('select');
   select.className = 'pkc-graph-mode-select';
   select.setAttribute('data-pkc-action', 'set-graph-mode');
+  // U8 (2026-05-07、wave-10-6 UX evaluation):graph mode select label
+  // が括弧書きの補足で長く、横に溢れる。短い canonical label に統一
+  // (詳細は select の title 属性に逃がす案も将来検討)。
   for (const m of [
-    { v: 'relations', label: 'Relations(structural + semantic)' },
+    { v: 'relations', label: 'Relations' },
     { v: 'color-tags', label: 'Color tags' },
     { v: 'tag-groups', label: 'Tag groups' },
     { v: 'folder-hierarchy', label: 'Folder hierarchy' },
-    { v: 'time-proximity', label: 'Time proximity(時系列接近性)' },
+    { v: 'time-proximity', label: 'Time proximity' },
   ]) {
     const opt = document.createElement('option');
     opt.value = m.v;
@@ -7437,27 +7440,53 @@ function renderMetaPaneImpl(
     select.setAttribute('data-pkc-lid', entry.lid);
     select.className = 'pkc-filer-profile-select';
 
-    const opts: { value: string; label: string }[] = [
-      { value: 'auto', label: 'Auto(自動判定 / 7 割多数決)' },
-      { value: 'explorer', label: 'Explorer (table)' },
-      { value: 'contact-sheet', label: 'Contact sheet (album)' },
-      { value: 'book-base', label: 'Book base (Amazon / 楽天 / 蔵書)' },
-      { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
-      { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
-      { value: 'audio-base', label: 'Audio base (Spotify / 録音 / podcast)' },
-      // PR-HHH (2026-05-06):filer 内 Graph subset は廃止。center pane の
-      // viewMode='graph' タブが canonical。option は除去。
-      { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
+    // U5 (2026-05-07、wave-10-6 UX evaluation):subset 8 種が単一 list に
+    // 並び意味分類が混在(table / grid / network / query)。<optgroup> で
+    // 4 group に整理し、初見 user でも何用か判別しやすくする。Graph は
+    // PR-HHH で廃止済(center pane viewMode='graph' タブが canonical)。
+    type ProfileOpt = { value: string; label: string };
+    const groups: { label: string; opts: ProfileOpt[] }[] = [
+      {
+        label: '既定',
+        opts: [{ value: 'auto', label: 'Auto(自動判定)' }],
+      },
+      {
+        label: 'Layout',
+        opts: [
+          { value: 'explorer', label: 'Explorer(table)' },
+          { value: 'contact-sheet', label: 'Contact sheet(album)' },
+        ],
+      },
+      {
+        label: 'Catalogue',
+        opts: [
+          { value: 'book-base', label: 'Book base(蔵書)' },
+          { value: 'video-base', label: 'Video base(動画)' },
+          { value: 'novel-base', label: 'Novel base(小説)' },
+          { value: 'audio-base', label: 'Audio base(音声)' },
+        ],
+      },
+      {
+        label: 'Query',
+        opts: [
+          { value: 'inventory', label: 'Inventory(Bases 風)' },
+        ],
+      },
     ];
     // PR-G G15 (2026-05-06):default は auto。undefined display_profile も
     // auto と同じ意味として扱う。
     const current = entry.display_profile?.kind ?? 'auto';
-    for (const opt of opts) {
-      const option = document.createElement('option');
-      option.value = opt.value;
-      option.textContent = opt.label;
-      if (opt.value === current) option.selected = true;
-      select.appendChild(option);
+    for (const group of groups) {
+      const og = document.createElement('optgroup');
+      og.label = group.label;
+      for (const opt of group.opts) {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (opt.value === current) option.selected = true;
+        og.appendChild(option);
+      }
+      select.appendChild(og);
     }
     profileSection.appendChild(select);
 
