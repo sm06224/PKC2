@@ -6287,19 +6287,18 @@ function buildGraphForMode(
   }
 
   const inScope = (id: string): boolean => nodeIds.has(id);
-  // PR-Δ17 (2026-05-07、user 報告「フォルダは厳密にはエントリではなく
-  // リレーション。グラフで一丁前にノードになっているせいで時系列近接性
-  // グラフが完全に破綻」):
-  //   folder archetype は **意味的に junction(結節点)** であり、
-  //   独立 entry として扱うべきではない。time-proximity mode では除外、
-  //   relations / color-tags / tag-groups でも folder は **構造線の
-  //   経路** にのみ寄与し node には載せない。folder-hierarchy mode は
-  //   folder の階層構造そのものを示すため例外として残す。
+  // PR-Δ17 → Δ24 (2026-05-07、user 訂正「フォルダを不可視化するのではなく
+  // リレーションとして結節点から線を伸ばして表現」):
+  //   folder は entry ではなく junction(結節点)、しかし完全除外では
+  //   なく **junction symbol として小さく描画 + folder→子 の線を残す**。
+  //   time-proximity mode では folder を独立 entry として X 軸に並べる
+  //   ことに意味がない(folder には updated_at が user 編集としては
+  //   無いに等しい)ため除外、それ以外の mode では junction として残す。
   const isFolder = (lid: string): boolean => {
     const e = entries.find((x) => x.lid === lid);
     return e?.archetype === 'folder';
   };
-  const excludeFolderAsNode = mode !== 'folder-hierarchy';
+  const excludeFolderAsNode = mode === 'time-proximity';
   const filteredEntries = entries.filter((e) => {
     if (!inScope(e.lid)) return false;
     if (excludeFolderAsNode && e.archetype === 'folder') return false;
@@ -6307,8 +6306,6 @@ function buildGraphForMode(
   });
   const linksRaw = relations.filter((r) => {
     if (!inScope(r.from) || !inScope(r.to)) return false;
-    // folder を node から除外する mode では、folder を端点とする link も
-    // 引かない(node が無いところに線が引けないため)。
     if (excludeFolderAsNode && (isFolder(r.from) || isFolder(r.to))) return false;
     return true;
   });

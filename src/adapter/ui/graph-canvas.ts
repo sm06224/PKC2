@@ -663,6 +663,36 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
 
     // PR-Δ22:galaxy mode で alpha 適用(深い node を奥に配置)。
     ctx.globalAlpha = alpha;
+    // PR-Δ24 (2026-05-07、user 訂正「フォルダはリレーションの結節点
+    // として小さく描画」):folder archetype は **小さい diamond(◇)** で
+    // 描画、entry node の半分以下のサイズ + label 省略。
+    if (node.archetype === 'folder') {
+      const jr = Math.max(5 / view.scale, r * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - jr);
+      ctx.lineTo(p.x + jr, p.y);
+      ctx.lineTo(p.x, p.y + jr);
+      ctx.lineTo(p.x - jr, p.y);
+      ctx.closePath();
+      ctx.fillStyle = theme.bgTag;
+      ctx.fill();
+      ctx.strokeStyle = isSelected || isInRegion ? theme.accent : theme.fgMuted;
+      ctx.lineWidth = (isSelected || isInRegion ? 2.5 : 1) / view.scale;
+      ctx.stroke();
+      // junction の小 label(folder title)を下に出す。
+      const labelText = truncate(node.label, 20);
+      ctx.font = `400 ${10}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.lineWidth = 2 / view.scale;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = theme.bg;
+      ctx.strokeText(labelText, p.x, p.y + jr + 2);
+      ctx.fillStyle = theme.fgMuted;
+      ctx.fillText(labelText, p.x, p.y + jr + 2);
+      ctx.globalAlpha = 1;
+      continue;
+    }
     // Circle (背景色、emoji 視認性のため薄め).
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
