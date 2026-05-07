@@ -61,9 +61,11 @@ describe('renderFloatingPopup — DOM shape', () => {
   it('emits one snippet button per kind', () => {
     const el = renderFloatingPopup();
     const btns = el.querySelectorAll('[data-pkc-snippet]');
-    // backtick / fence / paren / bracket / brace / angle / dash /
-    // quote / heading (h1) / heading2 / heading3
-    expect(btns.length).toBe(11);
+    // 既存 11(backtick / fence / paren / bracket / brace / angle / dash /
+    // quote / heading / heading2 / heading3)+ wave-10-2 Phase 1 拡張 9
+    // (section-break / align-center / align-right / align-left / highlight /
+    // simple-inline / ruby / em-dot / comment-inline)= 20
+    expect(btns.length).toBe(20);
   });
 
   it('all popup buttons are type=button with a11y attrs', () => {

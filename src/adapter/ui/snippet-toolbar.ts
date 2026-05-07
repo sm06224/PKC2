@@ -41,20 +41,45 @@ export type SnippetKind =
   | 'quote'
   | 'heading'
   | 'heading2'
-  | 'heading3';
+  | 'heading3'
+  // ── L-1〜L-7(2026-05-07、wave-10-2 Phase 1):iPhone snippet toolbar に
+  // 新 markup 拡張を追加。spec doc §6.3 slash command 一覧と整合する基本
+  // セット。block 系(figure/table)は heavy template のため iPhone toolbar
+  // からは除外、slash menu(`/pkcfigure` 等)経由で挿入する想定。
+  | 'align-center'      // L-5: || prefix
+  | 'align-right'       // L-5: |> prefix
+  | 'align-left'        // L-5: <| prefix
+  | 'highlight'         // L-2: ==text==
+  | 'ruby'              // L-2: [[ruby:base|reading]]
+  | 'em-dot'            // L-2: [[em:text]]
+  | 'comment-inline'    // L-4: %% comment %%
+  | 'section-break'     // L-1: +++
+  | 'simple-inline';    // L-6: :text:attrs:
 
 const SNIPPET_ORDER: readonly SnippetKind[] = [
+  // 既存 markdown primitives(touch device で打ちにくい記号)
   'backtick',
   'fence',
   'paren',
   'bracket',
   'brace',
   'angle',
+  // 既存 line-prefix
   'dash',
   'quote',
   'heading',
   'heading2',
   'heading3',
+  // wave-10-2 Phase 1 拡張
+  'section-break',
+  'align-center',
+  'align-right',
+  'align-left',
+  'highlight',
+  'simple-inline',
+  'ruby',
+  'em-dot',
+  'comment-inline',
 ];
 
 interface SnippetSpec {
@@ -76,6 +101,16 @@ const SNIPPETS: Readonly<Record<SnippetKind, SnippetSpec>> = {
   heading:  { label: '#', title: 'Heading 1' },
   heading2: { label: '##', title: 'Heading 2' },
   heading3: { label: '###', title: 'Heading 3' },
+  // wave-10-2 Phase 1 拡張
+  'section-break':  { label: '+++', title: 'セクション区切り(+++、page/slide break)' },
+  'align-center':   { label: '||', title: '行頭センター揃え(||)' },
+  'align-right':    { label: '|>', title: '行頭右寄せ(|>)' },
+  'align-left':     { label: '<|', title: '行頭左寄せ(<|)' },
+  'highlight':      { label: '==', title: 'ハイライト(==text==)' },
+  'simple-inline':  { label: ':…:', title: '簡易インライン装飾(:text:bold,red:)' },
+  'ruby':           { label: 'ﾙﾋﾞ', title: 'ふりがな([[ruby:漢字|かんじ]])' },
+  'em-dot':         { label: '圏点', title: '圏点・傍点([[em:重要]])' },
+  'comment-inline': { label: '%%', title: 'インラインコメント(%% メモ %%)' },
 };
 
 /**
@@ -311,6 +346,97 @@ export function applySnippet(ta: HTMLTextAreaElement, kind: SnippetKind): void {
         replaceRange(ta, start, end, insert, start + insert.length);
       } else {
         replaceRange(ta, start, end, marker, start + marker.length);
+      }
+      break;
+    }
+
+    // ── wave-10-2 Phase 1 拡張 ──
+
+    case 'align-center':
+    case 'align-right':
+    case 'align-left': {
+      // L-5:行頭 align prefix。行頭でない場合は改行を挟んで行頭に。
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const beforeOnLine = value.slice(lineStart, start);
+      const atLineStart = /^\s*$/.test(beforeOnLine);
+      const marker = kind === 'align-center' ? '||' : kind === 'align-right' ? '|>' : '<|';
+      if (atLineStart) {
+        const insert = marker + ' ';
+        replaceRange(ta, start, end, insert, start + insert.length);
+      } else {
+        // 行中なら改行を入れて新行の行頭に挿入
+        const insert = '\n' + marker + ' ';
+        replaceRange(ta, start, end, insert, start + insert.length);
+      }
+      break;
+    }
+
+    case 'section-break': {
+      // L-1:+++ 行を独立して挿入(前後に空行)。
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const beforeOnLine = value.slice(lineStart, start);
+      const atLineStart = /^\s*$/.test(beforeOnLine);
+      const insert = atLineStart ? '+++\n' : '\n\n+++\n\n';
+      replaceRange(ta, start, end, insert, start + insert.length);
+      break;
+    }
+
+    case 'highlight': {
+      // L-2:==text==。selection があれば wrap、無ければ caret 中央配置。
+      if (hasSelection) {
+        const text = '==' + selected + '==';
+        replaceRange(ta, start, end, text, start + text.length);
+      } else {
+        const text = '====';
+        replaceRange(ta, start, end, text, start + 2);
+      }
+      break;
+    }
+
+    case 'ruby': {
+      // L-2:[[ruby:base|reading]]。selection があれば base に。
+      if (hasSelection) {
+        const text = '[[ruby:' + selected + '|]]';
+        replaceRange(ta, start, end, text, start + text.length - 2);
+      } else {
+        const text = '[[ruby:漢字|かんじ]]';
+        replaceRange(ta, start, end, text, start + 7); // caret on '漢' for quick replace
+      }
+      break;
+    }
+
+    case 'em-dot': {
+      // L-2:[[em:text]]。selection があれば wrap。
+      if (hasSelection) {
+        const text = '[[em:' + selected + ']]';
+        replaceRange(ta, start, end, text, start + text.length);
+      } else {
+        const text = '[[em:]]';
+        replaceRange(ta, start, end, text, start + 5);
+      }
+      break;
+    }
+
+    case 'comment-inline': {
+      // L-4:%% comment %%。
+      if (hasSelection) {
+        const text = '%% ' + selected + ' %%';
+        replaceRange(ta, start, end, text, start + text.length);
+      } else {
+        const text = '%%  %%';
+        replaceRange(ta, start, end, text, start + 3);
+      }
+      break;
+    }
+
+    case 'simple-inline': {
+      // L-6::text:attrs:。selection を text に、attrs は bold default。
+      if (hasSelection) {
+        const text = ':' + selected + ':bold:';
+        replaceRange(ta, start, end, text, start + text.length);
+      } else {
+        const text = '::bold:';
+        replaceRange(ta, start, end, text, start + 1);
       }
       break;
     }
