@@ -147,23 +147,27 @@ describe('graph canvas region-slice (PR-H G16 + PR-E parity)', () => {
     expect(emittedEvents).toHaveLength(0);
   });
 
-  it('region-mode ON: large rect covering all 4 nodes emits all 4 lids', () => {
+  it('region-mode ON: large ellipse covering all 4 nodes emits all 4 lids', () => {
+    // PR-Δ31 (2026-05-07):矩形 → 楕円 hit test に変更したため、
+    // 楕円の中心 / 半径を全 4 node を含む大きさに広げる必要がある。
+    // 中心 (400,300)、rx=560、ry=420 にすると 4 node 全てが内包される
+    // (clientX -160→960、clientY -120→720 の bounding rect 相当)。
     canvas.setAttribute('data-pkc-graph-region-select-mode', 'true');
 
     const md = new Event('mousedown', { bubbles: true, cancelable: true });
     Object.defineProperty(md, 'button', { value: 0 });
-    Object.defineProperty(md, 'clientX', { value: 0 });
-    Object.defineProperty(md, 'clientY', { value: 0 });
+    Object.defineProperty(md, 'clientX', { value: -160 });
+    Object.defineProperty(md, 'clientY', { value: -120 });
     canvas.dispatchEvent(md);
 
     const mm = new Event('mousemove', { bubbles: true });
-    Object.defineProperty(mm, 'clientX', { value: 800 });
-    Object.defineProperty(mm, 'clientY', { value: 600 });
+    Object.defineProperty(mm, 'clientX', { value: 960 });
+    Object.defineProperty(mm, 'clientY', { value: 720 });
     window.dispatchEvent(mm);
 
     const mu = new Event('mouseup', { bubbles: true });
-    Object.defineProperty(mu, 'clientX', { value: 800 });
-    Object.defineProperty(mu, 'clientY', { value: 600 });
+    Object.defineProperty(mu, 'clientX', { value: 960 });
+    Object.defineProperty(mu, 'clientY', { value: 720 });
     window.dispatchEvent(mu);
 
     expect(emittedEvents).toHaveLength(1);

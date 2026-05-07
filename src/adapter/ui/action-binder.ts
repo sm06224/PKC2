@@ -2785,6 +2785,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'ctx-open-detail': {
+        // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作、右クリック
+        // で context menu 化」):graph 上の右クリック menu から detail を
+        // 開く専用 action。SET_VIEW_MODE 'detail' + SELECT_ENTRY を併発。
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -7170,10 +7179,55 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // して detail に飛ばす(folder click であっても graph では同じ — graph
   // ペーン内で folder navigation する semantics は無い)。
   root.addEventListener('pkc-graph-node-click', (ev) => {
-    const detail = (ev as CustomEvent).detail as { lid?: unknown } | undefined;
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown;
+      modifier?: unknown;
+    } | undefined;
     if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
-    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+    // PR-Δ32 (2026-05-07、user 指示「Ctrl+クリックで複数選択」):graph node の
+    // 左クリックで modifier=ctrl/meta を伴うときは TOGGLE_MULTI_SELECT を
+    // dispatch して multi-select に追加/除外する。
+    if (detail.modifier === 'ctrl' || detail.modifier === 'meta' || detail.modifier === 'shift') {
+      dispatcher.dispatch({
+        type: 'TOGGLE_MULTI_SELECT',
+        lid: detail.lid,
+        includeAnchor: false,
+      });
+      return;
+    }
+    // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作専用、誤操作防止」):
+    // node 左クリックは SELECT_ENTRY のみで viewMode は変えない。Detail で
+    // 開きたい場合は右クリック context menu の「Open」を経由する。
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
+  });
+  // PR-Δ34: graph node 上での contextmenu(右クリック)で「開く」を含む
+  // menu を出す。clientX/Y は graph-canvas の hit test 結果と同じ座標系。
+  root.addEventListener('pkc-graph-node-context', (ev) => {
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown; x?: unknown; y?: unknown;
+    } | undefined;
+    if (!detail || typeof detail.lid !== 'string') return;
+    if (typeof detail.x !== 'number' || typeof detail.y !== 'number') return;
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const lid = detail.lid;
+    const entry = state.container.entries.find((en) => en.lid === lid);
+    dismissContextMenu();
+    const folders = state.container.entries
+      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+      .map((en) => ({ lid: en.lid, title: en.title }));
+    const hasParent = entry
+      ? getStructuralParent(state.container.relations, state.container.entries, lid) !== null
+      : false;
+    const menu = renderContextMenu(lid, detail.x, detail.y, {
+      archetype: entry?.archetype,
+      canEdit: !state.readonly,
+      hasParent,
+      folders,
+      showOpen: true,
+    });
+    root.appendChild(menu);
+    clampMenuToViewport(menu);
   });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);

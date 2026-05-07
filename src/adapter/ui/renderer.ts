@@ -3518,10 +3518,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // が出るのは誤り、Filer 側に表示すべき」):viewMode === 'filer' のとき
   // sidebar には bar を出さない(filer view 側で同 helper を呼んで filer
   // 内部に表示する)。それ以外の view では従来通り sidebar 表示。
+  // PR-Δ30 (2026-05-07):graph view も同様に view 内で表示するため
+  // sidebar 側は skip。
   if (
     state.multiSelectedLids.length > 0
     && !state.readonly
     && state.viewMode !== 'filer'
+    && state.viewMode !== 'graph'
   ) {
     const bar = createElement('div', 'pkc-multi-action-bar');
     bar.setAttribute('data-pkc-region', 'multi-action-bar');
@@ -4576,9 +4579,10 @@ function renderCalendarView(state: AppState): HTMLElement {
  * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
  * 重複は意図的(sidebar/filer の独立性確保)。
  */
-function buildFilerMultiActionBar(state: AppState): HTMLElement {
-  const bar = createElement('div', 'pkc-multi-action-bar pkc-filer-multi-action-bar');
+function buildFilerMultiActionBar(state: AppState, viewCtx: 'filer' | 'graph' = 'filer'): HTMLElement {
+  const bar = createElement('div', `pkc-multi-action-bar pkc-${viewCtx}-multi-action-bar`);
   bar.setAttribute('data-pkc-region', 'multi-action-bar');
+  bar.setAttribute('data-pkc-view-ctx', viewCtx);
   const info = createElement('span', 'pkc-multi-action-info');
   info.textContent = `${state.multiSelectedLids.length} selected`;
   bar.appendChild(info);
@@ -5934,6 +5938,15 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   const mode = state.graphMode ?? 'relations';
   wrap.setAttribute('data-pkc-graph-mode', mode);
   if (state.graphFocusLid) wrap.setAttribute('data-pkc-graph-focus-lid', state.graphFocusLid);
+
+  // PR-Δ30 (2026-05-07、user 報告「選択してる時にバルク操作できるのは
+  // いいんだけど、Filer まで戻るのはだるい」):graph view top にも
+  // multi-action-bar を表示して、graph 内で直接 bulk delete / move /
+  // tag / color が完結するようにする。viewCtx='graph' で class を
+  // 切り分けて positioning を独立調整可能にする。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    wrap.appendChild(buildFilerMultiActionBar(state, 'graph'));
+  }
 
   // Toolbar: mode selector + focus indicator + clear-focus button.
   const toolbar = createElement('div', 'pkc-center-graph-toolbar');
@@ -9542,6 +9555,8 @@ export interface ContextMenuOptions {
   hasParent?: boolean;
   /** Available folders for "move to folder" sub-menu. */
   folders?: { lid: string; title: string }[];
+  /** PR-Δ34: graph view 等から呼ばれる時に「開く」item を先頭に出す。 */
+  showOpen?: boolean;
 }
 
 export function renderContextMenu(
@@ -9589,6 +9604,8 @@ export function renderContextMenu(
   const hasFolders = !!(opts.folders && opts.folders.length > 0);
 
   const items: Item[] = [
+    // PR-Δ34: graph 等で右クリックされた時のみ「Open」を先頭に表示。
+    { action: 'ctx-open-detail', label: '🔍 Open', tip: 'このエントリを Detail で開く', lid, show: !!opts.showOpen },
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },

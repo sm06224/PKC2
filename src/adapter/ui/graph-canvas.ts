@@ -122,6 +122,18 @@ interface CanvasViewState {
    * user's zoom/pan instead of re-fitting. Reset by `resetGraphCanvasZoom`.
    */
   autoFitDone?: boolean;
+  /**
+   * PR-Δ33 (2026-05-07、user 指示「特定のエントリや結節点、リレーションを
+   * 掴んで引っ張ることで、ぶら下がるものが動く」):node drag 中の状態。
+   * dragLid:現在 drag 中の node、null = drag していない。
+   * dragOrigUser:drag 開始時の dragLid と 1/2-hop 先の neighbor の元位置を
+   *   user-space で記録。move 中はここから delta を加減して positions を更新。
+   * dragMouseStart:mousedown 時の client 座標。move 中の delta 計算に使用。
+   */
+  dragLid?: string | null;
+  dragOrigUser?: Map<string, { x: number; y: number }>;
+  dragNeighborFactor?: Map<string, number>;
+  dragMouseStartClient?: { x: number; y: number } | null;
 }
 
 // PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
@@ -869,20 +881,38 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.globalAlpha = 1;
   }
 
-  // Region-select rect (drawn last so it's above everything).
+  // PR-Δ31 (2026-05-07、user 指示「矩形選択じゃなく楕円選択のほうがいい」):
+  // start→end の bounding rect を楕円(ellipse)に置換。drag 軌跡が斜めの
+  // ときは扁平楕円になる。中心は中点、ラジアスは |end-start|/2。
+  // happy-dom test 環境では ctx.ellipse が未実装のため、手動 path
+  // (arc 64 セグメント)で描画する。
   if (view.rectStart && view.rectEnd) {
-    const x = Math.min(view.rectStart.ux, view.rectEnd.ux);
-    const y = Math.min(view.rectStart.uy, view.rectEnd.uy);
-    const w = Math.abs(view.rectEnd.ux - view.rectStart.ux);
-    const h = Math.abs(view.rectEnd.uy - view.rectStart.uy);
+    const cx = (view.rectStart.ux + view.rectEnd.ux) / 2;
+    const cy = (view.rectStart.uy + view.rectEnd.uy) / 2;
+    const rx = Math.max(1, Math.abs(view.rectEnd.ux - view.rectStart.ux) / 2);
+    const ry = Math.max(1, Math.abs(view.rectEnd.uy - view.rectStart.uy) / 2);
+    const tracePath = (): void => {
+      ctx.beginPath();
+      const SEG = 64;
+      for (let i = 0; i <= SEG; i++) {
+        const t = (i / SEG) * Math.PI * 2;
+        const px = cx + Math.cos(t) * rx;
+        const py = cy + Math.sin(t) * ry;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      // closePath は happy-dom 未実装。lineTo で i=SEG が始点に戻るため不要。
+    };
     ctx.fillStyle = theme.accent;
     ctx.globalAlpha = 0.1;
-    ctx.fillRect(x, y, w, h);
+    tracePath();
+    ctx.fill();
     ctx.globalAlpha = 1;
     ctx.strokeStyle = theme.accent;
     ctx.lineWidth = 1.5 / view.scale;
     ctx.setLineDash([4 / view.scale, 2 / view.scale]);
-    ctx.strokeRect(x, y, w, h);
+    tracePath();
+    ctx.stroke();
     ctx.setLineDash([]);
   }
 
@@ -1079,6 +1109,72 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       drawGraphCanvas(canvas);
       return;
     }
+    // PR-Δ33 (2026-05-07、user 指示「ノードを掴んで引っ張ると接続ノードが
+    // ぶら下がる」):pressDownLid が set されている状態で 5px 以上動いたら
+    // drag mode に engage。drag 中は dragLid / 1-hop / 2-hop neighbor の
+    // 元位置を保存し、cursor delta を decay 付きで適用。
+    if (pressDownLid && mouseDownPos) {
+      const movedDist = Math.hypot(me.clientX - mouseDownPos.x, me.clientY - mouseDownPos.y);
+      const payload = payloads.get(canvas);
+      if (!view.dragLid && movedDist > 5 && payload) {
+        view.dragLid = pressDownLid;
+        view.dragMouseStartClient = { x: mouseDownPos.x, y: mouseDownPos.y };
+        const orig = new Map<string, { x: number; y: number }>();
+        const factor = new Map<string, number>();
+        const seedPos = payload.positions.get(pressDownLid);
+        if (seedPos) {
+          orig.set(pressDownLid, { x: seedPos.x, y: seedPos.y });
+          factor.set(pressDownLid, 1);
+        }
+        const layer1: string[] = [];
+        for (const link of payload.links) {
+          let other: string | null = null;
+          if (link.from === pressDownLid) other = link.to;
+          else if (link.to === pressDownLid) other = link.from;
+          if (!other || orig.has(other)) continue;
+          const p = payload.positions.get(other);
+          if (!p) continue;
+          orig.set(other, { x: p.x, y: p.y });
+          factor.set(other, 0.55);
+          layer1.push(other);
+        }
+        for (const l1 of layer1) {
+          for (const link of payload.links) {
+            let other: string | null = null;
+            if (link.from === l1) other = link.to;
+            else if (link.to === l1) other = link.from;
+            if (!other || orig.has(other)) continue;
+            const p = payload.positions.get(other);
+            if (!p) continue;
+            orig.set(other, { x: p.x, y: p.y });
+            factor.set(other, 0.25);
+          }
+        }
+        view.dragOrigUser = orig;
+        view.dragNeighborFactor = factor;
+        // drag に切り替わったので pan は中止。
+        panStart = null;
+      }
+      if (view.dragLid && view.dragOrigUser && view.dragNeighborFactor && view.dragMouseStartClient && payload) {
+        const u0 = (() => {
+          const lg = clientToLogical(canvas, view.dragMouseStartClient.x, view.dragMouseStartClient.y);
+          return logicalToUser(canvas, lg.x, lg.y);
+        })();
+        const u1 = (() => {
+          const lg = clientToLogical(canvas, me.clientX, me.clientY);
+          return logicalToUser(canvas, lg.x, lg.y);
+        })();
+        const dx = u1.x - u0.x;
+        const dy = u1.y - u0.y;
+        const positions = payload.positions as Map<string, { x: number; y: number }>;
+        for (const [lid, orig] of view.dragOrigUser) {
+          const f = view.dragNeighborFactor.get(lid) ?? 0;
+          positions.set(lid, { x: orig.x + dx * f, y: orig.y + dy * f });
+        }
+        drawGraphCanvas(canvas);
+        return;
+      }
+    }
     if (!panStart) return;
     // PR-Δ1 (2026-05-07):pan delta も uniform scale で変換、aspect
     // 歪みを伝播させない。
@@ -1107,8 +1203,18 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       if (start) {
         const dist = Math.hypot(me.clientX - start.x, me.clientY - start.y);
         if (dist < 5) {
+          // PR-Δ32 (2026-05-07):Ctrl/Meta/Shift 修飾子で multi-select を
+          // toggle するため、modifier kind を detail に同梱して action-
+          // binder 側で分岐させる。
+          const modifier = me.ctrlKey
+            ? 'ctrl'
+            : me.metaKey
+            ? 'meta'
+            : me.shiftKey
+            ? 'shift'
+            : 'none';
           const evt = new CustomEvent('pkc-graph-node-click', {
-            detail: { lid: pressDownLid },
+            detail: { lid: pressDownLid, modifier },
             bubbles: true,
           });
           canvas.dispatchEvent(evt);
@@ -1118,6 +1224,31 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
     panStart = null;
     pressDownLid = null;
     mouseDownPos = null;
+    // PR-Δ33: drag 終了で session 状態を破棄(positions は更新済みのまま
+    // 次の re-render まで保持される)。
+    if (view.dragLid) {
+      view.dragLid = null;
+      view.dragOrigUser = undefined;
+      view.dragNeighborFactor = undefined;
+      view.dragMouseStartClient = null;
+    }
+  }, { signal });
+
+  // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作、右クリック=context
+  // menu」):右クリックで node hit test → `pkc-graph-node-context` event を
+  // 発行。action-binder 側で renderContextMenu({showOpen: true}) を表示する。
+  // ノード以外の場所(空白)では event を発行せず、native contextmenu を
+  // 抑止するだけ(graph 上での意図しない browser menu は誤操作扱い)。
+  canvas.addEventListener('contextmenu', (ev) => {
+    const me = ev as MouseEvent;
+    me.preventDefault();
+    const lid = hitTestNodeAt(canvas, me.clientX, me.clientY);
+    if (!lid) return;
+    const evt = new CustomEvent('pkc-graph-node-context', {
+      detail: { lid, x: me.clientX, y: me.clientY },
+      bubbles: true,
+    });
+    canvas.dispatchEvent(evt);
   }, { signal });
 
   // ── Touch: pinch + 1-finger pan / region-select / tap. ──
@@ -1242,19 +1373,23 @@ function finalizeRegionSelect(canvas: HTMLCanvasElement): void {
   const view = viewStates.get(canvas);
   const payload = payloads.get(canvas);
   if (!view || !payload || !view.rectStart || !view.rectEnd) return;
-  // Convert logical rect → user-space rect.
+  // PR-Δ31 (2026-05-07):矩形 → 楕円 hit test。中心 (cx,cy) を中点、半径
+  // (rx,ry) を |end-start|/2 とし、楕円式 ((x-cx)/rx)² + ((y-cy)/ry)² ≤ 1
+  // を満たす node を含める。
   const u0 = logicalToUser(canvas, view.rectStart.ux, view.rectStart.uy);
   const u1 = logicalToUser(canvas, view.rectEnd.ux, view.rectEnd.uy);
-  const rx = Math.min(u0.x, u1.x);
-  const ry = Math.min(u0.y, u1.y);
-  const rw = Math.abs(u1.x - u0.x);
-  const rh = Math.abs(u1.y - u0.y);
+  const cx = (u0.x + u1.x) / 2;
+  const cy = (u0.y + u1.y) / 2;
+  const rx = Math.abs(u1.x - u0.x) / 2;
+  const ry = Math.abs(u1.y - u0.y) / 2;
   const lids: string[] = [];
-  if (rw >= 4 && rh >= 4) {
+  if (rx >= 4 && ry >= 4) {
     for (const node of payload.nodes) {
       const p = payload.positions.get(node.id);
       if (!p) continue;
-      if (p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh) lids.push(node.id);
+      const dx = (p.x - cx) / rx;
+      const dy = (p.y - cy) / ry;
+      if (dx * dx + dy * dy <= 1) lids.push(node.id);
     }
     canvas.dispatchEvent(new CustomEvent('pkc-graph-region-selected', {
       detail: { lids },
