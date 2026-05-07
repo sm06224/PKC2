@@ -143,19 +143,25 @@ describe('PR-AAA: graph canvas auto-fit-to-bounds', () => {
     expect(view.ty).toBe(0);
   });
 
-  it('auto-fit only zooms OUT (bbox already fits → identity, no zoom-in)', () => {
-    // Tiny bbox (single node) inside the 960x600 viewport. auto-fit
-    // should NOT zoom in past 1:1 — we only auto-fit when nodes need
-    // shrinking. This keeps existing click tests' coordinate
-    // expectations stable.
+  it('auto-fit zooms IN moderately for small bbox (capped at 2.5x)', () => {
+    // U2 (2026-05-07、wave-10-6 UX evaluation):単一 folder で node が
+    // 中央に固まり viewport が空白だらけになる症状を fit-to-content で
+    // 解消。tiny bbox(単一 node 等)では zoom-IN するが、過剰拡大を
+    // 防ぐため 2.5x で cap。bbox = 単一 node + r=24 padding = 48x48、
+    // viewport 960x600 → sx=17.6, sy=11.0、min=11.0、cap=2.5。
     const payload = mkPayload([
       { id: 'a', x: 100, y: 100 },
     ]);
     bindGraphCanvas(canvas, payload);
     const view = __getGraphCanvasViewForTest(canvas)!;
-    expect(view.scale).toBe(1);
-    expect(view.tx).toBe(0);
-    expect(view.ty).toBe(0);
+    expect(view.scale).toBe(2.5);
+    // Center: bbox center (100, 100) は viewport center (480, 300) に置く。
+    // user-space 中心は w*s/2 = 48*2.5/2 = 60 オフセット。tx は (480 - 60 - 76*2.5)。
+    // 直接 number 比較は脆いので、center が viewport center に居ることを確認。
+    const cxAfter = view.tx + 100 * view.scale; // node 'a' rendered x
+    const cyAfter = view.ty + 100 * view.scale;
+    expect(cxAfter).toBeCloseTo(480, 1); // viewport width / 2
+    expect(cyAfter).toBeCloseTo(300, 1); // viewport height / 2
   });
 
   it('auto-fit MIN_SCALE clamp survives extreme bbox', () => {

@@ -64,12 +64,21 @@ test('Ctrl+wheel on graph svg → zoom-layer transform shows scale > 1 (consumer
   expect(scale).toBeGreaterThan(1);
 });
 
-test('reset button click → transform back to identity', async ({ page }) => {
+test('reset button click → transform back to auto-fit baseline', async ({ page }) => {
   await bootAndOpenGraph(page);
 
   const svg = page.locator('[data-pkc-region="graph-canvas"]');
   const box = await svg.boundingBox();
   if (!box) throw new Error('Graph svg has no boundingBox');
+
+  // U2 (2026-05-07):auto-fit が小 bbox で zoom-IN を適用するように
+  // なったため、reset 後の scale は 1.0 とは限らず「auto-fit baseline」
+  // (= bind 直後の scale)に戻る。本 test は reset の semantics
+  // (任意の zoom 状態 → auto-fit baseline)を verify する。
+  const baselineScale = await page.evaluate(() => {
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
+    return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
+  });
 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -200);
@@ -79,7 +88,7 @@ test('reset button click → transform back to identity', async ({ page }) => {
     const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
   });
-  expect(beforeReset).toBeGreaterThan(1);
+  expect(beforeReset).toBeGreaterThan(baselineScale);
 
   // Click the reset button via real OS click.
   const reset = page.locator('button[data-pkc-action="reset-graph-zoom"]');
@@ -92,7 +101,7 @@ test('reset button click → transform back to identity', async ({ page }) => {
     const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return svg ? Number(svg.getAttribute('data-pkc-graph-zoom-scale') ?? '1') : 1;
   });
-  expect(afterReset).toBe(1);
+  expect(afterReset).toBeCloseTo(baselineScale, 5);
 });
 
 test('mousedown on the graph background then drag → tx/ty updates (pan)', async ({ page }) => {
@@ -101,6 +110,17 @@ test('mousedown on the graph background then drag → tx/ty updates (pan)', asyn
   const svg = page.locator('[data-pkc-region="graph-canvas"]');
   const box = await svg.boundingBox();
   if (!box) throw new Error('Graph svg has no boundingBox');
+
+  // U2 (2026-05-07):auto-fit が小 bbox で zoom-IN + translate を適用
+  // するようになったため、drag の絶対値ではなく **drag 前後の delta**
+  // で direction を verify する。
+  const beforeDrag = await page.evaluate(() => {
+    const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
+    return {
+      tx: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-tx') ?? '0') : 0,
+      ty: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-ty') ?? '0') : 0,
+    };
+  });
 
   // Drag from the corner so we definitely miss any centered node.
   const startX = box.x + 10;
@@ -111,17 +131,16 @@ test('mousedown on the graph background then drag → tx/ty updates (pan)', asyn
   await page.mouse.up();
   await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 
-  const { tx, ty } = await page.evaluate(() => {
+  const afterDrag = await page.evaluate(() => {
     const svg = document.querySelector('[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
     return {
       tx: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-tx') ?? '0') : 0,
       ty: svg ? Number(svg.getAttribute('data-pkc-graph-zoom-ty') ?? '0') : 0,
     };
   });
-  // Drag delta translated through the viewBox CTM ratio. Just assert
-  // that we moved (not a no-op) and direction matches drag direction.
-  expect(tx).not.toBe(0);
-  expect(ty).not.toBe(0);
-  expect(tx).toBeGreaterThan(0);
-  expect(ty).toBeGreaterThan(0);
+
+  // Drag direction = right + down → tx delta > 0, ty delta > 0(auto-fit
+  // baseline からの相対変位を確認、絶対値は auto-fit translate に依存)。
+  expect(afterDrag.tx - beforeDrag.tx).toBeGreaterThan(0);
+  expect(afterDrag.ty - beforeDrag.ty).toBeGreaterThan(0);
 });
