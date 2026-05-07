@@ -1808,6 +1808,26 @@
   text-emphasis-position: over right;
 }
 
+/* L-7(2026-05-07):図 / 表 / 式 caption + 自動採番 */
+.pkc-md-rendered .pkc-fig {
+  margin: 1em 0;
+  padding: 0;
+  border: none;
+}
+.pkc-md-rendered .pkc-fig-caption {
+  margin-top: 0.4em;
+  font-size: 0.9em;
+  color: var(--c-fg-muted, #6b7280);
+  text-align: center;
+}
+.pkc-md-rendered .pkc-fig-ref {
+  text-decoration: none;
+  color: var(--c-link, #2563eb);
+}
+.pkc-md-rendered .pkc-fig-ref:hover {
+  text-decoration: underline;
+}
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);
