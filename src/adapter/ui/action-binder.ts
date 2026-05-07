@@ -1183,6 +1183,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
             stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
           }
+          // PR-Δ3-fix (2026-05-07、user 報告「一つのテキストエントリを
+          // 選択したのに、べつのエントリも選択される、選択を外せない」):
+          // 通常 click(modifier 無し)時は **multi-select 残留を必ず
+          // clear** する。これまで multiSelectedLids は SELECT_ENTRY で
+          // 触らない設計だったので、過去の Ctrl/Shift+click の選択が
+          // sidebar / filer rows の data-pkc-multi-selected として残り
+          // 「別エントリも選択されている」ように見えていた。plain click
+          // = 単一選択への明示的リセット、これが OS 標準 UX。
+          if (currentState.multiSelectedLids.length > 0) {
+            dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+          }
           if (!stayInFiler && currentState.viewMode === 'filer') {
             // Phase 4 follow-up nav memory: snapshot the filer scope
             // before we leave, so a later Filer tab / back button

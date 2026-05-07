@@ -5440,9 +5440,12 @@ mark.pkc-search-mark {
   table-layout: fixed;
 }
 
-/* PR-Δ3 (2026-05-07、修正指示9):multi-select checkbox 列幅。 */
+/* PR-Δ3 (2026-05-07、修正指示9):multi-select checkbox 列幅。
+ * Δ3-fix (2026-05-07、user 報告「行ズレ」): check cell の padding を
+ * 他 cell と統一(.pkc-filer-cell の baseline に従う)、行高さズレを撃退。
+ * text-align: center は維持(checkbox を列中央に)。 */
 .pkc-filer-th-check     { width: 32px; }
-.pkc-filer-cell-check   { padding: var(--space-1, 0.125rem) var(--space-2, 0.5rem); text-align: center; }
+.pkc-filer-cell-check   { text-align: center; }
 .pkc-filer-row-check    {
   cursor: pointer;
   width: 16px; height: 16px;
