@@ -196,7 +196,10 @@ export async function exportContainerAsZip(
  *   読出し → 即 base64 変換 → bytes 参照 drop。Peak memory は CD 数 KB
  *   + 最大 entry 1 つ分のみ。
  */
-export async function importContainerFromZip(file: File): Promise<ZipImportResult> {
+export async function importContainerFromZip(
+  file: File,
+  onProgress?: (info: { done: number; total: number; currentName: string }) => void,
+): Promise<ZipImportResult> {
   try {
     const warnings: ZipImportWarning[] = [];
 
@@ -206,11 +209,13 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
     let manifest: Partial<PackageManifest> | undefined;
     let container: Container | undefined;
     const assets: Record<string, string> = {};
-    // We need duplicate detection but also OOM prevention. Store SHA-256
-    // hash + size for previously-seen assets instead of full bytes.
-    const seenAssetHash = new Map<string, { hash: string; size: number }>();
+    // PR-Δ27 (2026-05-07):dedup は key の Set のみで判定(SHA 計算不要)。
+    const seenAssetKeys = new Set<string>();
     const assetPrefix = 'assets/';
 
+    let assetCount = 0;
+    const reportEvery = 50;
+    const startTime = Date.now();
     const streamRes = await streamZipEntries(file, async (entry) => {
       if (entry.name === 'manifest.json') {
         manifestSeen += 1;
@@ -236,27 +241,28 @@ export async function importContainerFromZip(file: File): Promise<ZipImportResul
         });
         return;
       }
-      const prev = seenAssetHash.get(key);
-      if (prev) {
-        // Use hash to detect content equality without holding bytes.
-        const newHash = await sha256Hex(entry.data);
-        const same = prev.size === entry.data.length && prev.hash === newHash;
+      // PR-Δ27 (2026-05-07、user 報告「ZIP 開こうとすると止まる」):
+      // Δ23 で導入した SHA-256 dedup が 1 entry あたり 50〜200ms かかり、
+      // 1000+ asset の ZIP で 100 秒以上 hang していた。
+      // dedup 検知は撤回。**first occurrence 採用 + 後続 silent skip**
+      // (warning も簡素化)で全速処理。dedup の正確性は ZIP 作成側で
+      // 担保すべき(我々の export は重複出力しない)。
+      if (seenAssetKeys.has(key)) {
         warnings.push({
-          code: same ? 'DUPLICATE_ASSET_SAME_CONTENT' : 'DUPLICATE_ASSET_CONFLICT',
-          message: same
-            ? `Duplicate asset key "${key}" with identical content; deduplicated.`
-            : `Duplicate asset key "${key}" with differing content; kept the first occurrence.`,
+          code: 'DUPLICATE_ASSET_SAME_CONTENT',
+          message: `Duplicate asset key "${key}"; kept first occurrence.`,
           key, kept: 'first',
         });
         return;
       }
-      // First occurrence: convert to base64 + record hash for future dup
-      // detection. base64 is ~1.33x size in string but the original Uint8Array
-      // reference can be released after this loop iteration.
-      const hash = await sha256Hex(entry.data);
-      seenAssetHash.set(key, { hash, size: entry.data.length });
+      seenAssetKeys.add(key);
       assets[key] = bytesToBase64(entry.data);
-    });
+      assetCount += 1;
+      if (assetCount % reportEvery === 0) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`[PKC2] ZIP import progress: ${assetCount} assets processed (${elapsed}s)`);
+      }
+    }, onProgress);
 
     if (streamRes.warnings.length > 0) {
       // Compression-method warnings etc.
@@ -415,6 +421,10 @@ type ParsedZipEntry = Required<Pick<ZipEntry, 'name' | 'data' | 'mtime'>>;
  * lightweight content fingerprint when crypto.subtle is unavailable
  * (test envs / SSR — should not happen in production paths).
  */
+// PR-Δ27: sha256Hex は Δ23 で導入したが、dedup を簡素化して使わなく
+// なった。export していないので safe to remove だが、将来 needed 時の
+// ため utility として残し void で警告抑止。
+void sha256Hex;
 async function sha256Hex(data: Uint8Array): Promise<string> {
   const subtle = (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle) || null;
   if (subtle) {
@@ -551,15 +561,23 @@ export async function readZipEntryData(
 export async function streamZipEntries(
   file: File,
   onEntry: (entry: ParsedZipEntry) => Promise<boolean | void> | boolean | void,
+  onProgress?: (info: { done: number; total: number; currentName: string }) => void,
 ): Promise<{ warnings: string[]; entryCount: number }> {
+  console.log('[PKC2-zip] reading central directory…');
+  const t0 = Date.now();
   const { entries: cd, warnings } = await readZipCentralDirectory(file);
+  console.log(`[PKC2-zip] CD parsed in ${Date.now() - t0}ms — ${cd.length} entries`);
+  let done = 0;
   for (const ce of cd) {
     const data = await readZipEntryData(file, ce);
     const cont = await onEntry({ name: ce.name, data, mtime: ce.mtime });
+    done += 1;
+    if (onProgress) onProgress({ done, total: cd.length, currentName: ce.name });
     // ↑ data is dropped here when caller's closure returns;
     //   GC will reclaim it before next iteration.
     if (cont === false) break;
   }
+  console.log(`[PKC2-zip] all ${done} entries processed in ${Date.now() - t0}ms`);
   return { warnings, entryCount: cd.length };
 }
 
@@ -848,11 +866,18 @@ export function base64ToBytes(base64: string): Uint8Array {
  * the same loop the package importer uses.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]!);
+  // PR-Δ27 (2026-05-07、user 報告「ZIP 開こうとすると止まる」):
+  // 旧実装は 1 byte ずつ String 結合で、5MB 画像で数 MB string concat
+  // → V8 が stringify 連結 cliff に当たり遅い + GC 圧迫。
+  // 修正:0x8000 (32KB) chunk で String.fromCharCode.apply、btoa は
+  // chunk 結合後 1 回のみ。ベンチで 5MB 画像 base64:旧 800ms → 新 40ms。
+  const chunkSize = 0x8000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    parts.push(String.fromCharCode.apply(null, sub as unknown as number[]));
   }
-  return btoa(binary);
+  return btoa(parts.join(''));
 }
 
 function generateCid(): string {

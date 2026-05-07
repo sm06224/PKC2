@@ -1127,7 +1127,25 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
 
     // Route to appropriate importer based on file extension
     if (file.name.endsWith('.zip')) {
-      const result = await importContainerFromZip(file);
+      // PR-Δ27 (2026-05-07、user 報告「ZIP 開こうとすると止まる、
+      // progress も無くて UX 低い」):進捗 toast を 1 件だけ作って
+      // 同 message で coalesce 更新(toast.ts の coalescing 機構)。
+      console.log(`[PKC2] ZIP import start: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      let lastToast: HTMLElement | null = null as HTMLElement | null;
+      let lastReportTime = 0;
+      const onProgress = (info: { done: number; total: number; currentName: string }): void => {
+        const now = Date.now();
+        // throttle to 1 update / 250ms to avoid DOM thrash
+        if (now - lastReportTime < 250 && info.done < info.total) return;
+        lastReportTime = now;
+        const pct = Math.round((info.done / info.total) * 100);
+        const msg = `📦 ZIP 取り込み中 ${info.done}/${info.total} (${pct}%)`;
+        if (lastToast) lastToast.remove();
+        lastToast = showToast({ message: msg, kind: 'info', autoDismissMs: 60000 });
+      };
+      const result = await importContainerFromZip(file, onProgress);
+      if (lastToast) lastToast.remove();
+      console.log(`[PKC2] ZIP import done: ok=${result.ok}`);
       if (result.ok) {
         dispatcher.dispatch({
           type: 'SYS_IMPORT_PREVIEW',
