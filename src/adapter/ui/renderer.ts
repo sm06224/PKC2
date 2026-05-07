@@ -6344,25 +6344,31 @@ function seedTimeProximityLayout(
     // bucket 内に N 個ある場合、Y を lane height いっぱいに均等分散させる。
     // 4+ entries が同 X bucket に落ちると Y ピッチが node 衝突半径(70px)
     // 以下になり重なる。X 方向にも bucketW 内で散らして 2D 配置にする。
-    // PR-Δ10 v2 (2026-05-07):bucket 内 N >= 2 のとき、minPitch=80px の
-    // grid に N entries を **必要なら bucket 外に拡張して** 配置。
-    // bucket box(50×laneH)を超えても OK、time-proximity の本旨は
-    // 「時系列順だけ正しければ良い」なので X が ±50px ずれるのは許容。
+    // PR-Δ28 (2026-05-07、user 視覚指摘「同じ種別のエントリが一直線
+     // に並んでてきもい」):
+    // Δ10 の grid 配置は確定的だが entry が perfectly 整列して
+     // 機械的・気持ち悪い見た目。各 entry に **hash-based jitter** を
+    // grid 位置から ±20px 程度乗せて自然な散らばりを作る。time order は
+    // X 軸が保証するので Y は意味より見栄え優先。
     let xOffset = 0;
     let yOffset: number;
     if (total > 1) {
-      const minPitch = 80; // collide_radius 70 + margin 10
-      // 縦に何個積めるか
+      const minPitch = 80;
       const rows = Math.max(1, Math.floor(laneH / minPitch));
       const cols = Math.ceil(total / rows);
       const col = Math.floor(idx / rows);
       const row = idx % rows;
-      // X は bucketW 関係なく minPitch 間隔、cols 個を中央寄せ
       xOffset = (col - (cols - 1) / 2) * minPitch;
-      // Y は lane 内 rows 等分中央
       yOffset = (row + 0.5 - rows / 2) * (laneH / Math.max(1, rows));
+      // Δ28:hash jitter で direction 揺らぎ。X / Y それぞれ ±15px。
+      const h1 = hashStringToUnit(n.id);
+      const h2 = hashStringToUnit(n.id + '_y');
+      xOffset += (h1 - 0.5) * 30;
+      yOffset += (h2 - 0.5) * 30;
     } else {
-      yOffset = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.4);
+      // 単独 entry も Y を full lane height 内で hash 散らし、archetype
+      // 一直線を撲滅。
+      yOffset = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.85);
     }
     const y = padY + lane * laneH + laneH / 2 + yOffset;
     return { id: n.id, x: x + xOffset, y, vx: 0, vy: 0 };
