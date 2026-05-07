@@ -169,6 +169,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`wave-10-6-ux-evaluation-2026-05.md`](./wave-10-6-ux-evaluation-2026-05.md) | 領域 10-6 ζ'' wave 完成後 UX 評価メモ(11 screenshot 撮影 + 8 件 UX 課題 U1〜U8 + 哲学守破離 + 修正提案サマリ)。完成 PR の改善トラッカ用、修正完了したら archive |
 | [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md) | 領域 10-9 stabilization wave 締めサマリ(2026-05-07、122 commit / 100 PR、Δ1〜Δ34 一覧 + 既知残バグ + 統計)。次 wave 着手前の audit 用、release 後 1 wave で archive 候補 |
 | [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md) | 領域 10-9 wave 締めの GitHub Codespaces 用 merge コマンド集(3 option:単発 squash / 順次 bottom-up / Phase chain 分割 + rate limit / rollback / cleanup)。次同種 wave で再利用可能 |
+| [`pkc2-vision-modern-emacs-2026-05.md`](./pkc2-vision-modern-emacs-2026-05.md) | PKC2 vision canonical 化(2026-05-07、user 直接洞察)。**「モダン emacs/org-mode + 非プログラマ + AI 一級市民」** という立ち位置を明文化、org-mode 機能との対応マップ + 先行事例 8 製品比較(TiddlyWiki / Logseq / Obsidian / Tana / Roam / Notion / Mem.ai / org-mode)+ roadmap 優先度シフト + 5 OQ-V を canonical 化。後続 wave の戦略決定 reference |
 
 ## CLOSED (42 docs)
 
