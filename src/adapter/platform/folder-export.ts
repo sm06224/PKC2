@@ -15,8 +15,10 @@
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { collectDescendantLids } from '../../features/relation/tree';
+import { isSystemArchetype } from '../../core/model/record';
 import { buildTextBundle } from './text-bundle';
 import { buildTextlogBundle } from './textlog-bundle';
+import { buildEntryBundle } from './entry-bundle';
 import {
   createZipBlob,
   textToBytes,
@@ -30,7 +32,8 @@ import {
 export interface FolderExportManifestEntry {
   lid: string;
   title: string;
-  archetype: 'text' | 'textlog';
+  /** 領域 10-6 ζ'' Phase 4 manifest v2: any user archetype may appear. */
+  archetype: string;
   filename: string;
   body_length?: number;
   log_entry_count?: number;
@@ -50,7 +53,8 @@ export interface FolderExportManifestFolder {
 
 export interface FolderExportManifest {
   format: 'pkc2-folder-export-bundle';
-  version: 1;
+  /** v1: text/textlog only. v2(Phase 4): any archetype + per-entry generic bundles. */
+  version: 1 | 2;
   exported_at: string;
   source_cid: string;
   source_folder_lid: string;
@@ -58,6 +62,8 @@ export interface FolderExportManifest {
   scope: 'recursive';
   text_count: number;
   textlog_count: number;
+  /** Phase 4 manifest v2 — bundled non-text/textlog entries. */
+  other_count?: number;
   compact: boolean;
   entries: FolderExportManifestEntry[];
   /** Folder hierarchy metadata for structure restore on import. */
@@ -96,11 +102,13 @@ export function buildFolderExportBundle(
   // 1. Collect all descendant LIDs recursively
   const descendantLids = collectDescendantLids(container.relations, folderEntry.lid);
 
-  // 2. Filter to TEXT / TEXTLOG entries that are descendants
+  // 2. Phase 4: archetype filter 撤廃 — system / folder 以外すべて bundle 対象。
+  //    folder 自身は folders[] hierarchy に乗るので targetEntries からは除外。
   const targetEntries = container.entries.filter(
     (e) =>
-      descendantLids.has(e.lid) &&
-      (e.archetype === 'text' || e.archetype === 'textlog'),
+      descendantLids.has(e.lid)
+      && e.archetype !== 'folder'
+      && !isSystemArchetype(e.archetype),
   );
 
   // 2b. Build parent map from structural relations (child → parent).
@@ -136,10 +144,10 @@ export function buildFolderExportBundle(
   let textCount = 0;
   let textlogCount = 0;
 
+  let otherCount = 0;
   for (const entry of targetEntries) {
     if (entry.archetype === 'text') {
       const built = buildTextBundle(entry, container, { now, compact });
-
       let filename = built.filename;
       if (usedFilenames.has(filename)) {
         const base = filename.replace(/\.text\.zip$/, '');
@@ -148,7 +156,6 @@ export function buildFolderExportBundle(
         filename = `${base}-${suffix}.text.zip`;
       }
       usedFilenames.add(filename);
-
       zipEntries.push({ name: filename, data: built.zipBytes });
       manifestEntries.push({
         lid: entry.lid,
@@ -162,9 +169,8 @@ export function buildFolderExportBundle(
       });
       totalMissing += built.manifest.missing_asset_count;
       textCount++;
-    } else {
+    } else if (entry.archetype === 'textlog') {
       const built = buildTextlogBundle(entry, container, { now, compact });
-
       let filename = built.filename;
       if (usedFilenames.has(filename)) {
         const base = filename.replace(/\.textlog\.zip$/, '');
@@ -173,7 +179,6 @@ export function buildFolderExportBundle(
         filename = `${base}-${suffix}.textlog.zip`;
       }
       usedFilenames.add(filename);
-
       zipEntries.push({ name: filename, data: built.zipBytes });
       manifestEntries.push({
         lid: entry.lid,
@@ -187,13 +192,38 @@ export function buildFolderExportBundle(
       });
       totalMissing += built.manifest.missing_asset_count;
       textlogCount++;
+    } else {
+      // Phase 4: attachment / todo / form / generic / opaque — emit a
+      // generic per-entry bundle with the entry JSON + its referenced
+      // assets. system-* archetypes are filtered earlier.
+      const built = buildEntryBundle(entry, container);
+      let filename = built.filename;
+      if (usedFilenames.has(filename)) {
+        const base = filename.replace(/\.entry\.zip$/, '');
+        let suffix = 2;
+        while (usedFilenames.has(`${base}-${suffix}.entry.zip`)) suffix++;
+        filename = `${base}-${suffix}.entry.zip`;
+      }
+      usedFilenames.add(filename);
+      zipEntries.push({ name: filename, data: built.zipBytes });
+      manifestEntries.push({
+        lid: entry.lid,
+        title: entry.title ?? '',
+        archetype: built.manifest.archetype,
+        filename,
+        asset_count: built.manifest.asset_count,
+        missing_asset_count: built.manifest.missing_asset_count,
+        parent_folder_lid: parentOf.get(entry.lid),
+      });
+      totalMissing += built.manifest.missing_asset_count;
+      otherCount++;
     }
   }
 
   // 4. Build top-level manifest
   const manifest: FolderExportManifest = {
     format: 'pkc2-folder-export-bundle',
-    version: 1,
+    version: otherCount > 0 ? 2 : 1,
     exported_at: now.toISOString(),
     source_cid: container.meta.container_id,
     source_folder_lid: folderEntry.lid,
@@ -201,6 +231,7 @@ export function buildFolderExportBundle(
     scope: 'recursive',
     text_count: textCount,
     textlog_count: textlogCount,
+    other_count: otherCount > 0 ? otherCount : undefined,
     compact,
     entries: manifestEntries,
     folders: folderEntries,

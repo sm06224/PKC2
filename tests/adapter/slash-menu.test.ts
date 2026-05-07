@@ -15,6 +15,10 @@ import {
   SLASH_COMMANDS,
   type SlashCommandContext,
 } from '@adapter/ui/slash-menu';
+// PR-BBB (2026-05-06):default `templates.entries` flag value contributes
+// `/tmpmt` + `/tmprt` to the menu. Count them via the same parser the
+// slash menu uses so this test stays in sync with the flag default.
+import { getActiveUserTemplates } from '@features/templates/template-flag';
 
 let root: HTMLElement;
 
@@ -151,7 +155,7 @@ describe('slash menu lifecycle', () => {
 
     openSlashMenu(ta, 0, root);
     const items = root.querySelectorAll('.pkc-slash-menu-item');
-    expect(items.length).toBe(SLASH_COMMANDS.length);
+    expect(items.length).toBe(SLASH_COMMANDS.length + getActiveUserTemplates().length);
   });
 
   it('closes and removes from DOM', () => {
@@ -271,8 +275,15 @@ describe('slash menu keyboard', () => {
     openSlashMenu(ta, 0, root);
     handleSlashMenuKeydown(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
     const selected = root.querySelector('[data-pkc-selected="true"]');
-    // Should wrap to the last command (asset, with /asset being the newest)
-    expect(selected?.getAttribute('data-pkc-slash-id')).toBe('asset');
+    // Should wrap to the LAST command in the active list. PR-BBB
+    // (2026-05-06):the list is now `SLASH_COMMANDS + user-templates`,
+    // so the tail is the last template by alphabetic key (default
+    // flag value sorts to `tmprt`). When user templates are absent
+    // it falls back to the legacy `asset`.
+    const expected = `tmp${getActiveUserTemplates().slice(-1)[0]?.key ?? ''}`;
+    expect(selected?.getAttribute('data-pkc-slash-id')).toBe(
+      getActiveUserTemplates().length > 0 ? expected : 'asset',
+    );
   });
 
   it('Enter executes selected command', () => {
@@ -734,7 +745,9 @@ describe('slash menu per-root isolation', () => {
 
     // Reopen — must show the full command list.
     openSlashMenu(taA, 0, rootA);
-    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(SLASH_COMMANDS.length);
+    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(
+      SLASH_COMMANDS.length + getActiveUserTemplates().length,
+    );
   });
 
   it('isSlashMenuOpen reflects only the currently-visible menu, not any dormant per-root state', () => {

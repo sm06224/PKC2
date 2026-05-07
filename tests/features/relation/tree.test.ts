@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTree, getStructuralParent, getBreadcrumb, getAvailableFolders, isDescendant,
-  collectDescendantLids, getAncestorFolderLids,
+  collectDescendantLids, getAncestorFolderLids, getStructuralChildren, getRootEntries,
 } from '@features/relation/tree';
 import type { Relation } from '@core/model/relation';
 import type { Entry } from '@core/model/record';
@@ -475,5 +475,68 @@ describe('getAncestorFolderLids', () => {
 
   it('no-ops on a missing lid with no relations', () => {
     expect(getAncestorFolderLids([], [], 'ghost')).toEqual([]);
+  });
+});
+
+describe("getStructuralChildren", () => {
+  it("returns direct structural children in relation order", () => {
+    const f = makeEntry("f", "F", "folder");
+    const a = makeEntry("a", "A");
+    const b = makeEntry("b", "B");
+    const c = makeEntry("c", "C");
+    const rels = [
+      makeRelation("r1", "f", "a"),
+      makeRelation("r2", "f", "b"),
+      makeRelation("r3", "f", "c"),
+    ];
+    const out = getStructuralChildren(rels, [f, a, b, c], "f");
+    expect(out.map((e) => e.lid)).toEqual(["a", "b", "c"]);
+  });
+
+  it("ignores non-structural relations", () => {
+    const f = makeEntry("f", "F", "folder");
+    const a = makeEntry("a", "A");
+    const rels = [
+      makeRelation("r1", "f", "a", "categorical"),
+    ];
+    expect(getStructuralChildren(rels, [f, a], "f")).toEqual([]);
+  });
+
+  it("dedupes when the same child appears twice", () => {
+    const f = makeEntry("f", "F", "folder");
+    const a = makeEntry("a", "A");
+    const rels = [
+      makeRelation("r1", "f", "a"),
+      makeRelation("r2", "f", "a"),
+    ];
+    expect(getStructuralChildren(rels, [f, a], "f").map((e) => e.lid)).toEqual(["a"]);
+  });
+
+  it("returns empty for unknown parent", () => {
+    expect(getStructuralChildren([], [], "ghost")).toEqual([]);
+  });
+});
+
+describe("getRootEntries", () => {
+  it("returns entries without a structural parent", () => {
+    const a = makeEntry("a", "A");
+    const b = makeEntry("b", "B");
+    const c = makeEntry("c", "C");
+    const rels = [makeRelation("r1", "a", "b")];
+    const roots = getRootEntries(rels, [a, b, c]);
+    expect(roots.map((e) => e.lid).sort()).toEqual(["a", "c"]);
+  });
+
+  it("excludes system archetypes", () => {
+    const a = makeEntry("a", "A");
+    const sys = makeEntry("__about__", "About", "system-about");
+    const roots = getRootEntries([], [a, sys]);
+    expect(roots.map((e) => e.lid)).toEqual(["a"]);
+  });
+
+  it("returns all entries when no structural relations exist", () => {
+    const a = makeEntry("a", "A");
+    const b = makeEntry("b", "B");
+    expect(getRootEntries([], [a, b]).map((e) => e.lid).sort()).toEqual(["a", "b"]);
   });
 });

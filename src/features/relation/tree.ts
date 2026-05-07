@@ -1,5 +1,6 @@
 import type { Relation } from '../../core/model/relation';
 import type { Entry } from '../../core/model/record';
+import { isSystemArchetype } from '../../core/model/record';
 
 /**
  * TreeNode: an entry with its structural children.
@@ -145,6 +146,50 @@ export function getStructuralParent(
     }
   }
   return null;
+}
+
+/**
+ * Direct structural children of `parentLid` (one hop), in the order
+ * they appear in `relations`. Used by filer view to enumerate a
+ * folder's contents without descending recursively (compare:
+ * {@link collectDescendantLids} which walks the full subtree).
+ *
+ * Returns an empty array when the parent has no structural children
+ * or when `parentLid` does not match any structural `from`.
+ */
+export function getStructuralChildren(
+  relations: readonly Relation[],
+  entries: readonly Entry[],
+  parentLid: string,
+): Entry[] {
+  const out: Entry[] = [];
+  const seen = new Set<string>();
+  for (const r of relations) {
+    if (r.kind !== 'structural' || r.from !== parentLid) continue;
+    if (seen.has(r.to)) continue;
+    seen.add(r.to);
+    const child = entries.find((e) => e.lid === r.to);
+    if (child) out.push(child);
+  }
+  return out;
+}
+
+/**
+ * Top-level entries that have no structural parent. Filer view's
+ * "root scope" (no folder selected) shows this list.
+ *
+ * Excludes system entries (`isSystemArchetype`) — those are PKC2-
+ * managed and should not surface in the filer.
+ */
+export function getRootEntries(
+  relations: readonly Relation[],
+  entries: readonly Entry[],
+): Entry[] {
+  const hasParent = new Set<string>();
+  for (const r of relations) {
+    if (r.kind === 'structural') hasParent.add(r.to);
+  }
+  return entries.filter((e) => !hasParent.has(e.lid) && !isSystemArchetype(e.archetype));
 }
 
 /**

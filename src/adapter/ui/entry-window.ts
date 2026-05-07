@@ -86,12 +86,18 @@ function renderEntryPreview(
   text: string,
   overrideCtx?: AssetResolutionContext | null,
 ): string {
+  // PR-XX2-fix (2026-05-07、user 報告):popup split editor の input →
+  // preview re-render 経路。`sourceLineAnchors: true` を必ず付与しないと
+  // re-render 後の preview に source-line anchor が消え、popup-side
+  // sync logic が target を見失う。center pane の split editor preview
+  // も同じ option を使う(`detail-presenter.ts` の initial render +
+  // action-binder.ts の `updateTextEditPreview`)。
   const ctx = overrideCtx ?? previewResolverContexts.get(lid);
   if (ctx && text && hasAssetReferences(text)) {
     const resolved = resolveAssetReferences(text, ctx);
-    return renderMarkdown(resolved);
+    return renderMarkdown(resolved, { sourceLineAnchors: true });
   }
-  return renderMarkdown(text ?? '');
+  return renderMarkdown(text ?? '', { sourceLineAnchors: true });
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -649,13 +655,37 @@ function getParentCssVars(): string {
     '--c-tok-type', '--c-tok-attr', '--c-tok-tag', '--c-tok-meta',
     '--c-tok-ins', '--c-tok-del', '--c-tok-hunk',
   ];
-  const style = getComputedStyle(document.documentElement);
+  // PR-BB hotfix (2026-05-06、user 報告「ダブルクリックで TEXT エントリ
+  // 開いたら、テーマ色が反映されていなかった」):
+  //
+  // 旧:`getComputedStyle(document.documentElement)` で `<html>` から
+  // var を読んでいた。しかしテーマの override は `#pkc-root[data-pkc-theme="..."]`
+  // にあり、`<html>` 自体の computed value は :root default(dark)
+  // のまま → 子 window が常に dark で開く。
+  //
+  // 新:`#pkc-root` 要素から読み、`data-pkc-theme` の値も同伴する。
+  // 子 window 側で同 attribute を再現することで、token に加えて
+  // theme-class scoped CSS rule(scanline 等)も届く。
+  const root = document.querySelector('#pkc-root') ?? document.documentElement;
+  const style = getComputedStyle(root);
   const lines: string[] = [];
   for (const v of vars) {
     const val = style.getPropertyValue(v).trim();
     if (val) lines.push(`  ${v}: ${val};`);
   }
   return lines.join('\n');
+}
+
+/**
+ * PR-BB (2026-05-06):親 window の `data-pkc-theme` 属性値を読む。
+ * 子 window 側 `<html>` に同じ値を stamp して、scoped CSS rule
+ * (`#pkc-root[data-pkc-theme="dark"] .X`)も子で発火するようにする。
+ * 未設定(system 任せ)の場合は空文字を返す。
+ */
+function getParentDataPkcTheme(): string {
+  const root = document.querySelector('#pkc-root');
+  if (!root) return '';
+  return root.getAttribute('data-pkc-theme') ?? '';
 }
 
 /**
@@ -691,7 +721,14 @@ function renderViewBody(
       // `[](asset:…)` chips already appear as inline data URIs /
       // fragment-href chips by the time markdown-it sees them.
       const source = ctx?.resolvedBody != null ? ctx.resolvedBody : entry.body;
-      return renderMarkdown(source || '') || '<em style="color:var(--c-muted)">(empty)</em>';
+      // PR-XX2-fix (2026-05-07、user 報告):popup 別窓 split editor の
+      // block 同期が button 押下後も無動作だった root cause。preview HTML
+      // に `data-pkc-source-line` anchor が無かったため `pkcFindPreview-
+      // ElementForLine` が target 0 件で no-op していた。text archetype
+      // は popup でも split editor (entry.archetype === 'text' で確定)
+      // なので、anchor を常時 emit して sync を機能させる。
+      return renderMarkdown(source || '', { sourceLineAnchors: true })
+        || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
 }
@@ -964,8 +1001,14 @@ function buildWindowHtml(
     : '';
   const sandboxAllow = (entry.archetype === 'attachment' && assetContext?.sandboxAllow) ?? [];
 
+  // PR-BB (2026-05-06):親の data-pkc-theme を子 <html> にも stamp。
+  // 子 window が同 token + 同 theme attribute を持つので、selector
+  // (`[data-pkc-theme="dark"] .X`)経由の rule も発火可能。
+  const parentTheme = getParentDataPkcTheme();
+  const themeAttr = parentTheme ? ` data-pkc-theme="${parentTheme}"` : '';
+
   return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="ja"${themeAttr}>
 <head>
 <meta charset="utf-8">
 <title>${escapedTitle} — PKC2</title>
@@ -1278,7 +1321,35 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   width: 6px;
   background: var(--c-border);
   border-radius: 3px;
+  /* PR-XX2 (2026-05-07、user 訂正指示):⇄ toggle button 配置のため
+     positioning context に。中央 absolute 配置 = block 同期 ON/OFF。 */
+  position: relative;
 }
+/* PR-XX2 ⇄ toggle button(child window 限定の inline CSS。
+   center pane は base.css の .pkc-btn-toggle-sync を使用)。 */
+.pkc-btn-toggle-sync {
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-size: 0.8125rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="on"] {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #fff;
+}
+.pkc-btn-toggle-sync[data-pkc-sync-state="off"] { opacity: 0.6; }
 .pkc-text-edit-preview {
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
@@ -1289,6 +1360,17 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   font-size: 0.85rem;
   line-height: 1.5;
   min-height: 200px;
+}
+/* PR-XX2-fix (2026-05-07、user 報告 popup sync 無動作):
+   data-pkc-active-source highlight rule は base.css にのみ存在し、
+   popup は inline style しか持たないため marker が見えなかった。
+   center pane と等価な visual を inline で再現する。 */
+.pkc-text-edit-preview [data-pkc-active-source]:not(table):not(tr) {
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+  border-left: 3px solid var(--c-accent);
+  padding-left: 0.4rem;
+  margin-left: -0.4rem;
+  border-radius: 2px;
 }
 
 /* ── Tab bar (Source/Preview) ── */
@@ -1647,7 +1729,15 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
            useSplitEditor in the child-side script. -->
       <div class="pkc-text-split-editor" data-pkc-region="text-split-editor">
         <textarea class="pkc-editor-body" id="body-edit" data-pkc-field="body" data-pkc-viewport-sized="true"></textarea>
-        <div class="pkc-text-split-resize-handle" aria-hidden="true"></div>
+        <div class="pkc-text-split-resize-handle" aria-hidden="true">
+          <!-- PR-XX2 (2026-05-07):popup 別窓にも block 同期 toggle を設置。
+               center pane と同じ localStorage key (pkc2.split-sync-enabled)
+               を共有するので、片方の ON/OFF が両方に伝播する。 -->
+          <button type="button" class="pkc-btn-toggle-sync" id="btn-toggle-sync"
+                  data-pkc-action="toggle-source-preview-sync"
+                  data-pkc-sync-state="off" aria-pressed="false"
+                  title="block 対応ハイライト OFF(クリックで ON)">⇄</button>
+        </div>
         <div id="body-preview" class="pkc-text-edit-preview pkc-md-rendered" data-pkc-region="text-edit-preview">${renderedBody}</div>
       </div>` : `      <div class="pkc-tab-bar" id="tab-bar">
         <span class="pkc-tab" id="tab-source" data-pkc-active="true" onclick="showTab('source')">Source</span>
@@ -1757,7 +1847,228 @@ if (useSplitEditor) {
     pkcSplitPreviewTimer = setTimeout(function() {
       var src = document.getElementById('body-edit').value;
       document.getElementById('body-preview').innerHTML = renderMd(src);
+      pkcRefreshSyncMarker();
     }, 100);
+  });
+
+  /* ─────────────────────────────────────────────────────────────
+   * PR-CC (2026-05-06):entry-window split sync.
+   *
+   * User report: ダブルクリックで開いた TEXT エントリは スプリット
+   * ビューの同期編集機能が不活だった。メインウィンドウの時と同じに
+   * してほしい。
+   *
+   * 親 window 側の source-preview-sync.ts と同じ仕組みを child
+   * window のローカル document に inline で実装。child は ES module
+   * import できない(document.write 経由の inline HTML)ので、必要な
+   * helper(caretSourceLine / findPreviewElementForLine /
+   * findSourceLineByPoint / ensureRectInBand)を pure JS で定義。
+   *
+   * localStorage key は "pkc2.split-sync-enabled"(親と共通)。
+   * ON のときに caret 移動 → preview block highlight + scroll、
+   * preview click → caret jump、を実施。
+   * ───────────────────────────────────────────────────────────── */
+  var SYNC_KEY = 'pkc2.split-sync-enabled';
+  var ACTIVE_ATTR = 'data-pkc-active-source';
+  function pkcSyncEnabled() {
+    try { return localStorage.getItem(SYNC_KEY) === 'true'; } catch (_e) { return false; }
+  }
+
+  /* PR-Δ9 (2026-05-07、user 報告「左側の編集エリアにキャレット表示
+   * されないのがおかしい」):popup の textarea 用 caret-row indicator。
+   * center pane の caret-indicator.ts と同じ視覚効果を popup の document
+   * 内に inline 再現する。textarea の row 高さに合わせた band を caret
+   * 行に重ねる(absolute、tint background、accent left-border)。 */
+  var pkcCaretIndicator = null;
+  function pkcEnsureCaretIndicator() {
+    if (pkcCaretIndicator) return pkcCaretIndicator;
+    var el = document.createElement('div');
+    el.id = 'pkc-popup-caret-indicator';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = [
+      'position:fixed',
+      'pointer-events:none',
+      'z-index:5',
+      'display:none',
+      'background:color-mix(in srgb, var(--c-accent) 8%, transparent)',
+      'border-left:3px solid color-mix(in srgb, var(--c-accent) 70%, transparent)',
+      'transition:top 80ms linear',
+    ].join(';');
+    document.body.appendChild(el);
+    pkcCaretIndicator = el;
+    return el;
+  }
+  function pkcPaintCaretIndicator() {
+    var ta = document.getElementById('body-edit');
+    if (!ta || document.activeElement !== ta) {
+      if (pkcCaretIndicator) pkcCaretIndicator.style.display = 'none';
+      return;
+    }
+    var el = pkcEnsureCaretIndicator();
+    /* compute caret line via newline count + line-height */
+    var pos = ta.selectionStart || 0;
+    var line = 0;
+    var v = ta.value;
+    for (var i = 0; i < pos; i++) if (v.charCodeAt(i) === 10) line++;
+    var cs = window.getComputedStyle(ta);
+    var lineH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4);
+    var padTop = parseFloat(cs.paddingTop) || 0;
+    var rect = ta.getBoundingClientRect();
+    var caretYInTextarea = padTop + line * lineH - ta.scrollTop;
+    var caretYViewport = rect.top + caretYInTextarea;
+    /* PR-Δ12 v2 (2026-05-07、再修正):window viewport 絶対座標で hide
+       判定する。textarea 内 clip + viewport 絶対 clip の AND。
+       textarea が popup window 自身の scroll で off-screen に出ても
+       caret indicator は隠れる。 */
+    var winH = window.innerHeight || document.documentElement.clientHeight;
+    var inTextareaVisible = caretYInTextarea >= 0 && (caretYInTextarea + lineH) <= rect.height;
+    var inViewport = caretYViewport >= 0 && (caretYViewport + lineH) <= winH;
+    if (!inTextareaVisible || !inViewport) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'block';
+    el.style.top = caretYViewport + 'px';
+    el.style.left = (rect.left + (parseFloat(cs.borderLeftWidth) || 0)) + 'px';
+    el.style.width = (rect.width - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)) + 'px';
+    el.style.height = lineH + 'px';
+  }
+  document.addEventListener('selectionchange', pkcPaintCaretIndicator);
+  document.addEventListener('focusin', pkcPaintCaretIndicator);
+  document.addEventListener('focusout', function() {
+    setTimeout(pkcPaintCaretIndicator, 0);
+  });
+  document.addEventListener('input', pkcPaintCaretIndicator, true);
+  document.addEventListener('scroll', pkcPaintCaretIndicator, true);
+  window.addEventListener('resize', pkcPaintCaretIndicator);
+
+  function pkcCaretSourceLine(ta) {
+    var pos = ta.selectionStart || 0;
+    var line = 0;
+    var v = ta.value;
+    for (var i = 0; i < pos; i++) if (v.charCodeAt(i) === 10) line++;
+    return line;
+  }
+  function pkcFindPreviewElementForLine(preview, targetLine) {
+    var nodes = preview.querySelectorAll('[data-pkc-source-line]');
+    var best = null, bestLine = -1;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var n = parseInt(el.getAttribute('data-pkc-source-line'), 10);
+      if (!isFinite(n)) continue;
+      if (n <= targetLine && n > bestLine) { best = el; bestLine = n; }
+    }
+    return best;
+  }
+  function pkcFindSourceLineByPoint(preview, viewportY) {
+    var nodes = preview.querySelectorAll('[data-pkc-source-line]');
+    if (nodes.length === 0) return null;
+    var best = null, bestTop = -Infinity;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var top = el.getBoundingClientRect().top;
+      if (top <= viewportY && top > bestTop) { best = el; bestTop = top; }
+    }
+    if (!best) best = nodes[0];
+    var n = parseInt(best.getAttribute('data-pkc-source-line'), 10);
+    return isFinite(n) ? n : null;
+  }
+  function pkcEnsureRectInBand(scroll, rect) {
+    var r = scroll.getBoundingClientRect();
+    var bandTop = r.top + r.height * 0.20;
+    var bandBot = r.top + r.height * 0.55;
+    if (rect.top >= bandTop && rect.bottom <= bandBot) return;
+    var delta = rect.top - bandTop;
+    scroll.scrollBy({ top: delta, behavior: 'auto' });
+  }
+  function pkcClearActiveMarker() {
+    var marked = document.querySelectorAll('[' + ACTIVE_ATTR + ']');
+    for (var i = 0; i < marked.length; i++) marked[i].removeAttribute(ACTIVE_ATTR);
+  }
+  function pkcRefreshSyncMarker() {
+    if (!useSplitEditor) return;
+    if (!pkcSyncEnabled()) { pkcClearActiveMarker(); return; }
+    var ta = document.getElementById('body-edit');
+    var preview = document.getElementById('body-preview');
+    if (!ta || !preview) return;
+    if (document.activeElement !== ta) return;
+    var line = pkcCaretSourceLine(ta);
+    var target = pkcFindPreviewElementForLine(preview, line);
+    pkcClearActiveMarker();
+    if (!target) return;
+    target.setAttribute(ACTIVE_ATTR, 'true');
+    pkcEnsureRectInBand(preview, target.getBoundingClientRect());
+  }
+  document.addEventListener('selectionchange', function() {
+    if (!useSplitEditor || !pkcSyncEnabled()) return;
+    var ta = document.getElementById('body-edit');
+    if (document.activeElement !== ta) return;
+    pkcRefreshSyncMarker();
+  });
+  /* preview click → caret jump in textarea */
+  var previewEl = document.getElementById('body-preview');
+  if (previewEl) {
+    previewEl.addEventListener('click', function(e) {
+      if (!pkcSyncEnabled()) return;
+      var t = e.target;
+      /* skip interactive children(<a>, <button>, copy buttons 等) */
+      if (t && t.closest && t.closest('a,button,input,textarea,select,[data-pkc-action]')) return;
+      var line = pkcFindSourceLineByPoint(previewEl, e.clientY);
+      if (line === null) return;
+      var ta = document.getElementById('body-edit');
+      if (!ta) return;
+      /* compute textarea offset from line number */
+      var v = ta.value, off = 0, l = 0;
+      for (var i = 0; i < v.length; i++) {
+        if (l === line) break;
+        if (v.charCodeAt(i) === 10) l++;
+        off = i + 1;
+      }
+      ta.focus();
+      ta.setSelectionRange(off, off);
+      pkcRefreshSyncMarker();
+    });
+  }
+
+  /* PR-XX2 (2026-05-07、user 訂正指示):⇄ toggle button の click
+   * handler + 初期 visual state。center pane と同じ localStorage key
+   * を共有しているので、popup 開いた瞬間の値を visual に反映する。 */
+  function pkcUpdateSyncToggleVisuals() {
+    var btn = document.getElementById('btn-toggle-sync');
+    if (!btn) return;
+    var on = pkcSyncEnabled();
+    btn.setAttribute('data-pkc-sync-state', on ? 'on' : 'off');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.setAttribute('title',
+      on ? 'block 対応ハイライト ON(クリックで OFF)'
+         : 'block 対応ハイライト OFF(クリックで ON)');
+  }
+  pkcUpdateSyncToggleVisuals();
+  var pkcToggleBtn = document.getElementById('btn-toggle-sync');
+  if (pkcToggleBtn) {
+    pkcToggleBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var next = !pkcSyncEnabled();
+      try { localStorage.setItem(SYNC_KEY, next ? 'true' : 'false'); }
+      catch (_e) { /* localStorage unavailable */ }
+      pkcUpdateSyncToggleVisuals();
+      if (next) {
+        /* 即時 sync で「engage した」感覚を出す。OFF 時は marker を一掃。 */
+        pkcRefreshSyncMarker();
+      } else {
+        pkcClearActiveMarker();
+      }
+    });
+  }
+
+  /* storage event:同 origin の他 window(center pane や別 popup)が
+   * toggle した瞬間に本 popup の visual も追従させる。 */
+  window.addEventListener('storage', function(ev) {
+    if (ev.key !== SYNC_KEY) return;
+    pkcUpdateSyncToggleVisuals();
+    if (pkcSyncEnabled()) pkcRefreshSyncMarker();
+    else pkcClearActiveMarker();
   });
 }
 

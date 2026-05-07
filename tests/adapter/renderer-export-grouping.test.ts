@@ -297,9 +297,9 @@ describe('Data menu — Selected HTML vs Selected ZIP distinguishability', () =>
 });
 
 describe('Data menu — regression guards', () => {
-  it('button count at ready/no-selection is still 12 (no functional drift)', () => {
+  it('button count at ready/no-selection is 13 (PR-PP added New PKC export)', () => {
     render(baseState({ container: mkContainer(['text']) }), root);
-    expect(allButtons().length).toBe(12);
+    expect(allButtons().length).toBe(13);
   });
 
   it('core data-pkc-action values are unchanged (action-binder contract)', () => {

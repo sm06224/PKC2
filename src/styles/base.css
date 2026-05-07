@@ -78,6 +78,15 @@
   --c-warn-fg: #1a0e00;
   --c-info: #3b82f6;
   --c-info-fg: #ffffff;
+  /* PR-K G20 → PR-P (2026-05-06):graph view edges 専用 token。
+     dark theme で `#a8c08a` ≈ **8.5:1** vs `#0d0f0a` (PIP-Boy black)。
+     PR-K の `#6e7e58` (5.6:1) では user 体感「線細くて見えない」
+     報告あり、ここで一段 bump して両 theme で同等の視認性を確保。 */
+  --c-graph-edge: #a8c08a;
+  /* PR-RRR-V2 (2026-05-07、user 報告「ファイラのストライプがダーク
+   * テーマでほぼ違いがわからん」):dark 用 stripe は黒重ねでは
+   * 不可視のため白系を 7% で重ねる。light は黒系 6% で同等視認性。 */
+  --c-bg-stripe: rgba(255, 255, 255, 0.07);
   --font-sans: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   --font-mono: 'BIZ UDGothic', 'Share Tech Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   /* Slice A: markdown body font alias. Currently mono (PKC2 terminal theme);
@@ -197,6 +206,12 @@
     --c-warn-fg: #ffffff;
     --c-info: #2563eb;
     --c-info-fg: #ffffff;
+    /* PR-K G20 → PR-P (2026-05-06):light 版。parchment bg
+       (`#f0ebe0`) 上で `#3a4530` ≈ **8.4:1**(PR-K の `#5c6b48` 5.4:1
+       から bump、dark `#a8c08a` 8.5:1 と等価コントラスト)。 */
+    --c-graph-edge: #3a4530;
+    /* PR-RRR-V2 (2026-05-07):light 版 stripe — 黒系 6% 重ねで視認性確保。 */
+    --c-bg-stripe: rgba(0, 0, 0, 0.06);
     /* Belt-and-braces: explicitly bind the body-text alias to the
        concrete light-ink hex instead of relying on lazy
        `var(--c-fg)` substitution — removes any cascade edge case
@@ -241,6 +256,9 @@
   --c-warn-fg: #ffffff;
   --c-info: #2563eb;
   --c-info-fg: #ffffff;
+  --c-graph-edge: #3a4530;
+  /* PR-RRR-V2 (2026-05-07):data-pkc-theme="light" 経路用 stripe。 */
+  --c-bg-stripe: rgba(0, 0, 0, 0.06);
   /* Explicit concrete-hex binding; see the @media light block
      for the rationale. */
   --c-text: #1a1a14;
@@ -1315,6 +1333,34 @@
   transform: scale(0.98);
 }
 
+/* PR-III (2026-05-06):sidebar entry 用 🔗 copy-link button。
+ * hover で visible、click は parent の select-entry を pre-empt して
+ * permalink だけ clipboard コピー(編集中 body の focus を奪わない)。
+ * keyboard focus でも visible にして a11y を確保。 */
+.pkc-entry-copy-link {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 2px);
+  padding: 0 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
+}
+
+.pkc-entry-item:hover .pkc-entry-copy-link,
+.pkc-entry-copy-link:focus,
+.pkc-entry-copy-link:focus-visible {
+  opacity: 1;
+}
+
+.pkc-entry-copy-link:hover {
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.08));
+  border-color: var(--c-border);
+}
+
 [data-pkc-selected="true"] {
   background: var(--c-accent);
   color: var(--c-accent-fg);
@@ -1347,7 +1393,10 @@
   border-radius: var(--radius);
 }
 
-.pkc-multi-action-move {
+.pkc-multi-action-move,
+.pkc-multi-action-color,
+.pkc-multi-action-rel-target,
+.pkc-multi-action-tag-input {
   font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
@@ -1355,6 +1404,10 @@
   background: var(--c-bg);
   color: var(--c-fg);
   cursor: pointer;
+}
+.pkc-multi-action-tag-input {
+  cursor: text;
+  width: 9rem;
 }
 
 .pkc-multi-action-date {
@@ -1704,6 +1757,31 @@
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-3);
   line-height: 1.5;
+}
+
+/* PR-YY (2026-05-06):detail view hero thumbnail。frontmatter
+ * `thumbnail:` で指定された画像を body の上に大きく表示。
+ * `object-fit: contain` で長辺合わせ(PR-SS 全 grid 統一と一致)。
+ * 高さ上限あり、container はめ込みすぎを防ぐ。 */
+.pkc-view-hero-thumb {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-height: 360px;
+}
+
+.pkc-view-hero-thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  height: auto;
+  width: auto;
+  object-fit: contain;
 }
 
 /* ── Markdown rendered body ── */
@@ -4523,7 +4601,8 @@ mark.pkc-search-mark {
   flex-wrap: wrap;
 }
 .pkc-flag-editor-text,
-.pkc-flag-editor-enum {
+.pkc-flag-editor-enum,
+.pkc-flag-editor-textarea {
   flex: 1 1 80px;
   font-size: var(--fs-base);
   padding: var(--space-1-5) var(--space-2-5);
@@ -4531,6 +4610,22 @@ mark.pkc-search-mark {
   color: var(--c-fg);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
+}
+
+/* PR-PPP (2026-05-07):長尺 / 改行を含む string flag 用 textarea
+ * editor。`templates.entries` 等の JSON 編集を行いやすくするため
+ * monospace + 改行保持 + 等幅 tab。 */
+.pkc-flag-editor-textarea {
+  flex: 1 1 100%;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
 }
 .pkc-flag-reset {
   font-size: var(--fs-sm);
@@ -4690,6 +4785,99 @@ mark.pkc-search-mark {
   text-decoration: underline dotted;
 }
 
+/* PR-O (2026-05-06):Bookmarklet generator section in shell menu。 */
+.pkc-shell-menu-bookmarklet-desc {
+  font-size: var(--fs-xs, 0.8125rem);
+  color: var(--c-muted);
+  margin-bottom: var(--space-2, 0.5rem);
+  line-height: 1.4;
+}
+
+.pkc-shell-menu-bookmarklet-link {
+  display: inline-block;
+  padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--c-accent-fg, #fff);
+  background: var(--c-accent, #3b82f6);
+  border: 1px solid var(--c-accent, #3b82f6);
+  border-radius: var(--radius-sm, 2px);
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.pkc-shell-menu-bookmarklet-link:active {
+  cursor: grabbing;
+}
+
+.pkc-shell-menu-bookmarklet-link:hover {
+  filter: brightness(1.1);
+}
+
+/* PR-W (2026-05-06):custom scraper template editor。 */
+.pkc-shell-menu-bookmarklet-custom {
+  margin-top: var(--space-2, 0.5rem);
+  font-size: var(--fs-xs, 0.8125rem);
+}
+
+.pkc-shell-menu-bookmarklet-custom-summary {
+  cursor: pointer;
+  color: var(--c-muted);
+  user-select: none;
+  padding: var(--space-1, 0.25rem) 0;
+}
+
+.pkc-shell-menu-bookmarklet-custom-desc {
+  color: var(--c-muted);
+  margin: var(--space-1, 0.25rem) 0;
+  line-height: 1.4;
+}
+
+.pkc-shell-menu-bookmarklet-code {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-2xs, 0.75rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  color: var(--c-fg, currentColor);
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: var(--space-1, 0.25rem);
+}
+
+.pkc-shell-menu-bookmarklet-copy {
+  display: block;
+  width: 100%;
+}
+
+/* PR-M (2026-05-06):shell menu の公開 URL block。 */
+.pkc-shell-menu-public-urls-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-shell-menu-public-url {
+  display: block;
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--c-fg, currentColor);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+
+.pkc-shell-menu-public-url:hover {
+  background: var(--c-hover, rgba(0, 0, 0, 0.08));
+  color: var(--c-accent, #3b82f6);
+}
+
 .pkc-shell-menu-help-list {
   margin: 0;
   padding: 0 0 0 var(--space-5);
@@ -4768,8 +4956,16 @@ mark.pkc-search-mark {
 .pkc-shortcut-card {
   /* Family A surface hoisted to shared list (Phase 2a). */
   padding: 1.5rem;
-  max-width: 400px;
-  width: 90%;
+  /* PR-RR (2026-05-06): user 修正指示4「ショートカットメニューが画面に
+   * 収まっていない。３段組にしてスクロールもオンに」への対応。
+   * 8 group / 30+ row が 1 column 縦長で viewport を超えていたため、
+   * card 幅 expanded + table を 3 column grid + body に max-height +
+   * overflow scroll。狭い viewport では auto-fit で 1〜2 col に degrade。 */
+  max-width: min(960px, 95vw);
+  width: 95%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .pkc-shortcut-heading {
@@ -4777,37 +4973,55 @@ mark.pkc-search-mark {
   color: var(--c-accent);
   margin-bottom: var(--space-4);
   font-weight: 600;
+  flex: 0 0 auto;
 }
 
+/* PR-RR (2026-05-06): 3 column grid + scrollable body so the help
+ * fits in viewport. `auto-fit minmax(280px, 1fr)` degrades to 1〜2 col
+ * on narrow screens. card itself has `flex` + `max-height: 85vh` so
+ * `overflow-y: auto` here scrolls only the table. */
 .pkc-shortcut-table {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2-5);
-  margin-bottom: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  column-gap: var(--space-5, 1.25rem);
+  row-gap: var(--space-2, 0.5rem);
+  margin-bottom: var(--space-3);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-right: var(--space-2, 0.5rem);
 }
 
 .pkc-shortcut-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2-5);
+  /* PR-RR: narrow cell でも key + desc が共存できるよう min-width:0 を
+   * 子要素に許可する flex baseline。 */
+  min-width: 0;
 }
 
 .pkc-shortcut-key {
   display: inline-block;
-  min-width: 120px;
-  padding: var(--space-1-5) var(--space-2-5);
+  min-width: 90px;
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-bg);
   color: var(--c-accent);
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs, 0.75rem);
   text-align: center;
 }
 
 .pkc-shortcut-desc {
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   color: var(--c-fg);
+  /* desc が長い場合も折り返して row 高さを伸ばす(切り捨てない)。 */
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .pkc-shortcut-group {
@@ -5121,6 +5335,1115 @@ mark.pkc-search-mark {
   border-color: var(--c-accent);
   color: var(--c-accent);
   background: rgba(51,255,102,0.12);
+}
+
+/* ── Frontmatter properties (領域 10-6 ζ'' Phase 2a) ── */
+
+.pkc-frontmatter {
+  margin: var(--space-2, 0.5rem) 0;
+  padding: var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-sm, 2px);
+  font-size: var(--fs-sm, 0.875rem);
+}
+
+.pkc-frontmatter-heading {
+  font-weight: 600;
+  margin-bottom: var(--space-1, 0.25rem);
+  opacity: 0.85;
+}
+
+.pkc-frontmatter-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  margin: 0;
+}
+
+.pkc-frontmatter-key {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.pkc-frontmatter-value {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* ── Filer View (領域 10-6 ζ'' Phase 1) ── */
+
+.pkc-filer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3, 0.75rem);
+  gap: var(--space-2, 0.5rem);
+  overflow: auto;
+}
+
+.pkc-filer-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-breadcrumb {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+  font-size: var(--fs-sm, 0.875rem);
+}
+
+.pkc-filer-breadcrumb-segment {
+  background: none;
+  border: none;
+  color: var(--c-fg, currentColor);
+  cursor: pointer;
+  padding: 0 var(--space-1, 0.25rem);
+  /* PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+   * しきれない」):各 segment に max-width + ellipsis、超過時は省略表示。
+   * tooltip(title 属性)で full text 確認可能。 */
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-filer-breadcrumb-ellipsis {
+  cursor: help;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.pkc-filer-breadcrumb-segment:hover {
+  text-decoration: underline;
+}
+
+.pkc-filer-breadcrumb-root {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.pkc-filer-breadcrumb-sep {
+  opacity: 0.5;
+}
+
+.pkc-filer-subset-label {
+  font-size: var(--fs-2xs, 0.75rem);
+  opacity: 0.7;
+  padding: 0 var(--space-2, 0.5rem);
+}
+
+.pkc-filer-empty {
+  padding: var(--space-4, 1rem);
+  opacity: 0.6;
+  text-align: center;
+}
+
+.pkc-filer-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pkc-filer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm, 0.875rem);
+  /* PR-SSS (2026-05-07、修正指示7 #3):列幅固定比率。auto layout
+   * だと長い title が列を支配し archetype / dates / tags が潰れて
+   * いたため固定比率に。hidden + ellipsis で over-flow を自動 trim。 */
+  table-layout: fixed;
+}
+
+/* PR-Δ3 (2026-05-07、修正指示9):multi-select checkbox 列幅。
+ * Δ3-fix (2026-05-07、user 報告「行ズレ」): check cell の padding を
+ * 他 cell と統一(.pkc-filer-cell の baseline に従う)、行高さズレを撃退。
+ * text-align: center は維持(checkbox を列中央に)。 */
+.pkc-filer-th-check     { width: 32px; }
+.pkc-filer-cell-check   { text-align: center; }
+.pkc-filer-row-check    {
+  cursor: pointer;
+  width: 16px; height: 16px;
+  margin: 0;
+  vertical-align: middle;
+}
+.pkc-filer-th-name      { width: 38%; }
+.pkc-filer-th-archetype { width: 12%; }
+.pkc-filer-th-created_at { width: 16%; }
+.pkc-filer-th-updated_at { width: 16%; }
+.pkc-filer-th-tags      { width: 14%; }
+
+.pkc-filer-th {
+  text-align: left;
+  padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  font-weight: 600;
+  opacity: 0.85;
+  /* PR-Δ2 (2026-05-07、修正指示9):resize handle を absolute 配置
+   * するため positioning context が必要。`position: sticky` は absolute
+   * 子要素の anchor として機能するので追加 `relative` 不要。
+   * overflow hidden は label 側に移動(`.pkc-filer-th-label`)。 */
+  position: sticky;
+  top: 0;
+  background: var(--c-bg, transparent);
+}
+.pkc-filer-th-label {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+/* PR-Δ2 column resize handle - 右端 8px、cursor col-resize、hover で accent。 */
+.pkc-filer-th-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 1;
+}
+.pkc-filer-th-resize:hover,
+.pkc-filer-th-resize[data-pkc-resizing="true"] {
+  background: var(--c-accent, #33ff66);
+  opacity: 0.4;
+}
+
+.pkc-filer-row {
+  cursor: pointer;
+}
+
+/* PR-RRR (2026-05-07、修正指示7 #4):エクスプローラビューの行
+ * ストライプ。視認性を上げるため偶数行にうっすらした背景を敷く。
+ * hover / active より specificity を低く保つため :nth-child を
+ * 単独 selector で使い、:hover と [data-pkc-active] が後勝ちする
+ * cascade 順を維持する。
+ * PR-RRR-V2 (2026-05-07、user 報告「ストライプがダークテーマで
+ * ほぼ違いがわからん」):fallback を 0.025 → 0.06 に bump、加えて
+ * --c-bg-stripe を theme 別に dark=白7% / light=黒6% で定義済(top)。 */
+.pkc-filer-tbody .pkc-filer-row:nth-child(even) {
+  background: var(--c-bg-stripe, rgba(0, 0, 0, 0.06));
+}
+
+.pkc-filer-row:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-filer-row[data-pkc-active="true"] {
+  background: var(--c-bg-active, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-filer-cell {
+  padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+  vertical-align: middle;
+  /* PR-Δ2 (2026-05-07、修正指示7 #3):table-layout: fixed と
+   * 連動した cell 単位の overflow trim。tags cell は inline-block
+   * の chip 列でも同様に枠から溢れない。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* PR-Δ7-fix3 (2026-05-07、user 視覚指摘):em-based の line-height は
+   * CJK / emoji の line-box 揺らぎを吸収しきれない(audit で 0.5 px 残)。
+   * **pixel 固定**で確定値を強制し、全 row の baseline を完全揃え。
+   * 21px line-height + 6px×2 padding = 33px row 高(text vertical-align: middle で
+   * cell 中央に icon / title が rest)。 */
+  line-height: 21px;
+  height: 33px;
+  box-sizing: border-box;
+}
+.pkc-filer-row-icon,
+.pkc-filer-row-title {
+  line-height: 21px;
+}
+
+.pkc-filer-cell-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-filer-row-icon {
+  flex-shrink: 0;
+}
+
+.pkc-filer-row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-filer-tag-chip {
+  display: inline-block;
+  margin-right: var(--space-1, 0.25rem);
+  padding: 0 var(--space-1, 0.25rem);
+  font-size: var(--fs-2xs, 0.75rem);
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.06));
+}
+
+.pkc-filer-toolbar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-filer-create-btn,
+.pkc-filer-trash-btn {
+  font-size: var(--fs-xs, 0.8125rem);
+}
+
+.pkc-filer-trash-btn {
+  margin-left: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-row[data-pkc-drag-over="true"] {
+  outline: 2px dashed var(--c-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.pkc-filer-row[data-pkc-dragging="true"] {
+  opacity: 0.4;
+}
+
+.pkc-filer-trash-purge {
+  margin-left: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-breadcrumb-trash {
+  font-weight: 600;
+}
+
+.pkc-filer-row-trash {
+  cursor: default;
+}
+
+.pkc-filer-cell-actions {
+  white-space: nowrap;
+}
+
+/* ── Attachment image viewer (Phase 3c-D 特化、画像 attachment detail) ── */
+
+.pkc-attachment-image-viewer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--space-3, 0.75rem);
+  padding: var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border-radius: var(--radius-md, 4px);
+  min-height: 240px;
+}
+
+.pkc-attachment-image-viewer-img {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm, 2px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Frontmatter URL + fragment badge (Phase 3c-C UI wiring) ── */
+
+.pkc-frontmatter-url {
+  word-break: break-all;
+  text-decoration: underline dotted;
+}
+
+.pkc-frontmatter-fragment-badge,
+.pkc-filer-card-fragment-badge {
+  display: inline-block;
+  padding: 0 var(--space-1, 0.25rem);
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-on-accent, #fff);
+  font-size: var(--fs-2xs, 0.75rem);
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ── Filer folder rename / description editor (Phase 4 follow-up) ── */
+
+/* Breadcrumb inline rename (GitHub-style)。current segment は input、
+   それ以外は button。2026-05-06 review fix。 */
+.pkc-filer-breadcrumb-current {
+  font-weight: 600;
+  border: 1px dashed transparent;
+  background: transparent;
+  padding: 0 var(--space-1, 0.25rem);
+  font-size: inherit;
+  color: inherit;
+  font-family: inherit;
+}
+
+.pkc-filer-breadcrumb-current:hover,
+.pkc-filer-breadcrumb-current:focus {
+  border-color: var(--c-border, rgba(0, 0, 0, 0.2));
+  outline: none;
+  background: var(--c-bg, transparent);
+}
+
+/* Folder description editor in meta pane (右ペインに移設)。 */
+.pkc-folder-description-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin: var(--space-2, 0.5rem) 0;
+}
+
+.pkc-folder-description-label {
+  font-size: var(--fs-xs, 0.8125rem);
+  opacity: 0.8;
+}
+
+.pkc-folder-description-input {
+  font: inherit;
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 2px);
+  resize: vertical;
+  min-height: 4em;
+  background: var(--c-bg, transparent);
+}
+
+/* Filer explorer sortable column header. */
+.pkc-filer-th[data-pkc-action="set-filer-explorer-sort"] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.pkc-filer-th[data-pkc-action="set-filer-explorer-sort"]:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+/* ── Image preview window (PiP / window.open fallback) ──
+   PR-B G7 (2026-05-06):pinch-zoom + pan + double-tap を支える layout。
+   touch-action: none で stage の native gesture(scroll / pinch zoom)を
+   handler 側に委譲、wrap で transform を適用、img は fit と numeric の
+   2 mode を class で切り替える。 */
+
+.pkc-image-preview-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  background: #111;
+  color: #eee;
+  overflow: hidden;
+}
+
+.pkc-image-preview-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem);
+  background: rgba(0, 0, 0, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pkc-image-preview-zoom-select {
+  font: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm, 2px);
+  padding: 0 var(--space-1, 0.25rem);
+}
+
+.pkc-image-preview-stage {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* iOS Safari pinch / scroll を独自 touch handler で全部処理する。 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pkc-image-preview-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pkc-image-preview-img {
+  display: block;
+  /* numeric mode: transform-origin は 0 0(top-left)、stage の左上を
+     基準に translate + scale。CSS 側は max を解除して transform に任せる。 */
+  max-width: none;
+  max-height: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.pkc-image-preview-img.pkc-image-preview-img-fit {
+  /* fit mode: CSS contain、transform は無効。flex で stage 中央に配置。 */
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  transform: none !important;
+}
+
+/* ── Sidebar filer-mode (Phase 4 follow-up `sidebar.mode = 'filer'`) ── */
+
+.pkc-sidebar-filer-mode {
+  padding: var(--space-2, 0.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  overflow-y: auto;
+}
+
+.pkc-sidebar-filer-header {
+  font-weight: 600;
+  font-size: var(--fs-sm, 0.875rem);
+  opacity: 0.85;
+  padding-bottom: var(--space-1, 0.25rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+}
+
+.pkc-sidebar-filer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkc-sidebar-filer-item {
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm, 0.875rem);
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-sidebar-filer-item:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-sidebar-filer-item[data-pkc-active="true"] {
+  background: var(--c-bg-active, rgba(0, 0, 0, 0.08));
+  font-weight: 600;
+}
+
+.pkc-sidebar-filer-nav-up {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.pkc-sidebar-filer-empty {
+  font-style: italic;
+  opacity: 0.6;
+  padding: var(--space-2, 0.5rem);
+}
+
+/* ── Filer Navigation rows / cards (`.` / `..`、Phase 2b follow-up) ── */
+
+.pkc-filer-row-nav {
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  font-style: italic;
+}
+
+.pkc-filer-row-nav .pkc-filer-cell-archetype {
+  opacity: 0.6;
+  font-size: var(--fs-2xs, 0.75rem);
+}
+
+.pkc-filer-card-nav {
+  border-style: dashed;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.03));
+}
+
+.pkc-filer-card-nav .pkc-filer-card-thumb {
+  font-size: var(--fs-2xl, 2rem);
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ── Filer Inventory subset (Phase 5 — Bases 風 query view) ── */
+
+.pkc-filer-inventory-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pkc-filer-inventory-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) 0;
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-filer-inventory-group-select {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+.pkc-filer-inventory-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.pkc-filer-inventory-th:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-filer-inventory-filter-row > th {
+  padding: var(--space-1, 0.25rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-filer-inventory-filter-input {
+  width: 100%;
+  font-size: var(--fs-2xs, 0.75rem);
+  padding: 1px var(--space-1, 0.25rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg, transparent);
+}
+
+.pkc-filer-inventory-group-summary {
+  font-weight: 600;
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  cursor: pointer;
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-filer-inventory-table {
+  width: 100%;
+}
+
+/* ── Center Graph view (Phase 4 follow-up 4 — independent view-mode) ── */
+
+.pkc-center-graph-view {
+  /* PR-WWW (2026-05-07、修正指示5 残):tooltip を absolute 配置するため
+   * positioning context に。 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* PR-H G16 (2026-05-06):SVG → Canvas 化。Canvas は単一 element なので
+   gesture handler が hit-test で node を解決する。touch-action: none で
+   browser の native pinch zoom を奪い、独自 handler に流す。 */
+.pkc-graph-canvas {
+  flex: 1;
+  display: block;
+  min-height: 320px;
+  /* PR-DD (2026-05-06、user 報告「グラフが Canvas の大きさに引っ張ら
+     れてアス比がおかしくなる」):aspect-ratio で 960:600 (= 8:5) を維持。
+     container の width が変わっても canvas が縦横同じ比で scale するので、
+     描画(payload.width=960 / height=600 baseline)が歪まない。modern
+     browser で aspect-ratio CSS は widely supported。
+     PR-LLL (2026-05-06):window 幅 / 高さに合わせて responsive にする
+     ため `aspect-ratio` を 8/5 から `auto` に変更、`max-aspect-ratio`
+     ガードで縦長 viewport でもバランス維持。canvas 内座標は
+     `payload.width=960 / height=600` 固定のため軽い拡縮はあるが、PR-AAA
+     auto-fit-to-bounds で全 node が収まる scale に自動調整される。 */
+  width: 100%;
+  height: 100%;
+  max-height: min(72vh, 720px);
+  touch-action: none;
+  cursor: grab;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-sm, 2px);
+}
+
+/* PR-LLL (2026-05-06、user 修正指示5「グラフに凡例を表示」):
+ * graph 下端に archetype emoji + relation kind 色 を凡例として overlay。
+ * canvas 内描画には影響しない非 modal flex item。 */
+.pkc-graph-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  margin-top: var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md, 4px);
+  font-size: var(--fs-sm);
+  flex: 0 0 auto;
+}
+
+.pkc-graph-legend-heading {
+  font-weight: 600;
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+}
+
+.pkc-graph-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 0.75rem);
+  align-items: center;
+}
+
+.pkc-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+  white-space: nowrap;
+}
+
+.pkc-graph-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.pkc-graph-canvas:active {
+  cursor: grabbing;
+}
+
+.pkc-graph-canvas[data-pkc-graph-region-select-mode="true"] {
+  cursor: crosshair;
+}
+
+/* PR-WWW (2026-05-07、修正指示5 残):graph node hover preview tooltip。
+ * absolute 配置(.pkc-center-graph-view が positioning context)、
+ * pointer-events: none で hit-test に干渉しない。 */
+.pkc-graph-hover-tooltip {
+  position: absolute;
+  z-index: 50;
+  max-width: 320px;
+  padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
+  font-size: var(--fs-xs, 0.8125rem);
+  line-height: 1.4;
+  background: var(--c-surface, rgba(20, 20, 20, 0.95));
+  color: var(--c-fg, #e0e0e0);
+  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius, 4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: pre-line;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-center-graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-graph-mode-select {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+.pkc-graph-focus-label {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.06));
+  padding: 0 var(--space-2, 0.5rem);
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-center-graph-svg {
+  flex: 1;
+  min-height: 480px;
+}
+
+/* ── Filer Graph (Phase 2b) ── */
+
+.pkc-filer-graph {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-sm, 2px);
+}
+
+.pkc-filer-graph-edge {
+  stroke: var(--c-border, rgba(0, 0, 0, 0.3));
+  stroke-width: 1;
+  stroke-opacity: 0.5;
+}
+
+.pkc-filer-graph-node {
+  cursor: pointer;
+}
+
+.pkc-filer-graph-node:hover .pkc-filer-graph-circle {
+  stroke-width: 2;
+}
+
+.pkc-filer-graph-circle {
+  fill: var(--c-bg, #fff);
+  stroke: var(--c-fg, currentColor);
+  stroke-width: 1.5;
+}
+
+.pkc-filer-graph-circle-folder { fill: rgba(255, 200, 100, 0.4); }
+.pkc-filer-graph-circle-text { fill: rgba(120, 180, 255, 0.4); }
+.pkc-filer-graph-circle-textlog { fill: rgba(100, 220, 180, 0.4); }
+.pkc-filer-graph-circle-todo { fill: rgba(255, 150, 150, 0.4); }
+.pkc-filer-graph-circle-attachment { fill: rgba(180, 180, 180, 0.4); }
+
+.pkc-filer-graph-node[data-pkc-active="true"] .pkc-filer-graph-circle {
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 3;
+}
+
+.pkc-filer-graph-label {
+  /* PR-F G18 (2026-05-06):graph 文字読みやすさ改善。font 大きく
+     (11→13)、weight 太く(default→500)、SVG paint-order + stroke で
+     halo を作って背景の edge / 重なる circle に対してコントラスト
+     確保。SVG `paint-order: stroke` で stroke を fill の下に置くと
+     halo として機能する。 */
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--c-fg, currentColor);
+  paint-order: stroke;
+  stroke: var(--c-bg, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Graph zoom layer (PR-C G1, 2026-05-06) ──
+   wheel / drag / pinch で zoom-layer の transform を直接書き換える。
+   force layout は再計算しない。background は grab cursor、node 上は
+   pointer のままで selection を阻害しない。 */
+
+.pkc-graph-zoom-layer {
+  /* layer 自体は SVG group で transition/transform を持たないが、
+     gesture handlers が transform を毎フレーム更新するため will-change
+     で promote。 */
+  will-change: transform;
+  transform-origin: 0 0;
+}
+
+.pkc-center-graph-svg,
+.pkc-filer-graph {
+  /* Touch gesture 系は独自 handler が処理する。pinch zoom が browser
+     の page-level zoom に流れないよう touch-action: none。 */
+  touch-action: none;
+  cursor: grab;
+}
+
+.pkc-center-graph-svg:active,
+.pkc-filer-graph:active {
+  cursor: grabbing;
+}
+
+/* Node の hover / drag は selection 用 cursor を維持。 */
+.pkc-filer-graph-node,
+.pkc-filer-graph-node:active {
+  cursor: pointer;
+}
+
+/* ── Graph time-proximity axis (PR-D G8, 2026-05-06) ──
+   左:古い / 右:新しい を視覚で読めるよう、3 tick(min / mid / max)
+   の vertical guide line + bottom date label。zoom-layer 内に配置して
+   pan/zoom と一緒に動く。 */
+
+.pkc-graph-time-axis-label {
+  font-size: 11px;
+  fill: var(--c-muted);
+  user-select: none;
+  pointer-events: none;
+}
+
+.pkc-graph-time-axis-line {
+  stroke: var(--c-border, rgba(0, 0, 0, 0.15));
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+/* ── Graph region-slice (PR-E G8 後半, 2026-05-06) ──
+   Drag-rect 中の rect 視覚化と、選択された node の highlight。
+   region-mode 時は背景の cursor を crosshair にして「pan ではない」
+   ことを user に伝える。 */
+
+.pkc-graph-region-rect {
+  fill: var(--c-accent, #3b82f6);
+  fill-opacity: 0.1;
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+  pointer-events: none;
+}
+
+.pkc-center-graph-svg[data-pkc-graph-region-select-mode="true"],
+.pkc-filer-graph[data-pkc-graph-region-select-mode="true"] {
+  cursor: crosshair;
+}
+
+.pkc-filer-graph-node[data-pkc-graph-region-selected="true"] .pkc-filer-graph-circle {
+  stroke: var(--c-accent, #3b82f6);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px var(--c-accent, #3b82f6));
+}
+
+.pkc-graph-region-count {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--c-accent, #3b82f6);
+  padding: 0 var(--space-2, 0.5rem);
+}
+
+button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"] {
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  border-color: var(--c-accent, #3b82f6);
+}
+
+/* ── Filer search input (PR-L, 2026-05-06) ──
+   左ペインの代替活用 / 大規模管理用 foundation。filer-header に並ぶ
+   small input、scope 配下の subtree を title 部分一致で絞り込む。 */
+
+.pkc-filer-search-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-right: var(--space-2, 0.5rem);
+}
+
+.pkc-filer-search-input {
+  font: inherit;
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  width: 14rem;
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.15));
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg, transparent);
+  color: var(--c-fg, currentColor);
+}
+
+.pkc-filer-search-input:focus {
+  outline: none;
+  border-color: var(--c-accent, #3b82f6);
+}
+
+/* ── Filer display profile auto hint (PR-G G15, 2026-05-06) ──
+   Auto mode 選択時、自動判定された結果(contact-sheet 等)を select の
+   下に小さく併記。意図しない subset に切り替わっていたら user が気付ける。 */
+
+.pkc-filer-profile-hint {
+  display: block;
+  margin-top: var(--space-1, 0.25rem);
+  font-size: var(--fs-xs, 0.8125rem);
+  color: var(--c-muted);
+}
+
+/* ── Filer Card Grid (Phase 3a: contact-sheet / book-base / youtube-base) ── */
+
+.pkc-filer-grid {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) 0;
+}
+
+/* 2026-05-06 review fix G10/G12 — per-subset thumbnail size flags +
+   contact-sheet を gap 0 + caption は thumb overlay。 */
+.pkc-filer-grid-contact-sheet {
+  /* override the common .pkc-filer-grid gap. */
+  gap: 0;
+  grid-template-columns: repeat(auto-fill, minmax(var(--filer-thumb-px, 160px), 1fr));
+}
+
+.pkc-filer-grid-contact-sheet[data-pkc-cell-size="sm"] { --filer-thumb-px: 96px; }
+.pkc-filer-grid-contact-sheet[data-pkc-cell-size="lg"] { --filer-thumb-px: 220px; }
+
+.pkc-filer-grid-book-base,
+.pkc-filer-grid-video-base,
+.pkc-filer-grid-novel-base,
+.pkc-filer-grid-audio-base {
+  grid-template-columns: repeat(auto-fill, minmax(var(--filer-thumb-px, 160px), 1fr));
+}
+
+/* contact-sheet card は border / padding を消して thumb 全面化 */
+.pkc-filer-grid-contact-sheet .pkc-filer-card {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* contact-sheet caption: thumb 右下 overlay、反転文字色、半透明背景 */
+.pkc-filer-grid-contact-sheet .pkc-filer-card-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+}
+
+/* PR-KK → PR-SS (2026-05-06): contact-sheet 限定 override は撤回。
+ * `.pkc-filer-card-thumb img` 全体が contain 統一されたため redundant。
+ * 互換のため selector は残す(value 不要)— と思ったが noop は混乱
+ * するので削除。`.pkc-filer-card-thumb img` の汎用ルールで賄える。 */
+
+.pkc-filer-grid-contact-sheet .pkc-filer-card-caption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  font-size: var(--fs-2xs, 0.75rem);
+  color: var(--c-bg, #fff);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  border-top-left-radius: var(--radius-sm, 2px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.pkc-filer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-2, 0.5rem);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-md, 4px);
+  background: var(--c-bg, transparent);
+  cursor: pointer;
+}
+
+.pkc-filer-card:hover {
+  background: var(--c-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.pkc-filer-card[data-pkc-active="true"] {
+  outline: 2px solid var(--c-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.pkc-filer-card-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius-sm, 2px);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.05));
+}
+
+/* PR-SS (2026-05-06): user 修正指示2「サムネ元画像長辺合わせで引き
+ * 伸ばしなし」を全 grid に拡張(book / video / novel / audio /
+ * contact-sheet 統一)。元画像の縦横比を維持し、cell からはみ出さ
+ * ない範囲で長辺をフィットさせる contain を全カード共通の baseline に。
+ * letterbox 部の背景は thumb 既存の bg-tag が neutral grey で見える。
+ *
+ * 旧 cover(crop して埋める cover-art convention)は user 報告の
+ * 「ノベル系 SVG / Amazon 商品ページの引き伸ばし」を再現してしまう
+ * ため撤回。PR-KK で contact-sheet のみ contain にしていた upgrade
+ * を全カードに広げる形。 */
+.pkc-filer-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pkc-filer-card-thumb-fallback {
+  font-size: var(--fs-2xl, 2rem);
+  opacity: 0.5;
+}
+
+.pkc-filer-card-caption,
+.pkc-filer-card-title {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-filer-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 0.25rem);
+  font-size: var(--fs-2xs, 0.75rem);
+  opacity: 0.75;
+}
+
+.pkc-filer-card-field::after {
+  content: '';
+}
+
+.pkc-filer-card[data-pkc-card-kind-match="true"] {
+  border-color: var(--c-accent, #3b82f6);
+}
+
+/* Mobile contact-sheet: tighter columns */
+@media (pointer: coarse) and (max-width: 640px) {
+  .pkc-filer-grid-contact-sheet[data-pkc-cell-size="md"] {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  .pkc-filer-grid-book-base,
+  .pkc-filer-grid-youtube-base {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+.pkc-filer-profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin: var(--space-2, 0.5rem) 0;
+}
+
+.pkc-filer-profile-label {
+  font-size: var(--fs-xs, 0.8125rem);
+  opacity: 0.8;
+}
+
+.pkc-filer-profile-select {
+  font: inherit;
+  padding: var(--space-1, 0.25rem);
+}
+
+/* Mobile fallback: column collapse on coarse-pointer narrow viewports.
+   Hide archetype + tags columns; the icon in the name cell still
+   conveys archetype, and tags can be inspected by tapping the row. */
+@media (pointer: coarse) and (max-width: 640px) {
+  .pkc-filer-th-archetype,
+  .pkc-filer-th-tags,
+  .pkc-filer-cell-archetype,
+  .pkc-filer-cell-tags {
+    display: none;
+  }
+  .pkc-filer-cell {
+    padding: var(--space-2, 0.5rem);
+  }
+  .pkc-filer-row-title {
+    font-size: var(--fs-base, 1rem);
+  }
 }
 
 /* ── Calendar View ── */

@@ -567,11 +567,23 @@ PKC-Message v2(`docs/development/pkc-message-v2-open-questions-decisions-2026-05
 
 サイズ: 大(PKC-Message v2.1 / v2.2 で段階的、~4 PR)。前提: 10-3 IR が安定してから。
 
-### 10-6: Filer view + book/youtube/album subset(発展版、**ζ'' 確定 2026-05-05**)
+### 10-6: Filer view + book/youtube/album subset(発展版、**ζ'' wave 完成 2026-05-05**)
+
+**Status: 16 stacked PR(#260〜#275)で wave 完成**(2026-05-05、PR #258 audit doc 起こし → 同日中に Phase 1〜5 + Phase 3c-A〜E 全部実装)。Manual 章 `docs/manual/10_filer_と_graph_と_inventory.md` + 11 枚 screenshot 取込済(`docs/manual/images/M01〜M08*.png`)、PKC-extension manual に統合済。残課題は `wave-10-6-ux-evaluation-2026-05.md` 参照(U1〜U8、~70 LOC で潰せる磨き込み + folder-default-as-filer 切替の別 wave 議論)。
+
 
 原案「アルバムエントリ + コンタクトシート」を発展させ、**center pane の第 4 view-mode `filer`** を新設、subset profile(explorer / contact-sheet / book-base / youtube-base / graph)で多様な「カード型コレクション」を統一的に扱う wave。詳細は [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md)(PR #258 で landing)。
 
 **確定形 ζ''**: TEXT atom(archetype 増設禁止)+ Hybrid Z data model(frontmatter / tag / relation の責務 3 分離)+ vanilla TS graph view(PKC1 force config 流用)+ 入力負担減 sub-wave(ISBN/oEmbed auto-fill で book 追加 ~90% 短縮)。
+
+2026-05-05 user direction(Phase 3a-r1 リファクタ):**book/youtube 個別の subset 設計から URL + filetype 分類による generic な classifier**にリファクタ。Amazon / 楽天 / niconico / 小説家になろう / カクヨム / 青空文庫 等の主要サイトに対応した URL host map を `src/features/classification/url-host.ts` に追加、attachment は MIME / 拡張子で分類(`filetype.ts`)。現状の subset:`book-base` / `video-base`(旧 youtube-base、リネーム)/ `novel-base`(新規)。
+
+**Bookmarklet 計画(2026-05-05、deferred)**:閲覧中のサイト(Amazon 商品 / niconico 動画 / 小説 1 話など)を **スナップショット的に PKC2 へ取り込む** ためのブックマークレットを将来的に実装。設計案:
+  - URL + ページタイトル + 選択テキスト or 全文を JSON で encode
+  - PKC2 を別タブで開く / クリップボード経由で取り込み
+  - frontmatter に kind + url + provider + captured_at を auto-fill
+  - 大規模なページは抜粋のみ + 元 URL 参照 / 小規模は full-snapshot
+  - Amazon の場合は商品メタ(著者 / 価格 / レビュー)も抽出予定
 
 サイズ: 大 wave、~12 PR / ~3 ヶ月、5 phase 構成:
 1. filer view 第 4 view-mode + explorer subset(中、~2 PR)
@@ -596,6 +608,32 @@ attachment sandbox(既存)の延長で、複数 iframe を「workspace」とし�
 
 サイズ: 大(spec audit が必要)。前提: 既存 sandbox / detached window / postMessage transport の整理。
 
+### 10-9: Stabilization 連続 hotfix wave(2026-05-07、**Wave 完了**)
+
+**Status: 🏁 完了**(2026-05-07、122 commits / 100 PR の stack で着地、user 判断「いくつかのバグ挙動はあるが締める」で wave クローズ)。
+
+領域 10-6 wave 着地後の連続 hotfix wave。user 実機テストで挙がった修正指示 1〜10 + wave 中追加報告(Galaxy / Venn / rubber band / Ctrl+click / 楕円選択 / 右クリック menu 等)を Δ1〜Δ34 として 1 stack PR(#363)に集約。
+
+**主な改修 8 領域**:
+
+1. **filer** — 行ピクセルズレ(delta 0px、Δ7) / column drag-resize(Δ2) / multi-select + bulk operations(checkbox + Shift range、Δ3 + Δ5)/ 一括操作 UI を Filer 内へ(Δ25)
+2. **graph 描画** — canvas aspect uniform scale + letterbox(Δ1) / node 過密改善(Δ4) / Galaxy 3D perspective + starfield + halo(Δ22 + Δ26) / Venn 真の集合 hull(Δ21) / time-proximity hash jitter(Δ28)
+3. **graph 操作** — region 矩形 → 楕円(Δ31) / Ctrl+click multi-select(Δ32) / drag rubber band physics(Δ33) / 右クリック context menu(Δ34) / 左クリック誤操作防止(Δ34)
+4. **inline-calc** — indent + list marker 14 ケース matrix(Δ8 + Δ8-fix2)
+5. **ZIP import** — streaming + progress + base64 chunked(Δ23 + Δ27、OOM/hang 撃退)
+6. **popup sync** — caret indicator + split block sync + ⇄ toggle button(Δ12)
+7. **multi-select** — `includeAnchor` flag で sidebar/Filer/graph 独立(Δ16)
+8. **Flags caption** — FLAGS_CHANGED microtask 再 render で即時反映(Δ29)
+
+**残バグ(持越し)**:bundle.css 98 KB → 146 KB(budget 超過、次 wave Phase 2c で吸収)/ rubber band drag 2-hop 止まり / drag 後 position 永続化なし / 既存 lint 警告 2 件。詳細は [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md) §4。
+
+**着地後の docs**:
+- [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md)(NEW、wave 全体サマリ)
+- [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md)(NEW、merge 戦略 3 option)
+- [`../release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md)(Δ5〜Δ34 1 ブロック追記)
+
+サイズ: stabilization wave、~122 commit / 100 PR / 2 日。
+
 ### 着手順序の所感(2026-05-04 時点、user 議論前の draft)
 
 | 段階 | wave | 理由 |
@@ -610,6 +648,7 @@ attachment sandbox(既存)の延長で、複数 iframe を「workspace」とし�
 | 7 | 10-6 アルバム / コンタクトシート | 独立、image 既存資産で着手可 |
 | 8 | 10-7 アプリランチャー | 10-4 / 10-6 が揃うと意味が増す |
 | 9 | 10-8 sandbox / multi-window controller | 仕様議論先行が必要 |
+| ✅ | **10-9 stabilization wave**(2026-05-07 完了) | 領域 10-6 後の連続 hotfix、122 commit / 100 PR で着地 |
 
 実際の順序は user 判断 + 着手前の grep discipline(本書 + INDEX + ledger)で再確定する。
 

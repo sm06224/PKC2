@@ -35,8 +35,24 @@
  */
 
 /** Scrollable regions that deserve continuity. Order is the order
- * of capture / restore; no dependency between them. */
-const SCROLL_REGIONS = ['sidebar', 'center-content', 'meta'] as const;
+ * of capture / restore; no dependency between them.
+ *
+ * PR-GG (2026-05-06): added `entry-list`. The outer `pkc-sidebar`
+ * `<aside>` does not actually overflow — the inner `<ul class="pkc-
+ * entry-list">` is `flex:1; overflow-y:auto` and holds the user's
+ * actual scroll. Capturing only `sidebar` was a silent no-op for
+ * sidebar scroll preservation, manifesting as "大量のエントリで
+ * クリックすると左ペインが上に戻る". */
+const SCROLL_REGIONS = [
+  'sidebar',
+  'entry-list',
+  'center-content',
+  'meta',
+  // PR-NN (2026-05-06): flags-inspector-body は SET_FLAG で full
+  // re-render が走るため、scroll を継続させないと「設定を変更する
+  // たびに勝手に上にスクロールが戻る」になる(user 修正指示2)。
+  'flags-inspector-body',
+] as const;
 
 export interface RenderFocusSnapshot {
   /** `data-pkc-field` of the focused element, if any. */
@@ -84,6 +100,16 @@ export function captureRenderContinuity(root: HTMLElement): RenderContinuitySnap
 /**
  * Apply a previously-captured snapshot against `root` after a
  * re-render. Missing targets are silently skipped.
+ *
+ * PR-GG (2026-05-06): the synchronous restore can clamp to
+ * `maxScrollTop` when the just-rendered sidebar has many entries
+ * and the browser hasn't finished layout (`scrollHeight` is still
+ * being measured). Concretely the user reported "大量のエントリ
+ * がある状況でクリックすると左ペインのスクロールが上に戻る" —
+ * scroll snaps to 0 after a sidebar entry click. Schedule a rAF-
+ * deferred re-application so once layout settles the captured
+ * scrollTop wins. The double-write is cheap and idempotent: when
+ * the synchronous write already landed, the rAF write is a no-op.
  */
 export function restoreRenderContinuity(
   root: HTMLElement,
@@ -91,12 +117,43 @@ export function restoreRenderContinuity(
 ): void {
   if (!root) return;
 
-  for (const { region, top } of snapshot.scrolls) {
-    const el = root.querySelector<HTMLElement>(`[data-pkc-region="${region}"]`);
-    if (el) el.scrollTop = top;
+  applyScrollSnapshot(root, snapshot.scrolls);
+
+  // Defer a second pass to the next animation frame so the restore
+  // wins even if the first pass clamped to `maxScrollTop` because
+  // layout was still in flux. Skip if rAF is unavailable (non-DOM
+  // env) — the synchronous pass above is the fallback.
+  const win = root.ownerDocument?.defaultView ?? null;
+  const raf = win?.requestAnimationFrame;
+  if (raf) {
+    raf(() => {
+      if (root.isConnected) applyScrollSnapshot(root, snapshot.scrolls);
+    });
+  }
+
+  // PR-XX (2026-05-06): browser-specific layout settle race(特に Firefox
+  // で reflow が rAF より遅延するケース)を救うための 3 段目 fallback。
+  // 200ms 後に scroll を再 apply、ここで一致しないなら何かが scroll を
+  // 押し除けている → user 報告の 「押し除けられている」 状況を救う。
+  // 高頻度 dispatch 時に積み上がらないよう、各 region の現値が snapshot
+  // と一致していたら no-op(applyScrollSnapshot 内で `!==` guard 済)。
+  if (win && typeof win.setTimeout === 'function') {
+    win.setTimeout(() => {
+      if (root.isConnected) applyScrollSnapshot(root, snapshot.scrolls);
+    }, 200);
   }
 
   restoreFocus(root, snapshot.focus);
+}
+
+function applyScrollSnapshot(
+  root: HTMLElement,
+  scrolls: ReadonlyArray<{ region: string; top: number }>,
+): void {
+  for (const { region, top } of scrolls) {
+    const el = root.querySelector<HTMLElement>(`[data-pkc-region="${region}"]`);
+    if (el && el.scrollTop !== top) el.scrollTop = top;
+  }
 }
 
 function captureFocus(root: HTMLElement): RenderFocusSnapshot | null {

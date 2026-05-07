@@ -36,7 +36,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   const panel = overlay.locator('[data-pkc-region="flags-inspector-panel"]');
   await expect(panel).toBeVisible();
 
-  // 25 Tier 0 defineFlag entries (after caret_indicator 4 flags added in hotfix-7 follow-up-4):
+  // 35 Tier 0 defineFlag entries (Phase 4 follow-up + folder.detail_as_filer):
   //   wave 1 (7): recent.default_limit / textlog.staged_render.{initial_count,lookahead}
   //               / persistence.debounce_ms / image.{max_long_edge,optimize_threshold_bytes}
   //               / search.max_results_per_entry
@@ -47,8 +47,11 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //   Phase 3a (1): theme.scale (runtime UI multiplier)
   //   hotfix-7 follow-up-4 (4): caret_indicator.{enabled, tint_pct,
   //                              border_alpha_pct, border_width_px}
+  //   領域 10-6 ζ'' Phase 2b (8): graph.{link_distance, link_strength,
+  //                              charge, collide_radius, center_strength,
+  //                              damping, max_speed, iterations}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(25, { timeout: 5_000 });
+  await expect(rows).toHaveCount(42, { timeout: 5_000 });
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -64,6 +67,9 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
     'touch.tap_threshold_px',                   // wave 2
     'textlog.placeholder.min_height_px',        // wave 2
     'attachment.reject_hard_bytes',             // wave 2
+    'graph.link_distance',                      // 領域 10-6 ζ'' Phase 2b
+    'graph.charge',                             // 領域 10-6 ζ'' Phase 2b
+    'graph.collide_radius',                     // 領域 10-6 ζ'' Phase 2b
   ]) {
     await expect(
       page.locator(`[data-pkc-region="flag-row"][data-pkc-key="${key}"]`),
@@ -286,7 +292,7 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  expect(snap.rowCount).toBe(25);
+  expect(snap.rowCount).toBe(42);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);
@@ -352,15 +358,34 @@ test('every Tier 0 numeric flag edits via real keyboard input → __flags__ sour
     // browser's input handling.
     await input.click({ clickCount: 3 });
     const currentVal = await input.inputValue();
-    // Choose a new value that's GUARANTEED to differ from the current
-    // value, so the SET_FLAG dispatch actually fires and the source
-    // flips. Halving works for most numeric flags, but breaks down at
-    // currentVal=1 (Math.floor(1/2)=0, Math.max(1,0)=1 → same as
-    // current, no change). Phase 3a's `theme.scale` defaults to 1.0
-    // and exposed this case. Fallback: when halving yields the same
-    // value, bump by +1 instead.
-    let newVal = String(Math.max(1, Math.floor(Number(currentVal) / 2)));
-    if (newVal === currentVal) newVal = String(Number(currentVal) + 1);
+    // Choose a new value GUARANTEED to differ from current AND fall
+    // inside the input's range. Reads min/max attrs from the input
+    // element so the test handles positive ranges (most flags),
+    // negative ranges (`graph.charge` ∈ [-2000, 0]), and float ranges
+    // (`graph.center_strength` ∈ [0, 1]) uniformly.
+    const constraints = await input.evaluate((el: Element) => {
+      const inp = el as HTMLInputElement;
+      return {
+        min: inp.min === '' ? null : Number(inp.min),
+        max: inp.max === '' ? null : Number(inp.max),
+        step: inp.step === '' ? null : Number(inp.step),
+      };
+    });
+    const cur = Number(currentVal);
+    const lo = constraints.min ?? cur - 100;
+    const hi = constraints.max ?? cur + 100;
+    const step = constraints.step ?? 1;
+    // Try midpoint of [lo, hi]; if equal to current, pick lo or hi.
+    let newNum = (lo + hi) / 2;
+    if (newNum === cur) newNum = cur === lo ? hi : lo;
+    // Snap to step grid — input[type=number] with step="1" rejects fractional commits.
+    if (step >= 1 && Number.isInteger(step)) newNum = Math.round(newNum);
+    let newVal = String(newNum);
+    if (newVal === currentVal) {
+      // Last-resort: nudge by step toward a valid value.
+      newNum = cur + step <= hi ? cur + step : cur - step;
+      newVal = String(newNum);
+    }
     await page.keyboard.type(newVal);
     await page.keyboard.press('Tab'); // commit + blur so `change` fires
     await expect(row, `${key} did not flip to source=container`).toHaveAttribute(

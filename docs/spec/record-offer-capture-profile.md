@@ -342,6 +342,77 @@ interface RecordOfferPayloadWithCapture extends RecordOfferPayload {
 
 v1 で採用判断する候補として本 profile は位置を残すが、**現 PR では未採用と確定**する。
 
+### 8.6 v1.1 capture profile additive fields(2026-05-06、PR-U)
+
+PKC-Message v1 spec §9.2「v1 内は additive」に従い、`RecordOfferPayload` の **superset** として以下の **optional** field を v1.1 で導入する。**v1 ABI 維持**(unknown field は host が無視 spec §9.4)、**新 message type は追加しない**。
+
+```ts
+interface RecordOfferPayload_v1_1 extends RecordOfferPayload {
+  /** Bases subset hint。filer Auto 7 割多数決(PR-G G15)に直結。 */
+  kind?: 'video' | 'novel' | 'book' | 'audio' | 'image' | 'document';
+  /** thumbnail URL or asset_key。`<img src=>` で表示される。 */
+  thumbnail_url?: string;
+  /** provider 表示名(`YouTube` / `カクヨム` 等、出典 badge)。 */
+  provider?: string;
+  /** video / audio の長さ(秒)。 */
+  duration_sec?: number;
+  /** book の page 数。 */
+  pages?: number;
+  /** book の ISBN(13 桁推奨)。 */
+  isbn?: string;
+}
+```
+
+#### 8.6.1 validate ルール
+
+`record-offer-handler.ts` の `validateOfferPayload` は以下を受理する:
+
+- `kind`: 列挙値 6 つの **strict match**(typo は reject)
+- `thumbnail_url` / `provider` / `isbn`: `string`(空文字は許容)
+- `duration_sec` / `pages`: `number`
+
+それ以外の値は handler-level reject(`return false`、§8.3)。
+
+#### 8.6.2 ACCEPT_OFFER 時の挙動
+
+`offer.kind` / `thumbnail_url` / `provider` / `duration_sec` / `pages` / `isbn` のいずれかが存在する場合、`ACCEPT_OFFER` reducer は entry の body 先頭に **YAML frontmatter** を生成する:
+
+```yaml
+---
+kind: <value>
+url: <source_url>
+thumbnail: <thumbnail_url>
+provider: <provider>
+duration_sec: <number>
+pages: <number>
+isbn: <string>
+captured_at: <captured_at>
+---
+```
+
+このとき従来の **blockquote header(§10.4)は emit しない**(`url:` / `captured_at:` がすでに frontmatter に含まれるため)。
+
+v1.0 sender(これらの field を送らない)は引き続き blockquote header path を通る(後方互換)。
+
+#### 8.6.3 sender が frontmatter を build 済みの場合
+
+sender が `body` 中に `---` で始まる frontmatter を **既に組み立てている** ケースでは、host は **frontmatter を二重生成しない**(sender intent を尊重)。`body` をそのまま使う。これにより:
+
+- bookmarklet が完全 frontmatter 付き body を作って送れる(自由度高)
+- host が補助 metadata を frontmatter として上乗せする経路も別途維持
+
+#### 8.6.4 後方互換と PongProfile
+
+- v1.0 PKC2 が v1.1 sender の payload を受信:不明 field を読み捨て、`title` / `body` だけを使う(§7.3 / §9.4)。frontmatter / blockquote は v0 挙動。
+- v1.1 PKC2 が v1.0 sender の payload を受信:従来通り blockquote のみで処理。
+- `PongProfile.capabilities` に新 capability key を追加しない(v1.1 は payload superset であって新 type ではないため)。
+
+#### 8.6.5 filer Bases UX との連携
+
+`kind:` が frontmatter に書かれた entry は `autoDetectFilerProfile`(`features/filer/auto-display-profile.ts`)が直接拾い、**folder の中身が 7 割そのカテゴリで埋まれば自動的に video-base / book-base / contact-sheet 等の Bases subset が表示される**(PR-G G15 系列)。
+
+これにより外部 sender は `kind: video` を送るだけで PKC2 内 Bases に統合される。folder 配置(parent_folder)も sender が指定可能(`source_container_id` 経路は v1 で予約のみ、別 PR)。
+
 ---
 
 ## 9. Security / UX constraints

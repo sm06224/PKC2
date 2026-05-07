@@ -195,7 +195,7 @@ describe('buildFolderExportBundle', () => {
     expect(result.manifest.entries[0]!.lid).toBe('t1');
   });
 
-  it('excludes non-text and non-textlog archetypes', () => {
+  it('Phase 4 (manifest v2): includes attachment / todo / form / generic via entry-bundle', () => {
     const folder = makeEntry('f1', 'Folder', 'folder');
     const text = makeEntry('t1', 'Doc', 'text', 'hello');
     const todo = makeEntry('td1', 'Task', 'todo', '{"status":"open","description":"test"}');
@@ -212,20 +212,27 @@ describe('buildFolderExportBundle', () => {
     const result = buildFolderExportBundle(folder, container);
     expect(result.manifest.text_count).toBe(1);
     expect(result.manifest.textlog_count).toBe(0);
-    expect(result.manifest.entries).toHaveLength(1);
+    expect(result.manifest.other_count).toBe(2); // todo + attachment
+    expect(result.manifest.entries).toHaveLength(3);
+    expect(result.manifest.version).toBe(2);
+    const archetypes = result.manifest.entries.map((e) => e.archetype).sort();
+    expect(archetypes).toEqual(['attachment', 'text', 'todo']);
   });
 
   it('handles folder with zero exportable descendants gracefully', () => {
     const folder = makeEntry('f1', 'Empty', 'folder');
-    const todo = makeEntry('td1', 'Task', 'todo', '{"status":"open","description":"x"}');
+    const subFolder = makeEntry('f2', 'Sub', 'folder');
     const container = makeContainer({
-      entries: [folder, todo],
-      relations: [makeRelation('r1', 'f1', 'td1')],
+      entries: [folder, subFolder],
+      relations: [makeRelation('r1', 'f1', 'f2')],
     });
 
+    // Sub-folder is not a target itself (folders go in folders[]),
+    // and it has no descendants, so the manifest entries[] is empty.
     const result = buildFolderExportBundle(folder, container);
     expect(result.manifest.text_count).toBe(0);
     expect(result.manifest.textlog_count).toBe(0);
+    expect(result.manifest.other_count).toBeUndefined();
     expect(result.manifest.entries).toEqual([]);
     expect(result.blob.size).toBeGreaterThan(0); // still a valid ZIP (manifest only)
   });

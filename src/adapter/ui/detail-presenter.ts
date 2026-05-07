@@ -1,5 +1,6 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -75,9 +76,10 @@ const textPresenter: DetailPresenter = {
       return body;
     }
 
-    // Resolve `asset:` references (both image embeds and non-image chips)
-    // before markdown rendering.
-    let source = entry.body;
+    // 領域 10-6 ζ'' Phase 2a — strip leading frontmatter before markdown
+    // render. Properties land in the meta pane via renderFrontmatterSection.
+    // No-op when the body has no frontmatter.
+    let source = parseFrontmatter(entry.body).body;
     if (assets && mimeByKey && hasAssetReferences(source)) {
       source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
     }

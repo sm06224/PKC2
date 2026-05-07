@@ -104,11 +104,20 @@ describe('flags inspector — overlay rendering', () => {
     expect(select.options[0]!.selected).toBe(true);
   });
 
-  it('Tier 1 flag is rendered grayed (disabled editor)', () => {
+  it('Tier 1 flag is now editable (PR-Δ14: tier <= 1 user-mutable)', () => {
     defineFlag('locked.x', 5, { tier: 1 });
     const overlay = renderFlagsInspector();
     const input = overlay.querySelector(
       '[data-pkc-key="locked.x"] input',
+    ) as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+  });
+
+  it('Tier 2 flag remains disabled (deep const、ABI 級)', () => {
+    defineFlag('deep.x', 5, { tier: 2 });
+    const overlay = renderFlagsInspector();
+    const input = overlay.querySelector(
+      '[data-pkc-key="deep.x"] input',
     ) as HTMLInputElement;
     expect(input.disabled).toBe(true);
   });

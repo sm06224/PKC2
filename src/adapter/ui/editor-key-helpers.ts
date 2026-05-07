@@ -107,6 +107,14 @@ export function handleEditorEnter(ta: HTMLTextAreaElement): boolean {
   const end = ta.selectionEnd ?? start;
   if (start !== end) return false;
 
+  // PR-Δ8 (2026-05-07、user 視覚報告):caret 直前が `=` の場合、
+  // 後段の inline-calc trigger に Enter を渡すため false を返す
+  // (indent 継続は諦めて、計算式評価を優先する)。
+  // この判定は早期 return で、indent / list 継続より上に置く。
+  if (start > 0 && value[start - 1] === '=') {
+    return false;
+  }
+
   const lineStart = value.lastIndexOf('\n', start - 1) + 1;
   const currentLine = value.slice(lineStart, start);
 

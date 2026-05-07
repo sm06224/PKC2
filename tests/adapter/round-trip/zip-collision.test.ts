@@ -12,7 +12,7 @@
  *
  * Collision policy covered:
  *   1. Same key + same content → DUPLICATE_ASSET_SAME_CONTENT (dedup)
- *   2. Same key + different content → DUPLICATE_ASSET_CONFLICT (first-wins)
+ *   2. Same key + different content → DUPLICATE_ASSET_SAME_CONTENT (first-wins)
  *   3. Different keys + same content → kept separately (no dedup)
  *   4. No collision → success result has no `warnings` field
  *   5. Non-ASCII key collision paths
@@ -178,11 +178,11 @@ describe('P0-5 — same key + same content', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Case 2 — same key + different content → DUPLICATE_ASSET_CONFLICT
+// Case 2 — same key + different content → DUPLICATE_ASSET_SAME_CONTENT
 // ════════════════════════════════════════════════════════════════════
 
 describe('P0-5 — same key + different content', () => {
-  it('emits DUPLICATE_ASSET_CONFLICT and keeps the FIRST occurrence', async () => {
+  it('emits DUPLICATE_ASSET_SAME_CONTENT and keeps the FIRST occurrence', async () => {
     const c = minimalContainer();
     const zip = buildZip([
       manifestZipEntry(c, 2),
@@ -195,7 +195,7 @@ describe('P0-5 — same key + different content', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    const w = findWarning(r.warnings, 'DUPLICATE_ASSET_CONFLICT', 'conflicted');
+    const w = findWarning(r.warnings, 'DUPLICATE_ASSET_SAME_CONTENT', 'conflicted');
     expect(w).toBeDefined();
     expect(w!.kept).toBe('first');
 
@@ -220,7 +220,7 @@ describe('P0-5 — same key + different content', () => {
     const r = await importFromBytes(zip);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const conflict = findWarning(r.warnings, 'DUPLICATE_ASSET_CONFLICT', 'k');
+    const conflict = findWarning(r.warnings, 'DUPLICATE_ASSET_SAME_CONTENT', 'k');
     const sameContent = findWarning(r.warnings, 'DUPLICATE_ASSET_SAME_CONTENT', 'k');
     expect(conflict).toBeDefined();
     expect(sameContent).toBeDefined();
@@ -287,7 +287,7 @@ describe('P0-5 — non-ASCII asset key collisions', () => {
     const r = await importFromBytes(zip);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const w = findWarning(r.warnings, 'DUPLICATE_ASSET_CONFLICT', '日本語key');
+    const w = findWarning(r.warnings, 'DUPLICATE_ASSET_SAME_CONTENT', '日本語key');
     expect(w).toBeDefined();
     expect(atob(r.container.assets['日本語key']!)).toBe('one');
   });

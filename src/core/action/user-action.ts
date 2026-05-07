@@ -1,4 +1,4 @@
-import type { ArchetypeId } from '../model/record';
+import type { ArchetypeId, FilerProfile } from '../model/record';
 import type { RelationKind } from '../model/relation';
 import type { EntryConflict, Resolution } from '../model/merge-conflict';
 import type { EditBaseSnapshot } from '../operations/dual-edit-safety';
@@ -110,7 +110,17 @@ export type UserAction =
    * See `docs/development/relation-kind-edit-v1.md`.
    */
   | { type: 'UPDATE_RELATION_KIND'; id: string; kind: RelationKind }
-  | { type: 'ACCEPT_OFFER'; offer_id: string }
+  /**
+   * ACCEPT_OFFER — accept a pending record:offer, mint a new entry.
+   *
+   * Contract:
+   *   - `offer_id` must resolve to a `PendingOffer` in state.
+   *   - `target_folder_lid`(PR-VV、2026-05-06):**optional** target
+   *     folder. When present and resolves to a folder entry, a
+   *     structural relation is created from the target folder to the
+   *     new entry. Absent / null / unknown lid → entry lands at root.
+   */
+  | { type: 'ACCEPT_OFFER'; offer_id: string; target_folder_lid?: string | null }
   | { type: 'DISMISS_OFFER'; offer_id: string }
   | { type: 'CONFIRM_IMPORT' }
   | { type: 'CONFIRM_MERGE_IMPORT'; now: string }
@@ -466,7 +476,22 @@ export type UserAction =
   | { type: 'TOGGLE_UNREFERENCED_ATTACHMENTS_FILTER' }
   | { type: 'TOGGLE_TREE_HIDE_BUCKETS' }
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
-  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' }
+  | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' }
+  | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity' }
+  | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
+  | { type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' }
+  | { type: 'SET_GRAPH_REGION_SELECTED_LIDS'; lids: readonly string[] }
+  | { type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' }
+  | { type: 'SET_INVENTORY_FILTER'; key: string; value: string }
+  | { type: 'SET_INVENTORY_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
+  | { type: 'SET_INVENTORY_GROUP_BY'; groupBy: string | null }
+  | { type: 'CLEAR_INVENTORY_QUERY' }
+  | { type: 'SET_FILER_EXPLORER_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
+  | { type: 'SET_FILER_SEARCH_QUERY'; query: string }
+  | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
+  | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
+  | { type: 'SET_LAST_FILER_SCOPE'; lid: string | null }
+  | { type: 'RENAME_ENTRY_TITLE'; lid: string; title: string }
   | { type: 'SET_CALENDAR_MONTH'; year: number; month: number }
   | { type: 'PURGE_TRASH' }
   /**
@@ -490,7 +515,13 @@ export type UserAction =
    * is intentionally NOT wired — see the docs for rationale.
    */
   | { type: 'PURGE_ORPHAN_ASSETS' }
-  | { type: 'TOGGLE_MULTI_SELECT'; lid: string }
+  /**
+   * `includeAnchor`: true (default、後方互換)時、現在の selectedLid も
+   * 自動で multi 集合に含める(sidebar Ctrl+click 動作)。false 時、
+   * **明示的に lid のみ** を toggle(Filer checkbox の独立性確保、
+   * PR-Δ16 user 指摘「Filerで勝手に選択される挙動 = 副作用 UX 事故」)。
+   */
+  | { type: 'TOGGLE_MULTI_SELECT'; lid: string; includeAnchor?: boolean }
   /**
    * SELECT_RANGE — Shift+click range select.
    *
@@ -672,6 +703,31 @@ export type UserAction =
           optimizedDimensions: { width: number; height: number };
         };
       }>;
+    }
+  /**
+   * MATERIALIZE_THUMBNAIL — convert a runtime-resolved http(s)
+   * thumbnail URL into a local container asset (PR-HH, 2026-05-06).
+   *
+   * Contract:
+   * - Allowed in `ready` and `editing` phases (no phase change).
+   * - Blocked when readonly or container is absent.
+   * - When the entry's body has a `thumbnail: <http URL>` line in
+   *   its leading YAML frontmatter, replaces the URL with
+   *   `asset:<assetKey>` and writes the asset bytes into
+   *   `container.assets`.
+   * - Idempotent on repeat: if the URL has already been replaced
+   *   (or no http URL is present), the body is unchanged. The
+   *   asset write is still applied so concurrent fetchers converge
+   *   on the same key.
+   * - Does NOT change selection / edit state / phase / events.
+   *   Best-effort post-OFFER_ACCEPTED side effect.
+   */
+  | {
+      type: 'MATERIALIZE_THUMBNAIL';
+      lid: string;
+      assetKey: string;
+      assetData: string;
+      mime: string;
     }
   /**
    * SET_SANDBOX_POLICY — update container-level default sandbox policy.

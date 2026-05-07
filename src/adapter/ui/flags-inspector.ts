@@ -85,7 +85,12 @@ function renderTierBadge(tier: 0 | 1 | 2): HTMLElement {
 
 function renderEditor(flag: FlagDescriptor): HTMLElement {
   const tier = flag.options.tier ?? 0;
-  const editable = tier === 0;
+  // PR-Δ14 (2026-05-07、user 報告「templates.entries の Flags 設定変更が
+  // できない、テキストエリアが編集不可」):tier 1 は元々 user-mutable
+  // 設計(`templates.entries` の comment 参照)。editable 条件を
+  // tier 0 だけから tier <= 1 に拡張し、JSON 系 user 編集 flag を
+  // 有効化。tier 2 (deep const、ABI 級)は引き続き readonly。
+  const editable = tier <= 1;
 
   // Boolean: checkbox
   if (typeof flag.defaultValue === 'boolean') {
@@ -122,6 +127,33 @@ function renderEditor(flag: FlagDescriptor): HTMLElement {
   }
 
   // Numeric / string: text input
+  // PR-PPP (2026-05-07、user 修正指示7「Flags `templates.entries` が
+  // 編集できない」):default value が複数行 / 長尺の string flag は
+  // `<input type="text">` だと改行が剥落する + 横スクロールも辛い。
+  // 60 文字以上 or 改行を含む default は **`<textarea>` editor** に
+  // 切り替え。number flag / 短 string は従来通り 1 行 input。
+  const isLongString =
+    typeof flag.defaultValue === 'string'
+    && (flag.defaultValue.length >= 60 || flag.defaultValue.includes('\n'));
+  if (isLongString) {
+    const ta = document.createElement('textarea');
+    ta.className = 'pkc-flag-editor pkc-flag-editor-textarea';
+    ta.value = String(flag.currentValue ?? '');
+    ta.disabled = !editable;
+    ta.rows = Math.min(12, Math.max(4, String(flag.currentValue ?? '').split('\n').length));
+    ta.spellcheck = false;
+    // PR-PPP (2026-05-07):data-pkc-field を per-key で振って render-
+    // continuity の focus 復元キーに使う。SET_FLAG dispatch ごとに
+    // 全 shell 再描画が走るが、`flag-editor-${key}` が一致する textarea
+    // が新 DOM にあれば caret も含めて復元される。
+    ta.setAttribute('data-pkc-field', `flag-editor-${flag.key}`);
+    if (editable) {
+      ta.setAttribute('data-pkc-action', 'set-flag-string');
+      ta.setAttribute('data-pkc-key', flag.key);
+    }
+    return ta;
+  }
+
   const input = document.createElement('input');
   input.className = 'pkc-flag-editor pkc-flag-editor-text';
   input.type = typeof flag.defaultValue === 'number' ? 'number' : 'text';
@@ -227,6 +259,50 @@ function renderBuildFeaturesSection(): HTMLElement {
   return details;
 }
 
+// PR-GGG (2026-05-06、user 修正指示5「Flags Inspector で検索が
+// できない」):filter を module-level memo で persist。SET_FLAG
+// 等の re-render で input が再生成されても value 復元 + 状態保持。
+// AppState を膨らませない代わりに、inspector overlay が unmount
+// されると次回 open 時には残るが reset したいケースでは reset-all
+// で別 path を作る(本 PR では維持で OK、user 利便性優先)。
+let inspectorFilter = '';
+let inspectorCategoryFilter = '';
+
+/**
+ * Filter the rendered flag rows in place based on the current
+ * `inspectorFilter` (key / description substring) and
+ * `inspectorCategoryFilter` (category). 既存 row の `display`
+ * 属性を toggle、scroll 状態は保持。
+ */
+function applyInspectorFilter(panel: HTMLElement): void {
+  const q = inspectorFilter.trim().toLowerCase();
+  const cat = inspectorCategoryFilter.trim();
+  const rows = panel.querySelectorAll<HTMLElement>(
+    '[data-pkc-region="flag-row"]',
+  );
+  rows.forEach((row) => {
+    const key = (row.getAttribute('data-pkc-key') ?? '').toLowerCase();
+    const desc = (row.querySelector('.pkc-flag-description')?.textContent ?? '').toLowerCase();
+    const parentSection = row.closest<HTMLElement>('.pkc-flags-inspector-category-block');
+    const rowCat = parentSection?.getAttribute('data-pkc-flag-category') ?? '';
+    const matchQ = q === '' || key.includes(q) || desc.includes(q);
+    const matchCat = cat === '' || rowCat === cat;
+    row.style.display = matchQ && matchCat ? '' : 'none';
+  });
+  // Hide category section heading when no row inside survives filter.
+  const sections = panel.querySelectorAll<HTMLElement>(
+    '.pkc-flags-inspector-category-block',
+  );
+  sections.forEach((section) => {
+    const visibleRows = section.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="flag-row"]',
+    );
+    let anyVisible = false;
+    visibleRows.forEach((r) => { if (r.style.display !== 'none') anyVisible = true; });
+    section.style.display = anyVisible ? '' : 'none';
+  });
+}
+
 /**
  * Build the inspector overlay DOM. Returns the root element ready
  * to be appended to `#pkc-root`. The renderer wraps this in a
@@ -276,6 +352,13 @@ export function renderFlagsInspector(): HTMLElement {
   search.className = 'pkc-flags-inspector-search';
   search.placeholder = 'Search by key / description…';
   search.setAttribute('data-pkc-field', 'flags-search');
+  search.value = inspectorFilter;
+  // PR-GGG: input event で in-place row filter。state machine 経由で
+  // ない代わりに module-level memo に保存、re-render を起こさない。
+  search.addEventListener('input', () => {
+    inspectorFilter = search.value;
+    applyInspectorFilter(panel);
+  });
   toolbar.appendChild(search);
 
   const categorySelect = document.createElement('select');
@@ -289,8 +372,13 @@ export function renderFlagsInspector(): HTMLElement {
     const o = document.createElement('option');
     o.value = cat;
     o.textContent = cat;
+    if (cat === inspectorCategoryFilter) o.selected = true;
     categorySelect.appendChild(o);
   }
+  categorySelect.addEventListener('change', () => {
+    inspectorCategoryFilter = categorySelect.value;
+    applyInspectorFilter(panel);
+  });
   toolbar.appendChild(categorySelect);
 
   const resetAll = createElement('button', 'pkc-btn-small');
@@ -331,6 +419,12 @@ export function renderFlagsInspector(): HTMLElement {
   // body makes everything share one scrollable viewport, and the
   // footer shrinks to just the summary line.
   const body = createElement('div', 'pkc-flags-inspector-body');
+  // PR-NN (2026-05-06): mark the scrollable inspector body as a
+  // continuity region so a SET_FLAG dispatch — which triggers a
+  // full re-render via container.entries.__flags__ identity bump —
+  // does not snap the user back to the top mid-edit. User report:
+  // 「Flags 画面で設定変更時の勝手 scroll 修正」.
+  body.setAttribute('data-pkc-region', 'flags-inspector-body');
   if (flags.length === 0) {
     const empty = createElement('div', 'pkc-flags-inspector-empty');
     empty.textContent = 'No flags registered yet.';
@@ -371,5 +465,9 @@ export function renderFlagsInspector(): HTMLElement {
   panel.appendChild(footer);
 
   overlay.appendChild(panel);
+  // PR-GGG (2026-05-06):mount 直後に persisted filter を反映。
+  // re-render されても module-level memo から復元されるので、
+  // user の検索文字列 / category 選択が維持される。
+  applyInspectorFilter(panel);
   return overlay;
 }

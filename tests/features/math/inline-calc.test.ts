@@ -157,6 +157,55 @@ describe('detectInlineCalcRequest', () => {
     expect(req).not.toBeNull();
     expect(req!.expression).toBe('10*2');
   });
+
+  // ── PR-VVV (修正指示7 #8、行頭以外でも動作)──
+  describe('PR-VVV: caret 位置に content が後続するケース', () => {
+    it('fires mid-line: backwards scan stops at non-calc char (`:`)', () => {
+      const text = 'Total: 1+2= done';
+      const caret = 11; // right after `=` (position 10 is `=`)
+      const req = detectInlineCalcRequest(text, caret);
+      expect(req).not.toBeNull();
+      expect(req!.expression).toBe('1+2');
+      expect(req!.equalsPos).toBe(10);
+    });
+
+    it('fires mid-line with content after caret', () => {
+      const text = '1+2= more text';
+      const caret = 4; // right after `=`
+      const req = detectInlineCalcRequest(text, caret);
+      expect(req).not.toBeNull();
+      expect(req!.expression).toBe('1+2');
+    });
+
+    it('fires when expression preceded by Japanese text (scan stops at non-ASCII non-calc char)', () => {
+      const text = '結果は 3*4= です';
+      const caret = text.indexOf('=') + 1;
+      const req = detectInlineCalcRequest(text, caret);
+      expect(req).not.toBeNull();
+      expect(req!.expression).toBe('3*4');
+    });
+
+    it('returns null when caret is not right after `=` (mid-text)', () => {
+      const text = '1+2= ok';
+      // caret at end of " ok" — text[caret-1] = 'k', not '='
+      expect(detectInlineCalcRequest(text, text.length)).toBeNull();
+    });
+
+    it('multi-line: previous line content does not leak into expression', () => {
+      const text = 'previous garbage\n1+2=';
+      const caret = text.length;
+      const req = detectInlineCalcRequest(text, caret);
+      expect(req).not.toBeNull();
+      expect(req!.expression).toBe('1+2');
+    });
+
+    it('does NOT fire when text directly before `=` is non-calc only', () => {
+      const text = 'foo=';
+      const caret = 4;
+      // backwards scan stops at `o` immediately, expression empty.
+      expect(detectInlineCalcRequest(text, caret)).toBeNull();
+    });
+  });
 });
 
 // ── Formatter (pure) ───────────────────────────────────────

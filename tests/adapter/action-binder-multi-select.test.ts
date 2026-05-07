@@ -313,7 +313,10 @@ describe('Bulk Status Change (Phase 2-A)', () => {
     // Now make readonly by dispatching the readonly container
     // Actually, let's test directly — readonly is set when lightSource is true and embedded
     // Simpler: check that the reducer blocks when multiSelectedLids is empty
+    // PR-Δ9: TOGGLE_MULTI_SELECT no longer moves selectedLid, so we must
+    // also clear selectedLid (DESELECT_ENTRY) to make `getAllSelected()` empty.
     dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+    dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
     dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: 'done' });
 
     // With empty selection, it should be blocked — no changes
@@ -1491,16 +1494,17 @@ describe('Escape clears multi-select (Phase 2-E)', () => {
   });
 
   it('Escape preserves selectedLid when clearing multi-select', () => {
+    // PR-Δ9 (2026-05-07):TOGGLE_MULTI_SELECT が selectedLid を移動
+    // しなくなった。selectedLid は SELECT_ENTRY 経由で 'e1' のまま。
     const { dispatcher } = setupEsc(escContainer);
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
     dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
-    // TOGGLE_MULTI_SELECT sets selectedLid to action.lid
-    expect(dispatcher.getState().selectedLid).toBe('e2');
+    expect(dispatcher.getState().selectedLid).toBe('e1');
 
     pressEscape();
 
     expect(dispatcher.getState().multiSelectedLids).toEqual([]);
-    expect(dispatcher.getState().selectedLid).toBe('e2'); // preserved
+    expect(dispatcher.getState().selectedLid).toBe('e1'); // preserved
   });
 
   it('second Escape deselects entry after multi-select cleared', () => {
@@ -1510,7 +1514,7 @@ describe('Escape clears multi-select (Phase 2-E)', () => {
 
     pressEscape(); // clears multi-select
     expect(dispatcher.getState().multiSelectedLids).toEqual([]);
-    expect(dispatcher.getState().selectedLid).toBe('e2');
+    expect(dispatcher.getState().selectedLid).toBe('e1');
 
     pressEscape(); // deselects entry
     expect(dispatcher.getState().selectedLid).toBeNull();
@@ -1538,7 +1542,7 @@ describe('Escape clears multi-select (Phase 2-E)', () => {
     pressEscape();
 
     expect(dispatcher.getState().multiSelectedLids).toEqual([]);
-    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+    expect(dispatcher.getState().selectedLid).toBe('t1'); // PR-Δ9: TOGGLE no longer moves selectedLid
   });
 
   it('works consistently in Kanban view', () => {
@@ -1551,7 +1555,7 @@ describe('Escape clears multi-select (Phase 2-E)', () => {
     pressEscape();
 
     expect(dispatcher.getState().multiSelectedLids).toEqual([]);
-    expect(dispatcher.getState().selectedLid).toBe('t2'); // TOGGLE sets selectedLid to last toggled
+    expect(dispatcher.getState().selectedLid).toBe('t1'); // PR-Δ9: TOGGLE no longer moves selectedLid
   });
 
   // ── Guard tests ──

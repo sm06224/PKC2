@@ -12,8 +12,21 @@ import {
 import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import { renderImagePreviewModal } from './image-preview';
+import {
+  bindGraphCanvas,
+  installGraphCanvasGestures,
+  buildTimeAxisHint,
+  archetypeEmoji,
+  relationColor,
+  type GraphCanvasPayload,
+} from './graph-canvas';
+import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
+import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
+import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
 import { getUserEntries } from '../../core/model/container';
+import type { Revision } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
 import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
 import type { PendingOffer } from '../transport/record-offer-handler';
@@ -28,7 +41,7 @@ import {
   getEntryRevisions,
   parseRevisionSnapshot,
 } from '../../core/operations/container-ops';
-import type { ArchetypeId } from '../../core/model/record';
+import type { ArchetypeId, FilerProfile } from '../../core/model/record';
 import { applyFilters } from '../../features/search/filter';
 import { parseSearchQuery } from '../../features/search/query-parser';
 import { sortEntries } from '../../features/search/sort';
@@ -41,7 +54,16 @@ import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resol
 import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
 import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
-import { buildTree, getBreadcrumb, getAvailableFolders, getStructuralParent, collectDescendantLids } from '../../features/relation/tree';
+import {
+  buildTree,
+  getBreadcrumb,
+  getAvailableFolders,
+  getStructuralParent,
+  collectDescendantLids,
+  getStructuralChildren,
+  getRootEntries,
+  getAncestorFolderLids,
+} from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { getFilterIndexes } from './filter-cache';
@@ -68,6 +90,18 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
+import { parseFrontmatter } from '../../features/markdown/frontmatter';
+import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
+import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
+import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
+import { getGraphForceParams, graphIterations, graphGalaxyMode } from '../../features/graph/flags';
+import {
+  classifyUrl,
+  classifyFirstUrlInBody,
+  classifyFrontmatterUrl,
+  type UrlClassification,
+} from '../../features/classification/url-host';
+import { parseFragment, buildFragmentUri } from '../../features/fragment/registry';
 import type { TocNode } from '../../features/markdown/markdown-toc';
 import { planMergeImport } from '../../features/import/merge-planner';
 import { buildLinkIndex } from '../../features/link-index/link-index';
@@ -347,13 +381,25 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // dispatch wipes `root.innerHTML`, which resets the sidebar
   // scroll back to the top — long sidebars then snap-jump as the
   // user is mid-scroll. Capture both the sidebar and center-pane
-  // scrollTop before the rebuild so the post-render rAF handler
-  // below can restore them. The center-pane preservation already
-  // exists via `preserveCenterPaneScroll` for inline mutations,
-  // but full-shell re-renders (CONTAINER_LOADED, theme changes,
-  // any click-elsewhere) skipped that helper.
+  // scrollTop before the rebuild so the post-render handler below
+  // can restore them. The center-pane preservation already exists
+  // via `preserveCenterPaneScroll` for inline mutations, but
+  // full-shell re-renders (CONTAINER_LOADED, theme changes, any
+  // click-elsewhere) skipped that helper.
+  //
+  // PR-GG (2026-05-06): the actual scroll container for the entry
+  // list is `<ul class="pkc-entry-list" data-pkc-region="entry-
+  // list">`, not the outer `<aside data-pkc-region="sidebar">`.
+  // The aside has `display: flex; flex-direction: column` and
+  // never overflows; the UL has `flex: 1; overflow-y: auto`.
+  // Capturing only the aside read scrollTop = 0 every time, so
+  // the restore was silently a no-op — exactly the user-reported
+  // "大量のエントリがある状況でクリックすると左ペインのスクロー
+  // ルが上に戻る" symptom.
   const prevSidebarScroll =
     root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevEntryListScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]')?.scrollTop ?? null;
   const prevCenterScroll =
     root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
 
@@ -443,13 +489,50 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // helper still wins when the SELECTION moved (`scrollIntoView`
   // with `block: 'nearest'` is a no-op when the row is already
   // in view).
+  //
+  // PR-GG (2026-05-06): the synchronous write can clamp to
+  // `maxScrollTop = scrollHeight - clientHeight` when layout has
+  // not finished measuring the just-mounted sidebar (large entry
+  // counts amplify this). Schedule a rAF-deferred re-apply so the
+  // captured value wins once `scrollHeight` settles. Idempotent:
+  // a successful synchronous write turns the rAF pass into a no-op.
   if (prevSidebarScroll !== null) {
     const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
     if (sidebar) sidebar.scrollTop = prevSidebarScroll;
   }
+  if (prevEntryListScroll !== null) {
+    const entryList = root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+    if (entryList) entryList.scrollTop = prevEntryListScroll;
+  }
   if (prevCenterScroll !== null) {
     const center = root.querySelector<HTMLElement>('.pkc-center-content');
     if (center) center.scrollTop = prevCenterScroll;
+  }
+  if (prevSidebarScroll !== null || prevEntryListScroll !== null || prevCenterScroll !== null) {
+    const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+    if (raf) {
+      raf(() => {
+        if (!root.isConnected) return;
+        if (prevSidebarScroll !== null) {
+          const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+          if (sidebar && sidebar.scrollTop !== prevSidebarScroll) {
+            sidebar.scrollTop = prevSidebarScroll;
+          }
+        }
+        if (prevEntryListScroll !== null) {
+          const entryList = root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+          if (entryList && entryList.scrollTop !== prevEntryListScroll) {
+            entryList.scrollTop = prevEntryListScroll;
+          }
+        }
+        if (prevCenterScroll !== null) {
+          const center = root.querySelector<HTMLElement>('.pkc-center-content');
+          if (center && center.scrollTop !== prevCenterScroll) {
+            center.scrollTop = prevCenterScroll;
+          }
+        }
+      });
+    }
   }
 
   // Post-render: if the current selection changed since the last
@@ -521,7 +604,23 @@ function scrollSelectedSidebarNodeIntoView(
     `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
   );
   if (!node) return;
-  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // PR-Δ15 (2026-05-07、user 報告「エントリをクリックするとエントリが
+  // 震える動作をした後に全体の再描画ないし座標再設定が走っているように
+  // 感じる」):scrollIntoView は node が **viewport 完全内** にある場合
+  // でも僅か scroll する場合がある(sub-pixel 補正)。click 元の row は
+  // 定義により 100% visible なので、`scrollIntoView` を completely 包含
+  // 検知 + skip にして震動を撃退。partially clipped(切れている)時のみ
+  // scroll。happy-dom 等で rect が 0 の場合は実機ではないので skip 判定
+  // を bypass(test 互換)。
+  const sidebarRect = sidebar.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const haveLayout = sidebarRect.height > 0 && nodeRect.height > 0;
+  const fullyInView = haveLayout
+    && nodeRect.top >= sidebarRect.top
+    && nodeRect.bottom <= sidebarRect.bottom;
+  if (!fullyInView) {
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
   root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
 
@@ -557,6 +656,12 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   const oldSidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
   if (!oldSidebar) return;
   const scrollTop = oldSidebar.scrollTop;
+  // PR-GG (2026-05-06): the actual scroll container is the inner
+  // `<ul data-pkc-region="entry-list">`. Capture it too.
+  const oldEntryList = oldSidebar.querySelector<HTMLElement>(
+    '[data-pkc-region="entry-list"]',
+  );
+  const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
   const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
 
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
@@ -565,6 +670,23 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
 
   oldSidebar.replaceWith(newSidebar);
   newSidebar.scrollTop = scrollTop;
+  const newEntryList = newSidebar.querySelector<HTMLElement>(
+    '[data-pkc-region="entry-list"]',
+  );
+  if (newEntryList) newEntryList.scrollTop = entryListScrollTop;
+  // rAF-deferred re-apply to win against layout clamping when
+  // scrollHeight hasn't settled yet. Idempotent.
+  const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+  if (raf) {
+    raf(() => {
+      if (newSidebar.isConnected && newSidebar.scrollTop !== scrollTop) {
+        newSidebar.scrollTop = scrollTop;
+      }
+      if (newEntryList && newEntryList.isConnected && newEntryList.scrollTop !== entryListScrollTop) {
+        newEntryList.scrollTop = entryListScrollTop;
+      }
+    });
+  }
 }
 
 function renderInitializing(): HTMLElement {
@@ -614,7 +736,8 @@ function renderShell(state: AppState): HTMLElement {
 
   // Pending offers bar
   if (state.pendingOffers.length > 0) {
-    shell.appendChild(renderPendingOffers(state.pendingOffers));
+    // PR-VV (2026-05-06):folder picker 候補のため container を渡す。
+    shell.appendChild(renderPendingOffers(state.pendingOffers, state.container));
   }
 
   // Shell menu panel (hidden by default, toggled by action-binder).
@@ -679,7 +802,17 @@ function renderShell(state: AppState): HTMLElement {
   // Right pane: meta information (tags, relations, history, move)
   // System-about entries are view-only hidden entries, so the meta
   // pane (which exposes tags/relations/history/delete) is skipped.
-  const selected = findSelectedEntry(state);
+  let selected = findSelectedEntry(state);
+  // 2026-05-06 user direction:「ファイラ表示では、必ず右ペインは
+  // 開いているフォルダのものを表示すること。現状はフォルダ以外
+  // エントリを開いてから戻ると、開いたエントリのメタデータが
+  // 表示されている」。
+  // viewMode === 'filer' の時は filer scope folder を meta に固定。
+  // selectedLid は filer 内 row highlight にのみ使う。
+  if (state.viewMode === 'filer' && state.container) {
+    const scope = resolveFilerScope(state);
+    if (scope) selected = scope;
+  }
   const hasMetaPane = !!selected && selected.archetype !== 'system-about';
   if (hasMetaPane) {
     // Resize handle: center ↔ meta
@@ -728,6 +861,7 @@ function renderShell(state: AppState): HTMLElement {
   // the user can read it without surrounding chrome. Hidden until
   // the action binder opens it via `openMediaViewer(source)`.
   shell.appendChild(renderMediaViewer());
+  shell.appendChild(renderImagePreviewModal());
   return shell;
 }
 
@@ -942,7 +1076,7 @@ function renderHeader(state: AppState): HTMLElement {
       const textlogsBtn = createElement('button', 'pkc-btn pkc-btn-create');
       textlogsBtn.setAttribute('data-pkc-action', 'export-textlogs-container');
       textlogsBtn.setAttribute('title', 'Export all TEXTLOGs as a single ZIP bundle (.textlogs.zip)');
-      textlogsBtn.textContent = 'TEXTLOGs';
+      textlogsBtn.textContent = '📦 TEXTLOGs';
       header.appendChild(textlogsBtn);
     }
 
@@ -953,7 +1087,7 @@ function renderHeader(state: AppState): HTMLElement {
       const textsBtn = createElement('button', 'pkc-btn pkc-btn-create');
       textsBtn.setAttribute('data-pkc-action', 'export-texts-container');
       textsBtn.setAttribute('title', 'Export all TEXTs as a single ZIP bundle (.texts.zip)');
-      textsBtn.textContent = 'TEXTs';
+      textsBtn.textContent = '📦 TEXTs';
       header.appendChild(textsBtn);
     }
 
@@ -962,7 +1096,7 @@ function renderHeader(state: AppState): HTMLElement {
       const mixedBtn = createElement('button', 'pkc-btn pkc-btn-create');
       mixedBtn.setAttribute('data-pkc-action', 'export-mixed-container');
       mixedBtn.setAttribute('title', 'Export all TEXTs + TEXTLOGs as a single ZIP bundle (.mixed.zip)');
-      mixedBtn.textContent = 'Mixed';
+      mixedBtn.textContent = '📦 Mixed';
       header.appendChild(mixedBtn);
     }
   }
@@ -1495,6 +1629,351 @@ function renderShellMenu(
   debugSection.appendChild(debugButtons);
   card.appendChild(debugSection);
 
+  // PR-O (2026-05-06):Bookmarklet generator。user 報告「ブックマーク
+  // レットが使えないように感じる」。実装は Phase 3c-E から存在(URL
+  // `?pkc-snapshot=<base64>` を boot path で intake)、しかし生成 UI が
+  // 無く一般 user に届いていなかった。shell menu から draggable link
+  // で配布する。
+  const bmSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-bookmarklet');
+  const bmLabel = createElement('span', 'pkc-shell-menu-label');
+  bmLabel.textContent = 'Bookmarklet';
+  bmSection.appendChild(bmLabel);
+  // PR-R (2026-05-06) → PR-Z hotfix (2026-05-06):bookmarklet target URL
+  // 解決を環境別に固める。
+  //
+  // - http(s) hosted(GitHub Pages / 自前 host)→ そのままその URL を target に
+  // - file:// で開いている場合は `window.location.origin === 'null'`(string)
+  //   になり、`null + pathname` で壊れた URL を生成していた(user 報告
+  //   「null/Users/.../pkc2-...html」)。修正:`file://` のときは public
+  //   stable URL に fallback し、user に「file:// では同 instance への
+  //   bookmarklet 経由は不可能(Web ページから file:// は browser security
+  //   でブロック)」を desc 文で伝える。
+  const PKC2_PUBLIC_STABLE_URL = 'https://sm06224.github.io/PKC-Public/PKC2/';
+  const isFileOrigin = window.location.origin === 'null' || window.location.protocol === 'file:';
+  const bookmarkletTargetUrl = isFileOrigin
+    ? PKC2_PUBLIC_STABLE_URL
+    : `${window.location.origin}${window.location.pathname}`;
+  const bmDesc = createElement('div', 'pkc-shell-menu-bookmarklet-desc');
+  bmDesc.textContent = isFileOrigin
+    ? `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。\n⚠ 現在 file:// で開いているため、bookmarklet 送信先は public stable URL(${PKC2_PUBLIC_STABLE_URL})に fallback します。自前 host の PKC2 を使う場合は下のコードをコピーして URL 部分を編集してください。`
+    : `ドラッグしてブックマークバーへ。任意 Web ページで click → 選択テキスト + URL が PKC2 に新規 entry として送られます。送信先は今 click 時の PKC2 instance(${bookmarkletTargetUrl})。`;
+  bmSection.appendChild(bmDesc);
+  // PR-S (2026-05-06):**PKC-Message v1 spec §4.1 envelope + §7.2
+  // record:offer に完全準拠** な bookmarklet。User 指摘「PKC-Message の
+  // 規約読んだ?」を受けて全面書換え。flow:
+  //   1. bookmarklet が PKC2 を `?pkc-bookmarklet=ready` で開く
+  //   2. PKC2 boot 時、URL flag 検知して one-shot listener install +
+  //      opener に `{type:'pkc-bookmarklet-ready'}` 送信
+  //   3. bookmarklet が ready を受けて **正式 envelope の record:offer**
+  //      を target に postMessage
+  //   4. PKC2 が envelope validate → recordOfferHandler 経由で
+  //      PendingOffer 化 → user accept で初めて entry mint
+  //
+  // user-consent gate(spec §6.2)が温存されるので、bookmarklet が
+  // 自動的に entry を注入することは **無い**(必ず PendingOffer banner
+  // で user が "保存" を click する)。
+  // PR-V (2026-05-06):page-open UX(選択不要)+ 5 公式 site scraper
+  //(YouTube / Niconico / Narou / カクヨム / Amazon)+ generic OG meta
+  // fallback。v1.1 capture profile additive(kind / thumbnail_url /
+  // provider)を envelope に乗せて送信。host が body 先頭に YAML
+  // frontmatter を生成 → folder の中身が 7 割同 kind なら filer Auto
+  // で book-base / video-base / novel-base 等に Bases 化。
+  //
+  // 期待挙動:
+  //   - YouTube ページで click → kind:'video' / provider:'YouTube' /
+  //     thumbnail = i.ytimg.com/vi/<id>/maxresdefault.jpg
+  //   - カクヨム ページで click → kind:'novel' / provider:'カクヨム' /
+  //     thumbnail = og:image
+  //   - Amazon 商品ページ → kind:'book' / provider:'Amazon' /
+  //     thumbnail = og:image
+  //   - その他のページ → og:type / og:image fallback、不明なら kind 付与なし
+  const bmJs = (
+    '(function(){'
+    + 'var u=location.href,host=location.host,'
+    + 'q=function(s){var e=document.querySelector(s);return e?(e.getAttribute("content")||e.getAttribute("href")||""):""},'
+    + 'ogTitle=q("meta[property=\\"og:title\\"]"),'
+    + 'ogImg=q("meta[property=\\"og:image\\"]"),'
+    + 'ogDesc=q("meta[property=\\"og:description\\"]"),'
+    + 'ogType=q("meta[property=\\"og:type\\"]"),'
+    + 'ogSite=q("meta[property=\\"og:site_name\\"]"),'
+    + 't=ogTitle||document.title||"Snapshot",'
+    + 'sel=getSelection().toString().trim(),'
+    + 'firstP=document.querySelector("article p,main p"),'
+    + 'excerpt=sel||ogDesc||(firstP?firstP.textContent.slice(0,500):""),'
+    + 'now=new Date().toISOString(),'
+    + 'kind=null,provider=null,thumb=ogImg||null,'
+    // PR-JJ:author / brand は Amazon scraper で詰めるための holder。
+    // 他 site scraper も将来同じ holder を使える(syosetu / kakuyomu の
+    // author 抽出が PR-JJ scope 外でも、holder だけ既存)。
+    + 'pkAuthor=null,pkBrand=null;'
+    // 5 公式 site detection(URL host pattern → kind/provider)
+    + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";'
+    // PR-EEE (2026-05-06、user 修正指示5):YouTube DOM scraper 拡張。
+    // og:title が空の watch ページが多いため、複数候補から動画タイ
+    // トル / 投稿者 / 説明文を拾う。失敗しても既存 og 値 fallback で
+    // null にはならない安全網。
+    // タイトル候補:#title h1 yt-formatted-string / h1.title など。
+    + 'var ytT=document.querySelector("#title h1 yt-formatted-string,#title h1,h1.ytd-watch-metadata,h1.title yt-formatted-string");'
+    + 'if(ytT&&ytT.textContent){var ytTtxt=ytT.textContent.trim();if(ytTtxt)t=ytTtxt;}'
+    // 投稿者候補(channel name):#owner-name / ytd-channel-name a / itemprop=author。
+    + 'var ytC=document.querySelector("ytd-channel-name #text-container a,ytd-channel-name a,#owner #channel-name a,#upload-info #text a,[itemprop=\\"author\\"] [itemprop=\\"name\\"]");'
+    + 'var ytCtxt=ytC?ytC.textContent.trim():(ytC?ytC.getAttribute("content"):"");'
+    + 'if(ytCtxt)pkAuthor=ytCtxt;'
+    // 説明欄候補:#description-inline-expander / #description / meta[name=description]。
+    + 'var ytD=document.querySelector("#description-inline-expander,ytd-text-inline-expander,#description ytd-text-inline-expander,#description #text"),ytDtxt="";'
+    + 'if(ytD)ytDtxt=ytD.innerText||ytD.textContent||"";'
+    + 'if(!ytDtxt){var ytMd=document.querySelector("meta[name=description]");if(ytMd)ytDtxt=ytMd.getAttribute("content")||"";}'
+    + 'if(ytDtxt){ytDtxt=ytDtxt.replace(/\\s+/g," ").trim();if(ytDtxt)excerpt=ytDtxt.slice(0,800);}'
+    + '}'
+    + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
+    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
+    + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){'
+    // PR-JJ Amazon scraper(2026-05-06):#productTitle で clean な
+    // 商品名、#bylineInfo の <a> から author / brand を拾う。
+    // book / kindle 系は書名 + 著者、その他は商品名 + ブランド。
+    + 'kind="book";provider="Amazon";'
+    + 'var pTitle=document.getElementById("productTitle"),pTitleTxt=pTitle?pTitle.textContent.trim():"";'
+    + 'if(pTitleTxt)t=pTitleTxt;'
+    + 'var byline=document.getElementById("bylineInfo"),bylineLink=byline?byline.querySelector("a"):null,'
+    + 'bylineTxt=bylineLink?bylineLink.textContent.trim():(byline?byline.textContent.replace(/\\s+/g," ").trim():"");'
+    // book detection — URL に dp/ASIN(B〜10桁 の Kindle/書籍指標)があるか、
+    // bylineInfo に「(著)」「(Author)」が含まれるかで判定。
+    + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
+    + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
+    + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    // PR-ZZ (2026-05-06):user 修正指示4「Amazon からサムネ取得され
+    // ていない」への対応。og:image が無い / placeholder の Amazon
+    // 商品ページが大半。複数の DOM 候補から先頭の有効 src を採用:
+    //   #imgTagWrapperId img → 一般商品(`data-old-hires` で hi-res)
+    //   #landingImage → 一部商品 / kindle
+    //   #ebooksImgBlkFront img → ebook
+    //   #main-image / #imgBlkFront → variants
+    // どれも抽出できなければ既存 thumb(og:image)に fallback。
+    + 'var amImg=null,amSel=["#imgTagWrapperId img","#landingImage","#ebooksImgBlkFront img","#main-image","#imgBlkFront","#booksImageBlock_feature_div img"];'
+    + 'for(var ai=0;ai<amSel.length&&!amImg;ai++){'
+    + 'var amEl=document.querySelector(amSel[ai]);'
+    + 'if(amEl){amImg=amEl.getAttribute("data-old-hires")||amEl.getAttribute("data-a-dynamic-image")||amEl.src||null;'
+    + 'if(amImg&&amImg.charAt(0)==="{"){'
+    // data-a-dynamic-image: JSON object {url: [w,h]}. Pick first key.
+    + 'try{var amObj=JSON.parse(amImg);var amKeys=Object.keys(amObj||{});amImg=amKeys.length?amKeys[0]:null;}catch(_amE){amImg=null;}'
+    + '}}}'
+    + 'if(amImg&&/^https?:/.test(amImg))thumb=amImg;'
+    + '}'
+    // generic fallback by og:type
+    + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
+    + 'else if(/^music\\./.test(ogType)){kind="audio";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="article"&&ogSite)provider=ogSite;'
+    // payload 組立(plain markdown body、host が frontmatter を inject)
+    + 'var body="# "+t+(excerpt?"\\n\\n"+excerpt:""),'
+    + 'pl={title:t.slice(0,200),body:body,source_url:u,captured_at:now};'
+    + 'if(kind)pl.kind=kind;if(thumb)pl.thumbnail_url=thumb;if(provider)pl.provider=provider;'
+    // PR-JJ additive
+    + 'if(pkAuthor)pl.author=pkAuthor;if(pkBrand)pl.brand=pkBrand;'
+    + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
+    + 'source_id:"extension:pkc2-bookmarklet@1.1",target_id:null,payload:pl,timestamp:now},'
+    // PR-WW (2026-05-06):user 修正指示4「ブックマークレットで取り込
+    // むたびに新しいタブで PKC が開く。UX 低下・許容不可」への対応。
+    // `'_blank'` から **named target** `'pkc2-bookmarklet'` に変更。
+    // 既に同名 window/tab があれば browser はそれを focus + reuse、
+    // 無ければ新規 tab を 1 度だけ開く。2 回目以降の click で post-
+    // Message が同じ PKC2 instance に届くので「新タブが量産される」
+    // 問題が解消する。
+    + `w=open(${JSON.stringify(bookmarkletTargetUrl + '?pkc-bookmarklet=ready')},'pkc2-bookmarklet');`
+    + 'if(!w){alert("PKC2: popup blocked");return;}'
+    // PR-WW: 既存 named tab を reuse した場合、focus を明示的に呼ばないと
+    // bookmarklet 元 tab に視線が留まり「何も起きていない」と見える。
+    + 'try{w.focus();}catch(_){}'
+    // PR-Z fix:旧 `function h(e){...}` は `var h=location.host` と衝突して
+    // string で上書きされ addEventListener が TypeError を投げていた。
+    // handler は `onPkc2Ready` に rename。
+    + 'function onPkc2Ready(e){if(e.source!==w)return;'
+    + 'if(e.data&&e.data.type==="pkc-bookmarklet-ready"){'
+    + 'w.postMessage(env,"*");removeEventListener("message",onPkc2Ready);}}'
+    + 'addEventListener("message",onPkc2Ready);'
+    + '})();'
+  );
+  const bmLink = document.createElement('a');
+  bmLink.className = 'pkc-shell-menu-bookmarklet-link';
+  bmLink.href = `javascript:${bmJs}`;
+  bmLink.textContent = '📌 Send to PKC2';
+  bmLink.title = 'ドラッグしてブックマークバーに追加';
+  bmLink.draggable = true;
+
+  // PR-QQ (2026-05-06):「ローカル PKC 用 file DL モード」 bookmarklet。
+  // file:// で開いている PKC2 は browser の cross-origin policy で
+  // postMessage handshake が成立しない(file:// → file:// は禁止、
+  // file:// ⇄ http(s):// も window.opener が null)。代わりにこの
+  // bookmarklet は同じ envelope を `.pkc-capture.json` ファイルとして
+  // download する。ユーザーは PKC2 の Import ボタンから picker で
+  // 拾うか、shell に drop することで取り込める(後続 PR で完成)。
+  // PKC 哲学:ローカル動作を許容する経路を 1 本確保する。
+  const bmDlJs = (
+    '(function(){'
+    + 'var u=location.href,host=location.host,'
+    + 'q=function(s){var e=document.querySelector(s);return e?(e.getAttribute("content")||e.getAttribute("href")||""):""},'
+    + 'ogTitle=q("meta[property=\\"og:title\\"]"),'
+    + 'ogImg=q("meta[property=\\"og:image\\"]"),'
+    + 'ogDesc=q("meta[property=\\"og:description\\"]"),'
+    + 'ogType=q("meta[property=\\"og:type\\"]"),'
+    + 'ogSite=q("meta[property=\\"og:site_name\\"]"),'
+    + 't=ogTitle||document.title||"Snapshot",'
+    + 'sel=getSelection().toString().trim(),'
+    + 'firstP=document.querySelector("article p,main p"),'
+    + 'excerpt=sel||ogDesc||(firstP?firstP.textContent.slice(0,500):""),'
+    + 'now=new Date().toISOString(),'
+    + 'kind=null,provider=null,thumb=ogImg||null,'
+    + 'pkAuthor=null,pkBrand=null;'
+    // PR-FFF (2026-05-06):primary bookmarklet と同じ scraper logic
+    // を DL モードにも適用。PR-V の 5 site detection、PR-JJ の Amazon
+    // author/brand + thumb fallback chain、PR-EEE の YouTube DOM
+    // scraper(タイトル/投稿者/説明)を全部 inline。
+    + 'if(/youtube\\.com|youtu\\.be/.test(host)){kind="video";provider="YouTube";'
+    + 'var m=u.match(/(?:v=|youtu\\.be\\/)([\\w-]{11})/);if(m)thumb="https://i.ytimg.com/vi/"+m[1]+"/maxresdefault.jpg";'
+    + 'var ytT=document.querySelector("#title h1 yt-formatted-string,#title h1,h1.ytd-watch-metadata,h1.title yt-formatted-string");'
+    + 'if(ytT&&ytT.textContent){var ytTtxt=ytT.textContent.trim();if(ytTtxt)t=ytTtxt;}'
+    + 'var ytC=document.querySelector("ytd-channel-name #text-container a,ytd-channel-name a,#owner #channel-name a,#upload-info #text a,[itemprop=\\"author\\"] [itemprop=\\"name\\"]");'
+    + 'var ytCtxt=ytC?ytC.textContent.trim():(ytC?ytC.getAttribute("content"):"");'
+    + 'if(ytCtxt)pkAuthor=ytCtxt;'
+    + 'var ytD=document.querySelector("#description-inline-expander,ytd-text-inline-expander,#description ytd-text-inline-expander,#description #text"),ytDtxt="";'
+    + 'if(ytD)ytDtxt=ytD.innerText||ytD.textContent||"";'
+    + 'if(!ytDtxt){var ytMd=document.querySelector("meta[name=description]");if(ytMd)ytDtxt=ytMd.getAttribute("content")||"";}'
+    + 'if(ytDtxt){ytDtxt=ytDtxt.replace(/\\s+/g," ").trim();if(ytDtxt)excerpt=ytDtxt.slice(0,800);}'
+    + '}'
+    + 'else if(/nicovideo\\.jp/.test(host)){kind="video";provider="niconico";}'
+    + 'else if(/(ncode\\.|novel18\\.|mypage\\.)?syosetu\\.com/.test(host)){kind="novel";provider="小説家になろう";}'
+    + 'else if(/kakuyomu\\.jp/.test(host)){kind="novel";provider="カクヨム";}'
+    + 'else if(/amazon\\.(co\\.jp|com|de|co\\.uk|fr|es|it)/.test(host)){'
+    + 'kind="book";provider="Amazon";'
+    + 'var pTitle=document.getElementById("productTitle"),pTitleTxt=pTitle?pTitle.textContent.trim():"";'
+    + 'if(pTitleTxt)t=pTitleTxt;'
+    + 'var byline=document.getElementById("bylineInfo"),bylineLink=byline?byline.querySelector("a"):null,'
+    + 'bylineTxt=bylineLink?bylineLink.textContent.trim():(byline?byline.textContent.replace(/\\s+/g," ").trim():"");'
+    + 'var isBook=/\\/(dp|gp\\/product)\\/(B0|4|0|1|9)/.test(u)||/(著)|(Author)/i.test(byline?byline.textContent:"");'
+    + 'if(isBook){var amAuth=bylineTxt.replace(/\\(.+?\\)/g,"").replace(/\\s+/g," ").trim();if(amAuth)pkAuthor=amAuth;}'
+    + 'else{kind=null;var amBrand=bylineTxt.replace(/^(Visit the |Brand: |ブランド: )/i,"").replace(/Store$/i,"").replace(/\\s+/g," ").trim();if(amBrand)pkBrand=amBrand;}'
+    // Amazon thumbnail DOM fallback chain(PR-ZZ from primary、ここで初導入)。
+    + 'var amImg=null,amSel=["#imgTagWrapperId img","#landingImage","#ebooksImgBlkFront img","#main-image","#imgBlkFront","#booksImageBlock_feature_div img"];'
+    + 'for(var ai=0;ai<amSel.length&&!amImg;ai++){'
+    + 'var amEl=document.querySelector(amSel[ai]);'
+    + 'if(amEl){amImg=amEl.getAttribute("data-old-hires")||amEl.getAttribute("data-a-dynamic-image")||amEl.src||null;'
+    + 'if(amImg&&amImg.charAt(0)==="{"){'
+    + 'try{var amObj=JSON.parse(amImg);var amKeys=Object.keys(amObj||{});amImg=amKeys.length?amKeys[0]:null;}catch(_amE){amImg=null;}'
+    + '}}}'
+    + 'if(amImg&&/^https?:/.test(amImg))thumb=amImg;'
+    + '}'
+    + 'else if(/^video\\./.test(ogType)){kind="video";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="book"){kind="book";if(ogSite)provider=ogSite;}'
+    + 'else if(/^music\\./.test(ogType)){kind="audio";if(ogSite)provider=ogSite;}'
+    + 'else if(ogType==="article"&&ogSite)provider=ogSite;'
+    + 'var body="# "+t+(excerpt?"\\n\\n"+excerpt:""),'
+    + 'pl={title:t.slice(0,200),body:body,source_url:u,captured_at:now};'
+    + 'if(kind)pl.kind=kind;if(thumb)pl.thumbnail_url=thumb;if(provider)pl.provider=provider;'
+    + 'if(pkAuthor)pl.author=pkAuthor;if(pkBrand)pl.brand=pkBrand;'
+    + 'var env={protocol:"pkc-message",version:1,type:"record:offer",'
+    + 'source_id:"extension:pkc2-bookmarklet@1.1-dl",target_id:null,payload:pl,timestamp:now};'
+    // 違いはここから:postMessage せず Blob を作って download trigger。
+    + 'var json=JSON.stringify(env,null,2),'
+    + 'blob=new Blob([json],{type:"application/json"}),'
+    + 'url=URL.createObjectURL(blob),'
+    + 'fname="pkc2-capture-"+now.replace(/[:.]/g,"-").slice(0,19)+".pkc-capture.json",'
+    + 'a=document.createElement("a");'
+    + 'a.href=url;a.download=fname;document.body.appendChild(a);a.click();'
+    + 'setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},0);'
+    + '})();'
+  );
+  const bmDlLink = document.createElement('a');
+  bmDlLink.className = 'pkc-shell-menu-bookmarklet-link pkc-shell-menu-bookmarklet-link-dl';
+  bmDlLink.href = `javascript:${bmDlJs}`;
+  bmDlLink.textContent = '📥 Save .pkc-capture.json';
+  bmDlLink.title = 'ローカル PKC 用:現ページのキャプチャを JSON ファイルでダウンロード(後で PKC2 にドロップ可)';
+  bmDlLink.draggable = true;
+  bmSection.appendChild(bmLink);
+  bmSection.appendChild(bmDlLink);
+
+  // PR-W (2026-05-06):custom scraper を user が追加するための template
+  // editor。<details> で展開、bookmarklet JS を <textarea> に表示して
+  // user が copy / 編集できる。User direction:
+  // > それ以外はユーザーが自分でスクレイピングを用意できるようにしましょう
+  //
+  // 編集経路:
+  //   1. user が下の textarea から JS をコピー
+  //   2. 自分のお気に入りブックマークの URL に `javascript:` prefix を
+  //      付けて貼り付け
+  //   3. host pattern 部(`if(/youtube\.com|...)`...)に独自 site を追加
+  //   4. 名前を変えて保存(複数 site 用 bookmarklet を user が育てる)
+  //
+  // PKC2 内に scraper 設定を保存する代わりに、bookmarklet 自体を user
+  // が育てる UX。PKC2 哲学(local-first / single-source)に沿う。
+  const bmCustom = document.createElement('details');
+  bmCustom.className = 'pkc-shell-menu-bookmarklet-custom';
+  const bmCustomSummary = document.createElement('summary');
+  bmCustomSummary.className = 'pkc-shell-menu-bookmarklet-custom-summary';
+  bmCustomSummary.textContent = '▼ カスタム作成 / コードを表示';
+  bmCustom.appendChild(bmCustomSummary);
+  const bmCustomDesc = createElement('div', 'pkc-shell-menu-bookmarklet-custom-desc');
+  bmCustomDesc.textContent = '5 公式 site 以外(個人 blog / 別 SNS / 自社 wiki 等)も対応したい場合、下の JS をコピーして自分でブックマークを作成し、host pattern 部分に独自 site を追加してください。';
+  bmCustom.appendChild(bmCustomDesc);
+  const bmCode = document.createElement('textarea');
+  bmCode.className = 'pkc-shell-menu-bookmarklet-code';
+  bmCode.setAttribute('readonly', 'true');
+  bmCode.setAttribute('spellcheck', 'false');
+  bmCode.setAttribute('rows', '6');
+  bmCode.value = `javascript:${bmJs}`;
+  bmCode.title = 'クリックで全選択 → Ctrl/Cmd+C でコピー';
+  bmCode.addEventListener('focus', () => bmCode.select());
+  bmCustom.appendChild(bmCode);
+  const bmCopyBtn = createElement('button', 'pkc-btn-small pkc-shell-menu-bookmarklet-copy');
+  bmCopyBtn.setAttribute('data-pkc-action', 'copy-bookmarklet-code');
+  bmCopyBtn.textContent = '📋 クリップボードにコピー';
+  bmCopyBtn.title = 'bookmarklet JS をクリップボードへ';
+  bmCustom.appendChild(bmCopyBtn);
+  bmSection.appendChild(bmCustom);
+
+  card.appendChild(bmSection);
+
+  // PR-M (2026-05-06):shell menu に GitHub Pages の公開 URL を 3 件
+  // 出して、初見 user がマニュアル / 安定版 / 開発版に到達できるよう
+  // にする。user 指示:
+  // > シェルメニューに公開URLを以下の追加して、これがあれば一般ユー
+  // > ザーもマニュアル見れるでしょ
+  const urlSection = createElement('div', 'pkc-shell-menu-section pkc-shell-menu-public-urls');
+  const urlLabel = createElement('span', 'pkc-shell-menu-label');
+  urlLabel.textContent = 'Public URLs';
+  urlSection.appendChild(urlLabel);
+  const urlList = createElement('div', 'pkc-shell-menu-public-urls-list');
+  const publicUrls: { label: string; url: string; tip: string }[] = [
+    {
+      label: '📦 安定版',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2/',
+      tip: '安定版 PKC2(GitHub Pages 公開、最新リリース)',
+    },
+    {
+      label: '🧪 開発版',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2-DEV/',
+      tip: '開発版 PKC2(最新 main、未リリース機能を含む)',
+    },
+    {
+      label: '📖 Manual',
+      url: 'https://sm06224.github.io/PKC-Public/PKC2-MANUAL/',
+      tip: 'PKC2 マニュアル(安定版ベース、入門〜上級)',
+    },
+  ];
+  for (const { label, url, tip } of publicUrls) {
+    const a = document.createElement('a');
+    a.className = 'pkc-shell-menu-public-url';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = tip;
+    a.textContent = label;
+    urlList.appendChild(a);
+  }
+  urlSection.appendChild(urlList);
+  card.appendChild(urlSection);
+
   // Version (clickable → About)
   const versionSection = createElement('button', 'pkc-shell-menu-section pkc-shell-menu-version');
   versionSection.setAttribute('data-pkc-action', 'select-about');
@@ -1634,21 +2113,37 @@ function renderShortcutHelp(): HTMLElement {
   heading.textContent = 'Keyboard Shortcuts';
   card.appendChild(heading);
 
+  // PR-MM (2026-05-06): registry を action-binder と shortcut-help が
+  // 共有するための shared SOT は Flags 集中管理 wave で導入予定。
+  // 本 PR は help 文言を action-binder の actual key handling に合わせ
+  // て audit-update する scope。
   const shortcuts: { key: string; desc: string; group?: string }[] = [
     { key: 'Ctrl+N / ⌘+N', desc: 'New text entry' },
     { key: 'Ctrl+S / ⌘+S', desc: 'Save (in edit mode)' },
     { key: 'Ctrl+E / ⌘+E', desc: 'Edit selected entry' },
-    { key: 'Escape', desc: 'Cancel edit / Deselect / Close' },
+    { key: 'Escape', desc: 'Cancel edit / Deselect / Close menus / overlay' },
     { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
-    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select' },
-    { key: 'Shift+Click', desc: 'Range select' },
+    { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select (sidebar)' },
+    { key: 'Shift+Click', desc: 'Range select (sidebar)' },
+    { key: '', desc: '', group: 'Navigation (sidebar / list)' },
+    { key: 'Arrow Up / Down', desc: 'Move selection in sidebar tree' },
+    { key: 'Arrow Left / Right', desc: 'Collapse / expand folder; jump to parent / first child' },
+    { key: 'Enter', desc: 'Open selected entry (in non-editing mode)' },
+    { key: '', desc: '', group: 'Calendar view' },
+    { key: 'Arrow Left / Right', desc: 'Step day' },
+    { key: 'Ctrl+Shift+Arrow Up / Down', desc: 'Step week (±7 days)' },
+    { key: '', desc: '', group: 'Kanban view' },
+    { key: 'Ctrl+Arrow Left / Right', desc: 'Move selected todo across columns' },
+    { key: 'Arrow Left / Right', desc: 'Cross-column step (pick first card in target column)' },
     { key: '', desc: '', group: 'Panes' },
     { key: 'Ctrl+\\ / ⌘+\\', desc: 'Toggle sidebar (left pane)' },
     { key: 'Ctrl+Shift+\\', desc: 'Toggle meta pane (right pane)' },
     { key: 'Ctrl+Alt+\\', desc: 'Focus mode — hide both panes (Windows / cross-platform)' },
     { key: 'Alt+Space', desc: 'Focus mode — hide both panes (Mac / Linux only; blocked by Windows OS menu)' },
-    { key: '', desc: '', group: 'Editing' },
-    { key: 'Tab (in textarea)', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
+    { key: '', desc: '', group: 'Editing (textarea)' },
+    { key: 'Tab', desc: 'Insert tab character (= 4 spaces, via tab-size:4)' },
+    { key: 'Ctrl+Enter / ⌘+Enter', desc: 'Append entry (TEXTLOG append textarea)' },
+    { key: 'Space', desc: 'Toggle checkbox under caret (markdown task list)' },
     { key: '', desc: '', group: 'Date/Time (edit mode)' },
     { key: 'Ctrl+;', desc: 'Insert date (yyyy/MM/dd)' },
     { key: 'Ctrl+:', desc: 'Insert time (HH:mm:ss)' },
@@ -1658,6 +2153,9 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+Shift+Alt+D', desc: 'Insert ISO 8601' },
     { key: '', desc: '', group: 'Slash Commands (edit mode)' },
     { key: '/', desc: 'Open input assist menu (line start)' },
+    { key: '', desc: '', group: 'Note' },
+    { key: '', desc:
+      'Future: a flags-controlled shortcut registry (`shortcuts.*` flag namespace) will let users rebind these keys without rebuild.' },
   ];
 
   const table = createElement('div', 'pkc-shortcut-table');
@@ -2004,7 +2502,11 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     '全データを配布用 HTML でエクスポート（相手に PKC2 不要・単体で開ける・編集可能）',
   );
-  exportBtn.textContent = 'Export';
+  // PR-TT (2026-05-06): user 修正指示2「Date... 配下メニュー、PC で
+  // 絵文字なくモバイルと統一感がない」(Data… の typo と解釈)。PC
+  // labels を mobile drawer の emoji 接頭辞に揃える。Share=📤 / Archive
+  // ZIP=📦 / Import=📥 の 3 系統 icon が distinct になるよう拡張。
+  exportBtn.textContent = '📤 Export';
   content.appendChild(exportBtn);
 
   // Export Light (editable) — same as Full but strips assets
@@ -2016,8 +2518,22 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'アセットなしの軽量な配布用 HTML をエクスポート（相手に PKC2 不要・単体で開ける）',
   );
-  lightBtn.textContent = 'Light';
+  lightBtn.textContent = '📤 Light';
   content.appendChild(lightBtn);
+
+  // PR-PP (2026-05-06): New PKC button — exports a fresh HTML carrying
+  // ONLY the reserved system entries (`__settings__` / `__flags__` /
+  // `__about__`) with user content stripped. Use case:「私の theme と
+  // flag 設定を埋め込んだ blank PKC2 を相手に渡す / 新 workspace の
+  // 起点にする」(user 修正指示2).
+  const newPkcBtn = createElement('button', 'pkc-btn pkc-btn-create');
+  newPkcBtn.setAttribute('data-pkc-action', 'export-system-only');
+  newPkcBtn.setAttribute(
+    'title',
+    'システムエントリ(設定 / Flags / About)だけを含む空の PKC2 を HTML で書き出す。相手は同じ theme / 設定で blank workspace を始められる',
+  );
+  newPkcBtn.textContent = '🆕 New PKC';
+  content.appendChild(newPkcBtn);
 
   // Selected-entry HTML clone export — produces a stand-alone `.html`
   // that the recipient can open without PKC2. Subset logic
@@ -2064,7 +2580,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'Backup ZIP（.pkc2.zip）として書き出す — バックアップ・マシン移行・別 PKC2 への再インポート用',
   );
-  zipBtn.textContent = 'Backup ZIP';
+  zipBtn.textContent = '📦 Backup ZIP';
   content.appendChild(zipBtn);
 
   // Container-wide TEXTLOG export — only shown when the container
@@ -2078,7 +2594,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全テキストログをまとめて ZIP エクスポート（再インポート用）',
     );
-    textlogsBtn.textContent = 'TEXTLOGs';
+    textlogsBtn.textContent = '📦 TEXTLOGs';
     content.appendChild(textlogsBtn);
   }
 
@@ -2093,7 +2609,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全テキストをまとめて ZIP エクスポート（再インポート用）',
     );
-    textsBtn.textContent = 'TEXTs';
+    textsBtn.textContent = '📦 TEXTs';
     content.appendChild(textsBtn);
   }
 
@@ -2107,7 +2623,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
       'title',
       '全 TEXT / TEXTLOG をまとめて ZIP エクスポート (.mixed.zip・再インポート用)',
     );
-    mixedBtn.textContent = 'Mixed';
+    mixedBtn.textContent = '📦 Mixed';
     content.appendChild(mixedBtn);
   }
 
@@ -2154,7 +2670,7 @@ function renderExportImportInline(state: AppState): HTMLElement {
     'title',
     'HTML または Backup ZIP を取り込む（プレビューで Replace / Merge を選択）',
   );
-  importBtn.textContent = 'Import';
+  importBtn.textContent = '📥 Import';
   content.appendChild(importBtn);
 
   // Import single-entry bundle (.textlog.zip)
@@ -2364,10 +2880,70 @@ function renderRecentEntriesPane(
 function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
   const endProfile = profileStart('render:sidebar');
   try {
+    // 領域 10-6 ζ'' Phase 4 follow-up: `sidebar.mode = 'filer'` で
+    // 左ペインを compact filer-explorer に差し替え。tree (default) は
+    // 既存実装を流用。
+    if (sidebarMode() === 'filer') {
+      return renderSidebarAsFiler(state);
+    }
     return renderSidebarImpl(state, sharedLinkIndex);
   } finally {
     endProfile();
   }
+}
+
+/**
+ * Compact filer surface used inside the left pane when
+ * `sidebar.mode = 'filer'`. Mirrors the explorer subset structure
+ * of the center filer view but at narrower width: only the name +
+ * archetype icon column, no breadcrumb header (it's pinned to the
+ * current folder via selectedLid).
+ */
+function renderSidebarAsFiler(state: AppState): HTMLElement {
+  const sidebar = createElement('aside', 'pkc-sidebar pkc-sidebar-filer-mode');
+  sidebar.setAttribute('data-pkc-region', 'sidebar');
+  sidebar.setAttribute('data-pkc-sidebar-mode', 'filer');
+
+  const scope = resolveFilerScope(state);
+  const header = createElement('div', 'pkc-sidebar-filer-header');
+  const label = createElement('span', 'pkc-sidebar-filer-label');
+  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
+  header.appendChild(label);
+  sidebar.appendChild(header);
+
+  const children = scope
+    ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
+    : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
+  const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+
+  const nav = resolveFilerNavigation(state);
+  const list = createElement('ul', 'pkc-sidebar-filer-list');
+  if (nav.parent) {
+    const li = createElement('li', 'pkc-sidebar-filer-item pkc-sidebar-filer-nav-up');
+    li.setAttribute('data-pkc-action', 'select-entry');
+    li.setAttribute('data-pkc-lid', nav.parent.lid);
+    li.setAttribute('data-pkc-archetype', 'folder');
+    li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
+    list.appendChild(li);
+  }
+  for (const child of visibleChildren) {
+    const li = createElement('li', 'pkc-sidebar-filer-item');
+    li.setAttribute('data-pkc-action', 'select-entry');
+    li.setAttribute('data-pkc-lid', child.lid);
+    li.setAttribute('data-pkc-archetype', child.archetype);
+    if (child.lid === state.selectedLid) li.setAttribute('data-pkc-active', 'true');
+    li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
+    list.appendChild(li);
+  }
+  if (visibleChildren.length === 0 && !nav.parent) {
+    const empty = createElement('div', 'pkc-sidebar-filer-empty');
+    empty.textContent = '(empty)';
+    sidebar.appendChild(empty);
+  } else {
+    sidebar.appendChild(list);
+  }
+
+  return sidebar;
 }
 
 function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
@@ -2821,6 +3397,15 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   }
 
   const list = createElement('ul', 'pkc-entry-list');
+  // PR-GG (2026-05-06): mark the entry-list as a scroll region so
+  // render-continuity capture/restore preserves it across full
+  // re-renders. Critical: the `<aside class="pkc-sidebar">` wrapper
+  // never overflows because the entry-list is `flex:1; overflow-y:
+  // auto` — the user's actual scroll lives on this UL, not on the
+  // outer sidebar. Without this attribute, every dispatch silently
+  // wiped the sidebar's scroll position back to 0, manifesting as
+  // "大量のエントリでクリックすると左ペインが上に戻る".
+  list.setAttribute('data-pkc-region', 'entry-list');
   const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
   // v1 backlink count badge: per-target count map. PR #192 routes
@@ -2929,8 +3514,18 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     sidebar.appendChild(hints);
   }
 
-  // Multi-selection action bar
-  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+  // PR-Δ25 (2026-05-07、user 訂正「Filer で選択時に左ペインに一括操作 UI
+  // が出るのは誤り、Filer 側に表示すべき」):viewMode === 'filer' のとき
+  // sidebar には bar を出さない(filer view 側で同 helper を呼んで filer
+  // 内部に表示する)。それ以外の view では従来通り sidebar 表示。
+  // PR-Δ30 (2026-05-07):graph view も同様に view 内で表示するため
+  // sidebar 側は skip。
+  if (
+    state.multiSelectedLids.length > 0
+    && !state.readonly
+    && state.viewMode !== 'filer'
+    && state.viewMode !== 'graph'
+  ) {
     const bar = createElement('div', 'pkc-multi-action-bar');
     bar.setAttribute('data-pkc-region', 'multi-action-bar');
 
@@ -3005,6 +3600,75 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
         clearDateBtn.textContent = '✕ date';
         bar.appendChild(clearDateBtn);
       }
+    }
+
+    // PR-Δ5 (2026-05-07、user 報告「複数エントリに同一のタグやカラー
+    // タグ、リレーションを与えるなどの一括操作要素」):bulk tag /
+    // color-tag application。reducer は ADD_ENTRY_TAG / SET_ENTRY_COLOR
+    // を 1 entry ずつ叩くため、変更しない field は完全に保護される。
+    if (state.container) {
+      // Bulk add tag
+      const tagInput = document.createElement('input');
+      tagInput.type = 'text';
+      tagInput.className = 'pkc-multi-action-tag-input';
+      tagInput.placeholder = 'タグ追加 (Enter)';
+      tagInput.setAttribute('data-pkc-action', 'bulk-add-tag-input');
+      tagInput.setAttribute('data-pkc-field', 'bulk-add-tag');
+      tagInput.title = '選択中の全エントリに同じタグを追加(他の field は不変)';
+      bar.appendChild(tagInput);
+
+      // Bulk color-tag selector
+      const colorSelect = document.createElement('select');
+      colorSelect.className = 'pkc-multi-action-color';
+      colorSelect.setAttribute('data-pkc-action', 'bulk-set-color-tag');
+      colorSelect.title = '選択中の全エントリに同じカラータグを設定';
+      const cph = document.createElement('option');
+      cph.value = '';
+      cph.textContent = 'Color...';
+      cph.disabled = true;
+      cph.selected = true;
+      colorSelect.appendChild(cph);
+      for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray']) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        colorSelect.appendChild(opt);
+      }
+      const clearOpt = document.createElement('option');
+      clearOpt.value = '__none__';
+      clearOpt.textContent = '✕ 解除';
+      colorSelect.appendChild(clearOpt);
+      bar.appendChild(colorSelect);
+
+      // Bulk add structural-relation (move-into-folder の semantic は別、
+      // ここは generic relation-from-source-X-to-each。Phase 1 は
+      // structural / categorical / semantic の relation kind 選択 +
+      // target lid 選択を 2 select で構成、target は selectable folder 等
+      // から拾う。ロジック簡素化のため source-X-to-each 形式 (X は select
+      // から、each は state.multiSelectedLids 全件)。
+      const relTargetSelect = document.createElement('select');
+      relTargetSelect.className = 'pkc-multi-action-rel-target';
+      relTargetSelect.setAttribute('data-pkc-action', 'bulk-add-relation-target');
+      relTargetSelect.title = '選択中の全エントリに同じ参照先を関連付け';
+      const rph = document.createElement('option');
+      rph.value = '';
+      rph.textContent = 'Relate to...';
+      rph.disabled = true;
+      rph.selected = true;
+      relTargetSelect.appendChild(rph);
+      // 関連先候補は selectedLid 以外の全 entry(多すぎる場合は folder
+      // のみに絞る)。30+ entry を全部出すと UX が悪いため、現状は
+      // folder のみ列挙。
+      const relCandidates = state.container.entries.filter(
+        (e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid),
+      );
+      for (const c of relCandidates) {
+        const opt = document.createElement('option');
+        opt.value = c.lid;
+        opt.textContent = `📁 ${c.title || '(untitled)'}`;
+        relTargetSelect.appendChild(opt);
+      }
+      bar.appendChild(relTargetSelect);
     }
 
     const clearBtn = createElement('button', 'pkc-btn-small');
@@ -3520,6 +4184,27 @@ function renderEntryItem(
     li.appendChild(downBtn);
   }
 
+  // PR-III (2026-05-06、user 修正指示5「エントリ編集中、左ペインの
+  // コピーリンク系の挙動のみ活かしてほしい。リンクをたくさん埋め
+  // 込んだエントリを作成する時に手間」):各 sidebar entry に小さな
+  // 🔗 copy-link button を常設、hover で visible(CSS)。click は
+  // `e.target.closest([data-pkc-action])` で button が先にマッチする
+  // ため、parent の select-entry を pre-empt して permalink だけが
+  // clipboard へコピーされる(編集中の body / focus / scroll は
+  // 一切影響を受けない)。reserved / system entries では非表示。
+  if (
+    !isReservedLid(entry.lid)
+    && !isSystemArchetype(entry.archetype)
+  ) {
+    const copyLinkBtn = createElement('button', 'pkc-entry-copy-link');
+    copyLinkBtn.setAttribute('data-pkc-action', 'copy-entry-permalink');
+    copyLinkBtn.setAttribute('data-pkc-lid', entry.lid);
+    copyLinkBtn.setAttribute('title', 'このエントリの共有 URL（pkc://）をコピー');
+    copyLinkBtn.setAttribute('aria-label', 'Copy permalink');
+    copyLinkBtn.textContent = '🔗';
+    li.appendChild(copyLinkBtn);
+  }
+
   return li;
 }
 
@@ -3589,8 +4274,38 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
-  // Detail view (existing behavior)
+  // Filer view (Phase 1: skeleton placeholder; Phase 1 PR-2 will add table render)
+  if (state.viewMode === 'filer') {
+    center.appendChild(renderFilerView(state));
+    return center;
+  }
+
+  // Graph view (領域 10-6 ζ'' Phase 4 follow-up 4): independent center
+  // pane tab. modes: relations / color-tags / tag-groups / folder-
+  // hierarchy. graphFocusLid optionally narrows to 1-hop neighbours.
+  if (state.viewMode === 'graph') {
+    center.appendChild(renderCenterGraphView(state));
+    return center;
+  }
+
+  // Detail view (existing behavior).
+  // Phase 4 follow-up 3: when the selected entry is a folder, fold the
+  // detail surface into the filer view so the "folder detail" is the
+  // filer's overview (user direction:「フォルダの detail はファイラー
+  // 表示にして、フォルダの detail を実質の廃止にしましょう」).
+  // viewMode itself stays 'detail' so the user can return via the
+  // dedicated Filer tab without losing context.
   const selected = findSelectedEntry(state);
+  if (
+    folderDetailAsFiler()
+    && selected
+    && selected.archetype === 'folder'
+    && state.phase === 'ready'
+    && state.editingLid !== selected.lid
+  ) {
+    center.appendChild(renderFilerView(state));
+    return center;
+  }
   const canEdit = state.phase === 'ready' && !state.readonly;
 
   // Show About when: explicitly selected OR no user entries exist
@@ -3666,7 +4381,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
@@ -3674,6 +4389,8 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban'): HTMLE
     { key: 'detail', label: 'Detail' },
     { key: 'calendar', label: 'Calendar' },
     { key: 'kanban', label: 'Kanban' },
+    { key: 'filer', label: 'Filer' },
+    { key: 'graph', label: 'Graph' },
   ];
 
   for (const { key, label } of modes) {
@@ -3854,6 +4571,2035 @@ function renderCalendarView(state: AppState): HTMLElement {
   }
 
   return cal;
+}
+
+/**
+ * PR-Δ25 (2026-05-07、user 訂正「Filer の一括操作 UI は Filer 側に出す
+ * べき」):sidebar の multi-action-bar と等価な UI を filer view 上部に
+ * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
+ * 重複は意図的(sidebar/filer の独立性確保)。
+ */
+function buildFilerMultiActionBar(state: AppState, viewCtx: 'filer' | 'graph' = 'filer'): HTMLElement {
+  const bar = createElement('div', `pkc-multi-action-bar pkc-${viewCtx}-multi-action-bar`);
+  bar.setAttribute('data-pkc-region', 'multi-action-bar');
+  bar.setAttribute('data-pkc-view-ctx', viewCtx);
+  const info = createElement('span', 'pkc-multi-action-info');
+  info.textContent = `${state.multiSelectedLids.length} selected`;
+  bar.appendChild(info);
+  const deleteBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+  deleteBtn.setAttribute('data-pkc-action', 'bulk-delete');
+  deleteBtn.textContent = 'Delete';
+  bar.appendChild(deleteBtn);
+  if (state.container) {
+    const folders = state.container.entries.filter(
+      (e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid),
+    );
+    if (folders.length > 0) {
+      const moveSelect = document.createElement('select');
+      moveSelect.className = 'pkc-multi-action-move';
+      moveSelect.setAttribute('data-pkc-action', 'bulk-move-select');
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = 'Move to...'; ph.disabled = true; ph.selected = true;
+      moveSelect.appendChild(ph);
+      const rootOpt = document.createElement('option');
+      rootOpt.value = '__root__'; rootOpt.textContent = '/ (Root)';
+      moveSelect.appendChild(rootOpt);
+      for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.lid; opt.textContent = `📁 ${f.title || '(untitled)'}`;
+        moveSelect.appendChild(opt);
+      }
+      bar.appendChild(moveSelect);
+    }
+    // tag input
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.className = 'pkc-multi-action-tag-input';
+    tagInput.placeholder = 'タグ追加 (Enter)';
+    tagInput.setAttribute('data-pkc-action', 'bulk-add-tag-input');
+    tagInput.setAttribute('data-pkc-field', 'bulk-add-tag');
+    tagInput.title = '選択中の全エントリに同じタグを追加';
+    bar.appendChild(tagInput);
+    // color tag
+    const colorSelect = document.createElement('select');
+    colorSelect.className = 'pkc-multi-action-color';
+    colorSelect.setAttribute('data-pkc-action', 'bulk-set-color-tag');
+    const cph = document.createElement('option');
+    cph.value = ''; cph.textContent = 'Color...'; cph.disabled = true; cph.selected = true;
+    colorSelect.appendChild(cph);
+    for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray']) {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      colorSelect.appendChild(opt);
+    }
+    const cloneOpt = document.createElement('option');
+    cloneOpt.value = '__none__'; cloneOpt.textContent = '✕ 解除';
+    colorSelect.appendChild(cloneOpt);
+    bar.appendChild(colorSelect);
+  }
+  const clearBtn = createElement('button', 'pkc-btn-small');
+  clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
+  clearBtn.textContent = 'Clear';
+  bar.appendChild(clearBtn);
+  return bar;
+}
+
+function renderFilerView(state: AppState): HTMLElement {
+  const filer = createElement('div', 'pkc-filer');
+  filer.setAttribute('data-pkc-region', 'filer-view');
+
+  // PR-Δ25:filer view top に multi-action-bar を表示。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    filer.appendChild(buildFilerMultiActionBar(state));
+  }
+
+  // Trash mode short-circuits the normal folder-scope render. The
+  // toolbar's "Trash" toggle dispatches SET_FILER_SCOPE 'trash' and
+  // restoration / purge use the same actions as the sidebar trash
+  // pane (RESTORE_ENTRY / PURGE_TRASH).
+  if (state.filerScope === 'trash') {
+    filer.setAttribute('data-pkc-subset', 'trash');
+    filer.setAttribute('data-pkc-filer-scope', 'trash');
+    filer.appendChild(renderFilerTrashHeader(state));
+    filer.appendChild(renderFilerTrashTable(state));
+    return filer;
+  }
+
+  const scope = resolveFilerScope(state);
+  const profile = resolveFilerSubsetForScope(state, scope);
+  filer.setAttribute('data-pkc-subset', profile.kind);
+  if (scope) filer.setAttribute('data-pkc-filer-scope-lid', scope.lid);
+
+  filer.appendChild(renderFilerHeader(state, scope, profile));
+
+  // PR-L (2026-05-06):filer 検索 query 反映。空 → direct children、
+  // 非空 → scope 配下を再帰展開して title 部分一致で flat 表示。
+  const searchQuery = (state.filerSearchQuery ?? '').trim().toLowerCase();
+  let visibleChildren: Entry[];
+  if (searchQuery.length > 0) {
+    // Subtree walk: BFS from scope (or root entries) collecting all
+    // descendants. Then title-substring filter.
+    const allEntries = (state.container?.entries ?? []).filter(
+      (e) => !isSystemArchetype(e.archetype),
+    );
+    const rels = state.container?.relations ?? [];
+    const childrenByParent = new Map<string, string[]>();
+    for (const r of rels) {
+      if (r.kind !== 'structural') continue;
+      const arr = childrenByParent.get(r.from) ?? [];
+      arr.push(r.to);
+      childrenByParent.set(r.from, arr);
+    }
+    const reachable = new Set<string>();
+    const queue: string[] = [];
+    if (scope) {
+      const initial = childrenByParent.get(scope.lid) ?? [];
+      queue.push(...initial);
+    } else {
+      queue.push(...getRootEntries(rels, allEntries).map((e) => e.lid));
+    }
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (reachable.has(id)) continue;
+      reachable.add(id);
+      const sub = childrenByParent.get(id);
+      if (sub) queue.push(...sub);
+    }
+    visibleChildren = allEntries.filter(
+      (e) => reachable.has(e.lid) && (e.title || e.lid).toLowerCase().includes(searchQuery),
+    );
+  } else {
+    const children = scope
+      ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
+      : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
+    // System entries should never surface in the filer.
+    visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+  }
+
+  // Even an empty folder still renders the subset surface so the
+  // "." and ".." navigation affordances stay reachable. The empty
+  // message becomes a peer node when there are no real children.
+  const isEmptyChildren = visibleChildren.length === 0;
+
+  // Subset render dispatch — 領域 10-6 ζ'' Phase 3a.
+  switch (profile.kind) {
+    case 'contact-sheet':
+      filer.appendChild(renderFilerContactSheet(state, visibleChildren, profile));
+      break;
+    case 'book-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'book'));
+      break;
+    case 'video-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'video'));
+      break;
+    case 'novel-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'novel'));
+      break;
+    case 'audio-base':
+      filer.appendChild(renderFilerCardGrid(state, visibleChildren, 'audio'));
+      break;
+    // PR-HHH (2026-05-06、user 修正指示5「廃止したはずのFilerのGraph
+    // がまだ活きている。センターペインのGraphタブが正です」):filer
+    // 内 Graph subset を廃止、center pane viewMode='graph' タブが
+    // canonical。`profile.kind === 'graph'` が container に残っていても
+    // 引き続き受理する(後方互換)が、explorer table へ silent fallback
+    // (default 分岐に流す)。inventory は別枝で生かす。
+    case 'inventory':
+      filer.appendChild(renderFilerInventory(state, visibleChildren));
+      break;
+    case 'explorer':
+    default:
+      filer.appendChild(renderFilerExplorerTable(state, visibleChildren));
+      break;
+  }
+  if (isEmptyChildren) {
+    const empty = createElement('div', 'pkc-filer-empty');
+    empty.setAttribute('data-pkc-region', 'filer-empty');
+    empty.textContent = scope
+      ? 'このフォルダには項目がありません。'
+      : '表示できるエントリがありません。';
+    filer.appendChild(empty);
+  }
+  return filer;
+}
+
+function renderFilerTrashHeader(state: AppState): HTMLElement {
+  const header = createElement('header', 'pkc-filer-header');
+  header.setAttribute('data-pkc-region', 'filer-header');
+
+  const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
+  breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
+  const back = createElement('button', 'pkc-filer-breadcrumb-segment');
+  back.setAttribute('data-pkc-action', 'filer-scope-folder');
+  back.setAttribute('data-pkc-filer-breadcrumb', 'back-from-trash');
+  back.textContent = '← フォルダ';
+  breadcrumb.appendChild(back);
+  const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
+  sep.textContent = ' / ';
+  breadcrumb.appendChild(sep);
+  const trashSeg = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-trash');
+  trashSeg.setAttribute('data-pkc-filer-breadcrumb', 'trash');
+  trashSeg.textContent = '🗑️ ゴミ箱';
+  breadcrumb.appendChild(trashSeg);
+  header.appendChild(breadcrumb);
+
+  const subset = createElement('span', 'pkc-filer-subset-label');
+  subset.setAttribute('data-pkc-filer-subset-label', 'trash');
+  subset.textContent = 'Trash';
+  header.appendChild(subset);
+
+  // Empty-trash button (only when there's something to purge).
+  if (state.container && state.phase === 'ready' && !state.readonly) {
+    const visibleCandidates = getTrashCandidatesForFiler(state);
+    if (visibleCandidates.length > 0) {
+      const purge = createElement('button', 'pkc-btn-small pkc-filer-trash-purge');
+      purge.setAttribute('data-pkc-action', 'purge-trash');
+      purge.setAttribute('title', 'ゴミ箱を空にする(取り消し不可)');
+      purge.textContent = 'ゴミ箱を空にする';
+      header.appendChild(purge);
+    }
+  }
+  return header;
+}
+
+function getTrashCandidatesForFiler(state: AppState): Revision[] {
+  if (!state.container) return [];
+  const all = getRestoreCandidates(state.container);
+  return all.filter((rev) => {
+    if (isReservedLid(rev.entry_lid)) return false;
+    const parsed = parseRevisionSnapshot(rev);
+    if (parsed && isSystemArchetype(parsed.archetype)) return false;
+    return true;
+  });
+}
+
+function renderFilerTrashTable(state: AppState): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const candidates = getTrashCandidatesForFiler(state);
+
+  if (candidates.length === 0) {
+    const empty = createElement('div', 'pkc-filer-empty');
+    empty.setAttribute('data-pkc-region', 'filer-empty');
+    empty.textContent = 'ゴミ箱は空です。';
+    wrapper.appendChild(empty);
+    return wrapper;
+  }
+
+  const table = createElement('table', 'pkc-filer-table');
+  table.setAttribute('data-pkc-region', 'filer-table');
+
+  const thead = createElement('thead', 'pkc-filer-thead');
+  const headRow = createElement('tr', 'pkc-filer-head-row');
+  for (const label of ['名前', '種類', '削除日時', '操作']) {
+    const th = createElement('th', 'pkc-filer-th');
+    th.textContent = label;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const canEdit = state.phase === 'ready' && !state.readonly;
+  const tbody = createElement('tbody', 'pkc-filer-tbody');
+  for (const rev of candidates) {
+    const parsed = parseRevisionSnapshot(rev);
+    const tr = createElement('tr', 'pkc-filer-row pkc-filer-row-trash');
+    tr.setAttribute('data-pkc-revision-id', rev.id);
+    tr.setAttribute('data-pkc-lid', rev.entry_lid);
+
+    const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
+    if (parsed) {
+      const icon = createElement('span', 'pkc-filer-row-icon');
+      icon.textContent = archetypeIcon(parsed.archetype);
+      nameTd.appendChild(icon);
+    }
+    const titleSpan = createElement('span', 'pkc-filer-row-title');
+    titleSpan.textContent = (parsed?.title ?? rev.entry_lid).trim() || rev.entry_lid;
+    nameTd.appendChild(titleSpan);
+    tr.appendChild(nameTd);
+
+    const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
+    archTd.textContent = parsed ? archetypeLabel(parsed.archetype) : '—';
+    tr.appendChild(archTd);
+
+    const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
+    updTd.textContent = formatTimestamp(rev.created_at);
+    tr.appendChild(updTd);
+
+    const actTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-actions');
+    if (canEdit) {
+      const restore = createElement('button', 'pkc-btn-small');
+      restore.setAttribute('data-pkc-action', 'restore-entry');
+      restore.setAttribute('data-pkc-lid', rev.entry_lid);
+      restore.setAttribute('data-pkc-revision-id', rev.id);
+      restore.textContent = '復元';
+      actTd.appendChild(restore);
+    }
+    tr.appendChild(actTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  return wrapper;
+}
+
+/**
+ * Resolve which folder is the current "filer scope" — the folder
+ * whose children are listed in the table.
+ *
+ * Rules:
+ *   1. If the selected entry is a folder, that folder is the scope.
+ *   2. Otherwise, walk structural ancestors until we hit a folder.
+ *   3. If neither yields a folder, the scope is `null` (= root).
+ */
+function resolveFilerScope(state: AppState): Entry | null {
+  const lid = state.selectedLid;
+  if (!lid || !state.container) return null;
+  const entry = state.container.entries.find((e) => e.lid === lid);
+  if (!entry) return null;
+  if (entry.archetype === 'folder') return entry;
+  const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, lid);
+  if (ancestors.length === 0) return null;
+  return state.container.entries.find((e) => e.lid === ancestors[0]) ?? null;
+}
+
+/**
+ * Resolve the FilerProfile for a given scope.
+ *
+ * PR-G G15 (2026-05-06):display_profile が undefined または `{kind:'auto'}`
+ * のとき、folder の direct children を 7 割多数決で classify して
+ * concrete profile に解決する。それ以外の kind はそのまま返す。
+ */
+function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): FilerProfile {
+  const explicit = scope && scope.archetype === 'folder' ? scope.display_profile : undefined;
+  if (explicit && explicit.kind !== 'auto') {
+    return explicit;
+  }
+  // Auto-detect から実 profile を決める。scope === null = container root
+  // のときは scope 全 user entries を直接 children として扱う(root も
+  // 一種の folder として「中身が画像ばかりなら album」を適用したい)。
+  if (!state.container) return { kind: 'explorer' };
+  const allUserEntries = state.container.entries.filter((e) => !isSystemArchetype(e.archetype));
+  let children: Entry[];
+  if (scope) {
+    const childLids = new Set<string>();
+    for (const r of state.container.relations) {
+      if (r.kind === 'structural' && r.from === scope.lid) childLids.add(r.to);
+    }
+    children = allUserEntries.filter((e) => childLids.has(e.lid));
+  } else {
+    children = allUserEntries;
+  }
+  return autoDetectFilerProfile(children);
+}
+
+function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerProfile): HTMLElement {
+  const header = createElement('header', 'pkc-filer-header');
+  header.setAttribute('data-pkc-region', 'filer-header');
+
+  // Create-entry toolbar: same `create-entry` action used by the main
+  // header. resolveContextFolder() picks up the filer scope folder as
+  // parent automatically because we set selectedLid = scope.lid when
+  // scope changes (so newly-created entries land inside the visible
+  // folder, matching the user's mental model of "create here").
+  const canEdit = state.phase === 'ready' && !state.readonly;
+  if (canEdit) {
+    const toolbar = createElement('div', 'pkc-filer-toolbar');
+    toolbar.setAttribute('data-pkc-region', 'filer-toolbar');
+    const archetypeButtons: { arch: ArchetypeId; label: string; tip: string }[] = [
+      { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder here' },
+      { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry here' },
+      { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry here' },
+      { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry here' },
+      { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment here' },
+    ];
+    for (const { arch, label, tip } of archetypeButtons) {
+      const btn = createElement('button', 'pkc-btn-small pkc-filer-create-btn');
+      btn.setAttribute('data-pkc-action', 'create-entry');
+      btn.setAttribute('data-pkc-archetype', arch);
+      btn.setAttribute('title', tip);
+      btn.textContent = label;
+      toolbar.appendChild(btn);
+    }
+    // Trash toggle — opens the deleted-entries listing inside the
+    // filer. Click again (via the breadcrumb back link) returns to
+    // folder scope.
+    const trashBtn = createElement('button', 'pkc-btn-small pkc-filer-trash-btn');
+    trashBtn.setAttribute('data-pkc-action', 'filer-scope-trash');
+    trashBtn.setAttribute('title', 'ゴミ箱を開く(削除済みエントリ一覧)・ここに DnD で削除');
+    // 2026-05-06 G13: filer 内の row / card を drop すると削除する
+    // drop target にする(ゴミ箱への DnD)。
+    trashBtn.setAttribute('data-pkc-drop-target', 'trash');
+    trashBtn.textContent = '🗑️ ゴミ箱';
+    toolbar.appendChild(trashBtn);
+    header.appendChild(toolbar);
+  }
+
+  const breadcrumb = createElement('nav', 'pkc-filer-breadcrumb');
+  breadcrumb.setAttribute('data-pkc-region', 'filer-breadcrumb');
+  const trail: { label: string; lid: string | null; isCurrent?: boolean }[] = [
+    { label: 'Root', lid: null },
+  ];
+  if (scope && state.container) {
+    const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
+    // ancestors are nearest-first; reverse to get root-to-current order.
+    for (const aLid of ancestors.slice().reverse()) {
+      const a = state.container.entries.find((e) => e.lid === aLid);
+      if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
+    }
+    trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
+  }
+  // PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+  // しきれない」):trail.length > 5 のとき middle 部を「⋯」で集約し、
+  // 集約 button hover で full path を tooltip 表示、click で展開。
+  // 常に root + 最初 + 末尾 2 segments は visible にして context を保つ。
+  const collapsedTrail: typeof trail = [];
+  if (trail.length <= 5) {
+    collapsedTrail.push(...trail);
+  } else {
+    collapsedTrail.push(trail[0]!); // root
+    collapsedTrail.push(trail[1]!); // top-level
+    // ellipsis placeholder; lid carries full middle path joined
+    const middle = trail.slice(2, trail.length - 2);
+    const ellipsisLabels = middle.map((s) => s.label).join(' / ');
+    collapsedTrail.push({ label: `⋯ (${middle.length})`, lid: `__ellipsis__:${ellipsisLabels}` });
+    collapsedTrail.push(trail[trail.length - 2]!);
+    collapsedTrail.push(trail[trail.length - 1]!);
+  }
+
+  for (let i = 0; i < collapsedTrail.length; i++) {
+    const seg = collapsedTrail[i]!;
+    if (i > 0) {
+      const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
+      sep.textContent = ' / ';
+      breadcrumb.appendChild(sep);
+    }
+    if (seg.lid && seg.lid.startsWith('__ellipsis__:')) {
+      const tooltipText = seg.lid.slice('__ellipsis__:'.length);
+      const ellSpan = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-ellipsis');
+      ellSpan.textContent = seg.label;
+      ellSpan.title = tooltipText;
+      breadcrumb.appendChild(ellSpan);
+      continue;
+    }
+    if (seg.lid === null) {
+      // Root segment is clickable — DESELECT_ENTRY moves the filer
+      // scope to the container root so user can browse top-level
+      // entries(2026-05-06 user direction:「Root フォルダを開けない。
+      // Root は開けなくてはならない」)。
+      const link = createElement('button', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-root');
+      link.setAttribute('data-pkc-action', 'filer-scope-root');
+      link.setAttribute('data-pkc-filer-breadcrumb', 'root');
+      link.textContent = seg.label;
+      breadcrumb.appendChild(link);
+    } else if (seg.isCurrent && canEdit) {
+      // Current folder breadcrumb segment is editable inline
+      // (GitHub 風、2026-05-06 user direction)。Edit on input → blur
+      // dispatches RENAME_ENTRY_TITLE。
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-current';
+      input.setAttribute('data-pkc-action', 'rename-folder');
+      input.setAttribute('data-pkc-lid', seg.lid);
+      input.setAttribute('data-pkc-filer-breadcrumb', 'current');
+      input.value = seg.label;
+      // Auto-size to content via attribute size estimate.
+      input.size = Math.max(8, Math.min(40, seg.label.length + 2));
+      breadcrumb.appendChild(input);
+    } else {
+      const link = createElement('button', 'pkc-filer-breadcrumb-segment');
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', seg.lid);
+      link.setAttribute('data-pkc-filer-breadcrumb', 'folder');
+      link.textContent = seg.label;
+      breadcrumb.appendChild(link);
+    }
+  }
+  header.appendChild(breadcrumb);
+
+  const subsetBadge = createElement('span', 'pkc-filer-subset-label');
+  subsetBadge.setAttribute('data-pkc-filer-subset-label', profile.kind);
+  subsetBadge.textContent = subsetLabelText(profile.kind);
+  header.appendChild(subsetBadge);
+
+  // PR-L (2026-05-06):filer 側の検索窓。空文字列で direct children、
+  // 非空文字列で scope 配下の **全 descendants** を title 部分一致で
+  // 絞り込み。「左ペインの代替活用 / 大規模管理用」目的の foundation。
+  const searchWrap = createElement('div', 'pkc-filer-search-wrap');
+  searchWrap.setAttribute('data-pkc-region', 'filer-search');
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.className = 'pkc-filer-search-input';
+  searchInput.setAttribute('data-pkc-action', 'set-filer-search-query');
+  // PR-QQQ (2026-05-07、user 修正指示7「Filer の検索窓からフォーカス
+  // が勝手に外れる。日本語の変換とかに支障大」):render-continuity
+  // helper が focus + caret を復元するための data-pkc-field を付与。
+  // SET_FILER_SEARCH_QUERY dispatch で full re-render が走っても、
+  // 同 field 名の input が新 DOM にあれば focus + caret + selection
+  // が保持される。
+  searchInput.setAttribute('data-pkc-field', 'filer-search');
+  searchInput.setAttribute('placeholder', '🔍 タイトル検索(scope 配下を再帰)');
+  searchInput.value = state.filerSearchQuery ?? '';
+  searchWrap.appendChild(searchInput);
+  header.appendChild(searchWrap);
+
+  return header;
+}
+
+function subsetLabelText(kind: FilerProfile['kind']): string {
+  switch (kind) {
+    case 'auto':
+      return 'Auto';
+    case 'explorer':
+      return 'Explorer';
+    case 'contact-sheet':
+      return 'Contact sheet';
+    case 'book-base':
+      return 'Book base';
+    case 'video-base':
+      return 'Video base';
+    case 'novel-base':
+      return 'Novel base';
+    case 'audio-base':
+      return 'Audio base';
+    case 'graph':
+      return 'Graph';
+    case 'inventory':
+      return 'Inventory';
+  }
+}
+
+/**
+ * Resolve "." (current folder) and ".." (parent folder) navigation
+ * affordances for the filer view.
+ *
+ * 2026-05-06 user direction(G14):「..」が表示されないという報告 →
+ * **常に「..」を出す**ように修正。structural parent が無い top-level
+ * folder の「..」は Container root へ戻す sentinel(`__root__`)を target
+ * として返し、action-binder 側で `filer-scope-root` 動作にマップする。
+ * これで user は filer 内のどの位置からも一段上に戻れる。
+ */
+const ROOT_NAV_SENTINEL_LID = '__root__';
+
+function resolveFilerNavigation(state: AppState): {
+  current: Entry | null;
+  parent: Entry | null;
+  parentIsRootSentinel?: boolean;
+} {
+  const scope = resolveFilerScope(state);
+  if (!scope) return { current: null, parent: null };
+  if (!state.container) return { current: scope, parent: null };
+  const parent = getStructuralParent(state.container.relations, state.container.entries, scope.lid);
+  if (parent) return { current: scope, parent };
+  // Top-level folder — synthesize a sentinel "Root" entry for the
+  // ".." row. The action-binder maps this lid to filer-scope-root.
+  const rootSentinel: Entry = {
+    lid: ROOT_NAV_SENTINEL_LID,
+    title: 'Root',
+    body: '',
+    archetype: 'folder',
+    created_at: '',
+    updated_at: '',
+  };
+  return { current: scope, parent: rootSentinel, parentIsRootSentinel: true };
+}
+
+// PR-EE (2026-05-06):buildFilerNavCard / buildFilerNavRow は削除
+// (user direction「. / .. row は breadcrumb のパンくずで代替可能なため
+// 不要」)。breadcrumb の root / parent click が同等 navigation を提供。
+
+function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const table = createElement('table', 'pkc-filer-table');
+  table.setAttribute('data-pkc-region', 'filer-table');
+
+  const thead = createElement('thead', 'pkc-filer-thead');
+  const headRow = createElement('tr', 'pkc-filer-head-row');
+  const cols: { key: 'name' | 'archetype' | 'created_at' | 'updated_at' | 'tags'; label: string }[] = [
+    { key: 'name', label: '名前' },
+    { key: 'archetype', label: '種類' },
+    { key: 'created_at', label: '作成' },
+    { key: 'updated_at', label: '更新' },
+    { key: 'tags', label: 'タグ' },
+  ];
+  const sortState = state.filerExplorerSort ?? {};
+  const sortBy = sortState.sortBy ?? null;
+  const sortDir = sortState.sortDir ?? 'asc';
+  const colValue = (e: Entry, key: string): string => {
+    if (key === 'name') return e.title || e.lid;
+    if (key === 'archetype') return e.archetype;
+    if (key === 'created_at') return e.created_at;
+    if (key === 'updated_at') return e.updated_at;
+    if (key === 'tags') return (e.tags ?? []).join(', ');
+    return '';
+  };
+  let sortedChildren: Entry[] = children.slice();
+  if (sortBy) {
+    sortedChildren = sortedChildren.sort((a, b) => {
+      const va = colValue(a, sortBy);
+      const vb = colValue(b, sortBy);
+      const cmp = va.localeCompare(vb);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }
+  // PR-Δ2 (2026-05-07、修正指示9):filer 列幅 drag-resize handle。
+  // localStorage `pkc2.filer.column-widths` から永続化された幅を読み出し、
+  // <th> の width style に上書き反映。最終 col には resize handle 不要。
+  const persistedWidths = readFilerColumnWidths();
+
+  // PR-Δ3 (2026-05-07、修正指示9):multi-select check column を先頭に
+  // 追加。header checkbox は visible 全選択 / 全解除のトグル。
+  const allSelectedVisible =
+    sortedChildren.length > 0
+    && sortedChildren.every((c) => (state.multiSelectedLids ?? []).includes(c.lid));
+  const someSelectedVisible =
+    !allSelectedVisible
+    && sortedChildren.some((c) => (state.multiSelectedLids ?? []).includes(c.lid));
+  const checkTh = createElement('th', 'pkc-filer-th pkc-filer-th-check');
+  const checkAll = document.createElement('input');
+  checkAll.type = 'checkbox';
+  checkAll.className = 'pkc-filer-row-check';
+  checkAll.setAttribute('data-pkc-action', 'filer-toggle-all-multi-select');
+  checkAll.setAttribute('aria-label', '全選択切替');
+  checkAll.title = '全選択 / 全解除';
+  checkAll.checked = allSelectedVisible;
+  checkAll.indeterminate = someSelectedVisible;
+  checkTh.appendChild(checkAll);
+  headRow.appendChild(checkTh);
+
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i]!;
+    const th = createElement('th', `pkc-filer-th pkc-filer-th-${c.key}`);
+    th.setAttribute('data-pkc-filer-column', c.key);
+    th.setAttribute('data-pkc-action', 'set-filer-explorer-sort');
+    th.setAttribute('data-pkc-sort-key', c.key);
+    // 永続化幅があれば反映、なければ CSS 既定の % 比率に任せる。
+    const w = persistedWidths[c.key];
+    if (typeof w === 'number' && w > 0) {
+      (th as HTMLElement).style.width = `${w}px`;
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'pkc-filer-th-label';
+    const arrow = sortBy === c.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    labelSpan.textContent = `${c.label}${arrow}`;
+    th.appendChild(labelSpan);
+    // Resize handle - 最終 col は省略(右端を引き伸ばすのは別 col の
+    // 縮小と意味的に同じだが、UX 上不要混乱の元)。
+    if (i < cols.length - 1) {
+      const handle = document.createElement('span');
+      handle.className = 'pkc-filer-th-resize';
+      handle.setAttribute('data-pkc-action', 'filer-col-resize-start');
+      handle.setAttribute('data-pkc-col', c.key);
+      handle.setAttribute('aria-hidden', 'true');
+      handle.title = '列幅をドラッグで調整';
+      th.appendChild(handle);
+    }
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = createElement('tbody', 'pkc-filer-tbody');
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
+
+  // PR-EE (2026-05-06、user 報告):「.」「..」row は breadcrumb の
+  // パンくず動作で代替できるため削除(user direction:「結果的に不要
+  // となったため削除、パス表示からのパンクズ動作で代替可能」)。
+  // breadcrumb の Root / 親 folder click で同等の navigation が成立する。
+  // resolveFilerNavigation は data-pkc-region="filer-breadcrumb" の
+  // 描画でも参照されるので、削除はせず call 側のみ撤去。
+
+  // PR-Δ3 (2026-05-07、修正指示9):filer multi-select 視認性。
+  // sidebar と同じく `data-pkc-multi-selected="true"` で active 装飾。
+  const multiSet = new Set<string>(state.multiSelectedLids ?? []);
+  for (const child of sortedChildren) {
+    const tr = createElement('tr', 'pkc-filer-row');
+    tr.setAttribute('data-pkc-action', 'select-entry');
+    tr.setAttribute('data-pkc-lid', child.lid);
+    tr.setAttribute('data-pkc-archetype', child.archetype);
+    // DnD: filer row is draggable (move-by-DnD reuses the existing
+    // sidebar handler in action-binder via `data-pkc-draggable`).
+    // Folder rows are also drop targets (drop another row → move into).
+    if (canEditDnd) {
+      (tr as HTMLTableRowElement).draggable = true;
+      tr.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') {
+        tr.setAttribute('data-pkc-drop-target', 'folder');
+      }
+    }
+    if (child.lid === state.selectedLid) {
+      tr.setAttribute('data-pkc-active', 'true');
+    }
+    if (multiSet.has(child.lid)) {
+      tr.setAttribute('data-pkc-multi-selected', 'true');
+    }
+
+    // PR-Δ3 multi-select checkbox cell(先頭に挿入)。
+    const checkTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-check');
+    const checkBox = document.createElement('input');
+    checkBox.type = 'checkbox';
+    checkBox.className = 'pkc-filer-row-check';
+    checkBox.setAttribute('data-pkc-action', 'filer-toggle-row-multi-select');
+    checkBox.setAttribute('data-pkc-lid', child.lid);
+    checkBox.setAttribute('aria-label', '選択切替');
+    checkBox.checked = multiSet.has(child.lid);
+    checkTd.appendChild(checkBox);
+    tr.appendChild(checkTd);
+
+    const nameTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-name');
+    const icon = createElement('span', 'pkc-filer-row-icon');
+    icon.textContent = archetypeIcon(child.archetype);
+    nameTd.appendChild(icon);
+    const titleSpan = createElement('span', 'pkc-filer-row-title');
+    const fullTitle = child.title || child.lid;
+    // PR-SSS (2026-05-07、修正指示7 #3):中間省略 + tooltip。長文件名
+    // (>40 char)で頭尾だけ残して中間を ellipsis 化、末尾 8 char で
+    // date / 拡張子 / suffix を保持。`title` 属性に full text を載せ
+    // hover で全名確認可能。短い title は通常の tail ellipsis(CSS)に任せる。
+    titleSpan.textContent = truncateMiddle(fullTitle, 48);
+    titleSpan.title = fullTitle;
+    nameTd.appendChild(titleSpan);
+    tr.appendChild(nameTd);
+
+    const archTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-archetype');
+    archTd.textContent = archetypeLabel(child.archetype);
+    tr.appendChild(archTd);
+
+    const createdTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-created');
+    createdTd.textContent = formatTimestamp(child.created_at);
+    createdTd.title = child.created_at;
+    tr.appendChild(createdTd);
+
+    const updTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-updated');
+    updTd.textContent = formatTimestamp(child.updated_at);
+    updTd.title = child.updated_at;
+    tr.appendChild(updTd);
+
+    const tagsTd = createElement('td', 'pkc-filer-cell pkc-filer-cell-tags');
+    const tags = child.tags ?? [];
+    if (tags.length === 0) {
+      tagsTd.textContent = '';
+    } else {
+      tagsTd.title = tags.join(', ');
+      for (const tag of tags) {
+        const chip = createElement('span', 'pkc-filer-tag-chip');
+        chip.textContent = tag;
+        tagsTd.appendChild(chip);
+      }
+    }
+    tr.appendChild(tagsTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  return wrapper;
+}
+
+/**
+ * PR-Δ2 (2026-05-07、修正指示9 ファイラ列幅調整):
+ * `localStorage.pkc2.filer.column-widths` を JSON parse して
+ * `{ [colKey]: pxWidth }` を返す。stale / corrupted 値は安全に無視。
+ *
+ * 永続化キーは action-binder (case 'filer-col-resize-start' の mouseup)
+ * から書き込まれる。
+ */
+const FILER_COLUMN_WIDTHS_KEY = 'pkc2.filer.column-widths';
+
+function readFilerColumnWidths(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage?.getItem(FILER_COLUMN_WIDTHS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v > 20 && v < 2000) {
+        out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Middle-truncate a long string while preserving `tailLen` characters
+ * at the end. Used by the filer explorer name cell so that file names
+ * like `2026-04-25_dump_long_name.pdf` keep their date prefix and
+ * extension visible after the ellipsis. Returns the original string
+ * unchanged when its length doesn't exceed `maxLen`.
+ *
+ * PR-SSS (2026-05-07、修正指示7 #3)。
+ */
+function truncateMiddle(s: string, maxLen: number, tailLen = 8): string {
+  if (s.length <= maxLen) return s;
+  const headLen = maxLen - tailLen - 1;
+  if (headLen <= 0) return s;
+  return `${s.slice(0, headLen)}…${s.slice(-tailLen)}`;
+}
+
+/**
+ * Contact-sheet subset (領域 10-6 ζ'' Phase 3a).
+ * Image-attachment-leading folders (album/scrap/portfolio) become a
+ * grid of thumbnails with caption underneath. Non-image children fall
+ * back to a small icon card so a mixed folder still renders cleanly.
+ */
+function renderFilerContactSheet(
+  state: AppState,
+  children: readonly Entry[],
+  profile: { kind: 'contact-sheet'; cell_size?: 'sm' | 'md' | 'lg' },
+): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const grid = createElement('div', 'pkc-filer-grid pkc-filer-grid-contact-sheet');
+  grid.setAttribute('data-pkc-region', 'filer-grid');
+  grid.setAttribute('data-pkc-cell-size', profile.cell_size ?? 'md');
+  // Per-subset thumbnail size flag(2026-05-06 user direction G10)。
+  grid.style.setProperty('--filer-thumb-px', `${getFilerThumbPx('album')}px`);
+
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
+  const assets = state.container?.assets ?? {};
+
+  // PR-EE (2026-05-06):「.」「..」 card は breadcrumb で代替可能のため
+  // 削除(user direction)。
+
+  for (const child of children) {
+    const card = createElement('div', 'pkc-filer-card pkc-filer-card-image');
+    // Image attachments dispatch a dedicated preview-open action so
+    // clicking from the filer opens an in-window viewer instead of
+    // switching to the detail pane (2026-05-05 user direction).
+    const isImageAttachment =
+      child.archetype === 'attachment'
+      && (() => {
+        try {
+          const meta = JSON.parse(child.body) as { mime?: unknown };
+          return typeof meta.mime === 'string' && meta.mime.startsWith('image/');
+        } catch {
+          return false;
+        }
+      })();
+    if (isImageAttachment) {
+      card.setAttribute('data-pkc-action', 'open-image-preview-from-filer');
+    } else {
+      card.setAttribute('data-pkc-action', 'select-entry');
+    }
+    card.setAttribute('data-pkc-lid', child.lid);
+    card.setAttribute('data-pkc-archetype', child.archetype);
+    if (canEditDnd) {
+      (card as HTMLElement).draggable = true;
+      card.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') card.setAttribute('data-pkc-drop-target', 'folder');
+    }
+    if (child.lid === state.selectedLid) card.setAttribute('data-pkc-active', 'true');
+
+    const thumb = createElement('div', 'pkc-filer-card-thumb');
+    const dataUrl = pickImageAssetForEntry(child, assets, state.container);
+    if (dataUrl) {
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = child.title || child.lid;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+    } else {
+      thumb.classList.add('pkc-filer-card-thumb-fallback');
+      thumb.textContent = archetypeIcon(child.archetype);
+    }
+    // Caption は thumb の右下に overlay(2026-05-06 user direction G12)。
+    const caption = createElement('div', 'pkc-filer-card-caption');
+    caption.textContent = child.title || child.lid;
+    thumb.appendChild(caption);
+    card.appendChild(thumb);
+
+    grid.appendChild(card);
+  }
+  wrapper.appendChild(grid);
+  return wrapper;
+}
+
+/**
+ * Card grid for book-base / youtube-base subsets (領域 10-6 ζ'' Phase 3a).
+ * Reads frontmatter `kind` to filter or annotate cards. When a child's
+ * frontmatter doesn't match the expected kind, render with graceful
+ * degrade(small icon + title only) — the philosophy is overview, not
+ * strict schema enforcement.
+ */
+function renderFilerCardGrid(
+  state: AppState,
+  children: readonly Entry[],
+  expectedKind: 'book' | 'video' | 'novel' | 'audio',
+): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  const grid = createElement('div', `pkc-filer-grid pkc-filer-grid-${expectedKind}-base`);
+  grid.setAttribute('data-pkc-region', 'filer-grid');
+  grid.setAttribute('data-pkc-card-kind', expectedKind);
+  grid.style.setProperty('--filer-thumb-px', `${getFilerThumbPx(expectedKind)}px`);
+
+  const canEditDnd = state.phase === 'ready' && !state.readonly;
+  const assets = state.container?.assets ?? {};
+
+  // PR-EE (2026-05-06):「.」「..」 card は breadcrumb で代替可能のため
+  // 削除(user direction)。
+
+  for (const child of children) {
+    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
+    const classification = classifyEntryForCardGrid(child, fm.meta);
+    const matches = classification?.kind === expectedKind;
+
+    const card = createElement('div', `pkc-filer-card pkc-filer-card-${expectedKind}`);
+    card.setAttribute('data-pkc-action', 'select-entry');
+    card.setAttribute('data-pkc-lid', child.lid);
+    card.setAttribute('data-pkc-archetype', child.archetype);
+    if (matches) {
+      card.setAttribute('data-pkc-card-kind-match', 'true');
+      if (classification?.provider) {
+        card.setAttribute('data-pkc-provider', classification.provider);
+      }
+    }
+    if (canEditDnd) {
+      (card as HTMLElement).draggable = true;
+      card.setAttribute('data-pkc-draggable', 'true');
+      if (child.archetype === 'folder') card.setAttribute('data-pkc-drop-target', 'folder');
+    }
+    if (child.lid === state.selectedLid) card.setAttribute('data-pkc-active', 'true');
+
+    // Cover / thumbnail: prefer the first image asset structurally
+    // related to this entry, fall back to archetype icon.
+    const thumb = createElement('div', 'pkc-filer-card-thumb');
+    const dataUrl = pickImageAssetForEntry(child, assets, state.container);
+    if (dataUrl) {
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = child.title || child.lid;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+    } else {
+      thumb.classList.add('pkc-filer-card-thumb-fallback');
+      thumb.textContent = archetypeIcon(child.archetype);
+    }
+    card.appendChild(thumb);
+
+    const titleEl = createElement('div', 'pkc-filer-card-title');
+    titleEl.textContent = child.title || child.lid;
+    card.appendChild(titleEl);
+
+    if (matches) {
+      // Fragment badge — when the URL carries a recognised fragment
+      // (YouTube ?t= / PDF #page= / 小説 episode path / W3C #:~:text=…)
+      // expose its locator label as a small chip on the card. Phase
+      // 3c-C wiring of the canonical fragment IR.
+      if (classification?.url) {
+        const fragment = parseFragment(classification.url);
+        if (fragment?.label) {
+          const fragBadge = createElement('span', 'pkc-filer-card-fragment-badge');
+          fragBadge.setAttribute('data-pkc-card-field', 'fragment');
+          fragBadge.setAttribute('data-pkc-fragment-kind', fragment.locator_kind);
+          fragBadge.textContent = fragment.label;
+          card.appendChild(fragBadge);
+        }
+      }
+
+      const meta = createElement('div', 'pkc-filer-card-meta');
+      const fields: string[] = (() => {
+        switch (expectedKind) {
+          case 'book': return ['author', 'year', 'publisher', 'rating'];
+          case 'video': return ['channel', 'duration', 'published_at'];
+          case 'novel': return ['author', 'site', 'updated_at'];
+          default: return [];
+        }
+      })();
+      if (classification?.provider && classification.provider !== 'unknown') {
+        const provSpan = createElement('span', 'pkc-filer-card-field pkc-filer-card-field-provider');
+        provSpan.setAttribute('data-pkc-card-field', 'provider');
+        provSpan.textContent = classification.provider;
+        meta.appendChild(provSpan);
+      }
+      for (const f of fields) {
+        const v = fm.meta[f];
+        if (v === undefined || v === null || v === '') continue;
+        const span = createElement('span', `pkc-filer-card-field pkc-filer-card-field-${f}`);
+        span.setAttribute('data-pkc-frontmatter-key', f);
+        span.textContent = String(v);
+        meta.appendChild(span);
+      }
+      if (meta.children.length > 0) card.appendChild(meta);
+    }
+
+    grid.appendChild(card);
+  }
+  wrapper.appendChild(grid);
+  return wrapper;
+}
+
+/**
+ * Classify an entry for inclusion in a book / video / novel card grid.
+ *
+ * Resolution order (most specific first):
+ *   1. frontmatter `kind` field — if set to a known string, use it
+ *      directly (legacy + explicit override).
+ *   2. frontmatter `url` field — classify via URL host map.
+ *   3. first http(s) URL in body — classify via URL host map.
+ *
+ * Returns a `UrlClassification`-like shape so the caller can read
+ * both `kind` and `provider`. Returns null for unclassifiable entries.
+ */
+function classifyEntryForCardGrid(
+  entry: Entry,
+  meta: Record<string, unknown>,
+): UrlClassification | null {
+  const explicitKind = meta['kind'];
+  if (typeof explicitKind === 'string' && explicitKind.length > 0) {
+    // Treat explicit `kind: book/video/novel` as authoritative even
+    // without a URL. Provider blank when no URL is present.
+    const fmUrl = classifyFrontmatterUrl(meta);
+    if (fmUrl && fmUrl.kind === explicitKind) return fmUrl;
+    return {
+      url: fmUrl?.url ?? '',
+      host: fmUrl?.host ?? '',
+      kind: (explicitKind as UrlClassification['kind']) ?? 'unknown',
+      provider: fmUrl?.provider ?? '',
+    };
+  }
+  const fmUrl = classifyFrontmatterUrl(meta);
+  if (fmUrl && fmUrl.kind !== 'unknown') return fmUrl;
+  const bodyUrl = classifyFirstUrlInBody(entry.body ?? '');
+  if (bodyUrl && bodyUrl.kind !== 'unknown') return bodyUrl;
+  return null;
+}
+
+// Re-export for tests / consumers that want raw URL classification.
+export { classifyUrl };
+
+/**
+ * Find an image asset to use as a card thumbnail.
+ *
+ * `container.assets[K]` stores **raw base64**(no `data:` prefix);
+ * the MIME comes from the attachment body. We therefore reconstruct
+ * a data URL on the fly when the MIME indicates an image. Lookups:
+ *   1. attachment archetype — body JSON has `{ asset_key, mime }`.
+ *      If MIME starts with `image/`, build `data:<mime>;base64,<b64>`.
+ *   2. body markdown `asset:KEY` reference. We can't see a MIME for
+ *      this path, so accept any asset byte stream — the consumer
+ *      `<img>` will reject non-image data with a broken-image icon
+ *      (acceptable failure mode at the filer thumbnail layer).
+ *   3. folder archetype — first attachment child that resolves to
+ *      an image asset (folder cover thumbnail).
+ *
+ * Returns a `data:` URL or null.
+ */
+function pickImageAssetForEntry(
+  entry: Entry,
+  assets: Record<string, string>,
+  container: Container | null = null,
+): string | null {
+  // PR-X (2026-05-06):0. text frontmatter `thumbnail: <url>`(PR-U
+  // v1.1 capture profile)。bookmarklet 経由で `kind: video` + thumbnail
+  // url が入った entry が、card grid で raster 画像で表示される経路。
+  // YouTube / Niconico / カクヨム 等の外部 thumbnail を直接 img src で
+  // ロード(CORS は host 側に任せる、PKC2 は単に URL を渡すだけ)。
+  // PR-YY (2026-05-06):user 修正指示4「サムネ指定が PKC embed と
+  // 記法が異なる」への対応 — `extractThumbnailRef` で markdown image
+  // syntax `![...](TARGET)` 含めた PKC embed 互換形式を受理。
+  if (entry.archetype === 'text' && entry.body) {
+    const fmEnd = entry.body.indexOf('---', 3);
+    if (entry.body.trimStart().startsWith('---') && fmEnd > 0) {
+      const fmBlock = entry.body.slice(0, fmEnd);
+      const tm = fmBlock.match(/^thumbnail:\s*(.+)$/m);
+      if (tm) {
+        const v = extractThumbnailRef(tm[1]!);
+        if (v) {
+          if (/^https?:\/\//i.test(v) || v.startsWith('data:')) return v;
+          if (v.startsWith('asset:')) {
+            const k = v.slice(6);
+            const b64 = assets[k];
+            if (b64) {
+              if (b64.startsWith('data:')) return b64;
+              return `data:image/png;base64,${b64}`;
+            }
+          }
+        }
+      }
+    }
+  }
+  // 1. attachment archetype.
+  if (entry.archetype === 'attachment' && entry.body) {
+    try {
+      const parsed = JSON.parse(entry.body) as { asset_key?: unknown; mime?: unknown };
+      const key = typeof parsed.asset_key === 'string' ? parsed.asset_key : null;
+      const mime = typeof parsed.mime === 'string' ? parsed.mime : null;
+      if (key && mime && mime.startsWith('image/')) {
+        const b64 = assets[key];
+        if (b64) {
+          // assets[K] may be raw base64 (new format) OR a full data
+          // URL (legacy / generated paths) — handle both.
+          if (b64.startsWith('data:')) return b64;
+          return `data:${mime};base64,${b64}`;
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  // 2. Markdown body asset:KEY (TEXT body referencing an image).
+  const m = (entry.body ?? '').match(/asset:([A-Za-z0-9_-]+)/);
+  if (m) {
+    const b64 = assets[m[1]!];
+    if (b64) {
+      if (b64.startsWith('data:image/')) return b64;
+      // We don't know the MIME here; assume image/png if the asset
+      // looks like base64 PNG (starts with iVBORw0K). Otherwise skip.
+      if (b64.startsWith('iVBORw')) return `data:image/png;base64,${b64}`;
+      if (b64.startsWith('/9j/')) return `data:image/jpeg;base64,${b64}`;
+      if (b64.startsWith('R0lGOD')) return `data:image/gif;base64,${b64}`;
+    }
+  }
+  // 3. Folder thumbnail.
+  if (container && entry.archetype === 'folder') {
+    const children = getStructuralChildren(container.relations, container.entries, entry.lid);
+    for (const child of children) {
+      if (child.archetype !== 'attachment') continue;
+      const inner = pickImageAssetForEntry(child, assets, null);
+      if (inner) return inner;
+    }
+  }
+  // 4. PR-II (2026-05-06): novel-kind synthesis fallback. カクヨム /
+  // 小説家になろう のような表紙画像が存在しない site の entry は
+  // ここまで全 step が null を返す。frontmatter `kind: novel` を
+  // 検出した場合は title + author + provider から SVG カバーを
+  // 合成して card grid の見栄えを救う。`book` kind も同様の
+  // フォールバック対象(Amazon 等で thumbnail_url が拾えなかった
+  // 場合のセーフネット)。
+  if (entry.archetype === 'text' && entry.body) {
+    const fm = parseFrontmatter(entry.body);
+    const kind = typeof fm.meta.kind === 'string' ? fm.meta.kind : null;
+    if (kind === 'novel' || kind === 'book') {
+      const author = typeof fm.meta.author === 'string' ? fm.meta.author : null;
+      const provider = typeof fm.meta.provider === 'string' ? fm.meta.provider : null;
+      const dataUrl = buildNovelCoverDataUrl({
+        title: entry.title,
+        author,
+        provider,
+      });
+      if (dataUrl) return dataUrl;
+    }
+  }
+  return null;
+}
+
+/*
+ * PR-HHH (2026-05-06、user 修正指示5「廃止したはずのFilerのGraph
+ * がまだ活きている」):filer 内 Graph subset の `renderFilerGraph`
+ * 関数は完全削除。center pane の viewMode='graph' タブ
+ * (`renderCenterGraphView`)が canonical な graph 表示として残る。
+ * 古い container で `profile.kind='graph'` を持つ folder は subset
+ * 分岐の default(explorer table)へ silent fallback。
+ */
+
+/**
+ * Inventory subset (Phase 5) — Bases 風 query view over folder
+ * children. Columns are derived from the union of frontmatter keys
+ * across visible children + a built-in `__name` / `__archetype` /
+ * `__tags` fixed columns. Each column has:
+ *   - filter input (substring match, case-insensitive)
+ *   - header click → sort toggle (asc → desc → off)
+ * A toolbar provides:
+ *   - "Group by" select
+ *   - "Clear" button
+ */
+function renderFilerInventory(state: AppState, children: readonly Entry[]): HTMLElement {
+  const wrapper = createElement('div', 'pkc-filer-table-wrapper pkc-filer-inventory-wrapper');
+  wrapper.setAttribute('data-pkc-region', 'filer-table-wrapper');
+
+  // 1. Parse frontmatter for every child and gather column keys.
+  const childrenWithMeta = children.map((c) => ({
+    entry: c,
+    meta: c.archetype === 'text' ? parseFrontmatter(c.body ?? '').meta : ({} as Record<string, unknown>),
+  }));
+  const fmKeys = new Set<string>();
+  for (const { meta } of childrenWithMeta) for (const k of Object.keys(meta)) fmKeys.add(k);
+  const columns: { key: string; label: string; isBuiltin: boolean }[] = [
+    { key: '__name', label: '名前', isBuiltin: true },
+    { key: '__archetype', label: '種類', isBuiltin: true },
+    ...Array.from(fmKeys).sort().map((k) => ({ key: k, label: k, isBuiltin: false })),
+    { key: '__tags', label: 'タグ', isBuiltin: true },
+  ];
+
+  const query = state.inventoryQuery ?? {};
+  const filter = query.filter ?? {};
+  const sortBy = query.sortBy ?? null;
+  const sortDir = query.sortDir ?? 'asc';
+  const groupBy = query.groupBy ?? null;
+
+  // Toolbar
+  const toolbar = createElement('div', 'pkc-filer-inventory-toolbar');
+  toolbar.setAttribute('data-pkc-region', 'filer-inventory-toolbar');
+  const groupSelect = document.createElement('select');
+  groupSelect.className = 'pkc-filer-inventory-group-select';
+  groupSelect.setAttribute('data-pkc-action', 'set-inventory-group-by');
+  const noneOpt = document.createElement('option');
+  noneOpt.value = '';
+  noneOpt.textContent = '(no group)';
+  if (groupBy === null) noneOpt.selected = true;
+  groupSelect.appendChild(noneOpt);
+  for (const col of columns) {
+    const opt = document.createElement('option');
+    opt.value = col.key;
+    opt.textContent = `Group by: ${col.label}`;
+    if (col.key === groupBy) opt.selected = true;
+    groupSelect.appendChild(opt);
+  }
+  toolbar.appendChild(groupSelect);
+
+  const clearBtn = createElement('button', 'pkc-btn-small');
+  clearBtn.setAttribute('data-pkc-action', 'clear-inventory-query');
+  clearBtn.textContent = 'クエリ Clear';
+  toolbar.appendChild(clearBtn);
+
+  wrapper.appendChild(toolbar);
+
+  // Helpers to read column value from entry+meta.
+  const readCol = (row: { entry: Entry; meta: Record<string, unknown> }, key: string): string => {
+    if (key === '__name') return row.entry.title || row.entry.lid;
+    if (key === '__archetype') return row.entry.archetype;
+    if (key === '__tags') return (row.entry.tags ?? []).join(', ');
+    const v = row.meta[key];
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map((x) => String(x)).join(', ');
+    return String(v);
+  };
+
+  // 2. Filter
+  let filtered = childrenWithMeta.filter((row) => {
+    for (const col of columns) {
+      const f = filter[col.key];
+      if (!f) continue;
+      const v = readCol(row, col.key).toLowerCase();
+      if (!v.includes(f.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  // 3. Sort
+  if (sortBy) {
+    filtered = filtered.slice().sort((a, b) => {
+      const va = readCol(a, sortBy);
+      const vb = readCol(b, sortBy);
+      // Try numeric compare when both look numeric.
+      const na = Number(va);
+      const nb = Number(vb);
+      let cmp: number;
+      if (Number.isFinite(na) && Number.isFinite(nb) && va !== '' && vb !== '') cmp = na - nb;
+      else cmp = va.localeCompare(vb);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }
+
+  // 4. Optionally group
+  const renderTable = (rows: typeof filtered): HTMLTableElement => {
+    const table = createElement('table', 'pkc-filer-table pkc-filer-inventory-table') as HTMLTableElement;
+    table.setAttribute('data-pkc-region', 'filer-inventory-table');
+
+    const thead = createElement('thead', 'pkc-filer-thead');
+    const headRow = createElement('tr', 'pkc-filer-head-row');
+    for (const col of columns) {
+      const th = createElement('th', 'pkc-filer-th pkc-filer-inventory-th');
+      th.setAttribute('data-pkc-filer-column', col.key);
+      th.setAttribute('data-pkc-action', 'set-inventory-sort');
+      th.setAttribute('data-pkc-inventory-key', col.key);
+      const arrow = sortBy === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      th.textContent = `${col.label}${arrow}`;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+
+    // Filter row
+    const filterRow = createElement('tr', 'pkc-filer-inventory-filter-row');
+    for (const col of columns) {
+      const cell = createElement('th', 'pkc-filer-inventory-filter-cell');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'pkc-filer-inventory-filter-input';
+      input.setAttribute('data-pkc-action', 'set-inventory-filter');
+      input.setAttribute('data-pkc-inventory-key', col.key);
+      input.placeholder = '…';
+      input.value = filter[col.key] ?? '';
+      cell.appendChild(input);
+      filterRow.appendChild(cell);
+    }
+    thead.appendChild(filterRow);
+    table.appendChild(thead);
+
+    const tbody = createElement('tbody', 'pkc-filer-tbody');
+    for (const row of rows) {
+      const tr = createElement('tr', 'pkc-filer-row pkc-filer-inventory-row');
+      tr.setAttribute('data-pkc-action', 'select-entry');
+      tr.setAttribute('data-pkc-lid', row.entry.lid);
+      tr.setAttribute('data-pkc-archetype', row.entry.archetype);
+      if (row.entry.lid === state.selectedLid) tr.setAttribute('data-pkc-active', 'true');
+      for (const col of columns) {
+        const td = createElement('td', 'pkc-filer-cell');
+        td.setAttribute('data-pkc-inventory-key', col.key);
+        td.textContent = readCol(row, col.key);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+  };
+
+  if (groupBy) {
+    const groups = new Map<string, typeof filtered>();
+    for (const row of filtered) {
+      const v = readCol(row, groupBy) || '(none)';
+      const arr = groups.get(v) ?? [];
+      arr.push(row);
+      groups.set(v, arr);
+    }
+    const sortedGroupKeys = Array.from(groups.keys()).sort();
+    for (const key of sortedGroupKeys) {
+      const detail = document.createElement('details');
+      detail.className = 'pkc-filer-inventory-group';
+      detail.setAttribute('data-pkc-inventory-group', key);
+      detail.open = true;
+      const summary = document.createElement('summary');
+      summary.className = 'pkc-filer-inventory-group-summary';
+      summary.textContent = `${key} (${groups.get(key)!.length})`;
+      detail.appendChild(summary);
+      detail.appendChild(renderTable(groups.get(key)!));
+      wrapper.appendChild(detail);
+    }
+  } else {
+    wrapper.appendChild(renderTable(filtered));
+  }
+
+  return wrapper;
+}
+
+/**
+ * Center-pane graph view (領域 10-6 ζ'' Phase 4 follow-up 4).
+ * Distinct from `renderFilerGraph` (filer subset): this surface is a
+ * dedicated tab with its own toolbar(mode selector + focus controls)
+ * and supports 4 coloring / edge schemes.
+ */
+function renderCenterGraphView(state: AppState): HTMLElement {
+  const wrap = createElement('div', 'pkc-center-graph-view');
+  wrap.setAttribute('data-pkc-region', 'graph-view');
+
+  const mode = state.graphMode ?? 'relations';
+  wrap.setAttribute('data-pkc-graph-mode', mode);
+  if (state.graphFocusLid) wrap.setAttribute('data-pkc-graph-focus-lid', state.graphFocusLid);
+
+  // PR-Δ30 (2026-05-07、user 報告「選択してる時にバルク操作できるのは
+  // いいんだけど、Filer まで戻るのはだるい」):graph view top にも
+  // multi-action-bar を表示して、graph 内で直接 bulk delete / move /
+  // tag / color が完結するようにする。viewCtx='graph' で class を
+  // 切り分けて positioning を独立調整可能にする。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    wrap.appendChild(buildFilerMultiActionBar(state, 'graph'));
+  }
+
+  // Toolbar: mode selector + focus indicator + clear-focus button.
+  const toolbar = createElement('div', 'pkc-center-graph-toolbar');
+  toolbar.setAttribute('data-pkc-region', 'graph-toolbar');
+  const select = document.createElement('select');
+  select.className = 'pkc-graph-mode-select';
+  select.setAttribute('data-pkc-action', 'set-graph-mode');
+  for (const m of [
+    { v: 'relations', label: 'Relations(structural + semantic)' },
+    { v: 'color-tags', label: 'Color tags' },
+    { v: 'tag-groups', label: 'Tag groups' },
+    { v: 'folder-hierarchy', label: 'Folder hierarchy' },
+    { v: 'time-proximity', label: 'Time proximity(時系列接近性)' },
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = m.v;
+    opt.textContent = m.label;
+    if (m.v === mode) opt.selected = true;
+    select.appendChild(opt);
+  }
+  // Annotate with current selection so the change handler reads
+  // data-pkc-graph-mode unambiguously.
+  select.addEventListener('change', () => {
+    select.setAttribute('data-pkc-graph-mode', select.value);
+  });
+  select.setAttribute('data-pkc-graph-mode', mode);
+  toolbar.appendChild(select);
+
+  if (state.graphFocusLid && state.container) {
+    const focus = state.container.entries.find((e) => e.lid === state.graphFocusLid);
+    const label = createElement('span', 'pkc-graph-focus-label');
+    label.textContent = `🎯 ${focus?.title || state.graphFocusLid}`;
+    toolbar.appendChild(label);
+    const clear = createElement('button', 'pkc-btn-small');
+    clear.setAttribute('data-pkc-action', 'open-graph-full');
+    clear.textContent = '全体に戻る';
+    toolbar.appendChild(clear);
+  }
+
+  // PR-C G1 (2026-05-06):galaxy 風 zoom / pan の reset ボタン。
+  // gesture handlers が svg の zoom-layer の transform を直接書くため、
+  // reset も dispatch を経由せず action-binder の switch case で
+  // resetGraphZoom(svg) を呼ぶ imperative path。
+  const zoomReset = createElement('button', 'pkc-btn-small');
+  zoomReset.setAttribute('data-pkc-action', 'reset-graph-zoom');
+  zoomReset.textContent = '↺ 表示リセット';
+  zoomReset.title = '拡大縮小・パン位置をリセット(wheel / pinch / drag で操作可能)';
+  toolbar.appendChild(zoomReset);
+
+  // PR-Δ20 (2026-05-07、user 指摘「region 選択の操作性悪い、何に
+  // 使うのか UX 考えた?」):region-slice toggle のラベルと title を
+  // 用途明示に書き直し、affordance を強化。
+  //   旧:「⌗ region 選択」(用途不明)
+  //   新:「⬚ 範囲選択 → 一括操作」+ tooltip で具体例(同 folder 移動、
+  //       同 tag 付与、bulk delete など)
+  // 選択数表示を always-on にし、>0 で「これらに対して bulk 操作
+  // (sidebar 下部 multi-action-bar)」を提示する小 link を出す。
+  const regionMode = state.graphRegionSelectMode ?? false;
+  const regionLids = state.graphRegionSelectedLids ?? [];
+  const regionToggle = createElement('button', 'pkc-btn-small');
+  regionToggle.setAttribute('data-pkc-action', 'toggle-graph-region-select-mode');
+  regionToggle.textContent = regionMode ? '⬚ 範囲選択中(drag で囲む)' : '⬚ 範囲選択';
+  regionToggle.title = '背景 drag で囲った範囲内の entry を一括選択。'
+    + '選択後は左 sidebar の multi-action-bar で「全 entry に Tag 追加」'
+    + '「Folder へ移動」「Color tag」「Delete」等の bulk 操作が可能。'
+    + '使用例:近接性で関連していた entries を一気に同 folder に整理 / 同 tag を付与。';
+  if (regionMode) regionToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(regionToggle);
+  if (regionLids.length > 0) {
+    const count = createElement('span', 'pkc-graph-region-count');
+    count.textContent = `${regionLids.length} 件選択中(sidebar の multi-action-bar から bulk 操作可)`;
+    count.title = '左 sidebar の選択 bar で Tag / Color / Folder 移動 / Delete を一括実行';
+    toolbar.appendChild(count);
+    const clear = createElement('button', 'pkc-btn-small');
+    clear.setAttribute('data-pkc-action', 'clear-graph-region-selection');
+    clear.textContent = '✕ 解除';
+    toolbar.appendChild(clear);
+  }
+
+  // PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ、d3.js
+  // 級の幾何学」):galaxy 3D perspective toggle。flag 経由で ON/OFF。
+  // graph.galaxy_mode flag を 0↔1 で flip する SET_FLAG dispatch を
+  // 出すボタン(専用 action)を出す。
+  const galaxyOn = graphGalaxyMode() === 1;
+  const galaxyToggle = createElement('button', 'pkc-btn-small');
+  galaxyToggle.setAttribute('data-pkc-action', 'toggle-graph-galaxy-mode');
+  galaxyToggle.textContent = galaxyOn ? '🌌 Galaxy ON' : '🌌 Galaxy';
+  galaxyToggle.title = '3D perspective(folder depth = 奥行き)。'
+    + '深い folder の entry は小さく / 暗く描画され、所属階層が「銀河的」に'
+    + '見える。Flags `graph.galaxy_mode` で同等切替可。';
+  if (galaxyOn) galaxyToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(galaxyToggle);
+
+  // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
+  // ない」):旧 concentric ring を撤回、真の集合 hull(translucent fill
+  // で重なり領域を Venn 表現)に置換済み。toggle 名は維持。
+  const vennMode = state.graphVennGroupingMode ?? false;
+  const vennToggle = createElement('button', 'pkc-btn-small');
+  vennToggle.setAttribute('data-pkc-action', 'toggle-graph-venn-grouping-mode');
+  vennToggle.textContent = vennMode ? '🎨 Venn ON' : '🎨 Venn';
+  vennToggle.title = 'folder / tag の所属を Venn 図風 ring で重畳描画(toggle)';
+  if (vennMode) vennToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(vennToggle);
+
+  wrap.appendChild(toolbar);
+
+  // SVG body
+  const width = 960;
+  const height = 600;
+
+  const allEntries = (state.container?.entries ?? []).filter(
+    (e) => !isSystemArchetype(e.archetype),
+  );
+  const allRels = state.container?.relations ?? [];
+
+  const { nodes, links } = buildGraphForMode(allEntries, allRels, mode, state.graphFocusLid ?? null);
+
+  const params = getGraphForceParams(width, height);
+  // PR-D G8 (2026-05-06):time-proximity mode は force layout を bypass して
+  // created_at で x 座標を線形配置(時系列接近性)。y は archetype の lane
+  // に振って衝突を避ける。これにより「Recent ほど右、古いものほど左」が
+  // 視覚的に zero-shot で読める。other modes は従来通り force layout。
+  let sim;
+  if (mode === 'time-proximity') {
+    sim = seedTimeProximityLayout(
+      nodes, allEntries, width, height,
+      state.graphTimeRangeStart ?? null,
+      state.graphTimeRangeEnd ?? null,
+    );
+  } else {
+    sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
+    const iter = graphIterations();
+    for (let i = 0; i < iter; i++) stepSimulation(sim, links, params);
+  }
+
+  // PR-H G16 (2026-05-06):SVG → Canvas 化。force layout の出力 (sim) を
+  // payload にして graph-canvas.ts の `bindGraphCanvas` に渡す。draw +
+  // gesture handler は graph-canvas に集約。click hit-testing は
+  // coordinate-based(node の data-pkc-lid 属性は持たない、CustomEvent
+  // 経由で action-binder に通知)。
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const n of sim) positions.set(n.id, { x: n.x, y: n.y });
+
+  const timeAxis = mode === 'time-proximity' ? buildTimeAxisHint(allEntries) : undefined;
+
+  // PR-I G17 (2026-05-06):Venn-style グルーピング ON のとき、各 node の
+  // 所属 group ids(folder ancestor lids + tag names)を集めて payload に
+  // 載せる。Canvas が deterministic hue を hash で割り当て、translucent
+  // ring を concentric に描画する。
+  let vennMemberships: Map<string, string[]> | undefined;
+  if (vennMode && state.container) {
+    vennMemberships = new Map();
+    const entriesByLid = new Map<string, Entry>();
+    for (const e of state.container.entries) entriesByLid.set(e.lid, e);
+    for (const n of nodes) {
+      const groups: string[] = [];
+      // Folder ancestors via getAncestorFolderLids(structural relations).
+      const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, n.id);
+      for (const lid of ancestors) groups.push(`folder:${lid}`);
+      // Tags from entry.
+      const e = entriesByLid.get(n.id);
+      if (e?.tags && e.tags.length > 0) {
+        for (const t of e.tags) groups.push(`tag:${t}`);
+      }
+      if (groups.length > 0) vennMemberships.set(n.id, groups);
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.classList.add('pkc-graph-canvas');
+  canvas.setAttribute('data-pkc-region', 'graph-canvas');
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  if (regionMode) canvas.setAttribute('data-pkc-graph-region-select-mode', 'true');
+  if (vennMode) canvas.setAttribute('data-pkc-graph-venn-mode', 'true');
+
+  wrap.appendChild(canvas);
+
+  // PR-LLL (2026-05-06、user 修正指示5「リレーション数に応じてノード
+  // サイズを大きくすること」):各 node の degree(関連 link 数)を
+  // 計算して payload に乗せる。両端ノードに +1 ずつ。time-proximity
+  // mode は links が空なので degree 全 0、size 一律(意図通り)。
+  const degreeMap = new Map<string, number>();
+  for (const lk of links) {
+    degreeMap.set(lk.from, (degreeMap.get(lk.from) ?? 0) + 1);
+    degreeMap.set(lk.to, (degreeMap.get(lk.to) ?? 0) + 1);
+  }
+
+  const payload: GraphCanvasPayload = {
+    width,
+    height,
+    mode,
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      archetype: n.archetype,
+      cssColor: n.cssColor,
+      degree: degreeMap.get(n.id) ?? 0,
+      // PR-WWW (2026-05-07、修正指示5 残):hover preview tooltip。
+      ...(n.preview ? { preview: n.preview } : {}),
+      // PR-Δ22 (2026-05-07):galaxy mode の z 軸として folder depth。
+      ...(n.depth !== undefined ? { depth: n.depth } : {}),
+    })),
+    positions,
+    links,
+    selectedLid: state.selectedLid,
+    regionLids,
+    regionMode,
+    collideRadius: params.collideRadius,
+    timeAxis: timeAxis ?? undefined,
+    // PR-Δ6 (2026-05-07):time-proximity mode で entry の revisions
+    // タイムスタンプを Git 風 dot で表示するための payload 補強。
+    // 他 mode では map を渡してもキャンバス側が無視する (mode guard あり)。
+    ...(mode === 'time-proximity' && state.container?.revisions
+      ? {
+          nodeRevisions: (() => {
+            // PR-Δ13:trunk root は created_at(entry の起源)、
+            // intermediate dots は revisions の created_at、head は
+            // entry の updated_at(node 自体の x 位置)。
+            // entry の updated_at は node 位置と同じなので追加しない。
+            // 配列は時系列降順(node 位置から後方延長で描画される)。
+            const m = new Map<string, number[]>();
+            const entries = state.container?.entries ?? [];
+            for (const e of entries) {
+              const ct = Date.parse(e.created_at ?? '');
+              const ut = Date.parse(e.updated_at ?? '');
+              if (Number.isFinite(ct) && ct !== ut) {
+                m.set(e.lid, [ct]);
+              }
+            }
+            for (const rev of state.container.revisions) {
+              const t = Date.parse(rev.created_at ?? '');
+              if (!Number.isFinite(t)) continue;
+              const arr = m.get(rev.entry_lid) ?? [];
+              arr.push(t);
+              m.set(rev.entry_lid, arr);
+            }
+            return m;
+          })(),
+          // PR-Δ13:relations は head node 同士の参照ラインとして描画。
+          // 全 relations を pair で渡し、graph-canvas 側で line + arrow。
+          nodeReferences: (() => {
+            const m = new Map<string, Array<{ to: string; kind: string }>>();
+            for (const r of state.container?.relations ?? []) {
+              const arr = m.get(r.from) ?? [];
+              arr.push({ to: r.to, kind: r.kind });
+              m.set(r.from, arr);
+            }
+            return m;
+          })(),
+        }
+      : {}),
+    vennMemberships: vennMemberships ?? undefined,
+  };
+
+  // bindGraphCanvas needs the canvas mounted to compute its display
+  // size; queueMicrotask defers to after this DOM tree is appended.
+  queueMicrotask(() => {
+    bindGraphCanvas(canvas, payload);
+    installGraphCanvasGestures(canvas);
+  });
+
+  // PR-LLL (2026-05-06、user 修正指示5「グラフに凡例を表示」):
+  // archetype emoji + relation kind 色 を凡例として overlay 表示。
+  // 既に payload にある link.kind の集合と node.archetype の集合
+  // から、現在描画されている色 / 絵文字だけを示す(全 archetype を
+  // 機械的に並べると noise になる)。
+  const legend = createElement('div', 'pkc-graph-legend');
+  legend.setAttribute('data-pkc-region', 'graph-legend');
+  const legendH = createElement('div', 'pkc-graph-legend-heading');
+  legendH.textContent = '凡例';
+  legend.appendChild(legendH);
+  // Archetypes seen.
+  const archetypesSeen = new Set<string>();
+  for (const n of nodes) archetypesSeen.add(n.archetype);
+  const archList = createElement('div', 'pkc-graph-legend-row');
+  for (const a of Array.from(archetypesSeen).sort()) {
+    const item = createElement('span', 'pkc-graph-legend-item');
+    item.textContent = `${archetypeEmoji(a)} ${a}`;
+    archList.appendChild(item);
+  }
+  legend.appendChild(archList);
+  // Relation kinds seen.
+  const kindsSeen = new Set<string>();
+  for (const lk of links) if (lk.kind) kindsSeen.add(lk.kind);
+  if (kindsSeen.size > 0) {
+    const kindsList = createElement('div', 'pkc-graph-legend-row');
+    for (const k of Array.from(kindsSeen).sort()) {
+      const item = createElement('span', 'pkc-graph-legend-item');
+      const swatch = createElement('span', 'pkc-graph-legend-swatch');
+      swatch.style.background = relationColor(k, 'currentColor');
+      item.appendChild(swatch);
+      const label = document.createTextNode(` ${k}`);
+      item.appendChild(label);
+      kindsList.appendChild(item);
+    }
+    legend.appendChild(kindsList);
+  }
+  wrap.appendChild(legend);
+
+  return wrap;
+}
+
+interface GraphNodeView {
+  id: string;
+  label: string;
+  archetype: string;
+  /** Optional inline fill (color-tags / hierarchy depth). */
+  cssColor?: string;
+  /** Optional class hint for tag-group coloring. */
+  colorClass?: string;
+  /** Hover tooltip 用 preview(title + body excerpt). PR-WWW(2026-05-07). */
+  preview?: string;
+  /** PR-Δ22 (2026-05-07):galaxy mode の z 軸 = folder depth。 */
+  depth?: number;
+}
+
+/**
+ * Time-proximity layout (PR-D G8 — 時系列接近性).
+ *
+ * PR-Δ13 (2026-05-07、user 報告「根がエントリというのは発想が逆。
+ * 今のエントリ=葉/花が成立するための根は最終更新側、または始端と終端」):
+ *   redesign。entry の x 座標 = `updated_at`(= 現在の "head"、Git の
+ *   trunk 先端)。`created_at` は origin marker として trunk 後方に。
+ *   created → 各 revision → updated は graph-canvas 側で line + dot で
+ *   描画(Δ6 の nodeRevisions payload を活用)。
+ *
+ * y 座標は archetype を lane に分けて衝突を避ける。同 archetype 内では
+ * 同 X bucket の node を 2D grid (Δ10) で展開して重なり回避。
+ *
+ * 結果:「左:古い trunk / 右:新しい head」、各 entry は head に置かれ、
+ * trunk の根(created_at)へ後方延長で revision dot が時系列に並ぶ。
+ */
+function seedTimeProximityLayout(
+  nodes: readonly GraphNodeView[],
+  entries: readonly Entry[],
+  width: number,
+  height: number,
+  rangeStart?: number | null,
+  rangeEnd?: number | null,
+): { id: string; x: number; y: number; vx: number; vy: number }[] {
+  if (nodes.length === 0) return [];
+  const headTime = new Map<string, number>();
+  for (const e of entries) {
+    const t = Date.parse(e.updated_at);
+    headTime.set(e.lid, Number.isFinite(t) ? t : 0);
+  }
+  const ts = nodes.map((n) => headTime.get(n.id) ?? 0).filter((t) => t > 0);
+  const dataMinT = ts.length > 0 ? Math.min(...ts) : 0;
+  const dataMaxT = ts.length > 0 ? Math.max(...ts) : 1;
+  // PR-Δ13:user 指定 range があれば優先。なければ data の min/max。
+  const minT = typeof rangeStart === 'number' && Number.isFinite(rangeStart) ? rangeStart : dataMinT;
+  const maxT = typeof rangeEnd === 'number' && Number.isFinite(rangeEnd) ? rangeEnd : dataMaxT;
+  const span = Math.max(1, maxT - minT);
+  // 古い created に対する alias 維持(関数末尾で利用するため)。
+  const created = headTime;
+
+  // Bucket nodes by archetype to assign lanes.
+  const lanes = new Map<string, number>();
+  const laneOrder: string[] = [];
+  for (const n of nodes) {
+    if (!lanes.has(n.archetype)) {
+      lanes.set(n.archetype, laneOrder.length);
+      laneOrder.push(n.archetype);
+    }
+  }
+  const laneCount = Math.max(1, laneOrder.length);
+  const padX = 40;
+  const padY = 40;
+  const usableW = width - padX * 2;
+  const usableH = height - padY * 2;
+  const laneH = usableH / laneCount;
+
+  // PR-Δ6 (2026-05-07、user 報告「時系列グラフでも重ね合わせがきつい、
+  // エントリが見えない」):lane 内でも X が近い node は Y を均等分割して
+  // 物理的に分離する。X bucket(50px 幅)単位で同じ bucket の node を
+  // 列挙し、bucket 内で stable sort 後 Y を均等配置。
+  const bucketW = 50;
+  const byBucket = new Map<string, GraphNodeView[]>(); // key = `${lane}:${bucketIdx}`
+  for (const n of nodes) {
+    const t = created.get(n.id) ?? minT;
+    const xRatio = (t - minT) / span;
+    const x = padX + xRatio * usableW;
+    const lane = lanes.get(n.archetype) ?? 0;
+    const bucketIdx = Math.floor(x / bucketW);
+    const key = `${lane}:${bucketIdx}`;
+    const arr = byBucket.get(key) ?? [];
+    arr.push(n);
+    byBucket.set(key, arr);
+  }
+  // Within each bucket, sort by id hash for determinism.
+  for (const arr of byBucket.values()) {
+    arr.sort((a, b) => hashStringToUnit(a.id) - hashStringToUnit(b.id));
+  }
+
+  return nodes.map((n) => {
+    const t = created.get(n.id) ?? minT;
+    const xRatio = (t - minT) / span;
+    const x = padX + xRatio * usableW;
+    const lane = lanes.get(n.archetype) ?? 0;
+    const bucketIdx = Math.floor(x / bucketW);
+    const key = `${lane}:${bucketIdx}`;
+    const bucket = byBucket.get(key) ?? [n];
+    const idx = bucket.indexOf(n);
+    const total = bucket.length;
+    // PR-Δ10 (2026-05-07、user 報告「時系列グラフでもノードが重なった
+    // ままになってる」、Playwright 計測 38 overlap pairs/30 nodes):
+    // bucket 内に N 個ある場合、Y を lane height いっぱいに均等分散させる。
+    // 4+ entries が同 X bucket に落ちると Y ピッチが node 衝突半径(70px)
+    // 以下になり重なる。X 方向にも bucketW 内で散らして 2D 配置にする。
+    // PR-Δ28 (2026-05-07、user 視覚指摘「同じ種別のエントリが一直線
+     // に並んでてきもい」):
+    // Δ10 の grid 配置は確定的だが entry が perfectly 整列して
+     // 機械的・気持ち悪い見た目。各 entry に **hash-based jitter** を
+    // grid 位置から ±20px 程度乗せて自然な散らばりを作る。time order は
+    // X 軸が保証するので Y は意味より見栄え優先。
+    let xOffset = 0;
+    let yOffset: number;
+    if (total > 1) {
+      const minPitch = 80;
+      const rows = Math.max(1, Math.floor(laneH / minPitch));
+      const cols = Math.ceil(total / rows);
+      const col = Math.floor(idx / rows);
+      const row = idx % rows;
+      xOffset = (col - (cols - 1) / 2) * minPitch;
+      yOffset = (row + 0.5 - rows / 2) * (laneH / Math.max(1, rows));
+      // Δ28:hash jitter で direction 揺らぎ。X / Y それぞれ ±15px。
+      const h1 = hashStringToUnit(n.id);
+      const h2 = hashStringToUnit(n.id + '_y');
+      xOffset += (h1 - 0.5) * 30;
+      yOffset += (h2 - 0.5) * 30;
+    } else {
+      // 単独 entry も Y を full lane height 内で hash 散らし、archetype
+      // 一直線を撲滅。
+      yOffset = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.85);
+    }
+    const y = padY + lane * laneH + laneH / 2 + yOffset;
+    return { id: n.id, x: x + xOffset, y, vx: 0, vy: 0 };
+  });
+}
+
+/** Cheap deterministic hash → [0, 1). Used for lane jitter. */
+function hashStringToUnit(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+function buildGraphForMode(
+  entries: readonly Entry[],
+  relations: readonly { kind: string; from: string; to: string }[],
+  mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity',
+  focusLid: string | null,
+): { nodes: GraphNodeView[]; links: { from: string; to: string; kind?: string; cssColor?: string }[] } {
+  // Restrict scope when focusLid is set to 1-hop neighbourhood.
+  let nodeIds = new Set<string>(entries.map((e) => e.lid));
+  if (focusLid && entries.some((e) => e.lid === focusLid)) {
+    nodeIds = new Set<string>([focusLid]);
+    for (const r of relations) {
+      if (r.from === focusLid) nodeIds.add(r.to);
+      if (r.to === focusLid) nodeIds.add(r.from);
+    }
+  }
+
+  const inScope = (id: string): boolean => nodeIds.has(id);
+  // PR-Δ17 → Δ24 (2026-05-07、user 訂正「フォルダを不可視化するのではなく
+  // リレーションとして結節点から線を伸ばして表現」):
+  //   folder は entry ではなく junction(結節点)、しかし完全除外では
+  //   なく **junction symbol として小さく描画 + folder→子 の線を残す**。
+  //   time-proximity mode では folder を独立 entry として X 軸に並べる
+  //   ことに意味がない(folder には updated_at が user 編集としては
+  //   無いに等しい)ため除外、それ以外の mode では junction として残す。
+  const isFolder = (lid: string): boolean => {
+    const e = entries.find((x) => x.lid === lid);
+    return e?.archetype === 'folder';
+  };
+  const excludeFolderAsNode = mode === 'time-proximity';
+  const filteredEntries = entries.filter((e) => {
+    if (!inScope(e.lid)) return false;
+    if (excludeFolderAsNode && e.archetype === 'folder') return false;
+    return true;
+  });
+  const linksRaw = relations.filter((r) => {
+    if (!inScope(r.from) || !inScope(r.to)) return false;
+    if (excludeFolderAsNode && (isFolder(r.from) || isFolder(r.to))) return false;
+    return true;
+  });
+
+  // PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
+  // link.kind を payload まで運ぶ。色は graph-canvas の relationColor() で決定。
+  let links: { from: string; to: string; kind?: string; cssColor?: string }[] = [];
+  switch (mode) {
+    case 'relations':
+      links = linksRaw
+        .filter((r) => r.kind === 'structural' || r.kind === 'semantic')
+        .map((r) => ({ from: r.from, to: r.to, kind: r.kind }));
+      break;
+    case 'folder-hierarchy':
+      links = linksRaw
+        .filter((r) => r.kind === 'structural')
+        .map((r) => ({ from: r.from, to: r.to, kind: 'structural' }));
+      break;
+    case 'color-tags': {
+      // Edges between entries that share the same color_tag.
+      // PR-Δ6 (2026-05-07、user 報告):同色 group の relation は
+      // 「カラータグと同じ色」で描画。link.cssColor 経由で graph-canvas に
+      // 直接 stroke 色を渡す。
+      const colorTagToHex: Record<string, string> = {
+        red: '#ef4444', orange: '#f97316', yellow: '#eab308',
+        green: '#22c55e', blue: '#3b82f6', indigo: '#6366f1',
+        purple: '#a855f7', pink: '#ec4899', gray: '#6b7280',
+      };
+      const byColor = new Map<string, string[]>();
+      for (const e of filteredEntries) {
+        const c = (e as Entry).color_tag;
+        if (!c) continue;
+        const arr = byColor.get(c) ?? [];
+        arr.push(e.lid);
+        byColor.set(c, arr);
+      }
+      for (const [color, arr] of byColor.entries()) {
+        const cssColor = colorTagToHex[color] ?? '#9ca3af';
+        // chain pattern keeps O(N) edges per group.
+        for (let i = 1; i < arr.length; i++) {
+          links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical', cssColor });
+        }
+      }
+      break;
+    }
+    case 'tag-groups': {
+      // Edges between entries sharing at least one tag.
+      const byTag = new Map<string, string[]>();
+      for (const e of filteredEntries) {
+        for (const t of (e as Entry).tags ?? []) {
+          const arr = byTag.get(t) ?? [];
+          arr.push(e.lid);
+          byTag.set(t, arr);
+        }
+      }
+      for (const arr of byTag.values()) {
+        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical' });
+      }
+      break;
+    }
+    case 'time-proximity':
+      // Time-proximity layout は edge を引かない(時系列軸そのものが
+      // 「接近性」の表現)。位置決定は seedTimeProximityLayout が行う。
+      links = [];
+      break;
+  }
+
+  // Folder-hierarchy color assignment via BFS depth.
+  const depthMap = new Map<string, number>();
+  if (mode === 'folder-hierarchy') {
+    const childrenOf = new Map<string, string[]>();
+    for (const r of linksRaw) {
+      if (r.kind !== 'structural') continue;
+      const arr = childrenOf.get(r.from) ?? [];
+      arr.push(r.to);
+      childrenOf.set(r.from, arr);
+    }
+    const hasParent = new Set<string>();
+    for (const r of linksRaw) {
+      if (r.kind === 'structural') hasParent.add(r.to);
+    }
+    const queue: { id: string; d: number }[] = filteredEntries
+      .filter((e) => !hasParent.has(e.lid))
+      .map((e) => ({ id: e.lid, d: 0 }));
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (visited.has(cur.id)) continue;
+      visited.add(cur.id);
+      depthMap.set(cur.id, cur.d);
+      for (const c of childrenOf.get(cur.id) ?? []) queue.push({ id: c, d: cur.d + 1 });
+    }
+  }
+
+  const colorTagPalette = (id: string): string => {
+    // Map our internal color tag id (e.g. 'red'/'blue') to a CSS-safe value.
+    const map: Record<string, string> = {
+      red: '#ef4444',
+      orange: '#f97316',
+      yellow: '#eab308',
+      green: '#22c55e',
+      blue: '#3b82f6',
+      indigo: '#6366f1',
+      purple: '#a855f7',
+      pink: '#ec4899',
+      gray: '#6b7280',
+    };
+    return map[id] ?? '#9ca3af';
+  };
+
+  const tagGroupPalette = (() => {
+    const cache = new Map<string, string>();
+    let idx = 0;
+    const palette = ['#3b82f6', '#22c55e', '#a855f7', '#f97316', '#ec4899', '#0891b2', '#eab308'];
+    return (tag: string): string => {
+      const cached = cache.get(tag);
+      if (cached) return cached;
+      const c = palette[idx % palette.length]!;
+      idx += 1;
+      cache.set(tag, c);
+      return c;
+    };
+  })();
+
+  const nodes: GraphNodeView[] = filteredEntries.map((e) => {
+    let cssColor: string | undefined;
+    switch (mode) {
+      case 'color-tags':
+        if ((e as Entry).color_tag) cssColor = colorTagPalette(String((e as Entry).color_tag));
+        break;
+      case 'tag-groups': {
+        const t = (e as Entry).tags?.[0];
+        if (t) cssColor = tagGroupPalette(t);
+        break;
+      }
+      case 'folder-hierarchy': {
+        const d = depthMap.get(e.lid) ?? 0;
+        // Lighten by depth: hue green→cyan→blue progression.
+        const palette = ['#22c55e', '#10b981', '#0891b2', '#3b82f6', '#6366f1', '#a855f7', '#ec4899'];
+        cssColor = palette[Math.min(d, palette.length - 1)];
+        break;
+      }
+      default:
+        break;
+    }
+    // PR-WWW (2026-05-07、修正指示5 残):hover tooltip 用 preview。
+    // entry.body の冒頭を 100 char に trim、改行 / マークアップ系
+    // ノイズを軽く除去して title と組み合わせる。
+    const bodyExcerpt = ((e as Entry).body ?? '')
+      .replace(/^---[\s\S]*?---\n?/, '') // strip frontmatter
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+    const preview = bodyExcerpt
+      ? `${e.title || e.lid}\n${bodyExcerpt}`
+      : (e.title || e.lid);
+    return {
+      id: e.lid,
+      label: e.title || e.lid,
+      archetype: e.archetype,
+      ...(cssColor ? { cssColor } : {}),
+      preview,
+      depth: depthMap.get(e.lid) ?? 0,
+    };
+  });
+
+  return { nodes, links };
 }
 
 function renderKanbanView(state: AppState): HTMLElement {
@@ -4297,6 +7043,33 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     view.appendChild(bc);
   }
 
+  // PR-YY (2026-05-06):user 修正指示4「TEXTエントリのサムネイル
+  // 指定が … エントリを開いても適切なサムネが表示されない」への対応。
+  // text archetype で frontmatter / body / folder 経由で resolve できる
+  // hero thumbnail があれば body の前に大きく表示する。filer card
+  // grid と同じ `pickImageAssetForEntry` を経由するので一貫性あり。
+  // attachment 自体は既に presenter が body 内で preview を出すので除外。
+  // novel cover SVG fallback も含むため、kind:novel/book でも hero が
+  // 出る。
+  if (
+    entry.archetype === 'text'
+    && container
+    && !isReservedLid(entry.lid)
+    && !isSystemArchetype(entry.archetype)
+  ) {
+    const heroUrl = pickImageAssetForEntry(entry, container.assets, container);
+    if (heroUrl) {
+      const hero = createElement('div', 'pkc-view-hero-thumb');
+      hero.setAttribute('data-pkc-region', 'view-hero-thumb');
+      const heroImg = document.createElement('img');
+      heroImg.src = heroUrl;
+      heroImg.alt = entry.title || '';
+      heroImg.loading = 'lazy';
+      hero.appendChild(heroImg);
+      view.appendChild(hero);
+    }
+  }
+
   // Archetype-dispatched body rendering.
   // For text/textlog (markdown-capable) presenters, pass assets + MIME
   // map + name map so both `![alt](asset:key)` image embeds and
@@ -4415,6 +7188,13 @@ function renderMetaPaneImpl(
   meta.appendChild(timestamps);
 
   // Table of Contents (TEXT / TEXTLOG with h1–h3 headings).
+  // 領域 10-6 ζ'' Phase 2a — Frontmatter property table.
+  // Body-leading `---\n…\n---\n` YAML produces a small key/value list
+  // here so book / youtube / paper / film / album metadata is visible
+  // in the meta pane without rendering it inside the markdown.
+  const frontmatterSection = renderFrontmatterSection(entry);
+  if (frontmatterSection) meta.appendChild(frontmatterSection);
+
   // Hidden entirely when the body produces zero headings, per spec §4.
   const tocSection = renderTocSection(entry);
   if (tocSection) meta.appendChild(tocSection);
@@ -4619,6 +7399,86 @@ function renderMetaPaneImpl(
     moveSection.appendChild(moveBtn);
 
     meta.appendChild(moveSection);
+  }
+
+  // Filer display profile (folder archetype only) —領域 10-6 ζ'' Phase 1.
+  // Phase 1 only ships `'explorer'`; Phase 2b/3a will add `'graph'` /
+  // `'contact-sheet'` / `'book-base'` / `'youtube-base'` to the option list.
+  if (entry.archetype === 'folder' && canEdit) {
+    // Description editor — 2026-05-06 user direction:「フォルダの説明
+    // は右ペインから編集できるようにして、ファイラー UI を阻害しない」。
+    // Folder body は description として運用、QUICK_UPDATE_ENTRY 経由。
+    const descSection = createElement('div', 'pkc-folder-description-editor');
+    descSection.setAttribute('data-pkc-region', 'folder-description-editor');
+    descSection.setAttribute('data-pkc-lid', entry.lid);
+    const descLabel = createElement('span', 'pkc-folder-description-label');
+    descLabel.textContent = 'フォルダ説明';
+    descSection.appendChild(descLabel);
+    const descInput = document.createElement('textarea');
+    descInput.className = 'pkc-folder-description-input';
+    descInput.setAttribute('data-pkc-action', 'set-folder-description');
+    descInput.setAttribute('data-pkc-lid', entry.lid);
+    descInput.setAttribute('placeholder', 'このフォルダの説明…');
+    descInput.rows = 3;
+    descInput.value = entry.body ?? '';
+    descSection.appendChild(descInput);
+    meta.appendChild(descSection);
+
+    const profileSection = createElement('div', 'pkc-filer-profile-editor');
+    profileSection.setAttribute('data-pkc-region', 'filer-display-profile-editor');
+    profileSection.setAttribute('data-pkc-lid', entry.lid);
+
+    const profileLabel = createElement('span', 'pkc-filer-profile-label');
+    profileLabel.textContent = 'Filer 表示';
+    profileSection.appendChild(profileLabel);
+
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-action', 'set-display-profile');
+    select.setAttribute('data-pkc-lid', entry.lid);
+    select.className = 'pkc-filer-profile-select';
+
+    const opts: { value: string; label: string }[] = [
+      { value: 'auto', label: 'Auto(自動判定 / 7 割多数決)' },
+      { value: 'explorer', label: 'Explorer (table)' },
+      { value: 'contact-sheet', label: 'Contact sheet (album)' },
+      { value: 'book-base', label: 'Book base (Amazon / 楽天 / 蔵書)' },
+      { value: 'video-base', label: 'Video base (YouTube / niconico / Vimeo)' },
+      { value: 'novel-base', label: 'Novel base (なろう / カクヨム / 青空)' },
+      { value: 'audio-base', label: 'Audio base (Spotify / 録音 / podcast)' },
+      // PR-HHH (2026-05-06):filer 内 Graph subset は廃止。center pane の
+      // viewMode='graph' タブが canonical。option は除去。
+      { value: 'inventory', label: 'Inventory (Bases 風 filter/sort/group)' },
+    ];
+    // PR-G G15 (2026-05-06):default は auto。undefined display_profile も
+    // auto と同じ意味として扱う。
+    const current = entry.display_profile?.kind ?? 'auto';
+    for (const opt of opts) {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if (opt.value === current) option.selected = true;
+      select.appendChild(option);
+    }
+    profileSection.appendChild(select);
+
+    // Auto モード時、自動判定された結果を併記して user に伝える。
+    if (current === 'auto' && container) {
+      const childLids = new Set<string>();
+      for (const r of container.relations) {
+        if (r.kind === 'structural' && r.from === entry.lid) childLids.add(r.to);
+      }
+      const children = container.entries.filter(
+        (e) => childLids.has(e.lid) && !isSystemArchetype(e.archetype),
+      );
+      const resolved = autoDetectFilerProfile(children);
+      const hint = createElement('span', 'pkc-filer-profile-hint');
+      hint.setAttribute('data-pkc-region', 'filer-profile-auto-hint');
+      hint.setAttribute('data-pkc-resolved-kind', resolved.kind);
+      hint.textContent = `→ 現在: ${resolved.kind}(${children.length} 件中)`;
+      profileSection.appendChild(hint);
+    }
+
+    meta.appendChild(profileSection);
   }
 
   // History section
@@ -5025,6 +7885,75 @@ function renderLinkRefsSection(
  * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
  * - `data-pkc-log-id`        — owning article for headings / logs
  */
+function renderFrontmatterSection(entry: Entry): HTMLElement | null {
+  // Only TEXT bodies are markdown-rendered; other archetypes either
+  // serialize body as JSON / CSV / opaque blob, where a leading
+  // `---` is not a frontmatter fence.
+  if (entry.archetype !== 'text') return null;
+  const { meta, found } = parseFrontmatter(entry.body ?? '');
+  if (!found) return null;
+  const keys = Object.keys(meta);
+  if (keys.length === 0) return null;
+
+  const section = createElement('section', 'pkc-frontmatter');
+  section.setAttribute('data-pkc-region', 'frontmatter');
+
+  const heading = createElement('div', 'pkc-frontmatter-heading');
+  heading.textContent = 'Properties';
+  section.appendChild(heading);
+
+  const dl = document.createElement('dl');
+  dl.className = 'pkc-frontmatter-list';
+  for (const key of keys) {
+    const dt = document.createElement('dt');
+    dt.className = 'pkc-frontmatter-key';
+    dt.textContent = key;
+    dl.appendChild(dt);
+    const dd = document.createElement('dd');
+    dd.className = 'pkc-frontmatter-value';
+    dd.setAttribute('data-pkc-frontmatter-key', key);
+    // URL fields render as <a> with optional fragment label.
+    // Phase 3c-C: parseFragment surfaces locator labels (p. 245 /
+    // 2:13 / 第28話) inline so the meta pane stays a useful overview.
+    if (key === 'url' && typeof meta[key] === 'string') {
+      const url = String(meta[key]);
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'pkc-frontmatter-url';
+      link.textContent = url;
+      dd.appendChild(link);
+      const fragment = parseFragment(url);
+      if (fragment?.label) {
+        const badge = createElement('span', 'pkc-frontmatter-fragment-badge');
+        badge.setAttribute('data-pkc-fragment-kind', fragment.locator_kind);
+        badge.textContent = fragment.label;
+        dd.appendChild(document.createTextNode(' '));
+        dd.appendChild(badge);
+      }
+    } else {
+      dd.textContent = formatFrontmatterValue(meta[key]);
+    }
+    dl.appendChild(dd);
+  }
+  section.appendChild(dl);
+  return section;
+}
+
+// Re-export so callers (extensions, debug overlays) can reach the
+// fragment IR without reaching into features layer directly.
+export { parseFragment, buildFragmentUri };
+
+function formatFrontmatterValue(v: unknown): string {
+  if (v === null) return '—';
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map((item) => formatFrontmatterValue(item)).join(', ');
+  return String(v);
+}
+
 function renderTocSection(entry: Entry): HTMLElement | null {
   if (entry.archetype !== 'text' && entry.archetype !== 'textlog') return null;
   const nodes: TocNode[] = extractTocFromEntry(entry);
@@ -5917,13 +8846,26 @@ function renderBatchImportResult(summary: BatchImportResultSummary): HTMLElement
   return banner;
 }
 
-function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
+function renderPendingOffers(
+  offers: PendingOffer[],
+  container?: Container | null,
+): HTMLElement {
   const bar = createElement('div', 'pkc-pending-offers');
   bar.setAttribute('data-pkc-region', 'pending-offers');
 
   const label = createElement('span', 'pkc-pending-label');
   label.textContent = `${offers.length} pending offer${offers.length > 1 ? 's' : ''}`;
   bar.appendChild(label);
+
+  // PR-VV (2026-05-06):folder picker のための候補を 1 度だけ collect。
+  // 大規模 container でも O(N)、O(N) sort 1 回。display は title 優先で
+  // 並べ、空 title は lid を fallback。
+  const folders: { lid: string; label: string }[] = container
+    ? container.entries
+        .filter((e) => e.archetype === 'folder')
+        .map((e) => ({ lid: e.lid, label: e.title || e.lid }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    : [];
 
   for (const offer of offers) {
     const item = createElement('div', 'pkc-pending-item');
@@ -5932,6 +8874,28 @@ function renderPendingOffers(offers: PendingOffer[]): HTMLElement {
     const title = createElement('span', 'pkc-pending-title');
     title.textContent = offer.title || '(untitled)';
     item.appendChild(title);
+
+    // PR-VV: target folder picker. 同じ `[data-pkc-offer-id]` item 内に
+    // <select> を置く。action-binder が accept-offer click 時に同 item
+    // 内の select を querySelector で読み、value を ACCEPT_OFFER の
+    // `target_folder_lid` に渡す。空文字列 = root scope。
+    if (folders.length > 0) {
+      const targetSelect = document.createElement('select');
+      targetSelect.className = 'pkc-pending-target';
+      targetSelect.setAttribute('data-pkc-pending-target', offer.offer_id);
+      targetSelect.setAttribute('title', '取り込み先フォルダ(空 = root scope)');
+      const rootOpt = document.createElement('option');
+      rootOpt.value = '';
+      rootOpt.textContent = '📂 (root)';
+      targetSelect.appendChild(rootOpt);
+      for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.lid;
+        opt.textContent = `📁 ${f.label}`;
+        targetSelect.appendChild(opt);
+      }
+      item.appendChild(targetSelect);
+    }
 
     const acceptBtn = createElement('button', 'pkc-btn');
     acceptBtn.setAttribute('data-pkc-action', 'accept-offer');
@@ -6534,12 +9498,25 @@ function findSelectedEntry(state: AppState): Entry | null {
  * Shows date and time in a compact human-readable form.
  */
 function formatTimestamp(iso: string): string {
+  // 2026-05-06 user direction:「日時関連のロケール解決がされていない
+  // 表示があるため、ファイラの日時もエントリごとの右ペインの日時表示
+  // もロケールに合わせて表示してください」。Intl.DateTimeFormat で
+  // 表示ロケールを尊重(navigator.language fallback)。
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const date = d.toISOString().slice(0, 10); // YYYY-MM-DD
-    const time = d.toISOString().slice(11, 16); // HH:MM
-    return `${date} ${time}`;
+    const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
+    const fmt = new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
+      // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
+      hour12: false,
+    });
+    return fmt.format(d);
   } catch {
     return iso;
   }
@@ -6578,6 +9555,8 @@ export interface ContextMenuOptions {
   hasParent?: boolean;
   /** Available folders for "move to folder" sub-menu. */
   folders?: { lid: string; title: string }[];
+  /** PR-Δ34: graph view 等から呼ばれる時に「開く」item を先頭に出す。 */
+  showOpen?: boolean;
 }
 
 export function renderContextMenu(
@@ -6625,6 +9604,8 @@ export function renderContextMenu(
   const hasFolders = !!(opts.folders && opts.folders.length > 0);
 
   const items: Item[] = [
+    // PR-Δ34: graph 等で右クリックされた時のみ「Open」を先頭に表示。
+    { action: 'ctx-open-detail', label: '🔍 Open', tip: 'このエントリを Detail で開く', lid, show: !!opts.showOpen },
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },

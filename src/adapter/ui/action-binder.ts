@@ -22,6 +22,7 @@ import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classif
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
+import { editorTabIndentSpaces } from './editor-flags';
 import {
   applySnippet,
   placeFloatingTrigger,
@@ -34,6 +35,8 @@ import {
   closeMediaViewer,
   isMediaViewerOpen,
 } from './media-viewer';
+import { openImagePreview } from './image-preview';
+import { resetGraphCanvasZoom } from './graph-canvas';
 import {
   enhanceTable,
   sortColumn,
@@ -66,6 +69,7 @@ import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
+import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -223,6 +227,25 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let colorPickerLid: string | null = null;
   let colorPickerEl: HTMLElement | null = null;
   let colorPickerTrigger: HTMLElement | null = null;
+  // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック検知
+  // までの間だけでも要素の再描画を抑止して左ペインの行ズレ防止」):
+  // sidebar 単一 click による SELECT_ENTRY dispatch を ~250ms 遅延
+  // させ、その間に dblclick が来たら timer を cancel して dblclick
+  // action 直接実行に切り替える。両 click 間に再描画が走らないため
+  // 行 / 文字位置が固定される。
+  let sidebarSelectTimer: number | null = null;
+  let sidebarSelectLid: string | null = null;
+
+  // PR-OOO (2026-05-06、user 修正指示6「TEXTAREA の TAB キー押下で全角
+  // 空白が入力されることがある(過去のショートカットキーが残っている
+  // 可能性)」):defensive layer。Tab keydown が発生してから ~120ms 以内
+  // に textarea へ U+3000(`　`)が単独 insertText で入った場合、それを
+  // browser / IME tab-completion 由来とみなして preventDefault し、
+  // 代わりに `\t` を splice する。PKC2 source には U+3000 を Tab に
+  // bind するコードは存在しないため、bug の出所は browser / IME 側
+  // (or 過去 shortcut の残留 cached state)。
+  let lastTabKeydownAt = 0;
+  let lastTabKeydownTarget: HTMLTextAreaElement | null = null;
 
   // 2026-04-26 user report:
   //   "シェルメニューの色設定 / スポイトツールが表示されるけど、
@@ -1105,30 +1128,137 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           }
         };
         if (me.detail >= 2) {
+          // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック
+          // 検知までの間だけでも要素の再描画を抑止して左ペインの行
+          // ズレ防止をしたい」):dblclick 確定時は pending sidebar
+          // SELECT_ENTRY timer を cancel して dblclick action を直接
+          // 実行。これにより click 1 と click 2 の間に再描画が走らない。
+          if (sidebarSelectTimer !== null) {
+            window.clearTimeout(sidebarSelectTimer);
+            sidebarSelectTimer = null;
+            sidebarSelectLid = null;
+          }
           handleDblClickAction(target, lid);
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
-          // Snapshot the sidebar's visible LIDs in DOM order so the
-          // reducer can pick the range in tree-traversal order
-          // instead of storage order. Without this the user reports
-          // "歯抜け" — Shift+click across folder boundaries skips
-          // entries that are not contiguous in `container.entries`.
-          const visibleOrder = sidebarRegion
-            ? Array.from(
-                sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
-              )
-                .map((el) => el.getAttribute('data-pkc-lid'))
-                .filter((v): v is string => typeof v === 'string')
-            : undefined;
+          // Snapshot visible LIDs in DOM order so the reducer can pick
+          // the range in tree-traversal order instead of storage order.
+          // Without this the user reports "歯抜け" — Shift+click across
+          // folder boundaries skips entries that are not contiguous in
+          // `container.entries`.
+          // PR-Δ3 (2026-05-07、修正指示9):filer 列のときも range を
+          // ソート順で連続選択できるよう、filer-table の <tr> も visible
+          // order の source として優先する(filer view 側 click が来た時)。
+          const filerTable = root.querySelector<HTMLElement>('[data-pkc-region="filer-table"]');
+          const fromFilerClick = !!filerTable?.contains(target);
+          let visibleOrder: string[] | undefined;
+          if (fromFilerClick) {
+            visibleOrder = Array.from(
+              filerTable!.querySelectorAll<HTMLElement>('tr.pkc-filer-row[data-pkc-lid]'),
+            )
+              .map((el) => el.getAttribute('data-pkc-lid'))
+              .filter((v): v is string => typeof v === 'string');
+          } else {
+            visibleOrder = sidebarRegion
+              ? Array.from(
+                  sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
+                )
+                  .map((el) => el.getAttribute('data-pkc-lid'))
+                  .filter((v): v is string => typeof v === 'string')
+              : undefined;
+          }
           suppressAutoScroll(lid);
           dispatcher.dispatch({ type: 'SELECT_RANGE', lid, visibleOrder });
         } else {
-          if (dispatcher.getState().viewMode !== 'detail') {
+          // Filer view (領域 10-6 ζ'' Phase 1) — keep folder navigation
+          // inside the filer. When the user opens a folder while in
+          // filer mode, the new selectedLid moves the filer scope; we
+          // do NOT switch to detail. Non-folder entries still flip to
+          // detail because the filer is not the right surface for
+          // reading a single text/textlog body.
+          const currentState = dispatcher.getState();
+          let stayInFiler = false;
+          if (currentState.viewMode === 'filer' && currentState.container) {
+            const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
+            stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
+          }
+          // PR-Δ18 (2026-05-07、user 報告「Filer で選択を開始した時に
+          // エントリクリックを抑制していないから誤クリックで Detail が
+          // 開始する。使い物にならん」):
+          //   filer view + 既に multi-select している状態 = 「選択モード」
+          //   このときの plain row click は detail へ遷移せず、行 lid を
+          //   multi に toggle するだけ(includeAnchor: false で sidebar
+          //   selectedLid 巻込み回避)。クリアは Esc または Clear ボタン。
+          if (
+            currentState.viewMode === 'filer'
+            && currentState.multiSelectedLids.length > 0
+            && !stayInFiler
+          ) {
+            dispatcher.dispatch({
+              type: 'TOGGLE_MULTI_SELECT',
+              lid,
+              includeAnchor: false,
+            });
+            return;
+          }
+          // PR-Δ3-fix:filer / sidebar の plain click は multi 残留を
+          // clear して単一選択に戻す(OS 標準 UX)。但し上の filer 選択
+          // モード時は exit せず toggle で済ませる(return 済み)。
+          if (currentState.multiSelectedLids.length > 0) {
+            dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+          }
+          if (!stayInFiler && currentState.viewMode === 'filer') {
+            // Phase 4 follow-up nav memory: snapshot the filer scope
+            // before we leave, so a later Filer tab / back button
+            // restores the same folder.
+            const sel = currentState.selectedLid;
+            const cur = sel && currentState.container
+              ? currentState.container.entries.find((e) => e.lid === sel)
+              : null;
+            let scopeLid: string | null = null;
+            if (cur && cur.archetype === 'folder') {
+              scopeLid = cur.lid;
+            } else if (cur && currentState.container) {
+              const ancestors = (currentState.container.relations ?? [])
+                .filter((r) => r.kind === 'structural' && r.to === cur.lid)
+                .map((r) => r.from);
+              const parent = ancestors[0];
+              if (parent) {
+                const p = currentState.container.entries.find((e) => e.lid === parent);
+                if (p && p.archetype === 'folder') scopeLid = p.lid;
+              }
+            }
+            dispatcher.dispatch({ type: 'SET_LAST_FILER_SCOPE', lid: scopeLid });
+          }
+          if (!stayInFiler && currentState.viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
           suppressAutoScroll(lid);
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+          // PR-MMM (2026-05-06、user 修正指示5):sidebar からの単一
+          // click は dblclick window(250ms)分だけ SELECT_ENTRY 発火
+          // を delay する。同窓内で次の click が detail≥2 で来たら
+          // 上の dblclick 分岐が timer を cancel して dblclick action
+          // を直接 dispatch。timer が満了する前に他の sidebar entry が
+          // click されたら、より新しい click のみ生かして古い timer は
+          // 破棄(LRU 1)。
+          // 非 sidebar click(center / meta / overlay)は従来通り即時
+          // dispatch — 編集対象の選択を delay すると体感悪化のため。
+          if (fromSidebarClick) {
+            if (sidebarSelectTimer !== null) {
+              window.clearTimeout(sidebarSelectTimer);
+            }
+            sidebarSelectLid = lid;
+            sidebarSelectTimer = window.setTimeout(() => {
+              sidebarSelectTimer = null;
+              if (sidebarSelectLid === lid) {
+                dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+                sidebarSelectLid = null;
+              }
+            }, 250);
+          } else {
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+          }
         }
         break;
       }
@@ -1270,6 +1400,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        // PR-Δ19 (2026-05-07、user 報告「Filer を開いている時に最上部の
+        // エントリ作成ボタンを押すと Detail 遷移が抑制され、画面が
+        // ロックする」):
+        //   非 detail mode (filer / calendar / kanban / graph) で
+        //   CREATE_ENTRY → phase='editing' に遷移するが、renderer は
+        //   filer/calendar 等を描画して editor が出ない → 画面ロック。
+        //   作成ボタンが押された瞬間に SET_VIEW_MODE 'detail' を先 dispatch、
+        //   editor が確実に表示される状態を作ってから CREATE_ENTRY。
+        const preStateForView = dispatcher.getState();
+        if (preStateForView.viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
         // FI-05: During editing, "📎 File" opens a file picker and inserts
         // a link instead of dispatching CREATE_ENTRY (which would clobber
         // the current editing state).
@@ -1340,12 +1482,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode, mutability });
         break;
       }
+      case 'export-system-only': {
+        // PR-PP (2026-05-06):"New PKC" export — strip user content,
+        // keep only `__settings__` / `__flags__` / `__about__`. Bypasses
+        // BEGIN_EXPORT phase because we're exporting a derived
+        // container, not the live state. Best-effort: failure is
+        // logged but does not poison the dispatcher.
+        const liveState = dispatcher.getState();
+        if (!liveState.container) break;
+        const systemOnly = buildSystemOnlyContainer(liveState.container);
+        exportContainerAsHtml(systemOnly, { mode: 'light', mutability: 'editable' })
+          .then((result) => {
+            if (result.success) {
+              console.log(
+                `[PKC2] Exported system-only: ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`,
+              );
+            } else {
+              console.error(`[PKC2] system-only export failed: ${result.error}`);
+            }
+          })
+          .catch((e: unknown) => {
+            console.error('[PKC2] system-only export threw:', e);
+          });
+        break;
+      }
       case 'rehydrate':
         dispatcher.dispatch({ type: 'REHYDRATE' });
         break;
       case 'accept-offer': {
         const offerId = target.getAttribute('data-pkc-offer-id');
-        if (offerId) dispatcher.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+        if (!offerId) break;
+        // PR-VV (2026-05-06):同 `[data-pkc-offer-id]` item 内の
+        // folder picker から target_folder_lid を読み取る。空文字列 →
+        // null = root scope。picker 自体が無いケース(folder 0 件 or
+        // 古い renderer)も undefined で root 扱い。
+        const item = target.closest<HTMLElement>(`[data-pkc-offer-id="${offerId}"]`);
+        const picker = item?.querySelector<HTMLSelectElement>(
+          `select[data-pkc-pending-target="${offerId}"]`,
+        );
+        const targetFolderLid = picker?.value || null;
+        dispatcher.dispatch({
+          type: 'ACCEPT_OFFER',
+          offer_id: offerId,
+          target_folder_lid: targetFolderLid,
+        });
         break;
       }
       case 'dismiss-offer': {
@@ -1589,15 +1769,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'mobile-back-to-list': {
-        // 2026-04-26 mobile master-detail back-arrow. Mirrors the
-        // Escape key path inside `handleKeydown` but reachable from
-        // a touch surface where the soft keyboard's Escape is not
-        // available. CSS gates the button visibility to the phone
-        // pointer-coarse @media block, so on desktop / tablet this
-        // case is unreachable through the UI.
+        // 2026-04-26 mobile master-detail back-arrow.
+        // PR-Δ11 (2026-05-07、user 報告「Filer→Detail→Filer 動線が
+        // 直感的じゃない、内部パンクズの順序が崩壊」):previous view
+        // mode を見て、filer / kanban / calendar / graph から来ていれば
+        // そこに戻る。優先順位:editing → cancel-edit、filer 由来 →
+        // 元の filer scope に戻る、それ以外 → DESELECT_ENTRY (従来)。
         const st = dispatcher.getState();
         if (st.phase === 'editing') {
           dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.lastFilerScopeLid !== undefined) {
+          // user が filer から detail に来たため、filer に戻す。
+          // SET_VIEW_MODE: 'filer' は reducer で lastFilerScopeLid を
+          // selectedLid に restore する。
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
         } else if (st.selectedLid) {
           dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         }
@@ -2600,6 +2785,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'ctx-open-detail': {
+        // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作、右クリック
+        // で context menu 化」):graph 上の右クリック menu から detail を
+        // 開く専用 action。SET_VIEW_MODE 'detail' + SELECT_ENTRY を併発。
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -2938,8 +3132,258 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'set-view-mode': {
-        const mode = target.getAttribute('data-pkc-view-mode') as 'detail' | 'calendar' | 'kanban';
+        const mode = target.getAttribute('data-pkc-view-mode') as
+          | 'detail'
+          | 'calendar'
+          | 'kanban'
+          | 'filer'
+          | 'graph';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        break;
+      }
+      case 'filer-toggle-row-multi-select': {
+        // PR-Δ3 / Δ9 / Δ16:filer 行 checkbox は **明示的に押した lid
+        // のみ** を toggle(includeAnchor: false で sidebar selectedLid
+        // を auto 含めない)。Filer は sidebar と独立 domain。
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        const rowLid = target.getAttribute('data-pkc-lid');
+        if (rowLid) {
+          dispatcher.dispatch({
+            type: 'TOGGLE_MULTI_SELECT',
+            lid: rowLid,
+            includeAnchor: false,
+          });
+        }
+        break;
+      }
+      case 'filer-toggle-all-multi-select': {
+        // PR-Δ3:filer header checkbox。visible 行を一括トグル。
+        // 全選択中なら CLEAR_MULTI_SELECT、そうでなければ全 visible を
+        // 選択状態に push(Ctrl+A 相当の即時操作)。
+        e.preventDefault();
+        e.stopPropagation();
+        const filerTable = root.querySelector<HTMLElement>('[data-pkc-region="filer-table"]');
+        if (!filerTable) break;
+        const visible = Array.from(
+          filerTable.querySelectorAll<HTMLElement>('tr.pkc-filer-row[data-pkc-lid]'),
+        )
+          .map((el) => el.getAttribute('data-pkc-lid'))
+          .filter((v): v is string => typeof v === 'string');
+        if (visible.length === 0) break;
+        const cur = dispatcher.getState().multiSelectedLids ?? [];
+        const allIn = visible.every((l) => cur.includes(l));
+        if (allIn) {
+          dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
+        } else {
+          // 1 個ずつ TOGGLE するのは O(n) dispatch で大きい list に
+          // 重い。reducer は SET_MULTI_SELECT を持たないので未選択のみ
+          // TOGGLE で追加する。
+          for (const l of visible) {
+            if (!cur.includes(l)) {
+              dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: l });
+            }
+          }
+        }
+        break;
+      }
+      case 'set-filer-explorer-sort': {
+        // 2026-05-06 user direction:「ファイラには列ごとに並べ替えを
+        // 可能にすること」。toggle: asc → desc → off → asc。
+        const key = target.getAttribute('data-pkc-sort-key');
+        if (!key) break;
+        const cur = dispatcher.getState().filerExplorerSort ?? {};
+        let nextSortBy: string | null;
+        let nextDir: 'asc' | 'desc';
+        if (cur.sortBy !== key) {
+          nextSortBy = key;
+          nextDir = 'asc';
+        } else if (cur.sortDir === 'asc') {
+          nextSortBy = key;
+          nextDir = 'desc';
+        } else {
+          nextSortBy = null;
+          nextDir = 'asc';
+        }
+        dispatcher.dispatch({ type: 'SET_FILER_EXPLORER_SORT', sortBy: nextSortBy, sortDir: nextDir });
+        break;
+      }
+      case 'set-inventory-sort': {
+        // Phase 5 — toggle sort: asc → desc → off → asc …
+        const key = target.getAttribute('data-pkc-inventory-key');
+        if (!key) break;
+        const cur = dispatcher.getState().inventoryQuery ?? {};
+        let nextSortBy: string | null;
+        let nextDir: 'asc' | 'desc';
+        if (cur.sortBy !== key) {
+          nextSortBy = key;
+          nextDir = 'asc';
+        } else if (cur.sortDir === 'asc') {
+          nextSortBy = key;
+          nextDir = 'desc';
+        } else {
+          nextSortBy = null;
+          nextDir = 'asc';
+        }
+        dispatcher.dispatch({ type: 'SET_INVENTORY_SORT', sortBy: nextSortBy, sortDir: nextDir });
+        break;
+      }
+      case 'clear-inventory-query': {
+        dispatcher.dispatch({ type: 'CLEAR_INVENTORY_QUERY' });
+        break;
+      }
+      case 'open-graph-for-entry': {
+        // Open graph view focused on this entry. Used from filer cards,
+        // detail headers, sidebar context menus — anywhere entry lid is
+        // available.
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid });
+        break;
+      }
+      case 'open-graph-full': {
+        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid: null });
+        break;
+      }
+      case 'reset-graph-zoom': {
+        // PR-C G1 + PR-H G16 (2026-05-06):galaxy 風 zoom / pan を identity
+        // に戻す。Canvas 化に追従して selector は data-pkc-region="graph-canvas"。
+        // dispatcher を経由せず、現在 mount 中の canvas を直接探して reset。
+        const canvas = root.querySelector<HTMLCanvasElement>(
+          '[data-pkc-region="graph-canvas"]',
+        );
+        if (canvas) resetGraphCanvasZoom(canvas);
+        break;
+      }
+      case 'toggle-graph-region-select-mode': {
+        // PR-E G8 後半 (2026-05-06):region-slice tool の ON/OFF。
+        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' });
+        break;
+      }
+      case 'copy-bookmarklet-code': {
+        // PR-W (2026-05-06):shell menu の bookmarklet template を
+        // clipboard へコピー。textarea の中身を読んで navigator.clipboard
+        // に書き込む。失敗時は textarea の select() で fallback。
+        const ta = root.querySelector<HTMLTextAreaElement>(
+          '.pkc-shell-menu-bookmarklet-code',
+        );
+        if (!ta) break;
+        const code = ta.value;
+        const ok = (): void => {
+          target.textContent = '✓ コピー完了';
+          window.setTimeout(() => { target.textContent = '📋 クリップボードにコピー'; }, 1500);
+        };
+        if (window.navigator.clipboard?.writeText) {
+          window.navigator.clipboard.writeText(code).then(ok).catch(() => {
+            ta.select();
+            target.textContent = '⚠ 手動コピーしてください';
+          });
+        } else {
+          ta.select();
+          try {
+            window.document.execCommand('copy');
+            ok();
+          } catch {
+            target.textContent = '⚠ 手動コピーしてください';
+          }
+        }
+        break;
+      }
+      case 'toggle-graph-venn-grouping-mode': {
+        // PR-I G17 (2026-05-06):Venn-style グルーピング ring の ON/OFF。
+        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });
+        break;
+      }
+      case 'toggle-graph-galaxy-mode': {
+        // PR-Δ22 (2026-05-07):galaxy 3D perspective ON/OFF。
+        // graph.galaxy_mode flag(0/1)を SET_FLAG で flip。
+        const cur = dispatcher.getState();
+        const flagsEntry = cur.container?.entries.find((e) => e.archetype === 'system-flags');
+        let curVal = 0;
+        if (flagsEntry) {
+          try {
+            const j = JSON.parse(flagsEntry.body) as { values?: Record<string, unknown> };
+            const v = j.values?.['graph.galaxy_mode'];
+            if (typeof v === 'number') curVal = v;
+          } catch { /* ignore */ }
+        }
+        dispatcher.dispatch({ type: 'SET_FLAG', key: 'graph.galaxy_mode', value: curVal === 1 ? 0 : 1 });
+        break;
+      }
+      case 'clear-graph-region-selection': {
+        // 選択 lids を空に。mode 自体は維持(user が連続 select したい
+        // ケースが多そう)。
+        dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids: [] });
+        break;
+      }
+      // set-graph-mode: handled in handleChange (select element).
+      case 'open-image-preview-from-filer': {
+        // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
+        // attachment in the filer opens the browser native image
+        // viewer (PR-N: window.open data URL → OS image viewer).
+        //
+        // PR-KKK (2026-05-06、user 修正指示5「iPhone ではアルバム
+        // 表示のコンタクトシート画像をタップ時に画像を閲覧できない」):
+        // iOS Safari の user-activation 規約は厳格で、tap → click
+        // から `window.open()` までの間に重い同期処理(`dispatch
+        // SELECT_ENTRY` → 全 shell 再描画、100+ entries で 50-100ms)
+        // が挟まると activation token が「stale」と判定されて popup
+        // が抑制される。**`openImagePreview()` を最優先で呼ぶ** 順序
+        // に変更し、selection 更新は viewer open 後に dispatch する。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((x) => x.lid === lid);
+        if (!ent) break;
+        try {
+          const meta = JSON.parse(ent.body) as { name?: unknown; mime?: unknown; asset_key?: unknown };
+          const mime = typeof meta.mime === 'string' ? meta.mime : '';
+          const key = typeof meta.asset_key === 'string' ? meta.asset_key : '';
+          const name = typeof meta.name === 'string' ? meta.name : ent.title;
+          if (!mime.startsWith('image/') || !key) break;
+          const b64 = st.container?.assets?.[key];
+          if (!b64) break;
+          const dataUrl = b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`;
+          // Open viewer FIRST while we still hold user activation.
+          openImagePreview({ src: dataUrl, label: name, permalink: `entry:${lid}` })
+            .catch((e) => { console.warn('[image-preview] open failed', e); });
+          // Then update selection (re-render is fine post-open).
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        } catch (e) {
+          console.warn('[image-preview] body parse failed', e);
+        }
+        break;
+      }
+      case 'filer-scope-trash': {
+        // 領域 10-6 ζ'' Phase 1 PR-2 — open trash listing inside filer.
+        // SET_VIEW_MODE 'filer' guarantees we land in the filer even if
+        // the user clicked it from another view.
+        if (dispatcher.getState().viewMode !== 'filer') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+        }
+        dispatcher.dispatch({ type: 'SET_FILER_SCOPE', scope: 'trash' });
+        break;
+      }
+      case 'filer-scope-folder': {
+        // Return from trash back to the auto-resolved folder scope.
+        dispatcher.dispatch({ type: 'SET_FILER_SCOPE', scope: 'auto' });
+        break;
+      }
+      case 'filer-scope-root': {
+        // 2026-05-06 user direction:「Root フォルダを開けない。Root は
+        // 開けなくてはならない」。breadcrumb の "Root" をクリックした
+        // ら DESELECT_ENTRY で selectedLid を null にする → filer の
+        // resolveFilerScope が null を返し、root entries が一覧される。
+        //
+        // PR-J fix(2026-05-06、user 報告):「FOLDER の Detail を Filer
+        // にしたとき、パスから Root に戻ると Filer じゃなくなる」。
+        // viewMode を明示 'filer' に再 dispatch することで、prior path
+        // で何らかの理由で viewMode が drift していても filer に戻す
+        // belt-and-suspenders。SET_VIEW_MODE は filer→filer で no-op、
+        // detail→filer で復帰、と両ケース desired。
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+        dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         break;
       }
       case 'calendar-prev': {
@@ -3413,6 +3857,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // PR #198 v3 ordering: the markdown enhancements block above runs
     // first; this generic `\t` insert is the fall-through for
     // non-markdown fields and for cursor-Tab on plain prose lines.
+    // PR-OOO: 全 Tab keydown を時刻記録(modifier 有無に関わらず)し、
+    // `beforeinput` 経由で U+3000 が直後に来た場合の defensive 判定に使う。
+    if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
+      lastTabKeydownAt = Date.now();
+      lastTabKeydownTarget = e.target;
+    }
     if (
       e.key === 'Tab'
       && !e.shiftKey
@@ -3426,14 +3876,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const start = ta.selectionStart ?? 0;
       const end = ta.selectionEnd ?? start;
       e.preventDefault();
-      // Splice `\t` in. `setRangeText` keeps undo history intact
-      // where browsers support it; the explicit assignment fallback
-      // covers the rare cases where it's not implemented.
+      // PR-UUU (2026-05-07、修正指示7 #7):行頭 Tab を半角スペース
+      // n 個に展開(flag `editor.tab_indent_spaces`、default 2)。
+      // 行頭以外の Tab は常に `\t`(タブ揃え用法尊重)。flag = 0 で
+      // 完全 off(全部 `\t`、従来通り)。
+      const indentSpaces = editorTabIndentSpaces();
+      const atLineStart = start === 0 || ta.value.charAt(start - 1) === '\n';
+      const insertText = (indentSpaces > 0 && atLineStart && start === end)
+        ? ' '.repeat(indentSpaces)
+        : '\t';
+      // Splice the chosen text in. `setRangeText` keeps undo history
+      // intact where browsers support it; the explicit assignment
+      // fallback covers the rare cases where it's not implemented.
       if (typeof ta.setRangeText === 'function') {
-        ta.setRangeText('\t', start, end, 'end');
+        ta.setRangeText(insertText, start, end, 'end');
       } else {
-        ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
-        ta.selectionStart = ta.selectionEnd = start + 1;
+        ta.value = ta.value.slice(0, start) + insertText + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + insertText.length;
       }
       // Notify subscribers (preview pane, dirty-state, etc.) that
       // the textarea content changed — `setRangeText` does not fire
@@ -3470,6 +3929,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (e.key === 'Escape') {
           e.preventDefault();
           dispatcher.dispatch({ type: 'CLOSE_TODO_ADD_POPOVER' });
+          return;
+        }
+      }
+      // PR-Δ5 (2026-05-07):bulk add tag input。Enter で全選択 entry に
+      // 同タグを追加(各 entry 1 つずつ ADD_ENTRY_TAG dispatch、tag 配列
+      // 以外の field は完全保持)。
+      if (fieldName === 'bulk-add-tag') {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          const raw = (kbTarget as HTMLInputElement).value.trim();
+          if (raw.length === 0) return;
+          const lids = dispatcher.getState().multiSelectedLids;
+          for (const lid of lids) {
+            dispatcher.dispatch({ type: 'ADD_ENTRY_TAG', lid, raw });
+          }
+          (kbTarget as HTMLInputElement).value = '';
           return;
         }
       }
@@ -4273,16 +4748,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   let navTicketCounter = 0;
   function handleSearchCompositionStart(e: Event): void {
     const target = e.target as HTMLElement | null;
-    if (target?.getAttribute('data-pkc-field') === 'search') {
+    const field = target?.getAttribute('data-pkc-field');
+    // PR-QQQ (2026-05-07):sidebar 検索 + filer 検索の両方で IME 中は
+    // dispatch をスキップする。filer 側は data-pkc-field="filer-search"
+    // を持つ(PR-QQQ で追加)。
+    if (field === 'search' || field === 'filer-search') {
       searchImeComposing = true;
     }
   }
   function handleSearchCompositionEnd(e: Event): void {
     const target = e.target as HTMLInputElement | null;
-    if (target?.getAttribute('data-pkc-field') === 'search') {
+    const field = target?.getAttribute('data-pkc-field');
+    if (field === 'search') {
       searchImeComposing = false;
       // Composition just committed; dispatch the final value once.
-      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target.value });
+      dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: target!.value });
+    } else if (field === 'filer-search') {
+      searchImeComposing = false;
+      dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: target!.value });
     }
   }
 
@@ -4294,6 +4777,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SEARCH_QUERY', query: value });
+      return;
+    }
+    // PR-L (2026-05-06):filer 側の検索窓 input → SET_FILER_SEARCH_QUERY。
+    // PR-QQQ (2026-05-07):IME 合成中は skip(同 input が日本語を打って
+    // いる最中で full re-render が走ると変換候補が壊れる)。
+    if (target.getAttribute('data-pkc-action') === 'set-filer-search-query') {
+      if (searchImeComposing) return;
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: value });
       return;
     }
 
@@ -4458,7 +4950,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     if (action === 'set-flag-string') {
       const key = target.getAttribute('data-pkc-key');
-      if (key && target instanceof HTMLInputElement) {
+      // PR-PPP (2026-05-07):長尺 / 改行を含む string flag(`templates.
+      // entries` 等)は `<textarea>` editor。target instanceof
+      // HTMLTextAreaElement も同経路で受理。
+      if (key && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
         dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
       }
       return;
@@ -4467,6 +4962,91 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const key = target.getAttribute('data-pkc-key');
       if (key && target instanceof HTMLSelectElement) {
         dispatcher.dispatch({ type: 'SET_FLAG', key, value: target.value });
+      }
+      return;
+    }
+
+    // Filer view (領域 10-6 ζ'' Phase 1) — folder display profile editor.
+    // The `<select>` lives in the meta pane and carries the folder lid on
+    // itself; dispatch SET_DISPLAY_PROFILE on change. Phase 1 only knows
+    // the `'explorer'` kind; future kinds widen this switch.
+    if (action === 'set-inventory-filter') {
+      // Phase 5 — typed substring filter per column.
+      const key = target.getAttribute('data-pkc-inventory-key');
+      if (key && target instanceof HTMLInputElement) {
+        dispatcher.dispatch({ type: 'SET_INVENTORY_FILTER', key, value: target.value });
+      }
+      return;
+    }
+    if (action === 'set-inventory-group-by') {
+      if (target instanceof HTMLSelectElement) {
+        const v = target.value || null;
+        dispatcher.dispatch({ type: 'SET_INVENTORY_GROUP_BY', groupBy: v });
+      }
+      return;
+    }
+    if (action === 'set-graph-mode') {
+      // 領域 10-6 ζ'' Phase 4 follow-up 4 — center pane Graph view の
+      // mode 切替 select。
+      // PR-D G8 (2026-05-06):'time-proximity' を 5th option として追加。
+      if (target instanceof HTMLSelectElement) {
+        const v = target.value as 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
+        const valid: typeof v[] = ['relations', 'color-tags', 'tag-groups', 'folder-hierarchy', 'time-proximity'];
+        if (valid.includes(v)) {
+          dispatcher.dispatch({ type: 'SET_GRAPH_MODE', mode: v });
+        }
+      }
+      return;
+    }
+    if (action === 'rename-folder') {
+      // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder 名 input。
+      // change イベント = blur or Enter commit。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLInputElement) {
+        const v = target.value;
+        if (typeof v === 'string') {
+          dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid, title: v });
+        }
+      }
+      return;
+    }
+    if (action === 'set-folder-description') {
+      // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder description
+      // textarea(folder.body は description として使用)。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLTextAreaElement) {
+        const body = target.value;
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
+      }
+      return;
+    }
+    if (action === 'set-display-profile') {
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLSelectElement) {
+        const kind = target.value;
+        // PR-G G15 (2026-05-06):'auto' を追加。auto を選んだ時は
+        // explicit に `{kind:'auto'}` を保存(undefined と semantics は
+        // 同じだが、user が「明示的に auto を選んだ」状態を保持する)。
+        const valid: Array<'auto' | 'explorer' | 'contact-sheet' | 'book-base' | 'video-base' | 'novel-base' | 'audio-base' | 'graph' | 'inventory'> = [
+          'auto',
+          'explorer',
+          'contact-sheet',
+          'book-base',
+          'video-base',
+          'novel-base',
+          'audio-base',
+          'graph',
+          'inventory',
+        ];
+        if (valid.includes(kind as typeof valid[number])) {
+          dispatcher.dispatch({
+            type: 'SET_DISPLAY_PROFILE',
+            lid,
+            profile: { kind: kind as typeof valid[number] },
+          });
+        } else if (kind === '') {
+          dispatcher.dispatch({ type: 'SET_DISPLAY_PROFILE', lid, profile: undefined });
+        }
       }
       return;
     }
@@ -4492,6 +5072,47 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       } else {
         dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
       }
+    }
+
+    // PR-Δ5 (2026-05-07): bulk color-tag。SET_ENTRY_COLOR / CLEAR_ENTRY_COLOR
+    // を 1 entry ずつ叩き、entry の他 field は完全に保護される(reducer
+    // contract:Color tag は metadata、body / title / tags 不変)。
+    if (action === 'bulk-set-color-tag') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      const lids = dispatcher.getState().multiSelectedLids;
+      if (val === '__none__') {
+        for (const lid of lids) {
+          dispatcher.dispatch({ type: 'CLEAR_ENTRY_COLOR', lid });
+        }
+      } else {
+        for (const lid of lids) {
+          dispatcher.dispatch({ type: 'SET_ENTRY_COLOR', lid, color: val });
+        }
+      }
+      // Reset select so user can re-trigger.
+      (target as HTMLSelectElement).value = '';
+    }
+
+    // PR-Δ5 bulk relation:選択中の全 entry を target 配下に
+    // structural relation で接続(folder への一括投入とは別、複数の
+    // 親 folder / 参照源を持つ用途)。reducer は relations に追加するだけで
+    // 既存 relations / entries は不変。
+    if (action === 'bulk-add-relation-target') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      const state = dispatcher.getState();
+      const lids = state.multiSelectedLids;
+      for (const lid of lids) {
+        if (lid === val) continue; // self-loop guard
+        dispatcher.dispatch({
+          type: 'CREATE_RELATION',
+          from: val,
+          to: lid,
+          kind: 'structural',
+        });
+      }
+      (target as HTMLSelectElement).value = '';
     }
 
     // Bulk status change via select dropdown
@@ -4629,7 +5250,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (!state.container) return;
 
     const folderLid = dropTarget.getAttribute('data-pkc-lid');
-    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const dropKind = dropTarget.getAttribute('data-pkc-drop-target');
+    const isRoot = dropKind === 'root';
+    const isTrash = dropKind === 'trash';
+
+    // Trash は cycle / self check 無視で常に accept(削除のみ)。
+    if (isTrash) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      dropTarget.setAttribute('data-pkc-drag-over', 'true');
+      return;
+    }
 
     // Prevent dropping on self
     if (folderLid === draggedLid) return;
@@ -4664,7 +5295,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const state = dispatcher.getState();
     if (!state.container || state.phase !== 'ready' || state.readonly) return;
 
-    const isRoot = dropTarget.getAttribute('data-pkc-drop-target') === 'root';
+    const dropKind = dropTarget.getAttribute('data-pkc-drop-target');
+    const isRoot = dropKind === 'root';
+    const isTrash = dropKind === 'trash';
+
+    // 2026-05-06 G13: filer の 🗑️ ゴミ箱 ボタンへの DnD で entry 削除。
+    if (isTrash) {
+      dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: draggedLid });
+      draggedLid = null;
+      if (viewSwitchTimer) { clearTimeout(viewSwitchTimer); viewSwitchTimer = null; }
+      return;
+    }
+
     const folderLid = isRoot ? null : dropTarget.getAttribute('data-pkc-lid');
 
     // Don't drop on self
@@ -4973,7 +5615,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Clear any existing timer
     if (viewSwitchTimer) clearTimeout(viewSwitchTimer);
 
-    const targetMode = btn.getAttribute('data-pkc-view-switch') as 'detail' | 'calendar' | 'kanban';
+    const targetMode = btn.getAttribute('data-pkc-view-switch') as
+      | 'detail'
+      | 'calendar'
+      | 'kanban'
+      | 'filer';
     viewSwitchTimer = setTimeout(() => {
       viewSwitchTimer = null;
       dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: targetMode });
@@ -6219,6 +6865,73 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   root.addEventListener('mousedown', handleSplitResizeMouseDown);
 
+  // ── Filer explorer column resize (PR-Δ2 2026-05-07、修正指示9) ──
+  // Drag right-edge handle of each <th> to resize column width。
+  // mouseup で localStorage `pkc2.filer.column-widths` に永続化 →
+  // 次の renderer が pickup して幅を反映。
+  let filerColResizeActive = false;
+  let filerColResizeStartX = 0;
+  let filerColResizeStartW = 0;
+  let filerColResizeTh: HTMLElement | null = null;
+  let filerColResizeKey = '';
+  const FILER_COL_WIDTHS_KEY = 'pkc2.filer.column-widths';
+
+  function handleFilerColResizeMouseDown(e: MouseEvent): void {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-pkc-action="filer-col-resize-start"]',
+    );
+    if (!handle) return;
+    const th = handle.closest<HTMLElement>('th.pkc-filer-th');
+    if (!th) return;
+    const key = handle.getAttribute('data-pkc-col') ?? '';
+    if (!key) return;
+    filerColResizeActive = true;
+    filerColResizeStartX = e.clientX;
+    filerColResizeStartW = th.getBoundingClientRect().width;
+    filerColResizeTh = th;
+    filerColResizeKey = key;
+    handle.setAttribute('data-pkc-resizing', 'true');
+    e.preventDefault();
+    e.stopPropagation();
+    document.addEventListener('mousemove', handleFilerColResizeMouseMove);
+    document.addEventListener('mouseup', handleFilerColResizeMouseUp);
+  }
+
+  function handleFilerColResizeMouseMove(e: MouseEvent): void {
+    if (!filerColResizeActive || !filerColResizeTh) return;
+    const dx = e.clientX - filerColResizeStartX;
+    const next = Math.max(40, Math.min(1500, filerColResizeStartW + dx));
+    filerColResizeTh.style.width = `${next}px`;
+  }
+
+  function handleFilerColResizeMouseUp(): void {
+    if (filerColResizeActive && filerColResizeTh && filerColResizeKey) {
+      const final = filerColResizeTh.getBoundingClientRect().width;
+      try {
+        const raw = window.localStorage?.getItem(FILER_COL_WIDTHS_KEY);
+        const cur: Record<string, number> =
+          raw && typeof raw === 'string'
+            ? (JSON.parse(raw) as Record<string, number>) ?? {}
+            : {};
+        cur[filerColResizeKey] = Math.round(final);
+        window.localStorage?.setItem(FILER_COL_WIDTHS_KEY, JSON.stringify(cur));
+      } catch {
+        /* localStorage unavailable */
+      }
+      const handle = filerColResizeTh.querySelector<HTMLElement>(
+        '[data-pkc-resizing="true"]',
+      );
+      if (handle) handle.removeAttribute('data-pkc-resizing');
+    }
+    filerColResizeActive = false;
+    filerColResizeTh = null;
+    filerColResizeKey = '';
+    document.removeEventListener('mousemove', handleFilerColResizeMouseMove);
+    document.removeEventListener('mouseup', handleFilerColResizeMouseUp);
+  }
+
+  root.addEventListener('mousedown', handleFilerColResizeMouseDown);
+
   // ── TEXT split editor: update preview ──
   // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
   let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -6447,6 +7160,75 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
+  // PR-E G8 後半 (2026-05-06):graph-canvas が drag-rect 解放時に
+  // emit する CustomEvent を root で listen し、SET_GRAPH_REGION_SELECTED_LIDS
+  // を dispatch する。
+  root.addEventListener('pkc-graph-region-selected', (ev) => {
+    const detail = (ev as CustomEvent).detail as { lids?: unknown } | undefined;
+    if (!detail || !Array.isArray(detail.lids)) return;
+    const lids = detail.lids.filter((s): s is string => typeof s === 'string');
+    dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids });
+  });
+  // PR-H G16 (2026-05-06):Canvas には DOM 子の data-pkc-action は無いので、
+  // graph-canvas が node click を hit-test し CustomEvent で notify する。
+  // root でこの event を listen し SELECT_ENTRY + SET_VIEW_MODE 'detail'
+  // を dispatch する。
+  // PR-K G22 修正(2026-05-06、user 報告):「グラフのノードをクリック
+  // しても該当のエントリが開かない」。SELECT_ENTRY 単独だと viewMode は
+  // 'graph' のままで detail 表示に切り替わらない。SET_VIEW_MODE を併発
+  // して detail に飛ばす(folder click であっても graph では同じ — graph
+  // ペーン内で folder navigation する semantics は無い)。
+  root.addEventListener('pkc-graph-node-click', (ev) => {
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown;
+      modifier?: unknown;
+    } | undefined;
+    if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
+    // PR-Δ32 (2026-05-07、user 指示「Ctrl+クリックで複数選択」):graph node の
+    // 左クリックで modifier=ctrl/meta を伴うときは TOGGLE_MULTI_SELECT を
+    // dispatch して multi-select に追加/除外する。
+    if (detail.modifier === 'ctrl' || detail.modifier === 'meta' || detail.modifier === 'shift') {
+      dispatcher.dispatch({
+        type: 'TOGGLE_MULTI_SELECT',
+        lid: detail.lid,
+        includeAnchor: false,
+      });
+      return;
+    }
+    // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作専用、誤操作防止」):
+    // node 左クリックは SELECT_ENTRY のみで viewMode は変えない。Detail で
+    // 開きたい場合は右クリック context menu の「Open」を経由する。
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
+  });
+  // PR-Δ34: graph node 上での contextmenu(右クリック)で「開く」を含む
+  // menu を出す。clientX/Y は graph-canvas の hit test 結果と同じ座標系。
+  root.addEventListener('pkc-graph-node-context', (ev) => {
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown; x?: unknown; y?: unknown;
+    } | undefined;
+    if (!detail || typeof detail.lid !== 'string') return;
+    if (typeof detail.x !== 'number' || typeof detail.y !== 'number') return;
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const lid = detail.lid;
+    const entry = state.container.entries.find((en) => en.lid === lid);
+    dismissContextMenu();
+    const folders = state.container.entries
+      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+      .map((en) => ({ lid: en.lid, title: en.title }));
+    const hasParent = entry
+      ? getStructuralParent(state.container.relations, state.container.entries, lid) !== null
+      : false;
+    const menu = renderContextMenu(lid, detail.x, detail.y, {
+      archetype: entry?.archetype,
+      canEdit: !state.readonly,
+      hasParent,
+      folders,
+      showOpen: true,
+    });
+    root.appendChild(menu);
+    clampMenuToViewport(menu);
+  });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
   root.addEventListener('dragstart', handleCalendarDragStart);
@@ -6467,6 +7249,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('drop', handleCalendarDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('drop', handleEditorFileDrop);
+
+  // PR-OOO (2026-05-06):Tab → 全角空白 防衛 layer。Tab keydown から
+  // ~120ms 以内に textarea で U+3000 が insertText / insertCompositionText
+  // として届いたら、preventDefault してその場で `\t` を splice する。
+  root.addEventListener('beforeinput', (e: Event) => {
+    const ev = e as InputEvent;
+    if (!(ev.target instanceof HTMLTextAreaElement)) return;
+    const data = ev.data;
+    if (data !== '　') return;
+    if (ev.target !== lastTabKeydownTarget) return;
+    if (Date.now() - lastTabKeydownAt > 120) return;
+    // Tab → U+3000 の組み合わせ確定 → 介入。
+    ev.preventDefault();
+    const ta = ev.target;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? start;
+    if (typeof ta.setRangeText === 'function') {
+      ta.setRangeText('\t', start, end, 'end');
+    } else {
+      ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + 1;
+    }
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);

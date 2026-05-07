@@ -191,11 +191,12 @@ describe('Renderer', () => {
     // Full (editable) — primary export
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mode')).toBe('full');
     expect(exportBtns[0]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[0]!.textContent).toBe('Export');
+    // PR-TT (2026-05-06): emoji-prefixed labels to match mobile drawer.
+    expect(exportBtns[0]!.textContent).toBe('📤 Export');
     // Light (editable)
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mode')).toBe('light');
     expect(exportBtns[1]!.getAttribute('data-pkc-export-mutability')).toBe('editable');
-    expect(exportBtns[1]!.textContent).toBe('Light');
+    expect(exportBtns[1]!.textContent).toBe('📤 Light');
   });
 
   it('shows exporting badge in exporting phase', () => {
@@ -1525,7 +1526,12 @@ describe('Renderer', () => {
 
     const latestRegion = root.querySelector('[data-pkc-region="revision-latest"]');
     expect(latestRegion).not.toBeNull();
-    expect(latestRegion!.textContent).toContain('2026-03-15 14:30');
+    // Locale-aware Intl.DateTimeFormat output (year+month+day+hour+minute,
+    // separators vary). Verify the canonical date parts are present.
+    expect(latestRegion!.textContent).toMatch(/2026/);
+    expect(latestRegion!.textContent).toMatch(/03/);
+    expect(latestRegion!.textContent).toMatch(/15/);
+    expect(latestRegion!.textContent).toMatch(/14:30/);
 
     const preview = root.querySelector('[data-pkc-region="revision-preview"]');
     expect(preview).not.toBeNull();
@@ -1553,7 +1559,11 @@ describe('Renderer', () => {
     render(state, root);
 
     const section = root.querySelector('[data-pkc-region="restore-candidates"]');
-    expect(section!.textContent).toContain('2026-04-01 09:15');
+    // Locale-aware Intl.DateTimeFormat output (separators vary).
+    expect(section!.textContent).toMatch(/2026/);
+    expect(section!.textContent).toMatch(/04/);
+    expect(section!.textContent).toMatch(/01/);
+    expect(section!.textContent).toMatch(/09:15/);
     expect(section!.textContent).toContain('Todo'); // archetype label
   });
 
@@ -3453,7 +3463,9 @@ describe('Renderer', () => {
     //  Data menu reordered into Share (HTML) | Archive (ZIP) | Import
     //  groups — icon 📤 = share, 📦 = ZIP package, 📥 = import)
     const btns = panel!.querySelectorAll('button');
-    expect(btns.length).toBe(12);
+    // PR-PP (2026-05-06): + 🆕 New PKC button — system-entries-only
+    // export (`__settings__` / `__flags__` / `__about__` only).
+    expect(btns.length).toBe(13);
   });
 
   it('inline export panel has Export, Light, and Import buttons', () => {
@@ -3465,9 +3477,10 @@ describe('Renderer', () => {
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
     expect(panel).not.toBeNull();
     const texts = Array.from(panel!.querySelectorAll('button')).map(b => b.textContent);
-    expect(texts).toContain('Export');
-    expect(texts).toContain('Light');
-    expect(texts).toContain('Import');
+    // PR-TT: emoji-prefixed PC labels matching mobile drawer.
+    expect(texts).toContain('📤 Export');
+    expect(texts).toContain('📤 Light');
+    expect(texts).toContain('📥 Import');
   });
 
   it('does not render export/import panel in readonly mode', () => {
@@ -3499,7 +3512,7 @@ describe('Renderer', () => {
     render(state, root);
     const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
     expect(importBtn).not.toBeNull();
-    expect(importBtn!.textContent).toBe('Import');
+    expect(importBtn!.textContent).toBe('📥 Import');
   });
 
   // ── W1 Slice F: Tag chip UI prototype ──────────────────
@@ -3743,7 +3756,7 @@ describe('Container-wide TEXTLOG export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTLOGs');
+    expect(btn!.textContent).toBe('📦 TEXTLOGs');
   });
 
   it('hides TEXTLOGs button when container has no textlog entries', () => {
@@ -3764,7 +3777,7 @@ describe('Container-wide TEXTLOG export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTLOGs');
+    expect(btn!.textContent).toBe('📦 TEXTLOGs');
   });
 });
 
@@ -3788,7 +3801,7 @@ describe('Container-wide TEXT export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTs');
+    expect(btn!.textContent).toBe('📦 TEXTs');
   });
 
   it('hides TEXTs button when container has no text entries', () => {
@@ -3813,7 +3826,7 @@ describe('Container-wide TEXT export button', () => {
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toBe('TEXTs');
+    expect(btn!.textContent).toBe('📦 TEXTs');
   });
 });
 
@@ -5153,7 +5166,7 @@ describe('Todo Calendar Foundation', () => {
     assets: {},
   };
 
-  it('shows view mode toggle bar with Detail and Calendar buttons', () => {
+  it('shows view mode toggle bar with Detail / Calendar / Kanban / Filer / Graph buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
@@ -5163,10 +5176,12 @@ describe('Todo Calendar Foundation', () => {
     const bar = root.querySelector('[data-pkc-region="view-mode-bar"]');
     expect(bar).not.toBeNull();
     const btns = bar!.querySelectorAll('.pkc-view-mode-btn');
-    expect(btns).toHaveLength(3);
+    expect(btns).toHaveLength(5);
     expect(btns[0]!.textContent).toBe('Detail');
     expect(btns[1]!.textContent).toBe('Calendar');
     expect(btns[2]!.textContent).toBe('Kanban');
+    expect(btns[3]!.textContent).toBe('Filer');
+    expect(btns[4]!.textContent).toBe('Graph');
   });
 
   it('marks active view mode button', () => {
@@ -6530,10 +6545,10 @@ describe('Todo Kanban DnD Foundation', () => {
       expect(kanbanDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders five buttons', () => {
       render(dndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(5);
     });
 
     it('kanban column count badge still accurate', () => {
@@ -6765,10 +6780,10 @@ describe('Todo Calendar Date Move Foundation', () => {
       expect(calDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders five buttons', () => {
       render(calDndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(5);
     });
 
     it('calendar navigation buttons still present', () => {
@@ -6827,11 +6842,13 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       render(kanbanState(), root);
       const bar = root.querySelector('[data-pkc-region="view-mode-bar"]')!;
       const btns = bar.querySelectorAll('[data-pkc-view-switch]');
-      // Kanban is active → Detail and Calendar should have view-switch
-      expect(btns).toHaveLength(2);
+      // Kanban is active → Detail / Calendar / Filer / Graph should have view-switch
+      expect(btns).toHaveLength(4);
       const modes = Array.from(btns).map(b => b.getAttribute('data-pkc-view-switch'));
       expect(modes).toContain('detail');
       expect(modes).toContain('calendar');
+      expect(modes).toContain('filer');
+      expect(modes).toContain('graph');
     });
 
     it('active view mode button does NOT have data-pkc-view-switch', () => {
@@ -6942,10 +6959,10 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle still renders three buttons', () => {
+    it('view mode toggle still renders five buttons', () => {
       render(kanbanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(5);
     });
 
     it('readonly mode: no draggable on Kanban cards, no view-switch risk', () => {
@@ -7104,7 +7121,8 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
     it('view switch attributes still on non-active tabs', () => {
       render(cleanupKanbanState(), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      expect(switchBtns).toHaveLength(2);
+      // Kanban active → Detail / Calendar / Filer / Graph have view-switch
+      expect(switchBtns).toHaveLength(4);
     });
 
     it('click selection still works (select-entry present)', () => {
@@ -7251,10 +7269,10 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle renders three buttons', () => {
+    it('view mode toggle renders five buttons', () => {
       render(kanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(3);
+      expect(btns).toHaveLength(5);
     });
 
     it('readonly: no draggable Calendar items', () => {
@@ -7567,14 +7585,15 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="full"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Export');
+      // PR-TT: emoji-prefixed (Share=📤) labels.
+      expect(btn!.textContent).toBe('📤 Export');
     });
 
     it('renders Light export button in ready state', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-export"][data-pkc-export-mode="light"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Light');
+      expect(btn!.textContent).toBe('📤 Light');
     });
 
     it('renders Backup ZIP export button in ready state', () => {
@@ -7582,20 +7601,22 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       // label is "Backup ZIP" so users can tell apart the
       // backup-oriented `.pkc2.zip` from the archetype-filtered batch
       // bundles (TEXTLOGs / TEXTs / Mixed) and from the single-entry
-      // bundles (📦 Selected). The action attribute stays
-      // `export-zip` for back-compat with existing event wiring.
-      // See docs/development/import-export-surface-audit.md §6.1 / §8.1.
+      // bundles (📦 Selected). PR-TT (2026-05-06): prefix with 📦
+      // (Archive group) to match mobile drawer parity. The action
+      // attribute stays `export-zip` for back-compat with existing
+      // event wiring. See docs/development/import-export-surface-audit.md
+      // §6.1 / §8.1.
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="export-zip"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Backup ZIP');
+      expect(btn!.textContent).toBe('📦 Backup ZIP');
     });
 
     it('renders Import button in ready state', () => {
       render(baseState(), root);
       const btn = root.querySelector('[data-pkc-action="begin-import"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Import');
+      expect(btn!.textContent).toBe('📥 Import');
     });
 
     it('hides export/import buttons in readonly mode', () => {
@@ -7877,7 +7898,8 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     it('view switch buttons still present on non-detail views', () => {
       render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      expect(switchBtns.length).toBe(2);
+      // Kanban active → Detail / Calendar / Filer / Graph have view-switch
+      expect(switchBtns.length).toBe(4);
     });
   });
 });
@@ -8310,11 +8332,14 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(overlay!.textContent).toContain('Ctrl+:');
     expect(overlay!.textContent).toContain('Ctrl+D');
     expect(overlay!.textContent).toContain('ISO 8601');
-    // Has group separator elements: Panes + Editing + Date/Time +
-    // Slash Commands. The "Editing" group was added 2026-04-26
-    // alongside the Tab-key textarea-tab-character shortcut.
+    // Has group separator elements. PR-MM (2026-05-06) audit added
+    // four groups (Navigation / Calendar / Kanban / Note) to surface
+    // shortcuts that were already implemented in action-binder but
+    // missing from the help. Original 4 groups (Panes / Editing /
+    // Date-Time / Slash) are preserved for backward-compat assertions
+    // below.
     const groups = overlay!.querySelectorAll('.pkc-shortcut-group');
-    expect(groups.length).toBe(4);
+    expect(groups.length).toBe(8);
     // Contains slash command section
     expect(overlay!.textContent).toContain('Slash Commands');
     expect(overlay!.textContent).toContain('input assist menu');

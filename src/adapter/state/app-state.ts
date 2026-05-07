@@ -43,6 +43,7 @@ import {
   type SaveConflictCheck,
 } from '../../core/operations/dual-edit-safety';
 import { removeOrphanAssets } from '../../features/asset/asset-scan';
+import { rewriteThumbnailToAssetKey } from '../../features/auto-fill/thumbnail-frontmatter';
 import { planMergeImport, applyMergePlan } from '../../features/import/merge-planner';
 import { applyConflictResolutions } from '../../features/import/conflict-detect';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
@@ -319,7 +320,105 @@ export interface AppState {
    */
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar' | 'kanban';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph';
+  /**
+   * Graph view edge / coloring mode (Phase 4 follow-up 4):
+   *   - 'relations' (default) — structural + semantic relations as edges,
+   *     archetype-based node color (legacy filer-graph subset behaviour)
+   *   - 'color-tags'           — group by entry.color_tag
+   *   - 'tag-groups'           — group by tag prefix or shared tag
+   *   - 'folder-hierarchy'     — only structural relations, color by depth
+   *
+   * Runtime-only.
+   */
+  graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
+  /**
+   * Optional focus lid for graph view. When set, the graph centers on
+   * this entry and includes its 1-hop neighbourhood. When unset, the
+   * graph shows the full container.
+   * Runtime-only.
+   */
+  graphFocusLid?: string | null;
+  /**
+   * Region-slice tool mode (PR-E G8 後半、2026-05-06)。
+   * ON のとき、graph view の background drag は pan ではなく rect 選択
+   * を駆動する。OFF(default)では従来通り pan。Runtime-only。
+   */
+  graphRegionSelectMode?: boolean;
+  /**
+   * Region-slice の選択結果 lids。drag-rect 解放時に rect 内の node の
+   * lid を集めて格納。空配列 / undefined は「選択なし」。Runtime-only。
+   */
+  graphRegionSelectedLids?: readonly string[];
+  /**
+   * PR-I G17 (2026-05-06):graph view の Venn-style グルーピング toggle。
+   * ON のとき、各 node の folder ancestors + tags への所属を Canvas
+   * に色付き concentric ring として overlay 描画する。Runtime-only。
+   */
+  graphVennGroupingMode?: boolean;
+  /**
+   * PR-Δ13 (2026-05-07、user 報告「時系列範囲をユーザーが指定して
+   * 描画できるようにすべき」):time-proximity mode の表示範囲指定。
+   * ms epoch、`null` で auto(全 entry の範囲)。
+   */
+  graphTimeRangeStart?: number | null;
+  graphTimeRangeEnd?: number | null;
+  /**
+   * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
+   * Runtime-only, scoped to the current filer scope folder.
+   */
+  inventoryQuery?: {
+    filter?: Record<string, string>;
+    sortBy?: string | null;
+    sortDir?: 'asc' | 'desc';
+    groupBy?: string | null;
+  };
+  /**
+   * Per-column sort state for the filer explorer subset.
+   * Runtime-only. 2026-05-06 user direction:「ファイラには列ごとに
+   * 並べ替えを可能にすること、作成と更新日時も表示すること」。
+   */
+  filerExplorerSort?: {
+    sortBy?: string | null;
+    sortDir?: 'asc' | 'desc';
+  };
+  /**
+   * PR-L (2026-05-06):filer 側の検索 query。
+   * User direction:
+   * > ファイラ側にも検索窓付けてよ(左ペインの代替活用のための布石)。
+   * > 左ペインは大規模管理に向いていないから、大規模管理用のファイラです。
+   *
+   * 空文字列 / undefined = 検索なし(従来挙動 = direct children を表示)。
+   * 非空文字列 = scope 配下の **全 descendants** を title 部分一致で
+   * 絞り込み(深さ無制限 subtree search)。Runtime-only。
+   */
+  filerSearchQuery?: string;
+  /**
+   * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
+   * - `'auto'` (default): the filer scope is resolved from `selectedLid`
+   *   (current folder or the entry's first folder ancestor; null = root).
+   * - `'trash'`: the filer renders restore candidates instead of folder
+   *   children (deleted entries with revisions). Toggled from the filer
+   *   toolbar; not persisted.
+   *
+   * Runtime-only.
+   */
+  filerScope?: 'auto' | 'trash';
+  /**
+   * Last folder lid that hosted the filer view before user clicked
+   * a non-folder entry (which switched view-mode to detail). When the
+   * user later returns to filer (Filer tab / nav back), the scope is
+   * restored to this lid so the breadcrumb / table reflect the same
+   * place.
+   *
+   * Cleared when:
+   *   - viewMode returns to 'filer' AND selectedLid resolves to a
+   *     folder ancestor that matches this lid (already in scope).
+   *   - explicit Trash scope toggle.
+   *
+   * Runtime-only, not persisted.
+   */
+  lastFilerScopeLid?: string | null;
   /** Calendar navigation: year. Runtime-only. */
   calendarYear: number;
   /** Calendar navigation: month (1-12). Runtime-only. */
@@ -760,6 +859,78 @@ function injectCaptureHeader(body: string, sourceUrl: string | null, capturedAt:
   if (capturedAt) lines.push(`> Captured: ${capturedAt}`);
   if (lines.length === 0) return body;
   return `${lines.join('\n')}\n\n${body}`;
+}
+
+/**
+ * PR-U v1.1 (2026-05-06):capture profile additive fields(kind /
+ * thumbnail_url / provider / duration_sec / pages / isbn)を YAML
+ * frontmatter として body 先頭に注入。v0 の `injectCaptureHeader`
+ * (blockquote)はその後ろに重ねる。
+ *
+ * Sender が既に frontmatter を作っている body を送った場合(`---` で
+ * 始まる)は **frontmatter は既存を尊重して何もしない**(sender intent
+ * を上書きしない、後方互換)。Sender が plain body を送った時のみ host
+ * が frontmatter を build する。
+ *
+ * これにより:
+ *   - PR-V 以降の bookmarklet は payload に kind / thumbnail_url を
+ *     送るだけで、body は plain markdown(frontmatter なし)を渡せばよい
+ *   - v0 sender(frontmatter 自前 build)も従来通り動く
+ *   - 旧 v0 receiver(本コードがない PKC2)は payload の追加 field を
+ *     無視するだけ(unknown field 互換、spec §9.4)
+ */
+function injectCaptureFrontmatter(
+  body: string,
+  fields: {
+    kind?: string | null;
+    thumbnail_url?: string | null;
+    provider?: string | null;
+    source_url?: string | null;
+    captured_at?: string | null;
+    duration_sec?: number | null;
+    pages?: number | null;
+    isbn?: string | null;
+    // PR-JJ additive
+    author?: string | null;
+    brand?: string | null;
+  },
+): string {
+  // Sender が既に frontmatter を build している場合は手出ししない。
+  if (body.trimStart().startsWith('---')) return body;
+  // v1.1 固有 field(kind / thumbnail_url / provider / duration_sec /
+  // pages / isbn)が **どれか** ある場合のみ frontmatter を生成する。
+  // v0 の source_url / captured_at だけのときは従来 blockquote 互換の
+  // ため frontmatter は作らない(下流で `injectCaptureHeader` が走る)。
+  const hasV11 =
+    !!fields.kind || !!fields.thumbnail_url || !!fields.provider
+    || typeof fields.duration_sec === 'number'
+    || typeof fields.pages === 'number'
+    || !!fields.isbn
+    // PR-JJ additive trigger
+    || !!fields.author || !!fields.brand;
+  if (!hasV11) return body;
+  const yamlString = (v: string): string => {
+    // YAML safe scalar:URL chars(query ? & =、fragment #、segment :)を
+    // すべて含めた regex。日本語 / 空白 / quote 文字が混じる場合だけ
+    // JSON.stringify で quote。
+    if (/^[\w\-./:@+#?&=%~]+$/.test(v)) return v;
+    return JSON.stringify(v);
+  };
+  const lines: string[] = ['---'];
+  if (fields.kind) lines.push(`kind: ${fields.kind}`);
+  if (fields.source_url) lines.push(`url: ${yamlString(fields.source_url)}`);
+  if (fields.thumbnail_url) lines.push(`thumbnail: ${yamlString(fields.thumbnail_url)}`);
+  if (fields.provider) lines.push(`provider: ${yamlString(fields.provider)}`);
+  // PR-JJ additive: author for book/novel, brand for goods.
+  if (fields.author) lines.push(`author: ${yamlString(fields.author)}`);
+  if (fields.brand) lines.push(`brand: ${yamlString(fields.brand)}`);
+  if (typeof fields.duration_sec === 'number') lines.push(`duration_sec: ${fields.duration_sec}`);
+  if (typeof fields.pages === 'number') lines.push(`pages: ${fields.pages}`);
+  if (fields.isbn) lines.push(`isbn: ${yamlString(fields.isbn)}`);
+  if (fields.captured_at) lines.push(`captured_at: ${yamlString(fields.captured_at)}`);
+  lines.push('---');
+  lines.push('');
+  return `${lines.join('\n')}${body}`;
 }
 
 /**
@@ -1285,13 +1456,23 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       }
 
       events.push({ type: 'EDIT_BEGUN', lid });
+      // PR-J fix (2026-05-06):filer 中の作成は filer に留める。
+      // user 報告:「FOLDER の Detail を Filer にしたとき、パスから
+      // Root に戻ると Filer じゃなくなる、この動作は正直 no-op」。
+      // 根本原因は CREATE_ENTRY が無条件で viewMode='detail' に飛ばす
+      // ことで、filer 中に作成 → 編集確定すると detail に着地、その
+      // 状態で path の Root を click しても filer に戻れない。
+      // 解決:filer モード中の作成は filer のまま保持(scope は新規
+      // entry が folder ならその folder、非 folder なら ancestor folder
+      // に自動 fallback する resolveFilerScope の semantic に乗る)。
+      const nextViewMode = state.viewMode === 'filer' ? 'filer' : 'detail';
       const next: AppState = {
         ...state,
         container,
         selectedLid: lid,
         phase: 'editing',
         editingLid: lid,
-        viewMode: 'detail',
+        viewMode: nextViewMode,
         // Newly-auto-created bucket folders (`ASSETS` / `TODOS`)
         // start collapsed so the user's sidebar stays clean — they
         // can tap to expand whenever they need to see what landed
@@ -1483,26 +1664,67 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const container = addEntry(
         state.container, lid, offer.archetype, offer.title, ts,
       );
-      // Inject capture provenance header per
-      // `docs/spec/record-offer-capture-profile.md` §10.4. Header is
-      // emitted only when at least one of `source_url` / `captured_at`
-      // is present; absent → body unchanged (existing behavior).
-      const finalBody = injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
+      // Inject capture provenance:
+      // - v1.1 capture fields(kind / thumbnail_url / provider 等)が
+      //   ある場合は **frontmatter** で source_url / captured_at も
+      //   含めて表現する(blockquote は重複するので skip)。
+      // - 旧 v0 sender(これらの field なし)は従来通り **blockquote**
+      //   のみで provenance を表現(後方互換)。
+      // Spec ref:`docs/spec/record-offer-capture-profile.md` §8.4(v1.1)
+      //         + §10.4(v0)。
+      const hasV11Capture =
+        !!offer.kind || !!offer.thumbnail_url || !!offer.provider
+        || typeof offer.duration_sec === 'number'
+        || typeof offer.pages === 'number'
+        || !!offer.isbn
+        // PR-JJ additive
+        || !!offer.author || !!offer.brand;
+      const finalBody = hasV11Capture
+        ? injectCaptureFrontmatter(offer.body, {
+            kind: offer.kind ?? null,
+            thumbnail_url: offer.thumbnail_url ?? null,
+            provider: offer.provider ?? null,
+            source_url: offer.source_url ?? null,
+            captured_at: offer.captured_at ?? null,
+            duration_sec: offer.duration_sec ?? null,
+            pages: offer.pages ?? null,
+            isbn: offer.isbn ?? null,
+            // PR-JJ additive
+            author: offer.author ?? null,
+            brand: offer.brand ?? null,
+          })
+        : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
-      const updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
+      let updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
+      // PR-VV (2026-05-06): user 修正指示4「取り込み先の指定をしたい」.
+      // `target_folder_lid` が PendingOffer banner の picker から渡された
+      // 場合、folder への structural relation を 1 件追加して entry を
+      // その folder 配下に置く。target lid が unknown / non-folder な場合は
+      // 静かに root scope へ fallback。
+      const events: DomainEvent[] = [
+        { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
+        { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
+      ];
+      if (action.target_folder_lid) {
+        const target = updatedContainer.entries.find((e) => e.lid === action.target_folder_lid);
+        if (target && target.archetype === 'folder') {
+          const relId = generateLid();
+          updatedContainer = addRelation(
+            updatedContainer, relId, action.target_folder_lid, lid, 'structural', ts,
+          );
+          events.push({
+            type: 'RELATION_CREATED', id: relId,
+            from: action.target_folder_lid, to: lid, kind: 'structural',
+          });
+        }
+      }
       const next: AppState = {
         ...state,
         container: updatedContainer,
         pendingOffers: state.pendingOffers.filter((o) => o.offer_id !== action.offer_id),
         selectedLid: lid,
       };
-      return {
-        state: next,
-        events: [
-          { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
-          { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
-        ],
-      };
+      return { state: next, events };
     }
     case 'DISMISS_OFFER': {
       const offer = state.pendingOffers.find((o) => o.offer_id === action.offer_id);
@@ -2563,6 +2785,27 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       );
       return result;
     }
+    // RENAME_ENTRY_TITLE: title-only update, body preserved.
+    // 領域 10-6 ζ'' Phase 4 follow-up — filer 内のフォルダ rename
+    // input が dispatch する。folder 以外の archetype にも一般化。
+    case 'RENAME_ENTRY_TITLE': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const trimmed = action.title.trim();
+      if (trimmed === entry.title) return { state, events: [] };
+      const ts = now();
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      const container = updateEntry(snapshotted, action.lid, trimmed, entry.body, ts);
+      const next: AppState = { ...state, container };
+      return {
+        state: next,
+        events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
+      };
+    }
     // QUICK_UPDATE_ENTRY: body-only update, title preserved.
     // See user-action.ts for full contract documentation.
     case 'QUICK_UPDATE_ENTRY': {
@@ -2754,8 +2997,166 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
       return { state: next, events: [] };
     }
+    case 'SET_INVENTORY_FILTER': {
+      const cur = state.inventoryQuery ?? {};
+      const filter: Record<string, string> = { ...(cur.filter ?? {}) };
+      if (action.value === '') delete filter[action.key];
+      else filter[action.key] = action.value;
+      const next: AppState = { ...state, inventoryQuery: { ...cur, filter } };
+      return { state: next, events: [] };
+    }
+    case 'SET_INVENTORY_SORT': {
+      const cur = state.inventoryQuery ?? {};
+      const next: AppState = {
+        ...state,
+        inventoryQuery: {
+          ...cur,
+          sortBy: action.sortBy,
+          sortDir: action.sortDir ?? cur.sortDir ?? 'asc',
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_INVENTORY_GROUP_BY': {
+      const cur = state.inventoryQuery ?? {};
+      const next: AppState = {
+        ...state,
+        inventoryQuery: { ...cur, groupBy: action.groupBy },
+      };
+      return { state: next, events: [] };
+    }
+    case 'CLEAR_INVENTORY_QUERY': {
+      const { inventoryQuery: _drop, ...rest } = state;
+      return { state: rest as AppState, events: [] };
+    }
+    case 'SET_FILER_EXPLORER_SORT': {
+      const cur = state.filerExplorerSort ?? {};
+      const next: AppState = {
+        ...state,
+        filerExplorerSort: {
+          ...cur,
+          sortBy: action.sortBy,
+          sortDir: action.sortDir ?? cur.sortDir ?? 'asc',
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_GRAPH_MODE': {
+      const next: AppState = { ...state, graphMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'OPEN_GRAPH_FOR_ENTRY': {
+      // Set focus lid + flip viewMode to 'graph' atomically. lid===null
+      // = full container graph (no focus center).
+      let next: AppState = { ...state, viewMode: 'graph' };
+      if (action.lid === null) {
+        const { graphFocusLid: _drop, ...rest } = next;
+        next = rest as AppState;
+      } else {
+        next = { ...next, graphFocusLid: action.lid };
+      }
+      return { state: next, events: [] };
+    }
+    case 'TOGGLE_GRAPH_REGION_SELECT_MODE': {
+      // PR-E G8 後半 (2026-05-06):背景 drag を pan / rect 選択どちらに
+      // 振るかの toggle。OFF に切り替える時は選択結果も clear する
+      // (mode 抜けたら highlight が残ったままだと user が「なぜハイ
+      // ライト」と混乱する)。
+      const turnOn = !(state.graphRegionSelectMode ?? false);
+      const next: AppState = {
+        ...state,
+        graphRegionSelectMode: turnOn,
+        graphRegionSelectedLids: turnOn ? state.graphRegionSelectedLids : [],
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_GRAPH_REGION_SELECTED_LIDS': {
+      // PR-Δ20 (2026-05-07、user 指摘「region 選択の用途不明」):
+      // region で囲った lids を **multiSelectedLids にも反映** して、
+      // sidebar の multi-action-bar で bulk 操作(Tag / Color / Folder
+      // 移動 / Delete)を直接実行できるようにする。region 選択 = 一括
+      // 操作の入口、という意味付け。
+      const lidsCopy = [...action.lids];
+      const next: AppState = {
+        ...state,
+        graphRegionSelectedLids: action.lids,
+        multiSelectedLids: lidsCopy,
+      };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: lidsCopy }] };
+    }
+    case 'TOGGLE_GRAPH_VENN_GROUPING_MODE': {
+      // PR-I G17 (2026-05-06):graph view の Venn-style グルーピング
+      // toggle。ON / OFF を flip するだけのシンプル reducer。
+      const next: AppState = {
+        ...state,
+        graphVennGroupingMode: !(state.graphVennGroupingMode ?? false),
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_FILER_SEARCH_QUERY': {
+      // PR-L (2026-05-06):filer 側の検索 query を更新。空文字列 →
+      // 検索キャンセル(direct children に戻る)、非空 → subtree search。
+      const next: AppState = { ...state, filerSearchQuery: action.query };
+      return { state: next, events: [] };
+    }
     case 'SET_VIEW_MODE': {
-      const next: AppState = { ...state, viewMode: action.mode };
+      let next: AppState = { ...state, viewMode: action.mode };
+      // 領域 10-6 ζ'' Phase 4 follow-up nav memory:
+      // when switching back to filer and a remembered scope lid is
+      // available, set selectedLid to that folder so resolveFilerScope
+      // resolves to the prior place.
+      if (
+        action.mode === 'filer'
+        && typeof state.lastFilerScopeLid === 'string'
+        && state.lastFilerScopeLid.length > 0
+        && state.container
+        && state.container.entries.some(
+          (e) => e.lid === state.lastFilerScopeLid && e.archetype === 'folder',
+        )
+      ) {
+        next = { ...next, selectedLid: state.lastFilerScopeLid };
+      }
+      return { state: next, events: [] };
+    }
+    case 'SET_LAST_FILER_SCOPE': {
+      if (action.lid === null) {
+        const { lastFilerScopeLid: _drop, ...rest } = state;
+        return { state: rest as AppState, events: [] };
+      }
+      const next: AppState = { ...state, lastFilerScopeLid: action.lid };
+      return { state: next, events: [] };
+    }
+    case 'SET_DISPLAY_PROFILE': {
+      if (!state.container) return blocked(state, action);
+      const target = state.container.entries.find((e) => e.lid === action.lid);
+      if (!target) return { state, events: [] };
+      if (target.archetype !== 'folder') return { state, events: [] };
+      const ts = now();
+      const updated: Entry = action.profile === undefined
+        ? (() => {
+            const { display_profile: _drop, ...rest } = target;
+            return { ...rest, updated_at: ts } as Entry;
+          })()
+        : { ...target, display_profile: action.profile, updated_at: ts };
+      const nextEntries = state.container.entries.map((e) =>
+        e.lid === action.lid ? updated : e,
+      );
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          entries: nextEntries,
+          meta: { ...state.container.meta, updated_at: ts },
+        },
+      };
+      return { state: next, events: [] };
+    }
+    case 'SET_FILER_SCOPE': {
+      if (action.scope === 'auto') {
+        const { filerScope: _drop, ...rest } = state;
+        return { state: rest as AppState, events: [] };
+      }
+      const next: AppState = { ...state, filerScope: action.scope };
       return { state: next, events: [] };
     }
     case 'SET_CALENDAR_MONTH': {
@@ -2912,6 +3313,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'TOGGLE_MULTI_SELECT': {
+      // PR-Δ9: selectedLid は触らない(主選択は SELECT_ENTRY 責務)。
+      // PR-Δ16 (2026-05-07、user 報告「Filerで勝手に選択される挙動 =
+      // 左ペインで選択したエントリが Filer 側の選択ロジック時にすでに
+      // 選択済みとして処理している。意図しない副作用動作で最悪の UX
+      // 事故」):
+      //   sidebar Ctrl+click は anchor inclusion 期待(includeAnchor=true)
+      //   Filer checkbox は明示的に押した lid のみ toggle 期待
+      //   (includeAnchor=false)
+      // includeAnchor の default は true(既存挙動互換)、Filer 側は
+      // false で dispatch する。
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
       if (idx >= 0) {
@@ -2919,11 +3330,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       } else {
         lids.push(action.lid);
       }
-      // Also include current selectedLid if not already
-      if (state.selectedLid && !lids.includes(state.selectedLid)) {
+      const includeAnchor = action.includeAnchor !== false; // default true
+      if (includeAnchor && state.selectedLid && !lids.includes(state.selectedLid)) {
         lids.unshift(state.selectedLid);
       }
-      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: lids };
+      const next: AppState = { ...state, multiSelectedLids: lids };
       return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids }] };
     }
     case 'SELECT_RANGE': {
@@ -3101,6 +3512,37 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       }
       const next: AppState = { ...state, container };
       return { state: next, events };
+    }
+    case 'MATERIALIZE_THUMBNAIL': {
+      // PR-HH (2026-05-06): post-OFFER_ACCEPTED side effect that
+      // converts a runtime-resolved http(s) thumbnail URL into a
+      // local container asset. Idempotent — when the body has
+      // already been rewritten or the entry is gone, we still
+      // accept the asset write so concurrent fetchers converge.
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const newBody = rewriteThumbnailToAssetKey(entry.body ?? '', action.assetKey);
+      const ts = now();
+      const updatedEntries = state.container.entries.map((e) =>
+        e.lid === action.lid ? { ...e, body: newBody, updated_at: ts } : e,
+      );
+      const updatedAssets = {
+        ...state.container.assets,
+        [action.assetKey]: action.assetData,
+      };
+      const updatedMeta = { ...state.container.meta, updated_at: ts };
+      const next: AppState = {
+        ...state,
+        container: {
+          ...state.container,
+          entries: updatedEntries,
+          assets: updatedAssets,
+          meta: updatedMeta,
+        },
+      };
+      return { state: next, events: [] };
     }
     case 'TOGGLE_FOLDER_COLLAPSE': {
       const lids = state.collapsedFolders.includes(action.lid)
@@ -3451,6 +3893,12 @@ function reduceEditing(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'PASTE_ATTACHMENT': {
       // Delegate to the ready-phase handler — it preserves phase/editingLid/selectedLid
+      return reduceReady(state, action);
+    }
+    case 'MATERIALIZE_THUMBNAIL': {
+      // PR-HH: same idempotent body+asset write semantics in
+      // editing phase. Delegates to ready handler which preserves
+      // phase/editingLid/selectedLid.
       return reduceReady(state, action);
     }
     case 'MOVE_ENTRY_UP':

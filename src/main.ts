@@ -18,6 +18,8 @@ import {
   restoreRenderContinuity,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
+import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
+import { isSnapshot } from './features/snapshot/types';
 import {
   bindActions,
   populateAttachmentPreviews,
@@ -63,13 +65,19 @@ import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { buildBatchImportPlan } from './features/batch-import/import-planner';
 import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/batch-import/import-planner';
 import { mountMessageBridge } from './adapter/transport/message-bridge';
-import { createHandlerRegistry } from './adapter/transport/message-handler';
+import { createHandlerRegistry, type MessageHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
 import {
   recordOfferHandler,
   getReplyWindowForOffer,
   clearReplyWindowForOffer,
 } from './adapter/transport/record-offer-handler';
+import { findThumbnailHttpUrl } from './features/auto-fill/thumbnail-frontmatter';
+import { fetchImageAsBase64 } from './adapter/platform/fetch-image-asset';
+import {
+  parseCaptureJson,
+  isCaptureJsonFilename,
+} from './features/auto-fill/parse-capture-json';
 import { canHandleMessage } from './adapter/transport/capability';
 import { buildPongProfile } from './adapter/transport/profile';
 import { detectEmbedContext } from './adapter/platform/embed-detect';
@@ -561,21 +569,54 @@ async function boot(): Promise<void> {
       // a reserved type, not wired in v1), but we still need to drop
       // the registry entry so the Map does not grow unbounded.
       clearReplyWindowForOffer(event.offer_id);
+      // PR-HH (2026-05-06): when the just-accepted entry's body
+      // carries a http(s) thumbnail URL in its YAML frontmatter,
+      // materialize it into a local container asset so card grids
+      // no longer depend on the original host's runtime
+      // availability + CORS posture. Best-effort: any failure
+      // (network / CORS taint / canvas error) leaves the URL in
+      // place so the existing runtime fallback path still works.
+      void (async (): Promise<void> => {
+        try {
+          const st = dispatcher.getState();
+          const entry = st.container?.entries.find((e) => e.lid === event.lid);
+          if (!entry || entry.archetype !== 'text') return;
+          const url = findThumbnailHttpUrl(entry.body ?? '');
+          if (!url) return;
+          const fetched = await fetchImageAsBase64(url);
+          if (!fetched) return;
+          const assetKey = `thumb-${event.lid}-${Date.now().toString(36)}`;
+          dispatcher.dispatch({
+            type: 'MATERIALIZE_THUMBNAIL',
+            lid: event.lid,
+            assetKey,
+            assetData: fetched.b64,
+            mime: fetched.mime,
+          });
+        } catch {
+          /* best-effort — runtime URL fallback still renders */
+        }
+      })();
     }
     if (event.type === 'FLAGS_CHANGED') {
       // Flags Protocol v1 (2026-05-03): refresh the runtime flag
       // registry's container snapshot so subsequent
       // `getRegisteredFlags()` calls reflect the new payload.
-      // defineFlag-captured values are still bound at module-import
-      // time (live-update would require reload) but the inspector UI
-      // re-resolves on each render and will surface the new source
-      // immediately.
       setContainerFlagSource(event.flags.values);
       // Phase 3a (2026-05-04): re-apply runtime UI scale multiplier
       // immediately after the flag registry is primed, so a flag
       // edit reflects in `--theme-scale` (and the rem cascade) on
       // the same dispatch tick — no waiting for the next render.
       applyThemeScale();
+      // PR-Δ29 (2026-05-07、user 報告「Galaxy / Venn の button caption が
+      // 即時に変わらない」):dispatcher は state listeners を event より
+      // 先に notify するため、SET_FLAG の state listener 実行時点では
+      // flag source がまだ古い値。renderer は graphGalaxyMode() の旧値で
+      // button text を出してしまう。FLAGS_CHANGED 直後に **再 render を
+      // microtask 経由で trigger** して新 flag 値を反映する。
+      queueMicrotask(() => {
+        render(dispatcher.getState(), root);
+      });
     }
   });
 
@@ -648,6 +689,8 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
@@ -671,6 +714,8 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -688,6 +733,8 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeIngestSnapshotFromUrl(dispatcher);
+        installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
@@ -769,6 +816,166 @@ function maybeOpenFlagsInspectorFromUrl(dispatcher: Dispatcher): void {
 }
 
 /**
+ * 領域 10-6 ζ'' Phase 3c-E — bookmarklet snapshot intake.
+ * If the URL carries `?pkc-snapshot=<base64-or-json>`, decode and
+ * create a TEXT entry from it. **No modal in main shell** (2026-05-05
+ * user direction); the new entry simply appears as the freshly-
+ * selected entry and the URL param is stripped to prevent re-import
+ * on refresh.
+ */
+function maybeIngestSnapshotFromUrl(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('pkc-snapshot');
+  if (!raw) return;
+  const decoded = decodeSnapshotParam(raw);
+  if (!isSnapshot(decoded)) return;
+  const draft = snapshotToEntryDraft(decoded);
+  dispatcher.dispatch({
+    type: 'CREATE_ENTRY',
+    archetype: 'text',
+    title: draft.title,
+  });
+  // The reducer puts us into editing mode for the new entry; commit
+  // immediately with the snapshot body so the user lands on a saved
+  // entry. No modal interactions required.
+  const lid = dispatcher.getState().editingLid;
+  if (lid) {
+    dispatcher.dispatch({ type: 'COMMIT_EDIT', lid, title: draft.title, body: draft.body });
+  }
+  // Strip the param so reload / share doesn't re-create the entry.
+  try {
+    params.delete('pkc-snapshot');
+    const newSearch = params.toString();
+    const url = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, url);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * PR-S (2026-05-06):bookmarklet を **PKC-Message v1 spec 準拠** に
+ * 全面書換え。User 指摘:
+ * > これ、ちゃんと PKC-Message の規約読んだ?
+ *
+ * 旧 PR-Q の独自 type `pkc-bookmarklet-snapshot` は **spec 違反**:
+ *   - envelope 必須 field(`protocol` / `version` / `source_id` /
+ *     `timestamp`)を持たなかった
+ *   - 勝手な type 名で `KNOWN_TYPES` に未登録
+ *   - **user 同意経路をバイパス**(spec §6.2 違反)で CREATE_ENTRY 直
+ *     dispatch していた
+ *   - origin allowlist / capability gate / envelope validation すべて skip
+ *
+ * 新設計(spec §4.1 envelope + §7.2 record:offer):
+ *   - bookmarklet が `record:offer` envelope(spec 完全準拠)を送る
+ *   - origin policy は `?pkc-bookmarklet=ready` URL flag が付いた boot
+ *     時のみ **one-shot で any origin** を許容(URL flag は user-initiated
+ *     なので user が明示同意)、それ以外は通常の `mountMessageBridge`
+ *     allowlist が効く
+ *   - 受信した envelope は `recordOfferHandler` を直 invoke、PendingOffer
+ *     banner → user accept で初めて entry mint(**user 同意経路温存**、
+ *     spec §6.2 / §7.2.5 通り)
+ *   - record:offer 受信後 / 30 秒タイムアウトで listener 自動 removal
+ *
+ * v1 spec の中で完結:envelope / type / handler / user-consent gate
+ * すべて既存の `record:offer` path に乗る。spec 拡張不要。
+ *
+ * 残るリスク評価:
+ *   - bookmarklet 経由は cross-origin postMessage を一時受け入れる →
+ *     URL flag が偽 click で生やされた場合に payload 注入の窓が 30 秒
+ *     開く。ただし最終的に user の accept がないと entry は作られない
+ *     (spec §6.2 user-consent gate)ので、最悪でも PendingOffer banner
+ *     を 1 件 user に見せるだけで終わる(DoS 程度の被害、storage write
+ *     なし)。
+ */
+function installBookmarkletPkcMessageBridge(
+  dispatcher: Dispatcher,
+  registry: MessageHandlerRegistry,
+): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('pkc-bookmarklet') !== 'ready') return;
+
+  // Strip the URL flag immediately so reload doesn't re-trigger the
+  // cross-origin window.
+  try {
+    params.delete('pkc-bookmarklet');
+    const newSearch = params.toString();
+    window.history.replaceState(
+      {},
+      document.title,
+      `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`,
+    );
+  } catch {
+    /* ignore */
+  }
+
+  let consumed = false;
+  const onMessage = (ev: MessageEvent): void => {
+    if (consumed) return;
+    if (!ev.source) return;
+    const data = ev.data as Record<string, unknown> | null | undefined;
+    // Validate as PKC-Message envelope (spec §4.1 / §4.2).
+    if (!data || typeof data !== 'object') return;
+    if (data.protocol !== 'pkc-message') return;
+    if (data.version !== 1) return;
+    if (data.type !== 'record:offer') return;
+    if (typeof data.timestamp !== 'string') return;
+    consumed = true;
+
+    // Route through the spec-compliant handler. PendingOffer is created
+    // and the user must explicitly Accept on the banner before any
+    // entry is minted (spec §6.2 / §7.2.5 user-consent gate).
+    //
+    // Sender stub:`record:offer` handler does not call ctx.sender (it
+    // stashes sourceWindow for the later record:reject reply path).
+    // The dismiss-side reply uses bridgeHandle.sender via the
+    // `OFFER_DISMISSED` event handler in main.ts, not this path. So a
+    // no-op sender stub is safe here.
+    const noopSender = {
+      send: (
+        _target: Window,
+        _type: string,
+        _payload: unknown,
+        _targetId?: string | null,
+        _targetOrigin?: string,
+      ): void => {
+        /* unused for record:offer inbound path */
+      },
+    } as Parameters<typeof registry.route>[0]['sender'];
+    const currentState = dispatcher.getState();
+    registry.route({
+      envelope: data as unknown as Parameters<typeof registry.route>[0]['envelope'],
+      sourceWindow: ev.source as Window,
+      origin: ev.origin,
+      container: currentState.container,
+      embedded: currentState.embedded,
+      dispatcher,
+      sender: noopSender,
+    });
+    window.removeEventListener('message', onMessage);
+  };
+  window.addEventListener('message', onMessage);
+  // Auto-cleanup after 30s — bookmarklet's expected handshake is
+  // sub-second; anything longer is a stuck / aborted flow.
+  setTimeout(() => {
+    if (!consumed) window.removeEventListener('message', onMessage);
+  }, 30_000);
+
+  // Notify the opener (the bookmarklet's host page) that we're ready
+  // to receive a record:offer envelope. The opener checks `e.data.type
+  // === 'pkc-bookmarklet-ready'` and posts the envelope back.
+  if (window.opener) {
+    try {
+      window.opener.postMessage({ type: 'pkc-bookmarklet-ready' }, '*');
+    } catch {
+      /* opaque cross-origin opener — ignore */
+    }
+  }
+}
+
+/**
  * A-4 (2026-04-23): after SYS_INIT_COMPLETE, hydrate
  * `state.collapsedFolders` from the viewer-local folder-prefs
  * store, keyed by `container_id`. This is a runtime UI preference
@@ -809,7 +1016,15 @@ function createEmptyContainer(): Container {
 function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.html,.zip';
+  // PR-QQ (2026-05-06): accept `.pkc-capture.json` for the local
+  // bookmarklet DL mode in addition to the existing HTML / ZIP
+  // container imports.
+  // PR-UU (2026-05-06): user 修正指示4「.pkc-capture.json の複数取り
+  // 込みを有効化して」— `multiple` を on に。container HTML / ZIP
+  // は基本 1 件 import 想定だが、複数選択しても先頭ファイルが従来
+  // 通り処理される(後方互換、capture JSON 経路のみ全件 loop)。
+  fileInput.accept = '.html,.zip,.json';
+  fileInput.multiple = true;
   fileInput.style.display = 'none';
   fileInput.setAttribute('data-pkc-role', 'import-input');
   document.body.appendChild(fileInput);
@@ -824,12 +1039,118 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
 
   // Handle file selection
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
+    const allFiles = Array.from(fileInput.files ?? []);
+    if (allFiles.length === 0) return;
+
+    // PR-UU (2026-05-06): when ALL selected files are capture JSONs,
+    // process every one in sequence as separate `SYS_RECORD_OFFERED`
+    // dispatches so the user sees a stack of PendingOffer banners
+    // (PKC-Message §6 user-consent gate is preserved per offer).
+    // Mixed selections (HTML + capture-json + zip) fall back to the
+    // legacy first-file behavior since that path has its own preview
+    // dialog flow.
+    const allCapture = allFiles.every((f) => isCaptureJsonFilename(f.name));
+    if (allCapture) {
+      let n = 0;
+      for (const file of allFiles) {
+        const text = await file.text();
+        const parsed = parseCaptureJson(text);
+        if (!parsed) {
+          console.warn(`[PKC2] capture JSON rejected: ${file.name}`);
+          continue;
+        }
+        n += 1;
+        const offer = {
+          offer_id: `dl-${Date.now().toString(36)}-${n}`,
+          title: parsed.payload.title,
+          body: parsed.payload.body,
+          archetype: parsed.payload.archetype ?? 'text',
+          source_container_id: parsed.payload.source_container_id ?? null,
+          reply_to_id: null,
+          received_at: new Date().toISOString(),
+          source_url: parsed.payload.source_url ?? null,
+          captured_at: parsed.payload.captured_at ?? null,
+          kind: parsed.payload.kind ?? null,
+          thumbnail_url: parsed.payload.thumbnail_url ?? null,
+          provider: parsed.payload.provider ?? null,
+          duration_sec: parsed.payload.duration_sec ?? null,
+          pages: parsed.payload.pages ?? null,
+          isbn: parsed.payload.isbn ?? null,
+          author: parsed.payload.author ?? null,
+          brand: parsed.payload.brand ?? null,
+        };
+        dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
+        console.log(`[PKC2] capture import (${n}/${allFiles.length}): ${file.name} → offer ${offer.offer_id}`);
+      }
+      console.log(`[PKC2] capture import batch complete: ${n}/${allFiles.length} accepted`);
+      return;
+    }
+
+    // Single capture json among mixed picks — handle just it (legacy
+    // single-file path).
+    const file = allFiles[0]!;
+
+    // PR-QQ: capture JSON branch (bookmarklet DL mode). Detect by
+    // filename — accepts `.pkc-capture.json` or `.pkc-capture`.
+    // Validates the envelope, then dispatches `SYS_RECORD_OFFERED`
+    // so the user sees the same accept / dismiss UX as the
+    // postMessage path.
+    if (isCaptureJsonFilename(file.name)) {
+      const text = await file.text();
+      const parsed = parseCaptureJson(text);
+      if (!parsed) {
+        console.warn(`[PKC2] capture JSON rejected: ${file.name}`);
+        dispatcher.dispatch({
+          type: 'SYS_ERROR',
+          error: `Capture import failed: ${file.name} は有効な PKC-Message v1 envelope ではありません。`,
+        });
+        return;
+      }
+      const offer = {
+        offer_id: `dl-${Date.now().toString(36)}`,
+        title: parsed.payload.title,
+        body: parsed.payload.body,
+        archetype: parsed.payload.archetype ?? 'text',
+        source_container_id: parsed.payload.source_container_id ?? null,
+        reply_to_id: null,
+        received_at: new Date().toISOString(),
+        source_url: parsed.payload.source_url ?? null,
+        captured_at: parsed.payload.captured_at ?? null,
+        kind: parsed.payload.kind ?? null,
+        thumbnail_url: parsed.payload.thumbnail_url ?? null,
+        provider: parsed.payload.provider ?? null,
+        duration_sec: parsed.payload.duration_sec ?? null,
+        pages: parsed.payload.pages ?? null,
+        isbn: parsed.payload.isbn ?? null,
+        author: parsed.payload.author ?? null,
+        brand: parsed.payload.brand ?? null,
+      };
+      dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
+      console.log(`[PKC2] capture import: ${file.name} → offer ${offer.offer_id}`);
+      return;
+    }
 
     // Route to appropriate importer based on file extension
     if (file.name.endsWith('.zip')) {
-      const result = await importContainerFromZip(file);
+      // PR-Δ27 (2026-05-07、user 報告「ZIP 開こうとすると止まる、
+      // progress も無くて UX 低い」):進捗 toast を 1 件だけ作って
+      // 同 message で coalesce 更新(toast.ts の coalescing 機構)。
+      console.log(`[PKC2] ZIP import start: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      let lastToast: HTMLElement | null = null as HTMLElement | null;
+      let lastReportTime = 0;
+      const onProgress = (info: { done: number; total: number; currentName: string }): void => {
+        const now = Date.now();
+        // throttle to 1 update / 250ms to avoid DOM thrash
+        if (now - lastReportTime < 250 && info.done < info.total) return;
+        lastReportTime = now;
+        const pct = Math.round((info.done / info.total) * 100);
+        const msg = `📦 ZIP 取り込み中 ${info.done}/${info.total} (${pct}%)`;
+        if (lastToast) lastToast.remove();
+        lastToast = showToast({ message: msg, kind: 'info', autoDismissMs: 60000 });
+      };
+      const result = await importContainerFromZip(file, onProgress);
+      if (lastToast) lastToast.remove();
+      console.log(`[PKC2] ZIP import done: ok=${result.ok}`);
       if (result.ok) {
         dispatcher.dispatch({
           type: 'SYS_IMPORT_PREVIEW',

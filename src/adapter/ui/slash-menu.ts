@@ -16,6 +16,8 @@ import {
   formatDateTime,
   formatISO8601,
 } from '../../features/datetime/datetime-format';
+import { getActiveUserTemplates } from '../../features/templates/template-flag';
+import { getCaretViewportCoords } from './caret-position';
 
 // ── Command definitions ──
 
@@ -114,6 +116,35 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     },
   },
 ];
+
+/**
+ * PR-BBB (2026-05-06):user 修正指示4「自前で手入力するためのテン
+ * プレが必要。「/」コマンドにテンプレ挿入のコマンドを追加し、テン
+ * プレを用意「/tmpXX」とし、XXは半角英数２文字、Flagsからjson形式
+ * で編集可能とする」.
+ *
+ * `templates.entries` flag を parse して `/tmpXX` 形式の SlashCommand
+ * を生成、static SLASH_COMMANDS の後ろに連結。flag の値が変わる
+ * たびに `getAllSlashCommands()` が live で再評価されるので、
+ * inspector で template を追加したら次回 `/` 起動から見える。
+ */
+function getAllSlashCommands(): SlashCommand[] {
+  const templates = getActiveUserTemplates();
+  if (templates.length === 0) return SLASH_COMMANDS;
+  const tmplCommands: SlashCommand[] = templates.map((t) => {
+    // Preview the first line (or up to 40 chars) for the menu label.
+    const previewSrc = (t.body || '').replace(/\n+/g, ' ↵ ').trim();
+    const preview = previewSrc.length > 40
+      ? `${previewSrc.slice(0, 40)}…`
+      : previewSrc || '(empty)';
+    return {
+      id: `tmp${t.key}`,
+      label: `/tmp${t.key} — ${preview}`,
+      insert: t.body,
+    };
+  });
+  return [...SLASH_COMMANDS, ...tmplCommands];
+}
 
 // ── Trigger detection ──
 
@@ -250,7 +281,7 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
   inst.textarea = textarea;
   inst.slashPos = slashPos;
   inst.selectedIndex = 0;
-  inst.filteredCommands = [...SLASH_COMMANDS];
+  inst.filteredCommands = getAllSlashCommands();
 
   const menu = document.createElement('div');
   menu.className = 'pkc-slash-menu';
@@ -260,16 +291,42 @@ export function openSlashMenu(textarea: HTMLTextAreaElement, slashPos: number, r
 
   renderMenuItems(inst);
 
-  // Position near the textarea
-  const rect = textarea.getBoundingClientRect();
-  const rootRect = root.getBoundingClientRect();
-  menu.style.position = 'absolute';
-  menu.style.left = `${rect.left - rootRect.left}px`;
-  // Place below the textarea's current line or at bottom of textarea
-  menu.style.top = `${rect.bottom - rootRect.top + 4}px`;
-  menu.style.zIndex = '100';
+  // Position near the caret.
+  //
+  // PR-FF (2026-05-06):textarea bounding rect 直下に出していたが、
+  // 縦長 textarea で caret が中段にある場合 menu が遠くに離れる /
+  // viewport 下端で `bottom + menu height` が clip される問題があった。
+  //
+  // PR-DDD (2026-05-06、user 修正指示5):**caret 座標直下** に出す。
+  // mirror-div ベースの `getCaretViewportCoords` でキャレットの正確
+  // な viewport 座標を計算、その直下に menu を `position: fixed` で
+  // 配置。textarea がスクロールしても caret に追従。viewport 下端
+  // 近くで menu が clip しないよう、空きが足りない時は caret の上に
+  // フリップ表示する flip-up 経路も追加(後段の post-render measure)。
+  const caret = getCaretViewportCoords(textarea);
+  const taRect = textarea.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${Math.max(8, Math.min(caret.left, taRect.right - 200))}px`;
+  menu.style.top = `${caret.top + caret.height + 4}px`;
+  menu.style.zIndex = '1000';
 
   root.appendChild(menu);
+
+  // PR-DDD (2026-05-06):mount 後に menu の高さを measure、viewport
+  // 下端を超える場合は caret の上に flip して clip を回避。
+  const win = root.ownerDocument?.defaultView ?? null;
+  if (win) {
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.bottom > win.innerHeight - 4) {
+      const flipTop = caret.top - menuRect.height - 4;
+      menu.style.top = `${Math.max(4, flipTop)}px`;
+    }
+    // 右端 clip も同時に守る。
+    if (menuRect.right > win.innerWidth - 4) {
+      const flippedLeft = win.innerWidth - menuRect.width - 8;
+      menu.style.left = `${Math.max(4, flippedLeft)}px`;
+    }
+  }
 }
 
 function renderMenuItems(inst: ActiveSlashMenu): void {
@@ -358,7 +415,7 @@ export function filterSlashMenu(query: string): void {
   const inst = getActiveInstance();
   if (!inst || !inst.menu) return;
   const q = query.toLowerCase();
-  inst.filteredCommands = SLASH_COMMANDS.filter((cmd) => {
+  inst.filteredCommands = getAllSlashCommands().filter((cmd) => {
     const id = cmd.id.toLowerCase();
     const label = cmd.label.toLowerCase();
     if (id.includes(q) || label.includes(q)) return true;

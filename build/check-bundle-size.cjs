@@ -156,8 +156,16 @@ const ROOT = resolve(__dirname, '..');
 
 /** Raw-byte budgets. Bump here (with a code review) when justified. */
 const BUDGETS = [
-  { file: 'dist/bundle.js', maxBytes: 1536 * 1024 },  // 1.5 MB (Link terminology correction re-alignment)
-  { file: 'dist/bundle.css', maxBytes: 124 * 1024 },  // 124 KB (領域 10-1 PR #256 hotfix-7 follow-up: caret-indicator + active-line + chrome 抑制 + cursor:text + line-num badge / wave total +1.74 KB; previous 122 KB)
+  // 2026-05-05 user direction(領域 10-6 ζ'' Phase 3 進行中):
+  //   「バジェットはバンドル全体で 5 MB まで拡張しておいてください。
+  //    そこが分水嶺かなと思っています。ここを越えるなら、PKC-extension
+  //    として外だししていく方針です」
+  // → 単一 HTML 哲学を維持しつつ、5 MB を本体限界とする方針確定。
+  //   超過する viewer / heavy lib は PKC-extension(領域 10-5)へ分離。
+  //   個別上限を bundle.js 4.5 MB + bundle.css 0.5 MB に分配し、合算で
+  //   5 MB ぴったりに収まるよう設定。
+  { file: 'dist/bundle.js', maxBytes: 4608 * 1024 },  // 4.5 MB (was 1.5 MB)
+  { file: 'dist/bundle.css', maxBytes: 512 * 1024 },  // 0.5 MB (was 130 KB)
 ];
 
 function formatKB(bytes) {

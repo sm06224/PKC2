@@ -88,6 +88,31 @@ export interface RecordOfferPayload {
   source_url?: string;
   /** Capture-specific (v0, spec §8.1): ISO 8601 capture timestamp. */
   captured_at?: string;
+  // ── PR-U v1.1 capture profile (2026-05-06) ─────────────────
+  // PKC-Message v1.1 additive(spec §9.2 v1 内 additive、unknown field
+  // は host 無視 §9.4)。後方互換維持:旧 sender はこれらを送らずに
+  // 従来通り動作、新 sender が送ると host が structured Bases routing
+  // に乗せる。詳細は `docs/spec/record-offer-capture-profile.md` §8.4。
+  /** Bases subset hint(filer Auto 7 割多数決の判定材料、PR-G 参照)。 */
+  kind?: 'video' | 'novel' | 'book' | 'audio' | 'image' | 'document';
+  /** thumbnail URL or asset_key。 */
+  thumbnail_url?: string;
+  /** provider 表示名(`YouTube` / `カクヨム` 等、出典 badge)。 */
+  provider?: string;
+  /** video / audio の長さ(秒)。 */
+  duration_sec?: number;
+  /** book の page 数。 */
+  pages?: number;
+  /** book の ISBN(13 桁推奨)。 */
+  isbn?: string;
+  // ── PR-JJ Amazon scraper additive (2026-05-06) ─────────────
+  // 書籍 / 漫画は author、それ以外の物販は brand を bookmarklet が
+  // DOM から拾って frontmatter に注入する。両方とも optional /
+  // unknown 互換、旧 sender / 旧 receiver は無視するだけ。
+  /** 著者 / 作者(`kind: book` / `kind: novel` で意味を持つ)。 */
+  author?: string;
+  /** メーカー / ブランド(`kind: book` 以外の Amazon 商品で意味を持つ)。 */
+  brand?: string;
 }
 
 /**
@@ -128,6 +153,22 @@ export interface PendingOffer {
   source_url?: string | null;
   /** Capture-specific (v0): ISO 8601 capture time, used by ACCEPT_OFFER body header. */
   captured_at?: string | null;
+  // ── PR-U v1.1 additive (2026-05-06) ──
+  /** Bases subset hint(filer Auto 判定材料、ACCEPT_OFFER で frontmatter に注入)。 */
+  kind?: RecordOfferPayload['kind'] | null;
+  /** thumbnail URL or asset_key。 */
+  thumbnail_url?: string | null;
+  /** provider 表示名。 */
+  provider?: string | null;
+  /** 任意の structured metadata。 */
+  duration_sec?: number | null;
+  pages?: number | null;
+  isbn?: string | null;
+  // ── PR-JJ additive (2026-05-06) ──
+  /** 著者 / 作者(book / novel で意味を持つ)。 */
+  author?: string | null;
+  /** メーカー / ブランド(物販系 Amazon で意味を持つ)。 */
+  brand?: string | null;
 }
 
 // ── Validation ────────────────────────
@@ -144,6 +185,17 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   if (p.captured_at !== undefined && typeof p.captured_at !== 'string') return null;
   if (p.selection_text !== undefined && typeof p.selection_text !== 'string') return null;
   if (p.page_title !== undefined && typeof p.page_title !== 'string') return null;
+  // PR-U v1.1 capture profile additive fields(spec §9.2、unknown は無視)。
+  const kindAllowed = ['video', 'novel', 'book', 'audio', 'image', 'document'];
+  if (p.kind !== undefined && (typeof p.kind !== 'string' || !kindAllowed.includes(p.kind))) return null;
+  if (p.thumbnail_url !== undefined && typeof p.thumbnail_url !== 'string') return null;
+  if (p.provider !== undefined && typeof p.provider !== 'string') return null;
+  if (p.duration_sec !== undefined && typeof p.duration_sec !== 'number') return null;
+  if (p.pages !== undefined && typeof p.pages !== 'number') return null;
+  if (p.isbn !== undefined && typeof p.isbn !== 'string') return null;
+  // PR-JJ additive
+  if (p.author !== undefined && typeof p.author !== 'string') return null;
+  if (p.brand !== undefined && typeof p.brand !== 'string') return null;
   return {
     title: p.title,
     body: p.body,
@@ -152,6 +204,16 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
     source_url: typeof p.source_url === 'string' ? p.source_url : undefined,
     captured_at: typeof p.captured_at === 'string' ? p.captured_at : undefined,
     // selection_text / page_title intentionally omitted from result (spec §8.2).
+    // PR-U v1.1 additive fields:
+    kind: typeof p.kind === 'string' ? (p.kind as RecordOfferPayload['kind']) : undefined,
+    thumbnail_url: typeof p.thumbnail_url === 'string' ? p.thumbnail_url : undefined,
+    provider: typeof p.provider === 'string' ? p.provider : undefined,
+    duration_sec: typeof p.duration_sec === 'number' ? p.duration_sec : undefined,
+    pages: typeof p.pages === 'number' ? p.pages : undefined,
+    isbn: typeof p.isbn === 'string' ? p.isbn : undefined,
+    // PR-JJ additive
+    author: typeof p.author === 'string' ? p.author : undefined,
+    brand: typeof p.brand === 'string' ? p.brand : undefined,
   };
 }
 
@@ -184,6 +246,16 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     received_at: new Date().toISOString(),
     source_url: payload.source_url ?? null,
     captured_at: payload.captured_at ?? null,
+    // PR-U v1.1 capture profile additive(2026-05-06)。
+    kind: payload.kind ?? null,
+    thumbnail_url: payload.thumbnail_url ?? null,
+    provider: payload.provider ?? null,
+    duration_sec: payload.duration_sec ?? null,
+    pages: payload.pages ?? null,
+    isbn: payload.isbn ?? null,
+    // PR-JJ additive
+    author: payload.author ?? null,
+    brand: payload.brand ?? null,
   };
 
   // Stash the sender's window so a later `record:reject` (on dismiss)

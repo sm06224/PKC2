@@ -90,6 +90,31 @@ export const SANDBOX_DESCRIPTIONS: Record<SandboxAttribute, string> = {
 };
 
 /** Estimate decoded byte size from base64 string length. */
+/**
+ * Resolve a `data:` URL for an image attachment so the inline image
+ * viewer (Phase 3c-D) can render without round-tripping through the
+ * deferred-load path. Returns null when no asset bytes are available.
+ *
+ * `container.assets[K]` stores **raw base64**(no `data:` prefix);
+ * legacy / generated paths sometimes pass a full data URL — we accept
+ * both shapes.
+ */
+export function resolveImageDataUrl(
+  att: AttachmentBody,
+  assets?: Record<string, string>,
+): string | null {
+  if (!att.mime?.startsWith('image/')) return null;
+  let base64: string | null = null;
+  if (att.asset_key && assets?.[att.asset_key] != null) {
+    base64 = assets[att.asset_key]!;
+  } else if (att.data) {
+    base64 = att.data;
+  }
+  if (!base64) return null;
+  if (base64.startsWith('data:')) return base64;
+  return `data:${att.mime};base64,${base64}`;
+}
+
 export function estimateSize(base64: string): number {
   if (!base64) return 0;
   const padding = (base64.match(/=+$/) ?? [''])[0]!.length;
