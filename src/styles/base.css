@@ -1784,6 +1784,32 @@
   object-fit: contain;
 }
 
+/* L-1(2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`)
+ * `<hr class="pkc-section-break" data-pkc-role="...">` に展開、role 別 styling。
+ * Word/PPT/PDF export engine は data-pkc-role を消費して page break /
+ * slide separator にマップする。HTML preview では role に応じた装飾。 */
+.pkc-md-rendered .pkc-section-break {
+  border: none;
+  margin: 1.5em 0;
+  height: 1px;
+  background: var(--c-border, #d1d5db);
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+.pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+  /* 強い区切り — 二本線で視覚的に「次のセクション」を強調 */
+  height: 0;
+  border-top: 1px solid var(--c-border, #d1d5db);
+  border-bottom: 1px solid var(--c-border, #d1d5db);
+  padding-top: 0.4em;
+  margin: 2em 0;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+  /* 通常区切り、subtle */
+  background: transparent;
+  border-top: 1px dashed var(--c-fg-muted, #9ca3af);
+  height: 0;
+}
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);

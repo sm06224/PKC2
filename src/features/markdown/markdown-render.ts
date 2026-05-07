@@ -663,6 +663,44 @@ function tagSourceLines(tokens: Token[]): void {
   }
 }
 
+// ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
+//
+// Spec §2.3:`+++` line で page / slide break、`{role=...}` で role 指定。
+// Phase 1 で対応する role:`auto`(default)/ `cover` / `section` / `body`。
+// 他 role は spec §2.3 表参照(toc / landscape / appendix / bibliography /
+// index)。本実装は role 文字列を data-pkc-role 属性で素通し、format export
+// engine が消費する想定。
+//
+// HTML 出力:`<hr class="pkc-section-break" data-pkc-role="ROLE">`。
+// CSS は role 別に少し見た目を変える(cover は強い区切り、section は弱め)。
+//
+// 実装:pre-process で `+++` line を sentinel 化、post-process で <hr> に置換。
+
+const SECTION_OPEN = '\u{E120}';
+const SECTION_SEP = '\u{E121}';
+
+function processSectionBreaks(source: string): string {
+  return source.split('\n').map((line) => {
+    const m = /^\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
+    if (!m) return line;
+    const attrs = m[1]?.trim() ?? '';
+    let role = 'auto';
+    if (attrs) {
+      // `role=X` を抽出。他 attr は無視(Phase 1)。
+      const rm = /role=(\w[\w-]*)/.exec(attrs);
+      if (rm) role = rm[1]!;
+    }
+    return `${SECTION_OPEN}${role}${SECTION_SEP}`;
+  }).join('\n');
+}
+
+function postProcessSectionBreaks(html: string): string {
+  return html.replace(
+    new RegExp(`<p>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
+    (_match, role) => `<hr class="pkc-section-break" data-pkc-role="${role}">`,
+  );
+}
+
 /**
  * Render markdown text to an HTML string.
  *
@@ -674,16 +712,23 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // L-1:section break sentinel 化(post-process で <hr> に展開)。
+  text = processSectionBreaks(text);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
+  let html: string;
   if (!opts.sourceLineAnchors) {
-    return md.render(text, env);
+    html = md.render(text, env);
+  } else {
+    // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
+    const tokens = md.parse(text, env);
+    tagSourceLines(tokens);
+    html = md.renderer.render(tokens, md.options, env);
   }
-  // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
-  const tokens = md.parse(text, env);
-  tagSourceLines(tokens);
-  return md.renderer.render(tokens, md.options, env);
+  // L-1:section break sentinel → <hr> に展開
+  html = postProcessSectionBreaks(html);
+  return html;
 }
 
 /**
