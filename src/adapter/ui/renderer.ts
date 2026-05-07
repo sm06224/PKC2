@@ -5991,6 +5991,24 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     regionMode,
     collideRadius: params.collideRadius,
     timeAxis: timeAxis ?? undefined,
+    // PR-Δ6 (2026-05-07):time-proximity mode で entry の revisions
+    // タイムスタンプを Git 風 dot で表示するための payload 補強。
+    // 他 mode では map を渡してもキャンバス側が無視する (mode guard あり)。
+    ...(mode === 'time-proximity' && state.container?.revisions
+      ? {
+          nodeRevisions: (() => {
+            const m = new Map<string, number[]>();
+            for (const rev of state.container.revisions) {
+              const t = Date.parse(rev.created_at ?? '');
+              if (!Number.isFinite(t)) continue;
+              const arr = m.get(rev.entry_lid) ?? [];
+              arr.push(t);
+              m.set(rev.entry_lid, arr);
+            }
+            return m;
+          })(),
+        }
+      : {}),
     vennMemberships: vennMemberships ?? undefined,
   };
 
@@ -6101,15 +6119,43 @@ function seedTimeProximityLayout(
   const usableH = height - padY * 2;
   const laneH = usableH / laneCount;
 
+  // PR-Δ6 (2026-05-07、user 報告「時系列グラフでも重ね合わせがきつい、
+  // エントリが見えない」):lane 内でも X が近い node は Y を均等分割して
+  // 物理的に分離する。X bucket(50px 幅)単位で同じ bucket の node を
+  // 列挙し、bucket 内で stable sort 後 Y を均等配置。
+  const bucketW = 50;
+  const byBucket = new Map<string, GraphNodeView[]>(); // key = `${lane}:${bucketIdx}`
+  for (const n of nodes) {
+    const t = created.get(n.id) ?? minT;
+    const xRatio = (t - minT) / span;
+    const x = padX + xRatio * usableW;
+    const lane = lanes.get(n.archetype) ?? 0;
+    const bucketIdx = Math.floor(x / bucketW);
+    const key = `${lane}:${bucketIdx}`;
+    const arr = byBucket.get(key) ?? [];
+    arr.push(n);
+    byBucket.set(key, arr);
+  }
+  // Within each bucket, sort by id hash for determinism.
+  for (const arr of byBucket.values()) {
+    arr.sort((a, b) => hashStringToUnit(a.id) - hashStringToUnit(b.id));
+  }
+
   return nodes.map((n) => {
     const t = created.get(n.id) ?? minT;
     const xRatio = (t - minT) / span;
     const x = padX + xRatio * usableW;
     const lane = lanes.get(n.archetype) ?? 0;
-    // Within-lane: deterministic vertical jitter from lid hash to avoid
-    // vertical line-up of same-archetype nodes whose timestamps cluster.
-    const jitter = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.6);
-    const y = padY + lane * laneH + laneH / 2 + jitter;
+    const bucketIdx = Math.floor(x / bucketW);
+    const key = `${lane}:${bucketIdx}`;
+    const bucket = byBucket.get(key) ?? [n];
+    const idx = bucket.indexOf(n);
+    const total = bucket.length;
+    // 均等分布(N entries → N+1 等分の中央 N 点)、lane height の 80% を使う。
+    const yOffset = total > 1
+      ? ((idx + 1) / (total + 1) - 0.5) * (laneH * 0.8)
+      : (hashStringToUnit(n.id) - 0.5) * (laneH * 0.4);
+    const y = padY + lane * laneH + laneH / 2 + yOffset;
     return { id: n.id, x, y, vx: 0, vy: 0 };
   });
 }
@@ -6128,7 +6174,7 @@ function buildGraphForMode(
   relations: readonly { kind: string; from: string; to: string }[],
   mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity',
   focusLid: string | null,
-): { nodes: GraphNodeView[]; links: { from: string; to: string; kind?: string }[] } {
+): { nodes: GraphNodeView[]; links: { from: string; to: string; kind?: string; cssColor?: string }[] } {
   // Restrict scope when focusLid is set to 1-hop neighbourhood.
   let nodeIds = new Set<string>(entries.map((e) => e.lid));
   if (focusLid && entries.some((e) => e.lid === focusLid)) {
@@ -6145,7 +6191,7 @@ function buildGraphForMode(
 
   // PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
   // link.kind を payload まで運ぶ。色は graph-canvas の relationColor() で決定。
-  let links: { from: string; to: string; kind?: string }[] = [];
+  let links: { from: string; to: string; kind?: string; cssColor?: string }[] = [];
   switch (mode) {
     case 'relations':
       links = linksRaw
@@ -6159,6 +6205,14 @@ function buildGraphForMode(
       break;
     case 'color-tags': {
       // Edges between entries that share the same color_tag.
+      // PR-Δ6 (2026-05-07、user 報告):同色 group の relation は
+      // 「カラータグと同じ色」で描画。link.cssColor 経由で graph-canvas に
+      // 直接 stroke 色を渡す。
+      const colorTagToHex: Record<string, string> = {
+        red: '#ef4444', orange: '#f97316', yellow: '#eab308',
+        green: '#22c55e', blue: '#3b82f6', indigo: '#6366f1',
+        purple: '#a855f7', pink: '#ec4899', gray: '#6b7280',
+      };
       const byColor = new Map<string, string[]>();
       for (const e of filteredEntries) {
         const c = (e as Entry).color_tag;
@@ -6167,9 +6221,12 @@ function buildGraphForMode(
         arr.push(e.lid);
         byColor.set(c, arr);
       }
-      for (const arr of byColor.values()) {
+      for (const [color, arr] of byColor.entries()) {
+        const cssColor = colorTagToHex[color] ?? '#9ca3af';
         // chain pattern keeps O(N) edges per group.
-        for (let i = 1; i < arr.length; i++) links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical' });
+        for (let i = 1; i < arr.length; i++) {
+          links.push({ from: arr[i - 1]!, to: arr[i]!, kind: 'categorical', cssColor });
+        }
       }
       break;
     }

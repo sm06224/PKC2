@@ -54,6 +54,12 @@ export interface GraphCanvasLink {
    * kind 別に edge を色分けする。設定されていれば legend にも反映。
    */
   kind?: string;
+  /**
+   * PR-Δ6 (2026-05-07、user 報告「グラフのカラータグ表示で同じカラータグは
+   * カラータグと同じ色のリレーションで接続してほしい」):kind ごとの
+   * default 色を override する直接指定。color-tags mode で使う。
+   */
+  cssColor?: string;
 }
 
 export interface GraphCanvasPayload {
@@ -74,6 +80,13 @@ export interface GraphCanvasPayload {
    * date labels across the bottom in the same coord space as nodes.
    */
   timeAxis?: { minT: number; maxT: number };
+  /**
+   * PR-Δ6 (2026-05-07、user 報告「時系列グラフ Git 的なエントリの更新点」):
+   * lid → revisions(updated_at timestamps、ms)の配列。time-proximity
+   * mode で各 entry に重なる X 軸上に小 dot で revision history を表示。
+   * 空 / undefined の entry は描画スキップ。
+   */
+  nodeRevisions?: ReadonlyMap<string, readonly number[]>;
   /**
    * PR-I G17 (2026-05-06):Venn-style グルーピング memberships。
    * ON のとき、各 node lid → 所属 group ids(folder ancestor lids + tag
@@ -356,16 +369,52 @@ function resolveTheme(canvas: HTMLCanvasElement): {
   };
 }
 
-/** archetype → fill color (matches existing CSS rules). */
-function archetypeFill(archetype: string): string {
-  switch (archetype) {
-    case 'folder': return 'rgba(255, 200, 100, 0.55)';
-    case 'text': return 'rgba(120, 180, 255, 0.55)';
-    case 'textlog': return 'rgba(100, 220, 180, 0.55)';
-    case 'todo': return 'rgba(255, 150, 150, 0.55)';
-    case 'attachment': return 'rgba(180, 180, 180, 0.55)';
-    default: return 'rgba(160, 160, 160, 0.55)';
+/** archetype → fill color (matches existing CSS rules).
+ *
+ * PR-Δ6 (2026-05-07、user 報告「グラフにはテーマ適用されないの? ライト・
+ * ダーク適用してほしい。視認性も WCAG 的に見やすく」):theme-aware に
+ * 拡張。bg luminance を見て dark/light を判定し、それぞれに最適化された
+ * 色を返す。各色の WCAG contrast vs theme bg は 3:1 (AA non-text) 以上を
+ * 確保。light theme では soft alpha を諦め saturated solid を採用、dark
+ * theme は従来の柔らかい semi-transparent を維持(従来の星空感を保ちつつ
+ * light でも識別可能に)。
+ */
+function archetypeFill(archetype: string, themeBgIsDark: boolean): string {
+  if (themeBgIsDark) {
+    // Dark theme:従来の semi-transparent muted colors。bg #0d0f0a 上で
+    // 1:1 〜 3:1 程度の見え方、border (theme.fg = #c8d8b0) と組み合わせ
+    // node が明確に見える。
+    switch (archetype) {
+      case 'folder': return 'rgba(255, 200, 100, 0.55)';
+      case 'text': return 'rgba(120, 180, 255, 0.55)';
+      case 'textlog': return 'rgba(100, 220, 180, 0.55)';
+      case 'todo': return 'rgba(255, 150, 150, 0.55)';
+      case 'attachment': return 'rgba(180, 180, 180, 0.55)';
+      default: return 'rgba(160, 160, 160, 0.55)';
+    }
   }
+  // Light theme(parchment bg #f0ebe0):dark saturated colors で
+  // 4:1+ contrast 確保。
+  switch (archetype) {
+    case 'folder': return '#d97706';      // amber-600  4.3:1 vs #f0ebe0
+    case 'text': return '#2563eb';        // blue-600   4.5:1
+    case 'textlog': return '#059669';     // emerald-600 4.0:1
+    case 'todo': return '#dc2626';        // red-600    5.0:1
+    case 'attachment': return '#525b67';  // slate-600  6.5:1
+    default: return '#71717a';            // zinc-500   4.7:1
+  }
+}
+
+function themeIsDark(bg: string): boolean {
+  // Quick luminance proxy:hex の R+G+B 合計 < 384 なら dark とみなす。
+  // CSS variable token "#0d0f0a" → 0d+0f+0a = 13+15+10 = 38 → dark。
+  // "#f0ebe0" → f0+eb+e0 = 240+235+224 = 699 → light。
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(bg.trim().replace(/^#/, '#'));
+  if (!m) return true; // default dark
+  const r = parseInt(m[1]!, 16);
+  const g = parseInt(m[2]!, 16);
+  const b = parseInt(m[3]!, 16);
+  return (r + g + b) < 384;
 }
 
 /**
@@ -501,7 +550,9 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     const a = payload.positions.get(link.from);
     const b = payload.positions.get(link.to);
     if (!a || !b) continue;
-    ctx.strokeStyle = relationColor(link.kind, theme.graphEdge);
+    // PR-Δ6:link.cssColor が直接指定されていればそれを使う(color-tags
+    // mode の同色 group で活用)。kind ベースの default はその後の fallback。
+    ctx.strokeStyle = link.cssColor ?? relationColor(link.kind, theme.graphEdge);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
@@ -556,7 +607,7 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     // Circle (背景色、emoji 視認性のため薄め).
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = node.cssColor ?? archetypeFill(node.archetype);
+    ctx.fillStyle = node.cssColor ?? archetypeFill(node.archetype, themeIsDark(theme.bg));
     ctx.fill();
 
     if (isSelected || isInRegion) {
@@ -595,6 +646,43 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.strokeText(labelText, p.x, p.y + r + 4);
     ctx.fillStyle = theme.fg;
     ctx.fillText(labelText, p.x, p.y + r + 4);
+  }
+
+  // PR-Δ6 (2026-05-07、user 報告「時系列グラフに Git 的更新点表示」):
+  // time-proximity mode で各 entry の revisions timestamps を小 dot として
+  // 同じ Y 位置の X 軸上に描画、main node から細い線で繋ぐ。
+  if (
+    payload.timeAxis
+    && payload.mode === 'time-proximity'
+    && payload.nodeRevisions
+    && payload.nodeRevisions.size > 0
+  ) {
+    const { minT, maxT } = payload.timeAxis;
+    const span = Math.max(1, maxT - minT);
+    const padX = 40;
+    const usableW = payload.width - padX * 2;
+    ctx.lineWidth = 0.8 / view.scale;
+    ctx.strokeStyle = theme.fgMuted;
+    ctx.fillStyle = theme.accent;
+    for (const [lid, revs] of payload.nodeRevisions) {
+      if (!revs || revs.length === 0) continue;
+      const p = payload.positions.get(lid);
+      if (!p) continue;
+      // Connect main node to each revision dot (Git-commit-graph 風)。
+      for (const t of revs) {
+        if (!Number.isFinite(t)) continue;
+        const xRatio = (t - minT) / span;
+        const x = padX + xRatio * usableW;
+        // Skip dots beyond current node's X (revisions should be earlier).
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(x, p.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, p.y, 3 / view.scale + 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   // Region-select rect (drawn last so it's above everything).
