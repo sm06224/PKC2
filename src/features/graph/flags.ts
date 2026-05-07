@@ -127,6 +127,23 @@ export const graphNodeRadiusFactor = defineFlag<number>(
 );
 
 /**
+ * PR-Δ22 (2026-05-07、user 指摘「空間的所属を表現しろ。2D じゃ無理。
+ * 銀河的にしろ」):3D perspective projection mode。0 で off(2D 平面)、
+ * 1 で ON(z 軸を folder depth に割当て、近い node は大きく明るく、
+ * 遠い node は小さく暗く描画)。
+ */
+export const graphGalaxyMode = defineFlag<number>(
+  'graph.galaxy_mode',
+  0,
+  {
+    range: [0, 1],
+    category: FLAG_CATEGORY,
+    description: '銀河的 3D perspective(0=off / 1=on)。folder depth = z 軸として奥行き表現',
+    tier: 0,
+  },
+);
+
+/**
  * Wheel zoom 感度(PR-F G19、2026-05-06)。整数 [10, 200] で与えて内部で
  * 1/10000 倍する(integer 表現の方が flags inspector で扱いやすい)。
  *

@@ -94,7 +94,7 @@ import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
-import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
+import { getGraphForceParams, graphIterations, graphGalaxyMode } from '../../features/graph/flags';
 import {
   classifyUrl,
   classifyFirstUrlInBody,
@@ -5875,30 +5875,53 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   zoomReset.title = '拡大縮小・パン位置をリセット(wheel / pinch / drag で操作可能)';
   toolbar.appendChild(zoomReset);
 
-  // PR-E G8 後半 (2026-05-06):region-slice toggle。ON のとき、背景 drag
-  // で rect 選択ができる(従来 pan は当面その mode 内で機能停止)。
-  // Selected lids 数を併記し、>0 のとき clear ボタンも出す。
+  // PR-Δ20 (2026-05-07、user 指摘「region 選択の操作性悪い、何に
+  // 使うのか UX 考えた?」):region-slice toggle のラベルと title を
+  // 用途明示に書き直し、affordance を強化。
+  //   旧:「⌗ region 選択」(用途不明)
+  //   新:「⬚ 範囲選択 → 一括操作」+ tooltip で具体例(同 folder 移動、
+  //       同 tag 付与、bulk delete など)
+  // 選択数表示を always-on にし、>0 で「これらに対して bulk 操作
+  // (sidebar 下部 multi-action-bar)」を提示する小 link を出す。
   const regionMode = state.graphRegionSelectMode ?? false;
   const regionLids = state.graphRegionSelectedLids ?? [];
   const regionToggle = createElement('button', 'pkc-btn-small');
   regionToggle.setAttribute('data-pkc-action', 'toggle-graph-region-select-mode');
-  regionToggle.textContent = regionMode ? '⌗ region 選択中' : '⌗ region 選択';
-  regionToggle.title = '背景 drag で rect を引き、内部の entry を一括選択(再 click で OFF)';
+  regionToggle.textContent = regionMode ? '⬚ 範囲選択中(drag で囲む)' : '⬚ 範囲選択';
+  regionToggle.title = '背景 drag で囲った範囲内の entry を一括選択。'
+    + '選択後は左 sidebar の multi-action-bar で「全 entry に Tag 追加」'
+    + '「Folder へ移動」「Color tag」「Delete」等の bulk 操作が可能。'
+    + '使用例:近接性で関連していた entries を一気に同 folder に整理 / 同 tag を付与。';
   if (regionMode) regionToggle.setAttribute('data-pkc-active', 'true');
   toolbar.appendChild(regionToggle);
   if (regionLids.length > 0) {
     const count = createElement('span', 'pkc-graph-region-count');
-    count.textContent = `選択 ${regionLids.length} 件`;
+    count.textContent = `${regionLids.length} 件選択中(sidebar の multi-action-bar から bulk 操作可)`;
+    count.title = '左 sidebar の選択 bar で Tag / Color / Folder 移動 / Delete を一括実行';
     toolbar.appendChild(count);
     const clear = createElement('button', 'pkc-btn-small');
     clear.setAttribute('data-pkc-action', 'clear-graph-region-selection');
-    clear.textContent = '✕ 選択解除';
+    clear.textContent = '✕ 解除';
     toolbar.appendChild(clear);
   }
 
-  // PR-I G17 (2026-05-06):Venn-style グルーピング toggle。ON のとき
-  // node ごとに folder ancestors + tags への所属を concentric ring で
-  // 描画する(色は group id ハッシュで deterministic に hue 決定)。
+  // PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ、d3.js
+  // 級の幾何学」):galaxy 3D perspective toggle。flag 経由で ON/OFF。
+  // graph.galaxy_mode flag を 0↔1 で flip する SET_FLAG dispatch を
+  // 出すボタン(専用 action)を出す。
+  const galaxyOn = graphGalaxyMode() === 1;
+  const galaxyToggle = createElement('button', 'pkc-btn-small');
+  galaxyToggle.setAttribute('data-pkc-action', 'toggle-graph-galaxy-mode');
+  galaxyToggle.textContent = galaxyOn ? '🌌 Galaxy ON' : '🌌 Galaxy';
+  galaxyToggle.title = '3D perspective(folder depth = 奥行き)。'
+    + '深い folder の entry は小さく / 暗く描画され、所属階層が「銀河的」に'
+    + '見える。Flags `graph.galaxy_mode` で同等切替可。';
+  if (galaxyOn) galaxyToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(galaxyToggle);
+
+  // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
+  // ない」):旧 concentric ring を撤回、真の集合 hull(translucent fill
+  // で重なり領域を Venn 表現)に置換済み。toggle 名は維持。
   const vennMode = state.graphVennGroupingMode ?? false;
   const vennToggle = createElement('button', 'pkc-btn-small');
   vennToggle.setAttribute('data-pkc-action', 'toggle-graph-venn-grouping-mode');
@@ -6003,6 +6026,8 @@ function renderCenterGraphView(state: AppState): HTMLElement {
       degree: degreeMap.get(n.id) ?? 0,
       // PR-WWW (2026-05-07、修正指示5 残):hover preview tooltip。
       ...(n.preview ? { preview: n.preview } : {}),
+      // PR-Δ22 (2026-05-07):galaxy mode の z 軸として folder depth。
+      ...(n.depth !== undefined ? { depth: n.depth } : {}),
     })),
     positions,
     links,
@@ -6114,6 +6139,8 @@ interface GraphNodeView {
   colorClass?: string;
   /** Hover tooltip 用 preview(title + body excerpt). PR-WWW(2026-05-07). */
   preview?: string;
+  /** PR-Δ22 (2026-05-07):galaxy mode の z 軸 = folder depth。 */
+  depth?: number;
 }
 
 /**
@@ -6444,6 +6471,7 @@ function buildGraphForMode(
       archetype: e.archetype,
       ...(cssColor ? { cssColor } : {}),
       preview,
+      depth: depthMap.get(e.lid) ?? 0,
     };
   });
 

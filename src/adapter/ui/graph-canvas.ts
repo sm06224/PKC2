@@ -24,7 +24,7 @@
  * Layer rule: adapter 層なので core / features 経由で参照可。
  */
 
-import { graphZoomWheelSensitivity, graphNodeRadiusFactor } from '../../features/graph/flags';
+import { graphZoomWheelSensitivity, graphNodeRadiusFactor, graphGalaxyMode } from '../../features/graph/flags';
 import type { Entry } from '@core/model/record';
 
 export interface GraphCanvasNode {
@@ -44,6 +44,12 @@ export interface GraphCanvasNode {
    * 設定されていれば mousemove で当たった時に下端 tooltip 表示。
    */
   preview?: string;
+  /**
+   * PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ」):
+   * folder depth を z 軸として galaxy mode で perspective 投影。
+   * 0 = root level、深いほど大きい数値。renderer 側 BFS depth から populate。
+   */
+  depth?: number;
 }
 
 export interface GraphCanvasLink {
@@ -566,29 +572,62 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.stroke();
   }
 
-  // PR-I G17 (2026-05-06):Venn-style memberships。各 node の所属 group
-  // ごとに deterministic な hue で translucent ring を concentric に
-  // 描画。複数 group に所属する node は ring が重なり Venn 相当の重畳
-  // を視覚化(node 自体の色 + group 1 の ring + group 2 の ring …)。
+  // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
+  // ない」):旧 concentric ring を撤回。**真の集合 hull**(group
+  // メンバーの凸包に相当する circle envelope)を translucent fill で
+  // 描画して、複数 hull の交差領域を visually に Venn 図化する。
+  // Algorithm:
+  //   1. group ごとに member node の bounding circle(centroid +
+  //      max distance + radius padding)を計算
+  //   2. 各 hull を低 alpha (0.12) の deterministic hue で fill、
+  //      重なり部分は加算合成で濃く見える(色相の混色 = Venn 効果)
+  //   3. hull の輪郭線も同 hue で描画(0.6 alpha)、所属境界を明示
+  //   4. node 自体は通常通り別 layer で描画される(後段)。
   if (payload.vennMemberships && payload.vennMemberships.size > 0) {
     const baseR = payload.collideRadius * graphNodeRadiusFactor();
+    // group → list of node positions
+    const groupMembers = new Map<string, Array<{ x: number; y: number }>>();
     for (const node of payload.nodes) {
       const memberships = payload.vennMemberships.get(node.id);
       if (!memberships || memberships.length === 0) continue;
       const p = payload.positions.get(node.id);
       if (!p) continue;
-      memberships.forEach((groupId, idx) => {
-        // 各 ring は node 円の外周から段階的に外へ広がる(idx 0 = +6,
-        // idx 1 = +11, ...)。半径は user-space pixel、line width は
-        // view.scale で割って render pixel 一定化。
-        const ringR = baseR + 6 + idx * 5;
-        const hue = vennHueForGroupId(groupId);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.55)`;
-        ctx.lineWidth = 4 / view.scale;
-        ctx.stroke();
-      });
+      for (const g of memberships) {
+        const arr = groupMembers.get(g) ?? [];
+        arr.push(p);
+        groupMembers.set(g, arr);
+      }
+    }
+    // Draw bounding-circle hulls in group-id-determinstic hue.
+    for (const [groupId, pts] of groupMembers) {
+      if (pts.length === 0) continue;
+      let cx = 0, cy = 0;
+      for (const p of pts) { cx += p.x; cy += p.y; }
+      cx /= pts.length;
+      cy /= pts.length;
+      let maxR = 0;
+      for (const p of pts) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d > maxR) maxR = d;
+      }
+      const hullR = maxR + baseR + 18;
+      const hue = vennHueForGroupId(groupId);
+      // Fill with low alpha for blending(複数 hull が重なるとそこが濃く
+      // 見える = Venn 図の交差領域表現)。
+      ctx.fillStyle = `hsla(${hue}, 75%, 55%, 0.12)`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, hullR, 0, Math.PI * 2);
+      ctx.fill();
+      // Outline at higher alpha to show set boundary.
+      ctx.strokeStyle = `hsla(${hue}, 75%, 50%, 0.55)`;
+      ctx.lineWidth = 1.5 / view.scale;
+      ctx.stroke();
+      // Group label at top of hull.
+      ctx.fillStyle = `hsla(${hue}, 65%, 45%, 0.85)`;
+      ctx.font = `600 ${11 / view.scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(groupId, cx, cy - hullR + 4 / view.scale);
     }
   }
 
@@ -597,9 +636,20 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // emoji を中央に重畳描画(円は薄く残して selection / hover の
   // affordance を保持)。
   const baseR = payload.collideRadius * graphNodeRadiusFactor();
-  for (const node of payload.nodes) {
+  // PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ」):
+  // galaxy mode 時、folder depth を z 軸として透視投影。深い node ほど
+  // 小さく / 暗く / 後方に描画される。perspective scale = 1/(1 + d*0.18)。
+  // 描画順は深い順(後方)→ 浅い順(前方)で z-sort 効果。
+  const galaxyOn = graphGalaxyMode() === 1;
+  const drawOrder = galaxyOn
+    ? [...payload.nodes].sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
+    : payload.nodes;
+  for (const node of drawOrder) {
     const p = payload.positions.get(node.id);
     if (!p) continue;
+    const depth = node.depth ?? 0;
+    const persp = galaxyOn ? 1 / (1 + depth * 0.18) : 1;
+    const alpha = galaxyOn ? Math.max(0.35, persp) : 1;
     const isSelected = node.id === payload.selectedLid;
     const isInRegion = payload.regionLids.includes(node.id);
 
@@ -609,8 +659,10 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     // し、ノードサイズを label に対して相対的に小さく。
     const degree = node.degree ?? 0;
     const scale = Math.min(1.5, 1 + degree * 0.04);
-    const r = baseR * scale;
+    const r = baseR * scale * persp;
 
+    // PR-Δ22:galaxy mode で alpha 適用(深い node を奥に配置)。
+    ctx.globalAlpha = alpha;
     // Circle (背景色、emoji 視認性のため薄め).
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -654,6 +706,8 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.fillStyle = theme.fg;
     ctx.fillText(labelText, p.x, p.y + r + 4);
   }
+  // PR-Δ22:reset alpha after galaxy depth fading.
+  ctx.globalAlpha = 1;
 
   // PR-Δ6 (2026-05-07、user 報告「時系列グラフに Git 的更新点表示」):
   // time-proximity mode で各 entry の revisions timestamps を小 dot として

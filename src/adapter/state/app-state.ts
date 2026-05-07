@@ -3071,8 +3071,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_GRAPH_REGION_SELECTED_LIDS': {
-      const next: AppState = { ...state, graphRegionSelectedLids: action.lids };
-      return { state: next, events: [] };
+      // PR-Δ20 (2026-05-07、user 指摘「region 選択の用途不明」):
+      // region で囲った lids を **multiSelectedLids にも反映** して、
+      // sidebar の multi-action-bar で bulk 操作(Tag / Color / Folder
+      // 移動 / Delete)を直接実行できるようにする。region 選択 = 一括
+      // 操作の入口、という意味付け。
+      const lidsCopy = [...action.lids];
+      const next: AppState = {
+        ...state,
+        graphRegionSelectedLids: action.lids,
+        multiSelectedLids: lidsCopy,
+      };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: lidsCopy }] };
     }
     case 'TOGGLE_GRAPH_VENN_GROUPING_MODE': {
       // PR-I G17 (2026-05-06):graph view の Venn-style グルーピング

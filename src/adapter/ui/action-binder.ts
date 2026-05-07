@@ -3287,6 +3287,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });
         break;
       }
+      case 'toggle-graph-galaxy-mode': {
+        // PR-Δ22 (2026-05-07):galaxy 3D perspective ON/OFF。
+        // graph.galaxy_mode flag(0/1)を SET_FLAG で flip。
+        const cur = dispatcher.getState();
+        const flagsEntry = cur.container?.entries.find((e) => e.archetype === 'system-flags');
+        let curVal = 0;
+        if (flagsEntry) {
+          try {
+            const j = JSON.parse(flagsEntry.body) as { values?: Record<string, unknown> };
+            const v = j.values?.['graph.galaxy_mode'];
+            if (typeof v === 'number') curVal = v;
+          } catch { /* ignore */ }
+        }
+        dispatcher.dispatch({ type: 'SET_FLAG', key: 'graph.galaxy_mode', value: curVal === 1 ? 0 : 1 });
+        break;
+      }
       case 'clear-graph-region-selection': {
         // 選択 lids を空に。mode 自体は維持(user が連続 select したい
         // ケースが多そう)。
