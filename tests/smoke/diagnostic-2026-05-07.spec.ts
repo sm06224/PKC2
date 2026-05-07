@@ -311,6 +311,26 @@ test('D-10 inline calc real keyboard test (regression)', async ({ page }) => {
   const valC = await ta.inputValue();
   console.log('D-10 case C (answer = 100/4= + Enter):', JSON.stringify(valC));
 
+  // Test case D: ユーザー実報告ケース — indent 行で複数式
+  // a=1+1=  → Enter
+  //   2+3=  → Enter
+  //   kokoo 1+2=  → Enter
+  // 全行で計算結果が右辺に挿入されるべき。indent 継続の handleEditorEnter
+  // 経路で Enter が consume されると inline-calc が動かない bug を検知。
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await ta.type('a=1+1=');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  await ta.type('  2+3=');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  await ta.type('  kokoo 1+2=');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const valD = await ta.inputValue();
+  console.log('D-10 case D (multi-line indent calc):', JSON.stringify(valD));
+
   await page.screenshot({
     path: 'test-results/diag-2026-05-07/D-10-inline-calc.png',
     fullPage: false,
@@ -455,8 +475,7 @@ test('D-09 filer row alignment with mixed length names (regression)', async ({ p
       };
     });
   });
-  const iconYs = iconYAudit.map((r) => r.iconY);
-  const titleYs = iconYAudit.map((r) => r.titleY);
+  void iconYAudit;
   // 行毎の icon Y は (rowY + rowStride * idx) と等しいはずだが、stride
   // で正規化して相対 offset を比較する。
   const rowStride = audit.length > 1 ? audit[1]!.y - audit[0]!.y : 24;
