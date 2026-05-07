@@ -42,7 +42,28 @@ gh pr view 363 --json mergeable,mergeStateStatus -q '{m:.mergeable, s:.mergeStat
 # "BEHIND" / "BLOCKED" の場合は更に rebase / status 確認が必要
 ```
 
-### 1.2 Squash merge
+### 1.2 ⚠️ 必須:base を main に retarget(stacked PR の罠)
+
+**Wave 10-9 で踏んだ事故**:`gh pr merge` は **PR の現在の base** に対して merge する。stacked PR の頂点 PR の base が中間 branch のままだと、squash しても **中間 branch に着地して main は更新されない**(2026-05-07 に実際に発生、recovery PR が必要になった)。
+
+**top PR を main に squash する前に、必ず base を main に付け替える**:
+
+```bash
+# 現在の base を確認
+gh pr view 363 --json baseRefName -q .baseRefName
+# stacked の場合: claude/2026-05-10-9-graph-theme-color-time-delta6 等が出る
+
+# base を main に retarget(GitHub UI の "Edit base branch" と等価)
+gh pr edit 363 --base main
+
+# retarget 後の確認
+gh pr view 363 --json baseRefName -q .baseRefName
+# 期待: main
+```
+
+**この 1 ステップを忘れると wave の全内容が中間 branch に閉じ込められる**。Option A の core risk なので、絶対に skip しない。
+
+### 1.3 Squash merge
 
 ```bash
 # title はデフォルトで PR title が入る。body は wave summary を渡す。
@@ -66,7 +87,7 @@ EOF
 )"
 ```
 
-### 1.3 残 99 PR を bulk close
+### 1.4 残 99 PR を bulk close
 
 ```bash
 # まずリストを保存(stack の bottom→top 順、欠番 352 を除外)
@@ -80,7 +101,7 @@ done < /tmp/pr-numbers.txt
 
 > **注**: 100 PR の close は 5〜10 分。途中で rate limit に当たったら `sleep 60` を挟む。
 
-### 1.4 Verify
+### 1.5 Verify
 
 ```bash
 # main HEAD が wave 全部を含むことを確認
