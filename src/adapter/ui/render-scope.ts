@@ -92,6 +92,13 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // ケースで render-scope が `'none'` を返し、filter が画面に反映され
   // ない bug。`'full'` trigger に追加して filer 再描画を起こす。
   if (state.filerSearchQuery !== prev.filerSearchQuery) return 'full';
+  // PR-Δ9 (2026-05-07、user 報告「グラフの Venn と region ボタンが
+  // 押しても反応しない」):graphVennGroupingMode / graphRegionSelectMode /
+  // graphRegionSelectedLids が full-trigger に無いため、toggle dispatch
+  // しても再描画されず button visual が固まっていた。PR-NNN と同型 bug。
+  if (state.graphVennGroupingMode !== prev.graphVennGroupingMode) return 'full';
+  if (state.graphRegionSelectMode !== prev.graphRegionSelectMode) return 'full';
+  if (state.graphRegionSelectedLids !== prev.graphRegionSelectedLids) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
   if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';

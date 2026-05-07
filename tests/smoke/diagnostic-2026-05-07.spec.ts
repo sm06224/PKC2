@@ -233,6 +233,38 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-11 graph Venn / Region toggle reactivity (regression)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]').first();
+  await tab.waitFor();
+  const tbox = await tab.boundingBox();
+  if (!tbox) throw new Error('graph tab missing');
+  await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+
+  // Venn toggle: button click → text/state flips.
+  const vennBefore = await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().textContent();
+  await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const vennAfter = await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().textContent();
+  console.log('D-11 Venn before:', JSON.stringify(vennBefore), 'after:', JSON.stringify(vennAfter));
+
+  // Region toggle.
+  const regionBefore = await page.locator('[data-pkc-action="toggle-graph-region-select-mode"]').first().getAttribute('data-pkc-active');
+  await page.locator('[data-pkc-action="toggle-graph-region-select-mode"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const regionAfter = await page.locator('[data-pkc-action="toggle-graph-region-select-mode"]').first().getAttribute('data-pkc-active');
+  console.log('D-11 Region active before:', regionBefore, 'after:', regionAfter);
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-11-graph-toggles.png',
+    fullPage: false,
+  });
+});
+
 test('D-10 inline calc real keyboard test (regression)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });

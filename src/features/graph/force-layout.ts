@@ -62,19 +62,19 @@ export interface ForceParams {
 }
 
 export const DEFAULT_FORCE_PARAMS: ForceParams = {
-  // PR-Δ4 (2026-05-07、修正指示9「ノードサイズが異常に大きく、
-  // ノード間が過密、視認性の著しい低下」):node_radius_factor 縮小
-  // (0.45 → 0.35)と組み合わせて、ノードが label / edge より小さく
-  // 見えるよう force layout のばね距離 + 反発 + 衝突半径を一段 bump。
-  //   linkDistance 120 → 180 (edge が長く伸び、繋がりが見える)
-  //   charge -380 → -600 (反発↑、銀河風の散らばり)
-  //   collideRadius 36 → 50 (label 重複領域を大幅確保)
-  // PKC1 force-layout 値からの離脱、PKC2 独自の readability 優先設計。
-  linkDistance: 180,
+  // PR-Δ9 (2026-05-07、user 報告「グラフのノード重なりが直っていない。
+  // 証拠だせ」):Playwright screenshot で 30 nodes が中央に密集確認、
+  // Δ4 値(linkDistance 180 / charge -600 / collide 50)では不十分。
+  // 大幅 bump:
+  //   linkDistance 180 → 240  (edge 自然長 +33%)
+  //   charge -600 → -1000     (反発 +66%、密集を解く)
+  //   collideRadius 50 → 70   (node bound box +40%)
+  //   centerStrength 0.02 → 0.005  (中心への引きを 1/4 弱、外側に逃せる)
+  linkDistance: 240,
   linkStrength: 0.6,
-  charge: -600,
-  collideRadius: 50,
-  centerStrength: 0.02,
+  charge: -1000,
+  collideRadius: 70,
+  centerStrength: 0.005,
   centerX: 0,
   centerY: 0,
   damping: 0.85,

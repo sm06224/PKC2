@@ -94,7 +94,7 @@ export const graphMaxSpeed = defineFlag<number>(
 
 export const graphIterations = defineFlag<number>(
   'graph.iterations',
-  220,
+  400,
   {
     range: [10, 2000],
     category: FLAG_CATEGORY,
