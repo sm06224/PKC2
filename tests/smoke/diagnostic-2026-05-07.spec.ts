@@ -233,6 +233,86 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-15 navigation breadcrumb Detail→Filer→Detail→Filer flow', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  // Step 1: Click an entry → goes to Detail.
+  await page.locator('li.pkc-entry-item[data-pkc-lid="e0"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+  let viewMode = await page.evaluate(() => {
+    return document.querySelector('button[data-pkc-action="set-view-mode"][data-pkc-active="true"]')
+      ?.getAttribute('data-pkc-view-mode');
+  });
+  console.log('D-15 step1 (clicked e0, expect detail):', viewMode);
+
+  // Step 2: Switch to Filer.
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+  viewMode = await page.evaluate(() => {
+    return document.querySelector('button[data-pkc-action="set-view-mode"][data-pkc-active="true"]')
+      ?.getAttribute('data-pkc-view-mode');
+  });
+  console.log('D-15 step2 (clicked filer tab, expect filer):', viewMode);
+
+  // Step 3: From Filer, click a non-folder entry row → expected Detail
+  // (folder entry would stay in filer with new scope)
+  const targetRow = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-lid][data-pkc-archetype]',
+    ));
+    const nonFolder = rows.find((r) => r.getAttribute('data-pkc-archetype') !== 'folder');
+    return nonFolder?.getAttribute('data-pkc-lid') ?? null;
+  });
+  console.log('D-15 step3 selected lid:', targetRow);
+  if (targetRow) {
+    await page.locator(`tr.pkc-filer-row[data-pkc-lid="${targetRow}"]`).first().click();
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+    viewMode = await page.evaluate(() => {
+      return document.querySelector('button[data-pkc-action="set-view-mode"][data-pkc-active="true"]')
+        ?.getAttribute('data-pkc-view-mode');
+    });
+    console.log('D-15 step3 (clicked non-folder row in filer, expect detail):', viewMode);
+  }
+
+  // Step 4: User expects "back to Filer" navigation. Look for breadcrumb / back button.
+  // PKC2 may have a back button or breadcrumb showing "← Filer".
+  const backAffordance = await page.evaluate(() => {
+    const back = document.querySelector('button[data-pkc-action="back-to-filer"], button[data-pkc-action="nav-back"], button[title*="戻"]');
+    return {
+      hasBack: !!back,
+      backText: back?.textContent ?? null,
+      backAction: back?.getAttribute('data-pkc-action') ?? null,
+    };
+  });
+  console.log('D-15 step4 back affordance:', JSON.stringify(backAffordance));
+
+  // Step 5: User clicks Filer tab to go BACK to Filer view.
+  // Expected: filer view shows the SAME scope (root or selected folder)
+  // that was visible before clicking the entry.
+  const ftbox2 = await filerTab.boundingBox();
+  if (ftbox2) {
+    await page.mouse.click(ftbox2.x + ftbox2.width / 2, ftbox2.y + ftbox2.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+    const finalState = await page.evaluate(() => {
+      const view = document.querySelector('button[data-pkc-action="set-view-mode"][data-pkc-active="true"]')
+        ?.getAttribute('data-pkc-view-mode');
+      const filerVisible = !!document.querySelector('.pkc-filer-table');
+      const breadcrumb = document.querySelector('[data-pkc-region="filer-breadcrumb"]')?.textContent ?? null;
+      return { view, filerVisible, breadcrumb };
+    });
+    console.log('D-15 step5 (back to filer):', JSON.stringify(finalState));
+  }
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-15-nav-flow.png',
+    fullPage: false,
+  });
+});
+
 test('D-14 time-proximity graph node overlap audit', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // 実 use case 想定:同じ日に作成された 20 entries を含む clustered timestamps。

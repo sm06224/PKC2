@@ -1743,15 +1743,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'mobile-back-to-list': {
-        // 2026-04-26 mobile master-detail back-arrow. Mirrors the
-        // Escape key path inside `handleKeydown` but reachable from
-        // a touch surface where the soft keyboard's Escape is not
-        // available. CSS gates the button visibility to the phone
-        // pointer-coarse @media block, so on desktop / tablet this
-        // case is unreachable through the UI.
+        // 2026-04-26 mobile master-detail back-arrow.
+        // PR-Δ11 (2026-05-07、user 報告「Filer→Detail→Filer 動線が
+        // 直感的じゃない、内部パンクズの順序が崩壊」):previous view
+        // mode を見て、filer / kanban / calendar / graph から来ていれば
+        // そこに戻る。優先順位:editing → cancel-edit、filer 由来 →
+        // 元の filer scope に戻る、それ以外 → DESELECT_ENTRY (従来)。
         const st = dispatcher.getState();
         if (st.phase === 'editing') {
           dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.lastFilerScopeLid !== undefined) {
+          // user が filer から detail に来たため、filer に戻す。
+          // SET_VIEW_MODE: 'filer' は reducer で lastFilerScopeLid を
+          // selectedLid に restore する。
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
         } else if (st.selectedLid) {
           dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         }
