@@ -167,6 +167,8 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`fragment-reference-ir-spec-2026-05.md`](./fragment-reference-ir-spec-2026-05.md) | 領域 10-6 ζ'' wave **Phase 3c 探索 spec**。URL/asset への fragment 参照(YouTube 時間 / PDF page / 小説 episode / W3C text-fragment / 内部 `#log/`)を canonical IR で統一、user converter / bookmarklet / viewer extension(PKC-extension 責務、領域 10-5 連携)の整備計画を整理 |
 | [`bookmarklet-snapshot-recipes-2026-05.md`](./bookmarklet-snapshot-recipes-2026-05.md) | 領域 10-6 ζ'' Phase 3c-E。`?pkc-snapshot=<base64>` URL 経由で外部サイトから PKC2 へ snapshot を取込む受入仕様 + 5 種の sample bookmarklet(汎用 / YouTube 時間 / Amazon ASIN / 小説家になろう / W3C text-fragment) |
 | [`wave-10-6-ux-evaluation-2026-05.md`](./wave-10-6-ux-evaluation-2026-05.md) | 領域 10-6 ζ'' wave 完成後 UX 評価メモ(11 screenshot 撮影 + 8 件 UX 課題 U1〜U8 + 哲学守破離 + 修正提案サマリ)。完成 PR の改善トラッカ用、修正完了したら archive |
+| [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md) | 領域 10-9 stabilization wave 締めサマリ(2026-05-07、122 commit / 100 PR、Δ1〜Δ34 一覧 + 既知残バグ + 統計)。次 wave 着手前の audit 用、release 後 1 wave で archive 候補 |
+| [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md) | 領域 10-9 wave 締めの GitHub Codespaces 用 merge コマンド集(3 option:単発 squash / 順次 bottom-up / Phase chain 分割 + rate limit / rollback / cleanup)。次同種 wave で再利用可能 |
 
 ## CLOSED (42 docs)
 
