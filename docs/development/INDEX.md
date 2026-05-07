@@ -170,6 +170,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md) | 領域 10-9 stabilization wave 締めサマリ(2026-05-07、122 commit / 100 PR、Δ1〜Δ34 一覧 + 既知残バグ + 統計)。次 wave 着手前の audit 用、release 後 1 wave で archive 候補 |
 | [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md) | 領域 10-9 wave 締めの GitHub Codespaces 用 merge コマンド集(3 option:単発 squash / 順次 bottom-up / Phase chain 分割 + rate limit / rollback / cleanup)。次同種 wave で再利用可能 |
 | [`pkc2-vision-modern-emacs-2026-05.md`](./pkc2-vision-modern-emacs-2026-05.md) | PKC2 vision canonical 化(2026-05-07、user 直接洞察)。**「モダン emacs/org-mode + 非プログラマ + AI 一級市民」** という立ち位置を明文化、org-mode 機能との対応マップ + 先行事例 8 製品比較(TiddlyWiki / Logseq / Obsidian / Tana / Roam / Notion / Mem.ai / org-mode)+ roadmap 優先度シフト + 5 OQ-V を canonical 化。後続 wave の戦略決定 reference |
+| [`markdown-dialect-extensions-spec-2026-05.md`](./markdown-dialect-extensions-spec-2026-05.md) | wave-10-2(markdown 方言拡張)起点の **canonical spec draft**(2026-05-07、~700 行)。20+ 拡張記法(backmatter / page layout / 自己 doc ref / 用語定義 + glossary + index + lint / variables / track changes / 簡易 block + inline + 行頭 align / 図表 caption / CSV cell 書式 / spreadsheet embed 等)+ format mapping マトリクス(HTML / Word / PPT / PDF / LaTeX / ePub / Org / MD)+ Phase 1〜3 段階導入計画 + 9 件の OQ(syntax 衝突 / variable timing / cycle detection 等、user 議論待ち)+ slash command(`/pkcXXXX`)20+ 種一覧。実装着手前の draft、user review 後に確定 |
 
 ## CLOSED (42 docs)
 
