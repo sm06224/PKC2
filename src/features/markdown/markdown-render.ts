@@ -663,6 +663,126 @@ function tagSourceLines(tokens: Token[]): void {
   }
 }
 
+// ── L-7 (2026-05-07、wave-10-2 Phase 1):図 / 表 / 式 caption + 自動採番 ──
+//
+// Spec §3.5:
+//
+//   :::figure{#fig-flow}
+//   ![](asset:flowchart.png)
+//   ^^^ 全体フロー
+//   :::
+//
+//   本文 → 図 [@fig-flow] を参照
+//
+// `:::figure|table|equation{#id}` ... `^^^ caption` ... `:::` で図表番号を
+// 自動採番、`[@id]` で参照展開(template_kind 依存ラベル「図 N」「表 N」
+// 「式 N」)。
+//
+// 実装:pre-process で block を sentinel 置換 + registry 構築、md.render 後に
+// post-process で sentinel を <figure id=...><figcaption>...</figcaption></figure>
+// に展開、`[@id]` を <a href="#id">図 N</a> に展開。
+// markdown-it `html: false` を回避するため Unicode PUA(U+E110〜)を sentinel に。
+
+type FigKind = 'figure' | 'table' | 'equation';
+
+interface FigEntry {
+  kind: FigKind;
+  num: number;
+  caption: string;
+}
+
+const FIG_LABEL_PREFIX: Record<FigKind, string> = {
+  figure: '図',
+  table: '表',
+  equation: '式',
+};
+
+const FIG_SENTINEL_OPEN = '';
+const FIG_SENTINEL_SEP = '';
+const FIG_REF_OPEN = '';
+const FIG_REF_SEP = '';
+const FIG_REF_CLOSE = '';
+
+function processFigureBlocks(source: string): { transformed: string; registry: Map<string, FigEntry> } {
+  const registry = new Map<string, FigEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const counter: Record<FigKind, number> = { figure: 0, table: 0, equation: 0 };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const m = /^:::(figure|table|equation)\{#([\w-]+)\}\s*$/.exec(line);
+    if (!m) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    const kind = m[1] as FigKind;
+    const id = m[2]!;
+    counter[kind]++;
+    const num = counter[kind];
+    const content: string[] = [];
+    let caption = '';
+    i++;
+    while (i < lines.length && lines[i]!.trim() !== ':::') {
+      const cm = /^\^\^\^\s*(.*)$/.exec(lines[i]!);
+      if (cm) caption = cm[1]!;
+      else content.push(lines[i]!);
+      i++;
+    }
+    if (i < lines.length) i++; // skip closing `:::`
+    registry.set(id, { kind, num, caption });
+    // Sentinel emission(各 sentinel は own-line で出力 → markdown-it が <p>...</p> wrap)
+    out.push(`${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${id}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_OPEN}`);
+    out.push('');
+    out.push(...content);
+    if (caption) {
+      out.push('');
+      out.push(`${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_SEP}${caption}${FIG_SENTINEL_OPEN}`);
+    }
+    out.push('');
+    out.push(`${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}`);
+  }
+  return { transformed: out.join('\n'), registry };
+}
+
+function processFigureRefs(source: string, registry: Map<string, FigEntry>): string {
+  return source.replace(/\[@([\w-]+)\]/g, (full, id) => {
+    const e = registry.get(id);
+    if (!e) return full;
+    const label = `${FIG_LABEL_PREFIX[e.kind]} ${e.num}`;
+    return `${FIG_REF_OPEN}${id}${FIG_REF_SEP}${label}${FIG_REF_CLOSE}`;
+  });
+}
+
+function postProcessFigureSentinels(html: string): string {
+  // <p>OPENkindidnum</p>
+  html = html.replace(
+    new RegExp(`<p>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, kind, id, num) => `<figure id="${id}" class="pkc-fig pkc-fig-${kind}" data-pkc-fig-kind="${kind}" data-pkc-fig-num="${num}">`,
+  );
+  html = html.replace(
+    new RegExp(`<p>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, kind, num, captionRaw) => {
+      const prefix = FIG_LABEL_PREFIX[kind as FigKind];
+      // caption は markdown-it が既に inline markup(<strong>等)を render 済。
+      // 再 escape すると `&lt;strong&gt;` に化けるので raw のまま埋める。
+      // raw HTML は markdown-it `html: false` で source 由来の `<` は escape 済。
+      return `<figcaption class="pkc-fig-caption">${prefix} ${num}: ${captionRaw as string}</figcaption>`;
+    },
+  );
+  html = html.replace(
+    new RegExp(`<p>${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    '</figure>',
+  );
+  // Inline references
+  html = html.replace(
+    new RegExp(`${FIG_REF_OPEN}([\\w-]+)${FIG_REF_SEP}([^${FIG_REF_CLOSE}]+)${FIG_REF_CLOSE}`, 'g'),
+    (_match, id, label) => `<a href="#${id}" class="pkc-fig-ref">${label}</a>`,
+  );
+  return html;
+}
+
 /**
  * Render markdown text to an HTML string.
  *
@@ -674,16 +794,27 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // L-7:figure/table/equation block を sentinel 化 + registry 構築、
+  // [@id] reference を sentinel 化(後で <a> に展開)。
+  const { transformed: t1, registry: figRegistry } = processFigureBlocks(text);
+  const t2 = processFigureRefs(t1, figRegistry);
+  text = t2;
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
+  let html: string;
   if (!opts.sourceLineAnchors) {
-    return md.render(text, env);
+    html = md.render(text, env);
+  } else {
+    // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
+    const tokens = md.parse(text, env);
+    tagSourceLines(tokens);
+    html = md.renderer.render(tokens, md.options, env);
   }
-  // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
-  const tokens = md.parse(text, env);
-  tagSourceLines(tokens);
-  return md.renderer.render(tokens, md.options, env);
+  // L-7:sentinel post-process(figure/table/equation block + [@id] refs)。
+  // figRegistry が空でも post-process は冪等(マッチが無いだけ)。
+  html = postProcessFigureSentinels(html);
+  return html;
 }
 
 /**
