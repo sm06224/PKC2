@@ -41,7 +41,10 @@ async function bootFilerWithFolder(page: Page): Promise<string> {
   return folderLid;
 }
 
-test('meta pane editor lists subset kinds (explorer / contact-sheet / book-base / video-base / novel-base / graph)', async ({ page }) => {
+test('meta pane editor lists subset kinds (explorer / contact-sheet / book-base / video-base / novel-base / audio-base / inventory)', async ({ page }) => {
+  // PR-HHH (2026-05-06):filer 内 Graph subset は廃止、center pane の
+  // viewMode='graph' タブが canonical。Graph の期待値を撤回し、現行 opts
+  // の audio-base + inventory を新規期待に追加。
   await bootFilerWithFolder(page);
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
   await expect(select).toBeVisible();
@@ -51,7 +54,8 @@ test('meta pane editor lists subset kinds (explorer / contact-sheet / book-base 
   expect(options.some((t) => t.startsWith('Book base'))).toBe(true);
   expect(options.some((t) => t.startsWith('Video base'))).toBe(true);
   expect(options.some((t) => t.startsWith('Novel base'))).toBe(true);
-  expect(options.some((t) => t.startsWith('Graph'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Audio base'))).toBe(true);
+  expect(options.some((t) => t.startsWith('Inventory'))).toBe(true);
 });
 
 test('順序性: setting display_profile to contact-sheet renders grid', async ({ page }) => {

@@ -72,7 +72,8 @@ user 判断「いくつかのバグ挙動はあるが wave 締め」で許容。
 - ⚠️ **bundle.css サイズ**:現状 146 KB(base.css 拡張 wave で増)、CHANGELOG 記載 budget 98 KB を超過。次 wave で **領域 9 Phase 1d / 重複削減 Phase 2c** で吸収予定。
 - ⚠️ **rubber band drag**:1-hop / 2-hop neighbor のみ追従(BFS depth 2)。N-hop では止まる。physics サイマンレーション化は別 wave。
 - ⚠️ **drag 後の position 永続**:drag で動かした位置は次 re-render(state 変化)で消える。ピン留めが要るなら別 wave で `pinnedPositions` Map を Container schema に追加する案。
-- ⚠️ **既存 lint 警告 2 件**:`action-binder.ts:242` U+3000(irregular whitespace、archived layer)+ `parse-capture-json.ts:16` import restriction。既存問題、本 wave 起源ではない。
+- ⚠️ **既存 lint 警告 2 件**:`action-binder.ts:242` U+3000(irregular whitespace、archived layer)+ `parse-capture-json.ts:16` import restriction。既存問題、本 wave 起源ではない。**CI hotfix で解消済**(2026-05-07):U+3000 はコメント中の文字を表記から削除、import 制限は type-only の eslint-disable-next-line で許容。
+- ⚠️ **textlog staged_render hydration race**(`flags-runtime-effect-parity.spec.ts:142` で skip 済):`?pkc-flag=textlog.staged_render.initial_count=3` を URL で渡しても 0 件しか hydrate されない(期待 3 件)。Δ29 の FLAGS_CHANGED → microtask 再 render 修正と timing race の疑い。次 wave で deep-dive 予定。
 
 ---
 

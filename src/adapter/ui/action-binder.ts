@@ -239,7 +239,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // PR-OOO (2026-05-06、user 修正指示6「TEXTAREA の TAB キー押下で全角
   // 空白が入力されることがある(過去のショートカットキーが残っている
   // 可能性)」):defensive layer。Tab keydown が発生してから ~120ms 以内
-  // に textarea へ U+3000(`　`)が単独 insertText で入った場合、それを
+  // に textarea へ U+3000 が単独 insertText で入った場合、それを
   // browser / IME tab-completion 由来とみなして preventDefault し、
   // 代わりに `\t` を splice する。PKC2 source には U+3000 を Tab に
   // bind するコードは存在しないため、bug の出所は browser / IME 側
