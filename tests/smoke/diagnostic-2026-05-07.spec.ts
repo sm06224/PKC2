@@ -233,6 +233,90 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-10 inline calc real keyboard test (regression)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  const shell = page.locator('#pkc-root');
+  await shell.waitFor();
+
+  // Seed a single text entry, edit it, and try inline calc in various positions.
+  await page.evaluate(async () => {
+    const cont = {
+      meta: {
+        container_id: 'diag-calc',
+        schema_version: 1,
+        title: 'Calc test',
+        created_at: '2026-05-07T00:00:00Z',
+        updated_at: '2026-05-07T00:00:00Z',
+      },
+      entries: [
+        { lid: 'calc1', title: 'Calc target', body: 'initial body\n', archetype: 'text', created_at: '2026-05-07T00:00:00Z', updated_at: '2026-05-07T00:00:00Z' },
+      ],
+      relations: [], revisions: [], assets: {},
+    };
+    await new Promise<void>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = () => rej(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['containers', 'assets'], 'readwrite');
+        tx.objectStore('containers').clear();
+        tx.objectStore('assets').clear();
+        tx.objectStore('containers').put(cont, cont.meta.container_id);
+        tx.objectStore('containers').put(cont.meta.container_id, '__default__');
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror = () => rej(tx.error);
+      };
+    });
+  });
+  await page.reload();
+  await shell.waitFor();
+
+  // Click the entry in sidebar to select.
+  await page.locator('li.pkc-entry-item[data-pkc-lid="calc1"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Enter edit mode by clicking the edit/pencil button.
+  await page.locator('button[data-pkc-action="begin-edit"]').first().click();
+  await page.waitForSelector('textarea[data-pkc-field="body"]', { state: 'visible', timeout: 8000 });
+
+  const ta = page.locator('textarea[data-pkc-field="body"]').first();
+
+  // Test case A: 行頭で 1+2= → Enter
+  await ta.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await ta.type('1+2=');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const valA = await ta.inputValue();
+  console.log('D-10 case A (line head 1+2= + Enter):', JSON.stringify(valA));
+
+  // Test case B: 行途中 "Total: 5*3="
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await ta.type('Total: 5*3=');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const valB = await ta.inputValue();
+  console.log('D-10 case B (mid-line Total: 5*3= + Enter):', JSON.stringify(valB));
+
+  // Test case C: 行途中 で = の後にスペース後続テキスト
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await ta.type('answer = 100/4=');
+  // Move caret BEFORE pressing Enter? In context C, just press Enter at end.
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const valC = await ta.inputValue();
+  console.log('D-10 case C (answer = 100/4= + Enter):', JSON.stringify(valC));
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-10-inline-calc.png',
+    fullPage: false,
+  });
+});
+
 test('D-09 filer row alignment with mixed length names (regression)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
