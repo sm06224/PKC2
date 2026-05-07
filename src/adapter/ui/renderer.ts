@@ -3576,6 +3576,75 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
       }
     }
 
+    // PR-Δ5 (2026-05-07、user 報告「複数エントリに同一のタグやカラー
+    // タグ、リレーションを与えるなどの一括操作要素」):bulk tag /
+    // color-tag application。reducer は ADD_ENTRY_TAG / SET_ENTRY_COLOR
+    // を 1 entry ずつ叩くため、変更しない field は完全に保護される。
+    if (state.container) {
+      // Bulk add tag
+      const tagInput = document.createElement('input');
+      tagInput.type = 'text';
+      tagInput.className = 'pkc-multi-action-tag-input';
+      tagInput.placeholder = 'タグ追加 (Enter)';
+      tagInput.setAttribute('data-pkc-action', 'bulk-add-tag-input');
+      tagInput.setAttribute('data-pkc-field', 'bulk-add-tag');
+      tagInput.title = '選択中の全エントリに同じタグを追加(他の field は不変)';
+      bar.appendChild(tagInput);
+
+      // Bulk color-tag selector
+      const colorSelect = document.createElement('select');
+      colorSelect.className = 'pkc-multi-action-color';
+      colorSelect.setAttribute('data-pkc-action', 'bulk-set-color-tag');
+      colorSelect.title = '選択中の全エントリに同じカラータグを設定';
+      const cph = document.createElement('option');
+      cph.value = '';
+      cph.textContent = 'Color...';
+      cph.disabled = true;
+      cph.selected = true;
+      colorSelect.appendChild(cph);
+      for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray']) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        colorSelect.appendChild(opt);
+      }
+      const clearOpt = document.createElement('option');
+      clearOpt.value = '__none__';
+      clearOpt.textContent = '✕ 解除';
+      colorSelect.appendChild(clearOpt);
+      bar.appendChild(colorSelect);
+
+      // Bulk add structural-relation (move-into-folder の semantic は別、
+      // ここは generic relation-from-source-X-to-each。Phase 1 は
+      // structural / categorical / semantic の relation kind 選択 +
+      // target lid 選択を 2 select で構成、target は selectable folder 等
+      // から拾う。ロジック簡素化のため source-X-to-each 形式 (X は select
+      // から、each は state.multiSelectedLids 全件)。
+      const relTargetSelect = document.createElement('select');
+      relTargetSelect.className = 'pkc-multi-action-rel-target';
+      relTargetSelect.setAttribute('data-pkc-action', 'bulk-add-relation-target');
+      relTargetSelect.title = '選択中の全エントリに同じ参照先を関連付け';
+      const rph = document.createElement('option');
+      rph.value = '';
+      rph.textContent = 'Relate to...';
+      rph.disabled = true;
+      rph.selected = true;
+      relTargetSelect.appendChild(rph);
+      // 関連先候補は selectedLid 以外の全 entry(多すぎる場合は folder
+      // のみに絞る)。30+ entry を全部出すと UX が悪いため、現状は
+      // folder のみ列挙。
+      const relCandidates = state.container.entries.filter(
+        (e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid),
+      );
+      for (const c of relCandidates) {
+        const opt = document.createElement('option');
+        opt.value = c.lid;
+        opt.textContent = `📁 ${c.title || '(untitled)'}`;
+        relTargetSelect.appendChild(opt);
+      }
+      bar.appendChild(relTargetSelect);
+    }
+
     const clearBtn = createElement('button', 'pkc-btn-small');
     clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
     clearBtn.textContent = 'Clear';

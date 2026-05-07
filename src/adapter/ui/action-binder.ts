@@ -3869,6 +3869,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           return;
         }
       }
+      // PR-Δ5 (2026-05-07):bulk add tag input。Enter で全選択 entry に
+      // 同タグを追加(各 entry 1 つずつ ADD_ENTRY_TAG dispatch、tag 配列
+      // 以外の field は完全保持)。
+      if (fieldName === 'bulk-add-tag') {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          const raw = (kbTarget as HTMLInputElement).value.trim();
+          if (raw.length === 0) return;
+          const lids = dispatcher.getState().multiSelectedLids;
+          for (const lid of lids) {
+            dispatcher.dispatch({ type: 'ADD_ENTRY_TAG', lid, raw });
+          }
+          (kbTarget as HTMLInputElement).value = '';
+          return;
+        }
+      }
     }
 
     // W1 Slice F — Enter on the Tag chip input commits the typed
@@ -4993,6 +5009,47 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       } else {
         dispatcher.dispatch({ type: 'BULK_MOVE_TO_FOLDER', folderLid: val });
       }
+    }
+
+    // PR-Δ5 (2026-05-07): bulk color-tag。SET_ENTRY_COLOR / CLEAR_ENTRY_COLOR
+    // を 1 entry ずつ叩き、entry の他 field は完全に保護される(reducer
+    // contract:Color tag は metadata、body / title / tags 不変)。
+    if (action === 'bulk-set-color-tag') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      const lids = dispatcher.getState().multiSelectedLids;
+      if (val === '__none__') {
+        for (const lid of lids) {
+          dispatcher.dispatch({ type: 'CLEAR_ENTRY_COLOR', lid });
+        }
+      } else {
+        for (const lid of lids) {
+          dispatcher.dispatch({ type: 'SET_ENTRY_COLOR', lid, color: val });
+        }
+      }
+      // Reset select so user can re-trigger.
+      (target as HTMLSelectElement).value = '';
+    }
+
+    // PR-Δ5 bulk relation:選択中の全 entry を target 配下に
+    // structural relation で接続(folder への一括投入とは別、複数の
+    // 親 folder / 参照源を持つ用途)。reducer は relations に追加するだけで
+    // 既存 relations / entries は不変。
+    if (action === 'bulk-add-relation-target') {
+      const val = (target as HTMLSelectElement).value;
+      if (!val) return;
+      const state = dispatcher.getState();
+      const lids = state.multiSelectedLids;
+      for (const lid of lids) {
+        if (lid === val) continue; // self-loop guard
+        dispatcher.dispatch({
+          type: 'CREATE_RELATION',
+          from: val,
+          to: lid,
+          kind: 'structural',
+        });
+      }
+      (target as HTMLSelectElement).value = '';
     }
 
     // Bulk status change via select dropdown

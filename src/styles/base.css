@@ -1393,7 +1393,10 @@
   border-radius: var(--radius);
 }
 
-.pkc-multi-action-move {
+.pkc-multi-action-move,
+.pkc-multi-action-color,
+.pkc-multi-action-rel-target,
+.pkc-multi-action-tag-input {
   font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--c-border);
@@ -1401,6 +1404,10 @@
   background: var(--c-bg);
   color: var(--c-fg);
   cursor: pointer;
+}
+.pkc-multi-action-tag-input {
+  cursor: text;
+  width: 9rem;
 }
 
 .pkc-multi-action-date {

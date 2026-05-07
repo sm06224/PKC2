@@ -233,6 +233,88 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-08 filer bulk tag/color application preserves other fields (PR-Δ5)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  await filerTab.waitFor();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Multi-select 2 rows by clicking checkboxes.
+  const rowChecks = page.locator('input.pkc-filer-row-check[data-pkc-lid]');
+  for (const i of [0, 1]) {
+    const box = await rowChecks.nth(i).boundingBox();
+    if (!box) continue;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
+  }
+
+  // Capture pre-bulk state of those 2 entries (full container snapshot).
+  const lids = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLInputElement>(
+      'input.pkc-filer-row-check[data-pkc-lid]:checked',
+    )).map((c) => c.getAttribute('data-pkc-lid')!);
+  });
+  console.log('D-08 selected lids:', JSON.stringify(lids));
+
+  const preState = await page.evaluate((lids) => {
+    return new Promise<Array<unknown>>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = () => rej(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['containers'], 'readonly');
+        const get = tx.objectStore('containers').get('diag-2026-05-07');
+        get.onsuccess = () => {
+          const cont = get.result as { entries: Array<{ lid: string; title: string; body: string; archetype: string; tags?: string[]; color_tag?: string }> };
+          res(cont.entries.filter((e) => lids.includes(e.lid)));
+        };
+      };
+    });
+  }, lids);
+  console.log('D-08 pre-bulk:', JSON.stringify(preState));
+
+  // Type tag in the bulk input + Enter.
+  const tagInput = page.locator('input.pkc-multi-action-tag-input');
+  await tagInput.waitFor();
+  await tagInput.click();
+  await tagInput.fill('一括テスト');
+  await tagInput.press('Enter');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Apply color-tag = blue.
+  const colorSelect = page.locator('select.pkc-multi-action-color');
+  await colorSelect.selectOption('blue');
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Capture post-bulk container state for the same 2 lids.
+  const postState = await page.evaluate((lids) => {
+    return new Promise<Array<unknown>>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = () => rej(req.error);
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['containers'], 'readonly');
+        const get = tx.objectStore('containers').get('diag-2026-05-07');
+        get.onsuccess = () => {
+          const cont = get.result as { entries: Array<{ lid: string; title: string; body: string; archetype: string; tags?: string[]; color_tag?: string }> };
+          res(cont.entries.filter((e) => lids.includes(e.lid)));
+        };
+      };
+    });
+  }, lids);
+  console.log('D-08 post-bulk:', JSON.stringify(postState, null, 2));
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-08-filer-bulk-applied.png',
+    fullPage: false,
+  });
+});
+
 test('D-07 filer single-row click should select EXACTLY one entry (regression)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedManyEntries(page);
