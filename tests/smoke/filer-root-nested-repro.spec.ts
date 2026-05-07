@@ -23,7 +23,7 @@ async function bootReady(page: Page): Promise<void> {
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
 }
 
-test('CREATE_ENTRY while in filer mode keeps viewMode=filer (PR-J fix)', async ({ page }) => {
+test('CREATE_ENTRY while in filer mode switches viewMode to detail (Δ19 supersedes PR-J)', async ({ page }) => {
   await bootReady(page);
   const shell = page.locator('#pkc-root');
 
@@ -44,19 +44,18 @@ test('CREATE_ENTRY while in filer mode keeps viewMode=filer (PR-J fix)', async (
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
   await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 
-  // Create another folder via global "+ Folder". Without the PR-J fix,
-  // CREATE_ENTRY sets viewMode='detail' and after commit the filer-view
-  // disappears.
+  // Wave 10-9 Δ19 (2026-05-07、user 報告「Filer で create-entry 押下時に
+  // 画面ロック」)で **CREATE_ENTRY 時は viewMode 'detail' に切り替える**
+  // 仕様に変更。PR-J の「viewMode='filer' を維持」契約は Δ19 で撤回。
+  // 本 test は新契約(detail に切り替わる)を guard する。
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
   await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
 
-  // Verify: even during editing, the underlying viewMode stays 'filer'.
-  // (The active surface is the editor due to phase=editing, but the
-  // tab "Filer" should still be marked active.)
+  // Δ19 後の期待:detail tab が active、filer tab は inactive。
   await expect(
-    page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]'),
+    page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="detail"]'),
   ).toHaveAttribute('data-pkc-active', 'true');
 });

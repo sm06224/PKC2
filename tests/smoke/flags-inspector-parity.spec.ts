@@ -51,7 +51,10 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //                              charge, collide_radius, center_strength,
   //                              damping, max_speed, iterations}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  await expect(rows).toHaveCount(42, { timeout: 5_000 });
+  // Wave 10-9 Δ22 (2026-05-07):graph.galaxy_mode + graph.venn_grouping_mode
+  // + graph.region_select_mode + graph.node_radius_factor の 4 flag を追加。
+  // 42 → 46。CHANGELOG_v2.2.0.md "Wave 10-9 stabilization" 参照。
+  await expect(rows).toHaveCount(46, { timeout: 5_000 });
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -292,7 +295,8 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  expect(snap.rowCount).toBe(42);
+  // Wave 10-9 Δ22:graph 4 flag 追加で 42 → 46。
+  expect(snap.rowCount).toBe(46);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);
