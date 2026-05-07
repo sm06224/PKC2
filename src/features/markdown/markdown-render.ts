@@ -410,6 +410,102 @@ function escapeHtmlAttr(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// ── L-2 (2026-05-07、wave-10-2 Phase 1):Inline 修飾 ──
+//
+// 3 つの新 inline syntax を markdown-it の inline ruler に登録:
+//   - `==text==` → <mark>text</mark>(highlight)
+//   - `==[red]text==` → <mark style="background-color:red">text</mark>
+//   - `[[ruby:base|reading]]` → <ruby>base<rt>reading</rt></ruby>
+//   - `[[em:text]]` → <em class="pkc-em-dot">text</em>(圏点)
+//
+// Code span / fence 内では markdown-it が code を先に tokenize するため、
+// 我々の inline rule は適用されない(自然な escape)。
+//
+// Inner content への inline markup は Phase 1 では非対応(plain text)、
+// 必要に応じて Phase 2 で再帰 tokenize 検討。
+
+const HIGHLIGHT_COLOR_RE = /^\[([a-zA-Z][a-zA-Z0-9-]*|#[0-9a-fA-F]{3,8}|rgb\([\d.,\s]+\)|rgba\([\d.,\s]+\))\]([\s\S]+)$/;
+
+md.inline.ruler.after('emphasis', 'pkc_highlight', function highlightRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  // == 開始判定
+  if (src.charCodeAt(start) !== 0x3D || src.charCodeAt(start + 1) !== 0x3D) return false;
+  // 前文字が = だと strikethrough や別パターンと衝突しうるので skip
+  if (start > 0 && src.charCodeAt(start - 1) === 0x3D) return false;
+  // 終端 == を探す
+  let closeIdx = -1;
+  for (let i = start + 2; i < state.posMax - 1; i++) {
+    if (src.charCodeAt(i) === 0x0A /* \n */) return false; // 改行を跨がない
+    if (src.charCodeAt(i) === 0x3D && src.charCodeAt(i + 1) === 0x3D) {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx < 0) return false;
+  let content = src.slice(start + 2, closeIdx);
+  if (!content || /^\s|\s$/.test(content)) return false;  // leading/trailing space NG
+  // Optional [color] prefix
+  let color: string | null = null;
+  const colorMatch = HIGHLIGHT_COLOR_RE.exec(content);
+  if (colorMatch) {
+    color = colorMatch[1]!;
+    content = colorMatch[2]!;
+  }
+  const tokenOpen = state.push('mark_open', 'mark', 1);
+  if (color) tokenOpen.attrSet('style', `background-color: ${color};`);
+  const tokenText = state.push('text', '', 0);
+  tokenText.content = content;
+  state.push('mark_close', 'mark', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+md.inline.ruler.after('emphasis', 'pkc_ruby', function rubyRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (!src.startsWith('[[ruby:', start)) return false;
+  const closeIdx = src.indexOf(']]', start + 7);
+  if (closeIdx < 0) return false;
+  const content = src.slice(start + 7, closeIdx);
+  if (content.includes('\n')) return false;
+  const sepIdx = content.indexOf('|');
+  if (sepIdx <= 0 || sepIdx >= content.length - 1) return false;
+  const base = content.slice(0, sepIdx);
+  const reading = content.slice(sepIdx + 1);
+  if (!base || !reading) return false;
+  state.push('ruby_open', 'ruby', 1);
+  const tokenBase = state.push('text', '', 0);
+  tokenBase.content = base;
+  state.push('rt_open', 'rt', 1);
+  const tokenReading = state.push('text', '', 0);
+  tokenReading.content = reading;
+  state.push('rt_close', 'rt', -1);
+  state.push('ruby_close', 'ruby', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (!src.startsWith('[[em:', start)) return false;
+  const closeIdx = src.indexOf(']]', start + 5);
+  if (closeIdx < 0) return false;
+  const content = src.slice(start + 5, closeIdx);
+  if (!content || content.includes('\n')) return false;
+  const tokenOpen = state.push('em_dot_open', 'em', 1);
+  tokenOpen.attrSet('class', 'pkc-em-dot');
+  const tokenText = state.push('text', '', 0);
+  tokenText.content = content;
+  state.push('em_dot_close', 'em', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
