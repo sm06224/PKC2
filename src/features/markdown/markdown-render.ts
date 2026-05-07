@@ -664,6 +664,36 @@ function tagSourceLines(tokens: Token[]): void {
 }
 
 /**
+ * L-4(2026-05-07、wave-10-2 Phase 1):Comments(`%%` inline / `%%%` block)。
+ * spec doc §3.4:本文中に隠しメモを書ける、render では完全に削除。
+ *
+ *   %% inline comment、export では完全削除 %%
+ *
+ *   %%%
+ *   block comment、複数行可
+ *   多行 TODO / reviewer note 等
+ *   %%%
+ *
+ * IR レベルでは保持(将来 Word コメント機能 / track-changes に流せる余地)、
+ * 全 format で hidden が default。本実装では parse 前に source から strip。
+ *
+ * 順序:
+ *   1. %%% (block、multi-line) を先に strip(non-greedy)
+ *   2. %% (inline、same-line) を次に strip(non-greedy)
+ *
+ * 衝突回避:
+ *   - inline `%%` は同一行限定(`[^\n]` で改行を除外)
+ *   - block `%%%` は `[\s\S]` で複数行 OK
+ */
+function stripComments(source: string): string {
+  // Block(triple percent、複数行)
+  let out = source.replace(/%%%[\s\S]*?%%%/g, '');
+  // Inline(double percent、同一行限定)
+  out = out.replace(/%%[^\n]*?%%/g, '');
+  return out;
+}
+
+/**
  * Render markdown text to an HTML string.
  *
  * HTML tags in source are escaped (not rendered) for XSS safety.
@@ -674,6 +704,8 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // L-4:render 前に comment(`%%` / `%%%`)を完全 strip。
+  text = stripComments(text);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
