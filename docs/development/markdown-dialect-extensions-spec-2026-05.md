@@ -567,6 +567,71 @@ paragraph node に `align` attribute を付与:
 { type: 'paragraph', align: 'center', children: [...] }
 ```
 
+### 3.10 空行マーカー(`_` / `_<N>`、NEW、user 案 2026-05-07)
+
+CommonMark は連続する空行を 1 つの paragraph 区切りに collapse するため、本文中に「ここに余白を 2 行ぶん入れたい」を素朴に表現できない。明示マーカーで vertical spacing を制御する。
+
+#### 構文
+
+```markdown
+本文
+
+_
+
+本文(1 空行ぶん下)
+```
+
+```markdown
+本文
+
+_3
+
+本文(3 空行ぶん下)
+```
+
+- `_` 単独行 → **1 空行ぶん**(default)
+- `_<N>` 単独行(`<N>` は正の整数)→ **N 空行ぶん**
+- 行内の他の文字と混ざる場合(`_word` / `word_`)は通常 emphasis token として markdown-it に流す
+
+#### parse 規則
+
+- `^_(\d*)\s*$` にマッチする行のみ blank marker と認識
+- それ以外の `_` は通常 markdown(emphasis / 識別子)として処理
+- 行頭インデントがある `   _` はマーカーとして扱わない(段落継続 / コード扱い)
+- 数値 `<N>` は **1〜20** の範囲 clip(誤入力で 9999 行余白を作る事故を防ぐ、設計上限は実用域 + 余裕)
+
+#### IR / HTML 表現
+
+```ts
+{ type: 'blank-line-spacer', count: 3 }
+```
+
+HTML へは `<div class="pkc-blank-line" data-pkc-blank-count="N" aria-hidden="true">` を出力。CSS で `--pkc-blank-line-h` × N の高さを取る。
+
+#### Format mapping
+
+| Format | 出力 |
+|--------|------|
+| HTML   | `<div class="pkc-blank-line" data-pkc-blank-count="N">`(高さ N 行ぶん) |
+| Word   | N 個の `<w:p>` empty paragraph |
+| PPT    | placeholder の vertical offset を line-height × N 加算 |
+| PDF    | HTML 出力をそのまま print(同じ高さで blank space) |
+| Markdown export(canonical) | そのまま `_<N>` を残す(idempotent round-trip) |
+
+#### 例
+
+```markdown
+# 第 1 章
+
+_2
+
+導入 paragraph。
+
+# 第 2 章
+```
+
+→ chapter 間に「自然な段落区切り(空行)」+「2 行ぶんの追加余白」が入る。
+
 ---
 
 ## 4. 構造拡張(Inline-level)
@@ -659,7 +724,7 @@ inline 修飾子 直後の改行は wrap 内に保持:
 | **強調** | `bold` / `italic` / `underline` / `strikethrough` / `code` | `bold, italic` |
 | **色** | CSS color name / `#hex` / `rgb(...)` | `red, #ff8800` |
 | **背景色** | `bg-<color>` / `background=...` | `bg-black, bg-#222` |
-| **サイズ** | `xs` / `sm` / `md` / `lg` / `xl` / `size=1.2em` | `lg, bold` |
+| **サイズ** | `xs` / `sm` / `md` / `lg` / `xl` / `2xl` / `3xl` / `<N>%` / `<N>em` | `lg, bold`、`120%`、`1.5em` |
 | **font-family** | `serif` / `sans` / `mono` / `font=Noto Sans JP` | `mono` |
 
 統一 vocabulary により autocomplete も簡単(spec 固定 list、~30 item)。

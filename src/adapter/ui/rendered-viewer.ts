@@ -357,6 +357,30 @@ export function buildRenderedViewerHtml(
       border-top: 1px dashed #9ca3af;
       height: 0;
     }
+    /* L-8 blank-line marker (underscore-only line / underscore + digit) — 1em x N の余白 */
+    .pkc-md-rendered .pkc-blank-line {
+      --pkc-blank-line-h: 1em;
+      height: calc(var(--pkc-blank-line-h) * 1);
+    }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="2"]  { height: calc(var(--pkc-blank-line-h) * 2);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="3"]  { height: calc(var(--pkc-blank-line-h) * 3);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="4"]  { height: calc(var(--pkc-blank-line-h) * 4);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="5"]  { height: calc(var(--pkc-blank-line-h) * 5);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="6"]  { height: calc(var(--pkc-blank-line-h) * 6);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="7"]  { height: calc(var(--pkc-blank-line-h) * 7);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="8"]  { height: calc(var(--pkc-blank-line-h) * 8);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="9"]  { height: calc(var(--pkc-blank-line-h) * 9);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="10"] { height: calc(var(--pkc-blank-line-h) * 10); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="11"] { height: calc(var(--pkc-blank-line-h) * 11); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="12"] { height: calc(var(--pkc-blank-line-h) * 12); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="13"] { height: calc(var(--pkc-blank-line-h) * 13); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="14"] { height: calc(var(--pkc-blank-line-h) * 14); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="15"] { height: calc(var(--pkc-blank-line-h) * 15); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="16"] { height: calc(var(--pkc-blank-line-h) * 16); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="17"] { height: calc(var(--pkc-blank-line-h) * 17); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
     /* Two-column layout with a sticky TOC sidebar.
        The sidebar pins to the top of the viewport so the outline
        stays visible while the reader scrolls through long bodies.

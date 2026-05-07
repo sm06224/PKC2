@@ -531,9 +531,25 @@ md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent
 
 const SIMPLE_INLINE_VOCAB_KEYWORDS = new Set([
   'bold', 'italic', 'underline', 'strikethrough', 'strike', 'code',
-  'xs', 'sm', 'md', 'lg', 'xl',
+  'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl',
   'serif', 'sans', 'mono',
 ]);
+
+// L-6 size token は body text に対する **相対 size**(em-based)。
+// `--fs-*` は chrome 用 fixed rem scale で body と差が出にくいため使わない。
+// markdown 本文での「ここだけ大きく / 小さく」を素直に表現するため em 比率で固定。
+const SIZE_KEYWORD_TO_EM: Record<string, string> = {
+  'xs':  '0.75em',
+  'sm':  '0.875em',
+  'md':  '1em',
+  'lg':  '1.25em',
+  'xl':  '1.5em',
+  '2xl': '1.875em',
+  '3xl': '2.5em',
+};
+
+// 自由値 size token: `120%` / `1.5em` / `0.5rem` / `12px` を許容。
+const SIZE_VALUE_RE = /^\d+(?:\.\d+)?(?:%|em|rem|px)$/;
 
 // Phase 1 で validate する CSS named color の curated list(~50 色)。
 // 他のレアな color name を使う場合は #hex / rgb() で指定する旨を spec 記載。
@@ -550,8 +566,10 @@ const NAMED_COLORS = new Set([
 ]);
 
 const COLOR_VALUE_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s]+\))$/;
-// 先頭は a-z(keyword / 色名)、`#`(hex 色)、または `r`(rgb)/`b`(bg-)
-const ATTRS_INNER_RE = /^[a-zA-Z#][a-zA-Z0-9\-,#()\s.]*$/;
+// 先頭は a-z(keyword / 色名)、`#`(hex 色)、または digit(`120%` / `1.5em` 等の size 値、`2xl` の vocab keyword 形)。
+// `:120%:` のような size only attrs を許容するため digit + `%` を class に追加。
+// 時刻 `12:30:45` 等の誤発火は parseSimpleInlineAttrs 側で keyword / color / size value のいずれにも該当しないため reject される(数値だけは valid attr にならない)。
+const ATTRS_INNER_RE = /^[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
 
 function isValidColor(c: string): boolean {
   return NAMED_COLORS.has(c.toLowerCase()) || COLOR_VALUE_RE.test(c);
@@ -592,11 +610,16 @@ function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
         case 'underline': styles['text-decoration'] = 'underline'; break;
         case 'strikethrough': case 'strike': styles['text-decoration'] = 'line-through'; break;
         case 'code': styles['font-family'] = 'monospace'; break;
-        case 'xs': case 'sm': case 'md': case 'lg': case 'xl': styles['font-size'] = `var(--fs-${t})`; break;
+        case 'xs': case 'sm': case 'md': case 'lg': case 'xl': case '2xl': case '3xl':
+          styles['font-size'] = SIZE_KEYWORD_TO_EM[t]!;
+          break;
         case 'serif': styles['font-family'] = 'serif'; break;
         case 'sans': styles['font-family'] = 'sans-serif'; break;
         case 'mono': styles['font-family'] = 'monospace'; break;
       }
+    } else if (SIZE_VALUE_RE.test(t)) {
+      // 自由値 size: `120%` / `1.5em` / `12px` / `0.75rem`
+      styles['font-size'] = t;
     } else if (t.startsWith('bg-')) {
       const c = t.slice(3);
       if (!isValidColor(c)) return { valid: false, inlineStyle: '' };
@@ -1171,6 +1194,50 @@ function postProcessSectionBreaks(html: string): string {
   );
 }
 
+// ── L-8(2026-05-07、wave-10-2 Phase 1):空行マーカー(`_` / `_<N>`) ──
+//
+// Spec §3.10:行頭 `_` 単独 → 1 空行ぶん、`_<N>` → N 空行ぶん。
+// CommonMark は連続空行を 1 paragraph 区切りに collapse するため、本文中で
+// 「ここに 2 行ぶん余白を入れたい」を素朴に表現できない。明示マーカーで
+// vertical spacing 制御する。
+//
+// HTML 出力:`<div class="pkc-blank-line" data-pkc-blank-count="N" aria-hidden="true"></div>`。
+// CSS で `--pkc-blank-line-h` × N の高さを取る。
+//
+// 実装:processSectionBreaks と同じ pre-process / post-process pattern。
+//
+// N の上限:1〜20 で clip。誤入力で 9999 行余白等を作る事故を防ぐ。
+//
+// インデント付き `   _` はマーカーとして扱わない(段落継続 / コード扱い)。
+
+const BLANK_OPEN = '\u{E130}';
+const BLANK_SEP = '\u{E131}';
+const BLANK_LINE_MAX = 20;
+
+function processBlankLineMarkers(source: string): string {
+  return source.split('\n').map((line) => {
+    const m = /^_(\d*)\s*$/.exec(line);
+    if (!m) return line;
+    let count = 1;
+    if (m[1]) {
+      const parsed = Number.parseInt(m[1], 10);
+      if (Number.isFinite(parsed) && parsed >= 1) {
+        count = Math.min(parsed, BLANK_LINE_MAX);
+      } else {
+        return line;  // 不正数値はマーカーとして処理しない(`_0` は素通し)
+      }
+    }
+    return `${BLANK_OPEN}${count}${BLANK_SEP}`;
+  }).join('\n');
+}
+
+function postProcessBlankLineMarkers(html: string): string {
+  return html.replace(
+    new RegExp(`<p>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
+    (_match, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"></div>`,
+  );
+}
+
 /**
  * Render markdown text to an HTML string.
  *
@@ -1186,6 +1253,8 @@ export function renderMarkdown(
   text = stripComments(text);
   // L-1:section break を sentinel 化(post-process で <hr> に展開)
   text = processSectionBreaks(text);
+  // L-8:`_` / `_<N>` 空行マーカーを sentinel 化(post-process で <div> に展開)
+  text = processBlankLineMarkers(text);
   // L-7:figure/table/equation block + [@id] reference を sentinel 化
   const { transformed: t1, registry: figRegistry } = processFigureBlocks(text);
   text = processFigureRefs(t1, figRegistry);
@@ -1214,6 +1283,8 @@ export function renderMarkdown(
   html = postProcessFigureSentinels(html);
   // L-1:section break sentinel → <hr>
   html = postProcessSectionBreaks(html);
+  // L-8:blank-line sentinel → <div class="pkc-blank-line">
+  html = postProcessBlankLineMarkers(html);
   return html;
 }
 
@@ -1238,6 +1309,7 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
+  if (/^_\d*\s*$/m.test(text)) return true;                     // L-8 blank-line marker
   return false;
 }
 

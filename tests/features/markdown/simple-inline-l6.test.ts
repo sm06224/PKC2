@@ -38,9 +38,9 @@ describe('L-6: 簡易 inline `:text:attrs:`', () => {
       expect(html2).toContain('color: red');
     });
 
-    it('size keyword `:text:lg:`', () => {
+    it('size keyword `:text:lg:`(em-based、2026-05-07 size token expansion)', () => {
       const html = renderMarkdown(':大:lg:');
-      expect(html).toContain('font-size: var(--fs-lg)');
+      expect(html).toContain('font-size: 1.25em');
     });
 
     it('hex 色 `:text:#ff0000:`', () => {
@@ -115,7 +115,7 @@ describe('L-6: 簡易 inline `:text:attrs:`', () => {
     });
   });
 
-  describe('全 16 ケース matrix', () => {
+  describe('全 23 ケース matrix(size token expansion 2026-05-07)', () => {
     it('全件', () => {
       type Case = { input: string; expectMatch?: RegExp; expectNoMatch?: RegExp; describe: string };
       const cases: Case[] = [
@@ -126,8 +126,15 @@ describe('L-6: 簡易 inline `:text:attrs:`', () => {
         { input: ':a:rgb(1,2,3):', expectMatch: /color: rgb\(1,2,3\)/, describe: 'rgb' },
         { input: ':a:bg-blue:', expectMatch: /background-color: blue/, describe: 'bg-color' },
         { input: ':a:bg-#000:', expectMatch: /background-color: #000/, describe: 'bg-hex' },
-        { input: ':a:xs:', expectMatch: /font-size: var\(--fs-xs\)/, describe: 'xs size' },
-        { input: ':a:lg:', expectMatch: /font-size: var\(--fs-lg\)/, describe: 'lg size' },
+        { input: ':a:xs:', expectMatch: /font-size: 0\.75em/, describe: 'xs size(em-based)' },
+        { input: ':a:lg:', expectMatch: /font-size: 1\.25em/, describe: 'lg size(em-based)' },
+        { input: ':a:2xl:', expectMatch: /font-size: 1\.875em/, describe: '2xl size(em-based)' },
+        { input: ':a:3xl:', expectMatch: /font-size: 2\.5em/, describe: '3xl size(em-based)' },
+        { input: ':a:120%:', expectMatch: /font-size: 120%/, describe: 'percent free value' },
+        { input: ':a:1.5em:', expectMatch: /font-size: 1\.5em/, describe: 'em free value' },
+        { input: ':a:12px:', expectMatch: /font-size: 12px/, describe: 'px free value' },
+        { input: ':a:0.75rem:', expectMatch: /font-size: 0\.75rem/, describe: 'rem free value' },
+        { input: ':a:lg, red, bold:', expectMatch: /font-size: 1\.25em.*color: red.*font-weight: bold/, describe: 'size + color + bold combo' },
         { input: ':a:bold, italic, underline:', expectMatch: /font-weight: bold/, describe: '3 keyword' },
         { input: '12:30:45', expectNoMatch: /pkc-inline-mark/, describe: '時刻無視' },
         { input: ':a:invalidattr:', expectNoMatch: /pkc-inline-mark/, describe: '未知 attr 無効' },

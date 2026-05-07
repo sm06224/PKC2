@@ -540,6 +540,8 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 §領域 6 で計画していた markdown 方言拡張を機能改修フェーズで継続。clickable image / table-of-numbers / etc. の拡張仕様を順次着地。
 
+**Status(2026-05-07)**: Phase 1 進行中。spec doc `markdown-dialect-extensions-spec-2026-05.md` を canonical 化、L-1〜L-7 を実装済(section break / inline marks / blockquote / comments / align prefix / simple-inline / figure)+ iPhone snippet toolbar 統合 + integration branch `claude/wave-10-2-phase1-integration-2026-05-07`。**2026-05-07 補完追加**:L-6 size token 拡張(`xs〜3xl` + 自由値 `<N>%` / `<N>em` / `<N>rem` / `<N>px`、em-based に切替)+ L-8 空行マーカー(`_` / `_<N>`、1〜20 行ぶん)。L-5 連続 prefix merge bug + Viewer popup CSS mirror も同期で対応済。Phase 1 残:format mapping マトリクス(Word / PPT / PDF / LaTeX / ePub)着手前 = canonical spec の §1.2 IR 経由 format 横断は 10-3 IR wave 後の課題。
+
 サイズ: 大(wave、6-10 PR)。
 
 ### 10-3: 内部中間表現(IR)導入 — word / ppt 組版と HTML レンダリングを同一 IR から派生
