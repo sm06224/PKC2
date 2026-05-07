@@ -327,12 +327,64 @@ test('D-09 filer row alignment with mixed length names (regression)', async ({ p
     fullPage: false,
   });
 
+  // 視覚証拠用 zoom-in:filer table の最初 8 行(全 entry)を crop して
+  // 拡大保存。各 row の baseline 揃いを目視確認できるレベル。
+  const tableRect = await page.evaluate(() => {
+    const t = document.querySelector('.pkc-filer-table');
+    if (!t) return null;
+    const r = t.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  if (tableRect) {
+    await page.screenshot({
+      path: 'test-results/diag-2026-05-07/D-09-filer-rows-zoom.png',
+      clip: { x: tableRect.x, y: tableRect.y, width: Math.min(900, tableRect.w), height: Math.min(260, tableRect.h) },
+    });
+  }
+
   // Auto-detect row stride inconsistency.
   const heights = audit.map((r) => r.height);
   const minH = Math.min(...heights);
   const maxH = Math.max(...heights);
   const heightDelta = maxH - minH;
   console.log('D-09 row height min/max/delta:', minH, maxH, heightDelta);
+
+  // PR-Δ7-fix2:icon と title の Y position も揃っているか測る。
+  // 行ごとに icon span と title span の getBoundingClientRect().y を取り、
+  // 全行の同 element の Y を比較する。
+  const iconYAudit = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-lid]',
+    ));
+    return rows.map((r) => {
+      const icon = r.querySelector('.pkc-filer-row-icon');
+      const title = r.querySelector('.pkc-filer-row-title');
+      const ir = icon?.getBoundingClientRect();
+      const tr = title?.getBoundingClientRect();
+      return {
+        lid: r.getAttribute('data-pkc-lid'),
+        iconY: ir?.y ?? -1,
+        iconH: ir?.height ?? -1,
+        titleY: tr?.y ?? -1,
+        titleH: tr?.height ?? -1,
+        // Computed icon CENTER vs row CENTER:差が出れば視覚行ズレの正体。
+      };
+    });
+  });
+  const iconYs = iconYAudit.map((r) => r.iconY);
+  const titleYs = iconYAudit.map((r) => r.titleY);
+  // 行毎の icon Y は (rowY + rowStride * idx) と等しいはずだが、stride
+  // で正規化して相対 offset を比較する。
+  const rowStride = audit.length > 1 ? audit[1]!.y - audit[0]!.y : 24;
+  const iconOffsets = iconYAudit.map((r, i) => r.iconY - audit[i]!.y);
+  const titleOffsets = iconYAudit.map((r, i) => r.titleY - audit[i]!.y);
+  const minIcon = Math.min(...iconOffsets);
+  const maxIcon = Math.max(...iconOffsets);
+  const minTitle = Math.min(...titleOffsets);
+  const maxTitle = Math.max(...titleOffsets);
+  console.log('D-09 icon Y offset (relative to row top): min/max/delta:', minIcon, maxIcon, maxIcon - minIcon);
+  console.log('D-09 title Y offset: min/max/delta:', minTitle, maxTitle, maxTitle - minTitle);
+  console.log('D-09 row stride:', rowStride);
 });
 
 test('D-08 filer bulk tag/color application preserves other fields (PR-Δ5)', async ({ page }) => {
