@@ -1120,6 +1120,44 @@ function stripComments(source: string): string {
   return out;
 }
 
+// ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
+//
+// Spec §2.3:`+++` line で page / slide break、`{role=...}` で role 指定。
+// Phase 1 で対応する role:`auto`(default)/ `cover` / `section` / `body`。
+// 他 role は spec §2.3 表参照(toc / landscape / appendix / bibliography /
+// index)。本実装は role 文字列を data-pkc-role 属性で素通し、format export
+// engine が消費する想定。
+//
+// HTML 出力:`<hr class="pkc-section-break" data-pkc-role="ROLE">`。
+// CSS は role 別に少し見た目を変える(cover は強い区切り、section は弱め)。
+//
+// 実装:pre-process で `+++` line を sentinel 化、post-process で <hr> に置換。
+
+const SECTION_OPEN = '\u{E120}';
+const SECTION_SEP = '\u{E121}';
+
+function processSectionBreaks(source: string): string {
+  return source.split('\n').map((line) => {
+    const m = /^\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
+    if (!m) return line;
+    const attrs = m[1]?.trim() ?? '';
+    let role = 'auto';
+    if (attrs) {
+      // `role=X` を抽出。他 attr は無視(Phase 1)。
+      const rm = /role=(\w[\w-]*)/.exec(attrs);
+      if (rm) role = rm[1]!;
+    }
+    return `${SECTION_OPEN}${role}${SECTION_SEP}`;
+  }).join('\n');
+}
+
+function postProcessSectionBreaks(html: string): string {
+  return html.replace(
+    new RegExp(`<p>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
+    (_match, role) => `<hr class="pkc-section-break" data-pkc-role="${role}">`,
+  );
+}
+
 /**
  * Render markdown text to an HTML string.
  *
@@ -1131,17 +1169,17 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
-  // L-4:render 前に comment(`%%` / `%%%`)を完全 strip。
+  // L-4:comment strip
   text = stripComments(text);
-  // L-7:figure/table/equation block を sentinel 化 + registry 構築。
-  // [@id] reference も sentinel 化、post-process で <a> に展開。
+  // L-1:section break を sentinel 化(post-process で <hr> に展開)
+  text = processSectionBreaks(text);
+  // L-7:figure/table/equation block + [@id] reference を sentinel 化
   const { transformed: t1, registry: figRegistry } = processFigureBlocks(text);
   text = processFigureRefs(t1, figRegistry);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
-  // L-5:line-prefix align(`||` / `|>` / `<|`)を pre-process で strip し、
-  // 行番号 → align map を保持。token への属性付与は md.parse 後に行う。
+  // L-5:line-prefix align(`||` / `|>` / `<|`)を pre-process で strip
   const { stripped, alignMap } = preprocessAlignPrefix(text);
   let html: string;
   if (!opts.sourceLineAnchors) {
@@ -1159,8 +1197,10 @@ export function renderMarkdown(
     tagSourceLines(tokens);
     html = md.renderer.render(tokens, md.options, env);
   }
-  // L-7:sentinel post-process(figure/table/equation block + [@id] refs)。
+  // L-7:figure/table/equation sentinel → <figure>
   html = postProcessFigureSentinels(html);
+  // L-1:section break sentinel → <hr>
+  html = postProcessSectionBreaks(html);
   return html;
 }
 
