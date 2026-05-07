@@ -745,6 +745,22 @@ function applyAlignAttrs(tokens: Token[], alignMap: Map<number, AlignKind>): voi
 }
 
 /**
+ * L-4(2026-05-07、wave-10-2 Phase 1):Comments(`%%` inline / `%%%` block)。
+ * spec doc §3.4:本文中に隠しメモを書ける、render では完全に削除。
+ *
+ *   %% inline comment、export では完全削除 %%
+ *
+ *   %%%
+ *   block comment、複数行可
+ *   %%%
+ */
+function stripComments(source: string): string {
+  let out = source.replace(/%%%[\s\S]*?%%%/g, '');
+  out = out.replace(/%%[^\n]*?%%/g, '');
+  return out;
+}
+
+/**
  * Render markdown text to an HTML string.
  *
  * HTML tags in source are escaped (not rendered) for XSS safety.
@@ -755,6 +771,8 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // L-4:render 前に comment(`%%` / `%%%`)を完全 strip。
+  text = stripComments(text);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
